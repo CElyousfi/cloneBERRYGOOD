@@ -1,0 +1,44 @@
+name: Fetch Fuel Data
+
+on:
+  schedule:
+    # Tous les jours à 6h00 UTC+1 (Maroc) = 05:00 UTC
+    - cron: '0 5 * * *'
+  workflow_dispatch: # Permet de lancer manuellement depuis GitHub
+
+jobs:
+  fetch-fuel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install dotenv playwright
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Create .env
+        run: |
+          echo "TOTAL_USERNAME=${{ secrets.TOTAL_USERNAME }}" > .env
+          echo "TOTAL_PASSWORD=${{ secrets.TOTAL_PASSWORD }}" >> .env
+
+      - name: Fetch fuel data & import to Firestore
+        run: node scripts/fetch-fuel-data.js
+        env:
+          TOTAL_USERNAME: ${{ secrets.TOTAL_USERNAME }}
+          TOTAL_PASSWORD: ${{ secrets.TOTAL_PASSWORD }}
+
+      - name: Upload data as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuel-data-${{ github.run_id }}
+          path: data/
+          retention-days: 30

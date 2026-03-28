@@ -2485,11 +2485,15 @@ exports.stockManagement = functions
         const ferme = req.query.ferme;
         const status = req.query.status;
         const limit = parseInt(req.query.limit || "200");
-        let query = db_firestore.collection("purchase_orders").orderBy("created_at", "desc").limit(limit);
+        let query = db_firestore.collection("purchase_orders");
+        const hasFilter = ferme || status;
         if (ferme) query = query.where("ferme", "==", ferme);
         if (status) query = query.where("status", "==", status);
+        if (!hasFilter) query = query.orderBy("created_at", "desc");
+        query = query.limit(limit);
         const snap = await query.get();
-        const bdc = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        let bdc = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        if (hasFilter) bdc.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         return res.json({ success: true, bdc });
       }
 
@@ -2784,11 +2788,15 @@ exports.stockManagement = functions
         const ferme = req.query.ferme;
         const status = req.query.status;
         const limit = parseInt(req.query.limit || "200");
-        let query = db_firestore.collection("purchase_requests").orderBy("created_at", "desc").limit(limit);
+        let query = db_firestore.collection("purchase_requests");
+        const hasFilter = ferme || status;
         if (ferme) query = query.where("ferme", "==", ferme);
         if (status) query = query.where("status", "==", status);
+        if (!hasFilter) query = query.orderBy("created_at", "desc");
+        query = query.limit(limit);
         const snap = await query.get();
-        const das = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        let das = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        if (hasFilter) das.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         return res.json({ success: true, das });
       }
 
@@ -5204,6 +5212,491 @@ exports.meetingCR = functions
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur meetingCR:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// API: Carburant — TotalEnergies fuel data
+// =============================================
+exports.fuel = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    try {
+      const action = req.query.action || "summary";
+      const COLLECTION = "fuel_transactions";
+
+      // Campaign starts in July
+      const now = new Date();
+      const campagneYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+      const campagneStart = new Date(campagneYear, 6, 1); // July 1st
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+      if (action === "summary") {
+        const cacheKey = `fuel_summary_${now.getFullYear()}_${now.getMonth()}`;
+        const cached = await withCache(cacheKey, 15 * 60 * 1000, async () => {
+          // Fetch all transactions and filter in memory
+          const snap = await db_firestore.collection(COLLECTION)
+            .orderBy("date", "desc")
+            .get();
+
+          const allDocs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const transactions = allDocs.filter(t => {
+            const tDate = t.date && t.date.toDate ? t.date.toDate() : new Date(t.date);
+            return tDate >= campagneStart;
+          });
+
+          // Aggregate
+          let totalMoisCarburant = 0, totalMoisPeages = 0;
+          let totalCampagneCarburant = 0, totalCampagnePeages = 0;
+          let totalLitres = 0, totalMontantCarburant = 0;
+          const parCarteMap = {};
+          const evolutionMap = {};
+          const stationMap = {};
+
+          for (const t of transactions) {
+            const tDate = t.date.toDate ? t.date.toDate() : new Date(t.date);
+            const isCurrentMonth = tDate >= currentMonthStart;
+            const montant = t.montant || 0;
+            const litres = t.quantite || 0;
+
+            if (t.isPeage) {
+              totalCampagnePeages += montant;
+              if (isCurrentMonth) totalMoisPeages += montant;
+            } else {
+              totalCampagneCarburant += montant;
+              totalLitres += litres;
+              totalMontantCarburant += montant;
+              if (isCurrentMonth) totalMoisCarburant += montant;
+            }
+
+            // Par carte
+            if (!parCarteMap[t.carte]) {
+              parCarteMap[t.carte] = { carte: t.carte, montant: 0, litres: 0, peages: 0, count: 0 };
+            }
+            if (t.isPeage) {
+              parCarteMap[t.carte].peages += montant;
+            } else {
+              parCarteMap[t.carte].montant += montant;
+              parCarteMap[t.carte].litres += litres;
+            }
+            parCarteMap[t.carte].count++;
+
+            // Evolution par mois
+            const moisKey = t.mois || `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, "0")}`;
+            if (!evolutionMap[moisKey]) {
+              evolutionMap[moisKey] = { mois: moisKey, carburant: 0, peages: 0 };
+            }
+            if (t.isPeage) {
+              evolutionMap[moisKey].peages += montant;
+            } else {
+              evolutionMap[moisKey].carburant += montant;
+            }
+
+            // Top stations (only carburant, not péages)
+            if (!t.isPeage && t.lieu) {
+              if (!stationMap[t.lieu]) {
+                stationMap[t.lieu] = { station: t.lieu, count: 0, montant: 0 };
+              }
+              stationMap[t.lieu].count++;
+              stationMap[t.lieu].montant += montant;
+            }
+          }
+
+          // Format evolution with month labels
+          const moisLabels = { "01": "Jan", "02": "Fév", "03": "Mars", "04": "Avr", "05": "Mai", "06": "Jun", "07": "Jul", "08": "Aoû", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Déc" };
+          const evolution = Object.values(evolutionMap)
+            .sort((a, b) => a.mois.localeCompare(b.mois))
+            .map(e => ({
+              ...e,
+              label: moisLabels[e.mois.split("-")[1]] || e.mois,
+              carburant: Math.round(e.carburant),
+              peages: Math.round(e.peages),
+            }));
+
+          const parCarte = Object.values(parCarteMap)
+            .sort((a, b) => b.montant - a.montant)
+            .map(c => ({
+              ...c,
+              montant: Math.round(c.montant),
+              litres: Math.round(c.litres * 100) / 100,
+              peages: Math.round(c.peages),
+            }));
+
+          const topStations = Object.values(stationMap)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
+            .map(s => ({ ...s, montant: Math.round(s.montant) }));
+
+          // 20 dernières transactions
+          const dernieres = transactions.slice(0, 20).map(t => ({
+            carte: t.carte,
+            date: t.dateStr,
+            lieu: t.lieu,
+            produit: t.produit,
+            quantite: t.quantite,
+            montant: t.montant,
+          }));
+
+          const prixMoyenLitre = totalLitres > 0 ? Math.round(totalMontantCarburant / totalLitres * 100) / 100 : 0;
+
+          return {
+            success: true,
+            totalMois: Math.round(totalMoisCarburant),
+            totalCampagne: Math.round(totalCampagneCarburant),
+            totalPeages: Math.round(totalCampagnePeages),
+            totalPeagesMois: Math.round(totalMoisPeages),
+            prixMoyenLitre,
+            parCarte,
+            evolution,
+            topStations,
+            dernieresTransactions: dernieres,
+            nbTransactions: transactions.length,
+            campagne: `${campagneYear}-${campagneYear + 1}`,
+          };
+        });
+        return res.json(cached);
+      }
+
+      if (action === "import" && req.method === "POST") {
+        const transactions = req.body.transactions || [];
+        if (!Array.isArray(transactions) || transactions.length === 0) {
+          return res.status(400).json({ success: false, error: "transactions array requis" });
+        }
+
+        let imported = 0;
+        const BATCH_SIZE = 400;
+        let batch = db_firestore.batch();
+        let batchCount = 0;
+
+        for (const t of transactions) {
+          // Parse montant: "620.04 MAD" → 620.04
+          const montant = parseFloat((t.montant || "0").replace(/\s*MAD\s*/i, "").replace(",", ".")) || 0;
+          const quantite = parseFloat((t.quantite || "0").replace(",", ".")) || 0;
+          const kms = parseInt(t.kms || "0", 10) || 0;
+          // Parse date
+          const [datePart, timePart] = (t.date || "").split(" ");
+          const [day, month, year] = (datePart || "").split("/");
+          const [hour, minute] = (timePart || "00:00").split(":");
+          const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
+          const isPeage = (t.produit || "").toLowerCase().includes("badge") || (t.produit || "").toLowerCase().includes("peage");
+
+          const docId = `${t.carte}_${t.ticket}_${(t.date || "").replace(/[\/\s:]/g, "-")}`;
+          const ref = db_firestore.collection(COLLECTION).doc(docId);
+          batch.set(ref, {
+            carte: t.carte || "",
+            date: admin.firestore.Timestamp.fromDate(dateObj),
+            dateStr: t.date || "",
+            ticket: t.ticket || "",
+            lieu: t.lieu || "",
+            produit: t.produit || "",
+            kms, quantite, montant, isPeage,
+            dateFacture: t.dateFacture || "",
+            numFacture: t.numFacture || "",
+            mois: `${year}-${month}`,
+            annee: parseInt(year, 10),
+          }, { merge: true });
+          batchCount++;
+          imported++;
+
+          if (batchCount >= BATCH_SIZE) {
+            await batch.commit();
+            batch = db_firestore.batch();
+            batchCount = 0;
+          }
+        }
+        if (batchCount > 0) await batch.commit();
+
+        // Invalidate cache
+        const now = new Date();
+        const cacheKey = `fuel_summary_${now.getFullYear()}_${now.getMonth()}`;
+        await db_firestore.collection("api_cache").doc(cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200)).delete().catch(() => {});
+
+        return res.json({ success: true, imported });
+      }
+
+      if (action === "transactions") {
+        const limit = Math.min(parseInt(req.query.limit || "50", 10), 200);
+        const snap = await db_firestore.collection(COLLECTION).limit(limit).get();
+        const data = snap.docs.map(d => {
+          const t = d.data();
+          const dateType = t.date ? (t.date.toDate ? "Timestamp" : typeof t.date) : "missing";
+          return { id: d.id, carte: t.carte, date: t.dateStr, lieu: t.lieu, produit: t.produit, quantite: t.quantite, montant: t.montant, kms: t.kms, dateType };
+        });
+        return res.json({ success: true, data, count: data.length });
+      }
+
+      if (action === "count") {
+        const snap = await db_firestore.collection(COLLECTION).count().get();
+        return res.json({ success: true, total: snap.data().count });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue: " + action });
+    } catch (err) {
+      console.error("Erreur fuel:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// API: Notifications — Aggregated notifications per profile
+// =============================================
+exports.notifications = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    try {
+      const profile = req.query.profile || "";
+      const ferme = req.query.ferme || "";
+      const today = new Date().toISOString().slice(0, 10);
+
+      const categories = { validations: [], taches: [], alertes: [] };
+
+      // ---- Helper: get dates for last 7 days ----
+      const last7 = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        last7.push(d.toISOString().slice(0, 10));
+      }
+
+      // ---- COMMON: Tasks assigned to this profile ----
+      const tasksPromise = db_firestore.collection("tasks")
+        .where("assignedTo", "==", profile)
+        .where("status", "in", ["a_faire", "en_cours"])
+        .get();
+
+      // ---- Profile-specific queries ----
+      const promises = [tasksPromise];
+
+      // RH: pointage_validations not fully validated (last 7 days)
+      if (profile === "rh") {
+        promises.push(
+          db_firestore.collection("pointage_validations")
+            .where("date", "in", last7).get()
+            .then(snap => {
+              const pending = snap.docs.filter(d => {
+                const v = d.data();
+                return !v.locked && !v.rejected;
+              });
+              if (pending.length > 0) {
+                categories.validations.push({ key: "pointage_pending", label: "Pointages en attente de validation", count: pending.length, icon: "fa-clipboard-check", color: "#e67e22", tab: "pointage" });
+              }
+            })
+        );
+      }
+
+      // Chef: BDC + pointage attente visa chef + demandes ré-exécution
+      if (profile.startsWith("chef_")) {
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "en_attente_chef")
+            .where("ferme", "==", ferme)
+            .get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_chef", label: "BDC à valider", count: snap.size, icon: "fa-file-contract", color: "#e67e22", tab: "chef_validations" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("pointage_validations")
+            .where("date", "in", last7).get()
+            .then(snap => {
+              const pending = snap.docs.filter(d => {
+                const v = d.data();
+                return v.ferme === ferme && v.visaCaporal && !v.visaChef && !v.locked;
+              });
+              if (pending.length > 0) categories.validations.push({ key: "pointage_chef", label: "Pointages attente visa Chef", count: pending.length, icon: "fa-clipboard-check", color: "#2c3e50", tab: "pointage" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("suivi-hors-recolte-demandes")
+            .where("ferme", "==", ferme)
+            .where("statut", "==", "en_attente")
+            .get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "demandes_reexec", label: "Demandes ré-exécution en attente", count: snap.size, icon: "fa-rotate", color: "#9b59b6", tab: "hors_recolte" });
+            })
+        );
+      }
+
+      // Caporal: pointages rejetés + tâches HR non terminées + demandes résultat
+      if (profile.startsWith("caporal_")) {
+        promises.push(
+          db_firestore.collection("pointage_validations")
+            .where("date", "in", last7).get()
+            .then(snap => {
+              const rejected = snap.docs.filter(d => {
+                const v = d.data();
+                return v.ferme === ferme && v.rejected;
+              });
+              if (rejected.length > 0) categories.alertes.push({ key: "pointage_rejected", label: "Pointages rejetés à corriger", count: rejected.length, icon: "fa-exclamation-triangle", color: "#e74c3c", tab: "pointage" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("suivi-hors-recolte-cumul")
+            .where("ferme", "==", ferme)
+            .where("termine", "==", false)
+            .get()
+            .then(snap => {
+              if (snap.size > 0) categories.taches.push({ key: "hr_non_terminees", label: "Tâches hors-récolte en cours", count: snap.size, icon: "fa-list-check", color: "#f39c12", tab: "suivi_avancement" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("suivi-hors-recolte-demandes")
+            .where("ferme", "==", ferme)
+            .get()
+            .then(snap => {
+              const recent = snap.docs.filter(d => {
+                const data = d.data();
+                return (data.statut === "validee" || data.statut === "refusee") && data.valideAt;
+              });
+              if (recent.length > 0) categories.alertes.push({ key: "demandes_result", label: "Demandes ré-exécution traitées", count: recent.length, icon: "fa-bell", color: "#3498db", tab: "suivi_avancement" });
+            })
+        );
+      }
+
+      // DG: BDC attente DG + factures DG
+      if (profile === "dg") {
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "en_attente_dg").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_dg", label: "BDC en attente DG", count: snap.size, icon: "fa-stamp", color: "#9b59b6", tab: "dg_validations" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("invoices")
+            .where("payment_status", "==", "validee_finance").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "factures_dg", label: "Factures à valider", count: snap.size, icon: "fa-file-invoice-dollar", color: "#e74c3c", tab: "dg_validations" });
+            })
+        );
+      }
+
+      // Finance: factures + virements
+      if (profile === "finance") {
+        promises.push(
+          db_firestore.collection("invoices")
+            .where("payment_status", "==", "validee_achats").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "factures_finance", label: "Factures à valider", count: snap.size, icon: "fa-file-invoice-dollar", color: "#3498db", tab: "fin_factures" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("demandes_virement")
+            .where("status", "==", "en_attente").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "virements_pending", label: "Virements en attente", count: snap.size, icon: "fa-money-bill-transfer", color: "#27ae60", tab: "fin_virements" });
+            })
+        );
+      }
+
+      // Achats: DA + BDC + factures + fournisseurs
+      if (profile === "achats") {
+        promises.push(
+          db_firestore.collection("purchase_requests")
+            .where("status", "==", "soumise").get()
+            .then(snap => {
+              const daList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+              if (snap.size > 0) categories.validations.push({
+                key: "da_soumises", label: "DA à approuver", count: snap.size, icon: "fa-file-lines", color: "#f39c12", tab: "achats_da",
+                details: daList.slice(0, 5).map(d => ({ text: (d.numero || "") + " — " + (d.ferme || "") + (d.urgence && d.urgence !== "normale" ? " (" + d.urgence + ")" : ""), urgent: d.urgence === "critique" || d.urgence === "urgente" }))
+              });
+            })
+        );
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "brouillon").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_brouillon", label: "BDC brouillon à compléter", count: snap.size, icon: "fa-file-pen", color: "#3498db", tab: "achats_bdc" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "en_attente_chef").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_attente_chef", label: "BDC attente Chef", count: snap.size, icon: "fa-user-check", color: "#e67e22", tab: "achats_bdc" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "en_attente_dg").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_attente_dg", label: "BDC attente DG", count: snap.size, icon: "fa-stamp", color: "#9b59b6", tab: "achats_bdc" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("invoices")
+            .where("payment_status", "==", "en_validation").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "factures_achats", label: "Factures à valider", count: snap.size, icon: "fa-file-invoice-dollar", color: "#e74c3c", tab: "achats_paiements" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("suppliers")
+            .where("status", "==", "en_attente").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "fournisseurs", label: "Fournisseurs à valider", count: snap.size, icon: "fa-building", color: "#27ae60", tab: "achats_fournisseurs" });
+            })
+        );
+      }
+
+      // Qualité: expéditions en attente
+      if (profile === "qualite") {
+        promises.push(
+          db_firestore.collection("expeditions")
+            .where("status", "==", "en_attente").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "expeditions_pending", label: "Expéditions en attente", count: snap.size, icon: "fa-truck", color: "#8e44ad", tab: "qualite_expeditions" });
+            })
+        );
+      }
+
+      // DT: pointages F1+F5 non validés
+      if (profile === "dt") {
+        promises.push(
+          db_firestore.collection("pointage_validations")
+            .where("date", "in", last7).get()
+            .then(snap => {
+              const pending = snap.docs.filter(d => {
+                const v = d.data();
+                return (v.ferme === "F1" || v.ferme === "F5") && !v.locked && !v.rejected;
+              });
+              if (pending.length > 0) categories.validations.push({ key: "pointage_dt", label: "Pointages non validés (F1+F5)", count: pending.length, icon: "fa-clipboard-check", color: "#1a5276", tab: "pointage" });
+            })
+        );
+      }
+
+      // ---- Await all promises ----
+      await Promise.all(promises);
+
+      // ---- Process tasks result ----
+      const tasksSnap = await tasksPromise;
+      const allTasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const overdue = allTasks.filter(t => t.deadline && t.deadline < today);
+      const inProgress = allTasks.filter(t => t.status === "en_cours");
+      const todo = allTasks.filter(t => t.status === "a_faire");
+
+      if (overdue.length > 0) {
+        categories.taches.push({ key: "tasks_overdue", label: "Tâches en retard", count: overdue.length, icon: "fa-clock", color: "#e74c3c", tab: "dg_taches" });
+      }
+      if (inProgress.length > 0) {
+        categories.taches.push({ key: "tasks_en_cours", label: "Tâches en cours", count: inProgress.length, icon: "fa-spinner", color: "#3498db", tab: "dg_taches" });
+      }
+      if (todo.length > 0) {
+        categories.taches.push({ key: "tasks_a_faire", label: "Tâches à faire", count: todo.length, icon: "fa-list-check", color: "#f39c12", tab: "dg_taches" });
+      }
+
+      const totalCount = Object.values(categories).reduce((sum, cat) => sum + cat.reduce((s, item) => s + item.count, 0), 0);
+
+      return res.json({ success: true, categories, totalCount });
+    } catch (err) {
+      console.error("Erreur notifications:", err);
       res.status(500).json({ success: false, error: err.message });
     }
   });

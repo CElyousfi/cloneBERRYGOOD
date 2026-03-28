@@ -7,6 +7,8 @@
   },
   "main": "index.js",
   "scripts": {
+    "test": "node ../tests/test-workflows.js",
+    "test:prod": "BASE_URL=https://berrygood-farms-dashboard.web.app node ../tests/test-workflows.js",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",

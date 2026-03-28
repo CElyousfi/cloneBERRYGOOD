@@ -26,7 +26,8 @@ async function fetchFuelData() {
   }
 
   console.log("🚀 Lancement du navigateur...");
-  const browser = await chromium.launch({ headless: false }); // headless: false pour débugger
+  const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+  const browser = await chromium.launch({ headless: isCI }); // headless en CI, visible en local
   const context = await browser.newContext({ acceptDownloads: true });
   const page = await context.newPage();
 
@@ -76,6 +77,31 @@ async function fetchFuelData() {
 
     console.log("✅ Connecté !");
 
+    // 4b. Fermer le popup cookies (tarteaucitron)
+    console.log("🍪 Gestion du popup cookies...");
+    try {
+      // D'abord essayer de cliquer sur "OK, accept all"
+      const cookieBtn = await page.waitForSelector(
+        '#tarteaucitronAllAllowed, button:has-text("OK, accept all"), button:has-text("Deny all")',
+        { timeout: 5000 }
+      );
+      if (cookieBtn) {
+        await cookieBtn.click({ force: true });
+        console.log("   ✅ Popup cookies accepté");
+        await page.waitForTimeout(1000);
+      }
+    } catch {
+      console.log("   Pas de bouton cookie trouvé");
+    }
+    // Supprimer l'overlay tarteaucitron du DOM pour débloquer les clics
+    await page.evaluate(() => {
+      const el = document.getElementById('tarteaucitronRoot');
+      if (el) el.remove();
+      // Supprimer aussi tout overlay bloquant
+      document.querySelectorAll('[id*="tarteaucitron"]').forEach(e => e.remove());
+    });
+    console.log("   ✅ Overlay tarteaucitron supprimé du DOM");
+
     // 5. Naviguer vers Transactions
     console.log("📊 Navigation vers Transactions...");
     const transactionsLink = await page.$(
@@ -86,38 +112,186 @@ async function fetchFuelData() {
       await page.waitForTimeout(3000);
     }
 
-    // 6. Cliquer sur Exporter CSV
-    console.log("📥 Export CSV...");
-    const [download] = await Promise.all([
-      page.waitForEvent("download", { timeout: 30000 }),
-      page
-        .click('a:has-text("Exporter"), button:has-text("Exporter"), img[src*="csv"], a[href*="export"], .export-btn, a:has-text("CSV")')
-        .catch(async () => {
-          // Essayer de cliquer sur l'icône CSV en bas de page
-          const csvIcon = await page.$('img[alt*="csv"], img[alt*="CSV"], img[src*="csv"]');
-          if (csvIcon) await csvIcon.click();
-        }),
-    ]);
+    // Attendre que le formulaire soit entièrement chargé (4 selects)
+    console.log("⏳ Attente du chargement complet du formulaire...");
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const selCount = await page.$$eval('select', sels => sels.length);
+      const clientOpts = await page.$$eval('#cb_client option', opts => opts.length);
+      if (selCount >= 4 && clientOpts >= 2) {
+        console.log(`   ✅ Formulaire prêt (${selCount} selects, ${clientOpts} clients)`);
+        break;
+      }
+      console.log(`   ... ${selCount} selects, ${clientOpts} clients - attente...`);
+      await page.waitForTimeout(2000);
+    }
 
-    // 7. Sauvegarder le fichier
+    // 5b. Debug: lister les selects et leurs options
+    console.log("🔍 Analyse des éléments du formulaire...");
+    const allSelects = await page.$$('select');
+    console.log(`   Trouvé ${allSelects.length} select(s)`);
+    for (let i = 0; i < allSelects.length; i++) {
+      const sel = allSelects[i];
+      const id = await sel.getAttribute('id');
+      const name = await sel.getAttribute('name');
+      const ngModel = await sel.getAttribute('ng-model') || await sel.getAttribute('data-bind') || '';
+      const options = await sel.$$eval('option', opts => opts.map(o => ({ value: o.value, text: o.textContent.trim() })));
+      console.log(`   Select #${i}: id="${id}" name="${name}" model="${ngModel}"`);
+      console.log(`   Options:`, JSON.stringify(options));
+    }
+
+    // Lister les images/boutons cliquables
+    const allImages = await page.$$eval('img', imgs => imgs.map(i => ({ src: i.src, alt: i.alt, onclick: i.getAttribute('onclick') || i.getAttribute('ng-click') || '' })));
+    console.log(`   Images:`, JSON.stringify(allImages));
+
+    // Sélectionner le client BERRY GOOD FARMS
+    console.log("🔍 Sélection du client BERRY GOOD FARMS...");
+    const clientSelect = await page.$('#cb_client');
+    if (clientSelect) {
+      const options = await clientSelect.$$eval('option', opts => opts.map(o => ({ value: o.value, text: o.textContent.trim() })));
+      const berryOption = options.find(o => o.text.includes('BERRY GOOD'));
+      if (berryOption) {
+        await clientSelect.selectOption(berryOption.value);
+        await clientSelect.evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true })));
+        console.log(`   ✅ Client sélectionné: ${berryOption.text}`);
+        await page.waitForTimeout(1000);
+      }
+    }
+
+    // Helper: cliquer sur la loupe de recherche
+    async function clickSearch() {
+      await page.evaluate(() => {
+        const imgs = document.querySelectorAll('img');
+        for (const img of imgs) {
+          if (img.offsetWidth > 0 && img.offsetHeight > 0 && img.closest('a, button, [ng-click], [onclick]')) {
+            img.click();
+            return;
+          }
+        }
+      });
+      await page.waitForTimeout(4000);
+    }
+
+    // 6. Appeler directement l'API /Operations avec les cookies de session
     const outputDir = path.join(__dirname, "..", "data");
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
-
     const timestamp = new Date().toISOString().slice(0, 10);
-    const outputPath = path.join(outputDir, `fuel-transactions-${timestamp}.csv`);
-    await download.saveAs(outputPath);
 
-    console.log(`✅ Données exportées vers: ${outputPath}`);
+    // Récupérer les cookies de session
+    const cookies = await context.cookies();
+    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ');
 
-    // 8. Aussi scraper les données visibles dans le tableau comme backup
-    console.log("📋 Extraction des données du tableau...");
-    const tableData = await scrapeTransactionsTable(page);
+    // Définir les périodes à scraper (campagne Jul 2025 → maintenant)
+    const now = new Date();
+    const campagneYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const campagneStart = new Date(campagneYear, 6, 1); // July 1
+
+    // Format date: MM/DD/YYYY (format utilisé par l'API)
+    function formatDate(d) {
+      return `${String(d.getMonth()+1).padStart(2,'0')}%2F${String(d.getDate()).padStart(2,'0')}%2F${d.getFullYear()}`;
+    }
+
+    const dateDebut = formatDate(campagneStart);
+    const dateFin = formatDate(now);
+
+    console.log(`📡 Appel API /Operations (${campagneStart.toLocaleDateString('fr-FR')} → ${now.toLocaleDateString('fr-FR')})...`);
+
+    const apiUrl = `https://www.mytotalfuelcard.com/Operations?idClient=12626&idCarte=-1&dateDebut=${dateDebut}&dateFin=${dateFin}&typeOp=transaction`;
+    console.log(`   URL: ${apiUrl}`);
+
+    // Ouvrir un nouvel onglet pour appeler l'API directement (avec les cookies de session)
+    const apiPage = await context.newPage();
+    const response = await apiPage.goto(apiUrl, { waitUntil: "networkidle", timeout: 30000 });
+    const apiResponse = await apiPage.content();
+    await apiPage.close();
+
+    // Parse la réponse (HTML tableau ou JSON)
+    console.log(`   Réponse: ${apiResponse.length} chars`);
+    let tableData = [];
+
+    // Extraire le JSON de la réponse (peut être enveloppé dans du HTML <pre>)
+    let jsonText = apiResponse;
+    const preMatch = apiResponse.match(/<pre[^>]*>([\s\S]*?)<\/pre>/);
+    if (preMatch) jsonText = preMatch[1];
+    // Ou chercher directement le JSON
+    const jsonStart = jsonText.indexOf('{');
+    if (jsonStart > 0) jsonText = jsonText.substring(jsonStart);
+
+    try {
+      const jsonData = JSON.parse(jsonText);
+      const items = jsonData.data || jsonData;
+      console.log(`   ${items.length} transactions dans la réponse API (count: ${jsonData.count || '?'})`);
+
+      for (const t of items) {
+        // Parser date_trans: "/Date(1774566000000+0100)/" → Date
+        let dateStr = "";
+        if (t.date_trans) {
+          const tsMatch = t.date_trans.match(/\/Date\((\d+)/);
+          if (tsMatch) {
+            const d = new Date(parseInt(tsMatch[1]));
+            const hStr = String(t.heure_trans || 0).padStart(6, '0');
+            const hh = hStr.substring(0, 2);
+            const mm = hStr.substring(2, 4);
+            dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${hh}:${mm}`;
+          }
+        }
+        tableData.push({
+          carte: t.id_carte || "",
+          date: dateStr,
+          ticket: String(t.no_ticket || "").replace(/\.0$/, ''),
+          lieu: t.lieu || "",
+          produit: t.produit || "",
+          kms: String(t.kms || 0),
+          quantite: String(t.qtt || 0),
+          montant: `${t.montant || 0} MAD`,
+          dateFacture: t.date_facture || "",
+          numFacture: t.no_facture || "",
+        });
+      }
+      console.log(`   ${tableData.length} transactions parsées`);
+    } catch (parseErr) {
+      console.log(`   ❌ Erreur parsing JSON: ${parseErr.message}`);
+      console.log(`   Premiers 500 chars: ${jsonText.substring(0, 500)}`);
+      // Fallback
+      console.log("📋 Fallback au scraping...");
+      await clickSearch();
+      tableData = await scrapeTransactionsTable(page);
+    }
+
+    // Dédupliquer
+    const seen = new Set();
+    tableData = tableData.filter(t => {
+      const key = `${t.carte}_${t.date}_${t.ticket}_${t.montant}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    console.log(`📊 ${tableData.length} transactions uniques`);
     if (tableData.length > 0) {
       const jsonPath = path.join(outputDir, `fuel-transactions-${timestamp}.json`);
       fs.writeFileSync(jsonPath, JSON.stringify(tableData, null, 2), "utf-8");
       console.log(`✅ Données JSON sauvegardées: ${jsonPath} (${tableData.length} transactions)`);
+
+      // Générer aussi un CSV
+      const csvHeader = "Carte,Date,N° Ticket,Lieu,Produit,Kms,Quantité,Montant,Date facture,N° facture";
+      const csvRows = tableData.map(t =>
+        [t.carte, t.date, t.ticket, t.lieu, t.produit, t.kms, t.quantite, t.montant, t.dateFacture, t.numFacture]
+          .map(v => `"${(v || '').replace(/"/g, '""')}"`)
+          .join(",")
+      );
+      const csvPath = path.join(outputDir, `fuel-transactions-${timestamp}.csv`);
+      fs.writeFileSync(csvPath, [csvHeader, ...csvRows].join("\n"), "utf-8");
+      console.log(`✅ Données CSV sauvegardées: ${csvPath}`);
+
+      // Auto-import dans Firestore
+      console.log("🔥 Import dans Firestore...");
+      try {
+        const { execSync } = require("child_process");
+        execSync(`node ${path.join(__dirname, "import-fuel-to-firestore.js")}`, { stdio: "inherit" });
+      } catch (importErr) {
+        console.error("⚠️  Import Firestore échoué:", importErr.message);
+      }
     }
   } catch (error) {
     console.error("❌ Erreur:", error.message);
@@ -134,50 +308,67 @@ async function fetchFuelData() {
   }
 }
 
+async function scrapeCurrentPage(page) {
+  const rows = await page.$$("table tr");
+  const pageData = [];
+  for (const row of rows) {
+    const cells = await row.$$("td");
+    if (cells.length >= 8) {
+      const values = await Promise.all(cells.map((c) => c.innerText()));
+      pageData.push({
+        carte: values[0]?.trim(),
+        date: values[1]?.trim(),
+        ticket: values[2]?.trim(),
+        lieu: values[3]?.trim(),
+        produit: values[4]?.trim(),
+        kms: values[5]?.trim(),
+        quantite: values[6]?.trim(),
+        montant: values[7]?.trim(),
+        dateFacture: values[8]?.trim() || "",
+        numFacture: values[9]?.trim() || "",
+      });
+    }
+  }
+  return pageData;
+}
+
 async function scrapeTransactionsTable(page) {
   const transactions = [];
 
-  // Scraper toutes les pages
-  let hasNextPage = true;
-  let currentPage = 1;
+  // Trouver le nombre total de pages via les liens de pagination
+  const pageLinks = await page.$$eval(
+    'a, span',
+    els => els
+      .map(el => el.textContent.trim())
+      .filter(t => /^\d+$/.test(t))
+      .map(Number)
+  );
+  const totalPages = pageLinks.length > 0 ? Math.max(...pageLinks) : 1;
+  console.log(`   ${totalPages} page(s) détectée(s)`);
 
-  while (hasNextPage) {
-    console.log(`   Page ${currentPage}...`);
+  // Scraper page 1
+  console.log(`   Page 1...`);
+  transactions.push(...await scrapeCurrentPage(page));
 
-    const rows = await page.$$("table tr");
-    for (const row of rows) {
-      const cells = await row.$$("td");
-      if (cells.length >= 8) {
-        const values = await Promise.all(cells.map((c) => c.innerText()));
-        transactions.push({
-          carte: values[0]?.trim(),
-          date: values[1]?.trim(),
-          ticket: values[2]?.trim(),
-          lieu: values[3]?.trim(),
-          produit: values[4]?.trim(),
-          kms: values[5]?.trim(),
-          quantite: values[6]?.trim(),
-          montant: values[7]?.trim(),
-          dateFacture: values[8]?.trim() || "",
-          numFacture: values[9]?.trim() || "",
-        });
-      }
-    }
-
-    // Essayer de passer à la page suivante
-    const nextBtn = await page.$('a:has-text(">"):not(:has-text(">>"))');
-    if (nextBtn) {
-      const isDisabled = await nextBtn.getAttribute("disabled");
-      const className = await nextBtn.getAttribute("class");
-      if (isDisabled || (className && className.includes("disabled"))) {
-        hasNextPage = false;
-      } else {
-        await nextBtn.click();
-        await page.waitForTimeout(2000);
-        currentPage++;
-      }
-    } else {
-      hasNextPage = false;
+  // Scraper les pages suivantes en cliquant sur le numéro de page
+  for (let p = 2; p <= totalPages; p++) {
+    console.log(`   Page ${p}...`);
+    // Cliquer sur le lien de la page par son texte exact
+    try {
+      await page.evaluate((pageNum) => {
+        const links = document.querySelectorAll('a');
+        for (const link of links) {
+          if (link.textContent.trim() === String(pageNum)) {
+            link.click();
+            return;
+          }
+        }
+      }, p);
+      await page.waitForTimeout(3000);
+      transactions.push(...await scrapeCurrentPage(page));
+    } catch (e) {
+      console.log(`   ⚠️ Erreur page ${p}: ${e.message}`);
+      break;
     }
   }
 

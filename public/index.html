@@ -1320,6 +1320,10 @@
         ];
 
         const NAV_ITEMS_FINANCE = [
+            { id: 'dashboard', label: 'Dashboard Pointage', icon: 'fa-gauge-high', dgOnly: true },
+            { id: 'pointage', label: 'Pointage du Jour', icon: 'fa-clock', dgOnly: true },
+            { id: 'recolte', label: 'Dashboard Récolte', icon: 'fa-basket-shopping', dgOnly: true },
+            { id: 'quinzaine', label: 'Dashboard Quinzaine', icon: 'fa-calendar-days', dgOnly: true },
             { id: 'fin_dashboard', label: 'CPC / Dashboard', icon: 'fa-chart-pie' },
             { id: 'fin_ca', label: 'Chiffre d\'Affaires', icon: 'fa-coins' },
             { id: 'fin_carburant', label: 'Carburant', icon: 'fa-gas-pump' },
@@ -2233,21 +2237,7 @@
                 mois: ['Jul','Aoû','Sep','Oct','Nov','Déc'],
             };
 
-            const carburant = {
-                totalMois: 45000,
-                totalCampagne: 380000,
-                parCarte: [
-                    { carte: 'CT-4521', collaborateur: 'Chauffeur Livraison', vehicule: '95-08-B-40', montant: 12000, litres: 850, peages: 3200 },
-                    { carte: 'CT-4522', collaborateur: 'Hamid AGOURAM', vehicule: '12-A-3456', montant: 8500, litres: 620, peages: 1800 },
-                    { carte: 'CT-4523', collaborateur: 'Bouchra HABCHANE', vehicule: '45-B-7890', montant: 7200, litres: 510, peages: 1500 },
-                    { carte: 'CT-4524', collaborateur: 'Magasinier', vehicule: '78-C-1234', montant: 4500, litres: 380, peages: 800 },
-                ],
-                evolution: ['Jul','Aoû','Sep','Oct','Nov','Déc','Jan','Fév','Mar'].map((m, i) => ({
-                    mois: m,
-                    carburant: 30000 + Math.floor(Math.random() * 20000),
-                    peages: 5000 + Math.floor(Math.random() * 5000)
-                }))
-            };
+            const carburant = null; // Loaded from API in FinCarburantTab
 
             const finStock = {
                 stockTheorique: [
@@ -19078,21 +19068,46 @@ ${rejetHtml}
         }
 
         function FinCarburantTab({ data }) {
-            const carb = data.carburant;
-            const totalPeages = carb.parCarte.reduce((s, c) => s + c.peages, 0);
+            const [carb, setCarb] = React.useState(null);
+            const [cardMapping, setCardMapping] = React.useState({});
+            const [loading, setLoading] = React.useState(true);
+            const [error, setError] = React.useState(null);
 
-            const chartDataEvol = carb.evolution.map(e => ({
-                mois: e.mois,
+            React.useEffect(() => {
+                Promise.all([
+                    fetch('/api/fuel?action=summary').then(r => r.json()),
+                    fetch('/fuel-card-mapping.json').then(r => r.json()).catch(() => ({}))
+                ]).then(([fuelData, mapping]) => {
+                    if (fuelData.success) {
+                        setCarb(fuelData);
+                        setCardMapping(mapping || {});
+                    } else {
+                        setError(fuelData.error || 'Erreur API');
+                    }
+                    setLoading(false);
+                }).catch(err => {
+                    setError(err.message);
+                    setLoading(false);
+                });
+            }, []);
+
+            if (loading) return <div style={{textAlign:'center', padding:60}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:24, color:'var(--gray-400)'}}></i><p style={{marginTop:12, color:'var(--gray-500)'}}>Chargement des données carburant...</p></div>;
+            if (error) return <div style={{textAlign:'center', padding:60, color:'var(--red-500)'}}><i className="fa-solid fa-triangle-exclamation" style={{fontSize:24}}></i><p style={{marginTop:12}}>{error}</p></div>;
+            if (!carb) return null;
+
+            const chartDataEvol = (carb.evolution || []).map(e => ({
+                mois: e.label || e.mois,
                 Carburant: e.carburant,
                 Péages: e.peages
             }));
 
             return (
                 <div className="fade-in">
-                    <div className="kpi-grid">
+                    <div className="kpi-grid" style={{gridTemplateColumns: 'repeat(4, 1fr)'}}>
                         <KPICard icon="fa-gas-pump" iconClass="orange" value={(carb.totalMois/1000).toFixed(1)} label="Total Mois (K DH)" />
                         <KPICard icon="fa-chart-line" iconClass="blue" value={(carb.totalCampagne/1000).toFixed(0)} label="Total Campagne (K DH)" />
-                        <KPICard icon="fa-road" iconClass="green" value={(totalPeages/1000).toFixed(1)} label="Total Péages (K DH)" />
+                        <KPICard icon="fa-road" iconClass="green" value={(carb.totalPeages/1000).toFixed(1)} label="Total Péages (K DH)" />
+                        <KPICard icon="fa-droplet" iconClass="berry" value={carb.prixMoyenLitre.toFixed(2)} label="Prix Moyen / Litre (DH)" />
                     </div>
 
                     <div className="two-col">
@@ -19109,16 +19124,19 @@ ${rejetHtml}
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {carb.parCarte.map((c, i) => (
-                                        <tr key={i}>
-                                            <td><strong>{c.carte}</strong></td>
-                                            <td>{c.collaborateur}</td>
-                                            <td>{c.vehicule}</td>
-                                            <td>{c.montant.toLocaleString('fr-FR')}</td>
-                                            <td>{c.litres}</td>
-                                            <td>{c.peages.toLocaleString('fr-FR')}</td>
-                                        </tr>
-                                    ))}
+                                    {(carb.parCarte || []).map((c, i) => {
+                                        const mapping = cardMapping[c.carte] || {};
+                                        return (
+                                            <tr key={i}>
+                                                <td><strong>{c.carte}</strong></td>
+                                                <td>{mapping.collaborateur || '—'}</td>
+                                                <td>{mapping.vehicule || '—'}</td>
+                                                <td>{c.montant.toLocaleString('fr-FR')}</td>
+                                                <td>{c.litres}</td>
+                                                <td>{c.peages.toLocaleString('fr-FR')}</td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </Panel>
@@ -19128,8 +19146,58 @@ ${rejetHtml}
                         </Panel>
                     </div>
 
+                    <div className="two-col" style={{marginTop: 16}}>
+                        <Panel title="20 Dernières Transactions" icon="fa-list">
+                            <div style={{maxHeight: 350, overflowY: 'auto'}}>
+                                <table className="data-table" style={{fontSize: 12}}>
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Station</th>
+                                            <th>Produit</th>
+                                            <th>Qté (L)</th>
+                                            <th>Montant</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(carb.dernieresTransactions || []).map((t, i) => (
+                                            <tr key={i}>
+                                                <td style={{whiteSpace:'nowrap'}}>{t.date}</td>
+                                                <td>{t.lieu}</td>
+                                                <td>{t.produit}</td>
+                                                <td>{t.quantite}</td>
+                                                <td style={{whiteSpace:'nowrap'}}>{typeof t.montant === 'number' ? t.montant.toLocaleString('fr-FR') + ' DH' : t.montant}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Panel>
+
+                        <Panel title="Top 5 Stations" icon="fa-ranking-star">
+                            <table className="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Station</th>
+                                        <th>Passages</th>
+                                        <th>Montant (DH)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(carb.topStations || []).map((s, i) => (
+                                        <tr key={i}>
+                                            <td><strong>{s.station}</strong></td>
+                                            <td>{s.count}</td>
+                                            <td>{s.montant.toLocaleString('fr-FR')}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </Panel>
+                    </div>
+
                     <div style={{marginTop: 16, padding: 16, background: 'var(--orange-pale)', borderRadius: 12, fontSize: 12, color: 'var(--gray-600)'}}>
-                        <strong><i className="fa-solid fa-circle-info" style={{marginRight: 6}}></i>Source:</strong> Extranet TOTAL Energies — Cartes carburant entreprise.
+                        <strong><i className="fa-solid fa-circle-info" style={{marginRight: 6}}></i>Source:</strong> Extranet TOTAL Energies — Cartes carburant entreprise. {carb.nbTransactions} transactions ({carb.campagne}).
                     </div>
                 </div>
             );
@@ -26071,6 +26139,11 @@ ${rejetHtml}
             const [codesAnalytiques, setCodesAnalytiques] = useState([]);
             const [catalogueArticles, setCatalogueArticles] = useState([]);
             const [daApprouvees, setDaApprouvees] = useState([]);
+            const [cachetBase64, setCachetBase64] = useState(null);
+            useEffect(() => {
+                const img = new Image(); img.crossOrigin = 'anonymous'; img.src = '/assets/cachet.png';
+                img.onload = () => { const c = document.createElement('canvas'); c.width = img.naturalWidth; c.height = img.naturalHeight; c.getContext('2d').drawImage(img, 0, 0); setCachetBase64(c.toDataURL('image/png')); };
+            }, []);
             useEffect(() => { fetch('/api/stock?action=list-codes-analytiques').then(r=>r.json()).then(j=>{ if(j.success) setCodesAnalytiques(j.codes||[]); }).catch(()=>{}); }, []);
             useEffect(() => { fetch('/api/stock?action=list-articles').then(r=>r.json()).then(j=>{ if(j.success) setCatalogueArticles(j.articles||[]); }).catch(()=>{}); }, []);
             useEffect(() => {
@@ -26254,6 +26327,10 @@ ${rejetHtml}
                     doc.text(bdc.validated_by_dg.name || 'DG', M + 124 + sigW/2, sigY + 16, { align: 'center' });
                     doc.setFontSize(7); doc.setTextColor(100); doc.setFont('helvetica', 'normal');
                     doc.text('Sign\u00e9 le ' + new Date(bdc.validated_by_dg.at).toLocaleDateString('fr-FR'), M + 124 + sigW/2, sigY + 22, { align: 'center' });
+                }
+                // Cachet société
+                if (cachetBase64) {
+                    try { doc.addImage(cachetBase64, 'PNG', M + 68, sigY + 2, 25, 25); } catch(e) {}
                 }
                 doc.setFontSize(7); doc.setTextColor(150); doc.setFont('helvetica', 'normal');
                 doc.text('Document g\u00e9n\u00e9r\u00e9 le ' + new Date().toLocaleString('fr-FR') + ' \u2014 Berry Good Farms SARL', W / 2, 290, { align: 'center' });
@@ -30346,39 +30423,55 @@ ${rejetHtml}
             const hideCycle1 = (dgSettings.hideCycle1Profiles || []).includes(currentProfile);
 
             // ===== NOTIFICATION SYSTEM =====
-            const fetchNotifications = React.useCallback((profileId, showPopup) => {
-                const p = PROFILES.find(x => x.id === profileId);
-                let role = 'other';
-                if (profileId === 'achats') role = 'achats';
-                else if (profileId === 'dg') role = 'dg';
-                else if (profileId === 'finance') role = 'finance';
-                else if (profileId.startsWith('chef_')) role = 'chef';
-                const ferme = p?.farm || '';
-                const url = '/api/stock?action=pending-validations&role=' + role + (ferme ? '&ferme=' + ferme : '');
-                fetch(url).then(r => r.json()).then(json => {
-                    if (!json.success) return;
-                    const pend = json.pending || {};
-                    const items = [];
-                    // Chef
-                    if (pend.bdc_chef > 0) items.push({ icon: 'fa-file-contract', color: '#e67e22', label: 'BDC à valider', count: pend.bdc_chef, tab: 'chef_validations' });
-                    // DG
-                    if (pend.bdc_dg > 0) items.push({ icon: 'fa-stamp', color: '#9b59b6', label: 'BDC en attente DG', count: pend.bdc_dg, tab: 'dg_validations' });
-                    if (pend.factures_dg > 0) items.push({ icon: 'fa-file-invoice-dollar', color: '#e74c3c', label: 'Factures à valider', count: pend.factures_dg, tab: 'dg_validations' });
-                    // Achats
-                    if (pend.da_soumises > 0) items.push({ icon: 'fa-file-lines', color: '#f39c12', label: "DA à approuver", count: pend.da_soumises, tab: 'achats_da', details: (pend.da_list || []).slice(0, 5).map(d => ({ text: (d.numero || '') + ' — ' + (d.ferme || '') + (d.urgence && d.urgence !== 'normale' ? ' (' + d.urgence + ')' : ''), urgent: d.urgence === 'critique' || d.urgence === 'urgente' })) });
-                    if (pend.bdc_brouillon > 0) items.push({ icon: 'fa-file-pen', color: '#3498db', label: 'BDC brouillon à compléter', count: pend.bdc_brouillon, tab: 'achats_bdc' });
-                    if (pend.bdc_attente_chef > 0) items.push({ icon: 'fa-user-check', color: '#e67e22', label: 'BDC attente Chef', count: pend.bdc_attente_chef, tab: 'achats_bdc' });
-                    if (pend.bdc_attente_dg > 0) items.push({ icon: 'fa-stamp', color: '#9b59b6', label: 'BDC attente DG', count: pend.bdc_attente_dg, tab: 'achats_bdc' });
-                    if (pend.factures_achats > 0) items.push({ icon: 'fa-file-invoice-dollar', color: '#e74c3c', label: 'Factures à valider', count: pend.factures_achats, tab: 'achats_paiements' });
-                    // Finance
-                    if (pend.factures_finance > 0) items.push({ icon: 'fa-file-invoice-dollar', color: '#3498db', label: 'Factures à valider', count: pend.factures_finance, tab: 'fin_factures' });
-                    // Also check for pending fournisseurs (from json.fournisseurs if handler 2)
-                    if ((json.fournisseurs || []).length > 0) items.push({ icon: 'fa-building', color: '#27ae60', label: 'Fournisseurs à valider', count: json.fournisseurs.length, tab: 'achats_fournisseurs' });
+            const METEO_PROFILES = ['rh', 'chef_f1', 'chef_f5', 'chef_avo', 'caporal_f1', 'caporal_f5', 'caporal_avo', 'dg', 'qualite', 'agronomie', 'dt'];
+            const meteoCacheRef = useRef({ data: null, ts: 0 });
 
-                    setNotifData({ items, role, profileLabel: p?.label || profileId });
-                    setNotifCount(items.reduce((s, i) => s + i.count, 0));
-                    if (showPopup && items.length > 0) setNotifPopup(true);
-                }).catch(() => {});
+            const fetchNotifications = React.useCallback(async (profileId, showPopup) => {
+                const p = PROFILES.find(x => x.id === profileId);
+                const ferme = p?.farm || '';
+                const url = '/api/notifications?profile=' + profileId + (ferme ? '&ferme=' + ferme : '');
+                try {
+                    // Fetch backend notifications
+                    const resp = await fetch(url);
+                    const json = await resp.json();
+                    if (!json.success) return;
+                    const categories = json.categories || { validations: [], taches: [], alertes: [] };
+
+                    // Inject weather alerts client-side for eligible profiles
+                    if (METEO_PROFILES.includes(profileId)) {
+                        try {
+                            const now = Date.now();
+                            let meteoResult = meteoCacheRef.current;
+                            if (!meteoResult.data || (now - meteoResult.ts) > 10 * 60 * 1000) {
+                                const fermeKey = ferme || 'F1';
+                                const apiData = await fetchMeteoblueData(fermeKey);
+                                if (apiData) {
+                                    const parsed = transformMeteoblueData(apiData, fermeKey);
+                                    meteoCacheRef.current = { data: parsed, ts: now };
+                                    meteoResult = meteoCacheRef.current;
+                                }
+                            }
+                            if (meteoResult.data && meteoResult.data.alertes && meteoResult.data.alertes.length > 0) {
+                                if (!categories.meteo) categories.meteo = [];
+                                meteoResult.data.alertes.forEach(a => {
+                                    categories.meteo.push({
+                                        key: 'meteo_' + a.type, label: a.titre, count: 1, icon: a.icon,
+                                        color: a.color.startsWith('var(') ? (a.color === 'var(--red)' ? '#e74c3c' : a.color === 'var(--orange)' ? '#f39c12' : a.color === 'var(--blue)' ? '#3498db' : '#6c757d') : a.color,
+                                        tab: 'dashboard', details: [{ text: a.message, urgent: a.niveau === 'danger' }]
+                                    });
+                                });
+                            }
+                        } catch(e) { console.warn('Meteo notification error:', e); }
+                    }
+
+                    // Flatten all items for backward compatibility
+                    const allItems = [...(categories.validations || []), ...(categories.taches || []), ...(categories.meteo || []), ...(categories.alertes || [])];
+                    const totalCount = allItems.reduce((s, i) => s + i.count, 0);
+
+                    setNotifData({ categories, items: allItems, profileId, profileLabel: p?.label || profileId });
+                    setNotifCount(totalCount);
+                    if (showPopup && allItems.length > 0) setNotifPopup(true);
+                } catch(e) { console.warn('Notification fetch error:', e); }
             }, []);
 
             // Fetch notifications on profile switch
@@ -30392,63 +30485,96 @@ ${rejetHtml}
             }, [currentProfile, fetchNotifications]);
 
             // Notification Popup Component
+            const SECTION_CONFIG = [
+                { key: 'validations', label: 'Validations', icon: 'fa-check-circle', color: '#e67e22' },
+                { key: 'taches', label: 'Tâches', icon: 'fa-list-check', color: '#3498db' },
+                { key: 'meteo', label: 'Météo', icon: 'fa-cloud-sun', color: '#8e44ad' },
+                { key: 'alertes', label: 'Alertes', icon: 'fa-triangle-exclamation', color: '#e74c3c' },
+            ];
+
             const NotificationPopup = () => {
                 if (!notifPopup || !notifData || notifData.items.length === 0) return null;
-                const roleColors = {
+                const profileColors = {
                     achats: ['#8B2252', '#b83280'],
                     dg: ['#1e3a5f', '#1d4ed8'],
                     finance: ['#0d6efd', '#198754'],
-                    chef: ['#e67e22', '#f39c12'],
-                    other: ['#6c757d', '#495057'],
+                    chef_f1: ['#e67e22', '#f39c12'], chef_f5: ['#e67e22', '#f39c12'], chef_avo: ['#e67e22', '#f39c12'],
+                    rh: ['#2c3e50', '#34495e'],
+                    caporal_f1: ['#16a085', '#1abc9c'], caporal_f5: ['#16a085', '#1abc9c'], caporal_avo: ['#16a085', '#1abc9c'],
+                    qualite: ['#8e44ad', '#9b59b6'],
+                    magasinier: ['#d35400', '#e67e22'],
+                    agronomie: ['#27ae60', '#2ecc71'],
+                    dt: ['#2c3e50', '#1a5276'],
                 };
-                const [c1, c2] = roleColors[notifData.role] || roleColors.other;
+                const [c1, c2] = profileColors[notifData.profileId] || ['#6c757d', '#495057'];
+                const cats = notifData.categories || {};
+                const firstTab = notifData.items[0]?.tab;
+
+                const renderItem = (item, idx) => (
+                    <div key={idx} onClick={() => { setCurrentTab(item.tab); localStorage.setItem('lastTab', item.tab); setNotifPopup(false); }}
+                        style={{display:'flex', alignItems:'center', gap:12, padding:'10px 12px', borderRadius:10, border:'1px solid #f0f0f0', background:'#fafafa', cursor:'pointer', transition:'all 0.15s'}}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.borderColor = item.color + '44'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.borderColor = '#f0f0f0'; }}>
+                        <div style={{width:34, height:34, borderRadius:8, background: item.color + '18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
+                            <i className={'fa-solid ' + item.icon} style={{color: item.color, fontSize:14}}></i>
+                        </div>
+                        <div style={{flex:1, minWidth:0}}>
+                            <div style={{fontSize:12.5, fontWeight:700, color:'#1a1a2e'}}>{item.label}</div>
+                            {item.details && item.details.length > 0 && (
+                                <div style={{marginTop:3}}>
+                                    {item.details.map((d, di) => (
+                                        <div key={di} style={{fontSize:10.5, color: d.urgent ? '#e74c3c' : '#666', fontWeight: d.urgent ? 600 : 400, lineHeight:1.4}}>
+                                            {d.urgent && <i className="fa-solid fa-exclamation-circle" style={{marginRight:3, fontSize:8}}></i>}
+                                            {d.text}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div style={{background: item.color, color:'#fff', borderRadius:20, minWidth:26, height:26, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:12, flexShrink:0}}>
+                            {item.count}
+                        </div>
+                    </div>
+                );
+
                 return (
                     <div style={{position:'fixed', inset:0, background:'rgba(10,20,40,0.6)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:16, animation:'fadeIn 0.2s ease'}} onClick={e => { if (e.target === e.currentTarget) setNotifPopup(false); }}>
-                        <div style={{background:'#fff', borderRadius:16, width:'92%', maxWidth:400, overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.3)', animation:'slideUp 0.3s ease'}}>
+                        <div style={{background:'#fff', borderRadius:16, width:'92%', maxWidth:420, overflow:'hidden', boxShadow:'0 20px 60px rgba(0,0,0,0.3)', animation:'slideUp 0.3s ease'}}>
                             {/* Header */}
                             <div style={{background:`linear-gradient(135deg, ${c1}, ${c2})`, padding:'18px 20px', display:'flex', alignItems:'center', gap:14}}>
                                 <div style={{width:42, height:42, borderRadius:'50%', background:'rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
                                     <i className="fa-solid fa-bell" style={{color:'#fff', fontSize:18}}></i>
                                 </div>
                                 <div>
-                                    <div style={{fontSize:15, fontWeight:800, color:'#fff'}}>Validations en instance</div>
+                                    <div style={{fontSize:15, fontWeight:800, color:'#fff'}}>Notifications</div>
                                     <div style={{fontSize:11, color:'rgba(255,255,255,0.7)', marginTop:2}}>Profil {notifData.profileLabel} — {notifCount} action{notifCount > 1 ? 's' : ''} en attente</div>
                                 </div>
                             </div>
-                            {/* Body */}
-                            <div style={{padding:'16px 20px', display:'flex', flexDirection:'column', gap:10, maxHeight:'50vh', overflowY:'auto'}}>
-                                {notifData.items.map((item, idx) => (
-                                    <div key={idx} onClick={() => { setCurrentTab(item.tab); localStorage.setItem('lastTab', item.tab); setNotifPopup(false); }}
-                                        style={{display:'flex', alignItems:'center', gap:12, padding:'12px 14px', borderRadius:12, border:'1px solid #f0f0f0', background:'#fafafa', cursor:'pointer', transition:'all 0.15s'}}
-                                        onMouseEnter={e => { e.currentTarget.style.background = '#f0f4ff'; e.currentTarget.style.borderColor = item.color + '44'; }}
-                                        onMouseLeave={e => { e.currentTarget.style.background = '#fafafa'; e.currentTarget.style.borderColor = '#f0f0f0'; }}>
-                                        <div style={{width:38, height:38, borderRadius:10, background: item.color + '18', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0}}>
-                                            <i className={'fa-solid ' + item.icon} style={{color: item.color, fontSize:15}}></i>
+                            {/* Body — sections by category */}
+                            <div style={{padding:'12px 16px', display:'flex', flexDirection:'column', gap:8, maxHeight:'55vh', overflowY:'auto'}}>
+                                {SECTION_CONFIG.map(sec => {
+                                    const items = cats[sec.key] || [];
+                                    if (items.length === 0) return null;
+                                    const sectionCount = items.reduce((s, i) => s + i.count, 0);
+                                    return (
+                                        <div key={sec.key}>
+                                            <div style={{display:'flex', alignItems:'center', gap:8, padding:'6px 4px 4px', marginBottom:4}}>
+                                                <i className={'fa-solid ' + sec.icon} style={{fontSize:12, color: sec.color}}></i>
+                                                <span style={{fontSize:11.5, fontWeight:700, color:'#444', textTransform:'uppercase', letterSpacing:0.5}}>{sec.label}</span>
+                                                <span style={{fontSize:10, fontWeight:700, color:'#fff', background: sec.color, borderRadius:10, padding:'1px 7px', marginLeft:'auto'}}>{sectionCount}</span>
+                                            </div>
+                                            <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                                                {items.map((item, idx) => renderItem(item, sec.key + '_' + idx))}
+                                            </div>
                                         </div>
-                                        <div style={{flex:1, minWidth:0}}>
-                                            <div style={{fontSize:13, fontWeight:700, color:'#1a1a2e'}}>{item.label}</div>
-                                            {item.details && item.details.length > 0 && (
-                                                <div style={{marginTop:4}}>
-                                                    {item.details.map((d, di) => (
-                                                        <div key={di} style={{fontSize:11, color: d.urgent ? '#e74c3c' : '#666', fontWeight: d.urgent ? 600 : 400, lineHeight:1.5}}>
-                                                            {d.urgent && <i className="fa-solid fa-exclamation-circle" style={{marginRight:4, fontSize:9}}></i>}
-                                                            {d.text}
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div style={{background: item.color, color:'#fff', borderRadius:20, minWidth:28, height:28, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:800, fontSize:13, flexShrink:0}}>
-                                            {item.count}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                             {/* Footer */}
-                            <div style={{padding:'0 20px 18px', display:'flex', gap:8}}>
-                                <button onClick={() => { const firstTab = notifData.items[0]?.tab; if (firstTab) { setCurrentTab(firstTab); localStorage.setItem('lastTab', firstTab); } setNotifPopup(false); }}
+                            <div style={{padding:'0 16px 14px', display:'flex', gap:8}}>
+                                <button onClick={() => { if (firstTab) { setCurrentTab(firstTab); localStorage.setItem('lastTab', firstTab); } setNotifPopup(false); }}
                                     style={{flex:1, padding:'10px', borderRadius:10, border:'none', background:`linear-gradient(135deg, ${c1}, ${c2})`, color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer'}}>
-                                    <i className="fa-solid fa-arrow-right" style={{marginRight:6}}></i>Voir les validations
+                                    <i className="fa-solid fa-arrow-right" style={{marginRight:6}}></i>Voir tout
                                 </button>
                                 <button onClick={() => setNotifPopup(false)}
                                     style={{flex:1, padding:'10px', borderRadius:10, border:'1.5px solid #ddd', background:'#fff', color:'#666', fontWeight:600, fontSize:13, cursor:'pointer'}}>
@@ -30550,7 +30676,7 @@ ${rejetHtml}
                 : (currentProfile === 'achats' ? NAV_ITEMS_ACHATS
                 : (currentProfile === 'magasinier' ? NAV_ITEMS_MAGASINIER
                 : (currentProfile === 'dg' ? NAV_ITEMS_FINANCE
-                : (currentProfile === 'finance' ? NAV_ITEMS_FINANCE.filter(n => n.id !== 'dg_adoption' && n.id !== 'dg_validations' && n.id !== 'dg_tasks' && n.id !== 'dg_cr_reunions' && n.id !== 'dg_parametres')
+                : (currentProfile === 'finance' ? NAV_ITEMS_FINANCE.filter(n => !n.dgOnly && n.id !== 'dg_adoption' && n.id !== 'dg_validations' && n.id !== 'dg_tasks' && n.id !== 'dg_cr_reunions' && n.id !== 'dg_parametres')
                 : (currentProfile === 'agronomie' ? NAV_ITEMS_AGRO
                 : NAV_ITEMS_OTHER)))))))));
 
@@ -30731,7 +30857,7 @@ ${rejetHtml}
                                     )}
                                     {(() => {
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'recolte', 'hors_recolte', 'quinzaine', 'primes'];
-                                        const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_bons_apport'];
+                                        const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_bons_apport', 'fin_carburant'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
