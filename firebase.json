@@ -1,0 +1,43 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      { "source": "/api/fertigation", "function": { "functionId": "fertigation", "region": "europe-west1" } },
+      { "source": "/api/phytosanitaire", "function": { "functionId": "phytosanitaire", "region": "europe-west1" } },
+      { "source": "/api/produits", "function": { "functionId": "produits", "region": "europe-west1" } },
+      { "source": "/api/parcelles", "function": { "functionId": "parcelles", "region": "europe-west1" } },
+      { "source": "/api/dashboard", "function": { "functionId": "dashboard", "region": "europe-west1" } },
+      { "source": "/api/agro-summary", "function": { "functionId": "agroSummary", "region": "europe-west1" } },
+      { "source": "/api/health", "function": { "functionId": "health", "region": "europe-west1" } },
+      { "source": "/api/avancement", "function": { "functionId": "avancementCulture", "region": "europe-west1" } },
+      { "source": "/api/upload-photo", "function": { "functionId": "uploadPhoto", "region": "europe-west1" } },
+      { "source": "/api/recommandation", "function": { "functionId": "recommandation", "region": "europe-west1" } },
+      { "source": "/api/farmroad", "function": { "functionId": "farmroad", "region": "europe-west1" } },
+      { "source": "/api/ecarts", "function": { "functionId": "ecarts", "region": "europe-west1" } },
+      { "source": "/api/email-analysis", "function": { "functionId": "emailAnalysis", "region": "europe-west1" } },
+      { "source": "/api/pointage-rh", "function": { "functionId": "pointageV3", "region": "europe-west1" } },
+      { "source": "/api/harvest-weather", "function": { "functionId": "harvestWeather", "region": "europe-west1" } },
+      { "source": "/api/harvest-prediction", "function": { "functionId": "harvestPrediction", "region": "europe-west1" } },
+      { "source": "/api/upload-ecarts", "function": { "functionId": "uploadEcarts", "region": "europe-west1" } },
+      { "source": "/api/validation", "function": { "functionId": "validation", "region": "europe-west1" } },
+      { "source": "/api/stock", "function": { "functionId": "stockManagement", "region": "europe-west1" } },
+      { "source": "/api/auth", "function": { "functionId": "authApi", "region": "europe-west1" } },
+      { "source": "/api/hors-recolte-suivi", "function": { "functionId": "horsRecolteService", "region": "europe-west1" } },
+      { "source": "/api/budget", "function": { "functionId": "budgetService", "region": "europe-west1" } },
+      { "source": "/api/meeting-cr", "function": { "functionId": "meetingCR", "region": "europe-west1" } },
+      { "source": "**", "destination": "/index.html" }
+    ],
+    "headers": [
+      { "source": "**/*.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "/api/**", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store" }] }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs20"
+    }
+  ]
+}

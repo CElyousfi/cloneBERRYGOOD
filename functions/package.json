@@ -1,0 +1,29 @@
+{
+  "name": "berrygood-functions",
+  "description": "Firebase Cloud Functions — Berry Good Farms Dashboard API",
+  "version": "1.0.0",
+  "engines": {
+    "node": "20"
+  },
+  "main": "index.js",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "cheerio": "^1.0.0",
+    "cors": "^2.8.5",
+    "firebase-admin": "^11.11.0",
+    "firebase-functions": "^4.9.0",
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2",
+    "mssql": "^11.0.1",
+    "nodemailer": "^8.0.4",
+    "pdf-parse": "^2.4.5",
+    "xlsx": "^0.18.5"
+  }
+}

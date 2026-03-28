@@ -1,0 +1,302 @@
+[
+  {
+    "id": "enc_26",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-03-18",
+    "montant": 100000,
+    "semaine": "SEMAINE 12",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_27",
+    "client": "Mr MONAIM LOCAL",
+    "date": "2026-03-18",
+    "montant": 50000,
+    "semaine": "SEMAINE 12",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_24",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-03-06",
+    "montant": 50000,
+    "semaine": "SEMAINE 10",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_25",
+    "client": "Mr MONAIM LOCAL",
+    "date": "2026-03-06",
+    "montant": 4410,
+    "semaine": "SEMAINE 10",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_23",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-03-01",
+    "montant": 40000,
+    "semaine": "SEMAINE 10",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_22",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-02-17",
+    "montant": 80000,
+    "semaine": "SEMAINE 8",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_21",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-02-08",
+    "montant": 4600,
+    "semaine": "SEMAINE 6",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_28",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-02-08",
+    "montant": 7600,
+    "semaine": "SEMAINE 7",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_20",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-02-02",
+    "montant": 9000,
+    "semaine": "SEMAINE 6",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_19",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-02-01",
+    "montant": 11300,
+    "semaine": "SEMAINE 5",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_18",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2026-01-25",
+    "montant": 100000,
+    "semaine": "SEMAINE 5",
+    "bonNum": "",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_17",
+    "client": "IRAQI MOHAMED",
+    "date": "2026-01-13",
+    "montant": 5854,
+    "semaine": "SEMAINE 3",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_16",
+    "client": "IRAQI MOHAMED",
+    "date": "2026-01-12",
+    "montant": 5549,
+    "semaine": "SEMAINE 3",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_14",
+    "client": "IRAQI MOHAMED",
+    "date": "2026-01-07",
+    "montant": 4590,
+    "semaine": "SEMAINE 2",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_15",
+    "client": "Mr MONAIM LOCAL",
+    "date": "2026-01-07",
+    "montant": 35000,
+    "semaine": "SEMAINE 2",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_13",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-29",
+    "montant": 2654,
+    "semaine": "SEMAINE 1",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_12",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-28",
+    "montant": 3600,
+    "semaine": "SEMAINE 52",
+    "bonNum": "",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_11",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-22",
+    "montant": 4200,
+    "semaine": "SEMAINE 51",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_10",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-17",
+    "montant": 6751,
+    "semaine": "SEMAINE 51",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_9",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-14",
+    "montant": 13131,
+    "semaine": "SEMAINE 50",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_8",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2025-12-10",
+    "montant": 100000,
+    "semaine": "SEMAINE 50",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_7",
+    "client": "Hamdouch Omar",
+    "date": "2025-11-28",
+    "montant": 5040,
+    "semaine": "SEMAINE 48",
+    "bonNum": "-",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_6",
+    "client": "Hamdouch Omar",
+    "date": "2025-11-20",
+    "montant": 3738,
+    "semaine": "SEMAINE 47",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_5",
+    "client": "Hamdouch Omar",
+    "date": "2025-11-16",
+    "montant": 4410,
+    "semaine": "SEMAINE 46",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_4",
+    "client": "IMAD",
+    "date": "2025-09-19",
+    "montant": 1850,
+    "semaine": "SEMAINE 38",
+    "bonNum": "",
+    "ferme": "BGF",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_3",
+    "client": "AMIN",
+    "date": "2025-09-13",
+    "montant": 300000,
+    "semaine": "SEMAINE 37",
+    "bonNum": "",
+    "ferme": "AVOCAT",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_1",
+    "client": "Mr MONAIM LOCAL",
+    "date": "2025-09-01",
+    "montant": 50000,
+    "semaine": "SEMAINE 36",
+    "bonNum": "",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_2",
+    "client": "MUSTAPHA CHAFIK A",
+    "date": "2025-09-01",
+    "montant": 50000,
+    "semaine": "SEMAINE 36",
+    "bonNum": "",
+    "ferme": "F5",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_29",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-08",
+    "montant": 11025,
+    "semaine": "SEMAINE 50",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
+    "id": "enc_30",
+    "client": "IRAQI MOHAMED",
+    "date": "2025-12-10",
+    "montant": 750,
+    "semaine": "SEMAINE 50",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "client": "Mr MONAIM LOCAL",
+    "caCumule": 122038.93,
+    "encaissementsCumule": 139410,
+    "solde": -17371.07,
+    "categorie": "Framboise/Déchet"
+  },
+  {
+    "client": "MUSTAPHA CHAFIK A",
+    "caCumule": 510016.4,
+    "encaissementsCumule": 552500,
+    "solde": -42483.6,
+    "categorie": "Framboise/Déchet"
+  },
+  {
+    "client": "AMIN",
+    "caCumule": 141860,
+    "encaissementsCumule": 300000,
+    "solde": -158140,
+    "categorie": "AVOCAT"
+  },
+  {
+    "client": "IMAD",
+    "caCumule": 1852,
+    "encaissementsCumule": 1850,
+    "solde": 2,
+    "categorie": "Déchet PLASTIQUE"
+  },
+  {
+    "client": "Hamdouch Omar",
+    "caCumule": 13188,
+    "encaissementsCumule": 13188,
+    "solde": 0,
+    "categorie": "Framboise/Déchet"
+  },
+  {
+    "client": "IRAQI MOHAMED",
+    "caCumule": 58104,
+    "encaissementsCumule": 58104,
+    "solde": 0,
+    "categorie": "Framboise/Déchet"
+  }
+]
