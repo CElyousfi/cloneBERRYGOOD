@@ -1,5 +1,8 @@
-const CACHE_NAME = 'berrygood-v1';
+const CACHE_NAME = 'berrygood-v2';
 const PRECACHE_URLS = [];
+
+// API hosts that should NEVER be cached (weather data, etc.)
+const NO_CACHE_HOSTS = ['my.meteoblue.com', 'api.open-meteo.com', 'developer.farmroad.io'];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -15,7 +18,9 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  // Only cache CDN assets (React, FontAwesome, etc.)
+  // Never cache API / weather data
+  if (NO_CACHE_HOSTS.some(h => url.hostname.includes(h))) return;
+  // Only cache static CDN assets (React, FontAwesome, etc.)
   if (url.origin !== location.origin && event.request.method === 'GET') {
     event.respondWith(
       caches.match(event.request).then(cached => {

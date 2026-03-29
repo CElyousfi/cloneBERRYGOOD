@@ -13238,7 +13238,7 @@ ${rejetHtml}
         function QualiteMarcheLocalTab({ data, userProfile }) {
             const [bons, setBons] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [view, setView] = useState('bons'); // 'bons', 'nouveau', 'prix'
+            const [view, setView] = useState('bons'); // 'bons', 'nouveau'
             const [selectedClient, setSelectedClient] = useState('');
             // Nouveau bon form
             const [newBon, setNewBon] = useState({ date: new Date().toISOString().split('T')[0], client: '', ferme: 'F5', designation: '', variete: '', quantiteKg: '', prixDH: '' });
@@ -13271,31 +13271,6 @@ ${rejetHtml}
 
             const allClients = [...new Set(bons.map(b => b.client).filter(Boolean))].sort();
             const filteredBons = selectedClient ? bons.filter(b => b.client === selectedClient) : bons;
-
-            // Price history: for each bon, find previous price for same client+designation
-            const getPrevPrice = (bon) => {
-                const prev = bons.filter(b => b.client === bon.client && (b.designation || '') === (bon.designation || '') && (b.date || '') < (bon.date || '')).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-                return prev.length > 0 ? (parseFloat(prev[0].prixDH) || 0) : null;
-            };
-
-            // Price dashboard: group by client+designation, show latest price + history
-            const prixDashboard = React.useMemo(() => {
-                const groups = {};
-                const sorted = [...bons].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-                sorted.forEach(b => {
-                    const key = (b.client || '') + '||' + (b.designation || '');
-                    if (!groups[key]) groups[key] = { client: b.client, designation: b.designation || '-', variete: b.variete || b.blocVariete || '', history: [] };
-                    groups[key].history.push({ date: b.date, prix: parseFloat(b.prixDH) || 0, kg: parseFloat(b.poidsLot) || 0, status: b.status });
-                });
-                return Object.values(groups).map(g => {
-                    const h = g.history;
-                    const last = h[h.length - 1];
-                    const prev = h.length >= 2 ? h[h.length - 2] : null;
-                    return { ...g, lastPrix: last.prix, lastDate: last.date, prevPrix: prev ? prev.prix : null, trend: prev ? (last.prix > prev.prix ? 'up' : last.prix < prev.prix ? 'down' : 'stable') : 'new', nbVentes: h.length, totalKg: h.reduce((s, x) => s + x.kg, 0) };
-                }).sort((a, b) => (a.client || '').localeCompare(b.client || '') || (a.designation || '').localeCompare(b.designation || ''));
-            }, [bons]);
-
-            const pendingDGCount = bons.filter(b => b.status === 'en_attente_prix_dg').length;
 
             // Save new bon
             const handleSaveBon = async () => {
@@ -13361,12 +13336,10 @@ ${rejetHtml}
                     <div className="chip-group" style={{marginBottom:16}}>
                         {[
                             {v:'bons', l:'Liste Bons', icon:'fa-list'},
-                            {v:'prix', l:'Suivi Prix', icon:'fa-chart-line', badge: pendingDGCount},
                             {v:'nouveau', l:'Nouveau Bon', icon:'fa-plus-circle'},
                         ].map(tab => (
-                            <button key={tab.v} className={`chip c-berry ${view === tab.v ? 'active' : ''}`} onClick={() => setView(tab.v)} style={{padding:'7px 16px',fontSize:12,position:'relative'}}>
+                            <button key={tab.v} className={`chip c-berry ${view === tab.v ? 'active' : ''}`} onClick={() => setView(tab.v)} style={{padding:'7px 16px',fontSize:12}}>
                                 <i className={`fa-solid ${tab.icon}`} style={{fontSize:11}}></i> {tab.l}
-                                {tab.badge > 0 && <span style={{position:'absolute',top:-4,right:-4,background:'var(--red)',color:'#fff',borderRadius:'50%',width:16,height:16,fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>{tab.badge}</span>}
                             </button>
                         ))}
                     </div>
@@ -13385,14 +13358,10 @@ ${rejetHtml}
                                 <div style={{overflowX:'auto'}}>
                                 <table className="data-table">
                                     <thead>
-                                        <tr><th>Date</th><th>N° Bon</th><th>Client</th><th>Désignation</th><th>Kg</th><th>Prix (DH/kg)</th><th>Préc.</th><th>Évol.</th><th>Total (DH)</th><th>Statut</th></tr>
+                                        <tr><th>Date</th><th>N° Bon</th><th>Client</th><th>Désignation</th><th>Kg</th><th>Prix (DH/kg)</th><th>Total (DH)</th><th>Statut</th></tr>
                                     </thead>
                                     <tbody>
-                                        {filteredBons.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0, 200).map((b, i) => {
-                                            const prev = getPrevPrice(b);
-                                            const currentPrix = parseFloat(b.prixDH) || 0;
-                                            const diff = prev !== null ? currentPrix - prev : null;
-                                            return (
+                                        {filteredBons.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0, 200).map((b, i) => (
                                             <tr key={i}>
                                                 <td style={{whiteSpace:'nowrap'}}>{b.date}</td>
                                                 <td>{b.bonApport || '-'}</td>
@@ -13400,71 +13369,12 @@ ${rejetHtml}
                                                 <td>{b.designation || b.blocLabel || '-'}</td>
                                                 <td>{b.poidsLot}</td>
                                                 <td style={{fontWeight:600, color:'var(--berry)'}}>{b.prixDH || '-'}</td>
-                                                <td style={{fontSize:11,color:'var(--gray-400)'}}>{prev !== null ? prev : '-'}</td>
-                                                <td style={{textAlign:'center'}}>
-                                                    {diff === null ? <span style={{color:'var(--gray-300)'}}>—</span>
-                                                     : diff > 0 ? <span style={{color:'var(--green)',fontWeight:600,fontSize:11}}><i className="fa-solid fa-arrow-up" style={{fontSize:9}}></i> +{diff.toFixed(1)}</span>
-                                                     : diff < 0 ? <span style={{color:'var(--red)',fontWeight:600,fontSize:11}}><i className="fa-solid fa-arrow-down" style={{fontSize:9}}></i> {diff.toFixed(1)}</span>
-                                                     : <span style={{color:'var(--gray-400)',fontSize:10}}>=</span>}
-                                                </td>
                                                 <td style={{fontWeight:700}}>{b.totalDH ? Math.round(b.totalDH).toLocaleString() : '-'}</td>
                                                 <td>{b.status === 'en_attente_prix_dg' ? <span style={{background:'#fff3cd', color:'#856404', padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:600}}>En attente DG</span>
                                                    : b.status === 'rejete_dg' ? <span style={{background:'#f8d7da', color:'#721c24', padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:600}}>Rejeté</span>
                                                    : <span style={{background:'#d4edda', color:'#155724', padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:600}}>Validé</span>}</td>
                                             </tr>
-                                        );})}
-                                    </tbody>
-                                </table>
-                                </div>
-                            </Panel>
-                        </div>
-                    )}
-
-                    {/* ===== SUIVI PRIX ===== */}
-                    {view === 'prix' && (
-                        <div>
-                            {pendingDGCount > 0 && (
-                                <div style={{padding:'12px 16px',background:'rgba(255,193,7,0.1)',border:'1px solid rgba(255,193,7,0.3)',borderRadius:10,marginBottom:16,fontSize:12,display:'flex',alignItems:'center',gap:10}}>
-                                    <i className="fa-solid fa-shield-halved" style={{fontSize:16,color:'#f39c12'}}></i>
-                                    <div><strong>{pendingDGCount} bon(s)</strong> en attente de validation DG (baisse de prix détectée)</div>
-                                </div>
-                            )}
-                            <Panel title={`Suivi Prix par Client & Désignation (${prixDashboard.length})`} icon="fa-chart-line">
-                                <div style={{overflowX:'auto'}}>
-                                <table className="data-table" style={{fontSize:12}}>
-                                    <thead>
-                                        <tr>
-                                            <th>Client</th>
-                                            <th>Désignation</th>
-                                            <th>Variété</th>
-                                            <th style={{textAlign:'center'}}>Ventes</th>
-                                            <th style={{textAlign:'right'}}>Total Kg</th>
-                                            <th style={{textAlign:'right'}}>Dernier Prix</th>
-                                            <th style={{textAlign:'right'}}>Prix Préc.</th>
-                                            <th style={{textAlign:'center'}}>Tendance</th>
-                                            <th>Dernière Vente</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {prixDashboard.map((g, i) => (
-                                            <tr key={i}>
-                                                <td style={{fontWeight:600}}>{g.client}</td>
-                                                <td>{g.designation}</td>
-                                                <td style={{fontSize:11,color:'var(--gray-500)'}}>{g.variete || '-'}</td>
-                                                <td style={{textAlign:'center'}}>{g.nbVentes}</td>
-                                                <td style={{textAlign:'right'}}>{Math.round(g.totalKg).toLocaleString()}</td>
-                                                <td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{g.lastPrix} DH</td>
-                                                <td style={{textAlign:'right',color:'var(--gray-400)'}}>{g.prevPrix !== null ? g.prevPrix + ' DH' : '-'}</td>
-                                                <td style={{textAlign:'center'}}>
-                                                    {g.trend === 'up' ? <span style={{color:'var(--green)',fontWeight:600}}><i className="fa-solid fa-arrow-trend-up"></i></span>
-                                                     : g.trend === 'down' ? <span style={{color:'var(--red)',fontWeight:600}}><i className="fa-solid fa-arrow-trend-down"></i></span>
-                                                     : g.trend === 'stable' ? <span style={{color:'var(--gray-400)'}}><i className="fa-solid fa-minus"></i></span>
-                                                     : <span style={{color:'var(--blue)',fontSize:10,fontWeight:600}}>Nouveau</span>}
-                                                </td>
-                                                <td style={{fontSize:11}}>{g.lastDate}</td>
-                                            </tr>
                                         ))}
-                                        {prixDashboard.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucune donnée</td></tr>}
                                     </tbody>
                                 </table>
                                 </div>
@@ -13550,7 +13460,7 @@ ${rejetHtml}
             const [encaissements, setEncaissements] = useState([]);
             const [recapExcel, setRecapExcel] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [view, setView] = useState('situation'); // 'situation', 'encaissements'
+            const [view, setView] = useState('situation'); // 'situation', 'encaissements', 'prix'
             const [clientDetail, setClientDetail] = useState(null);
             const [showCoherenceInfo, setShowCoherenceInfo] = useState(false);
             const [showEncForm, setShowEncForm] = useState(false);
@@ -13631,6 +13541,25 @@ ${rejetHtml}
             const totalEnc = situation.reduce((s, c) => s + c.enc, 0);
             const totalSolde = totalCA - totalEnc;
 
+            // Price dashboard: group by client+designation, show latest price + history
+            const prixDashboard = React.useMemo(() => {
+                const groups = {};
+                const sorted = [...bons].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+                sorted.forEach(b => {
+                    const key = (b.client || '') + '||' + (b.designation || '');
+                    if (!groups[key]) groups[key] = { client: b.client, designation: b.designation || '-', variete: b.variete || b.blocVariete || '', history: [] };
+                    groups[key].history.push({ date: b.date, prix: parseFloat(b.prixDH) || 0, kg: parseFloat(b.poidsLot) || 0, status: b.status });
+                });
+                return Object.values(groups).map(g => {
+                    const h = g.history;
+                    const last = h[h.length - 1];
+                    const prev = h.length >= 2 ? h[h.length - 2] : null;
+                    return { ...g, lastPrix: last.prix, lastDate: last.date, prevPrix: prev ? prev.prix : null, trend: prev ? (last.prix > prev.prix ? 'up' : last.prix < prev.prix ? 'down' : 'stable') : 'new', nbVentes: h.length, totalKg: h.reduce((s, x) => s + x.kg, 0) };
+                }).sort((a, b) => (a.client || '').localeCompare(b.client || '') || (a.designation || '').localeCompare(b.designation || ''));
+            }, [bons]);
+
+            const pendingDGCount = bons.filter(b => b.status === 'en_attente_prix_dg').length;
+
             const handleSaveEnc = async () => {
                 const { date, client, montant, reference } = newEnc;
                 if (!client || !montant) { alert('Client et Montant requis'); return; }
@@ -13690,10 +13619,12 @@ ${rejetHtml}
                     <div style={{display:'flex', gap:6, marginBottom:16, flexWrap:'wrap', alignItems:'center'}}>
                         {[
                             {v:'situation', l:'Situation Clients', icon:'fa-users'},
+                            {v:'prix', l:'Suivi Prix', icon:'fa-chart-line', badge: pendingDGCount},
                             {v:'encaissements', l:'Encaissements', icon:'fa-money-bill-wave'},
                         ].map(tab => (
-                            <button key={tab.v} className={`chip c-berry ${view === tab.v ? 'active' : ''}`} onClick={() => setView(tab.v)} style={{padding:'7px 16px',fontSize:12}}>
+                            <button key={tab.v} className={`chip c-berry ${view === tab.v ? 'active' : ''}`} onClick={() => setView(tab.v)} style={{padding:'7px 16px',fontSize:12,position:'relative'}}>
                                 <i className={`fa-solid ${tab.icon}`} style={{fontSize:11}}></i> {tab.l}
+                                {tab.badge > 0 && <span style={{position:'absolute',top:-4,right:-4,background:'var(--red)',color:'#fff',borderRadius:'50%',width:16,height:16,fontSize:9,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center'}}>{tab.badge}</span>}
                             </button>
                         ))}
                         <button onClick={exportExcel} style={{marginLeft:'auto', padding:'8px 16px', borderRadius:22, fontSize:12, fontWeight:600, cursor:'pointer', border:'1.5px solid #217346', background:'#fff', color:'#217346', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s'}}
@@ -13854,6 +13785,58 @@ ${rejetHtml}
                                     </div>
                                 </div>
                             )}
+                        </div>
+                    )}
+
+                    {/* ===== SUIVI PRIX ===== */}
+                    {view === 'prix' && (
+                        <div>
+                            {pendingDGCount > 0 && (
+                                <div style={{padding:'12px 16px',background:'rgba(255,193,7,0.1)',border:'1px solid rgba(255,193,7,0.3)',borderRadius:10,marginBottom:16,fontSize:12,display:'flex',alignItems:'center',gap:10}}>
+                                    <i className="fa-solid fa-shield-halved" style={{fontSize:16,color:'#f39c12'}}></i>
+                                    <div><strong>{pendingDGCount} bon(s)</strong> en attente de validation DG (baisse de prix détectée)</div>
+                                </div>
+                            )}
+                            <Panel title={`Suivi Prix par Client & Désignation (${prixDashboard.length})`} icon="fa-chart-line">
+                                <div style={{overflowX:'auto'}}>
+                                <table className="data-table" style={{fontSize:12}}>
+                                    <thead>
+                                        <tr>
+                                            <th>Client</th>
+                                            <th>Désignation</th>
+                                            <th>Variété</th>
+                                            <th style={{textAlign:'center'}}>Ventes</th>
+                                            <th style={{textAlign:'right'}}>Total Kg</th>
+                                            <th style={{textAlign:'right'}}>Dernier Prix</th>
+                                            <th style={{textAlign:'right'}}>Prix Préc.</th>
+                                            <th style={{textAlign:'center'}}>Tendance</th>
+                                            <th>Dernière Vente</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {prixDashboard.map((g, i) => (
+                                            <tr key={i}>
+                                                <td style={{fontWeight:600}}>{g.client}</td>
+                                                <td>{g.designation}</td>
+                                                <td style={{fontSize:11,color:'var(--gray-500)'}}>{g.variete || '-'}</td>
+                                                <td style={{textAlign:'center'}}>{g.nbVentes}</td>
+                                                <td style={{textAlign:'right'}}>{Math.round(g.totalKg).toLocaleString()}</td>
+                                                <td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{g.lastPrix} DH</td>
+                                                <td style={{textAlign:'right',color:'var(--gray-400)'}}>{g.prevPrix !== null ? g.prevPrix + ' DH' : '-'}</td>
+                                                <td style={{textAlign:'center'}}>
+                                                    {g.trend === 'up' ? <span style={{color:'var(--green)',fontWeight:600}}><i className="fa-solid fa-arrow-trend-up"></i></span>
+                                                     : g.trend === 'down' ? <span style={{color:'var(--red)',fontWeight:600}}><i className="fa-solid fa-arrow-trend-down"></i></span>
+                                                     : g.trend === 'stable' ? <span style={{color:'var(--gray-400)'}}><i className="fa-solid fa-minus"></i></span>
+                                                     : <span style={{color:'var(--blue)',fontSize:10,fontWeight:600}}>Nouveau</span>}
+                                                </td>
+                                                <td style={{fontSize:11}}>{g.lastDate}</td>
+                                            </tr>
+                                        ))}
+                                        {prixDashboard.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucune donnée</td></tr>}
+                                    </tbody>
+                                </table>
+                                </div>
+                            </Panel>
                         </div>
                     )}
 
