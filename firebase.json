@@ -1,4 +1,8 @@
 {
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
   "hosting": {
     "public": "public",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
@@ -28,6 +32,7 @@
       { "source": "/api/meeting-cr", "function": { "functionId": "meetingCR", "region": "europe-west1" } },
       { "source": "/api/fuel", "function": { "functionId": "fuel", "region": "europe-west1" } },
       { "source": "/api/notifications", "function": { "functionId": "notifications", "region": "europe-west1" } },
+      { "source": "/api/tasks", "function": { "functionId": "tasks", "region": "europe-west1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [
@@ -45,7 +50,7 @@
   "emulators": {
     "functions": { "port": 5001 },
     "firestore": { "port": 8080 },
-    "hosting": { "port": 5000 },
+    "hosting": { "port": 8088 },
     "storage": { "port": 9199 },
     "ui": { "enabled": true, "port": 4000 }
   }

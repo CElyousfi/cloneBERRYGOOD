@@ -150,10 +150,44 @@
       "Bash(node /tmp/check_emails_yesterday.js)",
       "Bash(node /tmp/import_liqs.js)",
       "Bash(node /tmp/compare_days.js)",
-      "Bash(grep -rn email-analysis /Users/omarmaaouni/Desktop/berrygood-dashboard/functions/*.js)"
+      "Bash(grep -rn email-analysis /Users/omarmaaouni/Desktop/berrygood-dashboard/functions/*.js)",
+      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard/public -type f \\\\\\(-name *.js -o -name *.html \\\\\\))",
+      "Bash(grep -r composite /Users/omarmaaouni/Desktop/berrygood-dashboard --include=*.json)",
+      "Bash(BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js)",
+      "Bash(jq '[.[] | {bonApport, designation: \\(.designation // .blocLabel\\), date, poidsLot}] | sort_by\\(.bonApport\\) | unique_by\\(.bonApport + \"\"_\"\" + .designation\\) | length' /Users/omarmaaouni/Desktop/berrygood-dashboard/public/bons_apport_export.json)",
+      "Bash(npm run:*)",
+      "Bash(export PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\")",
+      "Bash(firebase emulators:start)",
+      "Bash(firebase emulators:start --only functions,firestore,hosting)",
+      "Bash(curl -s \"http://localhost:8088/api/pointage-rh?action=recolte\")",
+      "Bash(GOOGLE_APPLICATION_CREDENTIALS=\"\" FIREBASE_CONFIG='{\"\"\"\"projectId\"\"\"\":\"\"\"\"berrygood-farms-dashboard\"\"\"\"}' npx firebase-tools auth:export /dev/null --project berrygood-farms-dashboard)",
+      "Bash(curl -s \"https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/sqlSyncTrigger\")",
+      "Bash(curl -s 'https://berrygood-farms-dashboard.web.app/api/meeting-cr?action=list')",
+      "Bash(curl -s \"https://berrygood-farms-dashboard.web.app/api/pointage-rh?action=recolte&date=2026-03-28\")",
+      "Bash(brew install:*)",
+      "Bash(sudo ln:*)",
+      "Bash(java -version)",
+      "Bash(curl -s 'https://berrygood-farms-dashboard.web.app/api/tasks?action=list')",
+      "Bash(curl -s -X POST 'https://berrygood-farms-dashboard.web.app/api/tasks?action=create' -H 'Content-Type: application/json' -d '{\"\"title\"\":\"\"test\"\"}')",
+      "Bash(firebase functions:log --only pointageRH -n 20)",
+      "Bash(firebase functions:log -n 50 --only pointageV3)",
+      "Bash(grep -n \"currentTab === ''achats_bdc\\\\|currentTab === ''chef_validations\\\\|currentTab === ''dg_validations\\\\|currentTab === ''fin_bdc\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/index.html)"
     ],
     "additionalDirectories": [
       "/tmp"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'firebase deploy'; then cd /Users/omarmaaouni/Desktop/berrygood-dashboard && BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js; fi"
+          }
+        ]
+      }
     ]
   }
 }

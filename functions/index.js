@@ -1,16 +1,17 @@
 const functions = require("firebase-functions");
-const admin = require("firebase-admin");
-const sql = require("mssql");
 const nodemailer = require("nodemailer");
 
-admin.initializeApp();
-const db_firestore = admin.firestore();
-const bucket = admin.storage().bucket("berrygood-farms-photos");
+// Shared config & middleware
+const { admin, db: db_firestore, bucket } = require("./config/firebase");
+const sqlConfig = require("./config/sqlConfig");
+const { setCors } = require("./middleware/cors");
+const { withCache } = require("./middleware/cache");
+const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
 // =============================================
-const { getConsommationRows, getCueilletteRows, getSyncStatus } = require("./firestoreDataService");
+const { getConsommationRows, getCueilletteRows, getPointageRowsForDateRange, getSyncStatus } = require("./firestoreDataService");
 const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 
 // Import & re-export sync functions
@@ -22,65 +23,22 @@ exports.probeAnalyzer = syncService.probeAnalyzer;
 exports.probeAnalysisReport = syncService.probeAnalysisReport;
 exports.probeRawData = syncService.probeRawData;
 
-// =============================================
-// Cache helper: Firestore-backed with TTL
-// =============================================
-async function withCache(cacheKey, ttlMs, fetchFn) {
-  const docRef = db_firestore.collection("api_cache").doc(cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200));
-  try {
-    const snap = await docRef.get();
-    if (snap.exists) {
-      const d = snap.data();
-      if (Date.now() - (d._cachedAt || 0) < ttlMs) {
-        const result = d._payload ? JSON.parse(d._payload) : d;
-        result.cached = true;
-        return result;
-      }
-    }
-  } catch (e) { /* cache miss, continue */ }
-  const result = await fetchFn();
-  // Store as _payload string to avoid Firestore field limits on complex objects
-  docRef.set({ _payload: JSON.stringify(result), _cachedAt: Date.now() }).catch(() => {});
-  return result;
-}
-
-// =============================================
-// Configuration SQL Server Berry Good
-// =============================================
-const sqlConfig = {
-  user: process.env.SQL_USER || "BEEONE",
-  password: process.env.SQL_PASSWORD || "BEEONE",
-  server: process.env.SQL_SERVER || "105.145.33.128",
-  port: parseInt(process.env.SQL_PORT || "1433"),
-  database: process.env.SQL_DATABASE || "BR_BERRY_GOOD",
-  options: {
-    encrypt: false,
-    trustServerCertificate: true,
-    requestTimeout: 30000,
-    connectionTimeout: 15000,
-  },
-  pool: {
-    max: 10,
-    min: 0,
-    idleTimeoutMillis: 30000,
-  },
-};
-
-// Pool de connexion réutilisable
+// SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
+let sql = null;
 let pool = null;
 async function getPool() {
+  if (!sql) sql = require("mssql");
   if (!pool) {
     pool = await sql.connect(sqlConfig);
   }
   return pool;
 }
-
-// CORS headers helper
-function setCors(res) {
-  res.set("Access-Control-Allow-Origin", "*");
-  res.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+function getSql() {
+  if (!sql) sql = require("mssql");
+  return sql;
 }
+
+// CORS helper imported from ./middleware/cors
 
 // =============================================
 // API 1: Programme Fertigation par parcelle/semaine
@@ -122,11 +80,11 @@ async function legacy_fertigation(db, { parcelle, culture, ferme, weekStart, wee
     c.Quantite, c.Article_unite, c.[Date], DATEPART(dw, c.[Date]) AS JourSemaine
     FROM BR_Consommation c WHERE c.Article_Categorie = 'Engrais' AND c.[Date] >= '2025-07-01'`;
   const request = db.request();
-  if (parcelle) { query += ` AND c.Parcelle_Culturale = @parcelle`; request.input("parcelle", sql.NVarChar, parcelle); }
-  if (culture) { query += ` AND c.Culture = @culture`; request.input("culture", sql.NVarChar, culture); }
-  if (ferme) { query += ` AND c.Ferme = @ferme`; request.input("ferme", sql.NVarChar, ferme); }
-  if (weekStart) { query += ` AND c.[Date] >= @weekStart`; request.input("weekStart", sql.Date, weekStart); }
-  if (weekEnd) { query += ` AND c.[Date] <= @weekEnd`; request.input("weekEnd", sql.Date, weekEnd); }
+  if (parcelle) { query += ` AND c.Parcelle_Culturale = @parcelle`; request.input("parcelle", getSql().NVarChar, parcelle); }
+  if (culture) { query += ` AND c.Culture = @culture`; request.input("culture", getSql().NVarChar, culture); }
+  if (ferme) { query += ` AND c.Ferme = @ferme`; request.input("ferme", getSql().NVarChar, ferme); }
+  if (weekStart) { query += ` AND c.[Date] >= @weekStart`; request.input("weekStart", getSql().Date, weekStart); }
+  if (weekEnd) { query += ` AND c.[Date] <= @weekEnd`; request.input("weekEnd", getSql().Date, weekEnd); }
   query += ` ORDER BY c.Parcelle_Culturale, c.[Date], c.Article`;
   const sqlResult = await request.query(query);
   return sqlResult.recordset;
@@ -136,8 +94,10 @@ exports.fertigation = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const { parcelle, culture, ferme, weekStart, weekEnd } = req.query;
       let rows;
@@ -172,8 +132,10 @@ exports.phytosanitaire = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       if (!USE_MIRROR) {
         const result = await withCache("phyto", 30 * 60 * 1000, async () => {
@@ -252,8 +214,10 @@ exports.produits = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       if (!USE_MIRROR) {
         const result = await withCache("produits", 30 * 60 * 1000, async () => {
@@ -297,8 +261,10 @@ exports.parcelles = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       if (!USE_MIRROR) {
         const result = await withCache("parcelles", 30 * 60 * 1000, async () => {
@@ -359,10 +325,12 @@ exports.parcelles = functions
 // =============================================
 exports.dashboard = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 60, memory: "512MB" })
+  .runWith({ timeoutSeconds: 60, memory: "512MB", minInstances: 1 })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       if (!USE_MIRROR) {
         const result = await withCache("dashboard", 30 * 60 * 1000, async () => {
@@ -510,8 +478,10 @@ exports.agroSummary = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       if (!USE_MIRROR) {
         const result = await withCache("agrosummary", 30 * 60 * 1000, async () => {
@@ -613,27 +583,25 @@ exports.agroSummary = functions
 exports.health = functions
   .region("europe-west1")
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
     try {
+      // Default health check: Firestore ping (no SQL hit)
+      const needsSQL = req.query.mode === "sql";
+      if (!needsSQL) {
+        const syncStatus = await getSyncStatus();
+        return res.json({
+          success: true,
+          mode: "firestore",
+          mirror: USE_MIRROR,
+          syncStatus: syncStatus || {},
+          timestamp: new Date().toISOString(),
+        });
+      }
+      // SQL diagnostic mode — requires authentication
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return;
       const db = await getPool();
-      // Si ?sql=QUERY, exécuter une requête SELECT simple (lecture seule)
-      if (req.query.sql && req.query.sql.trim().toUpperCase().startsWith('SELECT')) {
-        const sqlResult = await db.request().query(req.query.sql);
-        return res.json({ success: true, count: sqlResult.recordset.length, data: sqlResult.recordset.slice(0, 200) });
-      }
-      // Si ?schema=TABLE_NAME, retourne les colonnes de la table
-      if (req.query.schema) {
-        const schemaResult = await db.request()
-          .input("tbl", sql.NVarChar, req.query.schema)
-          .query("SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tbl ORDER BY ORDINAL_POSITION");
-        return res.json({ success: true, table: req.query.schema, columns: schemaResult.recordset });
-      }
-      // Si ?tables=1, retourne la liste des tables
-      if (req.query.tables) {
-        const tablesResult = await db.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES ORDER BY TABLE_NAME");
-        return res.json({ success: true, tables: tablesResult.recordset.map(r => r.TABLE_NAME) });
-      }
       const result = await db.request().query("SELECT GETDATE() AS now, DB_NAME() AS db");
       res.json({
         success: true,
@@ -656,8 +624,10 @@ exports.avancementCulture = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 60, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const method = req.method;
       const parcelle = req.query.parcelle || req.body.parcelle;
@@ -700,8 +670,10 @@ exports.uploadPhoto = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST uniquement" });
     try {
       const parcelle = req.query.parcelle || req.body.parcelle;
@@ -756,8 +728,10 @@ exports.recommandation = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "1GB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST uniquement" });
     try {
       const { parcelle, stade, culture, fertigationData, photoUrl, customPrompt } = req.body;
@@ -1141,8 +1115,10 @@ exports.farmroad = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "1GB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const farmIdFilter = req.query.farmId ? parseInt(req.query.farmId) : null;
       const dateParam = req.query.date || new Date().toISOString().slice(0, 10);
@@ -1433,8 +1409,10 @@ exports.harvestWeather = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const data = await withCache("harvest_weather_laouamra", 3 * 3600 * 1000, async () => {
         const meteo = await getMeteoLaouamra();
@@ -1460,8 +1438,10 @@ exports.harvestPrediction = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "1GB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -1852,8 +1832,10 @@ exports.uploadEcarts = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 60, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST only" });
     try {
       const XLSX = require("xlsx");
@@ -1951,8 +1933,14 @@ exports.pointageRH2 = pointageMod.pointageRH;
 // Fresh function name to bypass GCP operation lock
 exports.pointageV3 = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 120, memory: "512MB" })
-  .https.onRequest((req, res) => pointageMod.pointageRH(req, res));
+  .runWith({ timeoutSeconds: 120, memory: "512MB", minInstances: 1 })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    return pointageMod.pointageRH(req, res);
+  });
 
 // =============================================
 // API: Écarts & Défauts (Firestore CRUD)
@@ -1962,8 +1950,10 @@ exports.ecarts = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 60, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
 
     const action = req.query.action || req.body?.action || "list";
 
@@ -2060,12 +2050,14 @@ exports.validation = functions
     res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.set("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
 
     try {
       const action = req.query.action || (req.body && req.body.action);
 
       // Delegate pointage-rh actions to pointageService
-      const pointageActions = ['summary', 'detail', 'dates', 'recolte', 'hors-recolte', 'recolte-equipes', 'quinzaine', 'quinzaine-repos', 'quinzaine-alertes', 'upload-times', 'postes-fixes', 'suivi-tunnels'];
+      const pointageActions = ['summary', 'detail', 'dates', 'recolte', 'hors-recolte', 'recolte-equipes', 'quinzaine', 'quinzaine-analytique', 'quinzaine-repos', 'quinzaine-alertes', 'upload-times', 'postes-fixes', 'suivi-tunnels'];
       if (pointageActions.includes(action)) {
         const { pointageRH } = require("./pointageService");
         return pointageRH(req, res);
@@ -2398,6 +2390,8 @@ exports.stockManagement = functions
     res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.set("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
 
     const action = req.query.action || req.body?.action || "stock-dashboard";
 
@@ -2910,7 +2904,7 @@ exports.stockManagement = functions
       }
 
       if (action === "create-bl" && req.method === "POST") {
-        const { bdc_id, date_reception, numero_bl_fournisseur, items, created_by } = req.body;
+        const { bdc_id, date_reception, numero_bl_fournisseur, items, created_by, scan_url, scan_id } = req.body;
         if (!bdc_id || !items?.length) {
           return res.status(400).json({ success: false, error: "Champs requis: bdc_id, items[]" });
         }
@@ -2938,10 +2932,16 @@ exports.stockManagement = functions
           date_reception: date_reception || new Date().toISOString().split("T")[0],
           numero_bl_fournisseur: numero_bl_fournisseur || "",
           items: blItems,
+          scan_url: scan_url || null, scan_id: scan_id || null,
           created_by: created_by || {},
           created_at: Date.now(),
         };
         const docRef = await db_firestore.collection("delivery_notes").add(blData);
+
+        // Update scan record if created from scan
+        if (scan_id) {
+          await db_firestore.collection("bl_scans").doc(scan_id).update({ bl_id: docRef.id, bl_numero: numero }).catch(() => {});
+        }
 
         // Update BDC delivery_status
         const allBlSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", bdc_id).get();
@@ -3013,7 +3013,7 @@ exports.stockManagement = functions
       }
 
       if (action === "create-facture" && req.method === "POST") {
-        const { bdc_id, numero_facture, date_facture, items, created_by, ferme } = req.body;
+        const { bdc_id, numero_facture, date_facture, items, created_by, ferme, scan_url, scan_id } = req.body;
         if (!bdc_id || !numero_facture || !items?.length) {
           return res.status(400).json({ success: false, error: "Champs requis: bdc_id, numero_facture, items[]" });
         }
@@ -3067,10 +3067,16 @@ exports.stockManagement = functions
           discrepancies, has_discrepancies: discrepancies.length > 0,
           payment_status: "non_payee", ferme: ferme || bdc.ferme || "",
           created_by: created_by || {},
-          history: [{ action: "creation", by: created_by || {}, at: now, comment: "Facture saisie" }],
+          scan_url: scan_url || null, scan_id: scan_id || null,
+          history: [{ action: "creation", by: created_by || {}, at: now, comment: scan_id ? "Facture créée depuis scan" : "Facture saisie" }],
           created_at: now, updated_at: now,
         };
         const docRef = await db_firestore.collection("invoices").add(facData);
+
+        // Update scan record if created from scan
+        if (scan_id) {
+          await db_firestore.collection("invoice_scans").doc(scan_id).update({ invoice_id: docRef.id, invoice_numero: numero, updated_at: now }).catch(() => {});
+        }
 
         // Update BDC invoice_status
         const allFacSnap = await db_firestore.collection("invoices").where("bdc_id", "==", bdc_id).get();
@@ -3250,7 +3256,7 @@ exports.stockManagement = functions
 
         // Phase 1 : Découverte des colonnes réelles de BR_Achat
         const schemaRes = await db.request()
-          .input("tbl", sql.NVarChar, "BR_Achat")
+          .input("tbl", getSql().NVarChar, "BR_Achat")
           .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
                   WHERE TABLE_NAME = @tbl ORDER BY ORDINAL_POSITION`);
 
@@ -4236,6 +4242,306 @@ Réponds en français. Utilise des données chiffrées et des comparaisons avec 
         return res.json({ success: true, recommandation: reco });
       }
 
+      // ========== SCAN FACTURES (AI-powered invoice scanning) ==========
+
+      if (action === "scan-facture" && req.method === "POST") {
+        const { scan_base64, filename, ferme, created_by } = req.body;
+        if (!scan_base64) return res.status(400).json({ success: false, error: "scan_base64 requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "Clé API Anthropic non configurée" });
+
+        // 1) Upload scan to Firebase Storage
+        const cleanBase64 = scan_base64.replace(/^data:(image\/\w+|application\/pdf);base64,/, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const ext = (filename || "scan.pdf").split(".").pop().toLowerCase() || "pdf";
+        const ts = Date.now();
+        const storagePath = `scans/factures/${ts}_${filename || "scan." + ext}`;
+        const contentType = ext === "pdf" ? "application/pdf" : `image/${ext}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType } });
+        const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+        // 2) Prepare content for Claude AI
+        const Anthropic = require("@anthropic-ai/sdk");
+        const client = new Anthropic({ apiKey });
+        const messageContent = [];
+        const isImage = ["jpg", "jpeg", "png", "webp", "gif"].includes(ext);
+        const isPdf = ext === "pdf";
+
+        if (isImage) {
+          const mediaType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+          messageContent.push({ type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } });
+        } else if (isPdf) {
+          // Try text extraction first
+          let pdfText = "";
+          try {
+            const pdfParse = require("pdf-parse");
+            const pdfData = await pdfParse(buffer);
+            pdfText = pdfData.text || "";
+          } catch (e) { console.error("pdf-parse error:", e.message); }
+
+          if (pdfText.length > 50) {
+            messageContent.push({ type: "text", text: "CONTENU TEXTE DU PDF:\n" + pdfText });
+          } else {
+            // Scanned PDF - send as document to Claude
+            messageContent.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: cleanBase64 } });
+          }
+        }
+
+        const FACTURE_PROMPT = `Tu es un assistant spécialisé dans l'analyse de factures fournisseur pour Berry Good Farms SARL, une entreprise agricole basée à Agadir, Maroc.
+
+ÉTAPE 1 - VÉRIFICATION CLIENT:
+Vérifie que la facture est adressée à "Berry Good Farms" ou une de ses entités (Berry Good Farms SARL, Berry Good Farms SARL 3, R-Berry Good Farms SARL, BGF).
+Vérifie que l'adresse Agadir, 80000 ou 80020 est mentionnée.
+Si le client n'est PAS Berry Good Farms ou si ce n'est pas une facture → REJETTE.
+
+ÉTAPE 2 - EXTRACTION DES DONNÉES:
+Extrais les champs suivants en JSON strict:
+{
+  "accepted": true/false,
+  "rejection_reason": "..." (si rejeté, explique pourquoi),
+  "fournisseur": { "nom": "...", "ice": "...", "adresse": "..." },
+  "numero_facture": "...",
+  "date_facture": "YYYY-MM-DD",
+  "date_echeance": "YYYY-MM-DD",
+  "items": [
+    { "article": "...", "quantite": 0, "unite": "...", "prix_unitaire": 0, "taux_tva": 20, "montant_ht": 0 }
+  ],
+  "total_ht": 0,
+  "total_tva": 0,
+  "total_ttc": 0,
+  "confidence": 0.0,
+  "notes": "..."
+}
+
+IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Les montants sont en MAD (Dirhams marocains). Si un champ n'est pas lisible, mets null.`;
+
+        messageContent.push({ type: "text", text: FACTURE_PROMPT });
+
+        // 3) Call Claude
+        let response;
+        for (const modelId of ["claude-sonnet-4-20250514", "claude-opus-4-20250514"]) {
+          try {
+            response = await client.messages.create({ model: modelId, max_tokens: 2000, messages: [{ role: "user", content: messageContent }] });
+            break;
+          } catch (e) {
+            console.error("Erreur modèle scan-facture", modelId, e.message);
+            if (modelId === "claude-opus-4-20250514") throw e;
+          }
+        }
+
+        const aiText = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        let analysis;
+        try {
+          // Try to extract JSON from the response
+          const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+          analysis = JSON.parse(jsonMatch ? jsonMatch[0] : aiText);
+        } catch (e) {
+          return res.json({ success: false, error: "Analyse IA impossible - réponse non structurée", raw: aiText });
+        }
+
+        // 4) BDC Matching (if accepted)
+        let matched_bdc = null;
+        if (analysis.accepted) {
+          const fournisseurNom = (analysis.fournisseur?.nom || "").toLowerCase().trim();
+          const totalTtc = parseFloat(analysis.total_ttc) || 0;
+
+          // Try matching by fournisseur name
+          if (fournisseurNom) {
+            const bdcSnap = await db_firestore.collection("purchase_orders")
+              .where("status", "in", ["valide_dg", "envoye"])
+              .orderBy("created_at", "desc").limit(100).get();
+
+            const candidates = bdcSnap.docs
+              .map(d => ({ id: d.id, ...d.data() }))
+              .filter(b => {
+                const bNom = (b.fournisseur?.nom || "").toLowerCase().trim();
+                return bNom.includes(fournisseurNom) || fournisseurNom.includes(bNom);
+              });
+
+            if (candidates.length > 0) {
+              // Rank by amount proximity
+              candidates.sort((a, b) => {
+                const aDiff = Math.abs((a.total_ttc || 0) - totalTtc);
+                const bDiff = Math.abs((b.total_ttc || 0) - totalTtc);
+                return aDiff - bDiff;
+              });
+              const best = candidates[0];
+              const ecartPct = totalTtc > 0 ? Math.abs((best.total_ttc || 0) - totalTtc) / totalTtc * 100 : 100;
+              matched_bdc = {
+                id: best.id, numero: best.numero,
+                fournisseur_nom: best.fournisseur?.nom || "",
+                total_ttc: best.total_ttc || 0,
+                ecart_pct: Math.round(ecartPct * 10) / 10,
+                confidence: ecartPct < 5 ? "high" : ecartPct < 15 ? "medium" : "low",
+                all_candidates: candidates.slice(0, 5).map(c => ({ id: c.id, numero: c.numero, total_ttc: c.total_ttc })),
+              };
+            }
+          }
+        }
+
+        // 5) Save scan metadata to Firestore
+        const scanData = {
+          scan_url, scan_filename: filename || "scan." + ext, scan_type: isImage ? "image" : "pdf",
+          status: analysis.accepted ? "accepted" : "rejected",
+          rejection_reason: analysis.rejection_reason || null,
+          analysis, matched_bdc_id: matched_bdc?.id || null, matched_bdc_numero: matched_bdc?.numero || null,
+          invoice_id: null, invoice_numero: null, ferme: ferme || "",
+          created_by: created_by || {}, created_at: ts, updated_at: ts,
+        };
+        const scanDocRef = await db_firestore.collection("invoice_scans").add(scanData);
+
+        return res.json({ success: true, scan_id: scanDocRef.id, scan_url, analysis, matched_bdc });
+      }
+
+      // ========== SCAN BL (AI-powered delivery note scanning) ==========
+
+      if (action === "scan-bl" && req.method === "POST") {
+        const { scan_base64, filename, created_by } = req.body;
+        if (!scan_base64) return res.status(400).json({ success: false, error: "scan_base64 requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "Clé API Anthropic non configurée" });
+
+        // 1) Upload scan to Firebase Storage
+        const cleanBase64 = scan_base64.replace(/^data:(image\/\w+|application\/pdf);base64,/, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const ext = (filename || "scan.pdf").split(".").pop().toLowerCase() || "pdf";
+        const ts = Date.now();
+        const storagePath = `scans/bl/${ts}_${filename || "scan." + ext}`;
+        const contentType = ext === "pdf" ? "application/pdf" : `image/${ext}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType } });
+        const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+        // 2) Prepare content for Claude AI
+        const Anthropic = require("@anthropic-ai/sdk");
+        const client = new Anthropic({ apiKey });
+        const messageContent = [];
+        const isImage = ["jpg", "jpeg", "png", "webp", "gif"].includes(ext);
+        const isPdf = ext === "pdf";
+
+        if (isImage) {
+          const mediaType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+          messageContent.push({ type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } });
+        } else if (isPdf) {
+          let pdfText = "";
+          try {
+            const pdfParse = require("pdf-parse");
+            const pdfData = await pdfParse(buffer);
+            pdfText = pdfData.text || "";
+          } catch (e) { console.error("pdf-parse error:", e.message); }
+
+          if (pdfText.length > 50) {
+            messageContent.push({ type: "text", text: "CONTENU TEXTE DU PDF:\n" + pdfText });
+          } else {
+            messageContent.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: cleanBase64 } });
+          }
+        }
+
+        const BL_PROMPT = `Tu es un assistant spécialisé dans l'analyse de bons de livraison (BL) pour Berry Good Farms SARL.
+
+Extrais les données du bon de livraison en JSON strict:
+{
+  "fournisseur_nom": "...",
+  "date_reception": "YYYY-MM-DD",
+  "numero_bl_fournisseur": "...",
+  "numero_bdc_reference": "..." (si un numéro de bon de commande est mentionné, sinon null),
+  "items": [
+    { "article": "...", "quantite_recue": 0, "unite": "...", "lot": "..." }
+  ],
+  "notes": "..."
+}
+
+IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ n'est pas lisible, mets null.`;
+
+        messageContent.push({ type: "text", text: BL_PROMPT });
+
+        // 3) Call Claude
+        let response;
+        for (const modelId of ["claude-sonnet-4-20250514", "claude-opus-4-20250514"]) {
+          try {
+            response = await client.messages.create({ model: modelId, max_tokens: 2000, messages: [{ role: "user", content: messageContent }] });
+            break;
+          } catch (e) {
+            console.error("Erreur modèle scan-bl", modelId, e.message);
+            if (modelId === "claude-opus-4-20250514") throw e;
+          }
+        }
+
+        const aiText = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        let analysis;
+        try {
+          const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+          analysis = JSON.parse(jsonMatch ? jsonMatch[0] : aiText);
+        } catch (e) {
+          return res.json({ success: false, error: "Analyse IA impossible - réponse non structurée", raw: aiText });
+        }
+
+        // 4) BDC Matching
+        let matched_bdc = null;
+        const fournisseurNom = (analysis.fournisseur_nom || "").toLowerCase().trim();
+        const bdcRef = analysis.numero_bdc_reference;
+
+        // Try by BDC number reference first
+        if (bdcRef) {
+          const bdcSnap = await db_firestore.collection("purchase_orders")
+            .where("numero", "==", bdcRef).limit(1).get();
+          if (!bdcSnap.empty) {
+            const d = bdcSnap.docs[0];
+            matched_bdc = { id: d.id, numero: d.data().numero, fournisseur_nom: d.data().fournisseur?.nom || "", items: d.data().items || [], confidence: "high" };
+          }
+        }
+
+        // Fallback: match by fournisseur name
+        if (!matched_bdc && fournisseurNom) {
+          const bdcSnap = await db_firestore.collection("purchase_orders")
+            .where("status", "in", ["valide_dg", "envoye"])
+            .orderBy("created_at", "desc").limit(100).get();
+          const candidates = bdcSnap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(b => {
+              const bNom = (b.fournisseur?.nom || "").toLowerCase().trim();
+              return bNom.includes(fournisseurNom) || fournisseurNom.includes(bNom);
+            })
+            .filter(b => b.delivery_status !== "complet");
+
+          if (candidates.length > 0) {
+            const best = candidates[0];
+            matched_bdc = {
+              id: best.id, numero: best.numero,
+              fournisseur_nom: best.fournisseur?.nom || "",
+              items: best.items || [],
+              confidence: "medium",
+              all_candidates: candidates.slice(0, 5).map(c => ({ id: c.id, numero: c.numero })),
+            };
+          }
+        }
+
+        // 5) Save scan metadata
+        const scanData = {
+          scan_url, scan_filename: filename || "scan." + ext, scan_type: isImage ? "image" : "pdf",
+          analysis, matched_bdc_id: matched_bdc?.id || null, matched_bdc_numero: matched_bdc?.numero || null,
+          bl_id: null, bl_numero: null,
+          created_by: created_by || {}, created_at: ts,
+        };
+        const scanDocRef = await db_firestore.collection("bl_scans").add(scanData);
+
+        return res.json({ success: true, scan_id: scanDocRef.id, scan_url, analysis, matched_bdc });
+      }
+
+      // ========== SCAN HISTORY ==========
+
+      if (action === "list-scan-history") {
+        const type = req.query.type || "facture"; // "facture" or "bl"
+        const limit = parseInt(req.query.limit || "50");
+        const collection = type === "bl" ? "bl_scans" : "invoice_scans";
+        const snap = await db_firestore.collection(collection).orderBy("created_at", "desc").limit(limit).get();
+        const scans = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return res.json({ success: true, scans });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur Stock Management:", err);
@@ -4247,24 +4553,15 @@ Réponds en français. Utilise des données chiffrées et des comparaisons avec 
 // AUTH: User management & authentication
 // =============================================
 
-// Helper: verify Firebase ID token from Authorization header
-async function verifyAuth(req) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-  try {
-    return await admin.auth().verifyIdToken(authHeader.split("Bearer ")[1]);
-  } catch (e) {
-    return null;
-  }
-}
+// verifyAuth imported from ./middleware/requireAuth (see top of file)
 
 // GET /api/auth?action=me — get current user's profile
 // POST /api/auth?action=login-check — same but for POST
 exports.authApi = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .runWith({ timeoutSeconds: 30, memory: "256MB", minInstances: 1 })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
 
     try {
@@ -4463,6 +4760,8 @@ exports.horsRecolteService = functions
   .https.onRequest(async (req, res) => {
     setCorsHR(res);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
 
     try {
       const action = req.query.action || (req.body && req.body.action);
@@ -4513,6 +4812,49 @@ exports.horsRecolteService = functions
           derniereMaj: admin.firestore.FieldValue.serverTimestamp(),
           historique: cumulData.historique,
         });
+
+        // ---- Compute daily rendement snapshot for norm detection ----
+        try {
+          const allSaisiesSnap = await db_firestore.collection("suivi-hors-recolte").doc(today).collection("saisies").get();
+          let totalRealiseTask = 0, totalOuvriersTask = 0;
+          allSaisiesSnap.forEach(doc => {
+            const d = doc.data();
+            if (d.ferme === ferme && d.tache === tache) {
+              totalRealiseTask += d.nbRealise || 0;
+              totalOuvriersTask += d.nbOuvriers || 0;
+            }
+          });
+          const rendementParOuvrier = totalOuvriersTask > 0
+            ? Math.round(totalRealiseTask / totalOuvriersTask * 100) / 100
+            : 0;
+
+          // Get current norm from Firestore (fallback to hardcoded)
+          let normeVal = 0;
+          const normeId = `${tache}_${ferme}`.replace(/\s+/g, "_");
+          const normeSnap = await db_firestore.collection("normes-productivite").doc(normeId).get();
+          if (normeSnap.exists && normeSnap.data().actif) {
+            normeVal = normeSnap.data().normeParJourParOuvrier || 0;
+          } else {
+            // Fallback: try generic norm (no ferme)
+            const normeGenSnap = await db_firestore.collection("normes-productivite").doc(tache.replace(/\s+/g, "_")).get();
+            if (normeGenSnap.exists && normeGenSnap.data().actif) {
+              normeVal = normeGenSnap.data().normeParJourParOuvrier || 0;
+            }
+          }
+
+          const rendementId = `${ferme}_${tache}`.replace(/\s+/g, "_");
+          await db_firestore.collection("suivi-hors-recolte").doc(today).collection("rendements").doc(rendementId).set({
+            ferme, tache,
+            nbOuvriers: totalOuvriersTask,
+            nbRealise: totalRealiseTask,
+            rendementParOuvrier,
+            normeEnVigueur: normeVal,
+            ratioVsNorme: normeVal > 0 ? Math.round(rendementParOuvrier / normeVal * 10000) / 100 : 0,
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (rendErr) {
+          console.error("Erreur calcul rendement snapshot:", rendErr);
+        }
 
         return res.json({ success: true, totalRealise: newTotal, termine });
       }
@@ -4624,6 +4966,303 @@ exports.horsRecolteService = functions
         return res.json({ success: true, demandes });
       }
 
+      // ---- GET-NORMES: retourne les normes actives ----
+      if (action === "get-normes") {
+        const ferme = req.query.ferme;
+        const HARDCODED_NORMES = [
+          { tache: 'Désherbage', normeParJourParOuvrier: 4, unite: 'tunnels' },
+          { tache: 'Nettoyage', normeParJourParOuvrier: 5, unite: 'tunnels' },
+          { tache: 'Aération', normeParJourParOuvrier: 8, unite: 'tunnels' },
+          { tache: 'Désherbage à sape', normeParJourParOuvrier: 3, unite: 'tunnels' },
+          { tache: 'Nivellement des pots', normeParJourParOuvrier: 2, unite: 'tunnels' },
+          { tache: 'Nivellement des sol', normeParJourParOuvrier: 3, unite: 'tunnels' },
+          { tache: 'Palissage', normeParJourParOuvrier: 2, unite: 'tunnels' },
+          { tache: 'Feuille du sol', normeParJourParOuvrier: 3, unite: 'tunnels' },
+          { tache: 'Palissage Pots', normeParJourParOuvrier: 5, unite: 'tunnels' },
+          { tache: 'Ramassage Ficelle', normeParJourParOuvrier: 6, unite: 'tunnels' },
+        ];
+        const snap = await db_firestore.collection("normes-productivite").where("actif", "==", true).get();
+        if (snap.empty) {
+          return res.json({ success: true, source: "hardcoded", normes: HARDCODED_NORMES });
+        }
+        const normes = [];
+        snap.forEach(doc => {
+          const d = doc.data();
+          if (!ferme || !d.ferme || d.ferme === ferme) {
+            normes.push({ id: doc.id, ...d });
+          }
+        });
+        return res.json({ success: true, source: "firestore", normes });
+      }
+
+      // ---- UPDATE-NORME: chef modifie une norme ----
+      if (action === "update-norme" && req.method === "POST") {
+        const { tache, ferme, nouvelleValeur, raison, modifiePar } = req.body;
+        if (!tache || nouvelleValeur === undefined || !modifiePar) {
+          return res.status(400).json({ success: false, error: "tache, nouvelleValeur, modifiePar requis" });
+        }
+        const normeId = ferme ? `${tache}_${ferme}`.replace(/\s+/g, "_") : tache.replace(/\s+/g, "_");
+        const normeRef = db_firestore.collection("normes-productivite").doc(normeId);
+        const normeSnap = await normeRef.get();
+        const ancienneValeur = normeSnap.exists ? (normeSnap.data().normeParJourParOuvrier || 0) : 0;
+
+        await normeRef.set({
+          tache, ferme: ferme || null,
+          unite: "tunnels",
+          normeParJourParOuvrier: Number(nouvelleValeur),
+          actif: true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        await db_firestore.collection("normes-historique").add({
+          tache, ferme: ferme || null,
+          ancienneValeur, nouvelleValeur: Number(nouvelleValeur),
+          raison: raison || "manual",
+          proposePar: modifiePar,
+          validePar: modifiePar,
+          statut: "validee",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          validatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        return res.json({ success: true, normeId, ancienneValeur, nouvelleValeur: Number(nouvelleValeur) });
+      }
+
+      // ---- GET-PARCELLES-CONFIG: retourne la config parcelles par ferme ----
+      if (action === "get-parcelles-config") {
+        const ferme = req.query.ferme;
+        const HARDCODED_PARCELLES = {
+          F5: [
+            { parcelle: 'Corina', variete: 'Corina', nbTunnels: 64, unite: 'tunnels' },
+            { parcelle: 'Cascade', variete: 'Cascade', nbTunnels: 34, unite: 'tunnels' },
+            { parcelle: 'Breeze', variete: 'Breeze', nbTunnels: 16, unite: 'tunnels' },
+            { parcelle: 'Reina S9', variete: 'Reyna', nbTunnels: 66, unite: 'tunnels' },
+          ],
+          F1: [
+            { parcelle: 'Maravilla Green Cane', variete: 'Maravilla', nbTunnels: 72, unite: 'tunnels' },
+            { parcelle: 'Yazmin Cut Back', variete: 'Yazmin', nbTunnels: 43, unite: 'tunnels' },
+          ],
+        };
+        let query = db_firestore.collection("parcelles-config").where("actif", "==", true);
+        if (ferme) query = query.where("ferme", "==", ferme);
+        const snap = await query.get();
+        if (snap.empty) {
+          if (ferme && HARDCODED_PARCELLES[ferme]) {
+            return res.json({ success: true, source: "hardcoded", parcelles: HARDCODED_PARCELLES[ferme] });
+          }
+          return res.json({ success: true, source: "hardcoded", parcelles: ferme ? [] : HARDCODED_PARCELLES });
+        }
+        const parcelles = [];
+        snap.forEach(doc => parcelles.push({ id: doc.id, ...doc.data() }));
+        return res.json({ success: true, source: "firestore", parcelles });
+      }
+
+      // ---- UPDATE-PARCELLE-CONFIG: modifie la config d'une parcelle ----
+      if (action === "update-parcelle-config" && req.method === "POST") {
+        const { ferme, parcelle, variete, nbTunnels, unite } = req.body;
+        if (!ferme || !parcelle || nbTunnels === undefined) {
+          return res.status(400).json({ success: false, error: "ferme, parcelle, nbTunnels requis" });
+        }
+        const docId = `${ferme}_${parcelle}`.replace(/\s+/g, "_");
+        await db_firestore.collection("parcelles-config").doc(docId).set({
+          ferme, parcelle,
+          variete: variete || "",
+          nbTunnels: Number(nbTunnels),
+          unite: unite || "tunnels",
+          actif: true,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return res.json({ success: true, id: docId });
+      }
+
+      // ---- DETECT-NORM-ADJUSTMENTS: analyse rendements et propose des ajustements ----
+      if (action === "detect-norm-adjustments") {
+        const DAYS_LOOKBACK = 14;
+        const MIN_DAYS = 7;
+        const MIN_WORKERS_PER_DAY = 3;
+        const THRESHOLD_PCT = 120;
+
+        const dates = [];
+        for (let i = 0; i < DAYS_LOOKBACK; i++) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          dates.push(d.toISOString().slice(0, 10));
+        }
+
+        const taskStats = {};
+        for (const date of dates) {
+          const snap = await db_firestore.collection("suivi-hors-recolte").doc(date).collection("rendements").get();
+          snap.forEach(doc => {
+            const d = doc.data();
+            const key = `${d.ferme}_${d.tache}`;
+            if (!taskStats[key]) taskStats[key] = { ferme: d.ferme, tache: d.tache, ratios: [], totalWorkers: 0, normeEnVigueur: d.normeEnVigueur };
+            if (d.nbOuvriers >= MIN_WORKERS_PER_DAY) {
+              taskStats[key].ratios.push(d.ratioVsNorme);
+              taskStats[key].totalWorkers += d.nbOuvriers;
+              taskStats[key].normeEnVigueur = d.normeEnVigueur;
+            }
+          });
+        }
+
+        const proposals = [];
+        for (const [, stats] of Object.entries(taskStats)) {
+          if (stats.ratios.length < MIN_DAYS || stats.normeEnVigueur <= 0) continue;
+          const avgRatio = stats.ratios.reduce((a, b) => a + b, 0) / stats.ratios.length;
+          if (avgRatio >= THRESHOLD_PCT) {
+            const rawNorm = stats.normeEnVigueur * avgRatio / 100;
+            const proposedNorm = Math.round(rawNorm * 2) / 2; // arrondi à 0.5
+            proposals.push({
+              ferme: stats.ferme,
+              tache: stats.tache,
+              currentNorm: stats.normeEnVigueur,
+              proposedNorm,
+              avgRatio: Math.round(avgRatio),
+              daysAnalyzed: stats.ratios.length,
+              avgWorkers: Math.round(stats.totalWorkers / stats.ratios.length),
+            });
+          }
+        }
+
+        return res.json({ success: true, proposals, analyzedDays: DAYS_LOOKBACK, threshold: THRESHOLD_PCT });
+      }
+
+      // ---- PROPOSE-NORM-CHANGE: crée une proposition de changement de norme ----
+      if (action === "propose-norm-change" && req.method === "POST") {
+        const { ferme, tache, currentNorm, proposedNorm, avgRatio, daysAnalyzed, avgWorkers, proposePar } = req.body;
+        if (!tache || proposedNorm === undefined) {
+          return res.status(400).json({ success: false, error: "tache, proposedNorm requis" });
+        }
+        const docRef = await db_firestore.collection("normes-historique").add({
+          tache, ferme: ferme || null,
+          ancienneValeur: Number(currentNorm) || 0,
+          nouvelleValeur: Number(proposedNorm),
+          raison: "auto-detection",
+          detailsDetection: {
+            nbJours: daysAnalyzed || 0,
+            rendementMoyen: avgRatio || 0,
+            nbOuvriers: avgWorkers || 0,
+            periode: { debut: null, fin: new Date().toISOString().slice(0, 10) },
+          },
+          proposePar: proposePar || "system",
+          validePar: null,
+          statut: "proposee",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.json({ success: true, id: docRef.id });
+      }
+
+      // ---- VALIDATE-NORM-CHANGE: chef valide ou refuse une proposition ----
+      if (action === "validate-norm-change" && req.method === "POST") {
+        const { proposalId, decision, chef } = req.body;
+        if (!proposalId || decision === undefined || !chef) {
+          return res.status(400).json({ success: false, error: "proposalId, decision, chef requis" });
+        }
+        const propRef = db_firestore.collection("normes-historique").doc(proposalId);
+        const propSnap = await propRef.get();
+        if (!propSnap.exists) return res.status(404).json({ success: false, error: "Proposition non trouvée" });
+
+        const prop = propSnap.data();
+        const newStatut = decision ? "validee" : "refusee";
+
+        await propRef.update({
+          statut: newStatut,
+          validePar: chef,
+          validatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // If approved, update the active norm
+        if (decision) {
+          const normeId = prop.ferme
+            ? `${prop.tache}_${prop.ferme}`.replace(/\s+/g, "_")
+            : prop.tache.replace(/\s+/g, "_");
+          await db_firestore.collection("normes-productivite").doc(normeId).set({
+            tache: prop.tache,
+            ferme: prop.ferme || null,
+            unite: "tunnels",
+            normeParJourParOuvrier: prop.nouvelleValeur,
+            actif: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+
+        return res.json({ success: true, statut: newStatut });
+      }
+
+      // ---- GET-NORM-PROPOSALS: récupère les propositions en attente ----
+      if (action === "get-norm-proposals") {
+        const ferme = req.query.ferme;
+        let query = db_firestore.collection("normes-historique").where("statut", "==", "proposee");
+        if (ferme) query = query.where("ferme", "==", ferme);
+        const snap = await query.get();
+        const proposals = [];
+        snap.forEach(doc => {
+          const d = doc.data();
+          proposals.push({
+            id: doc.id, ...d,
+            createdAt: d.createdAt ? d.createdAt.toDate().toISOString() : null,
+          });
+        });
+        return res.json({ success: true, proposals });
+      }
+
+      // ---- MIGRATE-CONFIG: migration one-shot des données hardcodées vers Firestore ----
+      if (action === "migrate-config" && req.method === "POST") {
+        const batch = db_firestore.batch();
+        let count = 0;
+
+        // Migrate normes
+        const normesHardcoded = [
+          { tache: 'Désherbage', normeParJourParOuvrier: 4 },
+          { tache: 'Nettoyage', normeParJourParOuvrier: 5 },
+          { tache: 'Aération', normeParJourParOuvrier: 8 },
+          { tache: 'Désherbage à sape', normeParJourParOuvrier: 3 },
+          { tache: 'Nivellement des pots', normeParJourParOuvrier: 2 },
+          { tache: 'Nivellement des sol', normeParJourParOuvrier: 3 },
+          { tache: 'Palissage', normeParJourParOuvrier: 2 },
+          { tache: 'Feuille du sol', normeParJourParOuvrier: 3 },
+          { tache: 'Palissage Pots', normeParJourParOuvrier: 5 },
+          { tache: 'Ramassage Ficelle', normeParJourParOuvrier: 6 },
+        ];
+        for (const n of normesHardcoded) {
+          const docId = n.tache.replace(/\s+/g, "_");
+          batch.set(db_firestore.collection("normes-productivite").doc(docId), {
+            tache: n.tache, ferme: null, unite: "tunnels",
+            normeParJourParOuvrier: n.normeParJourParOuvrier,
+            actif: true,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          count++;
+        }
+
+        // Migrate parcelles config
+        const parcConfig = {
+          F5: [
+            { parcelle: 'Corina', variete: 'Corina', nbTunnels: 64 },
+            { parcelle: 'Cascade', variete: 'Cascade', nbTunnels: 34 },
+            { parcelle: 'Breeze', variete: 'Breeze', nbTunnels: 16 },
+            { parcelle: 'Reina S9', variete: 'Reyna', nbTunnels: 66 },
+          ],
+          F1: [
+            { parcelle: 'Maravilla Green Cane', variete: 'Maravilla', nbTunnels: 72 },
+            { parcelle: 'Yazmin Cut Back', variete: 'Yazmin', nbTunnels: 43 },
+          ],
+        };
+        for (const [ferme, parcelles] of Object.entries(parcConfig)) {
+          for (const p of parcelles) {
+            const docId = `${ferme}_${p.parcelle}`.replace(/\s+/g, "_");
+            batch.set(db_firestore.collection("parcelles-config").doc(docId), {
+              ferme, parcelle: p.parcelle, variete: p.variete,
+              nbTunnels: p.nbTunnels, unite: "tunnels", actif: true,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            count++;
+          }
+        }
+
+        await batch.commit();
+        return res.json({ success: true, migrated: count });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur horsRecolteService:", err);
@@ -4638,8 +5277,10 @@ exports.budgetService = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
 
     const action = req.query.action || req.body?.action;
 
@@ -4879,84 +5520,93 @@ exports.budgetService = functions
         const cacheKey = `budget_actuals_${startDate}_${endDate}_${ferme || "all"}_${gran}`;
 
         const result = await withCache(cacheKey, 30 * 60 * 1000, async () => {
-          const p = await getPool();
-
-          // 1. Production (BR_Cueillette)
-          let prodQuery = `
-            SELECT Variete, ${dateGroupSQL} AS periode,
-              SUM(Poids_total_kg) AS total_kg,
-              COUNT(DISTINCT Periode_Date) AS nb_jours
-            FROM BR_Cueillette
-            WHERE Periode_Date BETWEEN @startDate AND @endDate
-          `;
-          if (ferme) prodQuery += ` AND Ferme = @ferme`;
-          prodQuery += ` GROUP BY Variete, ${dateGroupSQL} ORDER BY periode`;
-
-          const prodResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(prodQuery);
-
-          // 2. Hors Récolte (BR_Pointage - non récolte)
-          let hrQuery = `
-            SELECT Operation, ${dateGroupSQL} AS periode,
-              SUM(Nombre_Jr) AS total_jh,
-              SUM(Cout) AS total_cout
-            FROM BR_Pointage
-            WHERE Periode_Date BETWEEN @startDate AND @endDate
-              AND Operation_Famille NOT IN (N'8. Récolte', N'11. Postes fixes')
-          `;
-          if (ferme) hrQuery += ` AND Ferme = @ferme`;
-          hrQuery += ` GROUP BY Operation, ${dateGroupSQL} ORDER BY periode`;
-
-          const hrResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(hrQuery);
-
-          // 3. Récolte costs (BR_Pointage - récolte only)
-          let recQuery = `
-            SELECT Variete, ${dateGroupSQL} AS periode,
-              SUM(Nombre_Jr) AS total_jh,
-              SUM(Cout) AS total_cout,
-              SUM(Nombre_Hr) AS total_hr
-            FROM BR_Pointage
-            WHERE Periode_Date BETWEEN @startDate AND @endDate
-              AND Operation_Famille = N'8. Récolte'
-          `;
-          if (ferme) recQuery += ` AND Ferme = @ferme`;
-          recQuery += ` GROUP BY Variete, ${dateGroupSQL} ORDER BY periode`;
-
-          const recResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(recQuery);
-
-          // 4. Intrants (BR_Consommation)
-          let intQuery = `
-            SELECT Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')} AS periode,
-              SUM(Quantite) AS total_qty
-            FROM BR_Consommation
-            WHERE [Date] BETWEEN @startDate AND @endDate
-          `;
-          if (ferme) intQuery += ` AND Ferme = @ferme`;
-          intQuery += ` GROUP BY Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')} ORDER BY periode`;
-
-          const intResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(intQuery);
-
-          return {
-            production: prodResult.recordset,
-            hors_recolte: hrResult.recordset,
-            recolte_costs: recResult.recordset,
-            intrants: intResult.recordset,
+          // Helper: compute period key from date string
+          const getPeriodKey = (dateStr) => {
+            const d = new Date(dateStr);
+            if (gran === "day") return dateStr.slice(0, 10);
+            if (gran === "month") return dateStr.slice(0, 7);
+            // week: ISO week
+            const jan1 = new Date(d.getFullYear(), 0, 1);
+            const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+            return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
           };
+          // Helper: deriveFerme for pointage rows
+          const deriveFerme = (ref) => {
+            if (!ref) return "Autre";
+            const r = ref.trim();
+            if (r.startsWith("F1") || r === "0032" || r === "0035" || r === "0036") return "F1";
+            if (r.startsWith("F5") || r === "0037" || r === "0038" || r === "0039") return "F5";
+            if (r.startsWith("F2") || r.startsWith("F3") || r.startsWith("F4") || r.startsWith("F6") || r === "0031" || r === "0033") return "Avocatier";
+            return "Autre";
+          };
+
+          if (USE_MIRROR) {
+            // === FIRESTORE MIRROR PATH ===
+            const [cueilletteRows, pointageRows, consommationRows] = await Promise.all([
+              getCueilletteRows(startDate, endDate),
+              getPointageRowsForDateRange(startDate, endDate),
+              getConsommationRows({ weekStart: startDate, weekEnd: endDate, ...(ferme ? { ferme } : {}) }),
+            ]);
+
+            // 1. Production (cueillette)
+            const prodMap = {};
+            for (const r of cueilletteRows) {
+              if (ferme && r.Ferme !== ferme) continue;
+              const key = `${r.Variete || "Autre"}|${getPeriodKey(r.DateStr || r.Date || "")}`;
+              if (!prodMap[key]) prodMap[key] = { Variete: r.Variete || "Autre", periode: getPeriodKey(r.DateStr || r.Date || ""), total_kg: 0, nb_jours: 0 };
+              prodMap[key].total_kg += r.Poids_total_kg || 0;
+            }
+
+            // 2. Hors Récolte (pointage - non récolte)
+            const hrMap = {};
+            for (const r of pointageRows) {
+              if (r.Operation_Famille === "8. Récolte" || r.Operation_Famille === "11. Postes fixes") continue;
+              if (ferme && deriveFerme(r.Ref_parcelle) !== ferme) continue;
+              const key = `${r.Operation || ""}|${getPeriodKey(r.DateStr || "")}`;
+              if (!hrMap[key]) hrMap[key] = { Operation: r.Operation || "", periode: getPeriodKey(r.DateStr || ""), total_jh: 0, total_cout: 0 };
+              hrMap[key].total_jh += r.Nombre_Jr || 0;
+              hrMap[key].total_cout += r.Cout || 0;
+            }
+
+            // 3. Récolte costs
+            const recMap = {};
+            for (const r of pointageRows) {
+              if (r.Operation_Famille !== "8. Récolte") continue;
+              if (ferme && deriveFerme(r.Ref_parcelle) !== ferme) continue;
+              const key = `${r.Variete || "Autre"}|${getPeriodKey(r.DateStr || "")}`;
+              if (!recMap[key]) recMap[key] = { Variete: r.Variete || "Autre", periode: getPeriodKey(r.DateStr || ""), total_jh: 0, total_cout: 0, total_hr: 0 };
+              recMap[key].total_jh += r.Nombre_Jr || 0;
+              recMap[key].total_cout += r.Cout || 0;
+              recMap[key].total_hr += r.Nombre_Hr || 0;
+            }
+
+            // 4. Intrants (consommation)
+            const intMap = {};
+            for (const r of consommationRows) {
+              const key = `${r.Article_Categorie || "Autre"}|${getPeriodKey(r.Date || "")}`;
+              if (!intMap[key]) intMap[key] = { Article_Categorie: r.Article_Categorie || "Autre", periode: getPeriodKey(r.Date || ""), total_qty: 0 };
+              intMap[key].total_qty += r.Quantite || 0;
+            }
+
+            return {
+              production: Object.values(prodMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+              hors_recolte: Object.values(hrMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+              recolte_costs: Object.values(recMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+              intrants: Object.values(intMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+            };
+          }
+
+          // === SQL FALLBACK ===
+          const p = await getPool();
+          const prodResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Variete, ${dateGroupSQL} AS periode, SUM(Poids_total_kg) AS total_kg, COUNT(DISTINCT Periode_Date) AS nb_jours FROM BR_Cueillette WHERE Periode_Date BETWEEN @startDate AND @endDate ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Variete, ${dateGroupSQL} ORDER BY periode`);
+          const hrResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Operation, ${dateGroupSQL} AS periode, SUM(Nombre_Jr) AS total_jh, SUM(Cout) AS total_cout FROM BR_Pointage WHERE Periode_Date BETWEEN @startDate AND @endDate AND Operation_Famille NOT IN (N'8. Récolte', N'11. Postes fixes') ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Operation, ${dateGroupSQL} ORDER BY periode`);
+          const recResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Variete, ${dateGroupSQL} AS periode, SUM(Nombre_Jr) AS total_jh, SUM(Cout) AS total_cout, SUM(Nombre_Hr) AS total_hr FROM BR_Pointage WHERE Periode_Date BETWEEN @startDate AND @endDate AND Operation_Famille = N'8. Récolte' ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Variete, ${dateGroupSQL} ORDER BY periode`);
+          const intResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')} AS periode, SUM(Quantite) AS total_qty FROM BR_Consommation WHERE [Date] BETWEEN @startDate AND @endDate ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')} ORDER BY periode`);
+          return { production: prodResult.recordset, hors_recolte: hrResult.recordset, recolte_costs: recResult.recordset, intrants: intResult.recordset };
         });
 
         return res.json({ success: true, actuals: result });
@@ -5000,53 +5650,67 @@ exports.budgetService = functions
 
         const cacheKey = `budget_actuals_${startDate}_${endDate}_${ferme || "all"}_${gran}`;
         const actuals = await withCache(cacheKey, 30 * 60 * 1000, async () => {
-          const p = await getPool();
-
-          const prodResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(`
-              SELECT Variete, ${dateGroupSQL} AS periode,
-                SUM(Poids_total_kg) AS total_kg
-              FROM BR_Cueillette
-              WHERE Periode_Date BETWEEN @startDate AND @endDate
-                ${ferme ? "AND Ferme = @ferme" : ""}
-              GROUP BY Variete, ${dateGroupSQL}
-            `);
-
-          const hrResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(`
-              SELECT Operation, ${dateGroupSQL} AS periode,
-                SUM(Nombre_Jr) AS total_jh, SUM(Cout) AS total_cout
-              FROM BR_Pointage
-              WHERE Periode_Date BETWEEN @startDate AND @endDate
-                AND Operation_Famille NOT IN (N'8. Récolte', N'11. Postes fixes')
-                ${ferme ? "AND Ferme = @ferme" : ""}
-              GROUP BY Operation, ${dateGroupSQL}
-            `);
-
-          const intResult = await p.request()
-            .input("startDate", sql.Date, startDate)
-            .input("endDate", sql.Date, endDate)
-            .input("ferme", sql.NVarChar, ferme || "")
-            .query(`
-              SELECT Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')} AS periode,
-                SUM(Quantite) AS total_qty
-              FROM BR_Consommation
-              WHERE [Date] BETWEEN @startDate AND @endDate
-                ${ferme ? "AND Ferme = @ferme" : ""}
-              GROUP BY Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')}
-            `);
-
-          return {
-            production: prodResult.recordset,
-            hors_recolte: hrResult.recordset,
-            intrants: intResult.recordset,
+          const getPeriodKey = (dateStr) => {
+            const d = new Date(dateStr);
+            if (gran === "day") return dateStr.slice(0, 10);
+            if (gran === "month") return dateStr.slice(0, 7);
+            const jan1 = new Date(d.getFullYear(), 0, 1);
+            const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+            return `${d.getFullYear()}-W${String(week).padStart(2, "0")}`;
           };
+          const deriveFerme = (ref) => {
+            if (!ref) return "Autre";
+            const r = ref.trim();
+            if (r.startsWith("F1") || r === "0032" || r === "0035" || r === "0036") return "F1";
+            if (r.startsWith("F5") || r === "0037" || r === "0038" || r === "0039") return "F5";
+            if (r.startsWith("F2") || r.startsWith("F3") || r.startsWith("F4") || r.startsWith("F6") || r === "0031" || r === "0033") return "Avocatier";
+            return "Autre";
+          };
+
+          if (USE_MIRROR) {
+            const [cueilletteRows, pointageRows, consommationRows] = await Promise.all([
+              getCueilletteRows(startDate, endDate),
+              getPointageRowsForDateRange(startDate, endDate),
+              getConsommationRows({ weekStart: startDate, weekEnd: endDate, ...(ferme ? { ferme } : {}) }),
+            ]);
+            const prodMap = {};
+            for (const r of cueilletteRows) {
+              if (ferme && r.Ferme !== ferme) continue;
+              const key = `${r.Variete || "Autre"}|${getPeriodKey(r.DateStr || r.Date || "")}`;
+              if (!prodMap[key]) prodMap[key] = { Variete: r.Variete || "Autre", periode: getPeriodKey(r.DateStr || r.Date || ""), total_kg: 0 };
+              prodMap[key].total_kg += r.Poids_total_kg || 0;
+            }
+            const hrMap = {};
+            for (const r of pointageRows) {
+              if (r.Operation_Famille === "8. Récolte" || r.Operation_Famille === "11. Postes fixes") continue;
+              if (ferme && deriveFerme(r.Ref_parcelle) !== ferme) continue;
+              const key = `${r.Operation || ""}|${getPeriodKey(r.DateStr || "")}`;
+              if (!hrMap[key]) hrMap[key] = { Operation: r.Operation || "", periode: getPeriodKey(r.DateStr || ""), total_jh: 0, total_cout: 0 };
+              hrMap[key].total_jh += r.Nombre_Jr || 0;
+              hrMap[key].total_cout += r.Cout || 0;
+            }
+            const intMap = {};
+            for (const r of consommationRows) {
+              const key = `${r.Article_Categorie || "Autre"}|${getPeriodKey(r.Date || "")}`;
+              if (!intMap[key]) intMap[key] = { Article_Categorie: r.Article_Categorie || "Autre", periode: getPeriodKey(r.Date || ""), total_qty: 0 };
+              intMap[key].total_qty += r.Quantite || 0;
+            }
+            return {
+              production: Object.values(prodMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+              hors_recolte: Object.values(hrMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+              intrants: Object.values(intMap).sort((a, b) => (a.periode || "").localeCompare(b.periode || "")),
+            };
+          }
+
+          // === SQL FALLBACK ===
+          const p = await getPool();
+          const prodResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Variete, ${dateGroupSQL} AS periode, SUM(Poids_total_kg) AS total_kg FROM BR_Cueillette WHERE Periode_Date BETWEEN @startDate AND @endDate ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Variete, ${dateGroupSQL}`);
+          const hrResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Operation, ${dateGroupSQL} AS periode, SUM(Nombre_Jr) AS total_jh, SUM(Cout) AS total_cout FROM BR_Pointage WHERE Periode_Date BETWEEN @startDate AND @endDate AND Operation_Famille NOT IN (N'8. Récolte', N'11. Postes fixes') ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Operation, ${dateGroupSQL}`);
+          const intResult = await p.request().input("startDate", getSql().Date, startDate).input("endDate", getSql().Date, endDate).input("ferme", getSql().NVarChar, ferme || "")
+            .query(`SELECT Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')} AS periode, SUM(Quantite) AS total_qty FROM BR_Consommation WHERE [Date] BETWEEN @startDate AND @endDate ${ferme ? "AND Ferme = @ferme" : ""} GROUP BY Article_Categorie, ${dateGroupSQL.replace(/Periode_Date/g, '[Date]')}`);
+          return { production: prodResult.recordset, hors_recolte: hrResult.recordset, intrants: intResult.recordset };
         });
 
         // Build comparison summary
@@ -5116,13 +5780,109 @@ exports.budgetService = functions
     }
   });
 
+// ===================== TASKS API =====================
+exports.tasks = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    try {
+      const action = req.query.action;
+
+      // ---- LIST all tasks ----
+      if (action === "list") {
+        const snap = await db_firestore.collection("tasks").orderBy("createdAt", "desc").get();
+        const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return res.json({ success: true, tasks });
+      }
+
+      // ---- MY TASKS (by assignedTo) ----
+      if (action === "my-tasks") {
+        const profile = req.query.profile;
+        if (!profile) return res.status(400).json({ success: false, error: "profile requis" });
+        const snap = await db_firestore.collection("tasks").where("assignedTo", "==", profile).get();
+        const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return res.json({ success: true, tasks });
+      }
+
+      // ---- CREATE task ----
+      if (action === "create" && req.method === "POST") {
+        const { title, description, assignedTo, assignedToName, priority, deadline, createdBy } = req.body;
+        if (!title || !assignedTo || !deadline) return res.status(400).json({ success: false, error: "title, assignedTo, deadline requis" });
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const ref = await db_firestore.collection("tasks").add({
+          title: title.trim(),
+          description: (description || "").trim(),
+          assignedTo,
+          assignedToName: assignedToName || assignedTo,
+          priority: priority || "moyenne",
+          deadline,
+          status: "a_faire",
+          createdBy: createdBy || authUser.uid,
+          sourceType: "manual",
+          sourceCrId: null,
+          sourceCrTitle: null,
+          createdAt: now,
+          updatedAt: now,
+          completedAt: null,
+        });
+        return res.json({ success: true, id: ref.id });
+      }
+
+      // ---- UPDATE task ----
+      if (action === "update" && req.method === "POST") {
+        const { id, title, description, assignedTo, assignedToName, priority, deadline } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        await db_firestore.collection("tasks").doc(id).update({
+          title: (title || "").trim(),
+          description: (description || "").trim(),
+          assignedTo,
+          assignedToName: assignedToName || assignedTo,
+          priority: priority || "moyenne",
+          deadline,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.json({ success: true });
+      }
+
+      // ---- UPDATE STATUS ----
+      if (action === "update-status" && req.method === "POST") {
+        const { id, status } = req.body;
+        if (!id || !status) return res.status(400).json({ success: false, error: "id, status requis" });
+        const update = { status, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        if (status === "termine") update.completedAt = admin.firestore.FieldValue.serverTimestamp();
+        await db_firestore.collection("tasks").doc(id).update(update);
+        return res.json({ success: true });
+      }
+
+      // ---- DELETE task ----
+      if (action === "delete" && req.method === "POST") {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        await db_firestore.collection("tasks").doc(id).delete();
+        return res.json({ success: true });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue: " + action });
+    } catch (err) {
+      console.error("Erreur tasks API:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
 // ===================== MEETING CR API =====================
 exports.meetingCR = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
 
     try {
       const action = req.query.action;
@@ -5223,8 +5983,10 @@ exports.fuel = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const action = req.query.action || "summary";
       const COLLECTION = "fuel_transactions";
@@ -5343,6 +6105,155 @@ exports.fuel = functions
 
           const prixMoyenLitre = totalLitres > 0 ? Math.round(totalMontantCarburant / totalLitres * 100) / 100 : 0;
 
+          // ===== ANOMALIES DETECTION =====
+          const anomalies = [];
+
+          // 1. Multi-pleins: >3 fills per card per day
+          const dailyFills = {};
+          const dailyTxMap = {}; // carte_day → transactions list
+          for (const t of transactions) {
+            const tDate = t.date.toDate ? t.date.toDate() : new Date(t.date);
+            const dayKey = `${t.carte}_${tDate.getFullYear()}-${String(tDate.getMonth()+1).padStart(2,"0")}-${String(tDate.getDate()).padStart(2,"0")}`;
+            if (!dailyFills[dayKey]) dailyFills[dayKey] = { carte: t.carte, date: t.dateStr ? t.dateStr.split(" ")[0] : "", count: 0, montant: 0 };
+            dailyFills[dayKey].count++;
+            dailyFills[dayKey].montant += t.montant || 0;
+            if (!dailyTxMap[dayKey]) dailyTxMap[dayKey] = [];
+            dailyTxMap[dayKey].push({ heure: (t.dateStr || "").split(" ")[1] || "", lieu: t.lieu || "", produit: t.produit || "", quantite: t.quantite || 0, montant: t.montant || 0 });
+          }
+
+          // Build daily distribution per card (for histogram)
+          const cardDailyDist = {};
+          for (const [key, d] of Object.entries(dailyFills)) {
+            if (!cardDailyDist[d.carte]) cardDailyDist[d.carte] = {};
+            const cnt = d.count;
+            cardDailyDist[d.carte][cnt] = (cardDailyDist[d.carte][cnt] || 0) + 1;
+          }
+
+          for (const [key, d] of Object.entries(dailyFills)) {
+            if (d.count > 3) {
+              anomalies.push({
+                type: "multi_fill", carte: d.carte, date: d.date, count: d.count, montant: Math.round(d.montant),
+                transactions: (dailyTxMap[key] || []).sort((a, b) => (a.heure || "").localeCompare(b.heure || "")),
+                dailyDistribution: cardDailyDist[d.carte] || {},
+              });
+            }
+          }
+
+          // 2. High amount: >2.5x median for the card
+          const cardMontants = {};
+          for (const t of transactions) {
+            if (t.isPeage) continue;
+            if (!cardMontants[t.carte]) cardMontants[t.carte] = [];
+            cardMontants[t.carte].push({ montant: t.montant || 0, date: t.dateStr || "", lieu: t.lieu || "", produit: t.produit || "", quantite: t.quantite || 0 });
+          }
+          for (const [carte, arr] of Object.entries(cardMontants)) {
+            if (arr.length < 5) continue;
+            const sorted = arr.map(a => a.montant).sort((a, b) => a - b);
+            const mediane = sorted[Math.floor(sorted.length / 2)];
+            if (mediane <= 0) continue;
+
+            // Build amount distribution in 6 ranges for histogram
+            const maxMontant = sorted[sorted.length - 1];
+            const step = Math.ceil(maxMontant / 6 / 50) * 50; // round to nearest 50
+            const distRanges = [];
+            for (let r = 0; r < 6; r++) {
+              const lo = r * step;
+              const hi = (r + 1) * step;
+              const cnt = arr.filter(a => a.montant >= lo && a.montant < hi).length;
+              distRanges.push({ range: `${lo}-${hi}`, lo, hi, count: cnt });
+            }
+
+            for (const a of arr) {
+              if (a.montant > mediane * 2.5 && a.montant > 500) {
+                anomalies.push({
+                  type: "high_amount", carte, date: a.date, lieu: a.lieu, montant: Math.round(a.montant), mediane: Math.round(mediane),
+                  produit: a.produit, quantite: a.quantite,
+                  historique: { min: Math.round(sorted[0]), max: Math.round(maxMontant), mediane: Math.round(mediane), distribution: distRanges },
+                });
+              }
+            }
+          }
+
+          // Sort anomalies: multi_fill first, then by montant desc
+          anomalies.sort((a, b) => {
+            if (a.type !== b.type) return a.type === "multi_fill" ? -1 : 1;
+            return (b.montant || 0) - (a.montant || 0);
+          });
+
+          // ===== SUIVI KILOMETRIQUE (L/100km) =====
+          let suiviKm = null;
+          const kmTransactions = transactions
+            .filter(t => t.carte === "476452" && (t.kms || 0) > 200000 && !t.isPeage)
+            .map(t => ({
+              date: t.dateStr || "",
+              kms: t.kms,
+              litres: t.quantite || 0,
+              dateObj: t.date.toDate ? t.date.toDate() : new Date(t.date),
+            }))
+            .sort((a, b) => a.dateObj - b.dateObj);
+
+          if (kmTransactions.length >= 3) {
+            const points = [];
+            for (let i = 1; i < kmTransactions.length; i++) {
+              const deltaKm = kmTransactions[i].kms - kmTransactions[i - 1].kms;
+              const litres = kmTransactions[i].litres;
+              if (deltaKm > 10 && deltaKm < 3000 && litres > 5) {
+                const l100 = Math.round((litres / deltaKm) * 100 * 10) / 10;
+                if (l100 >= 3 && l100 <= 50) {
+                  points.push({ date: kmTransactions[i].date, kms: kmTransactions[i].kms, litres, l100km: l100 });
+                }
+              }
+            }
+            if (points.length > 0) {
+              const kmTotal = kmTransactions[kmTransactions.length - 1].kms - kmTransactions[0].kms;
+              const moyL100 = Math.round(points.reduce((s, p) => s + p.l100km, 0) / points.length * 10) / 10;
+              suiviKm = { carte: "476452", kmTotal, moyenneL100: moyL100, points };
+            }
+          }
+
+          // ===== TENDANCE LITRES/SEMAINE PAR CARTE =====
+          // ISO week helper
+          function getISOWeek(d) {
+            const date = new Date(d.getTime());
+            date.setHours(0, 0, 0, 0);
+            date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+            const week1 = new Date(date.getFullYear(), 0, 4);
+            const weekNum = 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+            return `${date.getFullYear()}-W${String(weekNum).padStart(2, "0")}`;
+          }
+
+          // Find top 5 cards by total litres
+          const cardLitresTotal = {};
+          for (const t of transactions) {
+            if (t.isPeage) continue;
+            cardLitresTotal[t.carte] = (cardLitresTotal[t.carte] || 0) + (t.quantite || 0);
+          }
+          const top5Cards = Object.entries(cardLitresTotal)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5)
+            .map(e => e[0]);
+
+          // Build weekly data per card
+          const weeklyMap = {};
+          const allWeeks = new Set();
+          for (const t of transactions) {
+            if (t.isPeage || !top5Cards.includes(t.carte)) continue;
+            const tDate = t.date.toDate ? t.date.toDate() : new Date(t.date);
+            const week = getISOWeek(tDate);
+            allWeeks.add(week);
+            if (!weeklyMap[t.carte]) weeklyMap[t.carte] = {};
+            weeklyMap[t.carte][week] = (weeklyMap[t.carte][week] || 0) + (t.quantite || 0);
+          }
+
+          const sortedWeeks = [...allWeeks].sort();
+          const consumptionWeekly = top5Cards.map(carte => ({
+            carte,
+            semaines: sortedWeeks.map(w => ({
+              semaine: w,
+              litres: Math.round((weeklyMap[carte]?.[w] || 0) * 10) / 10,
+            })),
+          }));
+
           return {
             success: true,
             totalMois: Math.round(totalMoisCarburant),
@@ -5354,6 +6265,9 @@ exports.fuel = functions
             evolution,
             topStations,
             dernieresTransactions: dernieres,
+            anomalies,
+            suiviKm,
+            consumptionWeekly,
             nbTransactions: transactions.length,
             campagne: `${campagneYear}-${campagneYear + 1}`,
           };
@@ -5448,8 +6362,10 @@ exports.notifications = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
   .https.onRequest(async (req, res) => {
-    setCors(res);
+    setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
     try {
       const profile = req.query.profile || "";
       const ferme = req.query.ferme || "";
@@ -5524,12 +6440,17 @@ exports.notifications = functions
         );
       }
 
-      // Caporal: pointages rejetés + tâches HR non terminées + demandes résultat
+      // Caporal: pointages en attente validation + rejetés + tâches HR non terminées + demandes résultat
       if (profile.startsWith("caporal_")) {
         promises.push(
           db_firestore.collection("pointage_validations")
             .where("date", "in", last7).get()
             .then(snap => {
+              const pending = snap.docs.filter(d => {
+                const v = d.data();
+                return v.ferme === ferme && v.visaRH && !v.visaCaporal && !v.rejected && !v.locked;
+              });
+              if (pending.length > 0) categories.validations.push({ key: "pointage_caporal", label: "Pointages en attente de votre validation", count: pending.length, icon: "fa-clipboard-check", color: "#e67e22", tab: "pointage" });
               const rejected = snap.docs.filter(d => {
                 const v = d.data();
                 return v.ferme === ferme && v.rejected;

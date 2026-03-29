@@ -7,8 +7,7 @@
  * All functions return plain JS arrays/objects — same shape as SQL recordsets.
  */
 
-const admin = require("firebase-admin");
-const db_firestore = admin.firestore();
+const { db: db_firestore } = require("./config/firebase");
 
 // =============================================
 // BR_Consommation — from sql_mirror_consommation/{YYYY-MM}
@@ -156,14 +155,19 @@ async function getWorkerHistory(matricule) {
  * @returns {Promise<Array>}
  */
 async function getCueilletteRows(startDate, endDate) {
-  // List all cueillette docs and filter by date range
-  const snapshot = await db_firestore.collection("sql_mirror_cueillette")
-    .where(admin.firestore.FieldPath.documentId(), ">=", startDate)
-    .where(admin.firestore.FieldPath.documentId(), "<=", endDate)
-    .get();
+  // List all cueillette docs by date range — orderBy doc ID (YYYY-MM-DD format)
+  const allDocs = await db_firestore.collection("sql_mirror_cueillette").listDocuments();
+  const matchingIds = allDocs
+    .map(ref => ref.id)
+    .filter(id => id >= startDate && id <= endDate);
+  if (matchingIds.length === 0) return [];
+  const snapshots = await Promise.all(
+    matchingIds.map(id => db_firestore.collection("sql_mirror_cueillette").doc(id).get())
+  );
 
   let allRows = [];
-  for (const doc of snapshot.docs) {
+  for (const doc of snapshots) {
+    if (!doc.exists) continue;
     const data = doc.data();
     if (data.rows) allRows = allRows.concat(data.rows);
   }

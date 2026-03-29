@@ -6,28 +6,16 @@
  */
 
 const functions = require("firebase-functions");
-const admin = require("firebase-admin");
 const sql = require("mssql");
 
-// Reuse the initialized app from index.js (admin.initializeApp() is called there)
-const db_firestore = admin.firestore();
+// Shared config modules
+const { db: db_firestore } = require("./config/firebase");
+const baseSqlConfig = require("./config/sqlConfig");
 
-// =============================================
-// SQL Server Config (same as index.js)
-// =============================================
+// Sync queries are heavier — use longer request timeout
 const sqlConfig = {
-  user: process.env.SQL_USER || "BEEONE",
-  password: process.env.SQL_PASSWORD || "BEEONE",
-  server: process.env.SQL_SERVER || "105.145.33.128",
-  port: parseInt(process.env.SQL_PORT || "1433"),
-  database: process.env.SQL_DATABASE || "BR_BERRY_GOOD",
-  options: {
-    encrypt: false,
-    trustServerCertificate: true,
-    requestTimeout: 60000,
-    connectionTimeout: 15000,
-  },
-  pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
+  ...baseSqlConfig,
+  options: { ...baseSqlConfig.options, requestTimeout: 60000 },
 };
 
 let pool = null;
@@ -38,13 +26,13 @@ async function getPool() {
 
 // =============================================
 // PHASE 0: Replication Probe
-// Runs every 10 minutes for 48h to detect when
-// the reporting DB refreshes with new data
+// Runs every hour to detect when the reporting DB refreshes with new data
+// (Reduced from every 10 min to save SQL bandwidth on farm server)
 // =============================================
 exports.replicationProbe = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 60, memory: "256MB" })
-  .pubsub.schedule("every 10 minutes")
+  .pubsub.schedule("every 1 hours")
   .timeZone("Africa/Casablanca")
   .onRun(async () => {
     const now = new Date();
@@ -175,7 +163,8 @@ async function syncCueillette(db) {
   console.log("[Sync] Syncing BR_Cueillette...");
   const result = await db.request().query(`
     SELECT CONVERT(varchar(10), Periode_Date, 23) AS DateStr, Variete,
-      Poids_total_kg, Nbre_Caisse, Operation_Famille, Parcelle_Culturale
+      Poids_total_kg, Nbre_Caisse, Operation_Famille, Parcelle_Culturale,
+      Reference_Technique
     FROM BR_Cueillette
     WHERE CONVERT(date, Periode_Date) >= DATEADD(day, -30, GETDATE())
     ORDER BY Periode_Date
@@ -188,6 +177,7 @@ async function syncCueillette(db) {
     Nbre_Caisse: r.Nbre_Caisse || 0,
     Operation_Famille: (r.Operation_Famille || "").trim(),
     Parcelle_Culturale: (r.Parcelle_Culturale || "").trim(),
+    Reference_Technique: (r.Reference_Technique || "").trim(),
   }));
 
   const byDate = groupBy(rows, r => r.DateStr);

@@ -223,6 +223,12 @@ async function fetchFuelData() {
       const items = jsonData.data || jsonData;
       console.log(`   ${items.length} transactions dans la réponse API (count: ${jsonData.count || '?'})`);
 
+      // Debug: afficher les clés et un exemple
+      if (items.length > 0) {
+        console.log(`   Clés API: ${Object.keys(items[0]).join(', ')}`);
+        console.log(`   Exemple item[0]:`, JSON.stringify(items[0]).substring(0, 500));
+      }
+
       for (const t of items) {
         // Parser date_trans: "/Date(1774566000000+0100)/" → Date
         let dateStr = "";
@@ -241,7 +247,7 @@ async function fetchFuelData() {
           date: dateStr,
           ticket: String(t.no_ticket || "").replace(/\.0$/, ''),
           lieu: t.lieu || "",
-          produit: t.produit || "",
+          produit: t.prod || t.produit || "",
           kms: String(t.kms || 0),
           quantite: String(t.qtt || 0),
           montant: `${t.montant || 0} MAD`,

@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node tests/test-workflows.js",
+    "smoke": "BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js",
+    "deploy": "firebase deploy && npm run smoke"
   },
   "keywords": [],
   "author": "",
