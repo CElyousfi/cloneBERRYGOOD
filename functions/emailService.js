@@ -1181,6 +1181,112 @@ exports.analyzeEmail = functions
         await emailRef.update({ xlsxBase64: admin.firestore.FieldValue.delete() });
 
         console.log(`analyzeEmail DQR: ${emailId} → ${brixRows.length} rows extracted, ${updatedCount} expeditions updated`);
+
+        // ---- VOLET 3: Vérification bons Export J-1 vs expéditions ----
+        try {
+          // Determine the date the DQR covers (J-1 from the email date)
+          const emailDate = emailData.date ? new Date(emailData.date) : new Date();
+          const veille = new Date(emailDate);
+          veille.setDate(veille.getDate() - 1);
+          const veilleISO = veille.toISOString().split('T')[0]; // YYYY-MM-DD
+
+          // Fetch all bons d'apport Export for that date
+          const bonsSnap = await db.collection("bons_apport")
+            .where("date", "==", veilleISO)
+            .get();
+
+          const bonsExport = [];
+          bonsSnap.forEach(doc => {
+            const d = doc.data();
+            // Only Export bons (exclude Marché Local)
+            if ((d.typeVente || '').toLowerCase() !== 'marché local' && (d.typeVente || '').toLowerCase() !== 'marche local') {
+              bonsExport.push({ id: doc.id, ...d });
+            }
+          });
+
+          if (bonsExport.length > 0) {
+            // Get all expeditions for that date
+            const expsSnap = await db.collection("expeditions")
+              .where("dateISO", "==", veilleISO)
+              .get();
+
+            const existingExps = [];
+            expsSnap.forEach(doc => existingExps.push({ id: doc.id, ...doc.data() }));
+
+            // Normalize variety for matching
+            const normV = (v) => (v || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+
+            // Match each bon to an expedition (strict: same day, same variety, quantity ±2%)
+            const matchedExpIds = new Set();
+            const unmatchedBons = [];
+
+            for (const bon of bonsExport) {
+              const bonVar = normV(bon.blocVariete);
+              const bonWeight = parseFloat(bon.poidsLot) || 0;
+              let found = false;
+
+              for (const exp of existingExps) {
+                if (matchedExpIds.has(exp.id)) continue;
+                const expVar = normV(exp.variety);
+                const expWeight = parseFloat(exp.batchWeight) || 0;
+                if (bonVar !== expVar) continue;
+                if (bonWeight <= 0 || expWeight <= 0) continue;
+                const ratio = Math.min(bonWeight, expWeight) / Math.max(bonWeight, expWeight);
+                if (ratio >= 0.98) {
+                  matchedExpIds.add(exp.id);
+                  found = true;
+                  break;
+                }
+              }
+
+              if (!found) {
+                unmatchedBons.push(bon);
+              }
+            }
+
+            // Auto-create provisional expeditions for unmatched bons
+            let autoCreated = 0;
+            for (const bon of unmatchedBons) {
+              const provId = `PROV-${bon.bonApport || bon.id}-${Date.now()}`;
+              const ranch = (bon.blocFerme || '').toUpperCase().includes('F1') ? '200742' : '200876';
+              await db.collection("expeditions").doc(provId).set({
+                receiptId: null,
+                variety: bon.blocVariete || '',
+                batchWeight: parseFloat(bon.poidsLot) || 0,
+                dateISO: veilleISO,
+                ranch: ranch,
+                status: 'Provisoire — En attente inspection',
+                source: 'auto-created',
+                linkedBon: bon.bonApport || bon.id,
+                overallResult: 'PENDING',
+                createdAt: new Date().toISOString(),
+              });
+              autoCreated++;
+            }
+
+            // Generate alert if there are unmatched bons
+            if (unmatchedBons.length > 0) {
+              const bonsList = unmatchedBons.map(b => `${b.bonApport} (${b.blocVariete}, ${b.poidsLot}kg)`).join(', ');
+              await db.collection("alerts").add({
+                type: 'expedition_manquante',
+                message: `${unmatchedBons.length} bon(s) Export du ${veilleISO} sans expédition Driscoll's correspondante. Expéditions provisoires créées. Bons: ${bonsList}`,
+                severity: 'warning',
+                profiles: ['chef_f1', 'chef_f5', 'qualite', 'dg'],
+                read: {},
+                createdAt: new Date().toISOString(),
+                date: veilleISO,
+                unmatchedBons: unmatchedBons.map(b => ({ id: b.id, bonApport: b.bonApport, variete: b.blocVariete, poids: b.poidsLot })),
+                autoCreatedCount: autoCreated,
+              });
+              console.log(`analyzeEmail DQR: ${unmatchedBons.length} unmatched bons for ${veilleISO}, ${autoCreated} provisional expeditions created, alert generated`);
+            } else {
+              console.log(`analyzeEmail DQR: All ${bonsExport.length} bons Export for ${veilleISO} matched to expeditions`);
+            }
+          }
+        } catch (verifErr) {
+          console.error('analyzeEmail DQR verification error:', verifErr);
+        }
+
       } else if (emailData.isLiquidation && emailData.xlsxBase64) {
         // ---- Driscoll's Liquidation Report (XLSX) ----
         category = "liquidation";

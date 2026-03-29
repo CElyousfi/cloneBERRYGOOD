@@ -12,7 +12,7 @@ const sqlConfig = {
   port: parseInt(process.env.SQL_PORT || "1433"),
   database: process.env.SQL_DATABASE,
   options: {
-    encrypt: true,
+    encrypt: false,
     trustServerCertificate: true,
     requestTimeout: 30000,
     connectionTimeout: 15000,

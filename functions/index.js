@@ -1131,6 +1131,273 @@ exports.farmroad = functions
   });
 
 // =============================================
+// GDD & IMC — Indice de Maturation Composite
+// Maravilla Long Cane | Larache | J0 = 29 mars 2026
+// =============================================
+
+const GDD_CONFIG = {
+  J0: "2026-03-29",
+  VARIETE: "Maravilla Long Cane",
+  SERRE: "tunnel_larache",
+  TBASE: 5,
+  TUPPER: 30,
+  GDD_CIBLE: 300, // milieu fourchette 250–350
+};
+
+// --- GDD journalier ---
+function calcGDD(tmax, tmin, tbase = GDD_CONFIG.TBASE, tupper = GDD_CONFIG.TUPPER) {
+  const tmaxCap = Math.min(tmax, tupper);
+  const tminCap = Math.min(tmin, tupper);
+  return Math.max(0, (tmaxCap + tminCap) / 2 - tbase);
+}
+
+// --- Facteurs normalisés (0 à 1) ---
+function normGDD(gddCumule, cible = GDD_CONFIG.GDD_CIBLE) {
+  return Math.min(gddCumule / cible, 1);
+}
+
+function normDIF(tmax, tmin) {
+  const dif = tmax - tmin;
+  if (dif <= 0) return 0;
+  if (dif <= 12) return dif / 12;
+  if (dif <= 18) return 1;
+  return Math.max(0, 1 - (dif - 18) / 10);
+}
+
+function normDLI(dli) {
+  if (!dli) return 0.8; // valeur par défaut Larache printemps
+  if (dli < 12) return dli / 12;
+  if (dli <= 25) return 1;
+  return Math.max(0.6, 1 - (dli - 25) / 30);
+}
+
+// --- Facteurs de stress ---
+function calcVPDFromTH(tair, hr) {
+  const esat = 0.6108 * Math.exp((17.27 * tair) / (tair + 237.3));
+  return esat * (1 - hr / 100);
+}
+
+function stressVPD(vpd) {
+  if (vpd <= 1.2) return 0;
+  if (vpd <= 2.0) return (vpd - 1.2) / 0.8;
+  return 1;
+}
+
+function stressTemperature(tmax) {
+  if (tmax <= 28) return 0;
+  if (tmax <= 32) return (tmax - 28) / 4;
+  return 1;
+}
+
+// --- Pondérations IMC ---
+const POIDS_IMC = {
+  alpha: 0.50,   // GDD — moteur principal
+  beta: 0.20,    // DIF — qualité sucre/couleur
+  gamma: 0.15,   // DLI — photosynthèse
+  delta: 0.10,   // stress VPD
+  epsilon: 0.05, // stress chaleur
+};
+
+function calcIMC({ gddCumule, tmax, tmin, hr, dli }) {
+  const vpd = calcVPDFromTH((tmax + tmin) / 2, hr);
+  const composante_positive =
+    POIDS_IMC.alpha * normGDD(gddCumule) +
+    POIDS_IMC.beta * normDIF(tmax, tmin) +
+    POIDS_IMC.gamma * normDLI(dli);
+  const composante_stress =
+    POIDS_IMC.delta * stressVPD(vpd) +
+    POIDS_IMC.epsilon * stressTemperature(tmax);
+  const imc = Math.max(0, Math.min(1, composante_positive - composante_stress));
+  return {
+    imc: parseFloat(imc.toFixed(3)),
+    pourcentage: Math.round(imc * 100),
+    vpd: parseFloat(vpd.toFixed(2)),
+    stressVPD: parseFloat(stressVPD(vpd).toFixed(2)),
+    stressThermal: parseFloat(stressTemperature(tmax).toFixed(2)),
+    alerte: imc >= 0.85 ? "RECOLTE_IMMINENTE" :
+            imc >= 0.70 ? "SURVEILLER_J3" :
+            imc >= 0.50 ? "EN_COURS" : "PRECOCE",
+  };
+}
+
+// =============================================
+// GDD Nightly Job — runs at 23:00 Africa/Casablanca
+// =============================================
+exports.gddNightlyJob = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 120, memory: "256MB" })
+  .pubsub.schedule("0 23 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(async () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    console.log("GDD nightly job for", todayStr);
+
+    // Skip if before J0
+    if (todayStr < GDD_CONFIG.J0) {
+      console.log("Before J0, skipping");
+      return null;
+    }
+
+    try {
+      // 1. Get FarmRoad data
+      const farmroadData = await refreshFarmroadCache(todayStr, null);
+      if (!farmroadData || !farmroadData.devices || farmroadData.devices.length === 0) {
+        console.error("GDD: No FarmRoad data available for", todayStr);
+        return null;
+      }
+
+      // 2. Select sensor with lowest CO2 (better ventilated tunnel)
+      const serreDevices = farmroadData.devices.filter(d => d.hasSubstrate);
+      const devicesToUse = serreDevices.length > 0 ? serreDevices : farmroadData.devices;
+
+      let bestDevice = null;
+      let lowestCO2 = Infinity;
+      for (const dev of devicesToUse) {
+        const co2 = dev.measurements && dev.measurements.CO2_LEVEL ? dev.measurements.CO2_LEVEL.avg : Infinity;
+        if (co2 < lowestCO2) {
+          lowestCO2 = co2;
+          bestDevice = dev;
+        }
+      }
+      if (!bestDevice) {
+        console.error("GDD: No suitable device found");
+        return null;
+      }
+
+      const m = bestDevice.measurements || {};
+      const tmax = m.TEMPERATURE_INSIDE ? m.TEMPERATURE_INSIDE.max : null;
+      const tmin = m.TEMPERATURE_INSIDE ? m.TEMPERATURE_INSIDE.min : null;
+      const hr = m.RH_INSIDE ? m.RH_INSIDE.avg : 70;
+      const parAvg = m.PAR_INTENSITY ? m.PAR_INTENSITY.avg : 0;
+      const parCount = m.PAR_INTENSITY ? m.PAR_INTENSITY.count : 0;
+      const dli = parCount > 0 ? Math.round(parAvg * 3600 * 12 / 1e6 * 100) / 100 : null;
+
+      if (tmax === null || tmin === null) {
+        console.error("GDD: Missing temperature data from device", bestDevice.deviceId);
+        return null;
+      }
+
+      // 3. Get previous day's cumulative GDD
+      let gddCumulePrev = 0;
+      const yesterdayDate = new Date(todayStr);
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
+
+      if (yesterdayStr >= GDD_CONFIG.J0) {
+        const prevDoc = await db_firestore.collection("gdd_tracking").doc(yesterdayStr).get();
+        if (prevDoc.exists) {
+          gddCumulePrev = prevDoc.data().gdd_cumule || 0;
+        }
+      }
+
+      // 4. Calculate GDD + IMC
+      const gddJour = Math.round(calcGDD(tmax, tmin) * 100) / 100;
+      const gddCumule = Math.round((gddCumulePrev + gddJour) * 100) / 100;
+      const imcResult = calcIMC({ gddCumule, tmax, tmin, hr, dli });
+
+      // 5. Save to Firestore
+      const doc = {
+        date: todayStr,
+        tmax: Math.round(tmax * 100) / 100,
+        tmin: Math.round(tmin * 100) / 100,
+        gdd_jour: gddJour,
+        gdd_cumule: gddCumule,
+        hr_moyenne: Math.round(hr * 100) / 100,
+        dli: dli,
+        imc: imcResult.imc,
+        imc_pourcentage: imcResult.pourcentage,
+        vpd: imcResult.vpd,
+        stress_vpd: imcResult.stressVPD,
+        stress_thermal: imcResult.stressThermal,
+        alerte: imcResult.alerte,
+        capteur_id: bestDevice.deviceId || bestDevice.compartmentId || "unknown",
+        variete: GDD_CONFIG.VARIETE,
+        j0: GDD_CONFIG.J0,
+        serre: GDD_CONFIG.SERRE,
+        _createdAt: Date.now(),
+      };
+
+      await db_firestore.collection("gdd_tracking").doc(todayStr).set(doc);
+      console.log("GDD saved:", todayStr, "GDD_jour:", gddJour, "GDD_cumule:", gddCumule, "IMC:", imcResult.pourcentage + "%", "Alerte:", imcResult.alerte);
+
+      // 6. Notification si récolte imminente (placeholder — WhatsApp à intégrer)
+      if (imcResult.alerte === "RECOLTE_IMMINENTE") {
+        console.log("🚨 RECOLTE_IMMINENTE — GDD cumulés:", gddCumule, "/ IMC:", imcResult.pourcentage + "%");
+        // TODO: Intégrer WhatsApp Cloud API notification ici
+      }
+
+      return null;
+    } catch (err) {
+      console.error("GDD nightly job error:", err.message);
+      return null;
+    }
+  });
+
+// =============================================
+// GDD Tracking — HTTP endpoint
+// =============================================
+exports.gddTracking = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    try {
+      const snapshot = await db_firestore.collection("gdd_tracking")
+        .orderBy("date", "asc")
+        .get();
+
+      const data = [];
+      snapshot.forEach(doc => data.push(doc.data()));
+
+      if (data.length === 0) {
+        return res.json({ success: true, data: [], gddCumule: 0, imcActuel: null, joursDepuisJ0: 0, jourRecolteEstime: null });
+      }
+
+      const latest = data[data.length - 1];
+      const joursDepuisJ0 = data.length;
+      const gddMoyenJour = latest.gdd_cumule / joursDepuisJ0;
+
+      // Estimation date récolte
+      let jourRecolteEstime = null;
+      if (gddMoyenJour > 0 && latest.gdd_cumule < GDD_CONFIG.GDD_CIBLE) {
+        const joursRestants = Math.ceil((GDD_CONFIG.GDD_CIBLE - latest.gdd_cumule) / gddMoyenJour);
+        const dateEstimee = new Date(latest.date);
+        dateEstimee.setDate(dateEstimee.getDate() + joursRestants);
+        jourRecolteEstime = dateEstimee.toISOString().slice(0, 10);
+      }
+
+      res.json({
+        success: true,
+        data,
+        gddCumule: latest.gdd_cumule,
+        imcActuel: {
+          imc: latest.imc,
+          pourcentage: latest.imc_pourcentage,
+          alerte: latest.alerte,
+          vpd: latest.vpd,
+          stress_vpd: latest.stress_vpd,
+          stress_thermal: latest.stress_thermal,
+        },
+        joursDepuisJ0,
+        gddMoyenJour: Math.round(gddMoyenJour * 100) / 100,
+        jourRecolteEstime,
+        config: {
+          j0: GDD_CONFIG.J0,
+          gddCible: GDD_CONFIG.GDD_CIBLE,
+          variete: GDD_CONFIG.VARIETE,
+        },
+      });
+    } catch (err) {
+      console.error("GDD tracking error:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // Harvest Prediction — Helpers
 // =============================================
 
@@ -1927,9 +2194,10 @@ exports.uploadEcarts = functions
 // =============================================
 Object.assign(exports, require("./emailService"));
 const pointageMod = require("./pointageService");
-Object.assign(exports, pointageMod);
-// Alias to work around GCP stuck function name
+// Keep pointageRH/pointageRH2 exported to avoid GCP deletion issues
+exports.pointageRH = pointageMod.pointageRH;
 exports.pointageRH2 = pointageMod.pointageRH;
+exports.warmPointageCache = pointageMod.warmPointageCache;
 // Fresh function name to bypass GCP operation lock
 exports.pointageV3 = functions
   .region("europe-west1")
@@ -4289,12 +4557,17 @@ Réponds en français. Utilise des données chiffrées et des comparaisons avec 
           }
         }
 
-        const FACTURE_PROMPT = `Tu es un assistant spécialisé dans l'analyse de factures fournisseur pour Berry Good Farms SARL, une entreprise agricole basée à Agadir, Maroc.
+        const currentYear = new Date().getFullYear();
+        const FACTURE_PROMPT = `Tu es un assistant spécialisé dans l'analyse de factures fournisseur pour Berry Good Farms.
 
-ÉTAPE 1 - VÉRIFICATION CLIENT:
-Vérifie que la facture est adressée à "Berry Good Farms" ou une de ses entités (Berry Good Farms SARL, Berry Good Farms SARL 3, R-Berry Good Farms SARL, BGF).
-Vérifie que l'adresse Agadir, 80000 ou 80020 est mentionnée.
-Si le client n'est PAS Berry Good Farms ou si ce n'est pas une facture → REJETTE.
+ÉTAPE 1 - VÉRIFICATION (les 3 conditions doivent être remplies, sinon ACCEPTE):
+1. Le nom du client sur la facture contient "BERRY GOOD" ou "BGF" (peu importe la forme juridique ou la ville)
+2. Une adresse postale du client est mentionnée (n'importe quelle adresse au Maroc)
+3. Un numéro ICE client est présent (nos ICE: 002106859000069 ou 001536944000082)
+4. La date de la facture est de l'année ${currentYear}
+
+IMPORTANT: Berry Good Farms a PLUSIEURS sites au Maroc (Agadir, Laarache, etc). Ne rejette PAS à cause de la ville ou l'adresse. Accepte tant que le nom contient "BERRY GOOD" ou "BGF".
+Si ce n'est clairement PAS une facture pour Berry Good Farms → REJETTE avec explication.
 
 ÉTAPE 2 - EXTRACTION DES DONNÉES:
 Extrais les champs suivants en JSON strict:
@@ -5867,6 +6140,48 @@ exports.tasks = functions
         return res.json({ success: true });
       }
 
+      // ---- FARM TODOS: list ----
+      if (action === "farm-todos") {
+        const snap = await db_firestore.collection("farm_todos").orderBy("createdAt", "desc").get();
+        const todos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return res.json({ success: true, todos });
+      }
+
+      // ---- FARM TODOS: add ----
+      if (action === "farm-todo-add" && req.method === "POST") {
+        const { farm, text } = req.body;
+        if (!farm || !text) return res.status(400).json({ success: false, error: "farm, text requis" });
+        await db_firestore.collection("farm_todos").add({
+          farm, text: text.trim(), done: false,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.json({ success: true });
+      }
+
+      // ---- FARM TODOS: toggle done ----
+      if (action === "farm-todo-toggle" && req.method === "POST") {
+        const { id, done } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        await db_firestore.collection("farm_todos").doc(id).update({ done: !!done });
+        return res.json({ success: true });
+      }
+
+      // ---- FARM TODOS: delete ----
+      if (action === "farm-todo-delete" && req.method === "POST") {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        await db_firestore.collection("farm_todos").doc(id).delete();
+        return res.json({ success: true });
+      }
+
+      // ---- FARM TODOS: edit ----
+      if (action === "farm-todo-edit" && req.method === "POST") {
+        const { id, text } = req.body;
+        if (!id || !text) return res.status(400).json({ success: false, error: "id, text requis" });
+        await db_firestore.collection("farm_todos").doc(id).update({ text: text.trim() });
+        return res.json({ success: true });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur tasks API:", err);
@@ -6593,6 +6908,36 @@ exports.notifications = functions
         );
       }
 
+      // ---- Alerts from Firestore (expedition_manquante etc.) for relevant profiles ----
+      const alertProfiles = ['chef_f1', 'chef_f5', 'qualite', 'dg', 'achats', 'finance'];
+      if (alertProfiles.includes(profile)) {
+        promises.push(
+          db_firestore.collection("alerts")
+            .where("profiles", "array-contains", profile)
+            .orderBy("createdAt", "desc")
+            .limit(20)
+            .get()
+            .then(snap => {
+              snap.docs.forEach(doc => {
+                const a = doc.data();
+                const isRead = a.read && a.read[profile];
+                if (!isRead) {
+                  categories.alertes.push({
+                    key: 'alert_' + doc.id,
+                    label: a.message || 'Alerte',
+                    count: 1,
+                    icon: a.type === 'expedition_manquante' ? 'fa-truck-ramp-box' : 'fa-triangle-exclamation',
+                    color: a.severity === 'warning' ? '#f39c12' : '#e74c3c',
+                    tab: 'qualite_expeditions',
+                    alertId: doc.id,
+                  });
+                }
+              });
+            })
+            .catch(err => console.warn('Alerts query error:', err))
+        );
+      }
+
       // ---- Await all promises ----
       await Promise.all(promises);
 
@@ -6618,6 +6963,47 @@ exports.notifications = functions
       return res.json({ success: true, categories, totalCount });
     } catch (err) {
       console.error("Erreur notifications:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// API: Alerts — List and manage alerts
+// =============================================
+exports.alerts = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    try {
+      const action = req.query.action || req.body?.action || "list";
+      const profile = req.query.profile || req.body?.profile || "";
+
+      if (action === "list") {
+        const snap = await db_firestore.collection("alerts")
+          .orderBy("createdAt", "desc")
+          .limit(50)
+          .get();
+        const alerts = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter(a => !profile || (a.profiles && a.profiles.includes(profile)));
+        return res.json({ success: true, alerts });
+      }
+
+      if (action === "mark-read") {
+        const alertId = req.body?.alertId;
+        if (!alertId || !profile) return res.status(400).json({ success: false, error: "alertId and profile required" });
+        await db_firestore.collection("alerts").doc(alertId).update({
+          [`read.${profile}`]: true,
+        });
+        return res.json({ success: true });
+      }
+
+      return res.status(400).json({ success: false, error: "Unknown action" });
+    } catch (err) {
+      console.error("Erreur alerts:", err);
       res.status(500).json({ success: false, error: err.message });
     }
   });

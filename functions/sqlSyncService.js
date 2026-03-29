@@ -9,7 +9,7 @@ const functions = require("firebase-functions");
 const sql = require("mssql");
 
 // Shared config modules
-const { db: db_firestore } = require("./config/firebase");
+const { admin, db: db_firestore } = require("./config/firebase");
 const baseSqlConfig = require("./config/sqlConfig");
 
 // Sync queries are heavier — use longer request timeout

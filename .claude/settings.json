@@ -171,7 +171,21 @@
       "Bash(curl -s -X POST 'https://berrygood-farms-dashboard.web.app/api/tasks?action=create' -H 'Content-Type: application/json' -d '{\"\"title\"\":\"\"test\"\"}')",
       "Bash(firebase functions:log --only pointageRH -n 20)",
       "Bash(firebase functions:log -n 50 --only pointageV3)",
-      "Bash(grep -n \"currentTab === ''achats_bdc\\\\|currentTab === ''chef_validations\\\\|currentTab === ''dg_validations\\\\|currentTab === ''fin_bdc\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/index.html)"
+      "Bash(grep -n \"currentTab === ''achats_bdc\\\\|currentTab === ''chef_validations\\\\|currentTab === ''dg_validations\\\\|currentTab === ''fin_bdc\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/index.html)",
+      "Bash(curl -s 'https://berrygood-farms-dashboard.web.app/index.html')",
+      "Bash(firebase functions:log --only tasks -n 5)",
+      "Bash(firebase functions:log -n 30)",
+      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f \\\\\\(-name *.xlsx -o -name *.xls -o -name *.csv -o -name *budget* -o -name *rendement* -o -name *data* \\\\\\))",
+      "Bash(ls -lh /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xls /Users/omarmaaouni/Desktop/berrygood-dashboard/*.csv)",
+      "Bash(ls -la /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xls)",
+      "Bash(ls -lh /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xls)",
+      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f -name *.json \\\\\\(! -path */node_modules/* -o -path */package.json \\\\\\))",
+      "Bash(grep -r \"Maravilla\\\\|Driscolls\\\\|rendement\\\\|BGF.*objectives\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/*.json)",
+      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard/public -name *.css)",
+      "Bash(file /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx)",
+      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f \\\\\\(-name *.json -o -name *.csv \\\\\\) ! -path */node_modules/*)",
+      "Bash(cat .firebase/*.log)",
+      "Bash(firebase functions:log --only sqlToFirestoreSync --limit 10)"
     ],
     "additionalDirectories": [
       "/tmp"
