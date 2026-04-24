@@ -296,7 +296,8 @@ async function fetchFuelData() {
         const { execSync } = require("child_process");
         execSync(`node ${path.join(__dirname, "import-fuel-to-firestore.js")}`, { stdio: "inherit" });
       } catch (importErr) {
-        console.error("⚠️  Import Firestore échoué:", importErr.message);
+        console.error("❌ Import Firestore échoué:", importErr.message);
+        process.exitCode = 1;
       }
     }
   } catch (error) {

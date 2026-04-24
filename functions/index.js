@@ -11,7 +11,7 @@ const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 // =============================================
 // Firestore Mirror — reads from synced collections
 // =============================================
-const { getConsommationRows, getCueilletteRows, getPointageRowsForDateRange, getSyncStatus } = require("./firestoreDataService");
+const { getConsommationRows, getCueilletteRows, getPointageRowsForDate, getPointageRowsForDateRange, getSyncStatus } = require("./firestoreDataService");
 const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 
 // Import & re-export sync functions
@@ -22,6 +22,44 @@ exports.sqlSyncTrigger = syncService.sqlSyncTrigger;
 exports.probeAnalyzer = syncService.probeAnalyzer;
 exports.probeAnalysisReport = syncService.probeAnalysisReport;
 exports.probeRawData = syncService.probeRawData;
+
+// Import & re-export production DB sync functions
+const prodSync = require("./prodSyncService");
+
+// Sync récolte prod (Tracabilite_recolte) — toutes les 30 min de 11h à 20h
+exports.syncRecolteFromProd = functions.pubsub
+  .schedule("*/30 11-20 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(() => prodSync.syncTracabiliteRecolte());
+
+// Sync présence entrée — 10h
+exports.syncPresenceEntree = functions.pubsub
+  .schedule("0 10 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(() => prodSync.syncPresence("entree"));
+
+// Sync présence sortie — 20h
+exports.syncPresenceSortie = functions.pubsub
+  .schedule("0 20 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(() => prodSync.syncPresence("sortie"));
+
+// Manual trigger for prod sync — ?action=recolte&since=2025-07-01 for historical
+exports.syncProdTrigger = functions
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+  const action = req.query.action || "recolte";
+  let result;
+  if (action === "recolte") result = await prodSync.syncTracabiliteRecolte(req.query.since || undefined);
+  else if (action === "presence") result = await prodSync.syncPresence(req.query.mode || "entree");
+  else result = { error: "Unknown action. Use ?action=recolte&since=2025-07-01 or ?action=presence&mode=entree|sortie" };
+  res.json(result);
+});
+
+// Import & re-export backup functions
+const backupService = require("./backupService");
+exports.scheduledBackup = backupService.scheduledBackup;
+exports.backupApi = backupService.backupApi;
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
 let sql = null;
@@ -1131,6 +1169,416 @@ exports.farmroad = functions
   });
 
 // =============================================
+// INDOOR FORECAST — Prévisions météo intérieure
+// Modèle ML: outdoor → indoor avec calibration auto
+// =============================================
+
+const METEOBLUE_API_KEY = "sWtaJy9XrwE6TAcB";
+const FORECAST_FARM = { lat: 35.08, lon: -6.14, asl: 49 };
+
+// Fetch MeteoBlue 7-day forecast (daily + hourly)
+async function fetchMeteoblueForecast() {
+  const https = require("https");
+  const url = `https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=${METEOBLUE_API_KEY}&lat=${FORECAST_FARM.lat}&lon=${FORECAST_FARM.lon}&asl=${FORECAST_FARM.asl}&format=json`;
+  return new Promise((resolve) => {
+    https.get(url, (resp) => {
+      let data = "";
+      resp.on("data", (c) => { data += c; });
+      resp.on("end", () => {
+        try { resolve(JSON.parse(data)); } catch (e) { resolve(null); }
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+// Default indoor transfer coefficients (will be learned)
+const DEFAULT_MODEL = {
+  canarienne: {
+    temp_offset: 5.0,    // T_indoor = T_outdoor + offset
+    temp_scale: 0.85,    // T_indoor_range = T_outdoor_range * scale
+    hr_offset: 15,       // HR_indoor = HR_outdoor + offset (more humid inside)
+    hr_cap: 99,
+    co2_base: 2200,      // Base CO2 (ppm) — canarienne has higher CO2
+    co2_temp_factor: 30, // CO2 increases with temperature
+    par_transmittance: 0.65, // PAR inside = PAR outside * transmittance
+    vpd_scale: 0.7,      // VPD dampened inside
+  },
+  tunnel: {
+    temp_offset: 4.0,
+    temp_scale: 0.9,
+    hr_offset: 12,
+    hr_cap: 99,
+    co2_base: 1200,
+    co2_temp_factor: 15,
+    par_transmittance: 0.55,
+    vpd_scale: 0.75,
+  }
+};
+
+// Calculate VPD from temperature and humidity
+function calcVPD(temp, hr) {
+  const esat = 0.6108 * Math.exp((17.27 * temp) / (temp + 237.3));
+  return Math.max(0, esat * (1 - hr / 100));
+}
+
+// Predict indoor conditions from outdoor forecast
+function predictIndoor(outdoor, model) {
+  const tAvgOut = (outdoor.tmax + outdoor.tmin) / 2;
+  const tRangeOut = outdoor.tmax - outdoor.tmin;
+
+  const tAvgIn = tAvgOut + model.temp_offset;
+  const tRangeIn = tRangeOut * model.temp_scale;
+  const tMax = Math.round((tAvgIn + tRangeIn / 2) * 10) / 10;
+  const tMin = Math.round((tAvgIn - tRangeIn / 2) * 10) / 10;
+
+  const hr = Math.min(model.hr_cap, Math.round(outdoor.humidity + model.hr_offset));
+  const co2 = Math.round(model.co2_base + model.co2_temp_factor * (tAvgIn - 20));
+  const par = outdoor.radiation ? Math.round(outdoor.radiation * model.par_transmittance * 10) / 10 : null;
+  const vpd = Math.round(calcVPD((tMax + tMin) / 2, hr) * model.vpd_scale * 100) / 100;
+
+  return { tMax, tMin, tAvg: Math.round(tAvgIn * 10) / 10, hr, co2, par, vpd };
+}
+
+// Update model coefficients using EMA (exponential moving average)
+function updateModelCoeffs(currentModel, predicted, actual, alpha) {
+  const a = alpha || 0.15; // learning rate
+  const updated = { ...currentModel };
+
+  // Learn temp_offset from actual vs outdoor
+  if (actual.tMax != null && predicted._outdoorTmax != null) {
+    const actualOffset = ((actual.tMax + actual.tMin) / 2) - ((predicted._outdoorTmax + predicted._outdoorTmin) / 2);
+    updated.temp_offset = Math.round((currentModel.temp_offset * (1 - a) + actualOffset * a) * 100) / 100;
+  }
+
+  // Learn HR offset
+  if (actual.hr != null && predicted._outdoorHr != null) {
+    const actualHrOffset = actual.hr - predicted._outdoorHr;
+    updated.hr_offset = Math.round((currentModel.hr_offset * (1 - a) + actualHrOffset * a) * 100) / 100;
+  }
+
+  // Learn temp_scale from range ratio
+  if (actual.tMax != null && actual.tMin != null && predicted._outdoorTmax != null) {
+    const actualRange = actual.tMax - actual.tMin;
+    const outdoorRange = predicted._outdoorTmax - predicted._outdoorTmin;
+    if (outdoorRange > 2) {
+      const actualScale = actualRange / outdoorRange;
+      updated.temp_scale = Math.round((currentModel.temp_scale * (1 - a) + actualScale * a) * 100) / 100;
+      updated.temp_scale = Math.max(0.3, Math.min(1.5, updated.temp_scale));
+    }
+  }
+
+  return updated;
+}
+
+// Compute accuracy metrics
+function computeAccuracy(predicted, actual) {
+  const errors = {};
+  if (predicted.tMax != null && actual.tMax != null) {
+    errors.tMax_error = Math.round((predicted.tMax - actual.tMax) * 10) / 10;
+    errors.tMax_pct = actual.tMax !== 0 ? Math.round(Math.abs(errors.tMax_error / actual.tMax) * 1000) / 10 : 0;
+  }
+  if (predicted.tMin != null && actual.tMin != null) {
+    errors.tMin_error = Math.round((predicted.tMin - actual.tMin) * 10) / 10;
+    errors.tMin_pct = actual.tMin !== 0 ? Math.round(Math.abs(errors.tMin_error / actual.tMin) * 1000) / 10 : 0;
+  }
+  if (predicted.hr != null && actual.hr != null) {
+    errors.hr_error = Math.round(predicted.hr - actual.hr);
+    errors.hr_pct = actual.hr !== 0 ? Math.round(Math.abs(errors.hr_error / actual.hr) * 1000) / 10 : 0;
+  }
+  // MAPE global
+  const pcts = [errors.tMax_pct, errors.tMin_pct, errors.hr_pct].filter(v => v != null);
+  errors.mape = pcts.length > 0 ? Math.round(pcts.reduce((s, v) => s + v, 0) / pcts.length * 10) / 10 : null;
+  return errors;
+}
+
+// Main scheduled function: runs daily at 21:00
+exports.indoorForecastRefresh = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 120, memory: "1GB" })
+  .pubsub.schedule("0 21 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(async () => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    console.log("[IndoorForecast] Daily refresh for " + todayStr);
+
+    try {
+      // 1) Fetch MeteoBlue forecast
+      const meteoRaw = await fetchMeteoblueForecast();
+      if (!meteoRaw || !meteoRaw.data_day) {
+        console.error("[IndoorForecast] MeteoBlue fetch failed");
+        return null;
+      }
+
+      // 2) Store raw MeteoBlue forecast
+      const dayData = meteoRaw.data_day;
+      const forecastDays = (dayData.time || []).map((dateStr, i) => ({
+        date: dateStr,
+        tmax: dayData.temperature_max ? dayData.temperature_max[i] : null,
+        tmin: dayData.temperature_min ? dayData.temperature_min[i] : null,
+        humidity: dayData.relativehumidity_mean ? dayData.relativehumidity_mean[i] : null,
+        vent: dayData.windspeed_max ? dayData.windspeed_max[i] : null,
+        precip: dayData.precipitation ? dayData.precipitation[i] : null,
+        eto: dayData.evapotranspiration ? dayData.evapotranspiration[i] : null,
+        radiation: dayData.shortwave_radiation_sum ? dayData.shortwave_radiation_sum[i] : null,
+        uv: dayData.uvindex ? dayData.uvindex[i] : null,
+      }));
+
+      // Store in meteo_history
+      await db_firestore.collection("meteo_history").doc(todayStr).set({
+        fetchedAt: todayStr,
+        forecast: forecastDays,
+        _cachedAt: Date.now()
+      });
+
+      // 3) Get today's actual FarmRoad data for calibration
+      const farmroadData = await refreshFarmroadCache(todayStr, null);
+      const devices = (farmroadData && farmroadData.devices) || [];
+
+      // Identify Canarienne (highest CO2) and Tunnel
+      const devicesWithCO2 = devices.map(d => ({
+        ...d,
+        co2Avg: d.measurements && d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : 0
+      }));
+      devicesWithCO2.sort((a, b) => (b.co2Avg || 0) - (a.co2Avg || 0));
+
+      const actualByType = {};
+      if (devicesWithCO2.length >= 1) {
+        const d = devicesWithCO2[0];
+        actualByType.canarienne = {
+          tMax: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.max : null,
+          tMin: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.min : null,
+          tAvg: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.avg : null,
+          hr: d.measurements.RH_INSIDE ? d.measurements.RH_INSIDE.avg : null,
+          co2: d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : null,
+          vpd: d.measurements.ESTIMATED_VPD_INSIDE ? d.measurements.ESTIMATED_VPD_INSIDE.avg : null,
+          substrat: d.measurements.SUBSTRATE_MOISTURE_CONTENT ? d.measurements.SUBSTRATE_MOISTURE_CONTENT.avg : null,
+        };
+      }
+      if (devicesWithCO2.length >= 2) {
+        const d = devicesWithCO2[1];
+        actualByType.tunnel = {
+          tMax: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.max : null,
+          tMin: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.min : null,
+          tAvg: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.avg : null,
+          hr: d.measurements.RH_INSIDE ? d.measurements.RH_INSIDE.avg : null,
+          co2: d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : null,
+          vpd: d.measurements.ESTIMATED_VPD_INSIDE ? d.measurements.ESTIMATED_VPD_INSIDE.avg : null,
+          substrat: d.measurements.SUBSTRATE_MOISTURE_CONTENT ? d.measurements.SUBSTRATE_MOISTURE_CONTENT.avg : null,
+        };
+      }
+
+      // Store FarmRoad actual in history
+      await db_firestore.collection("farmroad_history").doc(todayStr).set({
+        date: todayStr,
+        canarienne: actualByType.canarienne || null,
+        tunnel: actualByType.tunnel || null,
+        _cachedAt: Date.now()
+      });
+
+      // 4) Load current model coefficients
+      const modelDoc = await db_firestore.collection("forecast_model").doc("current").get();
+      let model = modelDoc.exists ? modelDoc.data() : { canarienne: { ...DEFAULT_MODEL.canarienne }, tunnel: { ...DEFAULT_MODEL.tunnel }, version: 0 };
+
+      // 5) Calibrate: compare yesterday's prediction (if exists) with today's actuals
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+      const yesterdayForecastDoc = await db_firestore.collection("indoor_forecasts").doc(yesterdayStr).get();
+      const yesterdayActualDoc = await db_firestore.collection("farmroad_history").doc(yesterdayStr).get();
+
+      let accuracyData = {};
+      if (yesterdayForecastDoc.exists && yesterdayActualDoc.exists) {
+        const yForecast = yesterdayForecastDoc.data();
+        const yActual = yesterdayActualDoc.data();
+
+        // Find yesterday's J+1 prediction (which was for today — but we check yesterday's own prediction)
+        // Actually we want to compare: the prediction that was made FOR yesterday with yesterday's actual
+        for (const type of ["canarienne", "tunnel"]) {
+          if (yForecast[type] && yActual[type]) {
+            // Find the prediction entry for yesterday's date
+            const predForYesterday = (yForecast[type] || []).find(p => p.date === yesterdayStr);
+            if (predForYesterday && yActual[type]) {
+              const acc = computeAccuracy(predForYesterday, yActual[type]);
+              accuracyData[type] = acc;
+
+              // Update model with learned corrections
+              const predWithOutdoor = { ...predForYesterday };
+              // Find outdoor data for yesterday
+              const yMeteo = await db_firestore.collection("meteo_history").doc(yesterdayStr).get();
+              if (yMeteo.exists) {
+                const yFc = (yMeteo.data().forecast || []).find(f => f.date === yesterdayStr);
+                if (yFc) {
+                  predWithOutdoor._outdoorTmax = yFc.tmax;
+                  predWithOutdoor._outdoorTmin = yFc.tmin;
+                  predWithOutdoor._outdoorHr = yFc.humidity;
+                }
+              }
+              model[type] = updateModelCoeffs(model[type], predWithOutdoor, yActual[type], 0.15);
+            }
+          }
+        }
+      }
+
+      // Save accuracy
+      if (Object.keys(accuracyData).length > 0) {
+        await db_firestore.collection("forecast_accuracy").doc(yesterdayStr).set({
+          date: yesterdayStr,
+          ...accuracyData,
+          _cachedAt: Date.now()
+        });
+      }
+
+      // 6) Generate indoor forecasts for J+1 to J+5
+      const todayOutdoor = forecastDays.find(f => f.date === todayStr);
+      const futureDays = forecastDays.filter(f => f.date > todayStr).slice(0, 5);
+
+      const predictions = { canarienne: [], tunnel: [] };
+
+      // Also predict for today (for display)
+      const allDaysToPredict = todayOutdoor ? [todayOutdoor, ...futureDays] : futureDays;
+
+      for (const day of allDaysToPredict) {
+        for (const type of ["canarienne", "tunnel"]) {
+          const pred = predictIndoor(day, model[type]);
+          predictions[type].push({
+            date: day.date,
+            ...pred,
+            outdoor: { tmax: day.tmax, tmin: day.tmin, humidity: day.humidity, eto: day.eto, precip: day.precip, radiation: day.radiation }
+          });
+        }
+      }
+
+      // 7) Save indoor forecast
+      await db_firestore.collection("indoor_forecasts").doc(todayStr).set({
+        date: todayStr,
+        canarienne: predictions.canarienne,
+        tunnel: predictions.tunnel,
+        model: { canarienne: model.canarienne, tunnel: model.tunnel },
+        _cachedAt: Date.now()
+      });
+
+      // 8) Save updated model
+      model.version = (model.version || 0) + 1;
+      model.lastUpdated = todayStr;
+      await db_firestore.collection("forecast_model").doc("current").set(model);
+
+      console.log("[IndoorForecast] Done. Model v" + model.version + ". Predictions for " + predictions.canarienne.length + " days.");
+    } catch (err) {
+      console.error("[IndoorForecast] Error:", err);
+    }
+    return null;
+  });
+
+// HTTP endpoint for indoor forecast
+exports.indoorForecast = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 120, memory: "1GB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    try {
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      // Get latest forecast
+      const forecastDoc = await db_firestore.collection("indoor_forecasts").doc(todayStr).get();
+      let forecast = forecastDoc.exists ? forecastDoc.data() : null;
+
+      // If no forecast for today, generate on-the-fly
+      if (!forecast) {
+        const meteoRaw = await fetchMeteoblueForecast();
+        if (meteoRaw && meteoRaw.data_day) {
+          const dayData = meteoRaw.data_day;
+          const forecastDays = (dayData.time || []).map((dateStr, i) => ({
+            date: dateStr,
+            tmax: dayData.temperature_max ? dayData.temperature_max[i] : null,
+            tmin: dayData.temperature_min ? dayData.temperature_min[i] : null,
+            humidity: dayData.relativehumidity_mean ? dayData.relativehumidity_mean[i] : null,
+            eto: dayData.evapotranspiration ? dayData.evapotranspiration[i] : null,
+            precip: dayData.precipitation ? dayData.precipitation[i] : null,
+            radiation: dayData.shortwave_radiation_sum ? dayData.shortwave_radiation_sum[i] : null,
+          }));
+
+          const modelDoc = await db_firestore.collection("forecast_model").doc("current").get();
+          const model = modelDoc.exists ? modelDoc.data() : DEFAULT_MODEL;
+
+          const predictions = { canarienne: [], tunnel: [] };
+          for (const day of forecastDays) {
+            for (const type of ["canarienne", "tunnel"]) {
+              const pred = predictIndoor(day, model[type] || DEFAULT_MODEL[type]);
+              predictions[type].push({
+                date: day.date,
+                ...pred,
+                outdoor: { tmax: day.tmax, tmin: day.tmin, humidity: day.humidity, eto: day.eto, precip: day.precip, radiation: day.radiation }
+              });
+            }
+          }
+          forecast = { date: todayStr, canarienne: predictions.canarienne, tunnel: predictions.tunnel, model: { canarienne: model.canarienne || DEFAULT_MODEL.canarienne, tunnel: model.tunnel || DEFAULT_MODEL.tunnel }, _cachedAt: Date.now(), live: true };
+        }
+      }
+
+      // Get accuracy history (last 14 days)
+      const accSnap = await db_firestore.collection("forecast_accuracy").orderBy("date", "desc").limit(14).get();
+      const accuracyHistory = [];
+      accSnap.forEach(doc => accuracyHistory.push(doc.data()));
+
+      // Get today's actual FarmRoad for comparison
+      const farmroadData = await refreshFarmroadCache(todayStr, null);
+      const devices = (farmroadData && farmroadData.devices) || [];
+      const devicesWithCO2 = devices.map(d => ({ ...d, co2Avg: d.measurements && d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : 0 }));
+      devicesWithCO2.sort((a, b) => (b.co2Avg || 0) - (a.co2Avg || 0));
+
+      const todayActual = {};
+      if (devicesWithCO2.length >= 1) {
+        const d = devicesWithCO2[0];
+        todayActual.canarienne = {
+          tMax: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.max : null,
+          tMin: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.min : null,
+          hr: d.measurements.RH_INSIDE ? d.measurements.RH_INSIDE.avg : null,
+          co2: d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : null,
+          vpd: d.measurements.ESTIMATED_VPD_INSIDE ? d.measurements.ESTIMATED_VPD_INSIDE.avg : null,
+        };
+      }
+      if (devicesWithCO2.length >= 2) {
+        const d = devicesWithCO2[1];
+        todayActual.tunnel = {
+          tMax: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.max : null,
+          tMin: d.measurements.TEMPERATURE_INSIDE ? d.measurements.TEMPERATURE_INSIDE.min : null,
+          hr: d.measurements.RH_INSIDE ? d.measurements.RH_INSIDE.avg : null,
+          co2: d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : null,
+          vpd: d.measurements.ESTIMATED_VPD_INSIDE ? d.measurements.ESTIMATED_VPD_INSIDE.avg : null,
+        };
+      }
+
+      // Compute global MAPE from history
+      let globalMape = null;
+      const mapes = accuracyHistory.map(a => {
+        const cm = a.canarienne ? a.canarienne.mape : null;
+        const tm = a.tunnel ? a.tunnel.mape : null;
+        return [cm, tm].filter(v => v != null);
+      }).flat();
+      if (mapes.length > 0) {
+        globalMape = Math.round(mapes.reduce((s, v) => s + v, 0) / mapes.length * 10) / 10;
+      }
+
+      res.json({
+        success: true,
+        forecast: forecast,
+        todayActual: todayActual,
+        accuracyHistory: accuracyHistory,
+        globalMape: globalMape,
+        modelVersion: forecast ? (forecast.model ? forecast.model.version : 0) : 0
+      });
+    } catch (err) {
+      console.error("[IndoorForecast] API error:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // GDD & IMC — Indice de Maturation Composite
 // Maravilla Long Cane | Larache | J0 = 29 mars 2026
 // =============================================
@@ -1143,6 +1591,200 @@ const GDD_CONFIG = {
   TUPPER: 30,
   GDD_CIBLE: 300, // milieu fourchette 250–350
 };
+
+// =============================================
+// METEO OUTDOOR — farm coordinates for Open-Meteo
+// =============================================
+const METEO_FERMES = {
+  F1:  { lat: 35.08, lon: -6.14 },
+  F5:  { lat: 35.08, lon: -6.14 },
+  F6:  { lat: 34.3425, lon: -6.5503 },
+};
+
+// Fetch outdoor weather from Open-Meteo including ETo
+async function fetchMeteoOutdoor(lat, lon, dateStr) {
+  const https = require("https");
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,relative_humidity_2m_mean,et0_fao_evapotranspiration,shortwave_radiation_sum&timezone=Africa/Casablanca&start_date=${dateStr}&end_date=${dateStr}`;
+  return new Promise((resolve) => {
+    https.get(url, (resp) => {
+      let data = "";
+      resp.on("data", (chunk) => { data += chunk; });
+      resp.on("end", () => {
+        try {
+          const j = JSON.parse(data);
+          if (!j.daily || !j.daily.time || j.daily.time.length === 0) return resolve(null);
+          resolve({
+            date: j.daily.time[0],
+            tmax: j.daily.temperature_2m_max[0],
+            tmin: j.daily.temperature_2m_min[0],
+            humidity: j.daily.relative_humidity_2m_mean ? j.daily.relative_humidity_2m_mean[0] : null,
+            wind: j.daily.windspeed_10m_max[0],
+            precip: j.daily.precipitation_sum[0],
+            eto: j.daily.et0_fao_evapotranspiration ? j.daily.et0_fao_evapotranspiration[0] : null,
+            radiation: j.daily.shortwave_radiation_sum ? j.daily.shortwave_radiation_sum[0] : null,
+            source: "open-meteo",
+          });
+        } catch (e) { resolve(null); }
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+// Fetch 7-day forecast from Open-Meteo
+async function fetchMeteoForecast7d(lat, lon) {
+  const https = require("https");
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max,relative_humidity_2m_mean,et0_fao_evapotranspiration,shortwave_radiation_sum&timezone=Africa/Casablanca&forecast_days=7`;
+  return new Promise((resolve) => {
+    https.get(url, (resp) => {
+      let data = "";
+      resp.on("data", (chunk) => { data += chunk; });
+      resp.on("end", () => {
+        try {
+          const j = JSON.parse(data);
+          if (!j.daily || !j.daily.time) return resolve([]);
+          resolve(j.daily.time.map((d, i) => ({
+            date: d,
+            tmax: j.daily.temperature_2m_max[i],
+            tmin: j.daily.temperature_2m_min[i],
+            humidity: j.daily.relative_humidity_2m_mean ? j.daily.relative_humidity_2m_mean[i] : null,
+            wind: j.daily.windspeed_10m_max[i],
+            precip: j.daily.precipitation_sum[i],
+            eto: j.daily.et0_fao_evapotranspiration ? j.daily.et0_fao_evapotranspiration[i] : null,
+            radiation: j.daily.shortwave_radiation_sum ? j.daily.shortwave_radiation_sum[i] : null,
+          })));
+        } catch (e) { resolve([]); }
+      });
+    }).on("error", () => resolve([]));
+  });
+}
+
+// Persist outdoor meteo for all farms for a given date
+async function persistMeteoOutdoor(dateStr) {
+  const results = {};
+  for (const [ferme, coords] of Object.entries(METEO_FERMES)) {
+    const data = await fetchMeteoOutdoor(coords.lat, coords.lon, dateStr);
+    if (data) {
+      await db_firestore.collection("meteo_outdoor").doc(`${dateStr}_${ferme}`).set({
+        ...data, ferme, _cachedAt: Date.now(),
+      });
+      results[ferme] = data;
+    }
+  }
+  console.log("Meteo outdoor persisted for", dateStr, "farms:", Object.keys(results).join(","));
+  return results;
+}
+
+// =============================================
+// CLIMAT MODEL — linear regression outdoor→indoor
+// =============================================
+function linearRegression(xs, ys) {
+  const n = xs.length;
+  if (n < 5) return null;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
+  for (let i = 0; i < n; i++) {
+    sx += xs[i]; sy += ys[i];
+    sxx += xs[i] * xs[i]; sxy += xs[i] * ys[i]; syy += ys[i] * ys[i];
+  }
+  const denom = n * sxx - sx * sx;
+  if (Math.abs(denom) < 1e-10) return null;
+  const a = (n * sxy - sx * sy) / denom;
+  const b = (sy - a * sx) / n;
+  const yMean = sy / n;
+  let ssTot = 0, ssRes = 0;
+  for (let i = 0; i < n; i++) {
+    ssTot += (ys[i] - yMean) ** 2;
+    ssRes += (ys[i] - (a * xs[i] + b)) ** 2;
+  }
+  const r2 = ssTot > 0 ? Math.round((1 - ssRes / ssTot) * 1000) / 1000 : 0;
+  return { a: Math.round(a * 1000) / 1000, b: Math.round(b * 100) / 100, r2 };
+}
+
+async function updateClimatModel(dateStr) {
+  // Collect last 45 days of outdoor + indoor data
+  const days = [];
+  const d = new Date(dateStr + "T12:00:00");
+  for (let i = 45; i >= 0; i--) {
+    const dd = new Date(d); dd.setDate(dd.getDate() - i);
+    days.push(dd.toISOString().slice(0, 10));
+  }
+
+  // Fetch outdoor data
+  const outdoorMap = {};
+  const outdoorSnap = await db_firestore.collection("meteo_outdoor")
+    .where("ferme", "==", "F1") // primary serre farm
+    .orderBy("date", "asc").get();
+  outdoorSnap.forEach(doc => { const d = doc.data(); outdoorMap[d.date] = d; });
+
+  // Fetch indoor data (serre_data)
+  const indoorMap = {};
+  const indoorSnap = await db_firestore.collection("farms").doc("larache")
+    .collection("serre_data").orderBy("date", "asc").get();
+  indoorSnap.forEach(doc => { const d = doc.data(); indoorMap[d.date] = d; });
+
+  // Build paired arrays
+  const paired = days.filter(d => outdoorMap[d] && indoorMap[d] && indoorMap[d].T_max_serre != null && outdoorMap[d].tmax != null);
+  if (paired.length < 7) {
+    console.log("Climat model: not enough paired data (" + paired.length + " days)");
+    return null;
+  }
+
+  const outTmax = paired.map(d => outdoorMap[d].tmax);
+  const outTmin = paired.map(d => outdoorMap[d].tmin);
+  const outHR = paired.map(d => outdoorMap[d].humidity || 60);
+  const inTmax = paired.map(d => indoorMap[d].T_max_serre);
+  const inTmin = paired.map(d => indoorMap[d].T_min_serre);
+  const inHR = paired.map(d => indoorMap[d].HR_moyenne || 70);
+
+  const regTmax = linearRegression(outTmax, inTmax);
+  const regTmin = linearRegression(outTmin, inTmin);
+  const regHR = linearRegression(outHR, inHR);
+
+  if (!regTmax || !regTmin) {
+    console.log("Climat model: regression failed");
+    return null;
+  }
+
+  // Compare yesterday's prediction with today's reality
+  const yesterday = new Date(d); yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+  let dailyError = null;
+  if (outdoorMap[yesterdayStr] && indoorMap[dateStr]) {
+    const predTmax = regTmax.a * outdoorMap[yesterdayStr].tmax + regTmax.b;
+    const actualTmax = indoorMap[dateStr].T_max_serre;
+    if (actualTmax != null) {
+      dailyError = {
+        date: dateStr,
+        predicted_tmax: Math.round(predTmax * 10) / 10,
+        actual_tmax: Math.round(actualTmax * 10) / 10,
+        error: Math.round(Math.abs(predTmax - actualTmax) * 10) / 10,
+      };
+    }
+  }
+
+  const modelDoc = {
+    ferme: "F1",
+    serre_type: "tunnel",
+    coefficients: {
+      tmax: regTmax,
+      tmin: regTmin,
+      hr: regHR || { a: 1, b: 0, r2: 0 },
+    },
+    training_days: paired.length,
+    last_updated: Date.now(),
+  };
+
+  // Merge daily_errors array (keep last 30)
+  const existingDoc = await db_firestore.collection("climat_models").doc("F1_tunnel").get();
+  let errors = existingDoc.exists ? (existingDoc.data().daily_errors || []) : [];
+  if (dailyError) errors.push(dailyError);
+  if (errors.length > 30) errors = errors.slice(-30);
+  modelDoc.daily_errors = errors;
+
+  await db_firestore.collection("climat_models").doc("F1_tunnel").set(modelDoc);
+  console.log("Climat model updated: tmax R²=" + regTmax.r2 + ", tmin R²=" + (regTmin ? regTmin.r2 : "N/A") + ", HR R²=" + (regHR ? regHR.r2 : "N/A") + ", training=" + paired.length + " days");
+
+  return modelDoc;
+}
 
 // --- GDD journalier ---
 function calcGDD(tmax, tmin, tbase = GDD_CONFIG.TBASE, tupper = GDD_CONFIG.TUPPER) {
@@ -1220,117 +1862,156 @@ function calcIMC({ gddCumule, tmax, tmin, hr, dli }) {
   };
 }
 
+// Helper: local date string in Africa/Casablanca timezone
+function localDateStr(date) {
+  const d = date || new Date();
+  // Use Intl to get Casablanca date reliably
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+  return parts; // returns YYYY-MM-DD
+}
+
+// Core GDD computation for a given date string
+async function computeGDDForDate(dateStr) {
+  // Skip if before J0
+  if (dateStr < GDD_CONFIG.J0) return { skipped: true, reason: "Before J0" };
+
+  // 1. Get FarmRoad data
+  const farmroadData = await refreshFarmroadCache(dateStr, null);
+  if (!farmroadData || !farmroadData.devices || farmroadData.devices.length === 0) {
+    // Fallback: try aggregateSerreData (may use Open-Meteo)
+    const serre = await aggregateSerreData(dateStr);
+    if (!serre || serre.T_max_serre === undefined) {
+      return { error: "No data available for " + dateStr };
+    }
+    // Use serre data directly
+    const tmax = serre.T_max_serre;
+    const tmin = serre.T_min_serre;
+    const hr = serre.HR_moyenne || 70;
+    const dli = serre.PAR_sum || null;
+    return await _saveGDD(dateStr, tmax, tmin, hr, dli, "serre_fallback");
+  }
+
+  // 2. Select sensor with lowest CO2 (better ventilated tunnel)
+  const serreDevices = farmroadData.devices.filter(d => d.hasSubstrate);
+  const devicesToUse = serreDevices.length > 0 ? serreDevices : farmroadData.devices;
+
+  let bestDevice = null;
+  let lowestCO2 = Infinity;
+  for (const dev of devicesToUse) {
+    const co2 = dev.measurements && dev.measurements.CO2_LEVEL ? dev.measurements.CO2_LEVEL.avg : Infinity;
+    if (co2 < lowestCO2) {
+      lowestCO2 = co2;
+      bestDevice = dev;
+    }
+  }
+  if (!bestDevice) return { error: "No suitable device found" };
+
+  const m = bestDevice.measurements || {};
+  const tmax = m.TEMPERATURE_INSIDE ? m.TEMPERATURE_INSIDE.max : null;
+  const tmin = m.TEMPERATURE_INSIDE ? m.TEMPERATURE_INSIDE.min : null;
+  const hr = m.RH_INSIDE ? m.RH_INSIDE.avg : 70;
+  const parAvg = m.PAR_INTENSITY ? m.PAR_INTENSITY.avg : 0;
+  const parCount = m.PAR_INTENSITY ? m.PAR_INTENSITY.count : 0;
+  const dli = parCount > 0 ? Math.round(parAvg * 3600 * 12 / 1e6 * 100) / 100 : null;
+
+  if (tmax === null || tmin === null) return { error: "Missing temperature data" };
+
+  return await _saveGDD(dateStr, tmax, tmin, hr, dli, bestDevice.deviceId || bestDevice.compartmentId || "unknown");
+}
+
+async function _saveGDD(dateStr, tmax, tmin, hr, dli, capteurId) {
+  // Get previous day's cumulative GDD
+  let gddCumulePrev = 0;
+  const prevDate = new Date(dateStr + "T12:00:00");
+  prevDate.setDate(prevDate.getDate() - 1);
+  const prevStr = prevDate.toISOString().slice(0, 10);
+
+  if (prevStr >= GDD_CONFIG.J0) {
+    const prevDoc = await db_firestore.collection("gdd_tracking").doc(prevStr).get();
+    if (prevDoc.exists) {
+      gddCumulePrev = prevDoc.data().gdd_cumule || 0;
+    }
+  }
+
+  const gddJour = Math.round(calcGDD(tmax, tmin) * 100) / 100;
+  const gddCumule = Math.round((gddCumulePrev + gddJour) * 100) / 100;
+  const imcResult = calcIMC({ gddCumule, tmax, tmin, hr, dli });
+
+  const doc = {
+    date: dateStr,
+    tmax: Math.round(tmax * 100) / 100,
+    tmin: Math.round(tmin * 100) / 100,
+    gdd_jour: gddJour,
+    gdd_cumule: gddCumule,
+    hr_moyenne: Math.round(hr * 100) / 100,
+    dli: dli,
+    imc: imcResult.imc,
+    imc_pourcentage: imcResult.pourcentage,
+    vpd: imcResult.vpd,
+    stress_vpd: imcResult.stressVPD,
+    stress_thermal: imcResult.stressThermal,
+    alerte: imcResult.alerte,
+    capteur_id: capteurId,
+    variete: GDD_CONFIG.VARIETE,
+    j0: GDD_CONFIG.J0,
+    serre: GDD_CONFIG.SERRE,
+    _createdAt: Date.now(),
+  };
+
+  await db_firestore.collection("gdd_tracking").doc(dateStr).set(doc);
+
+  // Also populate serre_data so climatProduction endpoint has fresh data
+  await db_firestore.collection("farms").doc("larache").collection("serre_data").doc(dateStr).set({
+    date: dateStr,
+    T_max_serre: Math.round(tmax * 100) / 100,
+    T_min_serre: Math.round(tmin * 100) / 100,
+    HR_moyenne: Math.round(hr * 100) / 100,
+    PAR_sum: dli,
+    source: capteurId,
+    _cachedAt: Date.now(),
+  }, { merge: true });
+
+  console.log("GDD saved:", dateStr, "GDD_jour:", gddJour, "GDD_cumule:", gddCumule, "IMC:", imcResult.pourcentage + "%", "Alerte:", imcResult.alerte);
+
+  if (imcResult.alerte === "RECOLTE_IMMINENTE") {
+    console.log("RECOLTE_IMMINENTE — GDD cumules:", gddCumule, "/ IMC:", imcResult.pourcentage + "%");
+  }
+
+  return doc;
+}
+
 // =============================================
 // GDD Nightly Job — runs at 23:00 Africa/Casablanca
 // =============================================
 exports.gddNightlyJob = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 120, memory: "256MB" })
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
   .pubsub.schedule("0 23 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(async () => {
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = localDateStr();
     console.log("GDD nightly job for", todayStr);
 
-    // Skip if before J0
-    if (todayStr < GDD_CONFIG.J0) {
-      console.log("Before J0, skipping");
-      return null;
-    }
+    // 1. GDD computation (existing)
+    const result = await computeGDDForDate(todayStr);
+    if (result.error) console.error("GDD job error:", result.error);
+    if (result.skipped) console.log("GDD job skipped:", result.reason);
 
+    // 2. Persist outdoor meteo for all farms
     try {
-      // 1. Get FarmRoad data
-      const farmroadData = await refreshFarmroadCache(todayStr, null);
-      if (!farmroadData || !farmroadData.devices || farmroadData.devices.length === 0) {
-        console.error("GDD: No FarmRoad data available for", todayStr);
-        return null;
-      }
-
-      // 2. Select sensor with lowest CO2 (better ventilated tunnel)
-      const serreDevices = farmroadData.devices.filter(d => d.hasSubstrate);
-      const devicesToUse = serreDevices.length > 0 ? serreDevices : farmroadData.devices;
-
-      let bestDevice = null;
-      let lowestCO2 = Infinity;
-      for (const dev of devicesToUse) {
-        const co2 = dev.measurements && dev.measurements.CO2_LEVEL ? dev.measurements.CO2_LEVEL.avg : Infinity;
-        if (co2 < lowestCO2) {
-          lowestCO2 = co2;
-          bestDevice = dev;
-        }
-      }
-      if (!bestDevice) {
-        console.error("GDD: No suitable device found");
-        return null;
-      }
-
-      const m = bestDevice.measurements || {};
-      const tmax = m.TEMPERATURE_INSIDE ? m.TEMPERATURE_INSIDE.max : null;
-      const tmin = m.TEMPERATURE_INSIDE ? m.TEMPERATURE_INSIDE.min : null;
-      const hr = m.RH_INSIDE ? m.RH_INSIDE.avg : 70;
-      const parAvg = m.PAR_INTENSITY ? m.PAR_INTENSITY.avg : 0;
-      const parCount = m.PAR_INTENSITY ? m.PAR_INTENSITY.count : 0;
-      const dli = parCount > 0 ? Math.round(parAvg * 3600 * 12 / 1e6 * 100) / 100 : null;
-
-      if (tmax === null || tmin === null) {
-        console.error("GDD: Missing temperature data from device", bestDevice.deviceId);
-        return null;
-      }
-
-      // 3. Get previous day's cumulative GDD
-      let gddCumulePrev = 0;
-      const yesterdayDate = new Date(todayStr);
-      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-      const yesterdayStr = yesterdayDate.toISOString().slice(0, 10);
-
-      if (yesterdayStr >= GDD_CONFIG.J0) {
-        const prevDoc = await db_firestore.collection("gdd_tracking").doc(yesterdayStr).get();
-        if (prevDoc.exists) {
-          gddCumulePrev = prevDoc.data().gdd_cumule || 0;
-        }
-      }
-
-      // 4. Calculate GDD + IMC
-      const gddJour = Math.round(calcGDD(tmax, tmin) * 100) / 100;
-      const gddCumule = Math.round((gddCumulePrev + gddJour) * 100) / 100;
-      const imcResult = calcIMC({ gddCumule, tmax, tmin, hr, dli });
-
-      // 5. Save to Firestore
-      const doc = {
-        date: todayStr,
-        tmax: Math.round(tmax * 100) / 100,
-        tmin: Math.round(tmin * 100) / 100,
-        gdd_jour: gddJour,
-        gdd_cumule: gddCumule,
-        hr_moyenne: Math.round(hr * 100) / 100,
-        dli: dli,
-        imc: imcResult.imc,
-        imc_pourcentage: imcResult.pourcentage,
-        vpd: imcResult.vpd,
-        stress_vpd: imcResult.stressVPD,
-        stress_thermal: imcResult.stressThermal,
-        alerte: imcResult.alerte,
-        capteur_id: bestDevice.deviceId || bestDevice.compartmentId || "unknown",
-        variete: GDD_CONFIG.VARIETE,
-        j0: GDD_CONFIG.J0,
-        serre: GDD_CONFIG.SERRE,
-        _createdAt: Date.now(),
-      };
-
-      await db_firestore.collection("gdd_tracking").doc(todayStr).set(doc);
-      console.log("GDD saved:", todayStr, "GDD_jour:", gddJour, "GDD_cumule:", gddCumule, "IMC:", imcResult.pourcentage + "%", "Alerte:", imcResult.alerte);
-
-      // 6. Notification si récolte imminente (placeholder — WhatsApp à intégrer)
-      if (imcResult.alerte === "RECOLTE_IMMINENTE") {
-        console.log("🚨 RECOLTE_IMMINENTE — GDD cumulés:", gddCumule, "/ IMC:", imcResult.pourcentage + "%");
-        // TODO: Intégrer WhatsApp Cloud API notification ici
-      }
-
-      return null;
+      await persistMeteoOutdoor(todayStr);
     } catch (err) {
-      console.error("GDD nightly job error:", err.message);
-      return null;
+      console.error("Meteo outdoor persist error:", err.message);
     }
+
+    // 3. Update climat model (outdoor→indoor regression)
+    try {
+      await updateClimatModel(todayStr);
+    } catch (err) {
+      console.error("Climat model update error:", err.message);
+    }
+
+    return null;
   });
 
 // =============================================
@@ -1338,7 +2019,7 @@ exports.gddNightlyJob = functions
 // =============================================
 exports.gddTracking = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .runWith({ timeoutSeconds: 120, memory: "512MB" })
   .https.onRequest(async (req, res) => {
     setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
@@ -1346,6 +2027,31 @@ exports.gddTracking = functions
     if (!authUser) return;
 
     try {
+      // Manual trigger: POST /api/gdd-tracking?action=compute&date=2026-03-29
+      // or POST /api/gdd-tracking?action=backfill to fill all days from J0 to today
+      if (req.method === "POST") {
+        const action = req.query.action;
+        if (action === "compute") {
+          const dateParam = req.query.date || localDateStr();
+          const result = await computeGDDForDate(dateParam);
+          return res.json({ success: !result.error, ...result });
+        }
+        if (action === "backfill") {
+          const today = localDateStr();
+          const results = [];
+          let d = new Date(GDD_CONFIG.J0 + "T12:00:00");
+          const end = new Date(today + "T12:00:00");
+          while (d <= end) {
+            const ds = d.toISOString().slice(0, 10);
+            const r = await computeGDDForDate(ds);
+            results.push({ date: ds, ...r });
+            d.setDate(d.getDate() + 1);
+          }
+          return res.json({ success: true, backfilled: results.length, results });
+        }
+        return res.status(400).json({ error: "Unknown action. Use ?action=compute or ?action=backfill" });
+      }
+
       const snapshot = await db_firestore.collection("gdd_tracking")
         .orderBy("date", "asc")
         .get();
@@ -1354,7 +2060,7 @@ exports.gddTracking = functions
       snapshot.forEach(doc => data.push(doc.data()));
 
       if (data.length === 0) {
-        return res.json({ success: true, data: [], gddCumule: 0, imcActuel: null, joursDepuisJ0: 0, jourRecolteEstime: null });
+        return res.json({ success: true, data: [], gddCumule: 0, imcActuel: null, joursDepuisJ0: 0, jourRecolteEstime: null, config: { j0: GDD_CONFIG.J0, gddCible: GDD_CONFIG.GDD_CIBLE, variete: GDD_CONFIG.VARIETE } });
       }
 
       const latest = data[data.length - 1];
@@ -1398,6 +2104,202 @@ exports.gddTracking = functions
   });
 
 // =============================================
+// Climat-Production — Corrélations décalées
+// =============================================
+
+function pearsonCorrelation(x, y) {
+  const n = Math.min(x.length, y.length);
+  if (n < 5) return 0;
+  let sumX = 0, sumY = 0;
+  for (let i = 0; i < n; i++) { sumX += x[i]; sumY += y[i]; }
+  const meanX = sumX / n, meanY = sumY / n;
+  let num = 0, denX = 0, denY = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = x[i] - meanX, dy = y[i] - meanY;
+    num += dx * dy; denX += dx * dx; denY += dy * dy;
+  }
+  const den = Math.sqrt(denX * denY);
+  return den === 0 ? 0 : num / den;
+}
+
+function laggedCorrelation(production, indicator, maxLag = 5) {
+  let bestR = 0, bestLag = 0;
+  for (let lag = 0; lag <= maxLag; lag++) {
+    // production[i] correlated with indicator[i - lag]
+    const prodSlice = production.slice(lag);
+    const indSlice = indicator.slice(0, indicator.length - lag);
+    const n = Math.min(prodSlice.length, indSlice.length);
+    if (n < 5) continue;
+    const r = pearsonCorrelation(prodSlice.slice(0, n), indSlice.slice(0, n));
+    if (Math.abs(r) > Math.abs(bestR)) { bestR = r; bestLag = lag; }
+  }
+  const absR = Math.abs(bestR);
+  const interpretation = absR >= 0.7 ? "Forte" : absR >= 0.4 ? "Modérée" : absR >= 0.2 ? "Faible" : "Non significative";
+  return { r: Math.round(bestR * 100) / 100, lag_optimal: bestLag, interpretation };
+}
+
+exports.climatProduction = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    try {
+      const days = Math.min(parseInt(req.query.days) || 30, 60);
+      const varieteFilter = req.query.variete || null;
+
+      // Date range
+      const endDate = localDateStr();
+      const startD = new Date(endDate + "T12:00:00");
+      startD.setDate(startD.getDate() - days - 5); // extra 5 days for lag
+      const startDate = startD.toISOString().slice(0, 10);
+
+      // 1. Get production data
+      const cueilletteRows = await getCueilletteRows(startDate, endDate);
+
+      // Get available varieties
+      const varietesSet = new Set();
+      cueilletteRows.forEach(r => { if (r.Variete) varietesSet.add(r.Variete); });
+      const varietesDisponibles = Array.from(varietesSet).sort();
+
+      // Aggregate production by date and variety
+      const prodByDate = {};
+      cueilletteRows.forEach(r => {
+        if (varieteFilter && r.Variete !== varieteFilter) return;
+        if (!prodByDate[r.DateStr]) prodByDate[r.DateStr] = 0;
+        prodByDate[r.DateStr] += r.Poids_total_kg || 0;
+      });
+
+      // 2. Get serre data for each date
+      const allDates = [];
+      const d = new Date(startDate + "T12:00:00");
+      const endD = new Date(endDate + "T12:00:00");
+      while (d <= endD) {
+        allDates.push(d.toISOString().slice(0, 10));
+        d.setDate(d.getDate() + 1);
+      }
+
+      // Batch read serre_data
+      const serreRefs = allDates.map(ds => db_firestore.collection("farms").doc("larache").collection("serre_data").doc(ds));
+      const serreDocs = [];
+      // Read in chunks of 10
+      for (let i = 0; i < serreRefs.length; i += 10) {
+        const chunk = serreRefs.slice(i, i + 10);
+        const snaps = await Promise.all(chunk.map(ref => ref.get()));
+        serreDocs.push(...snaps);
+      }
+
+      const serreByDate = {};
+      serreDocs.forEach(snap => {
+        if (snap.exists) {
+          const data = snap.data();
+          serreByDate[data.date || snap.id] = data;
+        }
+      });
+
+      // 2b. Fallback: batch read gdd_tracking for dates missing from serre_data
+      const gddRefs = allDates.map(ds => db_firestore.collection("gdd_tracking").doc(ds));
+      const gddDocs = [];
+      for (let i = 0; i < gddRefs.length; i += 10) {
+        const chunk = gddRefs.slice(i, i + 10);
+        const snaps = await Promise.all(chunk.map(ref => ref.get()));
+        gddDocs.push(...snaps);
+      }
+      const gddByDate = {};
+      gddDocs.forEach(snap => {
+        if (snap.exists) gddByDate[snap.id] = snap.data();
+      });
+
+      // 3. Build daily data array (serre_data preferred, gdd_tracking as fallback)
+      const dailyData = [];
+      for (const date of allDates) {
+        const serre = serreByDate[date];
+        const gdd = gddByDate[date];
+        const prodKg = prodByDate[date] || 0;
+        const tmax = serre ? serre.T_max_serre : (gdd ? gdd.tmax : null);
+        const tmin = serre ? serre.T_min_serre : (gdd ? gdd.tmin : null);
+        const hr = serre ? serre.HR_moyenne : (gdd ? gdd.hr_moyenne : null);
+        const dli = serre ? serre.PAR_sum : (gdd ? gdd.dli : null);
+
+        dailyData.push({
+          date,
+          production_kg: Math.round(prodKg * 10) / 10,
+          tmax: tmax != null ? Math.round(tmax * 10) / 10 : null,
+          tmin: tmin != null ? Math.round(tmin * 10) / 10 : null,
+          delta_t: tmax != null && tmin != null ? Math.round((tmax - tmin) * 10) / 10 : null,
+          gdd: tmax != null && tmin != null ? Math.round(calcGDD(tmax, tmin) * 10) / 10 : null,
+          vpd: tmax != null && tmin != null && hr != null ? Math.round(calcVPDFromTH((tmax + tmin) / 2, hr) * 100) / 100 : null,
+          dli: dli != null ? Math.round(dli * 10) / 10 : null,
+          hr: hr != null ? Math.round(hr) : null,
+        });
+      }
+
+      // 4. Compute lagged correlations (only on days with both production and climate data)
+      const validDays = dailyData.filter(d => d.production_kg > 0 && d.delta_t !== null);
+      const production = validDays.map(d => d.production_kg);
+      const indicators = {
+        delta_t: { values: validDays.map(d => d.delta_t), label: "Écart thermique (ΔT)" },
+        gdd: { values: validDays.map(d => d.gdd), label: "GDD journalier" },
+        vpd: { values: validDays.map(d => d.vpd), label: "VPD moyen" },
+        dli: { values: validDays.map(d => d.dli), label: "DLI (lumière)" },
+      };
+
+      const correlations = {};
+      for (const [key, ind] of Object.entries(indicators)) {
+        correlations[key] = { ...laggedCorrelation(production, ind.values), label: ind.label };
+      }
+
+      // 5. Simple prediction for tomorrow using best correlated indicator
+      let prediction = null;
+      const bestIndicator = Object.entries(correlations).sort((a, b) => Math.abs(b[1].r) - Math.abs(a[1].r))[0];
+      if (bestIndicator && Math.abs(bestIndicator[1].r) >= 0.3 && validDays.length >= 7) {
+        const lag = bestIndicator[1].lag_optimal;
+        const indicatorKey = bestIndicator[0];
+        // Get the indicator value from `lag` days ago
+        const lagDate = dailyData[dailyData.length - 1 - lag];
+        if (lagDate && lagDate[indicatorKey] !== null) {
+          const lagValue = lagDate[indicatorKey];
+          // Find similar indicator values in history and average their production
+          const similar = validDays.filter(d => d[indicatorKey] !== null && Math.abs(d[indicatorKey] - lagValue) < lagValue * 0.2);
+          if (similar.length >= 3) {
+            const avgProd = similar.reduce((s, d) => s + d.production_kg, 0) / similar.length;
+            prediction = {
+              kg_estime: Math.round(avgProd),
+              indicateur: bestIndicator[1].label,
+              lag: lag,
+              valeur_indicateur: lagValue,
+              confiance: bestIndicator[1].interpretation,
+              nb_jours_similaires: similar.length,
+            };
+          }
+        }
+      }
+
+      // Only return days within requested period (not the extra lag days)
+      const cutoffDate = new Date(endDate + "T12:00:00");
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      const cutoff = cutoffDate.toISOString().slice(0, 10);
+      const filteredDaily = dailyData.filter(d => d.date >= cutoff);
+
+      res.json({
+        success: true,
+        variete: varieteFilter || "Toutes",
+        varietesDisponibles,
+        dailyData: filteredDaily,
+        correlations,
+        prediction,
+        periode: { start: cutoff, end: endDate, jours: filteredDaily.length },
+      });
+    } catch (err) {
+      console.error("Climat-Production error:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // Harvest Prediction — Helpers
 // =============================================
 
@@ -1421,7 +2323,7 @@ async function aggregateSerreData(dateStr) {
   // Check Firestore cache first
   const cacheRef = db_firestore.collection("farms").doc("larache").collection("serre_data").doc(dateStr);
   const cached = await cacheRef.get();
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = localDateStr();
   const isPast = dateStr < todayStr;
   if (cached.exists) {
     const d = cached.data();
@@ -2193,6 +3095,7 @@ exports.uploadEcarts = functions
 // Email Analysis Functions (from emailService.js)
 // =============================================
 Object.assign(exports, require("./emailService"));
+
 const pointageMod = require("./pointageService");
 // Keep pointageRH/pointageRH2 exported to avoid GCP deletion issues
 exports.pointageRH = pointageMod.pointageRH;
@@ -2364,12 +3267,22 @@ exports.validation = functions
         const visa = { validatedBy: profileId || role, validatedAt: Date.now(), comment: comment || "" };
 
         if (role === "rh") {
-          // Create snapshot of SQL data (freeze data at submission time)
-          const { createSnapshot } = require("./pointageService");
-          const snapshotData = await createSnapshot(date, ferme, profileId);
+          if (ferme === "DIVERS") {
+            // Snapshot = freeze Firestore divers entries
+            const diversDoc = await db_firestore.collection("pointage_divers").doc(date).get();
+            const diversData = diversDoc.exists ? diversDoc.data() : { entries: [] };
+            await db_firestore.collection("pointage_snapshots").doc(docId).set({
+              ...diversData, snapshotAt: Date.now(), snapshotBy: profileId,
+            });
+            current.workerCount = (diversData.entries || []).length;
+          } else {
+            // Create snapshot of SQL data (freeze data at submission time)
+            const { createSnapshot } = require("./pointageService");
+            const snapshotData = await createSnapshot(date, ferme, profileId);
+            current.workerCount = snapshotData.workerCount || 0;
+          }
           current.visaRH = visa;
           current.snapshotId = docId;
-          current.workerCount = snapshotData.workerCount || 0;
           // Clear rejection fields if re-submitting after rejection
           current.rejected = false;
           current.rejectedBy = null;
@@ -2624,6 +3537,106 @@ exports.validation = functions
         }
       }
 
+      // ------ POINTAGE DIVERS (DVR): config CRUD + daily entries ------
+
+      // ONE-TIME SEED: populate initial divers config from DVR Excel (remove after use)
+      if (action === "divers-seed") {
+        const existing = await db_firestore.collection("pointage_divers_config").where("active", "==", true).limit(1).get();
+        if (!existing.empty) return res.json({ success: true, message: "Déjà initialisé", count: 0 });
+        const items = [
+          { beneficiaire: "KADOUR DEBAZ TRAC", fonction: "TRACTEUR", tache: "NETTIYAGE F5", prixUnitaire: 450, unite: "JOUR" },
+          { beneficiaire: "REFISSA TRAC", fonction: "TRACTEUR", tache: "Traitement Avocat", prixUnitaire: 450, unite: "JOUR" },
+          { beneficiaire: "EL MESBAHI AHMED", fonction: "TRS", tache: "TRS OUVRIRE F6", prixUnitaire: 400, unite: "JOUR" },
+          { beneficiaire: "MOHAMED JCB", fonction: "JCB", tache: "CHAREGEMENT", prixUnitaire: 250, unite: "HEURE" },
+          { beneficiaire: "EL MAJDOUBI MUSTAPHA", fonction: "TRACTEUR", tache: "NETTIYAGE F5", prixUnitaire: 450, unite: "VOYAGES" },
+          { beneficiaire: "HAMAMOU HAMZA", fonction: "TRACTEUR", tache: "Réparation de la route F1", prixUnitaire: 400, unite: "JOUR" },
+          { beneficiaire: "RAGRAGUI BRAHIM", fonction: "TRS", tache: "TRS D'emballage F1", prixUnitaire: 100, unite: "VOYAGES" },
+          { beneficiaire: "KRIDECHE MOHAMED", fonction: "TRS", tache: "TRS D'emballage F5", prixUnitaire: 200, unite: "VOYAGES" },
+          { beneficiaire: "RAGRAGUI BRAHIM", fonction: "TRS", tache: "TRS D'emballage F5", prixUnitaire: 100, unite: "VOYAGES" },
+          { beneficiaire: "EL SEGHIRE BACHIR", fonction: "TRS", tache: "TRS D'emballage F5", prixUnitaire: 150, unite: "VOYAGES" },
+          { beneficiaire: "KRIDECHE MOHAMED", fonction: "TRS FRUITS", tache: "TRS FRUITS", prixUnitaire: 500, unite: "VOYAGES" },
+        ];
+        const batch = db_firestore.batch();
+        items.forEach(item => {
+          const ref = db_firestore.collection("pointage_divers_config").doc();
+          batch.set(ref, { ...item, active: true, createdAt: Date.now(), updatedAt: Date.now() });
+        });
+        await batch.commit();
+        return res.json({ success: true, message: items.length + " sous-traitants créés", count: items.length });
+      }
+
+      // GET: list active divers config items
+      if (action === "divers-config") {
+        const snap = await db_firestore.collection("pointage_divers_config").where("active", "==", true).orderBy("beneficiaire").get();
+        const items = [];
+        snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        return res.json({ success: true, items });
+      }
+
+      // POST: create or update a divers config item
+      if (action === "divers-config-save" && req.method === "POST") {
+        const { id, beneficiaire, fonction, tache, prixUnitaire, unite } = req.body || {};
+        if (!beneficiaire || !fonction || !tache || !prixUnitaire || !unite) {
+          return res.status(400).json({ success: false, error: "beneficiaire, fonction, tache, prixUnitaire, unite required" });
+        }
+        const data = { beneficiaire: beneficiaire.trim(), fonction: fonction.trim(), tache: tache.trim(), prixUnitaire: Number(prixUnitaire), unite: unite.trim(), active: true, updatedAt: Date.now() };
+        if (id) {
+          await db_firestore.collection("pointage_divers_config").doc(id).update(data);
+          return res.json({ success: true, id, message: "Mis à jour" });
+        } else {
+          data.createdAt = Date.now();
+          const ref = await db_firestore.collection("pointage_divers_config").add(data);
+          return res.json({ success: true, id: ref.id, message: "Créé" });
+        }
+      }
+
+      // POST: soft-delete a divers config item
+      if (action === "divers-config-delete" && req.method === "POST") {
+        const { id } = req.body || {};
+        if (!id) return res.status(400).json({ success: false, error: "id required" });
+        await db_firestore.collection("pointage_divers_config").doc(id).update({ active: false, updatedAt: Date.now() });
+        return res.json({ success: true, message: "Supprimé" });
+      }
+
+      // GET: get divers entries for a specific date
+      if (action === "divers-entries") {
+        const date = req.query.date;
+        if (!date) return res.status(400).json({ success: false, error: "date required" });
+        const doc = await db_firestore.collection("pointage_divers").doc(date).get();
+        return res.json({ success: true, data: doc.exists ? doc.data() : { date, entries: [], totalMontant: 0 } });
+      }
+
+      // POST: save divers entries for a date (blocked if locked)
+      if (action === "divers-entries-save" && req.method === "POST") {
+        const { date, entries, profileId } = req.body || {};
+        if (!date || !entries) return res.status(400).json({ success: false, error: "date, entries required" });
+
+        // Check if locked
+        const valDoc = await db_firestore.collection("pointage_validations").doc(`${date}_DIVERS`).get();
+        if (valDoc.exists && valDoc.data().locked) {
+          return res.status(403).json({ success: false, error: "Pointage verrouillé pour cette date" });
+        }
+
+        const cleanEntries = entries.map(e => ({
+          configId: e.configId || "",
+          beneficiaire: (e.beneficiaire || "").trim(),
+          fonction: (e.fonction || "").trim(),
+          tache: (e.tache || "").trim(),
+          quantite: Number(e.quantite) || 0,
+          prixUnitaire: Number(e.prixUnitaire) || 0,
+          unite: (e.unite || "").trim(),
+          montant: Math.round((Number(e.quantite) || 0) * (Number(e.prixUnitaire) || 0) * 100) / 100,
+          commentaire: (e.commentaire || "").trim(),
+        }));
+        const totalMontant = Math.round(cleanEntries.reduce((s, e) => s + e.montant, 0) * 100) / 100;
+
+        await db_firestore.collection("pointage_divers").doc(date).set({
+          date, entries: cleanEntries, totalMontant,
+          createdBy: profileId || "rh", updatedAt: Date.now(),
+        });
+        return res.json({ success: true, totalMontant, count: cleanEntries.length });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue" });
     } catch (err) {
       console.error("Erreur Validation:", err);
@@ -2650,18 +3663,403 @@ async function getNextNumber(type, prefix) {
   return result;
 }
 
+// =============================================================================
+// generateRecoForAnalyse — shared logic used by both the HTTP handler
+// (action=generate-reco-foliaire) and the Firestore trigger that auto-runs
+// when a new analysis with a PDF is created.
+// Returns { success, cached, recommandation, error }. Never throws.
+// =============================================================================
+async function generateRecoForAnalyse(id, opts = {}) {
+  const { force = false, parcelle, ferme, culture, photo_url, scan_url: scanUrlOverride, note_demande } = opts;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { success: false, error: "Clé API Anthropic non configurée" };
+  if (!id) return { success: false, error: "id requis" };
+
+  const analyseSnap = await db_firestore.collection("analyses_foliaires").doc(id).get();
+  if (!analyseSnap.exists) return { success: false, error: "Analyse introuvable" };
+  const analyse = analyseSnap.data();
+
+  const refusalRe = /^\s*(je ne peux pas|je n'ai pas (accès|pu|de)|je ne (vois|dispose)|désolé|sorry|i (cannot|can't|don't|am (unable|not able)))/i;
+  const isValidReco = (r) => {
+    if (!r || !r.message || r.message.length < 600) return false;
+    if (refusalRe.test(r.message)) return false;
+    if (r.has_scan === true) return true;
+    return Object.keys(analyse.parsed_values || {}).length >= 5;
+  };
+
+  if (!force) {
+    const existing = (analyse.recommandations_ia || []).slice().sort((a, b) => (b.generated_at || 0) - (a.generated_at || 0));
+    const lastValid = existing.find(isValidReco);
+    if (lastValid) return { success: true, recommandation: lastValid, cached: true };
+  }
+
+  const docRef = db_firestore.collection("analyses_foliaires").doc(id);
+  const startedAt = Date.now();
+  const writeProgress = async (patch) => {
+    try {
+      await docRef.update(Object.fromEntries(Object.entries(patch).map(([k, v]) => [`reco_progress.${k}`, v])));
+    } catch (e) { console.warn("reco_progress write failed", e.message); }
+  };
+  const clearProgress = async () => {
+    try {
+      await docRef.update({ reco_progress: admin.firestore.FieldValue.delete() });
+    } catch (e) { console.warn("reco_progress clear failed", e.message); }
+  };
+  // Initial state — full reset (not a nested patch) so stale fields from a previous run are gone.
+  try {
+    await docRef.update({
+      reco_progress: {
+        state: "loading_pdf",
+        started_at: startedAt,
+        updated_at: startedAt,
+        source: opts.source || "manual",
+      },
+    });
+  } catch (e) { console.warn("reco_progress init failed", e.message); }
+
+  const Anthropic = require("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey });
+  const messageContent = [];
+
+  const bucketStoragePath = (url) => {
+    if (!url) return null;
+    try {
+      const bName = bucket.name;
+      const gcs = new RegExp("^https?://storage\\.googleapis\\.com/" + bName.replace(/[-.]/g, "\\$&") + "/(.+)$");
+      const m1 = url.match(gcs);
+      if (m1) return decodeURIComponent(m1[1].split("?")[0]);
+      const fb = new RegExp("^https?://firebasestorage\\.googleapis\\.com/v0/b/" + bName.replace(/[-.]/g, "\\$&") + "/o/([^?]+)");
+      const m2 = url.match(fb);
+      if (m2) return decodeURIComponent(m2[1]);
+    } catch (e) { /* ignore */ }
+    return null;
+  };
+
+  const loadFile = async (url) => {
+    if (!url) return null;
+    const p = bucketStoragePath(url);
+    if (p) {
+      try {
+        const [buf] = await bucket.file(p).download();
+        const [meta] = await bucket.file(p).getMetadata().catch(() => [{}]);
+        return { data: buf, type: meta?.contentType || "application/octet-stream" };
+      } catch (e) { console.error("bucket download failed", p, e.message); return null; }
+    }
+    try {
+      const https = require("https");
+      const http = require("http");
+      const mod = url.startsWith("https") ? https : http;
+      return await new Promise((resolve) => {
+        mod.get(url, (resp) => {
+          if (resp.statusCode !== 200) { resp.resume(); return resolve(null); }
+          const chunks = [];
+          resp.on("data", c => chunks.push(c));
+          resp.on("end", () => resolve({ data: Buffer.concat(chunks), type: resp.headers["content-type"] || "application/octet-stream" }));
+          resp.on("error", () => resolve(null));
+        }).on("error", () => resolve(null));
+      });
+    } catch (e) { console.error("loadFile error:", e.message); return null; }
+  };
+
+  const scanUrl = scanUrlOverride || analyse.scan_resultat_url;
+  const scanFile = await loadFile(scanUrl);
+  if (scanFile) console.log("scan loaded", scanFile.data.length, "bytes", scanFile.type);
+
+  // Load all terrain observation photos for the same ferme+variete (last 3 months).
+  let terrainPhotoCount = 0;
+  try {
+    const THREE_MONTHS = 90 * 86400000;
+    const cutoff = Date.now() - THREE_MONTHS;
+    const terrainSnap = await db_firestore.collection("analyses_foliaires")
+      .where("ferme", "==", analyse.ferme || ferme)
+      .where("variete", "==", analyse.variete || parcelle)
+      .where("type_analyse", "==", "observation_terrain")
+      .get();
+    const allPhotoUrls = [];
+    terrainSnap.docs.forEach(d => {
+      const data = d.data();
+      if ((data.date_analyse || data.created_at || 0) < cutoff) return;
+      (data.photo_urls || []).forEach(p => { if (p.url) allPhotoUrls.push(p.url); });
+    });
+    // Also include legacy single photo and photo_urls on the current analyse doc.
+    if (photo_url) allPhotoUrls.unshift(photo_url);
+    (analyse.photo_urls || []).forEach(p => { if (p.url && !allPhotoUrls.includes(p.url)) allPhotoUrls.push(p.url); });
+    // Cap at 6 images to stay within Claude message size limits.
+    const toLoad = allPhotoUrls.slice(0, 6);
+    const photoFiles = await Promise.all(toLoad.map(url => loadFile(url)));
+    photoFiles.filter(Boolean).forEach(img => {
+      if (img.type.startsWith("image/")) {
+        messageContent.push({ type: "image", source: { type: "base64", media_type: img.type, data: img.data.toString("base64") } });
+        terrainPhotoCount++;
+      }
+    });
+    if (terrainPhotoCount) console.log(`terrain photos loaded: ${terrainPhotoCount}`);
+  } catch (e) {
+    console.warn("terrain photo loading failed, continuing:", e.message);
+  }
+
+  let scanPdfSent = false;
+  let scanImageSent = false;
+  if (scanFile) {
+    const looksLikePdf = scanFile.data.length >= 4 && scanFile.data.slice(0, 4).toString("ascii") === "%PDF";
+    const mimeIsPdf = scanFile.type.includes("pdf") || (scanUrl && /\.pdf$/i.test(scanUrl));
+    if (looksLikePdf && mimeIsPdf) {
+      messageContent.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: scanFile.data.toString("base64") } });
+      scanPdfSent = true;
+    } else if (scanFile.type.startsWith("image/")) {
+      messageContent.push({ type: "image", source: { type: "base64", media_type: scanFile.type, data: scanFile.data.toString("base64") } });
+      scanImageSent = true;
+    } else if (mimeIsPdf && !looksLikePdf) {
+      console.error("scan url claims pdf but buffer does not start with %PDF-", scanUrl);
+    }
+  }
+
+  const parsedValuesLines = Object.entries(analyse.parsed_values || {})
+    .map(([k, v]) => `  - ${k}: ${v}`)
+    .join("\n");
+  const typeLabel = {
+    foliaire: "Analyse foliaire (feuilles)",
+    sol: "Analyse de sol",
+    eau_irrigation: "Analyse d'eau d'irrigation",
+    eau_apport: "Analyse d'eau d'apport",
+    eau_du_sol: "Analyse d'eau du sol",
+  }[analyse.type_analyse] || analyse.type_analyse || "Analyse foliaire";
+  const dateStr = analyse.date_analyse ? new Date(analyse.date_analyse).toLocaleDateString("fr-FR") : "Non précisée";
+
+  // Fetch variety general context
+  let contexteGeneral = "";
+  try {
+    const ctxVariete = (analyse.variete || parcelle || "").toUpperCase().replace(/\s+/g, "_");
+    const ctxFerme = analyse.ferme || ferme || "";
+    if (ctxVariete && ctxFerme) {
+      const ctxDoc = await db_firestore.collection("variete_contextes").doc(`${ctxFerme}_${ctxVariete}`).get();
+      if (ctxDoc.exists) contexteGeneral = ctxDoc.data().contexte_general || "";
+    }
+  } catch (e) { console.warn("variete contexte fetch failed", e.message); }
+
+  const prompt = `Tu es **Ingénieur Agronome Senior**, expert reconnu des petits fruits rouges (myrtille, framboise) et de l'avocatier sous serre dans la région Souss-Massa (Maroc). Tu rédiges un **rapport de consultation agronomique professionnel** destiné au Directeur Technique et au Chef de Ferme de Berry Good Farms. Le ton est celui d'un expert : sobre, précis, chiffré, actionnable — jamais promotionnel, jamais alarmiste sans justification.
+
+Tu disposes du rapport d'analyse complet AGQ Labs en pièce jointe PDF. **Lis-le intégralement** et intègre toutes les données pertinentes (foliaire, eau d'irrigation, SFR, sonde sol, drainage si présents).
+
+## Dossier client
+- **Exploitation** : Berry Good Farms — ${ferme || analyse.ferme || "?"}
+- **Parcelle / Variété** : ${analyse.variete || parcelle || "Non spécifiée"}
+- **Culture** : ${culture || analyse.culture || "?"}
+- **Type d'analyse** : ${typeLabel}
+- **Date de prélèvement** : ${dateStr}
+- **Stade phénologique** : ${analyse.phenologie || "Non précisé"}
+- **Laboratoire** : ${analyse.source === "email_agq" ? "AGQ Labs Maroc" : "Analyse manuelle"}
+- **Observations terrain** : ${analyse.terrain_raw || analyse.description_raw || "Aucune"}
+- **Notes du chef de ferme** : ${note_demande || "Aucune"}
+- **Contexte général de la variété** : ${contexteGeneral || "Aucun"}
+
+## Valeurs pré-extraites par notre parseur (à compléter depuis le PDF)
+${parsedValuesLines || "(Vide — toutes les valeurs doivent être lues directement depuis le PDF joint.)"}
+
+${scanPdfSent ? "📎 **PDF AGQ joint** — source primaire, à lire intégralement." : ""}
+${scanImageSent ? "🖼️ **Scan image joint** — lis les valeurs visibles." : ""}
+${terrainPhotoCount ? `📷 **${terrainPhotoCount} photo(s) terrain jointe(s)** (observations récentes de la parcelle) — intègre les symptômes visuels si pertinent (chlorose, nécrose, stress hydrique, état des fruits…).` : ""}
+${(!scanPdfSent && !scanImageSent) ? "⚠️ **Aucun rapport scan disponible** — base ton analyse uniquement sur les valeurs pré-extraites ci-dessus et indique clairement les limites." : ""}
+
+---
+
+## Structure obligatoire du rapport
+
+Rédige en **français professionnel**, en markdown strict (pas d'emojis décoratifs, sauf 🟢/🟡/🔴 pour les statuts dans les tableaux). Utilise des **tableaux markdown** pour chaque jeu de données.
+
+### 1. Synthèse exécutive
+Un paragraphe de 4-6 lignes : état global de la parcelle, 2-3 points critiques, niveau de priorité (**Faible / Moyen / Élevé / Critique**).
+
+### 2. État nutritionnel détaillé
+Pour **chaque matrice présente** (foliaire, eau d'irrigation, SFR, sonde sol, drainage), produis un tableau | Élément | Valeur | Norme | Statut |. Couvre macro + oligos + pH/CE/HCO₃/Cl/Na/ratios. Normes spécifiques à la culture. Statuts 🟢/🟡/🔴.
+
+### 3. Diagnostic agronomique
+#### 3.1 Rapports et équilibres ioniques — tableau des ratios critiques (K/Ca, K/Mg, Ca/Mg, N/K, SAR), commentaires.
+#### 3.2 Problèmes identifiés (hiérarchisés) — pour chacun : nom court, preuves multi-matrices, mécanisme agronomique, conséquence.
+#### 3.3 Niveau de priorité global — **Faible / Moyen / Élevé / Critique** + justification.
+
+### 4. Plan de correction — Fertigation
+Tableau | Élément à corriger | Action | Produit commercial (Maroc) | Dose | Fréquence | Durée |. Produits usuels (MAP, MKP, KNO₃, K₂SO₄, Ca(NO₃)₂, MgSO₄, acide nitrique/phosphorique, chélates EDDHA-Fe…). Distingue correction foliaire d'urgence vs ajustement SFR.
+
+### 5. Actions prioritaires à 7 jours
+Tableau | # | Action | Quand | Responsable | Critère de réussite | — exactement 3 actions.
+
+### 6. Suivi et KPIs
+Indicateurs + prochaine analyse recommandée + seuils de re-alerte.
+
+### 7. Limites et hypothèses
+Données manquantes ou incohérentes, explicitement.
+
+---
+
+**Contraintes**
+- Unités SI ou horticoles (% MS, mg/kg, meq/L, dS/m).
+- Toujours des doses chiffrées.
+- Pas d'intro générale, pas de disclaimer.
+- Longueur cible : 2000-3500 mots (hors tableaux).
+- Signe en bas : "*Rapport généré par l'outil d'aide à la décision Berry Good Farms — À valider par le responsable technique.*"`;
+
+  messageContent.push({ type: "text", text: prompt });
+
+  const modelCandidates = [
+    "claude-opus-4-6",
+    "claude-sonnet-4-5",
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-20250514",
+  ];
+  let response = null;
+  let lastError = null;
+  const claudeStart = Date.now();
+  console.log(`generateRecoForAnalyse START id=${id} scanPdf=${scanPdfSent} scanImg=${scanImageSent} photo=${!!photoImg}`);
+  await writeProgress({
+    state: "calling_llm",
+    updated_at: Date.now(),
+    detail: scanFile ? `PDF ${Math.round(scanFile.data.length / 1024)} KB` : "Pas de scan",
+    model: modelCandidates[0],
+  });
+  for (const modelId of modelCandidates) {
+    try {
+      response = await client.messages.create({
+        model: modelId,
+        max_tokens: 16000,
+        messages: [{ role: "user", content: messageContent }],
+      });
+      console.log(`generateRecoForAnalyse DONE id=${id} model=${modelId} duration=${Date.now() - claudeStart}ms`);
+      break;
+    } catch (e) {
+      lastError = e;
+      console.error("Claude model failed", modelId, e.message);
+    }
+  }
+  if (!response) {
+    await writeProgress({ state: "error", detail: lastError?.message?.slice(0, 200) || "LLM_UNAVAILABLE", updated_at: Date.now() });
+    setTimeout(clearProgress, 10000);
+    return { success: false, error: "LLM_UNAVAILABLE", detail: lastError?.message || "Aucun modèle Claude n'a répondu" };
+  }
+
+  const message = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+  const reco = {
+    message,
+    model: response.model || "claude",
+    generated_at: Date.now(),
+    has_photo: !!photoImg,
+    has_scan: !!(scanPdfSent || scanImageSent),
+    scan_format: scanPdfSent ? "pdf" : scanImageSent ? "image" : null,
+  };
+
+  if (!isValidReco(reco)) {
+    console.error("LLM refusal or too-short reco, not storing:", message.slice(0, 200));
+    await writeProgress({ state: "error", detail: "LLM_NO_PDF", updated_at: Date.now() });
+    setTimeout(clearProgress, 10000); // leave the error state visible for 10s then clear
+    return { success: false, error: "LLM_NO_PDF", preview: message.slice(0, 300) };
+  }
+
+  await writeProgress({ state: "saving", updated_at: Date.now() });
+  const snap = await docRef.get();
+  if (snap.exists) {
+    const existing = snap.data().recommandations_ia || [];
+    existing.push(reco);
+    await docRef.update({ recommandations_ia: existing, updated_at: Date.now() });
+  }
+  await clearProgress();
+  return { success: true, recommandation: reco };
+}
+
+// =============================================================================
+// Auto-generate AI recommendation when a new foliar analysis gets a PDF attached.
+// Fires on any write to analyses_foliaires/{id}. Triggers generation only when
+// scan_resultat_url has just appeared (was null/undefined, now set) AND there
+// is no existing valid reco yet. This covers AGQ email imports (where the PDF
+// is uploaded right after doc creation via an update).
+// =============================================================================
+exports.onAnalyseFoliaireWrite = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .firestore.document("analyses_foliaires/{id}")
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null; // deletion
+    const after = change.after.data() || {};
+    const before = change.before.exists ? change.before.data() || {} : {};
+    const id = context.params.id;
+
+    const beforeUrl = before.scan_resultat_url || null;
+    const afterUrl = after.scan_resultat_url || null;
+
+    // Only fire when the PDF appears for the first time.
+    if (!afterUrl) return null;
+    if (beforeUrl === afterUrl) return null; // no scan change; irrelevant write
+
+    // Skip if a valid reco already exists (avoid loops on self-updates).
+    const existingRecos = after.recommandations_ia || [];
+    const refusalRe = /^\s*(je ne peux pas|je n'ai pas|désolé|sorry|i (cannot|can't|don't))/i;
+    const hasValid = existingRecos.some(r => r && r.message && r.message.length >= 600 && !refusalRe.test(r.message));
+    if (hasValid) return null;
+
+    console.log(`onAnalyseFoliaireWrite: auto-generating reco for ${id} (ferme=${after.ferme}, variete=${after.variete})`);
+    try {
+      const result = await generateRecoForAnalyse(id, {
+        ferme: after.ferme,
+        culture: after.culture,
+        parcelle: after.variete || after.parcelle,
+        scan_url: afterUrl,
+        note_demande: after.terrain_raw || "",
+        force: false,
+      });
+      if (result.success) {
+        console.log(`onAnalyseFoliaireWrite: reco saved for ${id}, cached=${!!result.cached}`);
+      } else {
+        console.error(`onAnalyseFoliaireWrite: reco failed for ${id}:`, result.error);
+      }
+    } catch (e) {
+      console.error(`onAnalyseFoliaireWrite: uncaught error for ${id}:`, e.message, e.stack);
+    }
+    return null;
+  });
+
 exports.stockManagement = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 120, memory: "512MB" })
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
   .https.onRequest(async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     res.set("Access-Control-Allow-Headers", "Content-Type");
     if (req.method === "OPTIONS") return res.status(204).send("");
-    const authUser = await requireAuth(req, res);
-    if (!authUser) return;
 
     const action = req.query.action || req.body?.action || "stock-dashboard";
+
+    // Admin-only actions (no Firebase Auth, uses env secret)
+    const adminSecret = process.env.ADMIN_SECRET || "bgf-admin-2026";
+    if (action === "reset-email-cursor" && req.method === "POST") {
+      if (req.body.secret !== adminSecret) return res.status(403).json({ success: false, error: "forbidden" });
+      const { uid } = req.body;
+      if (typeof uid !== "number") return res.status(400).json({ success: false, error: "uid (number) requis" });
+      await db_firestore.collection("config").doc("email_fetch").set({ lastPollUid: uid }, { merge: true });
+      return res.json({ success: true, message: `lastPollUid reset to ${uid}` });
+    }
+    if (action === "reprocess-email" && req.method === "POST") {
+      if (req.body.secret !== adminSecret) return res.status(403).json({ success: false, error: "forbidden" });
+      const { uid } = req.body;
+      if (!uid) return res.status(400).json({ success: false, error: "uid requis" });
+      // Find the email doc by scanning for matching uid
+      const snap = await db_firestore.collection("emails").where("uid", "==", uid).limit(1).get();
+      if (snap.empty) return res.json({ success: false, error: `No email doc found with uid=${uid}` });
+      const docRef = snap.docs[0].ref;
+      const docId = snap.docs[0].id;
+      const data = snap.docs[0].data();
+      // Delete and re-create to trigger analyzeEmail (onCreate)
+      await docRef.delete();
+      await db_firestore.collection("emails").doc(docId).set({ ...data, status: "pending", reprocessed_at: Date.now() });
+      return res.json({ success: true, message: `Email doc ${docId} (uid=${uid}) deleted and re-created with status=pending` });
+    }
+
+    // Skip Firebase Auth when admin secret is provided (CLI/scripts)
+    let authUser;
+    if (req.body?.secret === adminSecret) {
+      authUser = { uid: "admin-cli", email: "admin@berrygood.ma" };
+    } else {
+      authUser = await requireAuth(req, res);
+      if (!authUser) return;
+    }
 
     try {
       // ========== SUPPLIERS ==========
@@ -2741,6 +4139,32 @@ exports.stockManagement = functions
         return res.json({ success: true, status: decision });
       }
 
+      // Validate ALL pending suppliers at once
+      if (action === "validate-all-suppliers" && req.method === "POST") {
+        const { validated_by } = req.body;
+        const snap = await db_firestore.collection("suppliers").where("status", "==", "en_attente").where("active", "==", true).get();
+        if (snap.empty) return res.json({ success: true, count: 0 });
+        const now = Date.now();
+        const batch = db_firestore.batch();
+        snap.docs.forEach(doc => {
+          const current = doc.data();
+          batch.update(doc.ref, {
+            status: "valide",
+            validated_by: validated_by || {},
+            validated_at: now,
+            updated_at: now,
+            history: [...(current.history || []), {
+              action: "validation",
+              by: validated_by || {},
+              at: now,
+              comment: "Validation groupée par Finance",
+            }],
+          });
+        });
+        await batch.commit();
+        return res.json({ success: true, count: snap.size });
+      }
+
       // ========== PURCHASE ORDERS (BDC) ==========
 
       if (action === "list-bdc") {
@@ -2764,12 +4188,12 @@ exports.stockManagement = functions
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
         const doc = await db_firestore.collection("purchase_orders").doc(id).get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
-        // Fetch linked delivery notes
-        const blSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", id).orderBy("created_at", "desc").get();
-        const bls = blSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Fetch linked delivery notes (no orderBy to avoid composite index requirement)
+        const blSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", id).get();
+        const bls = blSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.created_at || '') > (a.created_at || '') ? -1 : 1);
         // Fetch linked invoices
-        const facSnap = await db_firestore.collection("invoices").where("bdc_id", "==", id).orderBy("created_at", "desc").get();
-        const factures = facSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        const facSnap = await db_firestore.collection("invoices").where("bdc_id", "==", id).get();
+        const factures = facSnap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.created_at || '') > (a.created_at || '') ? -1 : 1);
         return res.json({ success: true, bdc: { id: doc.id, ...doc.data() }, bls, factures });
       }
 
@@ -2784,7 +4208,7 @@ exports.stockManagement = functions
         let total_ht = 0, total_tva = 0, total_ttc = 0;
         const computedItems = items.map((item) => {
           const montant_ht = (parseFloat(item.quantite) || 0) * (parseFloat(item.prix_unitaire) || 0);
-          const taux = parseFloat(item.taux_tva) || 20;
+          const taux = item.taux_tva != null && item.taux_tva !== '' ? parseFloat(item.taux_tva) : 20;
           const montant_tva = montant_ht * taux / 100;
           const montant_ttc = montant_ht + montant_tva;
           total_ht += montant_ht;
@@ -2838,7 +4262,7 @@ exports.stockManagement = functions
           let total_ht = 0, total_tva = 0, total_ttc = 0;
           updates.items = items.map((item) => {
             const montant_ht = (parseFloat(item.quantite) || 0) * (parseFloat(item.prix_unitaire) || 0);
-            const taux = parseFloat(item.taux_tva) || 20;
+            const taux = item.taux_tva != null && item.taux_tva !== '' ? parseFloat(item.taux_tva) : 20;
             const montant_tva = montant_ht * taux / 100;
             const montant_ttc = montant_ht + montant_tva;
             total_ht += montant_ht;
@@ -2871,6 +4295,18 @@ exports.stockManagement = functions
         await db_firestore.collection("purchase_orders").doc(id).update({
           status: "en_attente_chef", history, updated_at: Date.now(),
         });
+        return res.json({ success: true });
+      }
+
+      if (action === "delete-bdc" && req.method === "POST") {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "ID requis" });
+        const doc = await db_firestore.collection("purchase_orders").doc(id).get();
+        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
+        if (doc.data().status !== "brouillon") {
+          return res.status(400).json({ success: false, error: "Seul un BDC en brouillon peut être supprimé" });
+        }
+        await db_firestore.collection("purchase_orders").doc(id).delete();
         return res.json({ success: true });
       }
 
@@ -2945,6 +4381,100 @@ exports.stockManagement = functions
         await db_firestore.collection("purchase_orders").doc(id).update({
           status: "envoye", history, updated_at: Date.now(),
         });
+        return res.json({ success: true });
+      }
+
+      if (action === "update-bdc-virement" && req.method === "POST") {
+        const { id, decision, by } = req.body;
+        if (!id || !decision) return res.status(400).json({ success: false, error: "id et decision requis" });
+        const doc = await db_firestore.collection("purchase_orders").doc(id).get();
+        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
+        const current = doc.data();
+        if (current.mode_paiement !== "virement_bancaire") {
+          return res.status(400).json({ success: false, error: "Ce BDC n'est pas payé par virement bancaire" });
+        }
+        const history = current.history || [];
+        const now = Date.now();
+        if (decision === "lancer") {
+          if (current.status !== "envoye") return res.status(400).json({ success: false, error: "Le BDC doit être en statut Envoyé" });
+          history.push({ action: "virement_lance", by: by || {}, at: now, comment: "" });
+          await db_firestore.collection("purchase_orders").doc(id).update({ status: "virement_lance", virement_lance_by: by || {}, virement_lance_at: now, history, updated_at: now });
+        } else if (decision === "signer") {
+          if (current.status !== "virement_lance") return res.status(400).json({ success: false, error: "Le BDC doit être en statut Virement Lancé" });
+          history.push({ action: "virement_signe", by: by || {}, at: now, comment: "" });
+          await db_firestore.collection("purchase_orders").doc(id).update({ status: "virement_signe", virement_signe_by: by || {}, virement_signe_at: now, history, updated_at: now });
+        } else {
+          return res.status(400).json({ success: false, error: "Decision invalide (lancer|signer)" });
+        }
+        return res.json({ success: true });
+      }
+
+      // ---- BDC Change Requests (modification/annulation) ----
+      if (action === "request-bdc-change" && req.method === "POST") {
+        const { bdc_id, type, motif, requested_by } = req.body;
+        if (!bdc_id || !type || !motif) return res.status(400).json({ success: false, error: "bdc_id, type et motif requis" });
+        if (!["modification", "annulation"].includes(type)) return res.status(400).json({ success: false, error: "type doit être modification ou annulation" });
+        const doc = await db_firestore.collection("purchase_orders").doc(bdc_id).get();
+        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
+        const bdc = doc.data();
+        if (!["valide_dg", "envoye", "virement_lance", "virement_signe"].includes(bdc.status)) {
+          return res.status(400).json({ success: false, error: "Le BDC doit être validé DG ou au-delà pour demander une modification/annulation" });
+        }
+        // Check no pending request exists
+        const existing = await db_firestore.collection("bdc_change_requests").where("bdc_id", "==", bdc_id).where("status", "==", "en_attente").get();
+        if (!existing.empty) return res.status(400).json({ success: false, error: "Une demande est déjà en cours pour ce BDC" });
+        const now = Date.now();
+        const ref = await db_firestore.collection("bdc_change_requests").add({
+          bdc_id, bdc_numero: bdc.numero || "", type, motif, status: "en_attente",
+          requested_by: requested_by || {}, created_at: now,
+        });
+        const history = bdc.history || [];
+        history.push({ action: "demande_" + type, by: requested_by || {}, at: now, comment: motif });
+        await db_firestore.collection("purchase_orders").doc(bdc_id).update({ history, updated_at: now, pending_change_request: ref.id });
+        return res.json({ success: true, id: ref.id });
+      }
+
+      if (action === "list-bdc-change-requests") {
+        const { status } = req.query;
+        let q = db_firestore.collection("bdc_change_requests");
+        if (status) q = q.where("status", "==", status);
+        const snap = await q.get();
+        const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        requests.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        return res.json({ success: true, requests });
+      }
+
+      if (action === "approve-bdc-change" && req.method === "POST") {
+        const { id, decision, comment, approved_by } = req.body;
+        if (!id || !decision) return res.status(400).json({ success: false, error: "id et decision requis" });
+        const reqDoc = await db_firestore.collection("bdc_change_requests").doc(id).get();
+        if (!reqDoc.exists) return res.status(404).json({ success: false, error: "Demande non trouvée" });
+        const request = reqDoc.data();
+        if (request.status !== "en_attente") return res.status(400).json({ success: false, error: "Cette demande n'est plus en attente" });
+        const bdcDoc = await db_firestore.collection("purchase_orders").doc(request.bdc_id).get();
+        if (!bdcDoc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
+        const bdc = bdcDoc.data();
+        const history = bdc.history || [];
+        const now = Date.now();
+        if (decision === "approve") {
+          if (request.type === "modification") {
+            history.push({ action: "retour_brouillon_dg", by: approved_by || {}, at: now, comment: comment || "Modification approuvée par DG" });
+            await db_firestore.collection("purchase_orders").doc(request.bdc_id).update({
+              status: "brouillon", validated_by_dg: null, validated_by_chef: null, notified_finance: false,
+              history, updated_at: now, pending_change_request: null,
+            });
+          } else {
+            history.push({ action: "annulation_dg", by: approved_by || {}, at: now, comment: comment || "Annulation approuvée par DG" });
+            await db_firestore.collection("purchase_orders").doc(request.bdc_id).update({
+              status: "annule", history, updated_at: now, pending_change_request: null,
+            });
+          }
+          await db_firestore.collection("bdc_change_requests").doc(id).update({ status: "approuve", approved_by: approved_by || {}, approved_at: now, comment: comment || "" });
+        } else {
+          history.push({ action: "demande_rejetee_dg", by: approved_by || {}, at: now, comment: comment || "Demande refusée" });
+          await db_firestore.collection("purchase_orders").doc(request.bdc_id).update({ history, updated_at: now, pending_change_request: null });
+          await db_firestore.collection("bdc_change_requests").doc(id).update({ status: "rejete", approved_by: approved_by || {}, approved_at: now, comment: comment || "" });
+        }
         return res.json({ success: true });
       }
 
@@ -3108,7 +4638,7 @@ exports.stockManagement = functions
           const bdcItems = (daData.items || []).map((item) => {
             const catArticle = catalogMap[(item.article || "").toLowerCase().trim()] || {};
             const pu = catArticle.prix_ht || 0;
-            const tva = catArticle.taux_tva || 20;
+            const tva = catArticle.taux_tva != null && catArticle.taux_tva !== '' ? parseFloat(catArticle.taux_tva) : 20;
             const qty = parseFloat(item.quantite) || 1;
             const mht = pu * qty;
             return {
@@ -3209,6 +4739,31 @@ exports.stockManagement = functions
         // Update scan record if created from scan
         if (scan_id) {
           await db_firestore.collection("bl_scans").doc(scan_id).update({ bl_id: docRef.id, bl_numero: numero }).catch(() => {});
+        }
+
+        // Create stock_movement of type reception (brouillon, needs achats+chef validation)
+        const brNumero = await getNextNumber("stock_reception", "BR");
+        const brItems = blItems.map((it) => ({
+          article_ref: it.article || "", article_nom: it.article || "",
+          quantite: it.quantite_recue || 0, unite: it.unite || "kg",
+        })).filter((it) => it.quantite > 0);
+        if (brItems.length > 0) {
+          const magasin = req.body.magasin || bdc.ferme || "";
+          await db_firestore.collection("stock_movements").add({
+            numero: brNumero, type: "reception",
+            date: date_reception || new Date().toISOString().split("T")[0],
+            lieu_source: null,
+            lieu_destination: { type: "magasin", id: magasin },
+            ferme: magasin, items: brItems,
+            ref_bl_fournisseur: numero_bl_fournisseur || "",
+            bdc_id: bdc_id, bl_id: docRef.id,
+            reception_libre: false, reception_libre_motif: "",
+            ref_bon_physique: "", sortie_type: null, scan_url: scan_url || null,
+            status: "valide_mag",
+            validations: { magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() } },
+            rejection: null,
+            created_by: created_by || {}, created_at: Date.now(), updated_at: Date.now(),
+          });
         }
 
         // Update BDC delivery_status
@@ -3416,7 +4971,7 @@ exports.stockManagement = functions
       }
 
       if (action === "create-bc" && req.method === "POST") {
-        const { type, parcelle, culture, ferme, date, authorized_by, items, created_by } = req.body;
+        const { type, parcelle, culture, ferme, date, authorized_by, items, scan_url, created_by } = req.body;
         if (!type || !parcelle || !ferme || !items?.length) {
           return res.status(400).json({ success: false, error: "Champs requis: type, parcelle, ferme, items[]" });
         }
@@ -3433,10 +4988,44 @@ exports.stockManagement = functions
           authorized_by: authorized_by || {},
           items: bcItems,
           cpc_categorie: type === "engrais" ? "Engrais" : "Pesticides",
+          scan_url: scan_url || null,
           created_by: created_by || {},
           created_at: Date.now(),
         };
         const docRef = await db_firestore.collection("consumption_vouchers").add(bcData);
+
+        // Also create stock_movement of type consommation + update stock_balances
+        const bcsNumero = await getNextNumber("stock_consommation", "BCS");
+        const lieuSource = req.body.lieu_source || { type: "magasin", id: ferme };
+        const bcsItems = bcItems.map((it) => ({
+          article_ref: it.article || "", article_nom: it.article || "",
+          quantite: it.quantite || 0, unite: it.unite || "kg",
+        })).filter((it) => it.quantite > 0);
+        if (bcsItems.length > 0) {
+          const movData = {
+            numero: bcsNumero, type: "consommation",
+            date: date || new Date().toISOString().split("T")[0],
+            lieu_source: lieuSource,
+            lieu_destination: { type: "parcelle", id: parcelle },
+            ferme: ferme, items: bcsItems,
+            ref_bl_fournisseur: "", bdc_id: null, bl_id: null,
+            reception_libre: false, reception_libre_motif: "",
+            ref_bon_physique: req.body.ref_bon_physique || "",
+            sortie_type: null, scan_url: null,
+            status: "valide_mag",
+            validations: { magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() } },
+            rejection: null, created_by: created_by || {},
+            created_at: Date.now(), updated_at: Date.now(),
+            bc_id: docRef.id, bc_numero: numero,
+          };
+          await db_firestore.collection("stock_movements").add(movData);
+          // Update stock balances (decrease source)
+          const balPromises = bcsItems.map((it) =>
+            updateStockBalance(lieuSource.type, lieuSource.id, it.article_ref, it.article_nom, it.unite, -it.quantite)
+          );
+          await Promise.all(balPromises);
+        }
+
         return res.json({ success: true, id: docRef.id, numero });
       }
 
@@ -3945,6 +5534,10 @@ exports.stockManagement = functions
 
       if (action === "create-article" && req.method === "POST") {
         const { reference, nom, unite, prix_ht, taux_tva, prix_ttc, categorie, sous_categorie, type, reference_technique, multi_ferme, created_by } = req.body;
+        // Seul le profil achats peut créer des articles
+        if (created_by?.profileId && created_by.profileId !== "achats" && created_by.profileId !== "dg") {
+          return res.status(403).json({ success: false, error: "Seul le responsable achats peut créer des articles" });
+        }
         if (!nom || !reference) return res.status(400).json({ success: false, error: "Nom et référence requis" });
         const existing = await db_firestore.collection("articles_catalog").doc(reference).get();
         if (existing.exists && existing.data().active !== false) return res.status(400).json({ success: false, error: "Un article avec cette référence existe déjà" });
@@ -4310,37 +5903,58 @@ exports.stockManagement = functions
       // ========== ANALYSES FOLIAIRES ==========
 
       if (action === "list-analyses-foliaires") {
-        const { ferme, parcelle, statut } = req.query;
+        const { ferme, parcelle, statut, type_analyse, variete } = req.query;
         const now = Date.now();
         const PARCELLES_MAP = {
           F1: ["P1-Myrtille A","P2-Myrtille B","P3-Framboise","P4-Myrtille C","P5-Framboise B"],
+          F2: [],
+          F3: [],
+          F4: [],
           F5: ["P1-Myrtille","P2-Framboise A","P3-Framboise B","P4-Myrtille D"],
+          F6: [],
+          BAHIA: [],
           Avocatier: ["P1-Hass","P2-Hass B","P3-Fuerte"],
         };
+        // Variety → canonical ferme overrides. Used to correct historical mis-assignments
+        // (e.g. CASCADE is a myrtille cultivar planted only on F5).
+        const VARIETE_FERME_OVERRIDE = {
+          CASCADE: "F5",
+        };
+
+        // We *must* fetch without a ferme filter when an override may apply, otherwise
+        // docs stored under the wrong ferme stay hidden forever. Cheap: small collection.
         let q = db_firestore.collection("analyses_foliaires");
-        if (ferme) q = q.where("ferme", "==", ferme);
         if (parcelle) q = q.where("parcelle", "==", parcelle);
         if (statut) q = q.where("statut", "==", statut);
-        const snap = await q.orderBy("created_at", "desc").get();
+        if (type_analyse) q = q.where("type_analyse", "==", type_analyse);
+        if (variete) q = q.where("variete", "==", variete);
+        const snap = await q.get();
         const THREE_DAYS = 3 * 86400000;
         const THIRTY_DAYS = 30 * 86400000;
-        const analyses = snap.docs.map(d => {
+
+        // Persist ferme corrections as we see them, so subsequent queries are fast.
+        const fixPromises = [];
+        let analyses = snap.docs.map(d => {
           const a = { id: d.id, ...d.data() };
+          if (!a.type_analyse) a.type_analyse = "foliaire";
+          if (!a.source) a.source = "manual";
           a.is_result_late = a.statut === "prelevee" && a.date_prelevement && (now - a.date_prelevement) > THREE_DAYS;
+          const canonical = VARIETE_FERME_OVERRIDE[(a.variete || "").toUpperCase()];
+          if (canonical && a.ferme !== canonical) {
+            console.log(`ferme override: ${d.id} variete=${a.variete} ${a.ferme}→${canonical}`);
+            a.ferme = canonical;
+            fixPromises.push(d.ref.update({ ferme: canonical, updated_at: Date.now() }).catch(e => console.error("override persist failed", d.id, e.message)));
+          }
           return a;
         });
+        if (fixPromises.length) await Promise.all(fixPromises);
+        if (ferme) analyses = analyses.filter(a => a.ferme === ferme);
+        analyses.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
-        // Parcelles en retard de fréquence (>30j sans completee)
+        // parcelles_overdue was per-parcelle and couldn't credit AGQ imports
+        // (which have parcelle: null, classified by ferme+variete instead).
+        // The V5 AI panel now surfaces gaps contextually. Field kept for API back-compat.
         const parcelles_overdue = [];
-        const fermes = ferme ? [ferme] : Object.keys(PARCELLES_MAP);
-        for (const f of fermes) {
-          for (const p of (PARCELLES_MAP[f] || [])) {
-            const derniere = analyses.filter(a => a.ferme === f && a.parcelle === p && a.statut === "completee")
-              .sort((a, b) => (b.date_resultat || 0) - (a.date_resultat || 0))[0];
-            const sinceMs = derniere ? now - derniere.date_resultat : Infinity;
-            if (sinceMs > THIRTY_DAYS) parcelles_overdue.push({ ferme: f, parcelle: p, days_since: Math.floor(sinceMs / 86400000), never: !derniere });
-          }
-        }
 
         const counts = {
           demandees: analyses.filter(a => a.statut === "demandee").length,
@@ -4352,14 +5966,39 @@ exports.stockManagement = functions
         return res.json({ success: true, analyses, parcelles_overdue, counts });
       }
 
+      if (action === "get-variete-contexte") {
+        const { ferme, variete } = req.query;
+        if (!ferme || !variete) return res.status(400).json({ success: false, error: "ferme et variete requis" });
+        const docId = `${ferme}_${(variete || "").toUpperCase().replace(/\s+/g, "_")}`;
+        const doc = await db_firestore.collection("variete_contextes").doc(docId).get();
+        return res.json({ success: true, contexte: doc.exists ? doc.data() : null });
+      }
+
+      if (action === "save-variete-contexte" && req.method === "POST") {
+        const { ferme, variete, contexte_general, updated_by } = req.body;
+        if (!ferme || !variete) return res.status(400).json({ success: false, error: "ferme et variete requis" });
+        const docId = `${ferme}_${(variete || "").toUpperCase().replace(/\s+/g, "_")}`;
+        await db_firestore.collection("variete_contextes").doc(docId).set({
+          ferme, variete, contexte_general: contexte_general || "",
+          updated_at: Date.now(), updated_by: updated_by || {},
+        }, { merge: true });
+        return res.json({ success: true });
+      }
+
       if (action === "create-analyse-foliaire" && req.method === "POST") {
-        const { ferme, parcelle, culture, note_demande, photo_base64, photo_filename, created_by } = req.body;
-        if (!ferme || !parcelle) return res.status(400).json({ success: false, error: "ferme et parcelle requis" });
+        const { ferme, parcelle, culture, type_analyse, variete, phenologie, note_demande, photo_base64, photo_filename, created_by } = req.body;
+        if (!ferme) return res.status(400).json({ success: false, error: "ferme requis" });
         const numero = await getNextNumber("analyse_foliaire", "AF");
         const now = Date.now();
+        const cultureInferred = culture || (parcelle && (parcelle.toLowerCase().includes("hass") || parcelle.toLowerCase().includes("fuerte")) ? "Avocatier" : parcelle && parcelle.toLowerCase().includes("framboise") ? "Framboise" : parcelle ? "Myrtille" : null);
         const data = {
-          numero, ferme, parcelle,
-          culture: culture || (parcelle.toLowerCase().includes("hass") || parcelle.toLowerCase().includes("fuerte") ? "Avocatier" : parcelle.toLowerCase().includes("framboise") ? "Framboise" : "Myrtille"),
+          numero, ferme,
+          parcelle: parcelle || null,
+          culture: cultureInferred,
+          type_analyse: type_analyse || "foliaire",
+          variete: variete || null,
+          phenologie: phenologie || null,
+          source: "manual",
           statut: "demandee",
           date_demande: now,
           date_prelevement: null,
@@ -4431,84 +6070,157 @@ exports.stockManagement = functions
         return res.json({ success: true, scan_url });
       }
 
-      if (action === "generate-reco-foliaire" && req.method === "POST") {
-        const { id, parcelle, ferme, culture, photo_url, scan_url, note_demande } = req.body;
-        if (!id) return res.status(400).json({ success: false, error: "id requis" });
-        const apiKey = process.env.ANTHROPIC_API_KEY;
-        if (!apiKey) return res.json({ success: false, error: "Clé API Anthropic non configurée" });
+      // ========== SURVEILLANCE AGRO — observation terrain (photos) ==========
 
-        const Anthropic = require("@anthropic-ai/sdk");
-        const client = new Anthropic({ apiKey });
-        const messageContent = [];
+      if (action === "create-observation-terrain" && req.method === "POST") {
+        const { ferme, variete, culture, note, photos, created_by } = req.body;
+        if (!ferme) return res.status(400).json({ success: false, error: "ferme requis" });
+        if (!variete) return res.status(400).json({ success: false, error: "variete requis" });
+        if (!photos || !photos.length) return res.status(400).json({ success: false, error: "au moins 1 photo requise" });
+        if (photos.length > 5) return res.status(400).json({ success: false, error: "max 5 photos" });
 
-        // Charger les images depuis leurs URLs
-        const loadImage = async (url) => {
-          if (!url) return null;
-          try {
-            const https = require("https");
-            const http = require("http");
-            const mod = url.startsWith("https") ? https : http;
-            return await new Promise((resolve, reject) => {
-              mod.get(url, (resp) => {
-                const chunks = [];
-                resp.on("data", c => chunks.push(c));
-                resp.on("end", () => resolve({ data: Buffer.concat(chunks), type: resp.headers["content-type"] || "image/jpeg" }));
-              }).on("error", reject);
-            });
-          } catch (e) { console.error("Erreur image AF:", e.message); return null; }
+        const now = Date.now();
+        const docData = {
+          type_analyse: "observation_terrain",
+          ferme,
+          variete,
+          culture: culture || null,
+          parcelle: null,
+          date_analyse: now,
+          statut: "completee",
+          source: "manual",
+          photo_urls: [],
+          note_demande: note || "",
+          parsed_values: {},
+          recommandations_ia: [],
+          terrain_raw: note || "",
+          created_by: created_by || { name: "unknown" },
+          created_at: now,
+          updated_at: now,
         };
+        const ref = await db_firestore.collection("analyses_foliaires").add(docData);
 
-        const [photoImg, scanImg] = await Promise.all([loadImage(photo_url), loadImage(scan_url)]);
-        if (photoImg) messageContent.push({ type: "image", source: { type: "base64", media_type: photoImg.type, data: photoImg.data.toString("base64") } });
-        if (scanImg && !scanImg.type.includes("pdf")) messageContent.push({ type: "image", source: { type: "base64", media_type: scanImg.type, data: scanImg.data.toString("base64") } });
+        const photoUrls = [];
+        for (let i = 0; i < photos.length; i++) {
+          const p = photos[i];
+          const cleanBase64 = (p.base64 || "").replace(/^data:image\/\w+;base64,/, "");
+          if (!cleanBase64) continue;
+          const buffer = Buffer.from(cleanBase64, "base64");
+          const storagePath = `analyses_foliaires/${ref.id}/photos/${now}_${i}.jpg`;
+          const file = bucket.file(storagePath);
+          await file.save(buffer, { metadata: { contentType: "image/jpeg" } });
+          const url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+          photoUrls.push({
+            url,
+            storage_path: storagePath,
+            caption: p.caption || "",
+            taken_at: now,
+            location: p.location || null,
+          });
+        }
 
-        const prompt = `Tu es un ingénieur agronome expert en analyses foliaires pour cultures de petits fruits rouges (myrtilles, framboises) et avocatiers au Maroc (région Souss-Massa).
+        const firstGeo = photoUrls.find(p => p.location);
+        const updateData = { photo_urls: photoUrls, updated_at: Date.now() };
+        if (firstGeo) updateData.location = firstGeo.location;
+        await ref.update(updateData);
+        return res.json({ success: true, id: ref.id, photo_count: photoUrls.length });
+      }
 
-PARCELLE : ${parcelle || "Non spécifiée"}
-FERME : ${ferme || "Non spécifiée"}
-CULTURE : ${culture || "Non spécifiée"}
-NOTES DU CHEF DE FERME : ${note_demande || "Aucune"}
+      if (action === "import-analyse-agq" && req.method === "POST") {
+        const { pdf_base64, filename, source_email, created_by } = req.body;
+        if (!pdf_base64) return res.status(400).json({ success: false, error: "pdf_base64 requis" });
+        const { parseAgqPdf } = require("./agqParser");
+        const pdfBuffer = Buffer.from(pdf_base64.replace(/^data:application\/pdf;base64,/, ""), "base64");
 
-${photoImg ? "Une photo de la parcelle au moment du prélèvement est jointe." : ""}
-${scanImg ? "Le rapport d'analyse foliaire est joint (scan)." : "Pas de scan fourni — basez-vous sur les informations disponibles."}
+        let parsed;
+        try {
+          parsed = await parseAgqPdf(pdfBuffer, {
+            subject: source_email?.subject || "",
+            attachmentName: filename || "",
+          });
+        } catch (e) {
+          return res.status(500).json({ success: false, error: "Parse AGQ: " + e.message });
+        }
 
-Sur la base de ces éléments, fournis une analyse structurée :
+        if (!parsed.ferme) {
+          return res.status(422).json({ success: false, error: "Ferme non détectée dans le PDF", parsed });
+        }
 
-1. **État nutritionnel** : Interprétation des niveaux (N, P, K, Ca, Mg, Fe, Zn, Mn, B) par rapport aux normes foliaires pour la culture. Indiquer si chaque élément est déficient, optimal ou en excès.
-2. **Diagnostic visuel** (si photo disponible) : Signes observés sur le feuillage — couleur, texture, symptômes éventuels.
-3. **Plan de correction fertigation** : Ajustements recommandés (éléments, doses en kg/ha ou g/L, fréquence, formulations commerciales disponibles au Maroc).
-4. **Actions prioritaires** : 3 actions concrètes à entreprendre dans les 7 prochains jours.
-5. **Suivi** : KPIs à mesurer et fréquence recommandée de la prochaine analyse foliaire.
-
-Réponds en français. Utilise des données chiffrées et des comparaisons avec les normes standard.`;
-
-        messageContent.push({ type: "text", text: prompt });
-
-        let response;
-        for (const modelId of ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]) {
-          try {
-            response = await client.messages.create({ model: modelId, max_tokens: 2500, messages: [{ role: "user", content: messageContent }] });
-            break;
-          } catch (e) {
-            console.error("Erreur modèle", modelId, e.message);
-            if (modelId === "claude-sonnet-4-20250514") throw e;
+        // Idempotence: skip if we already imported this exact attachment.
+        if (source_email?.messageId && filename) {
+          const dup = await db_firestore.collection("analyses_foliaires")
+            .where("source_email.messageId", "==", source_email.messageId)
+            .where("source_email.attachment_name", "==", filename)
+            .limit(1)
+            .get();
+          if (!dup.empty) {
+            return res.json({ success: true, skipped: true, id: dup.docs[0].id, reason: "duplicate" });
           }
         }
 
-        const message = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
-        const reco = { message, model: response.model || "claude", generated_at: Date.now(), has_photo: !!photoImg, has_scan: !!scanImg };
+        const numero = await getNextNumber("analyse_foliaire", "AF");
+        const now = Date.now();
+        const receivedAt = source_email?.received_at ? new Date(source_email.received_at).getTime() : now;
+        const data = {
+          numero,
+          ferme: parsed.ferme,
+          parcelle: null,
+          culture: parsed.culture,
+          type_analyse: parsed.type_analyse,
+          variete: parsed.variete,
+          propriete_raw: parsed.propriete_raw,
+          terrain_raw: parsed.terrain_raw,
+          client_raw: parsed.client_raw,
+          phenologie: parsed.phenologie,
+          parsed_values: parsed.parsed_values || {},
+          parsed_header_line: parsed.parsed_header_line || null,
+          source: "email_agq",
+          source_email: {
+            messageId: source_email?.messageId || null,
+            subject: source_email?.subject || null,
+            from: source_email?.from || null,
+            received_at: receivedAt,
+            attachment_name: filename || null,
+          },
+          statut: "completee",
+          date_demande: receivedAt,
+          date_prelevement: parsed.date_analyse || receivedAt,
+          date_resultat: receivedAt,
+          date_analyse: parsed.date_analyse || null,
+          bdc_id: null,
+          photo_parcelle_url: null,
+          scan_resultat_url: null,
+          note_demande: "",
+          recommandations_ia: [],
+          history: [{ action: "import_email_agq", by: created_by || { name: "system" }, at: now, comment: filename || "" }],
+          created_by: created_by || { name: "system" },
+          created_at: now,
+          updated_at: now,
+        };
+        const ref = await db_firestore.collection("analyses_foliaires").add(data);
 
-        // Sauvegarder dans Firestore
-        const docRef = db_firestore.collection("analyses_foliaires").doc(id);
-        const snap = await docRef.get();
-        if (snap.exists) {
-          const existing = snap.data().recommandations_ia || [];
-          existing.push(reco);
-          await docRef.update({ recommandations_ia: existing, updated_at: Date.now() });
+        // Upload the PDF as the analysis result scan.
+        try {
+          const safeName = (filename || "agq_report.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
+          const storagePath = `analyses_foliaires/${ref.id}/${safeName}`;
+          const file = bucket.file(storagePath);
+          await file.save(pdfBuffer, { metadata: { contentType: "application/pdf" } });
+          const url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+          await ref.update({ scan_resultat_url: url });
+          data.scan_resultat_url = url;
+        } catch (e) {
+          console.error("Upload PDF AGQ:", e.message);
         }
 
-        return res.json({ success: true, recommandation: reco });
+        return res.json({ success: true, id: ref.id, numero, parsed });
       }
+
+      if (action === "generate-reco-foliaire" && req.method === "POST") {
+        const result = await generateRecoForAnalyse(req.body.id, req.body);
+        if (result.success) return res.json(result);
+        return res.json(result);
+      }
+
 
       // ========== SCAN FACTURES (AI-powered invoice scanning) ==========
 
@@ -4813,6 +6525,732 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ 
         const snap = await db_firestore.collection(collection).orderBy("created_at", "desc").limit(limit).get();
         const scans = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         return res.json({ success: true, scans });
+      }
+
+      // ========== SCAN BON D'APPORT (AI-powered production bon scanning) ==========
+
+      if (action === "scan-bon-apport" && req.method === "POST") {
+        const { scan_base64, filename, created_by } = req.body;
+        if (!scan_base64) return res.status(400).json({ success: false, error: "scan_base64 requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "Clé API Anthropic non configurée" });
+
+        // 1) Upload scan to Firebase Storage
+        const cleanBase64 = scan_base64.replace(/^data:(image\/\w+|application\/pdf);base64,/, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const ext = (filename || "scan.jpg").split(".").pop().toLowerCase() || "jpg";
+        const ts = Date.now();
+        const storagePath = `scans/bons_apport/${ts}_${filename || "scan." + ext}`;
+        const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType } });
+        const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+        // 2) Prepare content for Claude AI
+        const Anthropic = require("@anthropic-ai/sdk");
+        const client = new Anthropic({ apiKey });
+        const mediaType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+        const messageContent = [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } },
+          { type: "text", text: `Tu es un assistant spécialisé dans la lecture de bons d'apport de production agricole pour Berry Good Farms (culture de framboise et myrtille au Maroc).
+
+DATE IMPORTANTE: Nous sommes en ${new Date().toISOString().split('T')[0]}. Les bons scannés datent généralement de J-1 ou J-2 (hier ou avant-hier). L'année est TOUJOURS 2026 (saison 2025-2026). Si tu lis une date ambiguë, utilise 2026 comme année.
+
+Extrais les données du bon d'apport en JSON strict:
+{
+  "numero_bon": "..." (numéro du bon d'apport, souvent en haut du document en rouge),
+  "date": "YYYY-MM-DD" (date de récolte — sur le bon elle est au format français JJ/MM/AAAA, convertis en YYYY-MM-DD. L'année est 2026),
+  "ferme": "F1" ou "F5" (IMPORTANT: détermine la ferme par le secteur/parcelle: S1-S7 et GG → F1, S8, S8-1, S8-2, S9, S10, S13 → F5. Aussi par N° Camion: 172 → F1, 195 → F5. Cherche dans "Producteur / Ferme" ou "Parcelle / Bloc"),
+  "variete": "..." (désignation EXACTE du bloc — utilise une de ces valeurs: "MARAVILLA GG F1", "S10 YAZMIN CUT BACK F5", "S9 REYNA F5", "CORINA MYRTILLE S8", "BREEZE MYRTILLE S8-2", "CASCADE MYRTILLE S8-1". Identifie la variété et la ferme pour choisir la bonne désignation),
+  "parcelle": "..." (parcelle/bloc si mentionné),
+  "lignes": [
+    {
+      "description": "..." (type d'unité de livraison, ex: "Carton Driscoll's Barquette en quarton 10x300g PPE". Pour Marché Local, inclure le nom de la variété si visible),
+      "variete": "..." (variété de cette ligne si identifiable — utiliser les mêmes désignations que le champ variete ci-dessus. Important pour les bons Marché Local multi-variétés),
+      "nombre_colis": 0 (nombre dans la colonne "Nombre"),
+      "poids_unitaire_kg": 0 (quantité de produit par unité de chargement en kg, ex: 3 pour "163 x3"),
+      "quantite_kg": 0 (quantité totale en kg pour cette ligne)
+    }
+  ],
+  "poids_kg": 0 (poids TOTAL de toutes les lignes en kg — somme des quantite_kg),
+  "nombre_colis_total": 0 (somme de tous les nombre_colis),
+  "type_vente": "Export" ou "Marché Local" (si mentionné, sinon "Export"),
+  "client": "..." (nom du client si mentionné, sinon "Driscoll's" pour export),
+  "semaine": "..." (numéro de semaine si mentionné, sinon null),
+  "notes": "..." (informations supplémentaires, traitement phytosanitaire, etc.)
+}
+
+IMPORTANT:
+- Retourne UNIQUEMENT le JSON, sans texte avant ou après
+- Le numéro de bon est crucial — cherche-le attentivement (souvent en rouge en haut)
+- Lis CHAQUE ligne du tableau "Type d'unité de livraison" séparément
+- Vérifie que la somme des quantite_kg des lignes = poids_kg total
+- Pour les bons "Marché Local", un même bon peut contenir PLUSIEURS variétés — identifie la variété de chaque ligne et remplis le champ "variete" de chaque ligne
+- Si un champ n'est pas lisible, mets null` }
+        ];
+
+        // 3) Call Claude
+        let response;
+        for (const modelId of ["claude-sonnet-4-20250514", "claude-opus-4-20250514"]) {
+          try {
+            response = await client.messages.create({ model: modelId, max_tokens: 1500, messages: [{ role: "user", content: messageContent }] });
+            break;
+          } catch (e) {
+            console.error("Erreur modèle scan-bon-apport", modelId, e.message);
+            if (modelId === "claude-opus-4-20250514") throw e;
+          }
+        }
+
+        const aiText = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        let analysis;
+        try {
+          const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+          analysis = JSON.parse(jsonMatch ? jsonMatch[0] : aiText);
+        } catch (e) {
+          return res.json({ success: false, error: "Analyse IA impossible - réponse non structurée", raw: aiText });
+        }
+
+        return res.json({ success: true, scan_url, analysis });
+      }
+
+      // ========== SCAN FICHE IRRIGATION (AI-powered irrigation sheet scanning) ==========
+
+      if (action === "scan-irrigation-sheet" && req.method === "POST") {
+        const { scan_base64, filename } = req.body;
+        if (!scan_base64) return res.status(400).json({ success: false, error: "scan_base64 requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "Clé API Anthropic non configurée" });
+
+        // 1) Upload scan to Firebase Storage
+        const cleanBase64 = scan_base64.replace(/^data:(image\/\w+|application\/pdf);base64,/, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const ext = (filename || "scan.jpg").split(".").pop().toLowerCase() || "jpg";
+        const ts = Date.now();
+        const storagePath = `scans/irrigation/${ts}_${filename || "scan." + ext}`;
+        const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType } });
+        const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+        // 2) Prepare content for Claude AI
+        const Anthropic = require("@anthropic-ai/sdk");
+        const client = new Anthropic({ apiKey });
+        const mediaType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+        const messageContent = [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } },
+          { type: "text", text: `Tu es un assistant spécialisé dans la lecture de fiches d'irrigation manuscrites de Berry Good Farms (culture de framboise et myrtille au Maroc).
+
+La fiche contient un tableau avec des lectures d'irrigation relevées par les stationnaires.
+L'en-tête indique généralement la ferme (F1 ou F5) et la parcelle (ex: CORINA MYRTILLE S8).
+Le tableau contient plusieurs lignes, chaque ligne correspondant à un relevé à une date/heure donnée.
+
+Pour chaque ligne, on trouve :
+- Heure de début
+- Parcelle / secteur
+- Pour chaque POINT d'irrigation (jusqu'à 4 points) : EC (conductivité électrique en mS/cm), pH, Volume (en litres)
+- Pour chaque point de DRAINAGE correspondant : EC, pH, Volume (en % ou litres)
+
+Les dates peuvent être inscrites en ligne ou en en-tête de section (ex: "14/03/2026" ou "14/ 03/ 2026").
+L'année est TOUJOURS 2025 ou 2026 (saison 2025-2026).
+
+Extrais TOUTES les lignes du tableau. Retourne un JSON strict :
+{
+  "ferme": "F1" ou "F5",
+  "parcelle": "nom exact de la parcelle tel qu'inscrit sur la fiche",
+  "lectures": [
+    {
+      "date": "YYYY-MM-DD",
+      "heure": "HH:MM",
+      "duree": 0,
+      "points": [
+        { "ec": 1.8, "ph": 6.2, "volume": 12.5 },
+        { "ec": 1.9, "ph": 6.1, "volume": 11.8 }
+      ],
+      "drainage": [
+        { "ec": 2.5, "ph": 5.8, "volume": 22 },
+        { "ec": 2.6, "ph": 5.7, "volume": 25 }
+      ]
+    }
+  ]
+}
+
+IMPORTANT:
+- Retourne UNIQUEMENT le JSON, sans texte avant ou après
+- Lis CHAQUE ligne du tableau, même si l'écriture est difficile à lire
+- Les valeurs EC sont généralement entre 0.5 et 5.0 mS/cm
+- Les valeurs pH sont généralement entre 4.0 et 8.0
+- Si la durée n'est pas indiquée, mets 0
+- Si une valeur n'est pas lisible, mets null
+- Fais attention aux séparateurs décimaux : virgule ou point
+- Les dates en en-tête s'appliquent à toutes les lignes en dessous jusqu'à la prochaine date` }
+        ];
+
+        // 3) Call Claude
+        let response;
+        for (const modelId of ["claude-sonnet-4-20250514", "claude-opus-4-20250514"]) {
+          try {
+            response = await client.messages.create({ model: modelId, max_tokens: 4000, messages: [{ role: "user", content: messageContent }] });
+            break;
+          } catch (e) {
+            console.error("Erreur modèle scan-irrigation", modelId, e.message);
+            if (modelId === "claude-opus-4-20250514") throw e;
+          }
+        }
+
+        const aiText = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        let analysis;
+        try {
+          const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+          analysis = JSON.parse(jsonMatch ? jsonMatch[0] : aiText);
+        } catch (e) {
+          return res.json({ success: false, error: "Analyse IA impossible - réponse non structurée", raw: aiText });
+        }
+
+        return res.json({ success: true, scan_url, analysis });
+      }
+
+      // ========== ANALYSE IRRIGATION (AI-powered agronomic analysis) ==========
+
+      if (action === "analyse-irrigation" && req.method === "POST") {
+        const { readings, ferme, parcelle } = req.body;
+        if (!readings || !readings.length) return res.status(400).json({ success: false, error: "readings requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.json({ success: true, analyse: "⚠️ Clé API Anthropic non configurée." });
+
+        // Build data summary for Claude
+        const dataLines = readings.map(r => {
+          const ptsEc = (r.points || []).filter(p => p.ec > 0).map(p => p.ec);
+          const ptsPh = (r.points || []).filter(p => p.ph > 0).map(p => p.ph);
+          const ptsVol = (r.points || []).filter(p => p.volume > 0).map(p => p.volume);
+          const drEc = (r.drainage || []).filter(d => d.ec > 0).map(d => d.ec);
+          const drPh = (r.drainage || []).filter(d => d.ph > 0).map(d => d.ph);
+          const drVol = (r.drainage || []).filter(d => d.volume > 0).map(d => d.volume);
+          const avg = arr => arr.length ? (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2) : 'N/A';
+          return `${r.date} ${r.heure || ''} | Parcelle: ${r.parcelleLabel || r.parcelle} | Durée: ${r.duree || 0}min | Apport EC=${avg(ptsEc)} pH=${avg(ptsPh)} Vol=${avg(ptsVol)}L | Drainage EC=${avg(drEc)} pH=${avg(drPh)} Vol=${avg(drVol)}%`;
+        }).join('\n');
+
+        const Anthropic = require("@anthropic-ai/sdk");
+        const client = new Anthropic({ apiKey });
+
+        const prompt = `Tu es un ingénieur agronome spécialisé dans l'irrigation des cultures de framboise et myrtille sous serre au Maroc (Berry Good Farms).
+
+Voici les données d'irrigation des derniers jours pour la ferme ${ferme || 'N/A'}${parcelle ? ', parcelle ' + parcelle : ''} :
+
+${dataLines}
+
+Analyse ces données comme le ferait un expert en irrigation et fournis :
+
+## 1. Diagnostic EC (Conductivité Électrique)
+- EC apport vs EC drainage : le ratio est-il dans la norme (drainage/apport < 1.5) ?
+- Tendance : l'EC dérive-t-elle ? Accumulation saline ?
+- Recommandation : faut-il ajuster la concentration de la solution nutritive ?
+
+## 2. Diagnostic pH
+- Le pH est-il dans la plage optimale (5.5-6.5 pour framboise, 4.5-5.5 pour myrtille) ?
+- Écart pH apport vs drainage : y a-t-il un problème de tampon du substrat ?
+- Recommandation : ajustement acide/base nécessaire ?
+
+## 3. Drainage
+- Le % de drainage est-il dans la cible (20-30%) ?
+- Est-il régulier ou très variable ?
+- Recommandation : ajuster le volume par irrigation ?
+
+## 4. Fréquence & Volume
+- Le nombre d'irrigations par jour est-il adapté au stade et à la saison ?
+- Le volume par cycle est-il cohérent ?
+- Recommandation : modifier la fréquence ou le volume ?
+
+## 5. Actions Prioritaires (3 max)
+Liste les 3 actions les plus urgentes à prendre, classées par priorité.
+
+Réponds en français, de manière concise et actionnable. Utilise des émojis pour les niveaux d'alerte :
+🟢 = OK, 🟡 = À surveiller, 🔴 = Action urgente`;
+
+        let response;
+        for (const modelId of ["claude-sonnet-4-20250514", "claude-opus-4-20250514"]) {
+          try {
+            response = await client.messages.create({ model: modelId, max_tokens: 2000, messages: [{ role: "user", content: prompt }] });
+            break;
+          } catch (e) {
+            console.error("Erreur modèle analyse-irrigation", modelId, e.message);
+            if (modelId === "claude-opus-4-20250514") throw e;
+          }
+        }
+
+        const analyse = response.content.filter(b => b.type === "text").map(b => b.text).join("\n");
+        return res.json({ success: true, analyse });
+      }
+
+      // ========== STOCK MOVEMENTS (Gestion de stock) ==========
+
+      // --- Helper: update stock_balances atomically ---
+      async function updateStockBalance(lieuType, lieuId, articleRef, articleNom, unite, delta) {
+        const balanceId = `${lieuType}_${lieuId}_${articleRef}`.replace(/\s+/g, '_');
+        const balRef = db_firestore.collection("stock_balances").doc(balanceId);
+        await db_firestore.runTransaction(async (t) => {
+          const snap = await t.get(balRef);
+          const current = snap.exists ? (snap.data().balance || 0) : 0;
+          const newBalance = Math.round((current + delta) * 100) / 100;
+          t.set(balRef, {
+            lieu_type: lieuType, lieu_id: lieuId,
+            article_ref: articleRef, article_nom: articleNom,
+            unite: unite || "kg", balance: newBalance,
+            updated_at: Date.now()
+          }, { merge: true });
+        });
+      }
+
+      // --- Helper: apply stock impact for a validated movement ---
+      async function applyStockImpact(movement) {
+        const promises = [];
+        for (const item of (movement.items || [])) {
+          const ref = item.article_ref || item.article || "";
+          const nom = item.article_nom || item.article || "";
+          const qty = parseFloat(item.quantite) || 0;
+          const unite = item.unite || "kg";
+          if (qty <= 0) continue;
+          // Decrease source
+          if (movement.lieu_source && movement.lieu_source.id) {
+            promises.push(updateStockBalance(movement.lieu_source.type, movement.lieu_source.id, ref, nom, unite, -qty));
+          }
+          // Increase destination (not for parcelles or external)
+          if (movement.lieu_destination && movement.lieu_destination.id && movement.lieu_destination.type !== "parcelle") {
+            promises.push(updateStockBalance(movement.lieu_destination.type, movement.lieu_destination.id, ref, nom, unite, qty));
+          }
+        }
+        await Promise.all(promises);
+      }
+
+      // --- Helper: determine chef profile for a ferme ---
+      function getChefProfileForFerme(ferme) {
+        if (ferme === "F1") return "chef_f1";
+        if (ferme === "F5") return "chef_f5";
+        if (["F2", "F3", "F4", "F6"].includes(ferme)) return "chef_avo";
+        return null;
+      }
+
+      // --- Helper: check if movement needs multi-level validation ---
+      function movementNeedsMultiValidation(type) {
+        return type === "reception" || type === "sortie";
+      }
+
+      // --- UPLOAD SCAN for stock movements ---
+      if (action === "upload-scan" && req.method === "POST") {
+        const { file_base64, filename, contentType } = req.body || {};
+        if (!file_base64) return res.status(400).json({ success: false, error: "file_base64 requis" });
+        const buffer = Buffer.from(file_base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+        const ext = (filename || "scan.jpg").split(".").pop() || "jpg";
+        const storagePath = `stock_scans/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType: contentType || `image/${ext}` } });
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+        return res.json({ success: true, url: publicUrl });
+      }
+
+      // --- CREATE MOVEMENT ---
+      if (action === "create-movement" && req.method === "POST") {
+        const { type, date, lieu_source, lieu_destination, ferme, items, ref_bl_fournisseur,
+          bdc_id, bl_id, reception_libre, reception_libre_motif, ref_bon_physique,
+          sortie_type, scan_url, fournisseur_nom, beneficiaire, created_by } = req.body;
+
+        if (!type || !items?.length) {
+          return res.status(400).json({ success: false, error: "Champs requis: type, items[]" });
+        }
+        const validTypes = ["reception", "transfert", "consommation", "sortie"];
+        if (!validTypes.includes(type)) {
+          return res.status(400).json({ success: false, error: "Type invalide. Valeurs: " + validTypes.join(", ") });
+        }
+        if (type === "sortie" && !["retour_fournisseur", "pret", "rebut"].includes(sortie_type)) {
+          return res.status(400).json({ success: false, error: "sortie_type requis: retour_fournisseur, pret, rebut" });
+        }
+        if (type === "reception" && reception_libre && !reception_libre_motif) {
+          return res.status(400).json({ success: false, error: "Motif obligatoire pour réception libre" });
+        }
+
+        const prefixMap = { reception: "BR", transfert: "BT", consommation: "BCS", sortie: "BS" };
+        const numType = "stock_" + type;
+        const numero = await getNextNumber(numType, prefixMap[type]);
+
+        const movItems = items.map((it) => ({
+          article_ref: it.article_ref || it.article || "",
+          article_nom: it.article_nom || it.article || "",
+          quantite: parseFloat(it.quantite) || 0,
+          unite: it.unite || "kg",
+        }));
+
+        const needsMulti = movementNeedsMultiValidation(type);
+        const initialStatus = needsMulti ? "valide_mag" : "valide_mag";
+
+        const movData = {
+          numero, type,
+          date: date || new Date().toISOString().split("T")[0],
+          lieu_source: lieu_source || null,
+          lieu_destination: lieu_destination || null,
+          ferme: ferme || "",
+          items: movItems,
+          ref_bl_fournisseur: ref_bl_fournisseur || "",
+          bdc_id: bdc_id || null,
+          bl_id: bl_id || null,
+          reception_libre: !!reception_libre,
+          reception_libre_motif: reception_libre_motif || "",
+          ref_bon_physique: ref_bon_physique || "",
+          sortie_type: sortie_type || null,
+          scan_url: scan_url || null,
+          fournisseur_nom: fournisseur_nom || null,
+          beneficiaire: beneficiaire || null,
+          status: initialStatus,
+          validations: {
+            magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() }
+          },
+          rejection: null,
+          created_by: created_by || {},
+          created_at: Date.now(),
+          updated_at: Date.now(),
+        };
+
+        const docRef = await db_firestore.collection("stock_movements").add(movData);
+
+        // For single-validation types (transfert, consommation), apply stock impact immediately
+        if (!needsMulti) {
+          await applyStockImpact(movData);
+        }
+
+        return res.json({ success: true, id: docRef.id, numero, status: initialStatus });
+      }
+
+      // --- LIST MOVEMENTS ---
+      if (action === "list-movements") {
+        const { type, status, ferme: movFerme, limit: movLimit } = req.query;
+        const lim = parseInt(movLimit || "200");
+        let q = db_firestore.collection("stock_movements").orderBy("created_at", "desc").limit(lim);
+        if (type) q = q.where("type", "==", type);
+        if (status) q = q.where("status", "==", status);
+        if (movFerme) q = q.where("ferme", "==", movFerme);
+        const snap = await q.get();
+        const movements = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.json({ success: true, movements, count: movements.length });
+      }
+
+      // --- GET SINGLE MOVEMENT ---
+      if (action === "get-movement") {
+        const { id } = req.query;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        const snap = await db_firestore.collection("stock_movements").doc(id).get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "Mouvement introuvable" });
+        return res.json({ success: true, movement: { id: snap.id, ...snap.data() } });
+      }
+
+      // --- VALIDATE MOVEMENT ---
+      if (action === "validate-movement" && req.method === "POST") {
+        const { id, role, validated_by } = req.body;
+        if (!id || !role) return res.status(400).json({ success: false, error: "id et role requis" });
+
+        const docRef = db_firestore.collection("stock_movements").doc(id);
+        const snap = await docRef.get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "Mouvement introuvable" });
+        const mov = snap.data();
+
+        if (mov.status === "rejete") {
+          return res.status(400).json({ success: false, error: "Mouvement rejeté, impossible de valider" });
+        }
+
+        // Determine expected validation sequence
+        let nextStatus = null;
+        if (role === "achats" && mov.status === "valide_mag") {
+          nextStatus = "valide_achats";
+        } else if ((role === "chef_f1" || role === "chef_f5" || role === "chef_avo") && mov.status === "valide_achats") {
+          // Verify the chef matches the ferme
+          const expectedChef = getChefProfileForFerme(mov.ferme);
+          if (expectedChef && role !== expectedChef) {
+            return res.status(403).json({ success: false, error: `Seul ${expectedChef} peut valider pour ${mov.ferme}` });
+          }
+          nextStatus = "valide_chef";
+        } else {
+          return res.status(400).json({ success: false, error: `Validation ${role} non applicable au statut ${mov.status}` });
+        }
+
+        const validationKey = role === "achats" ? "achats" : "chef";
+        await docRef.update({
+          status: nextStatus,
+          [`validations.${validationKey}`]: {
+            by: (validated_by || {}).userId || "",
+            name: (validated_by || {}).name || "",
+            at: Date.now()
+          },
+          rejection: null,
+          updated_at: Date.now()
+        });
+
+        // If fully validated, apply stock impact
+        if (nextStatus === "valide_chef") {
+          const updatedSnap = await docRef.get();
+          await applyStockImpact(updatedSnap.data());
+        }
+
+        return res.json({ success: true, status: nextStatus });
+      }
+
+      // --- REJECT MOVEMENT ---
+      if (action === "reject-movement" && req.method === "POST") {
+        const { id, role, reason, rejected_by } = req.body;
+        if (!id || !role || !reason) {
+          return res.status(400).json({ success: false, error: "id, role et reason requis" });
+        }
+
+        const docRef = db_firestore.collection("stock_movements").doc(id);
+        const snap = await docRef.get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "Mouvement introuvable" });
+
+        await docRef.update({
+          status: "rejete",
+          rejection: {
+            by: (rejected_by || {}).userId || "",
+            name: (rejected_by || {}).name || "",
+            role,
+            reason,
+            at: Date.now()
+          },
+          updated_at: Date.now()
+        });
+
+        return res.json({ success: true, status: "rejete" });
+      }
+
+      // --- GET BALANCES ---
+      if (action === "get-balances") {
+        const { lieu_type, lieu_id } = req.query;
+        let q = db_firestore.collection("stock_balances");
+        if (lieu_type) q = q.where("lieu_type", "==", lieu_type);
+        if (lieu_id) q = q.where("lieu_id", "==", lieu_id);
+        const snap = await q.get();
+        const balances = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        balances.sort((a, b) => (b.balance || 0) - (a.balance || 0));
+        return res.json({ success: true, balances, count: balances.length });
+      }
+
+      // --- GET BALANCES AT DATE (recalcul historique) ---
+      if (action === "get-balances-at-date") {
+        const { date } = req.query;
+        if (!date) return res.status(400).json({ success: false, error: "date requis (YYYY-MM-DD)" });
+
+        const snap = await db_firestore.collection("stock_movements")
+          .where("date", "<=", date)
+          .get();
+
+        const balMap = {};
+        for (const doc of snap.docs) {
+          const m = doc.data();
+          const needsMulti = m.type === "reception" || m.type === "sortie";
+          if (needsMulti && m.status !== "valide_chef") continue;
+          if (!m.status) continue;
+
+          for (const item of (m.items || [])) {
+            const ref = item.article_ref || "";
+            const nom = item.article_nom || "";
+            const qty = parseFloat(item.quantite) || 0;
+            const unite = item.unite || "kg";
+            if (qty <= 0 || !ref) continue;
+
+            if (m.lieu_source && m.lieu_source.id) {
+              const key = `${m.lieu_source.type}|${m.lieu_source.id}|${ref}`;
+              if (!balMap[key]) balMap[key] = { lieu_type: m.lieu_source.type, lieu_id: m.lieu_source.id, article_ref: ref, article_nom: nom, unite, balance: 0 };
+              balMap[key].balance -= qty;
+            }
+            if (m.lieu_destination && m.lieu_destination.id && m.lieu_destination.type !== "parcelle") {
+              const key = `${m.lieu_destination.type}|${m.lieu_destination.id}|${ref}`;
+              if (!balMap[key]) balMap[key] = { lieu_type: m.lieu_destination.type, lieu_id: m.lieu_destination.id, article_ref: ref, article_nom: nom, unite, balance: 0 };
+              balMap[key].balance += qty;
+            }
+          }
+        }
+
+        const balances = Object.values(balMap)
+          .map(b => ({ ...b, balance: Math.round(b.balance * 100) / 100 }))
+          .filter(b => Math.abs(b.balance) >= 0.01)
+          .sort((a, b) => (b.balance || 0) - (a.balance || 0));
+
+        return res.json({ success: true, balances, count: balances.length, date });
+      }
+
+      // --- GET STOCK LOCATIONS CONFIG ---
+      if (action === "get-locations") {
+        const snap = await db_firestore.collection("stock_config").doc("locations").get();
+        if (!snap.exists) {
+          // Initialize default locations
+          const defaultLocations = {
+            magasins: ["F1", "F2", "F5", "F6"],
+            stations: ["Station F1", "Station F2", "Station F3", "Station F4", "Station F5", "Station F6"],
+            parcelles: {
+              "F1": ["S1 Maravilla", "S2 Yazmin", "S3 Maravilla Motte", "S4 Maravilla", "S5 Yazmin", "S7 Maravilla Motte", "P3-Framboise", "P5-Framboise B"],
+              "F5": ["S8 Corina", "S9 Reyna", "S10 Yazmin", "S13 Yazmin", "P2-Framboise A", "P3-Framboise B"],
+              "Avocatier": ["Avocat F2", "Avocat F4", "Avocat F5"]
+            }
+          };
+          await db_firestore.collection("stock_config").doc("locations").set(defaultLocations);
+          return res.json({ success: true, locations: defaultLocations });
+        }
+        return res.json({ success: true, locations: snap.data() });
+      }
+
+      // --- PENDING VALIDATIONS (for achats/chef badges) ---
+      if (action === "pending-validations") {
+        const { role: pendingRole } = req.query;
+        let targetStatus = null;
+        if (pendingRole === "achats") targetStatus = "valide_mag";
+        else if (["chef_f1", "chef_f5", "chef_avo"].includes(pendingRole)) targetStatus = "valide_achats";
+        else return res.status(400).json({ success: false, error: "Role invalide" });
+
+        let q = db_firestore.collection("stock_movements").where("status", "==", targetStatus);
+        // For chef, filter by ferme
+        if (pendingRole === "chef_f1") q = q.where("ferme", "==", "F1");
+        else if (pendingRole === "chef_f5") q = q.where("ferme", "==", "F5");
+        else if (pendingRole === "chef_avo") q = q.where("ferme", "in", ["F2", "F3", "F4", "F6"]);
+
+        const snap = await q.get();
+        const pending = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        return res.json({ success: true, pending, count: pending.length });
+      }
+
+      // =============================================
+      // IRRIGATION CONFIG & FORECAST
+      // =============================================
+      if (action === "get-irrigation-config") {
+        const ferme = req.query.ferme || "F1";
+        const doc = await db_firestore.collection("config_irrigation").doc(ferme).get();
+        return res.json({ success: true, config: doc.exists ? doc.data() : null });
+      }
+
+      if (action === "save-irrigation-config" && req.method === "POST") {
+        const { ferme, parcelles, updated_by } = req.body;
+        if (!ferme || !parcelles) return res.status(400).json({ success: false, error: "ferme et parcelles requis" });
+        await db_firestore.collection("config_irrigation").doc(ferme).set({
+          ferme, parcelles, updated_by: updated_by || "unknown", updated_at: Date.now(),
+        }, { merge: true });
+        return res.json({ success: true });
+      }
+
+      if (action === "get-irrigation-forecast") {
+        const ferme = req.query.ferme || "F1";
+        const coords = METEO_FERMES[ferme] || METEO_FERMES.F1;
+
+        // 1. Get irrigation config
+        const configDoc = await db_firestore.collection("config_irrigation").doc(ferme).get();
+        const irriConfig = configDoc.exists ? configDoc.data() : null;
+
+        // 2. Get 7-day outdoor forecast
+        const forecast = await fetchMeteoForecast7d(coords.lat, coords.lon);
+
+        // 3. Get climat model (indoor prediction)
+        const modelDoc = await db_firestore.collection("climat_models").doc(ferme + "_tunnel").get();
+        const model = modelDoc.exists ? modelDoc.data() : null;
+
+        // 4. Get latest soil analyses for this farm
+        const soilSnap = await db_firestore.collection("analyses_foliaires")
+          .where("ferme", "==", ferme)
+          .where("type_analyse", "==", "sol")
+          .where("statut", "==", "completee")
+          .orderBy("date_resultat", "desc").limit(3).get();
+        const soilAnalyses = soilSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        // 5. Build indoor forecast using model
+        let indoorForecast = [];
+        if (model && model.coefficients && forecast.length > 0) {
+          const c = model.coefficients;
+          indoorForecast = forecast.map(day => {
+            const tmaxIn = c.tmax ? Math.round((c.tmax.a * day.tmax + c.tmax.b) * 10) / 10 : day.tmax;
+            const tminIn = c.tmin ? Math.round((c.tmin.a * day.tmin + c.tmin.b) * 10) / 10 : day.tmin;
+            const hrIn = c.hr ? Math.min(100, Math.max(20, Math.round(c.hr.a * (day.humidity || 60) + c.hr.b))) : day.humidity || 60;
+            const tMean = (tmaxIn + tminIn) / 2;
+            const esat = 0.6108 * Math.exp((17.27 * tMean) / (tMean + 237.3));
+            const vpd = Math.round(esat * (1 - hrIn / 100) * 100) / 100;
+            return { date: day.date, tmax: tmaxIn, tmin: tminIn, hr: hrIn, vpd, eto_outdoor: day.eto, precip: day.precip, radiation: day.radiation };
+          });
+        }
+
+        // 6. Compute irrigation recommendations per parcelle
+        const parcelles = irriConfig ? irriConfig.parcelles || {} : {};
+        const recommendations = {};
+        const todayForecast = forecast.length > 0 ? forecast[0] : null;
+
+        let soilCE = null;
+        if (soilAnalyses.length > 0 && soilAnalyses[0].parsed_values) {
+          const ce = soilAnalyses[0].parsed_values.CE || soilAnalyses[0].parsed_values["C.E."];
+          if (ce) soilCE = parseFloat(ce);
+        }
+
+        for (const [parcName, parcConfig] of Object.entries(parcelles)) {
+          if (!todayForecast) continue;
+          const eto = todayForecast.eto || 4;
+          const kc = parcConfig.kc || 0.85;
+          const coeffTunnel = parcConfig.coeff_tunnel || (parcConfig.type_abri === "plein_champ" ? 1.0 : 0.7);
+          const efficacite = parcConfig.efficacite || 0.90;
+          const surfaceHa = parcConfig.surface_ha || 1;
+          const debitPompe = parcConfig.debit_pompe || 10;
+          const ru = parcConfig.reserve_utile || 120;
+          const profondeur = parcConfig.profondeur_racinaire || 0.4;
+          const seuil = parcConfig.seuil_declenchement || 0.4;
+
+          const etc = eto * kc * coeffTunnel;
+          let besoinNet = etc - Math.max(0, (todayForecast.precip || 0) * (parcConfig.type_abri === "plein_champ" ? 0.8 : 0));
+          if (besoinNet < 0) besoinNet = 0;
+          let besoinBrut = besoinNet / efficacite;
+          if (soilCE && soilCE > 2.5) besoinBrut *= 1.15;
+
+          const ruTotale = ru * profondeur;
+          const doseMax = ruTotale * seuil;
+          const nbTours = besoinBrut > 0 ? Math.max(1, Math.ceil(besoinBrut / doseMax)) : 0;
+          const doseParTour = nbTours > 0 ? besoinBrut / nbTours : 0;
+          const volumeM3 = doseParTour * surfaceHa * 10;
+          const dureeH = debitPompe > 0 ? volumeM3 / debitPompe : 0;
+
+          recommendations[parcName] = {
+            eto, kc, coeff_tunnel: coeffTunnel, etc: Math.round(etc * 10) / 10,
+            besoin_net: Math.round(besoinNet * 10) / 10,
+            besoin_brut: Math.round(besoinBrut * 10) / 10,
+            ru_totale: Math.round(ruTotale),
+            dose_max: Math.round(doseMax * 10) / 10,
+            nb_tours: nbTours,
+            dose_par_tour: Math.round(doseParTour * 10) / 10,
+            volume_m3: Math.round(volumeM3 * 10) / 10,
+            duree_h: Math.round(dureeH * 100) / 100,
+            duree_label: Math.floor(dureeH) + "h" + String(Math.round((dureeH % 1) * 60)).padStart(2, "0"),
+            alerte_ce: soilCE && soilCE > 2.5 ? "CE élevée (" + soilCE + " dS/m) — +15% lessivage" : null,
+            culture: parcConfig.culture, type_abri: parcConfig.type_abri,
+          };
+        }
+
+        // 7. Build 7-day irrigation plan
+        const plan7j = forecast.map((day, i) => {
+          let totalDuree = 0;
+          for (const [, parcConfig] of Object.entries(parcelles)) {
+            const eto = day.eto || 4;
+            const kc = parcConfig.kc || 0.85;
+            const coeffT = parcConfig.coeff_tunnel || 0.7;
+            const eff = parcConfig.efficacite || 0.90;
+            const surf = parcConfig.surface_ha || 1;
+            const debit = parcConfig.debit_pompe || 10;
+            let besoin = (eto * kc * coeffT) / eff;
+            if (parcConfig.type_abri === "plein_champ") besoin -= Math.max(0, (day.precip || 0) * 0.8) / eff;
+            if (besoin < 0) besoin = 0;
+            totalDuree += (besoin * surf * 10) / debit;
+          }
+          return {
+            date: day.date, eto: day.eto, precip: day.precip,
+            duree_totale_h: Math.round(totalDuree * 100) / 100,
+            indoor: indoorForecast[i] || null,
+          };
+        });
+
+        return res.json({
+          success: true, ferme, forecast, indoorForecast,
+          model: model ? { coefficients: model.coefficients, training_days: model.training_days, r2_tmax: model.coefficients.tmax?.r2, daily_errors: (model.daily_errors || []).slice(-7) } : null,
+          recommendations, plan7j,
+          soilAnalyses: soilAnalyses.map(a => ({ id: a.id, date: a.date_resultat, parsed_values: a.parsed_values, ferme: a.ferme })),
+          config: irriConfig,
+        });
       }
 
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
@@ -5476,6 +7914,55 @@ exports.horsRecolteService = functions
           });
         });
         return res.json({ success: true, proposals });
+      }
+
+      // ---- GET-POINTAGE-WORKERS: nb ouvriers hors-récolte par parcelle/tâche depuis pointage du jour ----
+      if (action === "get-pointage-workers") {
+        const ferme = req.query.ferme;
+        const today = new Date().toISOString().slice(0, 10);
+        const rows = await getPointageRowsForDate(today);
+
+        // deriveFerme inline (same logic as pointageService.js)
+        function deriveFermeLocal(refParcelle, parcelleCulturale) {
+          const ref = (refParcelle || "").trim();
+          if (ref) {
+            if (ref.startsWith("F1") || ref === "0032" || ref === "0035" || ref === "0036") return "F1";
+            if (ref.startsWith("F5") || ref === "0037" || ref === "0038" || ref === "0039") return "F5";
+            if (ref.startsWith("F2") || ref.startsWith("F3") || ref.startsWith("F4") || ref.startsWith("F6") || ref === "0031" || ref === "0033") return "Avocatier";
+          }
+          if (parcelleCulturale) {
+            if (/F1/i.test(parcelleCulturale)) return "F1";
+            if (/F5/i.test(parcelleCulturale)) return "F5";
+            if (/avocat/i.test(parcelleCulturale)) return "Avocatier";
+            const sMatch = parcelleCulturale.match(/\bS(\d{1,2})\b/i);
+            if (sMatch) { const sNum = parseInt(sMatch[1], 10); if (sNum >= 1 && sNum <= 7) return "F1"; if (sNum >= 8 && sNum <= 14) return "F5"; }
+          }
+          return "Autre";
+        }
+
+        // Filter hors-récolte only, group by parcelle × operation
+        const groups = {};
+        for (const r of rows) {
+          const opFamille = r.Operation_Famille || "";
+          if (opFamille === "8. Récolte" || opFamille === "11. Postes fixes") continue;
+          const rowFerme = deriveFermeLocal(r.Ref_parcelle, r.Parcelle_Culturale);
+          if (ferme && rowFerme !== ferme) continue;
+
+          const parcelle = (r.Parcelle_Culturale || "").trim();
+          const operation = (r.Operation || "").trim();
+          const key = `${parcelle}|${operation}`;
+          if (!groups[key]) groups[key] = { parcelle, tache: operation, ferme: rowFerme, workers: new Set() };
+          if (r.Personnel_Matricule) groups[key].workers.add(r.Personnel_Matricule);
+        }
+
+        const result = Object.values(groups).map(g => ({
+          parcelle: g.parcelle,
+          tache: g.tache,
+          ferme: g.ferme,
+          nbOuvriers: g.workers.size,
+        }));
+
+        return res.json({ success: true, date: today, workers: result });
       }
 
       // ---- MIGRATE-CONFIG: migration one-shot des données hardcodées vers Firestore ----
@@ -6300,10 +8787,19 @@ exports.fuel = functions
   .https.onRequest(async (req, res) => {
     setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");
-    const authUser = await requireAuth(req, res);
-    if (!authUser) return;
+    const action = req.query.action || "summary";
+    // Import action uses API key auth (for CI/GitHub Actions)
+    if (action === "import" && req.method === "POST") {
+      const apiKey = req.headers["x-api-key"] || req.query.key;
+      const expectedKey = process.env.FUEL_IMPORT_KEY;
+      if (!expectedKey || apiKey !== expectedKey) {
+        return res.status(401).json({ success: false, error: "Clé API invalide" });
+      }
+    } else {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return;
+    }
     try {
-      const action = req.query.action || "summary";
       const COLLECTION = "fuel_transactions";
 
       // Campaign starts in July
@@ -6830,6 +9326,27 @@ exports.notifications = functions
               if (snap.size > 0) categories.validations.push({ key: "virements_pending", label: "Virements en attente", count: snap.size, icon: "fa-money-bill-transfer", color: "#27ae60", tab: "fin_virements" });
             })
         );
+        promises.push(
+          db_firestore.collection("suppliers")
+            .where("status", "==", "en_attente").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "fournisseurs_finance", label: "Fournisseurs en attente de validation", count: snap.size, icon: "fa-building-circle-check", color: "#27ae60", tab: "fin_fournisseurs" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "envoye").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_envoye", label: "BDC envoyés — virement à lancer", count: snap.size, icon: "fa-file-contract", color: "#e67e22", tab: "fin_bdc" });
+            })
+        );
+        promises.push(
+          db_firestore.collection("purchase_orders")
+            .where("status", "==", "virement_lance").get()
+            .then(snap => {
+              if (snap.size > 0) categories.validations.push({ key: "bdc_virement_lance", label: "Virements lancés — en attente signature", count: snap.size, icon: "fa-pen-nib", color: "#9b59b6", tab: "fin_bdc" });
+            })
+        );
       }
 
       // Achats: DA + BDC + factures + fournisseurs
@@ -6908,8 +9425,8 @@ exports.notifications = functions
         );
       }
 
-      // ---- Alerts from Firestore (expedition_manquante etc.) for relevant profiles ----
-      const alertProfiles = ['chef_f1', 'chef_f5', 'qualite', 'dg', 'achats', 'finance'];
+      // ---- Alerts from Firestore (expedition_manquante, new_agq_analyses, etc.) ----
+      const alertProfiles = ['chef_f1', 'chef_f5', 'chef_avo', 'qualite', 'dg', 'achats', 'finance', 'dt'];
       if (alertProfiles.includes(profile)) {
         promises.push(
           db_firestore.collection("alerts")
@@ -6922,13 +9439,19 @@ exports.notifications = functions
                 const a = doc.data();
                 const isRead = a.read && a.read[profile];
                 if (!isRead) {
+                  if (profile === 'dg' && a.type === 'expedition_manquante') return;
+                  const isAgq = a.type === 'new_agq_analyses';
                   categories.alertes.push({
                     key: 'alert_' + doc.id,
                     label: a.message || 'Alerte',
                     count: 1,
-                    icon: a.type === 'expedition_manquante' ? 'fa-truck-ramp-box' : 'fa-triangle-exclamation',
-                    color: a.severity === 'warning' ? '#f39c12' : '#e74c3c',
-                    tab: 'qualite_expeditions',
+                    icon: isAgq
+                      ? 'fa-flask-vial'
+                      : (a.type === 'expedition_manquante' ? 'fa-truck-ramp-box' : 'fa-triangle-exclamation'),
+                    color: isAgq
+                      ? '#7c3aed'
+                      : (a.severity === 'info' ? '#2563eb' : a.severity === 'warning' ? '#f39c12' : '#e74c3c'),
+                    tab: isAgq ? 'chef_agronomie' : 'qualite_expeditions',
                     alertId: doc.id,
                   });
                 }
@@ -6949,13 +9472,13 @@ exports.notifications = functions
       const todo = allTasks.filter(t => t.status === "a_faire");
 
       if (overdue.length > 0) {
-        categories.taches.push({ key: "tasks_overdue", label: "Tâches en retard", count: overdue.length, icon: "fa-clock", color: "#e74c3c", tab: "dg_taches" });
+        categories.taches.push({ key: "tasks_overdue", label: "Tâches en retard", count: overdue.length, icon: "fa-clock", color: "#e74c3c", tab: "dg_tasks" });
       }
       if (inProgress.length > 0) {
-        categories.taches.push({ key: "tasks_en_cours", label: "Tâches en cours", count: inProgress.length, icon: "fa-spinner", color: "#3498db", tab: "dg_taches" });
+        categories.taches.push({ key: "tasks_en_cours", label: "Tâches en cours", count: inProgress.length, icon: "fa-spinner", color: "#3498db", tab: "dg_tasks" });
       }
       if (todo.length > 0) {
-        categories.taches.push({ key: "tasks_a_faire", label: "Tâches à faire", count: todo.length, icon: "fa-list-check", color: "#f39c12", tab: "dg_taches" });
+        categories.taches.push({ key: "tasks_a_faire", label: "Tâches à faire", count: todo.length, icon: "fa-list-check", color: "#f39c12", tab: "dg_tasks" });
       }
 
       const totalCount = Object.values(categories).reduce((sum, cat) => sum + cat.reduce((s, item) => s + item.count, 0), 0);

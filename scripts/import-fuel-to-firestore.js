@@ -1,6 +1,6 @@
 /**
  * Import fuel transactions into Firestore via the /api/fuel Cloud Function
- * Usage: node scripts/import-fuel-to-firestore.js
+ * Usage: FUEL_IMPORT_KEY=xxx node scripts/import-fuel-to-firestore.js
  */
 const https = require("https");
 const fs = require("fs");
@@ -8,7 +8,13 @@ const path = require("path");
 
 const API = "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/fuel";
 const DATA_DIR = path.join(__dirname, "..", "data");
-const CHUNK_SIZE = 200; // Send in chunks to avoid Cloud Function timeout
+const CHUNK_SIZE = 200;
+
+const API_KEY = process.env.FUEL_IMPORT_KEY;
+if (!API_KEY) {
+  console.error("❌ FUEL_IMPORT_KEY manquant. Définissez la variable d'environnement.");
+  process.exit(1);
+}
 
 function post(body) {
   return new Promise((resolve, reject) => {
@@ -18,7 +24,11 @@ function post(body) {
       hostname: url.hostname,
       path: url.pathname + "?action=import",
       method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(data),
+        "x-api-key": API_KEY,
+      },
     };
     const req = https.request(options, (res) => {
       let raw = "";
@@ -61,10 +71,12 @@ async function importData() {
       console.log(`   ✅ ${result.imported} importées`);
     } else {
       console.error(`   ❌ Erreur: ${result.error}`);
+      process.exitCode = 1;
     }
   }
 
   console.log(`\n✅ Import terminé: ${totalImported} transactions importées dans Firestore`);
+  if (totalImported === 0) process.exitCode = 1;
 }
 
 importData().catch(err => {

@@ -34,6 +34,7 @@ jobs:
         env:
           TOTAL_USERNAME: ${{ secrets.TOTAL_USERNAME }}
           TOTAL_PASSWORD: ${{ secrets.TOTAL_PASSWORD }}
+          FUEL_IMPORT_KEY: ${{ secrets.FUEL_IMPORT_KEY }}
 
       - name: Upload data as artifact
         if: always()
