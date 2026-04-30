@@ -31,14 +31,23 @@
       { "source": "/api/budget", "function": { "functionId": "budgetService", "region": "europe-west1" } },
       { "source": "/api/meeting-cr", "function": { "functionId": "meetingCR", "region": "europe-west1" } },
       { "source": "/api/fuel", "function": { "functionId": "fuel", "region": "europe-west1" } },
+      { "source": "/api/telecom", "function": { "functionId": "telecom", "region": "europe-west1" } },
       { "source": "/api/notifications", "function": { "functionId": "notifications", "region": "europe-west1" } },
       { "source": "/api/tasks", "function": { "functionId": "tasks", "region": "europe-west1" } },
       { "source": "/api/alerts", "function": { "functionId": "alerts", "region": "europe-west1" } },
       { "source": "/api/gdd-tracking", "function": { "functionId": "gddTracking", "region": "europe-west1" } },
+      { "source": "/api/climat-production", "function": { "functionId": "climatProduction", "region": "europe-west1" } },
+      { "source": "/api/backup", "function": { "functionId": "backupApi", "region": "europe-west1" } },
+      { "source": "/api/indoor-forecast", "function": { "functionId": "indoorForecast", "region": "europe-west1" } },
+      { "source": "/api/caisse", "function": { "functionId": "caisseManagement", "region": "europe-west1" } },
+      { "source": "/api/whatsapp-admin", "function": { "functionId": "whatsappAdmin", "region": "europe-west1" } },
       { "source": "**", "destination": "/index.html" }
     ],
+    "predeploy": ["npm run build:frontend"],
     "headers": [
       { "source": "**/*.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+      { "source": "**/*.js", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] },
+      { "source": "**/*.json", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }] },
       { "source": "/api/**", "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store" }] }
     ]
   },

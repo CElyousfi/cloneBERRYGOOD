@@ -1,0 +1,47 @@
+name: Fetch Telecom Data
+
+on:
+  schedule:
+    # Les factures IAM sont publiées vers le 1er-2 du mois.
+    # On scrape du 1 au 5 de chaque mois, deux fois par jour, pour être sûr de capter la nouvelle facture.
+    - cron: '0 7 1-5 * *'   # 07:00 UTC = 08:00 Maroc
+    - cron: '0 14 1-5 * *'  # 14:00 UTC = 15:00 Maroc
+  workflow_dispatch: # Permet de lancer manuellement depuis GitHub
+
+jobs:
+  fetch-telecom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install dotenv playwright
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Create .env
+        run: |
+          echo "IAM_USERNAME=${{ secrets.IAM_USERNAME }}" > .env
+          echo "IAM_PASSWORD=${{ secrets.IAM_PASSWORD }}" >> .env
+
+      - name: Fetch telecom data & import to Firestore
+        run: node scripts/fetch-telecom-data.js
+        env:
+          IAM_USERNAME: ${{ secrets.IAM_USERNAME }}
+          IAM_PASSWORD: ${{ secrets.IAM_PASSWORD }}
+          TELECOM_IMPORT_KEY: ${{ secrets.TELECOM_IMPORT_KEY }}
+
+      - name: Upload data as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: telecom-data-${{ github.run_id }}
+          path: data/
+          retention-days: 30
