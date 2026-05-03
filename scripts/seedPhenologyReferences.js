@@ -232,6 +232,7 @@ const FIXTURES = [
       metadata: {
         ...METADATA_TEMPLATE,
         notes: [
+          '⚠️ gddMin/gddMax stages = valeurs Maravilla. Pour Jasmin réel, multiplier par precocityCoefficient (0.92) au runtime. Le stageResolver le fait automatiquement.',
           'Plus sensible à hygrométrie élevée — surveiller Botrytis dès S5',
           'Brix cible plus élevé en S7 : > 10 °Brix (vs 9.5 Maravilla)',
         ],
@@ -248,7 +249,12 @@ const FIXTURES = [
       tCap: 30,
       precocityCoefficient: 0.92,
       stages: MARAVILLA_FLORICANE_STAGES,
-      metadata: { ...METADATA_TEMPLATE },
+      metadata: {
+        ...METADATA_TEMPLATE,
+        notes: [
+          '⚠️ gddMin/gddMax stages = valeurs Maravilla. Pour Jasmin réel, multiplier par precocityCoefficient (0.92) au runtime. Le stageResolver le fait automatiquement.',
+        ],
+      },
     },
   },
 ];
@@ -257,10 +263,15 @@ const FIXTURES = [
 // Diff helper
 // =====================================================================
 
-const META_FIELDS_TO_IGNORE = new Set(['_meta']); // _meta differs (timestamp) — compare separately
+// Paths ignored during diff validation. Per plan §C3 + A2 adjustment:
+// only _meta.seededAt (server-side timestamp asymmetry) is excluded;
+// _meta.sourceFile / sourceVersion / scriptVersion / mode / seededBy are
+// validated to catch drift.
+const DIFF_IGNORE_PATHS = new Set(['_meta.seededAt']);
 
 function deepDiff(expected, actual, currentPath = '') {
   const diffs = [];
+  if (DIFF_IGNORE_PATHS.has(currentPath)) return diffs;
   if (Object.is(expected, actual)) return diffs;
 
   if (
@@ -273,7 +284,6 @@ function deepDiff(expected, actual, currentPath = '') {
 
   const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
   for (const k of keys) {
-    if (currentPath === '' && META_FIELDS_TO_IGNORE.has(k)) continue;
     const childPath = currentPath ? `${currentPath}.${k}` : k;
     diffs.push(...deepDiff(expected[k], actual[k], childPath));
   }
@@ -325,22 +335,21 @@ async function seedOne(db, fixture, opts, seededAtIso) {
   }
 
   // Write
-  const docToWrite = {
-    ...body,
-    _meta: {
-      seededAt: seededAtIso,
-      seededBy: detectIdentity(),
-      sourceFile: SOURCE_FILE,
-      sourceVersion: SOURCE_VERSION,
-      scriptVersion: SCRIPT_VERSION,
-      mode: opts.mode,
-    },
+  const meta = {
+    seededAt: seededAtIso,
+    seededBy: detectIdentity(),
+    sourceFile: SOURCE_FILE,
+    sourceVersion: SOURCE_VERSION,
+    scriptVersion: SCRIPT_VERSION,
+    mode: opts.mode,
   };
+  const docToWrite = { ...body, _meta: meta };
   await ref.set(docToWrite);
 
-  // Read back and diff
+  // Read back and diff (validates body + _meta except seededAt — cf. A2)
   const written = (await ref.get()).data();
-  const diffs = deepDiff(body, written);
+  const expectedFull = { ...body, _meta: meta };
+  const diffs = deepDiff(expectedFull, written);
 
   if (diffs.length === 0) {
     console.log(`${action === 'create' ? '✅ Created' : '🔄 Updated'}: ${COLLECTION}/${id} (${stagesCount} stages, coef ${body.precocityCoefficient})`);
