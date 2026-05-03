@@ -5,12 +5,17 @@ const { calculateDailyGdd } = require('../gddCalculator');
 
 const STD = { tBase: 5, tCap: 30 };
 
-// Reproduction du calcul legacy (functions/index.js:2023-2027) — utilisé pour
-// les tests de comparaison. NE PAS importer le legacy directement (il vit
-// dans le monolithe index.js et n'est pas exportable).
+// Legacy formula reference: functions/index.js:2023-2027
+// BUG known: caps both tMin AND tMax against tCap, while phenology-tables.md §1
+// only caps tMax. Inlined here for migration regression tests — NOT imported
+// (the legacy lives in the index.js monolith and is not exportable).
+//
+//   const tmaxCap = Math.min(tmax, tupper);
+//   const tminCap = Math.min(tmin, tupper);  // ← bug: caps tmin too
+//   return Math.max(0, (tmaxCap + tminCap) / 2 - tbase);
 function legacyCalcGdd(tmax, tmin, tbase = 5, tupper = 30) {
   const tmaxCap = Math.min(tmax, tupper);
-  const tminCap = Math.min(tmin, tupper); // ← bug: cape aussi tmin
+  const tminCap = Math.min(tmin, tupper); // ← bug reproduced verbatim
   return Math.max(0, (tmaxCap + tminCap) / 2 - tbase);
 }
 
