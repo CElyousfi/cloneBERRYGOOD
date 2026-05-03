@@ -9,6 +9,8 @@
   "scripts": {
     "test": "node ../tests/test-workflows.js",
     "test:prod": "BASE_URL=https://berrygood-farms-dashboard.web.app node ../tests/test-workflows.js",
+    "test:irrigation": "node --test 'lib/irrigation/__tests__/*.test.js'",
+    "test:phenology": "node --test 'lib/phenology/__tests__/*.test.js'",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
