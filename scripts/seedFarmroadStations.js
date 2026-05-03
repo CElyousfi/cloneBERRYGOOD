@@ -85,8 +85,8 @@ const FIXTURES = [
       displayName: 'Maravilla Serre canarienne Larache',
       type: 'canarienne',
       location: {
-        lat: 35.08,
-        lng: -6.14,
+        latitude: 35.08,
+        longitude: -6.14,
         description: 'Larache canarienne',
       },
       capabilities: COMMON_CAPABILITIES,
@@ -113,8 +113,8 @@ const FIXTURES = [
       displayName: 'Maravilla Tunnel Larache',
       type: 'tunnel',
       location: {
-        lat: 35.08,
-        lng: -6.14,
+        latitude: 35.08,
+        longitude: -6.14,
         description: 'Larache tunnel',
       },
       capabilities: COMMON_CAPABILITIES,
