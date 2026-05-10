@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200">
+  <defs>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a237e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3f51b5;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Horse head silhouette -->
+  <g transform="translate(20,10) scale(0.9)">
+    <path d="M80,20 C70,15 55,18 50,30 C45,42 40,50 30,60 C25,65 18,75 15,85 C12,95 10,110 15,125 C18,135 25,145 35,155 C40,160 45,165 50,170 C55,175 60,178 65,180 C60,175 55,165 55,155 C55,145 60,135 70,130 C75,127 80,125 85,120 C90,115 95,108 100,100 C105,92 108,85 110,75 C112,65 110,50 105,40 C100,30 90,25 80,20 Z M70,45 C73,45 75,47 75,50 C75,53 73,55 70,55 C67,55 65,53 65,50 C65,47 67,45 70,45 Z" fill="#1a237e"/>
+    <!-- Mane flowing -->
+    <path d="M50,30 C45,35 40,45 35,55 C30,50 25,55 20,65 C15,75 12,85 15,95 C10,90 8,100 10,110 C8,105 5,115 8,125" fill="none" stroke="#1a237e" stroke-width="3" opacity="0.7"/>
+  </g>
+  <!-- BSNL Text -->
+  <text x="140" y="130" font-family="Georgia, serif" font-size="80" font-weight="bold">
+    <tspan fill="#1a237e">B</tspan><tspan fill="#3f51b5">S</tspan><tspan fill="#1a237e">N</tspan><tspan fill="#3f51b5">L</tspan>
+  </text>
+</svg>

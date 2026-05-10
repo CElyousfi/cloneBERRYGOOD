@@ -30,7 +30,7 @@ const prodSync = require("./prodSyncService");
 
 // Sync récolte prod (Tracabilite_recolte) — toutes les 30 min de 11h à 20h
 exports.syncRecolteFromProd = functions.region("europe-west1").pubsub
-  .schedule("*/30 11-20 * * *")
+  .schedule("*/15 11-20 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(() => prodSync.syncTracabiliteRecolte());
 
@@ -983,9 +983,135 @@ async function farmroadFetchAllPages(basePath, contentKey) {
 // =============================================
 const FARMROAD_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min for today
 
+// Compute agronomic KPIs from a device's 15-min timeseries.
+// Slot duration = 900s = 0.25h. Photoperiod separation: PAR > 50 µmol = day.
+function computeFarmroadKPIs(timeseries, gddJour) {
+  const SLOT_SEC = 900;
+  const SLOT_HRS = 0.25;
+  const ts = timeseries || {};
+  const par = ts.PAR_INTENSITY || [];
+  const rad = ts.RADIATION_INTENSITY_INSIDE || [];
+  const temp = ts.TEMPERATURE_INSIDE || [];
+  const rh = ts.RH_INSIDE || [];
+  const vpd = ts.ESTIMATED_VPD_INSIDE || [];
+  const dew = ts.DEWPOINT_INSIDE || [];
+  const co2 = ts.CO2_LEVEL || [];
+
+  const parBySlot = {};
+  par.forEach(s => { if (s && s.slot != null) parBySlot[s.slot] = s.avg || 0; });
+  const isDay = slot => (parBySlot[slot] || 0) > 50;
+
+  // ---- Lumière ----
+  let dliMicromol = 0, radJ = 0, hPARutile = 0, hPARsat = 0;
+  par.forEach(s => {
+    if (s.avg == null) return;
+    dliMicromol += s.avg * SLOT_SEC;
+    if (s.avg > 200) hPARutile += SLOT_HRS;
+    if (s.avg > 800) hPARsat += SLOT_HRS;
+  });
+  const dli = dliMicromol / 1e6; // mol/m²/d
+  rad.forEach(s => { if (s.avg != null) radJ += s.avg * SLOT_SEC; });
+  const radum = radJ / 1e6; // MJ/m²/d
+
+  // ---- Thermique ----
+  let tDaySum = 0, tDayN = 0, tNightSum = 0, tNightN = 0;
+  let tMin = Infinity, tMax = -Infinity;
+  let hStressChaud = 0, hStressFroid = 0, hChill = 0;
+  temp.forEach(s => {
+    if (s.avg == null) return;
+    if (isDay(s.slot)) { tDaySum += s.avg; tDayN++; } else { tNightSum += s.avg; tNightN++; }
+    if (s.min != null && s.min < tMin) tMin = s.min;
+    if (s.max != null && s.max > tMax) tMax = s.max;
+    if (s.avg > 30) hStressChaud += SLOT_HRS;
+    if (s.avg < 5) hStressFroid += SLOT_HRS;
+    if (s.avg < 7) hChill += SLOT_HRS;
+  });
+  const tDay = tDayN > 0 ? tDaySum / tDayN : null;
+  const tNight = tNightN > 0 ? tNightSum / tNightN : null;
+  const dif = (tDay != null && tNight != null) ? tDay - tNight : null;
+  const ampl24 = (tMin !== Infinity && tMax !== -Infinity) ? tMax - tMin : null;
+
+  // ---- Hydrique / VPD ----
+  let vpdDaySum = 0, vpdDayN = 0, vpdNightSum = 0, vpdNightN = 0;
+  let hStressVPDHaut = 0, hStressVPDBas = 0;
+  vpd.forEach(s => {
+    if (s.avg == null) return;
+    if (isDay(s.slot)) { vpdDaySum += s.avg; vpdDayN++; } else { vpdNightSum += s.avg; vpdNightN++; }
+    if (s.avg > 1.5) hStressVPDHaut += SLOT_HRS;
+    if (isDay(s.slot) && s.avg < 0.4) hStressVPDBas += SLOT_HRS;
+  });
+  const vpdJour = vpdDayN > 0 ? vpdDaySum / vpdDayN : null;
+  const vpdNuit = vpdNightN > 0 ? vpdNightSum / vpdNightN : null;
+
+  // ---- Phyto: heures de mouillage (T - Tdew < 2°C) ----
+  const tBySlot = {}, dewBySlot = {};
+  temp.forEach(s => { if (s && s.slot != null) tBySlot[s.slot] = s.avg; });
+  dew.forEach(s => { if (s && s.slot != null) dewBySlot[s.slot] = s.avg; });
+  let hMouillage = 0;
+  Object.keys(tBySlot).forEach(k => {
+    const t = tBySlot[k], d = dewBySlot[k];
+    if (t != null && d != null && (t - d) < 2) hMouillage += SLOT_HRS;
+  });
+  let hHRsat = 0, hHR85 = 0, hTopt = 0;
+  rh.forEach(s => {
+    if (s.avg == null) return;
+    if (s.avg > 90) hHRsat += SLOT_HRS;
+    if (s.avg > 85) hHR85 += SLOT_HRS;
+  });
+  temp.forEach(s => { if (s.avg != null && s.avg >= 15 && s.avg <= 25) hTopt += SLOT_HRS; });
+  // Index Botrytis 0-100: 40% mouillage (cap 8h), 30% T° optimale (cap 12h), 30% HR>85 (cap 12h)
+  const indexBotrytis = Math.round(
+    40 * Math.min(hMouillage / 8, 1) +
+    30 * Math.min(hTopt / 12, 1) +
+    30 * Math.min(hHR85 / 12, 1)
+  );
+
+  // ---- CO2 ----
+  let hCO2sub = 0;
+  let co2DaySum = 0, co2DayN = 0, co2NightSum = 0, co2NightN = 0;
+  co2.forEach(s => {
+    if (s.avg == null) return;
+    if (isDay(s.slot)) { co2DaySum += s.avg; co2DayN++; } else { co2NightSum += s.avg; co2NightN++; }
+    const parSlot = parBySlot[s.slot] || 0;
+    if (parSlot > 200 && s.avg < 400) hCO2sub += SLOT_HRS;
+  });
+  const co2Jour = co2DayN > 0 ? co2DaySum / co2DayN : null;
+  const co2Nuit = co2NightN > 0 ? co2NightSum / co2NightN : null;
+
+  // ---- Composites ----
+  const ptq = (gddJour != null && gddJour > 0 && dli > 0) ? dli / gddJour : null;
+  // ETP capteur (Stanghellini simplifié, vent nul, λ=2.45 MJ/kg):
+  // ETP_mm/j ≈ (0.288 × RADUM + 0.288 × VPD_jour) / 2.45
+  const etpCapteur = (radum > 0 && vpdJour != null)
+    ? (0.288 * radum + 0.288 * vpdJour) / 2.45
+    : null;
+
+  const r2 = v => v == null ? null : Math.round(v * 100) / 100;
+  const r1 = v => v == null ? null : Math.round(v * 10) / 10;
+  const r0 = v => v == null ? null : Math.round(v);
+  return {
+    dli: r2(dli), radum: r2(radum), hPARutile: r1(hPARutile), hPARsat: r1(hPARsat),
+    dif: r1(dif), tDay: r1(tDay), tNight: r1(tNight),
+    hStressChaud: r1(hStressChaud), hStressFroid: r1(hStressFroid), hChill: r1(hChill), ampl24: r1(ampl24),
+    vpdJour: r2(vpdJour), vpdNuit: r2(vpdNuit), hStressVPDHaut: r1(hStressVPDHaut), hStressVPDBas: r1(hStressVPDBas),
+    hMouillage: r1(hMouillage), hHRsat: r1(hHRsat), indexBotrytis,
+    hCO2sub: r1(hCO2sub), co2Jour: r0(co2Jour), co2Nuit: r0(co2Nuit),
+    ptq: r2(ptq), etpCapteur: r2(etpCapteur),
+    gddJour: r2(gddJour),
+  };
+}
+
 async function refreshFarmroadCache(dateParam, farmIdFilter) {
   const todayStr = new Date().toISOString().slice(0, 10);
   const isPastDay = dateParam < todayStr;
+
+  // Helper: load daily GDD (same value for all devices since 1 GDD/day for the farm)
+  const fetchGddJour = async () => {
+    try {
+      const gddDoc = await db_firestore.collection("gdd_tracking").doc(dateParam).get();
+      return gddDoc.exists ? (gddDoc.data().gdd_jour || null) : null;
+    } catch (e) { return null; }
+  };
 
   // 1) Check Firestore cache
   const cacheRef = db_firestore.collection("farmroad_cache").doc(dateParam);
@@ -995,7 +1121,14 @@ async function refreshFarmroadCache(dateParam, farmIdFilter) {
     const cacheAge = Date.now() - (cData._cachedAt || 0);
     if (isPastDay || cacheAge < FARMROAD_CACHE_TTL_MS) {
       console.log("FarmRoad cache hit for " + dateParam + (isPastDay ? " (past)" : " (today, age " + Math.round(cacheAge / 1000) + "s)"));
-      return { success: true, farms: cData.farms, devices: cData.devices, date: dateParam, lastUpdate: cData.lastUpdate, totalMeasurements: cData.totalMeasurements, cached: true };
+      // Backfill KPIs on legacy cache entries (computed on-the-fly, not persisted)
+      let cachedDevices = cData.devices || [];
+      const needsKpiBackfill = cachedDevices.some(d => !d.kpis);
+      if (needsKpiBackfill) {
+        const gddJour = await fetchGddJour();
+        cachedDevices = cachedDevices.map(d => d.kpis ? d : Object.assign({}, d, { kpis: computeFarmroadKPIs(d.timeseries, gddJour) }));
+      }
+      return { success: true, farms: cData.farms, devices: cachedDevices, date: dateParam, lastUpdate: cData.lastUpdate, totalMeasurements: cData.totalMeasurements, cached: true };
     }
   }
 
@@ -1085,7 +1218,8 @@ async function refreshFarmroadCache(dateParam, farmIdFilter) {
     if (val > s.max) s.max = val;
   }
 
-  // 6) Format devices
+  // 6) Format devices (with KPIs)
+  const gddJour = await fetchGddJour();
   const devices = Object.keys(agg).map((devId) => {
     const meta = deviceMeta[devId] || {};
     const hasSubstrate = !!meta.types["SUBSTRATE_MOISTURE_CONTENT"];
@@ -1108,7 +1242,8 @@ async function refreshFarmroadCache(dateParam, farmIdFilter) {
         });
       }
     }
-    return { deviceId: devId, compartmentId: meta.compartment_id, sectorId: meta.sector_id, farmId: meta.farm_id, hasSubstrate, measurements: measObj, timeseries: tsObj };
+    const kpis = computeFarmroadKPIs(tsObj, gddJour);
+    return { deviceId: devId, compartmentId: meta.compartment_id, sectorId: meta.sector_id, farmId: meta.farm_id, hasSubstrate, measurements: measObj, timeseries: tsObj, kpis };
   });
 
   const response = {
@@ -1416,12 +1551,12 @@ exports.indoorForecastRefresh = functions
       const farmroadData = await refreshFarmroadCache(todayStr, null);
       const devices = (farmroadData && farmroadData.devices) || [];
 
-      // Identify Canarienne (highest CO2) and Tunnel
-      const devicesWithCO2 = devices.map(d => ({
-        ...d,
-        co2Avg: d.measurements && d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : 0
-      }));
-      devicesWithCO2.sort((a, b) => (b.co2Avg || 0) - (a.co2Avg || 0));
+      // Identify Canarienne / Tunnel via explicit deviceId mapping
+      const { FARMROAD_DEVICE_BY_GH_TYPE } = require('./lib/irrigation/parcelleMeta');
+      const byDeviceId = Object.fromEntries(
+        devices.map(d => [String(d.deviceId || d.id || ''), d])
+      );
+      console.log('farmroadRefresh: devices found =', Object.keys(byDeviceId), 'expected =', JSON.stringify(FARMROAD_DEVICE_BY_GH_TYPE));
 
       // Helper: extract device actuals (daily + hourly)
       const extractActual = (d) => {
@@ -1467,11 +1602,9 @@ exports.indoorForecastRefresh = functions
       };
 
       const actualByType = {};
-      if (devicesWithCO2.length >= 1) {
-        actualByType.canarienne = extractActual(devicesWithCO2[0]);
-      }
-      if (devicesWithCO2.length >= 2) {
-        actualByType.tunnel = extractActual(devicesWithCO2[1]);
+      for (const [ghType, deviceId] of Object.entries(FARMROAD_DEVICE_BY_GH_TYPE)) {
+        const d = byDeviceId[String(deviceId)];
+        if (d) actualByType[ghType] = extractActual(d);
       }
 
       // Store FarmRoad actual in history
@@ -1669,8 +1802,10 @@ exports.indoorForecast = functions
       // Get today's actual FarmRoad for comparison (extended params + optional hourly)
       const farmroadData = await refreshFarmroadCache(todayStr, null);
       const devices = (farmroadData && farmroadData.devices) || [];
-      const devicesWithCO2 = devices.map(d => ({ ...d, co2Avg: d.measurements && d.measurements.CO2_LEVEL ? d.measurements.CO2_LEVEL.avg : 0 }));
-      devicesWithCO2.sort((a, b) => (b.co2Avg || 0) - (a.co2Avg || 0));
+      const { FARMROAD_DEVICE_BY_GH_TYPE: FR_MAP_API } = require('./lib/irrigation/parcelleMeta');
+      const byDeviceIdAPI = Object.fromEntries(
+        devices.map(d => [String(d.deviceId || d.id || ''), d])
+      );
 
       const extractActualAPI = (d) => {
         const m = d.measurements || {};
@@ -1714,8 +1849,10 @@ exports.indoorForecast = functions
       };
 
       const todayActual = {};
-      if (devicesWithCO2.length >= 1) todayActual.canarienne = extractActualAPI(devicesWithCO2[0]);
-      if (devicesWithCO2.length >= 2) todayActual.tunnel = extractActualAPI(devicesWithCO2[1]);
+      for (const [ghType, deviceId] of Object.entries(FR_MAP_API)) {
+        const d = byDeviceIdAPI[String(deviceId)];
+        if (d) todayActual[ghType] = extractActualAPI(d);
+      }
 
       // Strip hourly from forecast if not requested (backward compat)
       let forecastOut = forecast;
@@ -1831,6 +1968,103 @@ async function fetchMeteoForecast7d(lat, lon) {
       });
     }).on("error", () => resolve([]));
   });
+}
+
+/**
+ * Fetch hourly shortwave radiation + daily sunrise/sunset from Open-Meteo
+ * for a date range. Single API call. Returns a map keyed by YYYY-MM-DD:
+ *   { date, sunriseMin, sunsetMin, hourlyRadiation: number[24] (W/m²) }
+ *
+ * Used by the irrigation engine for radiation-driven recommendations and
+ * dynamic late-day cutoff. `pastDays` ≤ 92, `forecastDays` ≤ 16.
+ */
+async function fetchHourlyRadiationByDate(lat, lon, pastDays, forecastDays) {
+  const https = require("https");
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&hourly=shortwave_radiation&daily=sunrise,sunset&timezone=Africa/Casablanca` +
+    `&past_days=${pastDays || 7}&forecast_days=${forecastDays || 2}`;
+  return new Promise((resolve) => {
+    https.get(url, (resp) => {
+      let data = "";
+      resp.on("data", (chunk) => { data += chunk; });
+      resp.on("end", () => {
+        try {
+          const j = JSON.parse(data);
+          const out = {};
+          // Daily sunrise/sunset
+          if (j.daily && Array.isArray(j.daily.time)) {
+            j.daily.time.forEach((d, i) => {
+              const sunriseStr = j.daily.sunrise ? j.daily.sunrise[i] : null;
+              const sunsetStr = j.daily.sunset ? j.daily.sunset[i] : null;
+              const parseHM = (s) => {
+                if (!s || typeof s !== "string") return null;
+                const m = /T(\d{2}):(\d{2})/.exec(s);
+                return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+              };
+              out[d] = {
+                date: d,
+                sunriseMin: parseHM(sunriseStr),
+                sunsetMin: parseHM(sunsetStr),
+                hourlyRadiation: new Array(24).fill(null),
+              };
+            });
+          }
+          // Hourly radiation, bucket into out[date].hourlyRadiation[hour]
+          if (j.hourly && Array.isArray(j.hourly.time) && Array.isArray(j.hourly.shortwave_radiation)) {
+            for (let i = 0; i < j.hourly.time.length; i++) {
+              const t = j.hourly.time[i];
+              const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):/.exec(t);
+              if (!m) continue;
+              const date = m[1];
+              const hour = Number(m[2]);
+              if (!out[date]) out[date] = { date, sunriseMin: null, sunsetMin: null, hourlyRadiation: new Array(24).fill(null) };
+              out[date].hourlyRadiation[hour] = j.hourly.shortwave_radiation[i];
+            }
+          }
+          resolve(out);
+        } catch (e) { resolve({}); }
+      });
+    }).on("error", () => resolve({}));
+  });
+}
+
+/**
+ * Load FarmRoad indoor hourly radiation per greenhouse type for a list of dates.
+ * Reads `farmroad_history/{date}.{ghType}.hourly[].radiation` (already aggregated
+ * 15-min → hourly W/m² by farmroadRefresh).
+ *
+ * @param {string[]} dates  YYYY-MM-DD strings
+ * @returns {Promise<{canarienne: Record<string, Array<number|null>>, tunnel: Record<string, Array<number|null>>}>}
+ *          Each ghType maps date → 24-element hourly W/m² array (indoor).
+ *          Date entry omitted if no FarmRoad data for that day/type.
+ */
+async function loadIndoorHourlyRadiationByGhType(dates) {
+  const out = { canarienne: {}, tunnel: {} };
+  if (!Array.isArray(dates) || dates.length === 0) return out;
+  const snaps = await Promise.all(
+    dates.map(d => db_firestore.collection('farmroad_history').doc(d).get())
+  );
+  snaps.forEach((snap, i) => {
+    const date = dates[i];
+    if (!snap.exists) return;
+    const data = snap.data() || {};
+    for (const ghType of ['canarienne', 'tunnel']) {
+      const block = data[ghType];
+      const hourly = block && Array.isArray(block.hourly) ? block.hourly : null;
+      if (!hourly || hourly.length === 0) continue;
+      const arr = new Array(24).fill(null);
+      let hits = 0;
+      for (const slot of hourly) {
+        const hh = typeof slot.hour === 'string' ? parseInt(slot.hour.slice(0, 2), 10) : null;
+        if (Number.isFinite(hh) && hh >= 0 && hh < 24 && Number.isFinite(slot.radiation)) {
+          arr[hh] = slot.radiation;
+          hits++;
+        }
+      }
+      if (hits > 0) out[ghType][date] = arr;
+    }
+  });
+  return out;
 }
 
 // Persist outdoor meteo for all farms for a given date
@@ -2348,7 +2582,7 @@ exports.climatProduction = functions
     if (!authUser) return;
 
     try {
-      const days = Math.min(parseInt(req.query.days) || 30, 60);
+      const days = Math.min(parseInt(req.query.days) || 7, 60);
       const varieteFilter = req.query.variete || null;
 
       // Date range
@@ -2419,7 +2653,10 @@ exports.climatProduction = functions
       });
 
       // 3. Build daily data array (serre_data preferred, gdd_tracking as fallback)
+      // Also walk gdd_tracking in date order to obtain a running cumulative GDD when not stored.
       const dailyData = [];
+      let runningGddCumule = 0;
+      let lastStoredCumule = null;
       for (const date of allDates) {
         const serre = serreByDate[date];
         const gdd = gddByDate[date];
@@ -2429,89 +2666,208 @@ exports.climatProduction = functions
         const hr = serre ? serre.HR_moyenne : (gdd ? gdd.hr_moyenne : null);
         const dli = serre ? serre.PAR_sum : (gdd ? gdd.dli : null);
 
+        const dailyGdd = tmax != null && tmin != null ? calcGDD(tmax, tmin) : null;
+        // Prefer stored cumulative; otherwise accumulate from previous stored value.
+        let gddCumule = null;
+        if (gdd && typeof gdd.gdd_cumule === "number") {
+          gddCumule = gdd.gdd_cumule;
+          lastStoredCumule = gddCumule;
+          runningGddCumule = gddCumule;
+        } else if (dailyGdd != null) {
+          if (lastStoredCumule != null) runningGddCumule = runningGddCumule + dailyGdd;
+          else runningGddCumule = runningGddCumule + dailyGdd;
+          gddCumule = runningGddCumule;
+        }
+
+        // IMC: prefer stored; else compute on the fly when we have all inputs.
+        let imcPourcentage = null;
+        let alerte = null;
+        if (gdd && typeof gdd.imc_pourcentage === "number") {
+          imcPourcentage = gdd.imc_pourcentage;
+          alerte = gdd.alerte || null;
+        } else if (gddCumule != null && tmax != null && tmin != null && hr != null && dli != null) {
+          const imcRes = calcIMC({ gddCumule, tmax, tmin, hr, dli });
+          imcPourcentage = imcRes.pourcentage;
+          alerte = imcRes.alerte;
+        }
+
         dailyData.push({
           date,
           production_kg: Math.round(prodKg * 10) / 10,
           tmax: tmax != null ? Math.round(tmax * 10) / 10 : null,
           tmin: tmin != null ? Math.round(tmin * 10) / 10 : null,
           delta_t: tmax != null && tmin != null ? Math.round((tmax - tmin) * 10) / 10 : null,
-          gdd: tmax != null && tmin != null ? Math.round(calcGDD(tmax, tmin) * 10) / 10 : null,
+          gdd: dailyGdd != null ? Math.round(dailyGdd * 10) / 10 : null,
+          gdd_cumule: gddCumule != null ? Math.round(gddCumule * 10) / 10 : null,
+          imc: imcPourcentage,
+          alerte,
           vpd: tmax != null && tmin != null && hr != null ? Math.round(calcVPDFromTH((tmax + tmin) / 2, hr) * 100) / 100 : null,
           dli: dli != null ? Math.round(dli * 10) / 10 : null,
           hr: hr != null ? Math.round(hr) : null,
         });
       }
 
-      // 4. Compute lagged correlations (only on days with both production and climate data)
-      const validDays = dailyData.filter(d => d.production_kg > 0 && d.delta_t !== null);
-      const production = validDays.map(d => d.production_kg);
-      const indicators = {
-        delta_t: { values: validDays.map(d => d.delta_t), label: "Écart thermique (ΔT)" },
-        gdd: { values: validDays.map(d => d.gdd), label: "GDD journalier" },
-        vpd: { values: validDays.map(d => d.vpd), label: "VPD moyen" },
-        dli: { values: validDays.map(d => d.dli), label: "DLI (lumière)" },
-      };
-
-      const correlations = {};
-      for (const [key, ind] of Object.entries(indicators)) {
-        correlations[key] = { ...laggedCorrelation(production, ind.values), label: ind.label };
-      }
-
-      // 5. Prediction using MA5 baseline + climate adjustment
-      // MA5 captures current production level; climate ratio adjusts for weather influence
-      let prediction = null;
-      const recentProdDays = validDays.slice(-5);
-      const ma5Prod = recentProdDays.length >= 3
-        ? recentProdDays.reduce((s, d) => s + d.production_kg, 0) / recentProdDays.length
+      // 4. Tendance récente — uniquement les jours actifs de récolte (>0 kg).
+      // L'objectif opérationnel : prédire les kg de demain pour dimensionner l'équipe.
+      // On exclut explicitement les jours sans récolte (pré-saison) qui pollueraient la baseline.
+      const activeDays = dailyData.filter(d => d.production_kg > 0);
+      const recentActive = activeDays.slice(-5);
+      const ma3Prod = recentActive.length >= 2
+        ? recentActive.slice(-3).reduce((s, d) => s + d.production_kg, 0) / Math.min(3, recentActive.length)
         : null;
 
-      const bestIndicator = Object.entries(correlations).sort((a, b) => Math.abs(b[1].r) - Math.abs(a[1].r))[0];
-      if (ma5Prod && bestIndicator && Math.abs(bestIndicator[1].r) >= 0.3 && validDays.length >= 7) {
-        const lag = bestIndicator[1].lag_optimal;
-        const indicatorKey = bestIndicator[0];
-        // Get the indicator value from `lag` days ago (the climate that influences tomorrow's harvest)
-        const lagDate = dailyData[dailyData.length - 1 - lag];
-        if (lagDate && lagDate[indicatorKey] !== null) {
-          const lagValue = lagDate[indicatorKey];
-          // Compute climate adjustment: ratio of lag-day indicator vs recent average indicator
-          const recentIndicatorValues = recentProdDays
-            .map(d => d[indicatorKey]).filter(v => v !== null);
-          const avgRecentIndicator = recentIndicatorValues.length > 0
-            ? recentIndicatorValues.reduce((s, v) => s + v, 0) / recentIndicatorValues.length
-            : lagValue;
-          // Climate ratio: how the lagged indicator compares to recent average
-          // Positive correlation → higher indicator = more production
-          // Negative correlation → higher indicator = less production
-          let climateRatio = avgRecentIndicator > 0 ? lagValue / avgRecentIndicator : 1;
-          if (bestIndicator[1].r < 0) climateRatio = 1 / climateRatio; // invert for negative correlation
-          // Dampen the climate effect to avoid wild swings (move only 50% toward ratio)
-          climateRatio = 1 + (climateRatio - 1) * 0.5;
-          // Clamp to reasonable range [0.7, 1.3]
-          climateRatio = Math.max(0.7, Math.min(1.3, climateRatio));
+      // Tendance IMC : pente sur les 3 derniers jours actifs (pts par jour).
+      let imcSlope = 0;
+      const imcRecent = recentActive.filter(d => d.imc != null).slice(-3);
+      if (imcRecent.length >= 2) {
+        imcSlope = (imcRecent[imcRecent.length - 1].imc - imcRecent[0].imc) / (imcRecent.length - 1);
+      }
+      // Tendance production : pente sur les 3 derniers jours actifs (kg par jour).
+      let prodSlope = 0;
+      if (recentActive.length >= 2) {
+        const tail = recentActive.slice(-3);
+        prodSlope = (tail[tail.length - 1].production_kg - tail[0].production_kg) / (tail.length - 1);
+      }
 
-          const predKg = Math.round(ma5Prod * climateRatio);
-          prediction = {
-            kg_estime: predKg,
-            indicateur: bestIndicator[1].label,
-            lag: lag,
-            valeur_indicateur: lagValue,
-            confiance: bestIndicator[1].interpretation,
-            nb_jours_similaires: recentProdDays.length,
-          };
+      // lastDay = dernière entrée avec IMC populé (le doc gdd_tracking du jour
+      // n'est écrit qu'à 23h00, donc l'entrée pour "aujourd'hui" peut être nulle).
+      let lastDay = null;
+      for (let li = dailyData.length - 1; li >= 0; li--) {
+        if (dailyData[li].imc != null && dailyData[li].gdd_cumule != null) { lastDay = dailyData[li]; break; }
+      }
+      if (!lastDay) lastDay = dailyData[dailyData.length - 1];
+      const todayImc = lastDay && lastDay.imc != null ? lastDay.imc : null;
+      const todayAlerte = lastDay ? lastDay.alerte : null;
+
+      // 6. Forecast demain via indoor_forecasts (météo intérieure prédite)
+      // NB: les docs sont stockés sous la date UTC alors qu'ici endDate est en heure locale
+      // → on récupère le doc le plus récent au lieu de deviner la clé.
+      let forecastTomorrow = null;
+      let imcTomorrow = null;
+      let tomorrowFcMeta = null;
+      try {
+        const fcSnap = await db_firestore.collection("indoor_forecasts").orderBy("date", "desc").limit(1).get();
+        if (!fcSnap.empty) {
+          const fc = fcSnap.docs[0].data();
+          const tomorrowDate = new Date(endDate + "T12:00:00");
+          tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+          const tomorrowStr = tomorrowDate.toISOString().slice(0, 10);
+          const tunnelDays = fc.tunnel || [];
+          let tomorrowFc = tunnelDays.find(d => d.date === tomorrowStr);
+          if (!tomorrowFc) tomorrowFc = tunnelDays.find(d => d.date > endDate);
+          const todayCum = lastDay && lastDay.gdd_cumule != null ? lastDay.gdd_cumule : null;
+          if (tomorrowFc && tomorrowFc.tMax != null && tomorrowFc.tMin != null && todayCum != null) {
+            const gddCumTomorrow = todayCum + calcGDD(tomorrowFc.tMax, tomorrowFc.tMin);
+            const dliTomorrow = tomorrowFc.par != null ? tomorrowFc.par : (tomorrowFc.radiation != null ? tomorrowFc.radiation : null);
+            const hrTomorrow = tomorrowFc.hr != null ? tomorrowFc.hr : 70;
+            const imcRes = calcIMC({
+              gddCumule: gddCumTomorrow,
+              tmax: tomorrowFc.tMax,
+              tmin: tomorrowFc.tMin,
+              hr: hrTomorrow,
+              dli: dliTomorrow != null ? dliTomorrow : 18,
+            });
+            imcTomorrow = imcRes;
+            tomorrowFcMeta = {
+              date: tomorrowFc.date,
+              tmax: tomorrowFc.tMax,
+              tmin: tomorrowFc.tMin,
+              hr: hrTomorrow,
+              dli: dliTomorrow,
+              gdd_cumule: Math.round(gddCumTomorrow * 10) / 10,
+            };
+          }
         }
-      } else if (ma5Prod) {
-        // Fallback: no strong correlation, just use MA5
+      } catch (fcErr) {
+        console.warn("Climat-Production forecast tomorrow failed:", fcErr.message);
+      }
+
+      // 6. Prédiction opérationnelle — pilotée par maturité, ancrée sur jours actifs uniquement.
+      // Logique :
+      //   baseline = MA3 des derniers jours actifs (>0 kg)
+      //   facteur tendance prod : extrapolation linéaire de la pente (amortie)
+      //   facteur maturité : zone IMC + variation IMC aujourd'hui→demain
+      //   prédiction = baseline × facteur_tendance × facteur_maturité (borné [0.6, 1.5])
+      let prediction = null;
+      let teamRecommendation = null;
+      if (ma3Prod) {
+        // Facteur tendance prod (extrapolation de la pente sur 1 jour, amortie 50%)
+        const trendFactor = ma3Prod > 0 ? 1 + (prodSlope / ma3Prod) * 0.5 : 1;
+
+        // Facteur maturité : combine zone IMC (niveau) + variation IMC aujourd'hui→demain
+        const imcRef = imcTomorrow ? imcTomorrow.pourcentage : todayImc;
+        let zoneFactor = 1;
+        if (imcRef != null) {
+          if (imcRef >= 85) zoneFactor = 1.15;       // RECOLTE_IMMINENTE → pic
+          else if (imcRef >= 70) zoneFactor = 1.05;  // SURVEILLER_J3 → ramp-up
+          else if (imcRef >= 50) zoneFactor = 0.95;  // EN_COURS → maturation
+          else zoneFactor = 0.5;                      // PRECOCE → quasi nul
+        }
+        // Variation IMC : si IMC monte vers la zone récolte, anticiper +5-10%
+        let deltaFactor = 1;
+        if (imcTomorrow && todayImc != null) {
+          const dImc = imcTomorrow.pourcentage - todayImc;
+          deltaFactor = 1 + Math.max(-0.10, Math.min(0.10, dImc / 100));
+        } else if (imcSlope) {
+          deltaFactor = 1 + Math.max(-0.10, Math.min(0.10, imcSlope / 100));
+        }
+
+        let combined = trendFactor * zoneFactor * deltaFactor;
+        combined = Math.max(0.6, Math.min(1.5, combined));
+        const predKg = Math.round(ma3Prod * combined);
+
+        // Recommandation équipe : seuil 15% pour éviter micro-ajustements
+        const ratio = ma3Prod > 0 ? predKg / ma3Prod : 1;
+        const deltaPct = Math.round((ratio - 1) * 100);
+        let action = "stable";
+        let actionLabel = "Maintenir l'équipe actuelle";
+        if (deltaPct >= 15) { action = "augmenter"; actionLabel = "Renforcer l'équipe (+" + deltaPct + "%)"; }
+        else if (deltaPct <= -15) { action = "reduire"; actionLabel = "Réduire l'équipe (" + deltaPct + "%)"; }
+
+        teamRecommendation = {
+          action,
+          label: actionLabel,
+          delta_pct: deltaPct,
+          baseline_kg: Math.round(ma3Prod),
+          predicted_kg: predKg,
+          n_jours_actifs: recentActive.length,
+        };
+
         prediction = {
-          kg_estime: Math.round(ma5Prod),
-          indicateur: "Moyenne mobile 5j",
-          lag: 0,
-          valeur_indicateur: null,
-          confiance: "Modérée",
-          nb_jours_similaires: recentProdDays.length,
+          kg_estime: predKg,
+          baseline_kg: Math.round(ma3Prod),
+          facteur_tendance: Math.round(trendFactor * 100) / 100,
+          facteur_zone: Math.round(zoneFactor * 100) / 100,
+          facteur_delta_imc: Math.round(deltaFactor * 100) / 100,
+          imc_aujourdhui: todayImc,
+          imc_demain: imcTomorrow ? imcTomorrow.pourcentage : null,
+          alerte_demain: imcTomorrow ? imcTomorrow.alerte : todayAlerte,
+          source: imcTomorrow ? "baseline + maturité + forecast intérieur" : "baseline + maturité (sans forecast)",
         };
       }
 
-      // Only return days within requested period (not the extra lag days)
+      if (tomorrowFcMeta && imcTomorrow) {
+        forecastTomorrow = {
+          date: tomorrowFcMeta.date,
+          imc: imcTomorrow.pourcentage,
+          alerte: imcTomorrow.alerte,
+          gdd_cumule: tomorrowFcMeta.gdd_cumule,
+          tmax: tomorrowFcMeta.tmax,
+          tmin: tomorrowFcMeta.tmin,
+          hr: tomorrowFcMeta.hr,
+          dli: tomorrowFcMeta.dli,
+          prod_estime: prediction ? prediction.kg_estime : null,
+          source: "indoor_forecast",
+        };
+      }
+
+      // Tendance pour le frontend (sparkline)
+      const tendance = {
+        jours_actifs: recentActive.map(d => ({ date: d.date, prod: d.production_kg, imc: d.imc })),
+        imc_slope_par_jour: Math.round(imcSlope * 100) / 100,
+        prod_slope_kg_par_jour: Math.round(prodSlope),
+      };
+
       const cutoffDate = new Date(endDate + "T12:00:00");
       cutoffDate.setDate(cutoffDate.getDate() - days);
       const cutoff = cutoffDate.toISOString().slice(0, 10);
@@ -2522,8 +2878,10 @@ exports.climatProduction = functions
         variete: varieteFilter || "Toutes",
         varietesDisponibles,
         dailyData: filteredDaily,
-        correlations,
         prediction,
+        teamRecommendation,
+        forecastTomorrow,
+        tendance,
         periode: { start: cutoff, end: endDate, jours: filteredDaily.length },
       });
     } catch (err) {
@@ -3461,7 +3819,7 @@ exports.validation = functions
       const action = req.query.action || (req.body && req.body.action);
 
       // Delegate pointage-rh actions to pointageService
-      const pointageActions = ['summary', 'detail', 'dates', 'recolte', 'hors-recolte', 'recolte-equipes', 'quinzaine', 'quinzaine-analytique', 'quinzaine-repos', 'quinzaine-alertes', 'upload-times', 'postes-fixes', 'suivi-tunnels'];
+      const pointageActions = ['summary', 'detail', 'dates', 'recolte', 'hors-recolte', 'recolte-equipes', 'quinzaine', 'quinzaine-analytique', 'quinzaine-repos', 'quinzaine-alertes', 'upload-times', 'postes-fixes', 'suivi-tunnels', 'presence'];
       if (pointageActions.includes(action)) {
         const { pointageRH } = require("./pointageService");
         return pointageRH(req, res);
@@ -4531,18 +4889,25 @@ exports.stockManagement = functions
         // WhatsApp: notify chef de ferme
         dispatchNotification({
           type: "bdc_submit", profiles: ["chef"], ferme: current.ferme,
-          data: { numero: current.numero, description: current.description || current.items?.[0]?.designation || "", montant: current.total_ttc ? `${current.total_ttc} MAD` : "", message: `BDC ${current.numero || id} en attente de validation Chef` },
+          data: {
+            numero: current.numero || id,
+            description: current.description || current.items?.[0]?.designation || "Aucune description",
+            montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
+            message: `BDC ${current.numero || id} en attente de validation Chef`,
+          },
           relatedDoc: `purchase_orders/${id}`,
         }).catch(err => console.error("WhatsApp dispatch error:", err));
         return res.json({ success: true });
       }
 
       if (action === "delete-bdc" && req.method === "POST") {
-        const { id } = req.body;
+        const { id, deleted_by } = req.body;
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
         const doc = await db_firestore.collection("purchase_orders").doc(id).get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
-        if (doc.data().status !== "brouillon") {
+        const requesterProfile = deleted_by && deleted_by.profileId;
+        const canForceDelete = requesterProfile === "achats" || requesterProfile === "admin";
+        if (doc.data().status !== "brouillon" && !canForceDelete) {
           return res.status(400).json({ success: false, error: "Seul un BDC en brouillon peut être supprimé" });
         }
         await db_firestore.collection("purchase_orders").doc(id).delete();
@@ -4576,7 +4941,7 @@ exports.stockManagement = functions
             // WhatsApp: notify DG
             dispatchNotification({
               type: "bdc_chef_approved", profiles: ["dg"],
-              data: { numero: current.numero, message: `BDC ${current.numero || id} validé par Chef, en attente DG` },
+              data: { numero: current.numero || id, message: `BDC ${current.numero || id} validé par Chef, en attente DG` },
               relatedDoc: `purchase_orders/${id}`,
             }).catch(err => console.error("WhatsApp dispatch error:", err));
           } else {
@@ -4587,7 +4952,7 @@ exports.stockManagement = functions
             // WhatsApp: notify achats (submitter) of rejection
             dispatchNotification({
               type: "bdc_rejected", profiles: ["achats"],
-              data: { numero: current.numero, motif: comment || "Rejeté par Chef", message: `BDC ${current.numero || id} rejeté par Chef` },
+              data: { numero: current.numero || id, motif: comment || "Rejeté par Chef", message: `BDC ${current.numero || id} rejeté par Chef` },
               relatedDoc: `purchase_orders/${id}`,
             }).catch(err => console.error("WhatsApp dispatch error:", err));
           }
@@ -4600,16 +4965,25 @@ exports.stockManagement = functions
           }
           if (decision === "approve") {
             const now = Date.now();
+            const isVirementMode = current.mode_paiement === "comptant_virement" || current.mode_paiement === "virement_bancaire";
             history.push({ action: "validation_dg", by: visa, at: now, comment: comment || "" });
-            history.push({ action: "transmission_finance", by: { profileId: "system", name: "Système" }, at: now, comment: "BDC transmis à Finance pour information après validation DG" });
-            await db_firestore.collection("purchase_orders").doc(id).update({
-              status: "valide_dg", validated_by_dg: visa, history, updated_at: now,
-              notified_finance: true, notified_finance_at: now,
-            });
-            // WhatsApp: notify achats + finance
+            const update = { status: "valide_dg", validated_by_dg: visa, history, updated_at: now };
+            if (isVirementMode) {
+              history.push({ action: "transmission_finance", by: { profileId: "system", name: "Système" }, at: now, comment: "BDC transmis à Finance pour lancement du virement" });
+              update.notified_finance = true;
+              update.notified_finance_at = now;
+            }
+            await db_firestore.collection("purchase_orders").doc(id).update(update);
+            // WhatsApp: notify selon mode
+            const targetProfiles = isVirementMode ? ["achats", "finance"] : ["achats"];
             dispatchNotification({
-              type: "bdc_dg_approved", profiles: ["achats", "finance"],
-              data: { numero: current.numero, description: current.description || "", montant: current.total_ttc ? `${current.total_ttc} MAD` : "", message: `BDC ${current.numero || id} approuvé par DG` },
+              type: "bdc_dg_approved", profiles: targetProfiles,
+              data: {
+                numero: current.numero || id,
+                description: current.description || current.items?.[0]?.designation || "Aucune description",
+                montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
+                message: `BDC ${current.numero || id} approuvé par DG`,
+              },
               relatedDoc: `purchase_orders/${id}`,
             }).catch(err => console.error("WhatsApp dispatch error:", err));
           } else {
@@ -4620,7 +4994,7 @@ exports.stockManagement = functions
             // WhatsApp: notify achats of DG rejection
             dispatchNotification({
               type: "bdc_rejected", profiles: ["achats"],
-              data: { numero: current.numero, motif: comment || "Rejeté par DG", message: `BDC ${current.numero || id} rejeté par DG` },
+              data: { numero: current.numero || id, motif: comment || "Rejeté par DG", message: `BDC ${current.numero || id} rejeté par DG` },
               relatedDoc: `purchase_orders/${id}`,
             }).catch(err => console.error("WhatsApp dispatch error:", err));
           }
@@ -4636,8 +5010,15 @@ exports.stockManagement = functions
         const doc = await db_firestore.collection("purchase_orders").doc(id).get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
         const current = doc.data();
-        if (current.status !== "valide_dg") {
-          return res.status(400).json({ success: false, error: "Le BDC doit être validé par le DG avant envoi" });
+        const isVirement = current.mode_paiement === "comptant_virement" || current.mode_paiement === "virement_bancaire";
+        if (isVirement) {
+          if (current.status !== "virement_signe") {
+            return res.status(400).json({ success: false, error: "Le virement doit être signé avant l'envoi au fournisseur" });
+          }
+        } else {
+          if (current.status !== "valide_dg") {
+            return res.status(400).json({ success: false, error: "Le BDC doit être validé par le DG avant envoi" });
+          }
         }
         const history = current.history || [];
         history.push({ action: "envoi_fournisseur", by: sent_by || {}, at: Date.now(), comment: "" });
@@ -4647,7 +5028,11 @@ exports.stockManagement = functions
         // WhatsApp: notify finance
         dispatchNotification({
           type: "bdc_sent_to_supplier", profiles: ["finance"],
-          data: { numero: current.numero, supplier: current.supplier_name || "", message: `BDC ${current.numero || id} envoyé au fournisseur` },
+          data: {
+            numero: current.numero || id,
+            supplier: current.supplier_name || "Fournisseur inconnu",
+            message: `BDC ${current.numero || id} envoyé au fournisseur`,
+          },
           relatedDoc: `purchase_orders/${id}`,
         }).catch(err => console.error("WhatsApp dispatch error:", err));
         return res.json({ success: true });
@@ -4659,19 +5044,19 @@ exports.stockManagement = functions
         const doc = await db_firestore.collection("purchase_orders").doc(id).get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
         const current = doc.data();
-        if (current.mode_paiement !== "virement_bancaire") {
+        if (current.mode_paiement !== "comptant_virement" && current.mode_paiement !== "virement_bancaire") {
           return res.status(400).json({ success: false, error: "Ce BDC n'est pas payé par virement bancaire" });
         }
         const history = current.history || [];
         const now = Date.now();
         if (decision === "lancer") {
-          if (current.status !== "envoye") return res.status(400).json({ success: false, error: "Le BDC doit être en statut Envoyé" });
+          if (current.status !== "valide_dg") return res.status(400).json({ success: false, error: "Le BDC doit être en statut Validé DG" });
           history.push({ action: "virement_lance", by: by || {}, at: now, comment: "" });
           await db_firestore.collection("purchase_orders").doc(id).update({ status: "virement_lance", virement_lance_by: by || {}, virement_lance_at: now, history, updated_at: now });
           // WhatsApp: notify finance + dg
           dispatchNotification({
             type: "bdc_virement_launched", profiles: ["finance", "dg"],
-            data: { numero: current.numero, message: `Virement lancé pour BDC ${current.numero || id}` },
+            data: { numero: current.numero || id, message: `Virement lancé pour BDC ${current.numero || id}` },
             relatedDoc: `purchase_orders/${id}`,
           }).catch(err => console.error("WhatsApp dispatch error:", err));
         } else if (decision === "signer") {
@@ -4681,13 +5066,97 @@ exports.stockManagement = functions
           // WhatsApp: notify achats + finance
           dispatchNotification({
             type: "bdc_virement_signed", profiles: ["achats", "finance"],
-            data: { numero: current.numero, message: `Virement signé pour BDC ${current.numero || id}` },
+            data: { numero: current.numero || id, message: `Virement signé pour BDC ${current.numero || id}` },
             relatedDoc: `purchase_orders/${id}`,
           }).catch(err => console.error("WhatsApp dispatch error:", err));
         } else {
           return res.status(400).json({ success: false, error: "Decision invalide (lancer|signer)" });
         }
         return res.json({ success: true });
+      }
+
+      if (action === "migrate-bdc-mode-paiement" && req.method === "POST") {
+        // One-shot migration: virement_bancaire → comptant_virement, caisse → comptant_especes, comptant → facilite
+        const snap = await db_firestore.collection("purchase_orders").get();
+        const map = { virement_bancaire: "comptant_virement", caisse: "comptant_especes", comptant: "facilite" };
+        let updated = 0;
+        const batch = db_firestore.batch();
+        snap.forEach(doc => {
+          const m = doc.data().mode_paiement;
+          if (m && map[m]) {
+            batch.update(doc.ref, { mode_paiement: map[m] });
+            updated++;
+          }
+        });
+        if (updated > 0) await batch.commit();
+        return res.json({ success: true, updated, total: snap.size });
+      }
+
+      if (action === "remind-bdc" && req.method === "POST") {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "ID requis" });
+        const doc = await db_firestore.collection("purchase_orders").doc(id).get();
+        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
+        const current = doc.data();
+
+        // Determine target profiles based on current status
+        let profiles = [];
+        let ferme = null;
+        const status = current.status;
+        const isVirementMode = current.mode_paiement === "comptant_virement" || current.mode_paiement === "virement_bancaire";
+        if (status === "en_attente_chef") { profiles = ["chef"]; ferme = current.ferme; }
+        else if (status === "en_attente_dg") { profiles = ["dg"]; }
+        else if (status === "valide_dg" && isVirementMode) { profiles = ["finance"]; }
+        else if (status === "valide_dg" && !isVirementMode) { profiles = ["achats"]; }
+        else if (status === "virement_lance") { profiles = ["dg"]; }
+        else if (status === "virement_signe") { profiles = ["achats"]; }
+        else {
+          return res.status(400).json({ success: false, error: `Aucun rappel possible dans le statut "${status}"` });
+        }
+
+        // Cooldown: prevent reminders more often than every 4h
+        const lastReminded = current.last_reminded_at || 0;
+        const cooldownMs = 4 * 60 * 60 * 1000; // 4h
+        if (Date.now() - lastReminded < cooldownMs) {
+          const hoursLeft = Math.ceil((cooldownMs - (Date.now() - lastReminded)) / (60 * 60 * 1000));
+          return res.status(400).json({ success: false, error: `Rappel déjà envoyé récemment. Patientez encore ${hoursLeft}h avant un nouveau rappel.` });
+        }
+
+        // Calculate duration
+        const lastUpdate = current.updated_at || current.created_at || Date.now();
+        const ageMs = Date.now() - lastUpdate;
+        const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+        const ageHours = Math.floor(ageMs / (60 * 60 * 1000));
+        const duration = ageDays > 0 ? `${ageDays} jour${ageDays > 1 ? "s" : ""}` : `${Math.max(1, ageHours)} heure${ageHours > 1 ? "s" : ""}`;
+
+        const { dispatchNotification } = require("./notificationDispatcher");
+        await dispatchNotification({
+          type: "bdc_reminder",
+          profiles, ferme,
+          data: {
+            numero: current.numero || id,
+            montant: current.total_ttc ? `${current.total_ttc} MAD` : "—",
+            duration,
+            message: `Rappel: BDC ${current.numero || id} en attente depuis ${duration}`,
+          },
+          relatedDoc: `purchase_orders/${id}`,
+        });
+
+        // Track reminder
+        const history = current.history || [];
+        history.push({
+          action: "rappel",
+          by: req.body.by || {},
+          at: Date.now(),
+          comment: `Rappel envoyé à ${profiles.join(", ")} (en attente depuis ${duration})`,
+        });
+        await db_firestore.collection("purchase_orders").doc(id).update({
+          last_reminded_at: Date.now(),
+          reminder_count: (current.reminder_count || 0) + 1,
+          history,
+        });
+
+        return res.json({ success: true, profiles, duration });
       }
 
       // ---- BDC Change Requests (modification/annulation) ----
@@ -7180,8 +7649,12 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           unite: it.unite || "kg",
         }));
 
-        const needsMulti = movementNeedsMultiValidation(type);
-        const initialStatus = needsMulti ? "valide_mag" : "valide_mag";
+        const singleValidation = !!req.body.single_validation;
+        const needsMulti = movementNeedsMultiValidation(type) && !singleValidation;
+        // Reception/sortie need chef validation (valide_mag = en attente)
+        // Transfert/consommation are auto-validated (stock impact applied immediately)
+        // single_validation=true bypasses multi-step approval (used for bon d'entrée libre simple)
+        const initialStatus = needsMulti ? "valide_mag" : "valide_chef";
 
         const movData = {
           numero, type,
@@ -7195,6 +7668,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           bl_id: bl_id || null,
           reception_libre: !!reception_libre,
           reception_libre_motif: reception_libre_motif || "",
+          single_validation: singleValidation,
           ref_bon_physique: ref_bon_physique || "",
           sortie_type: sortie_type || null,
           scan_url: scan_url || null,
@@ -7402,14 +7876,51 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         return res.json({ success: true, locations: snap.data() });
       }
 
+      // --- MIGRATE: auto-validate transfert/consommation stuck in valide_mag ---
+      if (action === "migrate-auto-validate" && req.method === "POST") {
+        const dryRun = req.body?.dry_run === true;
+        const snap = await db_firestore.collection("stock_movements")
+          .where("status", "==", "valide_mag")
+          .get();
+        const sampleByType = { transfert: [], consommation: [], reception: [], sortie: [] };
+        const counts = { transfert: 0, consommation: 0, reception: 0, sortie: 0, autre: 0 };
+        const toUpdate = [];
+        for (const doc of snap.docs) {
+          const m = doc.data();
+          counts[m.type] = (counts[m.type] || 0) + 1;
+          if (m.type === "transfert" || m.type === "consommation") {
+            toUpdate.push(doc);
+            if (sampleByType[m.type].length < 3) sampleByType[m.type].push({ numero: m.numero, date: m.date, ferme: m.ferme });
+          }
+        }
+        if (dryRun) {
+          return res.json({ success: true, dry_run: true, total_scanned: snap.size, counts, would_update: toUpdate.length, sample: sampleByType });
+        }
+        // Real apply
+        let updated = 0;
+        let batch = db_firestore.batch();
+        let batchCount = 0;
+        for (const doc of toUpdate) {
+          batch.update(doc.ref, { status: "valide_chef", updated_at: Date.now() });
+          updated++;
+          batchCount++;
+          if (batchCount >= 400) {
+            await batch.commit();
+            batch = db_firestore.batch();
+            batchCount = 0;
+          }
+        }
+        if (batchCount > 0) await batch.commit();
+        return res.json({ success: true, updated, total_scanned: snap.size });
+      }
+
       // --- GET PRICE HISTORY FOR AN ARTICLE ---
       if (action === "get-price-history") {
         const { article, date_from, date_to } = req.query;
         if (!article) return res.status(400).json({ success: false, error: "article requis" });
 
         let q = db_firestore.collection("stock_movements")
-          .where("type", "==", "reception")
-          .where("status", "==", "valide_chef");
+          .where("type", "==", "reception");
         if (date_from) q = q.where("date", ">=", date_from);
         if (date_to) q = q.where("date", "<=", date_to);
         const snap = await q.get();
@@ -7420,14 +7931,17 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
 
         for (const doc of snap.docs) {
           const mov = doc.data();
+          if (mov.status === "rejete") continue;
+
           const item = (mov.items || []).find(i =>
             (i.article_nom || "").toLowerCase() === articleLower ||
             (i.article_ref || "").toLowerCase() === articleLower
           );
           if (!item) continue;
 
-          let prix = item.prix_unitaire || null;
-          let fournisseur = mov.fournisseur_nom || null;
+          // Try multiple price field names (legacy/import data uses prix_unitaire_ttc)
+          let prix = parseFloat(item.prix_unitaire) || parseFloat(item.prix_unitaire_ttc) || parseFloat(item.prix_unitaire_ht) || null;
+          let fournisseur = mov.fournisseur_nom || mov.fourn || null;
           let bdc_numero = null;
 
           if (!prix && mov.bdc_id) {
@@ -7446,7 +7960,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
             }
           }
 
-          if (prix) {
+          if (prix && prix > 0) {
             history.push({
               date: mov.date, prix_unitaire: prix, quantite: item.quantite,
               unite: item.unite || "kg", fournisseur, bdc_numero, numero: mov.numero
@@ -7612,6 +8126,282 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           recommendations, plan7j,
           soilAnalyses: soilAnalyses.map(a => ({ id: a.id, date: a.date_resultat, parsed_values: a.parsed_values, ferme: a.ferme })),
           config: irriConfig,
+        });
+      }
+
+      // ========== IRRIGATION META — dynamic per-parcelle config ==========
+      // GET  ?action=irrigation-meta-list                → all parcelle meta
+      // POST ?action=irrigation-meta-save  body={id, meta} → upsert one
+      // POST ?action=irrigation-meta-seed                → seed Firestore from static
+      if (action === "irrigation-meta-list") {
+        const II = require("./lib/irrigation");
+        const snap = await db_firestore.collection(II.FIRESTORE_COLLECTION).get();
+        const fromDb = {};
+        snap.docs.forEach(d => { fromDb[d.id] = d.data(); });
+        // Merge with static fallback so caller sees the union
+        const merged = { ...II.PARCELLE_META, ...fromDb };
+        return res.json({ success: true, meta: merged, source: { hardcoded: Object.keys(II.PARCELLE_META).length, firestore: Object.keys(fromDb).length } });
+      }
+      if (action === "irrigation-meta-save" && req.method === "POST") {
+        const { id, meta } = req.body || {};
+        if (!id || !meta) return res.status(400).json({ success: false, error: "id et meta requis" });
+        const II = require("./lib/irrigation");
+        await db_firestore.collection(II.FIRESTORE_COLLECTION).doc(id).set({
+          ...meta,
+          updated_at: Date.now(),
+        }, { merge: true });
+        II.clearParcelleMetaCache();
+        return res.json({ success: true, id });
+      }
+      if (action === "irrigation-meta-seed" && req.method === "POST") {
+        const II = require("./lib/irrigation");
+        const batch = db_firestore.batch();
+        const ids = Object.keys(II.PARCELLE_META);
+        for (const id of ids) {
+          const ref = db_firestore.collection(II.FIRESTORE_COLLECTION).doc(id);
+          batch.set(ref, { ...II.PARCELLE_META[id], seeded_at: Date.now() }, { merge: true });
+        }
+        await batch.commit();
+        II.clearParcelleMetaCache();
+        return res.json({ success: true, seeded: ids.length });
+      }
+
+      // ========== IRRIGATION NEXT-PULSE — operator feedback ==========
+      // Returns a single concise recommendation for the stationnaire who
+      // just saved a pulse: continue / shorter / longer / wait / stop.
+      // Includes radiation-driven "next pulse at HH:MM" prediction.
+      if (action === "irrigation-intelligence-next-pulse") {
+        const ferme = req.query.ferme;
+        const parcelle = req.query.parcelle;
+        // "Now" in Africa/Casablanca local time — heure de pulse stockée en local
+        const _nowParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Casablanca",
+          year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", hour12: false,
+        }).formatToParts(new Date());
+        const _np = {};
+        _nowParts.forEach(p => { _np[p.type] = p.value; });
+        const todayDate = `${_np.year}-${_np.month}-${_np.day}`;
+        const nowMin = Number(_np.hour) * 60 + Number(_np.minute);
+        const date = req.query.date || todayDate;
+        if (!ferme || !parcelle) {
+          return res.status(400).json({ success: false, error: "ferme et parcelle requis" });
+        }
+        const II = require("./lib/irrigation");
+        const raws = await II.fetchIrrigationReadings(db_firestore, {
+          ferme, dateFrom: date, dateTo: date, parcelle,
+        });
+        let weatherToday = null;
+        let weatherByDate = {};
+        try {
+          const coords = METEO_FERMES[ferme] || METEO_FERMES.F1;
+          const [fc, hourlyByDate] = await Promise.all([
+            fetchMeteoForecast7d(coords.lat, coords.lon),
+            fetchHourlyRadiationByDate(coords.lat, coords.lon, 1, 2),
+          ]);
+          weatherToday = fc && fc[0];
+          weatherByDate = hourlyByDate || {};
+          // Augment weatherToday with today's hourly radiation + sunrise/sunset
+          if (weatherToday && weatherByDate[date]) {
+            weatherToday = { ...weatherToday, ...weatherByDate[date] };
+          }
+        } catch (e) { /* best effort, ignore */ }
+        const parcelleMetaById = await II.loadParcelleMetaFromFirestore(db_firestore, [parcelle]);
+        const meta = parcelleMetaById[parcelle] || II.getParcelleMeta(parcelle);
+        const indoorRadByGhType = await loadIndoorHourlyRadiationByGhType(Object.keys(weatherByDate));
+        const { summaries } = II.analyseReadings(raws, undefined, undefined, { weatherByDate, parcelleMetaById, indoorRadByGhType, todayDate, nowMin });
+        const todaysSummary = summaries[0] || null;
+        const advice = II.recommendNextPulse(todaysSummary, weatherToday, undefined, meta);
+
+        // F3 live data — RadSum since last pulse to "now".
+        // Prefer FarmRoad indoor radiation; fallback to Open-Meteo × transmittance
+        // for the live ETA (UX: don't leave the ops user without a prediction
+        // when today's FarmRoad doc isn't yet populated).
+        let radSumSinceLastPulseNow = null;
+        let radTargetJPerCm2 = II.getRadiationTarget((meta && meta.culture) || null, II.DEFAULT_THRESHOLDS);
+        let radEtaMin = null;
+        let radEtaTime = null;
+        let radDataSource = null;
+        const ghTypeF3 = meta && meta.greenhouseType;
+        const indoorHourlyF3 = ghTypeF3 && indoorRadByGhType && indoorRadByGhType[ghTypeF3]
+          ? (indoorRadByGhType[ghTypeF3][date] || null)
+          : null;
+        const outdoorHourlyF3 = (weatherByDate && weatherByDate[date] && Array.isArray(weatherByDate[date].hourlyRadiation))
+          ? weatherByDate[date].hourlyRadiation : null;
+        const useIndoorF3 = Array.isArray(indoorHourlyF3);
+        const liveSource = useIndoorF3 ? indoorHourlyF3 : outdoorHourlyF3;
+        const liveScale = useIndoorF3 ? 1 : II.getTransmittance(ghTypeF3, II.DEFAULT_THRESHOLDS);
+        if (liveSource) radDataSource = useIndoorF3 ? 'farmroad' : 'openmeteo';
+        if (date === todayDate && Array.isArray(liveSource)) {
+          const sunriseMin = weatherByDate[date] && Number.isFinite(weatherByDate[date].sunriseMin) ? weatherByDate[date].sunriseMin : 6 * 60;
+          const lastPulseMin = (todaysSummary && todaysSummary.pulses && todaysSummary.pulses.length > 0)
+            ? todaysSummary.pulses[todaysSummary.pulses.length - 1].minutesFromMidnight
+            : null;
+          const fromMin = Number.isFinite(lastPulseMin) ? lastPulseMin : sunriseMin;
+          if (nowMin > fromMin) {
+            radSumSinceLastPulseNow = Math.round(II.integrateRadiation(liveSource, fromMin, nowMin) * liveScale * 100) / 100;
+          } else {
+            radSumSinceLastPulseNow = 0;
+          }
+          const remaining = Math.max(0, radTargetJPerCm2 - radSumSinceLastPulseNow);
+          if (remaining > 0) {
+            // predictNextPulseTime walks outdoor/indoor and looks for total target
+            // (in raw integrated units). If using outdoor with transmittance, scale target up.
+            const targetForPredict = useIndoorF3 ? radTargetJPerCm2 : radTargetJPerCm2 / Math.max(0.1, liveScale);
+            const eta = II.predictNextPulseTime(liveSource, fromMin, targetForPredict);
+            if (eta && eta.etaMin !== null) {
+              radEtaMin = Math.max(0, eta.etaMin - nowMin);
+              radEtaTime = eta.etaTime;
+            }
+          } else {
+            radEtaMin = 0;
+            radEtaTime = String(Math.floor(nowMin / 60)).padStart(2, "0") + ":" + String(nowMin % 60).padStart(2, "0");
+          }
+        }
+
+        return res.json({
+          success: true, ferme, parcelle, date,
+          weatherToday, ...advice,
+          radSumSinceLastPulseNow, radTargetJPerCm2, radEtaMin, radEtaTime, radDataSource,
+          lastPulseHeure: (todaysSummary && todaysSummary.pulses && todaysSummary.pulses.length > 0)
+            ? todaysSummary.pulses[todaysSummary.pulses.length - 1].heure
+            : null,
+        });
+      }
+
+      // ========== IRRIGATION INTELLIGENCE — analytics engine ==========
+      // Pulls raw irrigation_readings, runs the domain pipeline, and returns
+      // daily summaries + actionable recommendations + per-parcelle comparison.
+      // Backed by functions/lib/irrigation/ — UI must stay logic-free.
+      if (action === "irrigation-intelligence") {
+        const ferme = req.query.ferme;
+        const dateFrom = req.query.dateFrom;
+        const dateTo = req.query.dateTo;
+        const parcelle = req.query.parcelle || null;
+        if (!ferme || !dateFrom || !dateTo) {
+          return res.status(400).json({ success: false, error: "ferme, dateFrom, dateTo requis" });
+        }
+        // "Now" in Africa/Casablanca local time
+        const _nowParts = new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Africa/Casablanca",
+          year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", hour12: false,
+        }).formatToParts(new Date());
+        const _np = {};
+        _nowParts.forEach(p => { _np[p.type] = p.value; });
+        const todayDate = `${_np.year}-${_np.month}-${_np.day}`;
+        const nowMin = Number(_np.hour) * 60 + Number(_np.minute);
+        const II = require("./lib/irrigation");
+        const raws = await II.fetchIrrigationReadings(db_firestore, { ferme, dateFrom, dateTo, parcelle });
+        // Build parcelle metadata map: Firestore overrides static, falls back if absent
+        const parcelleIds = Array.from(new Set(raws.map(r => r.parcelle).filter(Boolean)));
+        const parcelleMetaById = await II.loadParcelleMetaFromFirestore(db_firestore, parcelleIds);
+
+        // Best-effort weather fetch (Open-Meteo). Never blocks the analysis.
+        let weatherForecast = null;
+        let weatherByDate = {};
+        try {
+          const coords = METEO_FERMES[ferme] || METEO_FERMES.F1;
+          // Span enough past_days to cover the requested range
+          const daysSpan = Math.max(1, Math.ceil((new Date(dateTo) - new Date(dateFrom)) / (1000 * 60 * 60 * 24)));
+          const pastDays = Math.min(60, daysSpan + 1);
+          const [fc, hourlyByDate] = await Promise.all([
+            fetchMeteoForecast7d(coords.lat, coords.lon),
+            fetchHourlyRadiationByDate(coords.lat, coords.lon, pastDays, 2),
+          ]);
+          weatherForecast = fc;
+          weatherByDate = hourlyByDate || {};
+        } catch (e) {
+          console.warn("irrigation-intelligence: weather fetch failed:", e.message);
+        }
+
+        const indoorRadByGhType = await loadIndoorHourlyRadiationByGhType(Object.keys(weatherByDate));
+        const {
+          summaries,
+          recommendationsByKey,
+          radiationRecommendationsByKey,
+          pulseTrailByKey,
+          periodTrendsByParcelle,
+          periodRecommendationsByParcelle,
+          weatherToday: weatherTodayRaw,
+          weatherRecommendationsByParcelle,
+        } = II.analyseReadings(raws, undefined, weatherForecast, { weatherByDate, parcelleMetaById, indoorRadByGhType, todayDate, nowMin });
+
+        // F4 — enrich weatherToday with farm-level outdoor RadSum (no transmittance)
+        let weatherToday = weatherTodayRaw;
+        if (weatherToday && weatherByDate[todayDate] && Array.isArray(weatherByDate[todayDate].hourlyRadiation)) {
+          const ctx = weatherByDate[todayDate];
+          const sunriseMin = Number.isFinite(ctx.sunriseMin) ? ctx.sunriseMin : 6 * 60;
+          const sunsetMin = Number.isFinite(ctx.sunsetMin) ? ctx.sunsetMin : 19 * 60;
+          const upTo = Math.min(sunsetMin, Math.max(sunriseMin, nowMin));
+          const outdoorRadSumSoFarJPerCm2 = Math.round(II.integrateRadiation(ctx.hourlyRadiation, sunriseMin, upTo) * 100) / 100;
+          const outdoorDailyRadJPerCm2 = Math.round(II.dailyRadiationTotal(ctx.hourlyRadiation, sunriseMin, sunsetMin) * 100) / 100;
+          weatherToday = { ...weatherToday, outdoorRadSumSoFarJPerCm2, outdoorDailyRadJPerCm2, sunriseMin, sunsetMin };
+        }
+
+        // Per-parcelle aggregates for the comparison view
+        const byParcelle = {};
+        for (const s of summaries) {
+          const key = s.parcelle;
+          if (!byParcelle[key]) {
+            byParcelle[key] = {
+              parcelle: key, parcelleLabel: s.parcelleLabel,
+              days: 0, totalInputMl: 0, totalDrainMl: 0,
+              sumDrainPct: 0, drainPctSamples: 0,
+              pulseCount: 0, highDrainPulseCount: 0, lowDrainPulseCount: 0,
+              ecPtsValues: [], phPtsValues: [], diagnosesCounts: {},
+            };
+          }
+          const agg = byParcelle[key];
+          agg.days++;
+          agg.totalInputMl += s.totalInputMl || 0;
+          agg.totalDrainMl += s.totalDrainMl || 0;
+          if (s.totalDrainPct !== null) { agg.sumDrainPct += s.totalDrainPct; agg.drainPctSamples++; }
+          agg.pulseCount += s.pulseCount;
+          agg.highDrainPulseCount += s.highDrainPulseCount;
+          agg.lowDrainPulseCount += s.lowDrainPulseCount;
+          if (s.avgEcPts) agg.ecPtsValues.push(s.avgEcPts);
+          if (s.avgPhPts) agg.phPtsValues.push(s.avgPhPts);
+          agg.diagnosesCounts[s.diagnosis] = (agg.diagnosesCounts[s.diagnosis] || 0) + 1;
+        }
+        const stddev = (arr) => {
+          if (!arr.length) return null;
+          const m = arr.reduce((a, b) => a + b, 0) / arr.length;
+          return Math.sqrt(arr.reduce((a, b) => a + (b - m) * (b - m), 0) / arr.length);
+        };
+        const comparison = Object.values(byParcelle).map(agg => ({
+          parcelle: agg.parcelle,
+          parcelleLabel: agg.parcelleLabel,
+          days: agg.days,
+          avgDrainPct: agg.drainPctSamples > 0 ? agg.sumDrainPct / agg.drainPctSamples : null,
+          totalInputMl: agg.totalInputMl,
+          totalDrainMl: agg.totalDrainMl,
+          pulseCount: agg.pulseCount,
+          highDrainPulseCount: agg.highDrainPulseCount,
+          lowDrainPulseCount: agg.lowDrainPulseCount,
+          problemRatio: agg.pulseCount > 0
+            ? (agg.highDrainPulseCount + agg.lowDrainPulseCount) / agg.pulseCount
+            : null,
+          ecStability: stddev(agg.ecPtsValues),
+          phStability: stddev(agg.phPtsValues),
+          diagnosesCounts: agg.diagnosesCounts,
+        }));
+
+        return res.json({
+          success: true,
+          ferme, dateFrom, dateTo, parcelle,
+          summaries,
+          recommendationsByKey,
+          radiationRecommendationsByKey,
+          pulseTrailByKey,
+          periodTrendsByParcelle,
+          periodRecommendationsByParcelle,
+          weatherForecast,
+          weatherToday,
+          weatherRecommendationsByParcelle,
+          comparison,
+          generatedAt: Date.now(),
+          todayDate, nowMin,
         });
       }
 
@@ -9720,6 +10510,17 @@ exports.telecom = functions
           }
           anomalies.sort((a, b) => b.montant - a.montant);
 
+          // Récupérer la date de dernière synchro depuis api_metadata
+          let lastSyncAt = null;
+          try {
+            const metaSnap = await db_firestore.collection("api_metadata").doc("telecom").get();
+            if (metaSnap.exists) {
+              const m = metaSnap.data();
+              if (m.lastSyncAt && m.lastSyncAt.toDate) lastSyncAt = m.lastSyncAt.toDate().toISOString();
+              else if (m.lastSyncAt) lastSyncAt = new Date(m.lastSyncAt).toISOString();
+            }
+          } catch (_) { /* ignore */ }
+
           return {
             success: true,
             totalMois: Math.round(totalMois),
@@ -9732,6 +10533,7 @@ exports.telecom = functions
             anomalies,
             nbFactures: bills.length,
             campagne: `${campagneYear}-${campagneYear + 1}`,
+            lastSyncAt,
           };
         });
         return res.json(cached);
@@ -9783,6 +10585,12 @@ exports.telecom = functions
         }
         if (batchCount > 0) await batch.commit();
 
+        // Track last sync timestamp
+        await db_firestore.collection("api_metadata").doc("telecom").set({
+          lastSyncAt: admin.firestore.Timestamp.fromDate(new Date()),
+          lastImportCount: imported,
+        }, { merge: true }).catch(() => {});
+
         // Invalidate cache
         const cacheKey = `telecom_summary_${now.getFullYear()}_${now.getMonth()}`;
         await db_firestore.collection("api_cache").doc(cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200)).delete().catch(() => {});
@@ -9808,6 +10616,239 @@ exports.telecom = functions
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur telecom:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// API: OJRA — Payroll & social charges (manual Excel upload)
+// =============================================
+// Phase 1 (RDP discovery) is pending; in the meantime users export the OJRA
+// payroll Excel via Remote Desktop and upload it through the OJRA tab.
+// The parser (./ojraParser.js) detects columns heuristically — when the OJRA
+// schema is fixed, tighten its COLUMN_PATTERNS.
+exports.ojra = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 60, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const action = req.query.action || "summary";
+
+    // import accepts either an authenticated user OR a server-side API key.
+    if (action === "import" && req.method === "POST") {
+      const apiKey = req.headers["x-api-key"] || req.query.key;
+      const expectedKey = process.env.OJRA_IMPORT_KEY;
+      const keyOk = expectedKey && apiKey === expectedKey;
+      if (!keyOk) {
+        const authUser = await requireAuth(req, res);
+        if (!authUser) return;
+      }
+    } else {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return;
+    }
+
+    try {
+      const COLLECTION = "ojra_payroll";
+      const META_DOC = db_firestore.collection("api_metadata").doc("ojra");
+
+      if (action === "import" && req.method === "POST") {
+        const { file, period, importedBy, dryRun } = req.body || {};
+        if (!file) return res.status(400).json({ success: false, error: "file (base64) requis" });
+        if (!period || !/^\d{4}-\d{2}-\d{2}$/.test(period)) {
+          return res.status(400).json({ success: false, error: "period requis au format YYYY-MM-DD (samedi début de quinzaine)" });
+        }
+
+        const { parseOjraExcel } = require("./ojraParser");
+        let parsed;
+        try {
+          parsed = parseOjraExcel(file);
+        } catch (err) {
+          return res.status(400).json({ success: false, error: "Excel illisible: " + err.message });
+        }
+
+        const allRecords = [];
+        for (const s of parsed.sheets) {
+          if (s.skipped) continue;
+          for (const r of s.records) allRecords.push({ ...r, _sheet: s.name });
+        }
+
+        if (allRecords.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: "Aucune ligne de paie reconnue. Vérifier que les en-têtes contiennent au moins matricule/nom et un montant (brut, net, CNSS).",
+            meta: parsed.meta,
+            sheets: parsed.sheets.map(s => ({ name: s.name, skipped: !!s.skipped, reason: s.reason || null, detectedColumns: s.detectedColumns || [] })),
+          });
+        }
+
+        if (dryRun) {
+          return res.json({
+            success: true,
+            dryRun: true,
+            period,
+            totals: parsed.totals,
+            sheets: parsed.sheets.map(s => ({
+              name: s.name, skipped: !!s.skipped, reason: s.reason || null,
+              detectedColumns: s.detectedColumns || [], nbRecords: s.records ? s.records.length : 0,
+            })),
+            sample: allRecords.slice(0, 5),
+          });
+        }
+
+        const importedAt = admin.firestore.Timestamp.fromDate(new Date());
+        const periodKey = period;
+
+        const BATCH_SIZE = 400;
+        let batch = db_firestore.batch();
+        let batchCount = 0;
+        let imported = 0;
+
+        for (const rec of allRecords) {
+          const matKey = (rec.matricule || "").replace(/[\/\.\s#\[\]*]/g, "_");
+          const nomKey = (rec.nomComplet || rec.nom || "anon").toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 60);
+          const docId = `${periodKey}__${matKey || nomKey}`.slice(0, 200);
+
+          batch.set(db_firestore.collection(COLLECTION).doc(docId), {
+            period: periodKey,
+            matricule: rec.matricule || "",
+            nom: rec.nomComplet || rec.nom || "",
+            poste: rec.poste || "",
+            service: rec.service || "",
+            ferme: rec.ferme || "",
+            joursTravailles: rec.joursTravailles || 0,
+            heuresNormales: rec.heuresNormales || 0,
+            heuresSupp: rec.heuresSupp || 0,
+            salaireBase: rec.salaireBase || 0,
+            salaireBrut: rec.salaireBrut || 0,
+            salaireImposable: rec.salaireImposable || 0,
+            salaireNet: rec.salaireNet || 0,
+            cnssEmploye: rec.cnssEmploye || 0,
+            cnssEmployeur: rec.cnssEmployeur || 0,
+            amoEmploye: rec.amoEmploye || 0,
+            amoEmployeur: rec.amoEmployeur || 0,
+            ir: rec.ir || 0,
+            cimr: rec.cimr || 0,
+            primes: rec.primes || 0,
+            avances: rec.avances || 0,
+            sourceSheet: rec._sheet || "",
+            source: "ojra",
+            importedAt,
+            importedBy: importedBy || null,
+          }, { merge: true });
+          batchCount++;
+          imported++;
+          if (batchCount >= BATCH_SIZE) {
+            await batch.commit();
+            batch = db_firestore.batch();
+            batchCount = 0;
+          }
+        }
+        if (batchCount > 0) await batch.commit();
+
+        await db_firestore.collection("ojra_period_totals").doc(periodKey).set({
+          period: periodKey,
+          ...parsed.totals,
+          importedAt,
+          importedBy: importedBy || null,
+          sheets: parsed.sheets.filter(s => !s.skipped).map(s => s.name),
+        }, { merge: true });
+
+        await META_DOC.set({
+          lastImportAt: importedAt,
+          lastPeriod: periodKey,
+          lastImportCount: imported,
+        }, { merge: true });
+
+        await db_firestore.collection("api_cache").doc("ojra_summary").delete().catch(() => {});
+
+        return res.json({ success: true, imported, period: periodKey, totals: parsed.totals });
+      }
+
+      if (action === "summary") {
+        const cached = await withCache("ojra_summary", 10 * 60 * 1000, async () => {
+          const periodsSnap = await db_firestore.collection("ojra_period_totals")
+            .orderBy("period", "desc").limit(24).get();
+          const periods = periodsSnap.docs.map(d => {
+            const t = d.data();
+            return {
+              period: t.period,
+              nbEmployes: t.nbEmployes || 0,
+              salaireBrut: t.salaireBrut || 0,
+              salaireNet: t.salaireNet || 0,
+              chargesSocialesTotal: t.chargesSocialesTotal || 0,
+              cnssEmploye: t.cnssEmploye || 0,
+              cnssEmployeur: t.cnssEmployeur || 0,
+              amoEmploye: t.amoEmploye || 0,
+              amoEmployeur: t.amoEmployeur || 0,
+              ir: t.ir || 0,
+              cimr: t.cimr || 0,
+              importedAt: t.importedAt && t.importedAt.toDate ? t.importedAt.toDate().toISOString() : null,
+            };
+          });
+
+          let lastImportAt = null;
+          let lastPeriod = null;
+          try {
+            const meta = await META_DOC.get();
+            if (meta.exists) {
+              const m = meta.data();
+              lastImportAt = m.lastImportAt && m.lastImportAt.toDate ? m.lastImportAt.toDate().toISOString() : null;
+              lastPeriod = m.lastPeriod || null;
+            }
+          } catch (_) { /* ignore */ }
+
+          return {
+            success: true,
+            latest: periods[0] || null,
+            periods,
+            lastImportAt,
+            lastPeriod,
+          };
+        });
+        return res.json(cached);
+      }
+
+      if (action === "detail") {
+        const period = req.query.period;
+        if (!period) return res.status(400).json({ success: false, error: "period requis" });
+        const snap = await db_firestore.collection(COLLECTION).where("period", "==", period).get();
+        const records = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.salaireBrut || 0) - (a.salaireBrut || 0));
+        return res.json({ success: true, period, count: records.length, records });
+      }
+
+      if (action === "periods") {
+        const snap = await db_firestore.collection("ojra_period_totals")
+          .orderBy("period", "desc").limit(48).get();
+        const periods = snap.docs.map(d => d.data().period).filter(Boolean);
+        return res.json({ success: true, periods });
+      }
+
+      if (action === "delete-period" && req.method === "POST") {
+        const period = (req.body && req.body.period) || req.query.period;
+        if (!period) return res.status(400).json({ success: false, error: "period requis" });
+        const snap = await db_firestore.collection(COLLECTION).where("period", "==", period).get();
+        let deleted = 0;
+        let batch = db_firestore.batch();
+        for (const doc of snap.docs) {
+          batch.delete(doc.ref);
+          deleted++;
+          if (deleted % 400 === 0) {
+            await batch.commit();
+            batch = db_firestore.batch();
+          }
+        }
+        if (deleted % 400 !== 0) await batch.commit();
+        await db_firestore.collection("ojra_period_totals").doc(period).delete().catch(() => {});
+        await db_firestore.collection("api_cache").doc("ojra_summary").delete().catch(() => {});
+        return res.json({ success: true, deleted });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue: " + action });
+    } catch (err) {
+      console.error("Erreur ojra:", err);
       res.status(500).json({ success: false, error: err.message });
     }
   });
@@ -10085,7 +11126,7 @@ exports.notifications = functions
                 const a = doc.data();
                 const isRead = a.read && a.read[profile];
                 if (!isRead) {
-                  if (profile === 'dg' && a.type === 'expedition_manquante') return;
+                  if ((profile === 'dg' || profile === 'qualite') && a.type === 'expedition_manquante') return;
                   const isAgq = a.type === 'new_agq_analyses';
                   categories.alertes.push({
                     key: 'alert_' + doc.id,
@@ -10199,7 +11240,7 @@ exports.caisseManagement = functions
         return res.status(403).json({ success: false, error: "forbidden" });
       }
       try {
-        const { caisse_id, transactions, reset_solde_initial } = req.body;
+        const { caisse_id, transactions, reset_solde_initial, force_overwrite, caisse_def } = req.body;
         if (!caisse_id || !Array.isArray(transactions)) {
           return res.status(400).json({ success: false, error: "caisse_id et transactions[] requis" });
         }
@@ -10207,7 +11248,7 @@ exports.caisseManagement = functions
         const caisseRef = db_firestore.collection("caisse_definitions").doc(caisse_id);
         const caisseDoc = await caisseRef.get();
 
-        // Auto-seed the 4 default caisses if the target doesn't exist
+        // Auto-seed the 4 default caisses + the target caisse if it doesn't exist
         if (!caisseDoc.exists) {
           const DEFAULT_CAISSES = {
             caisse_paie: { nom: "Caisse Paie", description: "Caisse pour les paiements salariaux" },
@@ -10226,6 +11267,21 @@ exports.caisseManagement = functions
                 nom: def.nom, description: def.description,
                 solde_initial: 0, solde_actuel: 0,
                 devise: "MAD", is_default: true, active: true,
+                created_by: importer, created_at: nowTs, updated_at: nowTs,
+              });
+            }
+          }
+          // If the target caisse is NOT a default, create it from caisse_def or fallback
+          if (!DEFAULT_CAISSES[caisse_id]) {
+            const ref = db_firestore.collection("caisse_definitions").doc(caisse_id);
+            const existing = await ref.get();
+            if (!existing.exists) {
+              const customDef = caisse_def || {};
+              seedBatch.set(ref, {
+                nom: customDef.nom || caisse_id,
+                description: customDef.description || "",
+                solde_initial: 0, solde_actuel: 0,
+                devise: "MAD", is_default: false, active: true,
                 created_by: importer, created_at: nowTs, updated_at: nowTs,
               });
             }
@@ -10251,7 +11307,7 @@ exports.caisseManagement = functions
           const docs = await Promise.all(refs.map(r => r.get()));
           const batch = db_firestore.batch();
           slice.forEach((tx, idx) => {
-            if (docs[idx].exists) { skipped++; return; }
+            if (docs[idx].exists && !force_overwrite) { skipped++; return; }
             const now = Date.now();
             batch.set(refs[idx], {
               caisse_id: tx.caisse_id,
@@ -10413,7 +11469,7 @@ exports.caisseManagement = functions
         if (status) query = query.where("status", "==", status);
         if (dateFrom) query = query.where("date", ">=", dateFrom);
         if (dateTo) query = query.where("date", "<=", dateTo);
-        query = query.orderBy("date", "desc").orderBy("created_at", "desc").limit(limit);
+        query = query.orderBy("date", "desc").limit(limit);
 
         const snap = await query.get();
         const transactions = snap.docs.map(d => {
@@ -10426,9 +11482,10 @@ exports.caisseManagement = functions
       // ========== CREATE TRANSACTION ==========
       if (action === "create-transaction" && req.method === "POST") {
         if (!isSaisie && !isAdmin) return res.status(403).json({ success: false, error: "Seul le service Achats peut saisir des transactions" });
-        const { caisse_id, type, montant, reference, description, code_analytique, date, files, submit } = req.body;
+        const { caisse_id, type, montant, reference, description, code_analytique, date, files, submit,
+          matricule, beneficiaire_nom } = req.body;
         if (!caisse_id || !type || !montant || !date) return res.status(400).json({ success: false, error: "caisse_id, type, montant et date sont requis" });
-        if (!["alimentation", "depense", "sortie"].includes(type)) return res.status(400).json({ success: false, error: "Type invalide" });
+        if (!["alimentation", "depense", "sortie", "paie", "transport"].includes(type)) return res.status(400).json({ success: false, error: "Type invalide" });
         if (montant <= 0) return res.status(400).json({ success: false, error: "Le montant doit être positif" });
 
         // Verify caisse exists
@@ -10443,6 +11500,7 @@ exports.caisseManagement = functions
         const txData = {
           caisse_id, type, montant: parseFloat(montant), reference: refNum,
           description: description || "", code_analytique: code_analytique || "",
+          matricule: matricule || "", beneficiaire_nom: beneficiaire_nom || "",
           date, status, files: (files || []).slice(0, 3), // Max 3 files
           saisie_by: userInfo, created_at: now, updated_at: now,
           history: [{ action: "creation", by: userInfo, at: Date.now() }],
@@ -10529,7 +11587,7 @@ exports.caisseManagement = functions
           const montant = txData.montant || 0;
           let delta = 0;
           if (txData.type === "alimentation" || txData.type === "transfer_in") delta = montant;
-          else if (txData.type === "depense" || txData.type === "sortie" || txData.type === "transfer_out") delta = -montant;
+          else if (["depense", "sortie", "transfer_out", "paie", "transport"].includes(txData.type)) delta = -montant;
 
           const newSolde = (caisseDoc.data().solde_actuel || 0) + delta;
 
@@ -10742,6 +11800,8 @@ exports.onAlertCreated = functions
   .onCreate(async (snap) => {
     const alert = snap.data();
     if (!alert.profiles || alert.profiles.length === 0) return;
+    // Skip if dispatcher already sent WhatsApp for this alert (avoid double send)
+    if (alert.whatsapp_dispatched) return;
     const type = alert.type === "expedition_manquante" ? "quality_alert" : "general_alert";
     await dispatchNotification({
       type,
@@ -10785,10 +11845,11 @@ exports.whatsappAdmin = functions
       }
 
       if (action === "update-config" && req.method === "POST") {
-        const { phone_number_id, access_token, enabled, default_language } = req.body;
+        const { phone_number_id, waba_id, access_token, enabled, default_language } = req.body;
         const updates = { updated_at: Date.now(), updated_by: decoded.uid };
         if (phone_number_id !== undefined) updates.phone_number_id = phone_number_id;
-        if (access_token !== undefined) updates.access_token = access_token;
+        if (waba_id !== undefined) updates.waba_id = waba_id;
+        if (access_token !== undefined && access_token !== "") updates.access_token = access_token;
         if (enabled !== undefined) updates.enabled = enabled;
         if (default_language !== undefined) updates.default_language = default_language;
         await db_firestore.collection("config").doc("whatsapp").set(updates, { merge: true });
@@ -10807,6 +11868,105 @@ exports.whatsappAdmin = functions
         return res.json({ success: result.success, error: result.error, waMessageId: result.waMessageId });
       }
 
+      if (action === "simulate-template" && req.method === "POST") {
+        const { template_name, params, phone, profiles, ferme, type } = req.body;
+        if (!template_name) return res.status(400).json({ success: false, error: "template_name requis" });
+
+        // Direct send to a specific phone
+        if (phone) {
+          const result = await whatsappService.sendTemplateMessage(phone, template_name, params || []);
+          return res.json({ success: result.success, error: result.error, waMessageId: result.waMessageId });
+        }
+
+        // Dispatch via type to profiles (uses notificationDispatcher mapping)
+        if (type && profiles && profiles.length > 0) {
+          const { dispatchNotification } = require("./notificationDispatcher");
+          // Build data object based on params for known types
+          const data = req.body.data || {};
+          if (params && Array.isArray(params)) {
+            // Map params positionally to common fields
+            data._raw_params = params;
+          }
+          await dispatchNotification({
+            type, profiles, ferme,
+            data: { ...data, message: data.message || `Test ${type}` },
+            relatedDoc: `simulation/${type}-${Date.now()}`,
+          });
+          return res.json({ success: true });
+        }
+
+        return res.status(400).json({ success: false, error: "phone OU (type + profiles) requis" });
+      }
+
+      if (action === "test-expedition-rejected" && req.method === "POST") {
+        const { ferme, variety, weightKg, reason, profiles } = req.body;
+        const { dispatchNotification } = require("./notificationDispatcher");
+        const dateTime = new Date().toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" });
+        const receiptId = `RPT-TEST-${Date.now().toString().slice(-6)}`;
+        await dispatchNotification({
+          type: "expedition_rejected",
+          profiles: profiles || ["chef", "qualite", "dg"],
+          ferme: ferme || "BSAA",
+          data: {
+            receiptId,
+            dateTime,
+            variety: variety || "Sweet Sensation",
+            ranch: ferme || "BSAA",
+            weightKg: weightKg || "1250",
+            reason: reason || "Soft fruit 18%, Bruising 12%",
+            message: `Expédition ${receiptId} rejetée (TEST)`,
+          },
+          relatedDoc: `expeditions/TEST-${receiptId}`,
+        });
+        return res.json({ success: true, receiptId });
+      }
+
+      if (action === "send-welcome" && req.method === "POST") {
+        const { uid } = req.body;
+        if (!uid) return res.status(400).json({ success: false, error: "UID utilisateur requis" });
+        const userDoc = await db_firestore.collection("users").doc(uid).get();
+        if (!userDoc.exists) return res.status(404).json({ success: false, error: "Utilisateur introuvable" });
+        const u = userDoc.data();
+        if (!u.whatsappPhone) return res.status(400).json({ success: false, error: "Cet utilisateur n'a pas de numéro WhatsApp" });
+        const firstName = (u.displayName || "").split(" ")[0] || u.displayName || u.email?.split("@")[0] || "utilisateur";
+        const result = await whatsappService.sendTemplateMessage(
+          u.whatsappPhone,
+          "welcome_smartberry",
+          [firstName]
+        );
+        if (result.success) {
+          await db_firestore.collection("users").doc(uid).update({ welcome_sent_at: Date.now() });
+        }
+        return res.json({ success: result.success, error: result.error });
+      }
+
+      if (action === "send-welcome-all" && req.method === "POST") {
+        const { force } = req.body || {};
+        const snap = await db_firestore.collection("users").get();
+        let sent = 0, skipped = 0, failed = 0;
+        const errors = [];
+        for (const doc of snap.docs) {
+          const u = doc.data();
+          if (!u.whatsappPhone || u.disabled) { skipped++; continue; }
+          if (!force && u.welcome_sent_at) { skipped++; continue; }
+          const firstName = (u.displayName || "").split(" ")[0] || u.displayName || u.email?.split("@")[0] || "utilisateur";
+          const result = await whatsappService.sendTemplateMessage(
+            u.whatsappPhone,
+            "welcome_smartberry",
+            [firstName]
+          );
+          if (result.success) {
+            sent++;
+            await db_firestore.collection("users").doc(doc.id).update({ welcome_sent_at: Date.now() });
+          } else {
+            failed++;
+            errors.push({ user: u.displayName || u.email, error: result.error });
+          }
+          await new Promise(r => setTimeout(r, 200));
+        }
+        return res.json({ success: true, sent, skipped, failed, errors });
+      }
+
       if (action === "get-logs") {
         const limit = parseInt(req.query.limit) || 50;
         const snap = await db_firestore.collection("whatsapp_logs")
@@ -10815,9 +11975,162 @@ exports.whatsappAdmin = functions
         return res.json({ success: true, logs });
       }
 
+      if (action === "retry-log" && req.method === "POST") {
+        const { log_id } = req.body;
+        if (!log_id) return res.status(400).json({ success: false, error: "log_id requis" });
+        const logDoc = await db_firestore.collection("whatsapp_logs").doc(log_id).get();
+        if (!logDoc.exists) return res.status(404).json({ success: false, error: "Log introuvable" });
+        const log = logDoc.data();
+        if (log.retried_at) return res.status(400).json({ success: false, error: "Ce message a déjà été retenté" });
+        const result = await whatsappService.sendTemplateMessage(
+          log.to,
+          log.templateName,
+          log.params || []
+        );
+        if (result.success) {
+          await db_firestore.collection("whatsapp_logs").doc(log_id).update({
+            retried_at: Date.now(),
+            retry_message_id: result.waMessageId || null,
+          });
+        }
+        return res.json({ success: result.success, error: result.error, waMessageId: result.waMessageId });
+      }
+
+      if (action === "get-messages") {
+        const limit = parseInt(req.query.limit) || 50;
+        const snap = await db_firestore.collection("whatsapp_messages")
+          .orderBy("receivedAt", "desc").limit(limit).get();
+        const messages = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        return res.json({ success: true, messages });
+      }
+
+      if (action === "generate-verify-token" && req.method === "POST") {
+        const token = require("crypto").randomBytes(32).toString("hex");
+        await db_firestore.collection("config").doc("whatsapp").set(
+          { webhook_verify_token: token, updated_at: Date.now() }, { merge: true }
+        );
+        whatsappService.clearConfigCache();
+        return res.json({ success: true, verify_token: token });
+      }
+
+      if (action === "get-verify-token") {
+        const doc = await db_firestore.collection("config").doc("whatsapp").get();
+        const verify_token = doc.exists ? doc.data().webhook_verify_token : null;
+        return res.json({ success: true, verify_token });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur whatsappAdmin:", err);
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+/**
+ * whatsappWebhook — Receives status updates and incoming messages from Meta.
+ *
+ * GET: verification challenge (Meta sends ?hub.verify_token=...&hub.challenge=...)
+ * POST: notification payload with statuses[] or messages[]
+ *
+ * Setup in Meta App → WhatsApp → Configuration:
+ *   URL: https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/whatsappWebhook
+ *   Verify token: stored in config/whatsapp.webhook_verify_token
+ *   Subscribe to: messages, message_status
+ */
+exports.whatsappWebhook = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    try {
+      // GET — webhook verification handshake
+      if (req.method === "GET") {
+        const mode = req.query["hub.mode"];
+        const token = req.query["hub.verify_token"];
+        const challenge = req.query["hub.challenge"];
+        const configDoc = await db_firestore.collection("config").doc("whatsapp").get();
+        const expectedToken = configDoc.exists ? configDoc.data().webhook_verify_token : null;
+        if (mode === "subscribe" && token && token === expectedToken) {
+          console.log("Webhook verified");
+          return res.status(200).send(challenge);
+        }
+        return res.status(403).send("Forbidden");
+      }
+
+      // POST — event notification
+      if (req.method === "POST") {
+        const body = req.body;
+        // Always respond 200 quickly to avoid Meta retries
+        res.status(200).send("EVENT_RECEIVED");
+
+        // Process asynchronously
+        (async () => {
+          try {
+            for (const entry of (body.entry || [])) {
+              for (const change of (entry.changes || [])) {
+                const value = change.value || {};
+
+                // Handle status updates (delivered, read, failed, sent)
+                for (const status of (value.statuses || [])) {
+                  const waMessageId = status.id;
+                  const newStatus = status.status; // sent, delivered, read, failed
+                  const timestamp = parseInt(status.timestamp) * 1000;
+
+                  const snap = await db_firestore.collection("whatsapp_logs")
+                    .where("waMessageId", "==", waMessageId).limit(1).get();
+                  if (!snap.empty) {
+                    const updates = { status: newStatus, [`${newStatus}_at`]: timestamp };
+                    if (status.errors) updates.error = JSON.stringify(status.errors);
+                    await snap.docs[0].ref.update(updates);
+                  }
+                }
+
+                // Handle incoming messages (replies)
+                for (const msg of (value.messages || [])) {
+                  const from = "+" + msg.from;
+                  const messageData = {
+                    waMessageId: msg.id,
+                    from,
+                    timestamp: parseInt(msg.timestamp) * 1000,
+                    type: msg.type,
+                    receivedAt: Date.now(),
+                  };
+
+                  // Extract content based on type
+                  if (msg.type === "text") messageData.text = msg.text?.body || "";
+                  else if (msg.type === "button") messageData.text = msg.button?.text || "";
+                  else if (msg.type === "interactive") messageData.text = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || "";
+                  else if (msg.type === "image") messageData.mediaId = msg.image?.id;
+                  else if (msg.type === "document") messageData.mediaId = msg.document?.id;
+                  else if (msg.type === "audio") messageData.mediaId = msg.audio?.id;
+                  else messageData.raw = JSON.stringify(msg).slice(0, 1000);
+
+                  // Try to match phone to a user
+                  const userSnap = await db_firestore.collection("users")
+                    .where("whatsappPhone", "==", from).limit(1).get();
+                  if (!userSnap.empty) {
+                    messageData.userUid = userSnap.docs[0].id;
+                    messageData.userName = userSnap.docs[0].data().displayName || "";
+                  }
+
+                  // Capture contact name if provided
+                  const contact = (value.contacts || []).find(c => c.wa_id === msg.from);
+                  if (contact?.profile?.name) messageData.contactName = contact.profile.name;
+
+                  await db_firestore.collection("whatsapp_messages").add(messageData);
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Webhook async processing error:", err);
+          }
+        })();
+        return;
+      }
+
+      return res.status(405).send("Method not allowed");
+    } catch (err) {
+      console.error("Erreur whatsappWebhook:", err);
+      // Still return 200 to prevent Meta retries
+      if (!res.headersSent) res.status(200).send("ERROR_LOGGED");
     }
   });

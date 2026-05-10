@@ -208,7 +208,7 @@ async function syncPointage(db) {
   console.log("[Sync] Syncing BR_Pointage...");
 
   // Get the last 2 quinzaines worth of data (roughly 30 days)
-  // First, find the distinct Periode_paie values
+  // First, find the distinct Periode_paie values (recent for mirror data)
   const periodesResult = await db.request().query(`
     SELECT DISTINCT Periode_paie
     FROM BR_Pointage
@@ -216,6 +216,15 @@ async function syncPointage(db) {
     ORDER BY Periode_paie DESC
   `);
   const periodes = periodesResult.recordset.map(r => (r.Periode_paie || "").trim()).filter(Boolean);
+
+  // Also fetch ALL distinct Periode_paie (no date filter) for the dropdown
+  const allPeriodesResult = await db.request().query(`
+    SELECT DISTINCT Periode_paie
+    FROM BR_Pointage
+    WHERE Periode_paie IS NOT NULL
+    ORDER BY Periode_paie DESC
+  `);
+  const allPeriodes = allPeriodesResult.recordset.map(r => (r.Periode_paie || "").trim()).filter(Boolean);
 
   // Fetch all pointage data for the covered period
   const result = await db.request().query(`
@@ -268,17 +277,54 @@ async function syncPointage(db) {
   }
 
   // Write daily pointage docs (in batches of 500 max Firestore ops)
+  // Phase 1: check which dates have manualOverride (patched from Excel)
   const dateEntries = Object.entries(byDate);
+  const overrideDates = new Set();
+  const overrideData = {};
+  for (const [date] of dateEntries) {
+    const snap = await db_firestore.collection("sql_mirror_pointage").doc(date).get();
+    if (snap.exists && snap.data().manualOverride) {
+      overrideDates.add(date);
+      overrideData[date] = snap.data().rows || [];
+    }
+  }
+  if (overrideDates.size > 0) {
+    console.log(`[Sync] manualOverride dates: ${[...overrideDates].join(", ")} — merging instead of overwriting`);
+  }
+
+  // Phase 2: write batches, merging override dates
   for (let i = 0; i < dateEntries.length; i += 200) {
     const batch = db_firestore.batch();
     const chunk = dateEntries.slice(i, i + 200);
     for (const [date, dateRows] of chunk) {
       const docRef = db_firestore.collection("sql_mirror_pointage").doc(date);
-      batch.set(docRef, {
-        rows: dateRows,
-        rowCount: dateRows.length,
-        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      if (overrideDates.has(date)) {
+        // Merge: keep manually-corrected Quantite_unite when SQL still has 0
+        const existingRows = overrideData[date];
+        const mergedRows = dateRows.map(newRow => {
+          const mat = (newRow.Personnel_Matricule || "").trim();
+          const op = newRow.Operation_Famille || "";
+          const match = existingRows.find(r =>
+            (r.Personnel_Matricule || "").trim() === mat && r.Operation_Famille === op
+          );
+          if (match && match.Quantite_unite > 0 && (!newRow.Quantite_unite || newRow.Quantite_unite === 0)) {
+            return { ...newRow, Quantite_unite: match.Quantite_unite };
+          }
+          return newRow;
+        });
+        batch.set(docRef, {
+          rows: mergedRows,
+          rowCount: mergedRows.length,
+          manualOverride: true,
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        batch.set(docRef, {
+          rows: dateRows,
+          rowCount: dateRows.length,
+          syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
     }
     await batch.commit();
   }
@@ -286,6 +332,7 @@ async function syncPointage(db) {
   // Write meta document
   await db_firestore.collection("sql_mirror_pointage_meta").doc("config").set({
     periodes,
+    allPeriodes,
     periodeMap,
     availableDates,
     syncedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -310,8 +357,195 @@ async function syncPointage(db) {
     await batch.commit();
   }
 
-  console.log(`[Sync] BR_Pointage: ${rows.length} rows → ${dateEntries.length} daily docs, ${workerEntries.length} worker docs, ${periodes.length} periodes`);
+  // =============================================
+  // ARCHIVE: save pre-computed quinzaine summaries to Firestore
+  // so they persist even after SQL purges older data
+  // Fetch ALL quinzaines from SQL (not just 45-day window)
+  // =============================================
+  await archiveQuinzaines(db, allPeriodes, periodes);
+
+  // Merge allPeriodes with archived periodes
+  const archiveSnaps = await db_firestore.collection("quinzaine_archive").listDocuments();
+  const archivedPeriodes = archiveSnaps.map(d => d.id);
+  const mergedAllPeriodes = [...new Set([...allPeriodes, ...archivedPeriodes])]
+    .sort((a, b) => {
+      const na = parseInt((a.match(/\d+/) || [0])[0], 10);
+      const nb = parseInt((b.match(/\d+/) || [0])[0], 10);
+      return nb - na;
+    });
+
+  // Update meta with merged allPeriodes
+  await db_firestore.collection("sql_mirror_pointage_meta").doc("config").update({
+    allPeriodes: mergedAllPeriodes,
+  });
+
+  console.log(`[Sync] BR_Pointage: ${rows.length} rows → ${dateEntries.length} daily docs, ${workerEntries.length} worker docs, ${periodes.length} periodes, ${archivedPeriodes.length} archived`);
   return rows.length;
+}
+
+// =============================================
+// Quinzaine archiving helpers
+// =============================================
+
+function deriveFerme(refParcelle, parcelleCulturale) {
+  const ref = (refParcelle || "").trim();
+  if (ref) {
+    if (ref.startsWith("F1") || ref === "0032" || ref === "0035" || ref === "0036") return "F1";
+    if (ref.startsWith("F5") || ref === "0037" || ref === "0038" || ref === "0039") return "F5";
+    if (ref.startsWith("F2") || ref.startsWith("F3") || ref.startsWith("F4") || ref.startsWith("F6") || ref === "0031" || ref === "0033") return "Avocatier";
+  }
+  if (parcelleCulturale) {
+    if (/F1/i.test(parcelleCulturale)) return "F1";
+    if (/F5/i.test(parcelleCulturale)) return "F5";
+    if (/avocat/i.test(parcelleCulturale)) return "Avocatier";
+    const sMatch = parcelleCulturale.match(/\bS(\d{1,2})\b/i);
+    if (sMatch) {
+      const sNum = parseInt(sMatch[1], 10);
+      if (sNum >= 1 && sNum <= 7) return "F1";
+      if (sNum >= 8 && sNum <= 14) return "F5";
+    }
+  }
+  return "Autre";
+}
+
+function classifyType(operationFamille) {
+  if (!operationFamille) return "horsRecolte";
+  if (operationFamille === "8. Récolte") return "recolte";
+  if (operationFamille === "11. Postes fixes") return "postesFixes";
+  return "horsRecolte";
+}
+
+async function archiveQuinzaines(sqlDb, allPeriodes, mirrorPeriodes) {
+  // Skip the last 3 quinzaines (current + 2 previous) — those are served live from SQL/mirror
+  const livePeriodes = new Set(mirrorPeriodes.slice(0, 3));
+
+  // Find which quinzaines need archiving
+  const toArchive = [];
+  for (const periode of allPeriodes) {
+    if (!periode || livePeriodes.has(periode)) continue;
+    const existingDoc = await db_firestore.collection("quinzaine_archive").doc(periode).get();
+    if (existingDoc.exists) continue; // Already archived
+    toArchive.push(periode);
+  }
+
+  if (toArchive.length === 0) {
+    console.log("[Archive] All quinzaines already archived");
+    return;
+  }
+
+  console.log(`[Archive] Archiving ${toArchive.length} quinzaines from SQL: ${toArchive.join(", ")}`);
+
+  for (const periode of toArchive) {
+    // Fetch full data for this quinzaine directly from SQL
+    const sqlResult = await sqlDb.request().input('periode', periode).query(`
+      SELECT Personnel_Matricule, Personnel_Nom, Operation_Famille, Operation, Operation_Groupe,
+        Nombre_Jr, Nombre_Hr, Quantite_unite, Cout, Parcelle_Culturale, Ref_parcelle,
+        Variete, Culture, Periode_paie,
+        CONVERT(varchar(10), Periode_Date, 23) AS DateStr,
+        HS_25, HS_50, HS_100, HS_NM
+      FROM BR_Pointage
+      WHERE Periode_paie = @periode
+      ORDER BY Periode_Date, Personnel_Nom
+    `);
+    const periodeRows = sqlResult.recordset.map(r => ({
+      Personnel_Matricule: (r.Personnel_Matricule || "").trim(),
+      Personnel_Nom: (r.Personnel_Nom || "").trim(),
+      Operation_Famille: r.Operation_Famille,
+      Operation: r.Operation,
+      Nombre_Jr: r.Nombre_Jr,
+      Nombre_Hr: r.Nombre_Hr,
+      Quantite_unite: r.Quantite_unite,
+      Cout: r.Cout,
+      Parcelle_Culturale: (r.Parcelle_Culturale || "").trim(),
+      Ref_parcelle: (r.Ref_parcelle || "").trim(),
+      Variete: (r.Variete || "").trim(),
+      Culture: (r.Culture || "").trim(),
+      Periode_paie: (r.Periode_paie || "").trim(),
+      DateStr: r.DateStr,
+    }));
+
+    if (periodeRows.length === 0) {
+      console.log(`[Archive] ${periode}: no data in SQL, skipping`);
+      continue;
+    }
+
+    // Collect distinct dates
+    const datesSet = new Set(periodeRows.map(r => r.DateStr).filter(Boolean));
+    const quinzaineDates = [...datesSet].sort();
+
+    // === Summary (action: quinzaine) ===
+    const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
+    for (const r of periodeRows) {
+      const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+      const type = classifyType(r.Operation_Famille);
+      if (qFermes[ferme]) { qFermes[ferme].journees += r.Nombre_Jr || 0; qFermes[ferme].cout += r.Cout || 0; qFermes[ferme][type] += r.Nombre_Jr || 0; }
+    }
+    const dayMap = {};
+    for (const r of periodeRows) {
+      const key = r.DateStr;
+      if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: new Set(), journees: 0, cout: 0, F1: new Set(), F5: new Set(), Avocatier: new Set() };
+      dayMap[key].nbOuv.add(r.Personnel_Matricule);
+      dayMap[key].journees += r.Nombre_Jr || 0;
+      dayMap[key].cout += r.Cout || 0;
+      const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+      if (dayMap[key][ferme]) dayMap[key][ferme].add(r.Personnel_Matricule);
+    }
+    const parJour = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size })).sort((a, b) => a.jour.localeCompare(b.jour));
+    const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
+    const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
+
+    // === Analytique (action: quinzaine-analytique) ===
+    const analytiqueGroups = {};
+    for (const r of periodeRows) {
+      const key = `${r.Parcelle_Culturale}|${r.Ref_parcelle}|${r.Operation_Famille}|${r.Operation}`;
+      if (!analytiqueGroups[key]) analytiqueGroups[key] = { Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Operation_Famille: r.Operation_Famille, Operation: r.Operation, workers: new Set(), JH: 0, Cout: 0 };
+      analytiqueGroups[key].workers.add(r.Personnel_Matricule);
+      analytiqueGroups[key].JH += r.Nombre_Jr || 0;
+      analytiqueGroups[key].Cout += r.Cout || 0;
+    }
+    const analytique = Object.values(analytiqueGroups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
+
+    // === Repos data (action: quinzaine-repos) ===
+    const workerPresence = {};
+    for (const r of periodeRows) {
+      const mat = (r.Personnel_Matricule || '').trim();
+      if (!mat) continue;
+      if (!workerPresence[mat]) workerPresence[mat] = { matricule: mat, nom: (r.Personnel_Nom || '').trim(), joursPresent: new Set() };
+      workerPresence[mat].joursPresent.add(r.DateStr);
+    }
+    const reposWorkers = Object.values(workerPresence).map(w => ({ matricule: w.matricule, nom: w.nom, joursPresent: [...w.joursPresent].sort() }));
+
+    // === Alertes data (action: quinzaine-alertes) ===
+    const presenceByPrefix = {};
+    for (const r of periodeRows) {
+      const prefix = (r.Personnel_Matricule || '').trim().substring(0, 2).toUpperCase();
+      if (!presenceByPrefix[prefix]) presenceByPrefix[prefix] = new Set();
+      presenceByPrefix[prefix].add(r.DateStr);
+    }
+    const alertesPresence = {};
+    for (const [prefix, daysSet] of Object.entries(presenceByPrefix)) {
+      alertesPresence[prefix] = [...daysSet].sort();
+    }
+
+    // Write archive document
+    await db_firestore.collection("quinzaine_archive").doc(periode).set({
+      periode,
+      summary: {
+        totalJournees: Math.round(totalJournees),
+        totalCout: Math.round(totalCout),
+        parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })),
+        parJour,
+      },
+      analytique,
+      reposData: { quinzaineDates, workers: reposWorkers },
+      alertesData: { quinzaineDates, presenceByPrefix: alertesPresence },
+      dayCount: quinzaineDates.length,
+      rowCount: periodeRows.length,
+      archivedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    console.log(`[Archive] ${periode}: ${periodeRows.length} rows, ${quinzaineDates.length} days`);
+  }
 }
 
 /**

@@ -55,6 +55,211 @@ function deriveFerme(refParcelle, parcelleCulturale) {
   return "Autre";
 }
 
+/**
+ * Resolve specific myrtille sub-variety from parcelle name.
+ * BEE ONE Variete field just says "Myrtille" — the actual sub-variety
+ * (Corina, Breeze, Cascade) is encoded in the parcelle designation.
+ * This is needed because prime thresholds differ: Corina=30kg, Breeze/Cascade=25kg.
+ */
+function resolveMyrtilleVariete(variete, parcelle) {
+  const v = (variete || "").toLowerCase();
+  // If already specific, keep it
+  if (/corina|corrina|breeze|cascade/i.test(v)) return variete;
+  // Only resolve for generic "myrtille"
+  if (!/myrtille|blue/i.test(v)) return variete;
+  const p = (parcelle || "").toUpperCase();
+  if (p.includes("BREEZE")) return "Breeze";
+  if (p.includes("CASCADE")) return "Cascade";
+  if (p.includes("CORINA") || p.includes("CORRINA")) return "Corina";
+  // S8-2 = Breeze, S8-1 = Cascade, S8 (alone) = Corina
+  if (/\bS8[\s-]*2\b/.test(p)) return "Breeze";
+  if (/\bS8[\s-]*1\b/.test(p)) return "Cascade";
+  if (/\bS8\b/.test(p)) return "Corina";
+  // Default to Corina (most common myrtille)
+  return "Corina";
+}
+
+/**
+ * Resolve parcelle name to { variete, culture, ferme } for analytical accounting.
+ * Mirrors the frontend normalizeParcelle() logic.
+ */
+function resolveVariete(parcelle, refParcelle) {
+  const u = (parcelle || "").toUpperCase();
+  const ferme = deriveFerme(refParcelle, parcelle);
+  if (u.includes('MARAVILLA')) return { variete: 'Maravilla', culture: 'Framboise', ferme };
+  if (u.includes('YAZMIN') || u.includes('YASMIN')) return { variete: 'Yazmin', culture: 'Framboise', ferme };
+  if (u.includes('REYNA') || u.includes('REINA')) return { variete: 'Reyna', culture: 'Framboise', ferme };
+  if (u.includes('CORINA') || u.includes('CORRINA')) return { variete: 'Corina', culture: 'Myrtille', ferme };
+  if (u.includes('CASCADE')) return { variete: 'Cascade', culture: 'Myrtille', ferme };
+  if (u.includes('BREEZE')) return { variete: 'Breeze', culture: 'Myrtille', ferme };
+  if (u.includes('ADELITA')) return { variete: 'Adelita', culture: 'Framboise', ferme };
+  if (u.includes('AVOCAT')) return { variete: 'Avocat', culture: 'Avocat', ferme: 'Avocatier' };
+  if (ferme === 'Avocatier') return { variete: 'Avocat', culture: 'Avocat', ferme: 'Avocatier' };
+  // Fallback: try sector-based matching
+  const sMatch = u.match(/\bS(\d{1,2})\b/);
+  if (sMatch) {
+    const sNum = parseInt(sMatch[1], 10);
+    if (sNum >= 1 && sNum <= 7) return { variete: 'Maravilla', culture: 'Framboise', ferme };
+    if (sNum === 8) return { variete: 'Corina', culture: 'Myrtille', ferme };
+    if (sNum === 9) return { variete: 'Reyna', culture: 'Framboise', ferme };
+    if (sNum === 10) return { variete: 'Yazmin', culture: 'Framboise', ferme };
+    if (sNum === 13) return { variete: 'Yazmin', culture: 'Framboise', ferme };
+  }
+  return { variete: 'Autre', culture: 'Autre', ferme };
+}
+
+/**
+ * Extract kg from Quantite_unite using the weight per unit from Operation name.
+ * Supports: "Récolte Caisse 2.4 kg", "Barquette 2.2 kg", "Seau 5 kg", etc.
+ * Returns 0 if no `X kg` pattern is found — the production base
+ * (prod_tracabilite_recolte) is the source of truth and overrides this value
+ * for real harvesters; non-harvest support roles (Chargement, Conditionnement,
+ * Caporal) have Quantite_unite=0 so they correctly produce 0 kg.
+ */
+const _qtkWarned = new Set();
+function quantiteToKg(quantiteUnite, operation) {
+  const q = quantiteUnite || 0;
+  const op = operation || "";
+  const match = op.match(/([\d.]+)\s*kg/i);
+  if (!match) {
+    if (q > 0 && op && !_qtkWarned.has(op)) {
+      console.warn(`[quantiteToKg] No kg pattern in "${op}" with qty=${q} → returning 0`);
+      _qtkWarned.add(op);
+    }
+    return 0;
+  }
+  return Math.round(q * parseFloat(match[1]) * 10) / 10;
+}
+
+/**
+ * Compute chargement/conditionnement worker-day details from raw pointage rows.
+ * Returns pre-calculated data so frontend doesn't need to filter on Operation.
+ */
+function computeChargCond(allRows) {
+  const chargWorkers = {}; // { "periode|mat" -> { matricule, nom, periode, ferme, jours: Set } }
+  const condWorkers = {};
+  for (const r of allRows) {
+    const mat = (r.Personnel_Matricule || "").trim();
+    const nom = (r.Personnel_Nom || "").trim();
+    const jour = r.DateStr;
+    const op = (r.Operation || "").trim();
+    const fam = (r.Operation_Famille || "").trim();
+    const periode = (r.Periode_paie || "").trim();
+    const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+    if (fam === "8. Récolte" && /^chargement$/i.test(op)) {
+      const key = `${periode}|${mat}`;
+      if (!chargWorkers[key]) chargWorkers[key] = { matricule: mat, nom, periode, ferme, jours: new Set() };
+      chargWorkers[key].jours.add(jour);
+    }
+    if (fam === "8. Récolte" && /conditionnement/i.test(op)) {
+      const key = `${periode}|${mat}`;
+      if (!condWorkers[key]) condWorkers[key] = { matricule: mat, nom, periode, ferme, jours: new Set() };
+      condWorkers[key].jours.add(jour);
+    }
+  }
+  const toList = (map) => Object.values(map).map(w => ({ matricule: w.matricule, nom: w.nom, periode: w.periode, ferme: w.ferme, jh: w.jours.size, jours: [...w.jours].sort() }));
+
+  // Jours fériés Maroc
+  const JOURS_FERIES = [
+    { date: '2025-01-01', label: 'Nouvel An', type: 'fixe' },
+    { date: '2025-01-11', label: "Manifeste de l'Indépendance", type: 'fixe' },
+    { date: '2025-01-14', label: 'Nouvel An Amazigh', type: 'fixe' },
+    { date: '2025-05-01', label: 'Fête du Travail', type: 'fixe' },
+    { date: '2025-07-30', label: 'Fête du Trône', type: 'fixe' },
+    { date: '2025-08-14', label: 'Oued Ed-Dahab', type: 'fixe' },
+    { date: '2025-08-20', label: 'Révolution du Roi et du Peuple', type: 'fixe' },
+    { date: '2025-08-21', label: 'Fête de la Jeunesse', type: 'fixe' },
+    { date: '2025-11-06', label: 'Marche Verte', type: 'fixe' },
+    { date: '2025-11-18', label: "Fête de l'Indépendance", type: 'fixe' },
+    // Islamiques 2025
+    { date: '2025-03-30', label: 'Aïd Al Fitr', type: 'islamique' },
+    { date: '2025-03-31', label: 'Aïd Al Fitr (2e jour)', type: 'islamique' },
+    { date: '2025-06-06', label: 'Aïd Al Adha', type: 'islamique' },
+    { date: '2025-06-07', label: 'Aïd Al Adha (2e jour)', type: 'islamique' },
+    { date: '2025-06-27', label: '1er Moharram', type: 'islamique' },
+    { date: '2025-09-05', label: 'Aïd Al Mawlid', type: 'islamique' },
+    { date: '2026-01-01', label: 'Nouvel An', type: 'fixe' },
+    { date: '2026-01-11', label: "Manifeste de l'Indépendance", type: 'fixe' },
+    { date: '2026-01-14', label: 'Nouvel An Amazigh', type: 'fixe' },
+    { date: '2026-05-01', label: 'Fête du Travail', type: 'fixe' },
+    { date: '2026-07-30', label: 'Fête du Trône', type: 'fixe' },
+    { date: '2026-08-14', label: 'Oued Ed-Dahab', type: 'fixe' },
+    { date: '2026-08-20', label: 'Révolution du Roi et du Peuple', type: 'fixe' },
+    { date: '2026-08-21', label: 'Fête de la Jeunesse', type: 'fixe' },
+    { date: '2026-11-06', label: 'Marche Verte', type: 'fixe' },
+    { date: '2026-11-18', label: "Fête de l'Indépendance", type: 'fixe' },
+    { date: '2026-03-30', label: 'Aïd Al Fitr', type: 'islamique' },
+    { date: '2026-06-06', label: 'Aïd Al Adha', type: 'islamique' },
+    { date: '2026-06-26', label: '1er Moharram', type: 'islamique' },
+    { date: '2026-09-04', label: 'Aïd Al Mawlid', type: 'islamique' },
+  ];
+
+  // Build date → periode mapping
+  const dateToPeriode = {};
+  for (const r of allRows) {
+    const d = r.DateStr;
+    const p = (r.Periode_paie || "").trim();
+    if (d && p) dateToPeriode[d] = p;
+  }
+
+  // Build worker-per-period map with average daily cost
+  const workerPeriod = {}; // "periode|mat" -> { mat, nom, periode, ferme, jours: Set, totalCout, coutCount }
+  for (const r of allRows) {
+    const mat = (r.Personnel_Matricule || "").trim();
+    const nom = (r.Personnel_Nom || "").trim();
+    const periode = (r.Periode_paie || "").trim();
+    const cout = r.Cout || 0;
+    const jour = r.DateStr;
+    const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+    const key = `${periode}|${mat}`;
+    if (!workerPeriod[key]) workerPeriod[key] = { mat, nom, periode, ferme, jours: new Set(), totalCout: 0, coutCount: 0 };
+    if (!workerPeriod[key].jours.has(jour)) {
+      workerPeriod[key].jours.add(jour);
+      if (cout > 0) { workerPeriod[key].totalCout += cout; workerPeriod[key].coutCount++; }
+    }
+  }
+
+  // For each jour férié, find its quinzaine and credit all active workers
+  const ferieWorkers = {}; // "periode|mat" -> { matricule, nom, periode, details: [] }
+  for (const jf of JOURS_FERIES) {
+    // Determine which periode this holiday belongs to
+    let holidayPeriode = dateToPeriode[jf.date];
+    if (!holidayPeriode) {
+      // Holiday date has no data (workers were off). Scan nearby dates to find the right period.
+      const hDate = new Date(jf.date + 'T12:00:00');
+      for (let offset = -3; offset <= 3; offset++) {
+        if (offset === 0) continue;
+        const nearby = new Date(hDate);
+        nearby.setDate(nearby.getDate() + offset);
+        const nearbyStr = nearby.toISOString().slice(0, 10);
+        if (dateToPeriode[nearbyStr]) { holidayPeriode = dateToPeriode[nearbyStr]; break; }
+      }
+    }
+    if (!holidayPeriode) continue; // Holiday not in any loaded period
+
+    // All workers active in this period are eligible for 1 jour sup
+    for (const [, wp] of Object.entries(workerPeriod)) {
+      if (wp.periode !== holidayPeriode) continue;
+      const fKey = `${wp.periode}|${wp.mat}`;
+      if (!ferieWorkers[fKey]) ferieWorkers[fKey] = { matricule: wp.mat, nom: wp.nom, periode: wp.periode, ferme: wp.ferme, details: [] };
+      const avgCout = wp.coutCount > 0 ? wp.totalCout / wp.coutCount : 0;
+      ferieWorkers[fKey].details.push({ date: jf.date, label: jf.label, raison: 'Jour férié dans la quinzaine', cout: avgCout });
+    }
+  }
+  const ferieList = Object.values(ferieWorkers).map(w => ({
+    matricule: w.matricule, nom: w.nom, periode: w.periode, ferme: w.ferme,
+    jh: w.details.length, details: w.details,
+    cout: Math.round(w.details.reduce((s, d) => s + (d.cout || 0), 0) * 100) / 100,
+  }));
+
+  return {
+    chargementDetail: toList(chargWorkers),
+    conditionnementDetail: toList(condWorkers),
+    jourFerieDetail: ferieList,
+    joursFeries: JOURS_FERIES,
+  };
+}
+
 function classifyType(operationFamille) {
   if (!operationFamille) return "horsRecolte";
   if (operationFamille === "8. Récolte") return "recolte";
@@ -366,7 +571,7 @@ async function warmAllPointageCaches() {
       const cueillette = Object.values(cGroups).map(c => ({ ...c, ferme: deriveFerme(c.refTech || null, c.parcelle) })).sort((a, b) => b.totalKg - a.totalKg);
       const workers = pointageRows.filter(r => r.Operation_Famille === "8. Récolte").map((r, i) => ({
         rank: i + 1, matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
-        operation: r.Operation, quantite: Math.round(((r.Quantite_unite || 0) * 1.5) * 10) / 10,
+        operation: r.Operation, quantite: quantiteToKg(r.Quantite_unite, r.Operation),
         heures: r.Nombre_Hr, cout: r.Cout, parcelle: (r.Parcelle_Culturale || "").trim(),
         ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: r.Variete,
       })).sort((a, b) => b.quantite - a.quantite || a.nom.localeCompare(b.nom));
@@ -485,15 +690,35 @@ async function warmAllPointageCaches() {
       const allRows = [];
       for (const p of targetPeriodes) { allRows.push(...await getPointageRowsForPeriode(p)); }
       const recolteRows = allRows.filter(r => r.Operation_Famille === "8. Récolte");
-      const rows = recolteRows.map(r => ({
+      const rawRows = recolteRows.map(r => ({
         matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
         jour: r.DateStr, periode: r.Periode_paie,
-        kg: Math.round(((r.Quantite_unite || 0) * 1.5) * 10) / 10,
+        kg: quantiteToKg(r.Quantite_unite, r.Operation),
         heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0),
         ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-        variete: (r.Variete || "").trim(), culture: (r.Culture || "").trim(),
+        variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale),
+        culture: (r.Culture || "").trim(),
         parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim(),
       }));
+      // Agréger par ouvrier+jour (multi-variétés/parcelles le même jour)
+      const grouped = {};
+      for (const r of rawRows) {
+        const key = `${r.matricule}|${r.jour}`;
+        if (!grouped[key]) {
+          grouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
+        } else {
+          grouped[key].kg += r.kg;
+          grouped[key].heures += r.heures;
+          grouped[key].cout += r.cout;
+          const v = r.variete || 'Autre';
+          grouped[key].kgByVariete[v] = (grouped[key].kgByVariete[v] || 0) + r.kg;
+        }
+      }
+      const rows = Object.values(grouped).map(r => {
+        const bestVariete = Object.entries(r.kgByVariete).sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
+        delete r.kgByVariete;
+        return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
+      });
       return { success: true, periodes, rows };
     });
     results.push("recolte-equipes:ok");
@@ -507,11 +732,12 @@ async function warmAllPointageCaches() {
       for (const p of targetPeriodes) { allRows.push(...await getPointageRowsForPeriode(p)); }
       const groups = {};
       for (const r of allRows) {
-        const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}`;
-        if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
+        const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}`;
+        if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
       }
-      const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
-      return { success: true, periodes, rows };
+      const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+      const extras = computeChargCond(allRows);
+      return { success: true, periodes, rows, ...extras };
     });
     results.push("transport:ok");
   } catch (e) { results.push(`transport:${e.message}`); }
@@ -636,6 +862,59 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       const action = req.query.action || "summary";
       const dateParam = req.query.date; // YYYY-MM-DD
       const db = USE_MIRROR ? null : await getPool();
+
+      // ------ CONFECTION-TYPES: extract distinct confection types from BR_Pointage ------
+      if (action === "confection-types") {
+        try {
+          let operations = [];
+          if (USE_MIRROR) {
+            // Lire depuis le mirror Firestore
+            const dates = await getAvailableDates();
+            const recentDates = dates.slice(0, 10);
+            const opsSet = new Set();
+            for (const d of recentDates) {
+              const rows = await getPointageRowsForDate(d);
+              rows.filter(r => r.Operation_Famille === "8. Récolte" && /caisse/i.test(r.Operation || ""))
+                  .forEach(r => opsSet.add((r.Operation || "").trim()));
+            }
+            operations = [...opsSet];
+          } else {
+            const result = await db.request().query(`
+              SELECT DISTINCT Operation FROM BR_Pointage
+              WHERE Operation_Famille = N'8. Récolte'
+              AND Operation LIKE N'%Caisse%kg%'
+            `);
+            operations = result.recordset.map(r => (r.Operation || "").trim()).filter(Boolean);
+          }
+          // Extraire le poids par colis depuis le nom de l'opération (caisse, barquette, seau, etc.)
+          const types = operations.map(op => {
+            const match = op.match(/([\d.]+)\s*kg/i);
+            const poidsParColis = match ? parseFloat(match[1]) : 1.5;
+            return { id: op.replace(/\s+/g, '_').toLowerCase(), label: op, poidsParColis, composition: [], source: 'beeone' };
+          }).sort((a, b) => a.poidsParColis - b.poidsParColis);
+          return res.json({ success: true, types });
+        } catch(e) {
+          console.error('confection-types error:', e);
+          return res.json({ success: true, types: [] });
+        }
+      }
+
+      // ------ PRESENCE: heures entrée/sortie depuis BEE_BERRY_GOOD (mirror prod_presence) ------
+      if (action === "presence") {
+        const date = dateParam || new Date().toISOString().slice(0, 10);
+        const snap = await db_firestore.collection("prod_presence").doc(date).get();
+        if (!snap.exists) {
+          return res.json({ success: true, date, rows: [], rowCount: 0, syncedAt: null });
+        }
+        const data = snap.data();
+        return res.json({
+          success: true,
+          date,
+          rows: data.rows || [],
+          rowCount: data.rowCount || 0,
+          syncedAt: data.syncedAt || null,
+        });
+      }
 
       // ------ SUMMARY: effectif today + yesterday + weekly trend + top ops ------
       if (action === "summary") {
@@ -863,7 +1142,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             .filter(r => r.Operation_Famille === "8. Récolte")
             .map((r, i) => ({
               rank: i + 1, matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
-              operation: r.Operation, quantite: Math.round(((r.Quantite_unite || 0) * 1.5) * 10) / 10,
+              operation: r.Operation, quantite: quantiteToKg(r.Quantite_unite, r.Operation),
               heures: r.Nombre_Hr, cout: r.Cout, parcelle: (r.Parcelle_Culturale || "").trim(),
               ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: r.Variete,
             }));
@@ -874,13 +1153,83 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             db.request().query(`SELECT Parcelle_Culturale, Variete, Reference_Technique, SUM(Poids_total_kg) AS totalKg, SUM(Nbre_Caisse) AS totalCaisses FROM BR_Cueillette WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille = N'8. Récolte' GROUP BY Parcelle_Culturale, Variete, Reference_Technique ORDER BY totalKg DESC`),
           ]);
           cueillette = cueilletteRes.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || "").trim(), variete: r.Variete, ferme: deriveFerme(r.Reference_Technique, r.Parcelle_Culturale), totalKg: r.totalKg || 0, totalCaisses: r.totalCaisses || 0 }));
-          workers = pointageRes.recordset.map((r, i) => ({ rank: i + 1, matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), operation: r.Operation, quantite: Math.round(((r.Quantite_unite || 0) * 1.5) * 10) / 10, heures: r.Nombre_Hr, cout: r.Cout, parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: r.Variete }));
+          workers = pointageRes.recordset.map((r, i) => ({ rank: i + 1, matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), operation: r.Operation, quantite: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: r.Cout, parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: r.Variete }));
+        }
+
+        // Enrich with production data (Tracabilite_recolte) if available
+        let prodSyncedAt = null;
+        try {
+          const prodDoc = await db_firestore.collection("prod_tracabilite_recolte").doc(dateForCheck).get();
+          if (prodDoc.exists) {
+            const prodData = prodDoc.data();
+            if (prodData.syncedAt && typeof prodData.syncedAt.toMillis === "function") {
+              prodSyncedAt = prodData.syncedAt.toMillis();
+            }
+          }
+          // Fallback: if no doc for this date (no scans yet), use the global last-run timestamp
+          if (!prodSyncedAt) {
+            const statusDoc = await db_firestore.collection("prod_tracabilite_recolte").doc("_status").get();
+            if (statusDoc.exists) {
+              const s = statusDoc.data();
+              if (s.lastRunAt && typeof s.lastRunAt.toMillis === "function") {
+                prodSyncedAt = s.lastRunAt.toMillis();
+              }
+            }
+          }
+          if (prodDoc.exists) {
+            const prodData = prodDoc.data();
+            const prodRows = prodData.rows || [];
+            if (prodRows.length > 0) {
+              // Deduplicate workers by matricule (keep first, merge info)
+              const deduped = {};
+              workers.forEach(w => {
+                const matUp = (w.matricule || "").toUpperCase();
+                if (!deduped[matUp]) {
+                  deduped[matUp] = { ...w };
+                } else {
+                  // Merge: keep existing but add heures/cout
+                  deduped[matUp].heures += w.heures || 0;
+                  deduped[matUp].cout += w.cout || 0;
+                }
+              });
+              workers = Object.values(deduped);
+
+              const prodMap = {};
+              prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
+              // Override kg for existing workers — prod is the source of truth for kg
+              workers.forEach(w => {
+                const prod = prodMap[(w.matricule || "").toUpperCase()];
+                if (prod) {
+                  w.quantite = prod.totalKg;
+                  w.variete = prod.variete || w.variete;
+                } else {
+                  w.quantite = 0;
+                }
+              });
+              // Add workers in prod but missing from pointage
+              prodRows.forEach(r => {
+                const matUp = (r.matricule || "").toUpperCase();
+                if (!workers.find(w => (w.matricule || "").toUpperCase() === matUp)) {
+                  workers.push({
+                    rank: 0, matricule: r.matricule, nom: r.nom,
+                    operation: "Récolte (prod)", quantite: r.totalKg,
+                    heures: 0, cout: 0, parcelle: r.refParcelle || "",
+                    ferme: deriveFerme(r.refParcelle, ""), variete: r.variete,
+                  });
+                }
+              });
+              // Use prod totalKg instead of BR_Cueillette
+              cueillette = [{ parcelle: "Total (prod)", variete: "", ferme: "", totalKg: prodData.totalKg || 0, totalCaisses: 0 }];
+            }
+          }
+        } catch (prodErr) {
+          console.warn("[recolte] Prod data unavailable, using reporting:", prodErr.message);
         }
 
         workers.sort((a, b) => b.quantite - a.quantite || a.nom.localeCompare(b.nom));
         workers.forEach((w, i) => { w.rank = i + 1; });
         const totalKgCueillette = cueillette.reduce((s, c) => s + c.totalKg, 0);
-        return { success: true, date: dateForCheck, workers, cueillette, totalKgCueillette, count: workers.length };
+        return { success: true, date: dateForCheck, workers, cueillette, totalKgCueillette, count: workers.length, prodSyncedAt };
         }); // end withCache
         return res.json(cached);
       }
@@ -892,10 +1241,57 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const cached = await withCache(cacheKey, 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
-          const periodes = meta?.periodes || [];
+          const periodes = meta?.allPeriodes || meta?.periodes || [];
+          const mirrorPeriodes = meta?.periodes || [];
           const selectedPeriode = periodeParam || periodes[0];
           if (!selectedPeriode) return { success: true, periode: null, periodes, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
-          const rows = await getPointageRowsForPeriode(selectedPeriode);
+
+          // If selected period has mirror data, use Firestore; otherwise fallback to SQL
+          let rows;
+          if (mirrorPeriodes.includes(selectedPeriode) && meta?.periodeMap?.[selectedPeriode]) {
+            rows = await getPointageRowsForPeriode(selectedPeriode);
+          } else {
+            // Check Firestore archive first
+            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            if (archiveDoc.exists && archiveDoc.data().summary) {
+              const arch = archiveDoc.data().summary;
+              return {
+                success: true, periode: selectedPeriode, periodes,
+                totalJournees: arch.totalJournees, totalCout: arch.totalCout,
+                parFerme: arch.parFerme, parJour: arch.parJour,
+              };
+            }
+            // Fallback: fetch directly from SQL for older quinzaines
+            const sqlDb = await getPool();
+            const sqlResult = await sqlDb.request().input('periode', selectedPeriode).query(`
+              SELECT Personnel_Matricule, Personnel_Nom, Operation_Famille, Operation, Operation_Groupe,
+                Nombre_Jr, Nombre_Hr, Quantite_unite, Cout, Parcelle_Culturale, Ref_parcelle,
+                Variete, Culture, Periode_paie,
+                CONVERT(varchar(10), Periode_Date, 23) AS DateStr,
+                HS_25, HS_50, HS_100, HS_NM
+              FROM BR_Pointage
+              WHERE Periode_paie = @periode
+              ORDER BY Periode_Date, Personnel_Nom
+            `);
+            rows = sqlResult.recordset.map(r => ({
+              Personnel_Matricule: (r.Personnel_Matricule || "").trim(),
+              Personnel_Nom: (r.Personnel_Nom || "").trim(),
+              Operation_Famille: r.Operation_Famille,
+              Operation: r.Operation,
+              Operation_Groupe: r.Operation_Groupe,
+              Nombre_Jr: r.Nombre_Jr,
+              Nombre_Hr: r.Nombre_Hr,
+              Quantite_unite: r.Quantite_unite,
+              Cout: r.Cout,
+              Parcelle_Culturale: (r.Parcelle_Culturale || "").trim(),
+              Ref_parcelle: (r.Ref_parcelle || "").trim(),
+              Variete: (r.Variete || "").trim(),
+              Culture: (r.Culture || "").trim(),
+              Periode_paie: (r.Periode_paie || "").trim(),
+              DateStr: r.DateStr,
+              HS_25: r.HS_25 || 0, HS_50: r.HS_50 || 0, HS_100: r.HS_100 || 0, HS_NM: r.HS_NM || 0,
+            }));
+          }
           // Summary per ferme
           const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
           for (const r of rows) {
@@ -952,6 +1348,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const selectedPeriode = periodeParam || periodes[0];
           if (!selectedPeriode) return { success: true, periode: null, periodes, rows: [] };
           const rawRows = await getPointageRowsForPeriode(selectedPeriode);
+          if (rawRows.length === 0) {
+            // Check Firestore archive
+            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            if (archiveDoc.exists && archiveDoc.data().analytique) {
+              return { success: true, periode: selectedPeriode, periodes, rows: archiveDoc.data().analytique };
+            }
+          }
           // Group by parcelle+ref+opFamille+operation
           const groups = {};
           for (const r of rawRows) {
@@ -1084,22 +1487,106 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             allRows.push(...pRows);
           }
           const recolteRows = allRows.filter(r => r.Operation_Famille === "8. Récolte");
-          const rows = recolteRows.map(r => ({
+          const rawRows = recolteRows.map(r => ({
             matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
             jour: r.DateStr, periode: r.Periode_paie,
-            kg: Math.round(((r.Quantite_unite || 0) * 1.5) * 10) / 10,
+            kg: quantiteToKg(r.Quantite_unite, r.Operation),
             heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0),
             ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-            variete: (r.Variete || "").trim(), culture: (r.Culture || "").trim(),
+            variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale),
+            culture: (r.Culture || "").trim(),
             parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim(),
           }));
+          // Agréger par ouvrier+jour (un ouvrier peut avoir plusieurs variétés/parcelles le même jour)
+          const grouped = {};
+          for (const r of rawRows) {
+            const key = `${r.matricule}|${r.jour}`;
+            if (!grouped[key]) {
+              grouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
+            } else {
+              grouped[key].kg += r.kg;
+              grouped[key].heures += r.heures;
+              grouped[key].cout += r.cout;
+              const v = r.variete || 'Autre';
+              grouped[key].kgByVariete[v] = (grouped[key].kgByVariete[v] || 0) + r.kg;
+            }
+          }
+          // Déterminer variété dominante pour chaque jour
+          let rows = Object.values(grouped).map(r => {
+            const bestVariete = Object.entries(r.kgByVariete)
+              .sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
+            delete r.kgByVariete;
+            return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
+          });
+
+          // Enrich with production data (Tracabilite_recolte) — more accurate kg
+          try {
+            const prodDates = [...new Set(rows.map(r => r.jour))];
+            let enrichedCount = 0, addedCount = 0;
+            for (const date of prodDates) {
+              const prodDoc = await db_firestore.collection("prod_tracabilite_recolte").doc(date).get();
+              if (!prodDoc.exists) continue;
+              const prodRows = prodDoc.data().rows || [];
+              if (prodRows.length === 0) continue;
+              const prodMap = {};
+              prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
+              // Override kg for existing worker-days
+              rows.forEach(r => {
+                if (r.jour !== date) return;
+                const prod = prodMap[(r.matricule || "").toUpperCase()];
+                if (prod) {
+                  r.kg = prod.totalKg;
+                  r.variete = prod.variete || r.variete;
+                  enrichedCount++;
+                }
+              });
+              // Add workers in prod but missing from pointage for this date
+              const existingMats = new Set(rows.filter(r => r.jour === date).map(r => (r.matricule || "").toUpperCase()));
+              const periode = rows.find(r => r.jour === date)?.periode || targetPeriodes[0];
+              prodRows.forEach(pr => {
+                if (!existingMats.has((pr.matricule || "").toUpperCase()) && pr.totalKg > 0) {
+                  rows.push({
+                    matricule: pr.matricule, nom: pr.nom, jour: date, periode,
+                    kg: pr.totalKg, heures: 0, cout: 0,
+                    ferme: deriveFerme(pr.refParcelle, ""), variete: pr.variete || "",
+                    culture: "", parcelle: pr.refParcelle || "", operation: "Récolte (prod)",
+                  });
+                  addedCount++;
+                }
+              });
+            }
+            console.log(`[recolte-equipes] Prod enrichment: ${enrichedCount} overridden, ${addedCount} added, ${prodDates.length} dates checked`);
+          } catch (prodErr) {
+            console.warn("[recolte-equipes] Prod data unavailable:", prodErr.message);
+          }
+
           return { success: true, periodes, rows };
         }
         // SQL fallback
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
         const periodes = periodesRes.recordset.map(r => r.Periode_paie);
-        const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, SUM(Quantite_unite * 1.5) AS totalKg, SUM(Nombre_Hr) AS totalHr, SUM(Cout) AS totalCout, Ref_parcelle, Parcelle_Culturale, Variete, Culture, Operation FROM BR_Pointage WHERE Operation_Famille = N'8. Récolte' GROUP BY Personnel_Matricule, Personnel_Nom, CONVERT(date, Periode_Date), Periode_paie, Ref_parcelle, Parcelle_Culturale, Variete, Culture, Operation ORDER BY jour DESC`);
-        const rows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, kg: Math.round((r.totalKg || 0) * 10) / 10, heures: r.totalHr, cout: Math.round(r.totalCout || 0), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: (r.Variete || "").trim(), culture: (r.Culture || "").trim(), parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim() }));
+        const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Quantite_unite, Nombre_Hr, Cout, Ref_parcelle, Parcelle_Culturale, Variete, Culture, Operation FROM BR_Pointage WHERE Operation_Famille = N'8. Récolte' ORDER BY jour DESC`);
+        const sqlRawRows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, kg: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale), culture: (r.Culture || "").trim(), parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim() }));
+        // Agréger par ouvrier+jour
+        const sqlGrouped = {};
+        for (const r of sqlRawRows) {
+          const key = `${r.matricule}|${r.jour}`;
+          if (!sqlGrouped[key]) {
+            sqlGrouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
+          } else {
+            sqlGrouped[key].kg += r.kg;
+            sqlGrouped[key].heures += r.heures;
+            sqlGrouped[key].cout += r.cout;
+            const v = r.variete || 'Autre';
+            sqlGrouped[key].kgByVariete[v] = (sqlGrouped[key].kgByVariete[v] || 0) + r.kg;
+          }
+        }
+        const rows = Object.values(sqlGrouped).map(r => {
+          const bestVariete = Object.entries(r.kgByVariete)
+            .sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
+          delete r.kgByVariete;
+          return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
+        });
         return { success: true, periodes, rows };
         }); // end withCache
         return res.json(cached);
@@ -1107,7 +1594,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ TRANSPORT: all workers per day for transport cost calculation ------
       if (action === "transport") {
-        const cached = await withCache("pointage_transport", 5 * 60 * 1000, async () => {
+        const cached = await withCache("pointage_transport", 0, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
@@ -1121,17 +1608,18 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           // Group by matricule+day+periode+operationFamille
           const groups = {};
           for (const r of allRows) {
-            const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}`;
-            if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
+            const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}`;
+            if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
           }
-          const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
-          return { success: true, periodes, rows };
+          const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+          const extras = computeChargCond(allRows);
+          return { success: true, periodes, rows, ...extras };
         }
         // SQL fallback
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
         const periodes = periodesRes.recordset.map(r => r.Periode_paie);
-        const result = await db.request().query(`SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Operation_Famille, MIN(Ref_parcelle) AS Ref_parcelle, MIN(Parcelle_Culturale) AS Parcelle_Culturale FROM BR_Pointage GROUP BY Personnel_Matricule, CONVERT(date, Periode_Date), Periode_paie, Operation_Famille ORDER BY jour DESC`);
-        const rows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+        const result = await db.request().query(`SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Operation_Famille, Operation, MIN(Ref_parcelle) AS Ref_parcelle, MIN(Parcelle_Culturale) AS Parcelle_Culturale FROM BR_Pointage GROUP BY Personnel_Matricule, CONVERT(date, Periode_Date), Periode_paie, Operation_Famille, Operation ORDER BY jour DESC`);
+        const rows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
         return { success: true, periodes, rows };
         }); // end withCache
         return res.json(cached);
@@ -1265,6 +1753,20 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           if (!selectedPeriode) return { success: true, periode: null, equipes: [], nbJoursQuinzaine: 0 };
           quinzaineDates = (meta?.periodeMap?.[selectedPeriode] || []).sort();
           rawRows = await getPointageRowsForPeriode(selectedPeriode);
+          // If mirror has no data, check archive
+          if (rawRows.length === 0 && quinzaineDates.length === 0) {
+            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            if (archiveDoc.exists && archiveDoc.data().reposData) {
+              const rd = archiveDoc.data().reposData;
+              quinzaineDates = rd.quinzaineDates;
+              rawRows = [];
+              for (const w of rd.workers) {
+                for (const d of w.joursPresent) {
+                  rawRows.push({ Personnel_Matricule: w.matricule, Personnel_Nom: w.nom, DateStr: d });
+                }
+              }
+            }
+          }
         } else {
           const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
           periodes = periodesRes.recordset.map(r => r.Periode_paie);
@@ -1309,11 +1811,26 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           if (!selectedPeriode) return { success: true, periode: null, alertes: [] };
           quinzaineDates = (meta?.periodeMap?.[selectedPeriode] || []).sort();
           const rawRows = await getPointageRowsForPeriode(selectedPeriode);
-          presenceMap = {};
-          for (const r of rawRows) {
-            const prefix = (r.Personnel_Matricule || '').trim().substring(0, 2).toUpperCase();
-            if (!presenceMap[prefix]) presenceMap[prefix] = new Set();
-            presenceMap[prefix].add(r.DateStr);
+          if (rawRows.length > 0) {
+            presenceMap = {};
+            for (const r of rawRows) {
+              const prefix = (r.Personnel_Matricule || '').trim().substring(0, 2).toUpperCase();
+              if (!presenceMap[prefix]) presenceMap[prefix] = new Set();
+              presenceMap[prefix].add(r.DateStr);
+            }
+          } else {
+            // Check Firestore archive
+            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            if (archiveDoc.exists && archiveDoc.data().alertesData) {
+              const ad = archiveDoc.data().alertesData;
+              quinzaineDates = ad.quinzaineDates;
+              presenceMap = {};
+              for (const [prefix, days] of Object.entries(ad.presenceByPrefix)) {
+                presenceMap[prefix] = new Set(days);
+              }
+            } else {
+              presenceMap = {};
+            }
           }
         } else {
           const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
@@ -1341,6 +1858,110 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         return { success: true, periode: selectedPeriode, periodes, quinzaineDates, alertes };
         }); // end withCache
         return res.json(cachedA);
+      }
+
+      // ------ MO-ANALYTIQUE-VARIETE: labor cost breakdown by variety across all quinzaines ------
+      if (action === "mo-analytique-variete") {
+        const cached = await withCache("mo_analytique_variete", 30 * 60 * 1000, async () => {
+          const meta = await getPointageMeta();
+          const allPeriodes = meta?.allPeriodes || [];
+          const mirrorPeriodes = meta?.periodes || [];
+
+          // Accumulate analytique rows from all quinzaines (parallel reads)
+          const allRows = [];
+
+          // Split: mirror vs archived
+          const mirrorPeriodesList = allPeriodes.filter(p => mirrorPeriodes.includes(p) && meta?.periodeMap?.[p]);
+          const archivedPeriodesList = allPeriodes.filter(p => !mirrorPeriodes.includes(p) || !meta?.periodeMap?.[p]);
+
+          // Read all archives in parallel
+          const [mirrorResults, archiveDocs] = await Promise.all([
+            Promise.all(mirrorPeriodesList.map(async (periode) => {
+              const rawRows = await getPointageRowsForPeriode(periode);
+              const groups = {};
+              for (const r of rawRows) {
+                const key = `${r.Parcelle_Culturale}|${r.Ref_parcelle}|${r.Operation_Famille}`;
+                if (!groups[key]) groups[key] = { parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), operationFamille: r.Operation_Famille, jh: 0, cout: 0 };
+                groups[key].jh += r.Nombre_Jr || 0;
+                groups[key].cout += r.Cout || 0;
+              }
+              return { periode, groups: Object.values(groups) };
+            })),
+            Promise.all(archivedPeriodesList.map(async (periode) => {
+              const doc = await db_firestore.collection("quinzaine_archive").doc(periode).get();
+              return { periode, data: doc.exists ? doc.data().analytique : null };
+            })),
+          ]);
+
+          for (const { periode, groups } of mirrorResults) {
+            for (const g of groups) {
+              allRows.push({ parcelle: g.parcelle, refParcelle: g.refParcelle, operationFamille: g.operationFamille, jh: g.jh, cout: g.cout, periode });
+            }
+          }
+          for (const { periode, data } of archiveDocs) {
+            if (data) {
+              for (const row of data) {
+                allRows.push({ parcelle: row.parcelle, refParcelle: row.refParcelle, operationFamille: row.operationFamille, jh: row.jh, cout: row.cout, periode });
+              }
+            }
+          }
+
+          // Aggregate by variete
+          const byVariete = {};
+          const byQuinzaine = {};
+          for (const row of allRows) {
+            const resolved = resolveVariete(row.parcelle, row.refParcelle);
+            const key = `${resolved.variete}|${resolved.ferme}`;
+            const type = classifyType(row.operationFamille);
+
+            if (!byVariete[key]) {
+              byVariete[key] = {
+                variete: resolved.variete, culture: resolved.culture, ferme: resolved.ferme,
+                recolte: { jh: 0, cout: 0 }, horsRecolte: { jh: 0, cout: 0 }, postesFixes: { jh: 0, cout: 0 },
+                total: { jh: 0, cout: 0 }, horsRecolteDetail: {},
+              };
+            }
+            byVariete[key][type].jh += row.jh || 0;
+            byVariete[key][type].cout += row.cout || 0;
+            byVariete[key].total.jh += row.jh || 0;
+            byVariete[key].total.cout += row.cout || 0;
+
+            // Accumulate horsRecolte breakdown by operation family
+            if (type === 'horsRecolte') {
+              const opFam = row.operationFamille || 'Autre';
+              if (!byVariete[key].horsRecolteDetail[opFam]) byVariete[key].horsRecolteDetail[opFam] = { jh: 0, cout: 0 };
+              byVariete[key].horsRecolteDetail[opFam].jh += row.jh || 0;
+              byVariete[key].horsRecolteDetail[opFam].cout += row.cout || 0;
+            }
+
+            // Par quinzaine
+            if (!byQuinzaine[row.periode]) byQuinzaine[row.periode] = {};
+            if (!byQuinzaine[row.periode][resolved.variete]) byQuinzaine[row.periode][resolved.variete] = 0;
+            byQuinzaine[row.periode][resolved.variete] += row.cout || 0;
+          }
+
+          const parVariete = Object.values(byVariete)
+            .map(v => {
+              const hrDetail = {};
+              for (const [op, val] of Object.entries(v.horsRecolteDetail || {})) {
+                hrDetail[op] = { jh: Math.round(val.jh * 100) / 100, cout: Math.round(val.cout) };
+              }
+              return { ...v, recolte: { jh: Math.round(v.recolte.jh * 100) / 100, cout: Math.round(v.recolte.cout) }, horsRecolte: { jh: Math.round(v.horsRecolte.jh * 100) / 100, cout: Math.round(v.horsRecolte.cout) }, postesFixes: { jh: Math.round(v.postesFixes.jh * 100) / 100, cout: Math.round(v.postesFixes.cout) }, total: { jh: Math.round(v.total.jh * 100) / 100, cout: Math.round(v.total.cout) }, horsRecolteDetail: hrDetail };
+            })
+            .sort((a, b) => b.total.cout - a.total.cout);
+
+          const totaux = parVariete.reduce((acc, v) => ({
+            recolte: acc.recolte + v.recolte.cout, horsRecolte: acc.horsRecolte + v.horsRecolte.cout,
+            postesFixes: acc.postesFixes + v.postesFixes.cout, total: acc.total + v.total.cout,
+          }), { recolte: 0, horsRecolte: 0, postesFixes: 0, total: 0 });
+
+          const parQuinzaine = allPeriodes.slice().reverse().map(p => ({
+            periode: p, parVariete: byQuinzaine[p] || {},
+          }));
+
+          return { success: true, parVariete, parQuinzaine, totaux, periodes: allPeriodes };
+        });
+        return res.json(cached);
       }
 
       // ------ UPLOAD-TIMES: when was pointage uploaded to SQL per farm ------

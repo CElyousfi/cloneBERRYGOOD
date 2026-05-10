@@ -32,6 +32,7 @@
       { "source": "/api/meeting-cr", "function": { "functionId": "meetingCR", "region": "europe-west1" } },
       { "source": "/api/fuel", "function": { "functionId": "fuel", "region": "europe-west1" } },
       { "source": "/api/telecom", "function": { "functionId": "telecom", "region": "europe-west1" } },
+      { "source": "/api/ojra", "function": { "functionId": "ojra", "region": "europe-west1" } },
       { "source": "/api/notifications", "function": { "functionId": "notifications", "region": "europe-west1" } },
       { "source": "/api/tasks", "function": { "functionId": "tasks", "region": "europe-west1" } },
       { "source": "/api/alerts", "function": { "functionId": "alerts", "region": "europe-west1" } },
@@ -41,6 +42,7 @@
       { "source": "/api/indoor-forecast", "function": { "functionId": "indoorForecast", "region": "europe-west1" } },
       { "source": "/api/caisse", "function": { "functionId": "caisseManagement", "region": "europe-west1" } },
       { "source": "/api/whatsapp-admin", "function": { "functionId": "whatsappAdmin", "region": "europe-west1" } },
+      { "source": "/api/whatsapp-webhook", "function": { "functionId": "whatsappWebhook", "region": "europe-west1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "predeploy": ["npm run build:frontend"],

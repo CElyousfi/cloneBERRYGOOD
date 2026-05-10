@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build:frontend": "node scripts/build-frontend.js",
     "test": "node tests/test-workflows.js",
     "smoke": "BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js",
     "deploy": "firebase deploy && npm run smoke"
@@ -13,6 +14,16 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^17.3.1",
-    "playwright": "^1.58.2"
-  }
+    "playwright": "^1.58.2",
+    "xlsx": "^0.18.5"
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.28.6",
+    "@babel/core": "^7.29.0",
+    "@babel/preset-react": "^7.28.5"
+  },
+  "type": "commonjs"
 }

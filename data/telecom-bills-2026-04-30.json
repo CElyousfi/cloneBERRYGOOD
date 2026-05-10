@@ -1,0 +1,68 @@
+[
+  {
+    "ligne": "GLOBAL",
+    "periode": "2026-03",
+    "montant": 9367.09,
+    "forfait": "",
+    "appels": 0, "sms": 0, "data": 0, "roaming": 0,
+    "dateFacture": "",
+    "numFacture": "0000283879042026",
+    "statut": "PAYEE",
+    "solde": 0
+  },
+  {
+    "ligne": "GLOBAL",
+    "periode": "2026-02",
+    "montant": 7814.12,
+    "forfait": "",
+    "appels": 0, "sms": 0, "data": 0, "roaming": 0,
+    "dateFacture": "",
+    "numFacture": "0000284045032026",
+    "statut": "NON PAYEE",
+    "solde": 7814.12
+  },
+  {
+    "ligne": "GLOBAL",
+    "periode": "2026-01",
+    "montant": 7569.62,
+    "forfait": "",
+    "appels": 0, "sms": 0, "data": 0, "roaming": 0,
+    "dateFacture": "",
+    "numFacture": "0000293129022026",
+    "statut": "NON PAYEE",
+    "solde": 7569.62
+  },
+  {
+    "ligne": "GLOBAL",
+    "periode": "2025-12",
+    "montant": 7869.61,
+    "forfait": "",
+    "appels": 0, "sms": 0, "data": 0, "roaming": 0,
+    "dateFacture": "",
+    "numFacture": "0001820638012026",
+    "statut": "PAYEE",
+    "solde": 0
+  },
+  {
+    "ligne": "GLOBAL",
+    "periode": "2025-11",
+    "montant": 7585.82,
+    "forfait": "",
+    "appels": 0, "sms": 0, "data": 0, "roaming": 0,
+    "dateFacture": "",
+    "numFacture": "0001783814122025",
+    "statut": "PAYEE",
+    "solde": 0
+  },
+  {
+    "ligne": "GLOBAL",
+    "periode": "2025-10",
+    "montant": 9839.92,
+    "forfait": "",
+    "appels": 0, "sms": 0, "data": 0, "roaming": 0,
+    "dateFacture": "",
+    "numFacture": "0001801832112025",
+    "statut": "PAYEE",
+    "solde": 0
+  }
+]

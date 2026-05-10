@@ -203,6 +203,11 @@
             const chartW = 600 - padding.left - padding.right;
             const chartH = height - padding.top - padding.bottom;
             const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => d[k] || 0))) * 1.1;
+            const n = data.length;
+            // Down-sample dots/labels/x-axis when there are too many points
+            const dotEvery = n > 120 ? Math.ceil(n / 60) : 1;
+            const xLabelEvery = Math.max(1, Math.ceil(n / 12));
+            const valLabelEvery = Math.max(1, Math.ceil(n / 15));
 
             return React.createElement('svg', { width: '100%', height: height, viewBox: `0 0 600 ${height}`, preserveAspectRatio: 'xMidYMid meet' },
                 [0, 0.25, 0.5, 0.75, 1].map((tick, i) => {
@@ -214,7 +219,7 @@
                 }),
                 dataKeys.map((key, ki) => {
                     const points = data.map((d, i) => ({
-                        x: padding.left + (i / (data.length - 1)) * chartW,
+                        x: padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW),
                         y: padding.top + chartH - ((d[key] || 0) / maxVal) * chartH,
                         val: d[key]
                     }));
@@ -223,14 +228,69 @@
                     return React.createElement('g', { key: ki },
                         React.createElement('path', { d: areaD, fill: colors[ki % colors.length], opacity: '0.12' }),
                         React.createElement('path', { d: pathD, fill: 'none', stroke: colors[ki % colors.length], strokeWidth: '2' }),
-                        points.map((p, i) => React.createElement('circle', { key: i, cx: p.x, cy: p.y, r: '3', fill: colors[ki % colors.length] })),
-                        showLabelsFor === key && points.map((p, i) => React.createElement('g', { key: 'lbl' + i },
+                        points.filter((_, i) => i % dotEvery === 0 || i === n - 1).map((p, i) => React.createElement('circle', { key: i, cx: p.x, cy: p.y, r: dotEvery > 1 ? '2' : '3', fill: colors[ki % colors.length] })),
+                        showLabelsFor === key && points.filter((_, i) => i % valLabelEvery === 0 || i === n - 1).map((p, i) => React.createElement('g', { key: 'lbl' + i },
                             React.createElement('rect', { x: p.x - 18, y: p.y - 24, width: 36, height: 18, rx: 9, fill: colors[ki % colors.length] }),
-                            React.createElement('text', { x: p.x, y: p.y - 12, textAnchor: 'middle', fontSize: '10', fill: '#fff', fontWeight: 700 }, p.val)
+                            React.createElement('text', { x: p.x, y: p.y - 12, textAnchor: 'middle', fontSize: '10', fill: '#fff', fontWeight: 700 }, Math.round(p.val))
                         ))
                     );
                 }),
-                data.map((d, i) => React.createElement('text', { key: i, x: padding.left + (i / (data.length - 1)) * chartW, y: height - 8, textAnchor: 'middle', fontSize: '11', fill: '#666' }, d[xKey]))
+                data.map((d, i) => (i % xLabelEvery === 0 || i === n - 1) ? React.createElement('text', { key: i, x: padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW), y: height - 8, textAnchor: 'middle', fontSize: '11', fill: '#666' }, d[xKey]) : null)
+            );
+        }
+
+        function SimpleComboChart({ data, xKey, lineKey, barKey, lineColor, barColor, height = 200, lineMode = 'continuous' }) {
+            if (!data || !data.length) return null;
+            const padding = { top: 20, right: 50, bottom: 30, left: 50 };
+            const W = 600;
+            const chartW = W - padding.left - padding.right;
+            const chartH = height - padding.top - padding.bottom;
+            const n = data.length;
+            const maxLine = Math.max(1, ...data.map(d => d[lineKey] || 0)) * 1.1;
+            const maxBar = Math.max(1, ...data.map(d => d[barKey] || 0)) * 1.1;
+            const xLabelEvery = Math.max(1, Math.ceil(n / 12));
+            const xAt = (i) => padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW);
+            const barW = (n === 1 ? chartW * 0.4 : (chartW / n) * 0.6);
+            const yFor = (val) => padding.top + chartH - ((val || 0) / maxLine) * chartH;
+
+            const peakPoints = data.map((d, i) => ({ x: xAt(i), y: yFor(d[lineKey]), val: d[lineKey] || 0 }));
+
+            let pathD;
+            if (lineMode === 'sawtooth') {
+                const yZero = padding.top + chartH;
+                const resetDx = Math.max(2, (n > 1 ? (chartW / (n - 1)) : chartW) * 0.04);
+                const segs = [];
+                segs.push(`M ${peakPoints[0].x} ${peakPoints[0].y}`);
+                for (let i = 0; i < n; i++) {
+                    const p = peakPoints[i];
+                    if (i > 0) segs.push(`L ${p.x} ${p.y}`);
+                    segs.push(`L ${p.x + resetDx} ${yZero}`);
+                    if (i < n - 1) segs.push(`M ${p.x + resetDx} ${yZero}`);
+                }
+                pathD = segs.join(' ');
+            } else {
+                pathD = peakPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+            }
+
+            return React.createElement('svg', { width: '100%', height: height, viewBox: `0 0 ${W} ${height}`, preserveAspectRatio: 'xMidYMid meet' },
+                [0, 0.25, 0.5, 0.75, 1].map((tick, i) => {
+                    const y = padding.top + chartH * (1 - tick);
+                    return React.createElement('g', { key: 'g' + i },
+                        React.createElement('line', { x1: padding.left, y1: y, x2: W - padding.right, y2: y, stroke: '#f0f0f0', strokeDasharray: '3 3' }),
+                        React.createElement('text', { x: padding.left - 5, y: y + 4, textAnchor: 'end', fontSize: '10', fill: lineColor }, Math.round(maxLine * tick)),
+                        React.createElement('text', { x: W - padding.right + 5, y: y + 4, textAnchor: 'start', fontSize: '10', fill: barColor }, Math.round(maxBar * tick))
+                    );
+                }),
+                data.map((d, i) => {
+                    const val = d[barKey] || 0;
+                    const bh = (val / maxBar) * chartH;
+                    const bx = xAt(i) - barW / 2;
+                    const by = padding.top + chartH - bh;
+                    return React.createElement('rect', { key: 'b' + i, x: bx, y: by, width: barW, height: bh, fill: barColor, rx: 4, opacity: 0.7 });
+                }),
+                React.createElement('path', { d: pathD, fill: 'none', stroke: lineColor, strokeWidth: 2 }),
+                peakPoints.map((p, i) => React.createElement('circle', { key: 'd' + i, cx: p.x, cy: p.y, r: 3, fill: lineColor })),
+                data.map((d, i) => (i % xLabelEvery === 0 || i === n - 1) ? React.createElement('text', { key: 'x' + i, x: xAt(i), y: height - 8, textAnchor: 'middle', fontSize: '11', fill: '#666' }, d[xKey]) : null)
             );
         }
 
@@ -276,7 +336,7 @@
             { id: 'caporal_f5', label: 'Caporal F5', name: 'Caporal F5', icon: 'fa-hard-hat', farm: 'F5', fullName: 'Caporal F5' },
             { id: 'caporal_avo', label: 'Caporal Avo.', name: 'Caporal Avocatier', icon: 'fa-hard-hat', farm: 'Avocatier', fullName: 'Caporal Avocatier' },
             { id: 'achats', label: 'Achats', name: 'Achraf EL INAK', icon: 'fa-cart-shopping', fullName: 'Achraf EL INAK' },
-            { id: 'qualite', label: 'Qualité', name: 'FatimZahra', icon: 'fa-clipboard-check', fullName: 'FatimZahra' },
+            { id: 'qualite', label: 'Qualité F1', name: 'FatimZahra', icon: 'fa-clipboard-check', farm: 'F1', fullName: 'FatimZahra' },
             { id: 'magasinier', label: 'Magasinier', name: 'Resp. Magasin', icon: 'fa-warehouse', fullName: 'Resp. Magasin' },
             { id: 'finance', label: 'Finance', name: 'Resp. Finance', icon: 'fa-chart-pie', fullName: 'Resp. Finance' },
             { id: 'dg', label: 'DG', name: 'Direction Générale', icon: 'fa-building', fullName: 'Direction Générale' },
@@ -320,6 +380,7 @@
             { id: 'hors_recolte_suivi', label: 'Rendement Hors Récolte', icon: 'fa-chart-gantt' },
             { id: 'chef_suivi_caporal', label: 'Suivi Caporal', icon: 'fa-clipboard-list', chefOnly: true },
             { id: 'qualite_production', label: 'Production', icon: 'fa-industry' },
+            { id: 'rh_equipes', label: 'Équipes', icon: 'fa-people-group', rhOnly: true },
             { id: 'primes', label: 'Primes', icon: 'fa-award', rhOnly: true },
             { id: 'chef_agronomie', label: 'Agronomie', icon: 'fa-seedling' },
             { id: 'parametres', label: 'Paramètres', icon: 'fa-sliders', rhOnly: true },
@@ -334,22 +395,17 @@
         ];
 
         const NAV_ITEMS_QUALITE = [
-            { id: 'qualite_dashboard', label: 'Dashboard Qualité', icon: 'fa-gauge-high' },
-            { id: 'qualite_pfq_interne', label: 'Nouveau Bon EXPORT', icon: 'fa-file-circle-plus' },
-            { id: 'qualite_bons_apport', label: 'Bons d\'Apport', icon: 'fa-file-invoice' },
             { id: 'qualite_inspections', label: 'Inspections du Jour', icon: 'fa-clipboard-check' },
-            { id: 'qualite_ecarts', label: 'Écarts & Défauts', icon: 'fa-scale-unbalanced' },
             { id: 'qualite_historique', label: 'Historique PFQ', icon: 'fa-chart-line' },
-            { id: 'qualite_brix', label: 'Brix / Saveur', icon: 'fa-flask' },
-            { id: 'qualite_expeditions', label: 'Expéditions', icon: 'fa-truck' },
-            { id: 'qualite_production', label: 'Production', icon: 'fa-industry' },
-            { id: 'qualite_validation_bons', label: 'Validation Bons Apport', icon: 'fa-clipboard-check' },
-            { id: 'qualite_marche_local', label: 'Marché Local', icon: 'fa-store' },
+            { id: 'achats_rapprochement', label: 'Rapprochement', icon: 'fa-code-compare' },
+            { id: 'caporal_suivi', label: 'Saisie Hors Récolte', icon: 'fa-clipboard-list' },
+            { id: 'caporal_historique', label: 'Historique Hors Récolte', icon: 'fa-clock-rotate-left' },
         ];
 
         const NAV_ITEMS_MAGASINIER = [
             { id: 'mag_dashboard', label: 'Dashboard Stock', icon: 'fa-gauge-high' },
-            { id: 'mag_reception', label: 'Réception (BR)', icon: 'fa-truck-ramp-box' },
+            { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
+            { id: 'mag_reception', label: 'Bons de Réception', icon: 'fa-truck-ramp-box' },
             { id: 'mag_transfert', label: 'Transferts', icon: 'fa-right-left' },
             { id: 'mag_bc', label: 'Bons Consommation', icon: 'fa-flask' },
             { id: 'mag_sortie', label: 'Sorties de Stock', icon: 'fa-arrow-right-from-bracket' },
@@ -388,8 +444,11 @@
             { id: 'fin_dashboard', label: 'CPC / Dashboard', icon: 'fa-chart-pie' },
             { id: 'fin_ca', label: 'Chiffre d\'Affaires', icon: 'fa-coins' },
             { id: 'fin_carburant', label: 'Carburant', icon: 'fa-gas-pump' },
+            { id: 'fin_plants', label: 'Plants', icon: 'fa-seedling', dgOnly: true },
             { id: 'fin_telecom', label: 'Maroc Télécom', icon: 'fa-phone' },
+            { id: 'fin_ojra', label: 'OJRA (Paie)', icon: 'fa-file-invoice-dollar' },
             { id: 'fin_stock', label: 'Gestion de Stock', icon: 'fa-boxes-stacked' },
+            { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
             { id: 'mag_inventaire', label: 'Inventaire', icon: 'fa-clipboard-list' },
             { id: 'fin_liquidations', label: 'Suivi Liquidations', icon: 'fa-file-invoice-dollar' },
             { id: 'qualite_liquidations', label: 'Liquidations Qualité', icon: 'fa-coins' },
@@ -448,7 +507,8 @@
             { id: 'achats_vente_plastique', label: 'Vente Plastique', icon: 'fa-recycle' },
             { id: 'mag_stock_intrants', label: 'Soldes Stock', icon: 'fa-warehouse' },
             { id: 'mag_inventaire', label: 'Inventaire', icon: 'fa-clipboard-list' },
-            { id: 'mag_reception', label: 'Réception (BR)', icon: 'fa-truck-ramp-box' },
+            { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
+            { id: 'mag_reception', label: 'Bons de Réception', icon: 'fa-truck-ramp-box' },
             { id: 'dqr_daily', label: 'DQR Journalier', icon: 'fa-clipboard-list' },
             { id: 'caisse', label: 'Gestion de Caisse', icon: 'fa-cash-register' },
         ];
@@ -471,6 +531,7 @@
             { id: 'station_saisie', label: 'Saisie Irrigation', icon: 'fa-pen-to-square' },
             { id: 'station_scan', label: 'Scanner Fiche', icon: 'fa-camera' },
             { id: 'station_analyse', label: 'Analyse', icon: 'fa-chart-line' },
+            { id: 'station_intelligence', label: 'Pilotage', icon: 'fa-brain' },
             { id: 'station_historique', label: 'Historique', icon: 'fa-clock-rotate-left' },
             { id: 'station_meteo', label: 'Météo', icon: 'fa-cloud-sun' },
         ];
@@ -483,6 +544,10 @@
 
         const NAV_ITEMS_OTHER = [
             { id: 'coming_soon', label: 'Tableau de bord', icon: 'fa-gauge-high' },
+        ];
+
+        const NAV_ITEMS_ASSOCIE = [
+            { id: 'dashboard_associe', label: 'Dashboard', icon: 'fa-gauge-high' },
         ];
 
         // ===================== TUTORIAL REGISTRY =====================
@@ -908,6 +973,8 @@
                     precip: Math.round((dayData.precipitation ? dayData.precipitation[i] : 0) * 10) / 10,
                     uv: Math.round(dayData.uvindex ? dayData.uvindex[i] : 0),
                     eto: Math.round((dayData.evapotranspiration ? dayData.evapotranspiration[i] : 0) * 10) / 10,
+                    sunrise: dayData.sunrise ? dayData.sunrise[i] : null,
+                    sunset: dayData.sunset ? dayData.sunset[i] : null,
                     isToday: dateStr === todayStr
                 };
             });
@@ -1998,6 +2065,30 @@
                 { prefix: 'NV', equipe: 'NV', caporal: 'El Aydi Ayoub', coutParOuvrier: 30 },
             ];
 
+            // Helper : transforme "DD/MM/YYYY - DD/MM/YYYY" en timestamp de la date de début
+            // pour ordonner les quinzaines (paie). Tolère "DD/MM/YYYY" simple.
+            const quinzaineOrder = (periodeStr) => {
+                if (!periodeStr) return 0;
+                const m = String(periodeStr).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+                if (!m) return 0;
+                return new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`).getTime();
+            };
+
+            // Helper : récupère le coût transport effectif pour une équipe à une quinzaine donnée
+            // history = [{ effectiveFrom: "DD/MM/YYYY - DD/MM/YYYY", coutParOuvrier, ... }]
+            // Si periode non fourni → renvoie le tarif courant (le plus récent de l'historique, ou seed)
+            const getCoutTransport = (prefix, periode) => {
+                const team = transportConfig.find(t => t.prefix === prefix);
+                if (!team) return 0;
+                const hist = team.history || [];
+                if (hist.length === 0) return team.coutParOuvrier || 0;
+                const targetTs = periode ? quinzaineOrder(periode) : Number.MAX_SAFE_INTEGER;
+                const sorted = [...hist]
+                    .filter(h => quinzaineOrder(h.effectiveFrom) <= targetTs)
+                    .sort((a, b) => quinzaineOrder(b.effectiveFrom) - quinzaineOrder(a.effectiveFrom));
+                return sorted[0] ? sorted[0].coutParOuvrier : (team.coutParOuvrier || 0);
+            };
+
             // Build variete → culture lookup from parcelleConfig
             const varieteCultureMap = {};
             Object.values(parcelleConfig).flat().forEach(p => {
@@ -2016,7 +2107,7 @@
                 return 'Framboise';
             };
 
-            return { effectif, topOps, recolteData, recolteParJour, horsRecolteDetail, pointageJour, quinzaineData, weeklyTrend, parcellesMap, parcelleDetail, equipes, suiviModifs, qualiteInspections, blocIds, qualiteHistorique, qualiteBrix, pfqHistory, weeklyRanking, expeditions, stockEmballages, stockIntrants, parcAuto, cpcData, cpcVarietes, cpcCharges, totalHa, totalCA, totalCAExport, totalCALocal, totalKgExport, totalChargesGlobales, cfDea, ebeParVariete, ebeFramboise, resultatAvantImpot, resultatParMois, caDetail, carburant, finStock, liquidations, parcelleConfig, normesProductivite, horsRecolteParTunnel, ouvriersMatricule, equipesConfig, primesConfig, meteoData, agroData, transportConfig, avocatierConfig, varieteCultureMap, getCultureForVariete };
+            return { effectif, topOps, recolteData, recolteParJour, horsRecolteDetail, pointageJour, quinzaineData, weeklyTrend, parcellesMap, parcelleDetail, equipes, suiviModifs, qualiteInspections, blocIds, qualiteHistorique, qualiteBrix, pfqHistory, weeklyRanking, expeditions, stockEmballages, stockIntrants, parcAuto, cpcData, cpcVarietes, cpcCharges, totalHa, totalCA, totalCAExport, totalCALocal, totalKgExport, totalChargesGlobales, cfDea, ebeParVariete, ebeFramboise, resultatAvantImpot, resultatParMois, caDetail, carburant, finStock, liquidations, parcelleConfig, normesProductivite, horsRecolteParTunnel, ouvriersMatricule, equipesConfig, primesConfig, meteoData, agroData, transportConfig, avocatierConfig, varieteCultureMap, getCultureForVariete, getCoutTransport, quinzaineOrder };
         }
 
         // ===== BUDGET BGF — Objectifs par variété (chargés depuis localStorage ou fallback hardcodé) =====
@@ -3481,6 +3572,347 @@
             );
         }
 
+        function ChefProductionWidget({ farmFilter }) {
+            const [bons, setBons] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [chartMode, setChartMode] = useState('kgha');
+            const [showEcarts, setShowEcarts] = useState(false);
+            const [selectedVariety, setSelectedVariety] = useState('');
+
+            React.useEffect(() => {
+                loadBonsFromFirestore()
+                    .then(b => setBons(b || []))
+                    .catch(e => console.warn('[ChefProd] load:', e))
+                    .finally(() => setLoading(false));
+            }, []);
+
+            const mapped = React.useMemo(() => {
+                return (bons || []).filter(b => b.status !== 'rejete_qualite' && b.status !== 'rejete_chef').map(b => {
+                    const resolved = normalizeParcelle(b.designation || b.blocLabel || b.blocVariete);
+                    const cycle = getCycle(b.date);
+                    const variety = resolved
+                        ? (resolved.sousVariete ? `${resolved.variete} ${resolved.sousVariete}` : resolved.variete)
+                        : (b.blocVariete || '?');
+                    const ferme = resolved ? resolved.ferme : (b.blocFerme || '').replace('-', '').replace('F 0', 'F').replace('F-0', 'F').replace('F-', 'F');
+                    const rawType = b.typeVente || '';
+                    const typeVente = (rawType === "Driscoll's" || rawType === 'EXP') ? 'Export'
+                        : rawType === 'ECRT' ? 'Marché Local'
+                        : rawType || '';
+                    return {
+                        variety,
+                        culture: resolved ? resolved.culture : 'Framboise',
+                        ferme, cycle,
+                        kg: parseFloat(b.poidsLot) || 0,
+                        dateISO: b.date || '',
+                        typeVente,
+                    };
+                }).filter(b => {
+                    if (b.kg <= 0) return false;
+                    if (b.ferme !== farmFilter) return false;
+                    const dUp = (b.variety || '').toUpperCase();
+                    const SKIP = ['DECHET','PLASTIQUE','EMBALLAGE','PALETTE','CARTON VIDE','BOIS'];
+                    return !SKIP.some(s => dUp.includes(s));
+                });
+            }, [bons, farmFilter]);
+
+            const cycle2Varieties = ['Maravilla Green Cane', 'Maravilla Long Cane', 'Yazmin Bi Cycle', 'Corina', 'Breeze', 'Cascade'];
+            const cycle2Stats = React.useMemo(() => {
+                const c2 = mapped.filter(e => e.cycle === 2);
+                const acc = {};
+                c2.forEach(e => {
+                    const v = e.variety;
+                    if (!acc[v]) acc[v] = { variety: v, kgExport: 0, kgLocal: 0, kg: 0 };
+                    acc[v].kg += e.kg;
+                    if (e.typeVente === 'Export') acc[v].kgExport += e.kg;
+                    else acc[v].kgLocal += e.kg;
+                });
+                return cycle2Varieties.filter(v => acc[v]).map(v => {
+                    const s = acc[v];
+                    const resolved = normalizeParcelle(v);
+                    const culture = resolved ? resolved.culture : 'Framboise';
+                    let baseV = v, sousV = null;
+                    const knownSous = ['Green Cane', 'Long Cane', 'Mow Down', 'Bi Cycle', 'Cut Back'];
+                    for (const sv of knownSous) { if (v.endsWith(sv)) { baseV = v.slice(0, -(sv.length + 1)); sousV = sv; break; } }
+                    const ha = getHaByCycle(baseV, sousV, farmFilter, 2) || getHaByCycle(baseV, null, farmFilter, 2);
+                    const plants = getPlantsByCycle(baseV, sousV, farmFilter, 2) || getPlantsByCycle(baseV, null, farmFilter, 2);
+                    const pctLocal = (s.kgLocal + s.kgExport) > 0 ? (s.kgLocal / (s.kgLocal + s.kgExport) * 100).toFixed(1) : '0.0';
+                    const kgPerPlant = plants > 0 ? s.kgExport / plants : 0;
+                    const rendementMyrtille = plants > 0 ? (kgPerPlant < 1 ? Math.round(kgPerPlant * 1000) : kgPerPlant.toFixed(2)) : '-';
+                    const rendementLabelMyrtille = plants > 0 && kgPerPlant < 1 ? 'g/Pl' : 'Kg/Pl';
+                    return {
+                        ...s, culture, ha, plants, pctLocal,
+                        rendement: culture === 'Myrtille' ? rendementMyrtille : (ha > 0 ? (s.kgExport / 1000 / ha).toFixed(2) : '-'),
+                        rendementLabel: culture === 'Myrtille' ? rendementLabelMyrtille : 'T/Ha',
+                        tonnageExport: (s.kgExport / 1000).toFixed(2),
+                    };
+                });
+            }, [mapped, farmFilter]);
+
+            const last7Days = React.useMemo(() => {
+                const today = new Date();
+                const days = [];
+                for (let i = 6; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() - i);
+                    const iso = d.toISOString().slice(0, 10);
+                    const parts = iso.split('-');
+                    days.push({ date: iso, label: parts[2] + '/' + parts[1] });
+                }
+                const acc = {};
+                mapped.filter(e => e.cycle === 2 && (!selectedVariety || e.variety === selectedVariety)).forEach(e => {
+                    if (!e.dateISO) return;
+                    if (!acc[e.dateISO]) acc[e.dateISO] = { kg: 0, kgExport: 0, kgEcart: 0 };
+                    acc[e.dateISO].kg += e.kg;
+                    if (e.typeVente === 'Export') acc[e.dateISO].kgExport += e.kg;
+                    else acc[e.dateISO].kgEcart += e.kg;
+                });
+                return days.map(d => ({ ...d, kg: acc[d.date]?.kg || 0, kgExport: acc[d.date]?.kgExport || 0, kgEcart: acc[d.date]?.kgEcart || 0 }));
+            }, [mapped, selectedVariety]);
+
+            const totalHa = React.useMemo(() => {
+                const list = selectedVariety ? cycle2Stats.filter(c => c.variety === selectedVariety) : cycle2Stats;
+                return list.reduce((s, c) => s + (c.ha || 0), 0);
+            }, [cycle2Stats, selectedVariety]);
+            const totalPlants = React.useMemo(() => {
+                const list = selectedVariety ? cycle2Stats.filter(c => c.variety === selectedVariety) : cycle2Stats;
+                return list.reduce((s, c) => s + (c.plants || 0), 0);
+            }, [cycle2Stats, selectedVariety]);
+            const isAllMyrtille = React.useMemo(() => {
+                const list = selectedVariety ? cycle2Stats.filter(c => c.variety === selectedVariety) : cycle2Stats;
+                return list.length > 0 && list.every(c => c.culture === 'Myrtille');
+            }, [cycle2Stats, selectedVariety]);
+            const showKgPlant = isAllMyrtille && totalPlants > 0;
+            React.useEffect(() => {
+                if (chartMode === 'kgplant' && !showKgPlant) setChartMode('kgha');
+            }, [chartMode, showKgPlant]);
+            const isKgHa = chartMode === 'kgha';
+            const isKgPlant = chartMode === 'kgplant';
+            const dataPoints = last7Days.map(d => ({
+                ...d,
+                val: isKgPlant ? (totalPlants > 0 ? d.kg / totalPlants : 0)
+                    : isKgHa ? (totalHa > 0 ? d.kg / totalHa : 0)
+                    : d.kg,
+            }));
+            const maxVal = Math.max(isKgPlant ? 0.001 : 1, ...dataPoints.map(d => d.val));
+            const kgPlantInGrams = isKgPlant && maxVal < 1;
+            const total7DaysVal = dataPoints.reduce((s, d) => s + d.val, 0);
+            const total7DaysKg = last7Days.reduce((s, d) => s + (d.kg || 0), 0);
+            const total7DaysLabel = isKgPlant
+                ? (kgPlantInGrams ? Math.round(total7DaysVal * 1000).toLocaleString() : total7DaysVal.toFixed(2))
+                : Math.round(total7DaysVal).toLocaleString();
+            const total7DaysUnit = isKgPlant ? (kgPlantInGrams ? 'g/Pl' : 'Kg/Pl') : isKgHa ? 'Kg/Ha' : 'kg';
+
+            const yesterdayStats = React.useMemo(() => {
+                const d = new Date();
+                d.setDate(d.getDate() - 1);
+                const yISO = d.toISOString().slice(0, 10);
+                const acc = {};
+                mapped.forEach(e => {
+                    if (e.dateISO !== yISO) return;
+                    const v = e.variety;
+                    if (!acc[v]) acc[v] = { variety: v, culture: e.culture, cycle: e.cycle, kg: 0, kgExport: 0, kgLocal: 0 };
+                    acc[v].kg += e.kg;
+                    if (e.typeVente === 'Export') acc[v].kgExport += e.kg;
+                    if (e.typeVente === 'Marché Local') acc[v].kgLocal += e.kg;
+                });
+                const knownSous = ['Green Cane', 'Long Cane', 'Mow Down', 'Bi Cycle', 'Cut Back'];
+                return Object.values(acc).map(s => {
+                    let baseV = s.variety, sousV = null;
+                    for (const sv of knownSous) { if (s.variety.endsWith(sv)) { baseV = s.variety.slice(0, -(sv.length + 1)); sousV = sv; break; } }
+                    const ha = getHaByCycle(baseV, sousV, farmFilter, s.cycle) || getHaByCycle(baseV, null, farmFilter, s.cycle);
+                    const pctLocal = s.kg > 0 ? (s.kgLocal / s.kg * 100) : 0;
+                    const pctEcart = s.kg > 0 ? ((s.kg - s.kgExport) / s.kg * 100) : 0;
+                    const kgPerHa = ha > 0 ? s.kg / ha : 0;
+                    return { ...s, ha, pctLocal, pctEcart, kgPerHa };
+                }).sort((a, b) => b.kg - a.kg);
+            }, [mapped, farmFilter]);
+
+            const yesterdayLabel = (() => {
+                const d = new Date();
+                d.setDate(d.getDate() - 1);
+                return d.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' });
+            })();
+
+            if (loading) return <div style={{padding:16, textAlign:'center', color:'var(--gray-400)', fontSize:11}}><i className="fa-solid fa-spinner fa-spin"></i> Chargement production…</div>;
+
+            return (
+                <div style={{marginBottom:16, padding:14, borderRadius:12, background:'linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%)', border:'1.5px solid #e0e7ff'}}>
+                    <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:12}}>
+                        <i className="fa-solid fa-chart-column" style={{color:'#5c6bc0'}}></i>
+                        <span style={{fontWeight:700, fontSize:13, color:'#283593'}}>Production — {farmFilter} — Cycle 2</span>
+                    </div>
+
+                    {cycle2Stats.length > 0 ? (
+                        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))', gap:8, marginBottom:14}}>
+                            {cycle2Stats.map((s, i) => {
+                                const isMyrt = s.culture === 'Myrtille';
+                                const cardBg = isMyrt ? '#e8f5e9' : '#fff3e0';
+                                const cardBorder = isMyrt ? '#a5d6a7' : '#ffcc80';
+                                const rendColor = isMyrt ? '#2e7d32' : '#e65100';
+                                const budgetCfg = BUDGET_BGF[s.variety];
+                                const storedTotals = (() => { try { return JSON.parse(localStorage.getItem('budgetBGFTotals') || '{}'); } catch(e) { return {}; } })();
+                                const budgetTotal = budgetCfg ? (storedTotals[s.variety] || budgetCfg.total) : 0;
+                                const reelKgHa = s.ha > 0 ? s.kgExport / s.ha : 0;
+                                const pctBudget = budgetTotal > 0 ? (reelKgHa / budgetTotal * 100).toFixed(0) : null;
+                                const pctColor = pctBudget !== null ? (pctBudget >= 100 ? '#22c55e' : pctBudget >= 70 ? '#f59e0b' : '#ef4444') : '#999';
+                                const isSelected = selectedVariety === s.variety;
+                                return (
+                                    <div key={i} onClick={() => setSelectedVariety(isSelected ? '' : s.variety)} style={{padding:10, borderRadius:10, background: isSelected ? '#fff' : cardBg, border: isSelected ? '2px solid #6c5ce7' : `1px solid ${cardBorder}`, position:'relative', cursor:'pointer', transition:'all 0.2s', boxShadow: isSelected ? '0 2px 8px rgba(108,92,231,0.2)' : 'none'}}>
+                                        {pctBudget !== null && (
+                                            <div style={{position:'absolute', top:6, right:8, fontSize:11, fontWeight:800, color:pctColor}}>
+                                                {pctBudget}%
+                                                <div style={{fontSize:7, fontWeight:500, color:'#999', textAlign:'right'}}>vs Budget</div>
+                                            </div>
+                                        )}
+                                        <div style={{fontWeight:700, fontSize:11, color:'#1a237e', marginBottom:1}}>{s.variety}</div>
+                                        <div style={{fontSize:9, color:'var(--gray-500)', marginBottom:6}}>{isMyrt ? '🫐 Myrtille' : '🍇 Framboise'}</div>
+                                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                                            <div>
+                                                <div style={{fontSize:16, fontWeight:800, color:rendColor}}>{s.rendement}</div>
+                                                <div style={{fontSize:9, color:'var(--gray-400)'}}>{s.rendementLabel}</div>
+                                            </div>
+                                            <div style={{textAlign:'right'}}>
+                                                <div style={{fontSize:11, fontWeight:700, color:'#e65100'}}>{s.pctLocal}%</div>
+                                                <div style={{fontSize:8, color:'var(--gray-400)'}}>% Local</div>
+                                            </div>
+                                        </div>
+                                        <div style={{marginTop:4, fontSize:9, color:'var(--gray-500)'}}>Export: {s.tonnageExport} T{s.plants > 0 && <span style={{marginLeft:6, color:'#283593', fontWeight:600}}>{s.plants.toLocaleString()} pl.</span>}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    ) : (
+                        <div style={{padding:12, fontSize:11, color:'var(--gray-400)', textAlign:'center', marginBottom:12}}>Aucune donnée Cycle 2 pour {farmFilter}</div>
+                    )}
+
+                    <div style={{padding:12, background:'#fff', borderRadius:10}}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, gap:8, flexWrap:'wrap'}}>
+                            <div style={{fontSize:12, fontWeight:700, color:'#283593'}}>
+                                <i className="fa-solid fa-chart-bar" style={{marginRight:6}}></i>Production — 7 derniers jours
+                                {selectedVariety && <span style={{marginLeft:8, fontSize:11, fontWeight:600, color:'#6c5ce7'}}>— {selectedVariety} <i className="fa-solid fa-xmark" onClick={() => setSelectedVariety('')} style={{cursor:'pointer', marginLeft:4, color:'#999'}}></i></span>}
+                            </div>
+                            <div style={{display:'flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:14, background:'rgba(52,152,219,0.1)', border:'1.5px solid rgba(52,152,219,0.3)'}}>
+                                <span style={{fontSize:10, fontWeight:600, color:'var(--gray-600)'}}>Total 7 jours</span>
+                                <span style={{fontSize:13, fontWeight:800, color:'#3498db'}}>{total7DaysLabel}</span>
+                                <span style={{fontSize:10, fontWeight:600, color:'var(--gray-500)'}}>{total7DaysUnit}</span>
+                                {!chartMode || chartMode !== 'total' ? (
+                                    <span style={{fontSize:10, color:'var(--gray-400)', borderLeft:'1px solid rgba(52,152,219,0.3)', paddingLeft:6, marginLeft:2}}>{total7DaysKg >= 1000 ? (total7DaysKg/1000).toFixed(2) + ' T' : Math.round(total7DaysKg).toLocaleString() + ' kg'}</span>
+                                ) : null}
+                            </div>
+                            <div style={{display:'flex', gap:6, alignItems:'center'}}>
+                                <button onClick={() => setChartMode('kgha')} style={{padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:14, border:'none', cursor:'pointer', background: isKgHa ? 'var(--berry)' : '#f0f0f0', color: isKgHa ? '#fff' : '#666'}}>Kg / Ha</button>
+                                {showKgPlant && (
+                                    <button onClick={() => setChartMode('kgplant')} style={{padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:14, border:'none', cursor:'pointer', background: isKgPlant ? 'var(--berry)' : '#f0f0f0', color: isKgPlant ? '#fff' : '#666'}}>{kgPlantInGrams ? 'g / Pl' : 'Kg / Pl'}</button>
+                                )}
+                                <button onClick={() => setChartMode('total')} style={{padding:'4px 10px', fontSize:10, fontWeight:600, borderRadius:14, border:'none', cursor:'pointer', background: chartMode === 'total' ? 'var(--berry)' : '#f0f0f0', color: chartMode === 'total' ? '#fff' : '#666'}}>Total (kg)</button>
+                                <label style={{display:'flex', alignItems:'center', gap:3, fontSize:10, cursor:'pointer', userSelect:'none', marginLeft:6, padding:'3px 8px', borderRadius:14, border: showEcarts ? '2px solid #e67e22' : '1.5px solid var(--gray-200)', background: showEcarts ? 'rgba(230,126,34,0.08)' : '#fff'}}>
+                                    <input type="checkbox" checked={showEcarts} onChange={ev => setShowEcarts(ev.target.checked)} style={{accentColor:'#e67e22'}} />
+                                    <span style={{fontWeight: showEcarts ? 600 : 500, color: showEcarts ? '#e67e22' : 'var(--gray-600)'}}>Écarts</span>
+                                </label>
+                            </div>
+                        </div>
+                        {isKgHa && totalHa <= 0 && (
+                            <div style={{padding:6, fontSize:10, color:'#e74c3c', background:'#fdf0ed', borderRadius:6, marginBottom:6}}>
+                                Aucune surface (Ha) Cycle 2 disponible pour {farmFilter}.
+                            </div>
+                        )}
+                        {isKgPlant && totalPlants <= 0 && (
+                            <div style={{padding:6, fontSize:10, color:'#e74c3c', background:'#fdf0ed', borderRadius:6, marginBottom:6}}>
+                                Aucune information de plants disponible.
+                            </div>
+                        )}
+                        <div style={{display:'flex', alignItems:'flex-end', gap:6, minHeight:140, padding:'8px 4px 0'}}>
+                            {dataPoints.map((d, i) => {
+                                const h = (d.val / maxVal) * 110;
+                                const labelVal = isKgPlant
+                                    ? (kgPlantInGrams ? Math.round(d.val * 1000).toLocaleString() : d.val.toFixed(2))
+                                    : Math.round(d.val).toLocaleString();
+                                const ecartPct = (showEcarts && d.kg > 0) ? Math.round(d.kgEcart / d.kg * 100) : 0;
+                                return (
+                                    <div key={i} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:1, minWidth:0}}>
+                                        <div style={{fontSize:9, fontWeight:700, marginBottom: showEcarts ? 1 : 3, color:'var(--gray-600)'}}>{labelVal}</div>
+                                        {showEcarts && d.kgEcart > 0 && <div style={{fontSize:8, fontWeight:700, marginBottom:2, color:'#e67e22'}}>{ecartPct}%</div>}
+                                        <div style={{width:'100%', maxWidth:36, borderRadius:'4px 4px 0 0', height:Math.max(h, 1), display:'flex', flexDirection:'column', justifyContent:'flex-end', overflow:'hidden'}}>
+                                            {showEcarts ? (
+                                                <>
+                                                    {d.kgExport > 0 && <div style={{width:'100%', height: d.kg > 0 ? (d.kgExport / d.kg * h) : 0, background:'#3498db'}}></div>}
+                                                    {d.kgEcart > 0 && <div style={{width:'100%', height: d.kg > 0 ? (d.kgEcart / d.kg * h) : 0, background:'#e67e22'}}></div>}
+                                                </>
+                                            ) : (
+                                                d.val > 0 && <div style={{width:'100%', height:h, background:'#3498db'}}></div>
+                                            )}
+                                        </div>
+                                        <div style={{fontSize:9, fontWeight:700, marginTop:5, color:'var(--berry)'}}>{d.label}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {showEcarts && (
+                            <div style={{display:'flex', gap:14, justifyContent:'center', marginTop:8, fontSize:10}}>
+                                <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                    <span style={{width:10, height:10, borderRadius:2, background:'#3498db', display:'inline-block'}}></span>
+                                    <span style={{fontWeight:600}}>Export</span>
+                                </div>
+                                <div style={{display:'flex', alignItems:'center', gap:4}}>
+                                    <span style={{width:10, height:10, borderRadius:2, background:'#e67e22', display:'inline-block'}}></span>
+                                    <span style={{fontWeight:600, color:'#e67e22'}}>Écarts (non Export)</span>
+                                </div>
+                            </div>
+                        )}
+                        {yesterdayStats.length > 0 && (
+                            <div style={{marginTop:14, paddingTop:12, borderTop:'1px dashed var(--gray-200)'}}>
+                                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap'}}>
+                                    <i className="fa-solid fa-basket-shopping" style={{color:'#283593'}}></i>
+                                    <span style={{fontSize:12, fontWeight:700, color:'#283593'}}>Récolte de la veille</span>
+                                    <span style={{fontSize:10, color:'var(--gray-500)'}}>— {yesterdayLabel}</span>
+                                </div>
+                                <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))', gap:8}}>
+                                    {yesterdayStats.map((s, i) => {
+                                        const isMyrt = s.culture === 'Myrtille';
+                                        const cardBg = isMyrt ? '#e8f5e9' : '#fff3e0';
+                                        const cardBorder = isMyrt ? '#a5d6a7' : '#ffcc80';
+                                        const mainColor = isMyrt ? '#2e7d32' : '#e65100';
+                                        return (
+                                            <div key={i} style={{padding:10, borderRadius:10, background:cardBg, border:`1px solid ${cardBorder}`}}>
+                                                <div style={{fontWeight:700, fontSize:11, color:'#1a237e'}}>{s.variety}</div>
+                                                <div style={{fontSize:9, color:'var(--gray-500)', marginBottom:6}}>
+                                                    {isMyrt ? '🫐 Myrtille' : '🍇 Framboise'} · Cycle {s.cycle}
+                                                </div>
+                                                <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:4}}>
+                                                    <div>
+                                                        <div style={{fontSize:15, fontWeight:800, color:mainColor}}>
+                                                            {s.kg >= 1000 ? (s.kg/1000).toFixed(2) + ' T' : Math.round(s.kg).toLocaleString() + ' kg'}
+                                                        </div>
+                                                        <div style={{fontSize:9, color:'var(--gray-400)'}}>Total récolté</div>
+                                                    </div>
+                                                    <div style={{textAlign:'right'}}>
+                                                        <div style={{fontSize:13, fontWeight:700, color:mainColor}}>
+                                                            {s.ha > 0 ? Math.round(s.kgPerHa).toLocaleString() : '—'}
+                                                        </div>
+                                                        <div style={{fontSize:9, color:'var(--gray-400)'}}>Kg/Ha</div>
+                                                    </div>
+                                                </div>
+                                                <div style={{display:'flex', gap:8, paddingTop:6, borderTop:'1px solid rgba(0,0,0,0.06)'}}>
+                                                    <div style={{flex:1}}>
+                                                        <div style={{fontSize:11, fontWeight:700, color:'#e65100'}}>{s.pctLocal.toFixed(1)}%</div>
+                                                        <div style={{fontSize:8, color:'var(--gray-400)'}}>Marché Local</div>
+                                                    </div>
+                                                    <div style={{flex:1, textAlign:'right'}}>
+                                                        <div style={{fontSize:11, fontWeight:700, color:'#d35400'}}>{s.pctEcart.toFixed(1)}%</div>
+                                                        <div style={{fontSize:8, color:'var(--gray-400)'}}>Écarts</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile }) {
             const [apiData, setApiData] = useState(null);
             const [nouveauxData, setNouveauxData] = useState(null);
@@ -3493,6 +3925,7 @@
             const [recolteEquipeRows, setRecolteEquipeRows] = useState([]);
             const [recolteEquipePeriodes, setRecolteEquipePeriodes] = useState([]);
             const [quinzaineData, setQuinzaineData] = useState(null);
+            const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
             const [workerPopup, setWorkerPopup] = useState(null);
             const [workerLoading, setWorkerLoading] = useState(false);
             const [kpiPopup, setKpiPopup] = useState(null); // { title, ferme, type }
@@ -3501,6 +3934,8 @@
             const [nouveauxExpanded, setNouveauxExpanded] = useState(false);
             const [loading, setLoading] = useState(true);
             const COLORS = ['#8B2252', '#2D8B4E', '#D4A847'];
+            const presenceByMat = React.useMemo(() => Object.fromEntries((presenceData.rows || []).map(r => [(r.matricule || '').toUpperCase().trim(), r])), [presenceData]);
+            const lookupPresence = (mat) => presenceByMat[(mat || '').toUpperCase().trim()] || null;
             const eqNames = {'MM':'Boucharen','AY':'Chelihat','HT':'El Bachir','HA':'El Hafi','KR':'Farid','NA':'Larache','JA':'Ksr Femme','AZ':'Chahdi','CC':'Sektoui','CA':'Regragi','RE':'Dechira','NV':'NV','XX':'Sans Équipe','MU':'Sans Équipe'};
             const getEqPrefix = (mat) => { if (!mat) return 'NV'; const m = mat.toUpperCase().trim(); const p2 = m.substring(0,2); if (eqNames[p2]) return p2; if (m.startsWith('HAFI')||m.startsWith('HA')) return 'HA'; if (m.startsWith('DD')) return 'NV'; return 'XX'; };
             const calcPrime = (kg, variete, date) => { const k = kg || 0; const isMyr = /corina|corrina|cascade|breeze|myrtille|blue/i.test(variete || ''); if (isMyr) { const seuil = /breeze/i.test(variete || '') ? 25 : /cascade/i.test(variete || '') ? ((date || '') >= '2026-04-25' ? 30 : 25) : 30; return k > seuil ? Math.round((k - seuil) * 2.5 * 10) / 10 : 0; } if (k < 20) return 0; if (k < 25) return 20; if (k < 30) return 40; if (k < 40) return Math.round((60 + (k - 30) * 3) * 10) / 10; return Math.round((90 + (k - 40) * 4) * 10) / 10; };
@@ -3517,7 +3952,8 @@
                     cachedFetch('/api/pointage-rh?action=transport'),
                     cachedFetch('/api/pointage-rh?action=recolte-equipes'),
                     cachedFetch('/api/pointage-rh?action=quinzaine'),
-                ]).then(([summary, nouveaux, detail, recolte, transport, recolteEq, quinz]) => {
+                    cachedFetch('/api/pointage-rh?action=presence'),
+                ]).then(([summary, nouveaux, detail, recolte, transport, recolteEq, quinz, presence]) => {
                     if (summary.success) setApiData(summary);
                     if (nouveaux.success) setNouveauxData(nouveaux);
                     if (detail.success) setDetailRows(detail.rows || []);
@@ -3525,6 +3961,7 @@
                     if (transport.success) { setTransportRows(transport.rows || []); setTransportFullData(transport); setTransportPeriodes(transport.periodes || []); }
                     if (recolteEq.success) { setRecolteEquipeRows(recolteEq.rows || []); setRecolteEquipePeriodes(recolteEq.periodes || []); }
                     if (quinz.success) setQuinzaineData(quinz);
+                    if (presence && presence.success) setPresenceData({ rows: presence.rows || [], syncedAt: presence.syncedAt || null });
                 }).catch(err => console.warn('Pointage API error:', err))
                   .finally(() => setLoading(false));
             }, []);
@@ -3605,6 +4042,11 @@
                     {/* Alertes Analyses Foliaires (Chef uniquement) */}
                     {farmFilter && <AnalysesFoliairesAlertDashboard ferme={avoSubFilter || farmFilter} onNavigate={onNavigateMeteo} />}
 
+                    {/* Production Cycle 2 — Chef F1 / Chef F5 uniquement */}
+                    {(currentProfile === 'chef_f1' || currentProfile === 'chef_f5') && farmFilter && (
+                        <ChefProductionWidget farmFilter={farmFilter} />
+                    )}
+
                     <div style={{marginBottom:16,padding:'16px 20px',background:'linear-gradient(135deg, var(--berry) 0%, #6b1a3a 100%)',borderRadius:12,color:'white',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
                         <div style={{display:'flex',alignItems:'center',gap:12}}>
                             <i className="fa-solid fa-clock" style={{fontSize:24,opacity:0.9}}></i>
@@ -3679,10 +4121,10 @@
                         const currentQuinz = transportPeriodes[0] || recolteEquipePeriodes[0] || '';
                         if (!currentQuinz) return null;
 
-                        // Transport quinzaine
+                        // Transport quinzaine — tarif effectif à la quinzaine (versionné)
                         const qTransportRows = transportRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
                         const coutMap = {};
-                        transportEquipes.forEach(t => { coutMap[t.prefix] = t.coutParOuvrier; });
+                        transportEquipes.forEach(t => { coutMap[t.prefix] = data.getCoutTransport ? data.getCoutTransport(t.prefix, currentQuinz) : t.coutParOuvrier; });
                         const dailyByEq = {};
                         qTransportRows.forEach(r => {
                             const eq = getEqPrefix(r.matricule);
@@ -3749,7 +4191,7 @@
                                 total += n * (coutMap[t.prefix] || 0);
                                 totalWorkers += n;
                             });
-                            return { equipe: t.equipe, prefix: t.prefix, caporal: t.caporal, cout: t.coutParOuvrier, totalWorkers, total };
+                            return { equipe: t.equipe, prefix: t.prefix, caporal: t.caporal, cout: (coutMap[t.prefix] || 0), totalWorkers, total };
                         });
 
                         // Traitement par jour
@@ -4867,6 +5309,11 @@
             const [dates, setDates] = useState([]);
             const [expandedEqs, setExpandedEqs] = useState({});
             const toggleEq = (key) => setExpandedEqs(prev => ({...prev, [key]: !prev[key]}));
+            const [expandedFermes, setExpandedFermes] = useState({});
+            const toggleFerme = (key) => setExpandedFermes(prev => ({...prev, [key]: !prev[key]}));
+            const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
+            const presenceByMat = React.useMemo(() => Object.fromEntries((presenceData.rows || []).map(r => [(r.matricule || '').toUpperCase().trim(), r])), [presenceData]);
+            const lookupPresence = (mat) => presenceByMat[(mat || '').toUpperCase().trim()] || null;
             const [workerPopup, setWorkerPopup] = useState(null);
             const [visaStatus, setVisaStatus] = useState({});
             const [visaLoading, setVisaLoading] = useState(false);
@@ -4996,6 +5443,9 @@
                         setDates(json.dates || []);
                         if (json.dates && json.dates.length > 0) loadVisaStatus(json.dates[0].date);
                     }
+                }).catch(() => {});
+                cachedFetch('/api/pointage-rh?action=presence').then(json => {
+                    if (json && json.success) setPresenceData({ rows: json.rows || [], syncedAt: json.syncedAt || null });
                 }).catch(() => {});
             }, []);
 
@@ -5318,9 +5768,14 @@
                     })()}
 
                     <Panel title="Détail Pointage du Jour" icon="fa-clipboard-list">
+                        <div style={{fontSize:10,color:'var(--gray-400)',marginBottom:8}}>
+                            <i className="fa-solid fa-hand-pointer" style={{marginRight:4}}></i>
+                            Cliquez sur une ferme pour voir les ouvriers par équipe avec heures d'entrée/sortie.
+                        </div>
                         <table className="data-table">
                             <thead>
                                 <tr>
+                                    <th></th>
                                     <th>Ferme</th>
                                     <th>Récolte</th>
                                     <th>Hors Récolte</th>
@@ -5332,8 +5787,27 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {pointage.map(p => (
-                                    <tr key={p.ferme}>
+                                {pointage.map(p => {
+                                    const isOpen = !!expandedFermes[p.ferme];
+                                    const eqChefs = {'MM':'Boucharen','AY':'Chelihat','HT':'El Bachir','HA':'El Hafi','KR':'Farid','NA':'Larache','JA':'Ksr Femme','AZ':'Chahdi','CC':'Sektoui','CA':'Regragi','RE':'Dechira','NV':'NV'};
+                                    const eqColors = {'NA':'#8B2252','RE':'#c0392b','CA':'#8B4513','NV':'#6c3483','MM':'#2c3e50','AY':'#d35400','HT':'#16a085','HA':'#2980b9','KR':'#27ae60','JA':'#e74c3c','AZ':'#f39c12','CC':'#7f8c8d','AUTRE':'#95a5a6'};
+                                    const getEq = (mat) => { if (!mat) return 'NV'; const m = mat.toUpperCase().trim(); const p2 = m.substring(0,2); if (eqChefs[p2]) return p2; if (m.startsWith('HAFI')||m.startsWith('HA')) return 'HA'; if (m.startsWith('DD')) return 'NV'; return 'AUTRE'; };
+                                    const fermeRows = isOpen ? detailRows.filter(r => r.ferme === p.ferme && matchSub(r)) : [];
+                                    const byEquipe = {};
+                                    fermeRows.forEach(r => {
+                                        const eq = getEq(r.matricule);
+                                        if (!byEquipe[eq]) byEquipe[eq] = { prefix: eq, nom: eqChefs[eq] || eq, ouvriers: [] };
+                                        byEquipe[eq].ouvriers.push(r);
+                                    });
+                                    const colSpan = isCaporal ? 8 : 9;
+                                    return (
+                                    <React.Fragment key={p.ferme}>
+                                    <tr style={{cursor:'pointer'}} onClick={() => toggleFerme(p.ferme)}
+                                        onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
+                                        onMouseLeave={e => e.currentTarget.style.background=''}>
+                                        <td style={{textAlign:'center',color:'var(--gray-400)',width:24}}>
+                                            <i className={`fa-solid fa-chevron-${isOpen ? 'down' : 'right'}`} style={{fontSize:10}}></i>
+                                        </td>
                                         <td style={{fontWeight:600}}>{p.ferme}</td>
                                         <td>{p.recolte}</td>
                                         <td>{p.horsRecolte}</td>
@@ -5347,7 +5821,68 @@
                                         </td>
                                         {!isCaporal && <td>{(p.cout || 0).toLocaleString('fr-FR')}</td>}
                                     </tr>
-                                ))}
+                                    {isOpen && (
+                                    <tr>
+                                        <td colSpan={colSpan} style={{background:'#fafafa',padding:'12px 16px'}}>
+                                            {Object.values(byEquipe).length === 0 ? (
+                                                <div style={{color:'var(--gray-400)',fontSize:12,fontStyle:'italic'}}>Aucun pointage détaillé.</div>
+                                            ) : (
+                                            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                                                {Object.values(byEquipe).sort((a,b) => b.ouvriers.length - a.ouvriers.length).map(eq => {
+                                                    const bgColor = eqColors[eq.prefix] || '#95a5a6';
+                                                    return (
+                                                    <div key={eq.prefix} style={{background:'#fff',border:'1px solid var(--gray-100)',borderRadius:10,overflow:'hidden'}}>
+                                                        <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderBottom:'1px solid var(--gray-100)'}}>
+                                                            <span style={{background:bgColor,color:'#fff',padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,minWidth:32,textAlign:'center'}}>{eq.prefix}</span>
+                                                            <span style={{fontSize:13,fontWeight:600,color:'var(--gray-700)',flex:1}}>{eq.nom}</span>
+                                                            <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{eq.ouvriers.length} ouvrier{eq.ouvriers.length > 1 ? 's' : ''}</span>
+                                                        </div>
+                                                        <div className="table-responsive">
+                                                        <table className="data-table" style={{fontSize:12,margin:0}}>
+                                                            <thead>
+                                                                <tr style={{background:'var(--gray-50)'}}>
+                                                                    <th style={{padding:'6px 10px'}}>Matricule</th>
+                                                                    <th style={{padding:'6px 10px'}}>Nom</th>
+                                                                    <th style={{padding:'6px 10px'}}>Opération</th>
+                                                                    <th style={{padding:'6px 10px'}}>Parcelle</th>
+                                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>
+                                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Entrée</th>
+                                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Sortie</th>
+                                                                    {!isCaporal && <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {eq.ouvriers.sort((a,b) => (a.nom || '').localeCompare(b.nom || '')).map((r, i) => {
+                                                                    const pres = lookupPresence(r.matricule);
+                                                                    return (
+                                                                    <tr key={i} style={{cursor:'pointer'}} onClick={() => setWorkerPopup(r)}
+                                                                        onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
+                                                                        onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                        <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
+                                                                        <td style={{fontWeight:600,padding:'6px 10px'}}>{r.nom}</td>
+                                                                        <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
+                                                                        <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
+                                                                        <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
+                                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
+                                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
+                                                                        {!isCaporal && <td style={{fontWeight:700,textAlign:'right',padding:'6px 10px'}}>{Math.round(r.cout || 0).toLocaleString('fr-FR')}</td>}
+                                                                    </tr>
+                                                                    );
+                                                                })}
+                                                            </tbody>
+                                                        </table>
+                                                        </div>
+                                                    </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            )}
+                                        </td>
+                                    </tr>
+                                    )}
+                                    </React.Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </Panel>
@@ -5638,6 +6173,7 @@
             const [workers, setWorkers] = useState([]);
             const [cueillette, setCueillette] = useState([]);
             const [totalKgCueillette, setTotalKgCueillette] = useState(0);
+            const [prodSyncedAt, setProdSyncedAt] = useState(null);
             const [loading, setLoading] = useState(true);
             const [selectedDate, setSelectedDate] = useState('');
             const [dates, setDates] = useState([]);
@@ -5658,6 +6194,9 @@
             const [equipeCultureFilter, setEquipeCultureFilter] = useState('');
             const [addedTransport, setAddedTransport] = useState([]);
             const [printPopup, setPrintPopup] = useState(null);
+            const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
+            const presenceByMat = React.useMemo(() => Object.fromEntries((presenceData.rows || []).map(r => [(r.matricule || '').toUpperCase().trim(), r])), [presenceData]);
+            const lookupPresence = (mat) => presenceByMat[(mat || '').toUpperCase().trim()] || null;
             const isMyrtille = (v) => /myrtille|blue|corina|corrina|cascade|breeze/i.test(v || '');
             const calcPrime = data.calcPrime || ((kg, variete, date) => { const k = kg || 0; if (isMyrtille(variete)) { const seuil = /breeze/i.test(variete || '') ? 25 : /cascade/i.test(variete || '') ? ((date || '') >= '2026-04-25' ? 30 : 25) : 30; return k > seuil ? Math.round((k - seuil) * 2.5 * 10) / 10 : 0; } if (k < 20) return 0; if (k < 25) return 20; if (k < 30) return 40; if (k < 40) return Math.round((60 + (k - 30) * 3) * 10) / 10; return Math.round((90 + (k - 40) * 4) * 10) / 10; });
 
@@ -5690,6 +6229,7 @@
                         setWorkers(json.workers || []);
                         setCueillette(json.cueillette || []);
                         setTotalKgCueillette(json.totalKgCueillette || 0);
+                        setProdSyncedAt(json.prodSyncedAt || null);
                     }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
             };
@@ -5700,6 +6240,9 @@
                 cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json => {
                     if (json.success) { setEquipeRows(json.rows || []); setEquipePeriodes(json.periodes || []); }
                 }).catch(err => console.warn(err)).finally(() => setEquipeLoading(false));
+                cachedFetch('/api/pointage-rh?action=presence').then(json => {
+                    if (json && json.success) setPresenceData({ rows: json.rows || [], syncedAt: json.syncedAt || null });
+                }).catch(() => {});
             }, []);
 
             const handleDateChange = (d) => { setSelectedDate(d); setEquipeSelectedDay(d); setLoading(true); loadData(d); };
@@ -5775,6 +6318,12 @@
                             <option value="">Aujourd'hui</option>
                             {dates.filter(d => d.date !== new Date().toISOString().slice(0,10)).map(d => <option key={d.date} value={d.date}>{new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</option>)}
                         </select>
+                        {prodSyncedAt && (
+                            <span title={"Dernière synchro Kg BEE ONE : " + new Date(prodSyncedAt).toLocaleString('fr-FR')} style={{background:'#fff3cd',color:'#856404',padding:'4px 10px',borderRadius:12,fontSize:11,fontWeight:600,display:'inline-flex',alignItems:'center',gap:4}}>
+                                <i className="fa-solid fa-clock-rotate-left"></i>
+                                Kg maj {new Date(prodSyncedAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}
+                            </span>
+                        )}
                     </div>
 
                     {!farmFilter && (
@@ -6562,13 +7111,15 @@
                                     <th className="desktop-only-col">Ferme</th>
                                     {!showKgInsteadOfOp && <th>Quantité</th>}
                                     <th className="desktop-only-col">Heures</th>
+                                    <th className="desktop-only-col" style={{textAlign:'center'}}>Entrée</th>
+                                    <th className="desktop-only-col" style={{textAlign:'center'}}>Sortie</th>
                                     <th className="desktop-only-col">Coût (DH)</th>
                                     <th>Prime</th>
                                     <th className="desktop-only-col">Parcelle</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {recolte.map((r, i) => (
+                                {recolte.map((r, i) => { const pres = lookupPresence(r.matricule); return (
                                     <tr key={i}>
                                         <td><span className={`rank ${i < 3 ? `rank-${i+1}` : 'rank-other'}`}>{r.rank}</span></td>
                                         {showKgInsteadOfOp && <td className="mobile-only-col" style={{fontSize:10,fontWeight:600}}>{r.equipe}</td>}
@@ -6578,11 +7129,13 @@
                                         <td className="desktop-only-col"><span className="status-badge" style={{background: r.ferme==='F1' ? 'var(--berry-pale)' : (r.ferme==='F5' ? 'var(--green-pale)' : 'var(--orange-pale)'), color: r.ferme==='F1' ? 'var(--berry)' : (r.ferme==='F5' ? 'var(--green)' : 'var(--orange)'), fontSize:10}}>{r.ferme}</span></td>
                                         {!showKgInsteadOfOp && <td><strong>{r.kilos}</strong></td>}
                                         <td className="desktop-only-col">{r.heures}h</td>
+                                        <td className="desktop-only-col" style={{textAlign:'center',fontFamily:'monospace',fontSize:11,color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
+                                        <td className="desktop-only-col" style={{textAlign:'center',fontFamily:'monospace',fontSize:11,color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
                                         <td className="desktop-only-col">{Math.round(r.cout || 0)}</td>
                                         <td style={{color: r.prime > 0 ? 'var(--green)' : 'var(--gray-400)', fontWeight: r.prime > 0 ? 600 : 400}}>{r.prime > 0 ? r.prime : '-'}</td>
                                         <td className="desktop-only-col" style={{fontSize:10,color:'var(--gray-400)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.parcelle}</td>
                                     </tr>
-                                ))}
+                                ); })}
                             </tbody>
                             </React.Fragment>);
                             })()}
@@ -6675,8 +7228,23 @@
                                     const fileName = 'Classement_' + printPopup.ferme + '_' + (printPopup.dateStr || '');
                                     doc.setProperties({ title: fileName, subject: 'Classement Récolte', creator: 'Smart BERRY' });
                                     const blob = doc.output('blob');
-                                    const url = URL.createObjectURL(blob);
-                                    setPrintPopup(prev => ({...prev, pdfUrl: url, pdfFileName: fileName + '.pdf'}));
+                                    const fullName = fileName + '.pdf';
+                                    const isMobileDev = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+                                    if (isMobileDev) {
+                                        // Mobile browsers don't render blob: PDFs in iframes — share/download directly
+                                        const file = new File([blob], fullName, {type:'application/pdf'});
+                                        if (navigator.canShare && navigator.canShare({files:[file]})) {
+                                            navigator.share({ files:[file], title: fullName }).catch(() => {});
+                                        } else {
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a'); a.href = url; a.download = fullName;
+                                            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                                            setTimeout(() => URL.revokeObjectURL(url), 5000);
+                                        }
+                                    } else {
+                                        const url = URL.createObjectURL(blob);
+                                        setPrintPopup(prev => ({...prev, pdfUrl: url, pdfFileName: fullName}));
+                                    }
                                 }} style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 14px',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                                     <i className="fa-solid fa-file-pdf" style={{marginRight:4}}></i> PDF
                                 </button>
@@ -6765,6 +7333,7 @@
             const [selectedQuinz, setSelectedQuinz] = useState('');
             const [showTrend, setShowTrend] = useState(false);
             const [varieteFilter, setVarieteFilter] = useState('');
+            const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
 
             const isMyrtille = (v) => /myrtille|blue|corina|corrina|cascade|breeze/i.test(v || '');
             const calcPrime = data.calcPrime || ((kg, variete, date) => { const k = kg || 0; if (isMyrtille(variete)) { const seuil = /breeze/i.test(variete || '') ? 25 : /cascade/i.test(variete || '') ? ((date || '') >= '2026-04-25' ? 30 : 25) : 30; return k > seuil ? Math.round((k - seuil) * 2.5 * 10) / 10 : 0; } if (k < 20) return 0; if (k < 25) return 20; if (k < 30) return 40; if (k < 40) return Math.round((60 + (k - 30) * 3) * 10) / 10; return Math.round((90 + (k - 40) * 4) * 10) / 10; });
@@ -6783,9 +7352,17 @@
             const getEquipeName = (prefix) => equipeChefs[prefix] || prefix;
 
             const transportConfig = data.transportConfig || [];
+            // getTransport(prefix, periode) : tarif effectif à la quinzaine (versionné)
+            // Si periode fournie, utilise getCoutTransport (history-aware) ; sinon fallback courant
             const transportMap = {};
             transportConfig.forEach(t => { transportMap[t.prefix] = t.coutParOuvrier; });
-            const getTransport = (prefix) => transportMap[prefix] !== undefined ? transportMap[prefix] : DEFAULT_TRANSPORT;
+            const getTransport = (prefix, periode) => {
+                if (periode && data.getCoutTransport) {
+                    const v = data.getCoutTransport(prefix, periode);
+                    if (v !== undefined && v !== null) return v;
+                }
+                return transportMap[prefix] !== undefined ? transportMap[prefix] : DEFAULT_TRANSPORT;
+            };
 
             const logistiqueOps = /caporal|conditionnement|encadrement|chargement/i;
             const resolveCulture = (w) => {
@@ -6825,7 +7402,7 @@
                 const kg = w.quantite || 0;
                 const prefix = getEquipePrefix(w.matricule);
                 const salaire = w.cout || 0;
-                const transport = getTransport(prefix);
+                const transport = getTransport(prefix, w.periode);
                 const prime = calcPrime(kg, isMyrt ? 'myrtille' : w.variete, w.jour);
                 const charges = CHARGES_SOCIALES;
                 const coutTotal = salaire + transport + prime + charges;
@@ -6854,7 +7431,7 @@
                     const isMyrt = /myrtille/i.test(culture);
                     const prefix = getEquipePrefix(d.matricule);
                     const prime = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
-                    return { ...d, culture, prefix, transport: getTransport(prefix), prime, charges: CHARGES_SOCIALES };
+                    return { ...d, culture, prefix, transport: getTransport(prefix, qFilter), prime, charges: CHARGES_SOCIALES };
                 });
                 // Aggregate by worker across days
                 const byWorker = {};
@@ -6956,6 +7533,56 @@
             });
             const cultStats = Object.values(cultAgg).map(c => ({ ...c, coutTotal: c.salaire + c.transport + c.prime + c.charges, dhParKg: c.kg > 0 ? Math.round((c.salaire + c.transport + c.prime + c.charges) / c.kg * 100) / 100 : null }));
 
+            // Synthèse par Variété — Cycle Complet (basée sur equipeRows, ignore filtre date/quinzaine)
+            const cycleRecordsRaw = (equipeRows || []).filter(r => {
+                if (!r || logistiqueOps.test(r.operation || '')) return false;
+                if (fermeFilter && r.ferme !== fermeFilter) return false;
+                if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return false;
+                if (cultureFilter) {
+                    const cult = r.culture || '';
+                    if (/myrtille/i.test(cult) !== (cultureFilter === 'Myrtille')) return false;
+                }
+                if (cycleSelected && getCycle(r.jour) !== cycleSelected) return false;
+                return true;
+            });
+            // Agréger par matricule+jour pour obtenir kg/jour (et appliquer prime quotidienne)
+            const cycleByWorkerDay = {};
+            cycleRecordsRaw.forEach(r => {
+                const key = `${r.matricule}|${r.jour}`;
+                if (!cycleByWorkerDay[key]) cycleByWorkerDay[key] = { matricule: r.matricule, jour: r.jour, variete: r.variete, kg: 0, salaire: 0 };
+                cycleByWorkerDay[key].kg += (r.kg || 0);
+                cycleByWorkerDay[key].salaire += (r.cout || 0);
+            });
+            const cycleVarAgg = {};
+            Object.values(cycleByWorkerDay).forEach(d => {
+                const key = d.variete || 'N/A';
+                if (!cycleVarAgg[key]) cycleVarAgg[key] = { variete: key, kg: 0, joursOuv: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
+                cycleVarAgg[key].kg += d.kg;
+                cycleVarAgg[key].joursOuv += 1;
+                cycleVarAgg[key].salaire += d.salaire;
+                const prefix = getEquipePrefix(d.matricule);
+                cycleVarAgg[key].transport += getTransport(prefix);
+                const isMyrt = isMyrtille(d.variete);
+                cycleVarAgg[key].prime += calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
+                cycleVarAgg[key].charges += CHARGES_SOCIALES;
+            });
+            const cycleVarStats = Object.values(cycleVarAgg).map(v => {
+                const coutTotal = v.salaire + v.transport + v.prime + v.charges;
+                return {
+                    ...v,
+                    coutTotal,
+                    kgParOuvJour: v.joursOuv > 0 ? +(v.kg / v.joursOuv).toFixed(1) : 0,
+                    dhParKg: v.kg > 0 ? +(coutTotal / v.kg).toFixed(2) : null,
+                    dhParOuvJour: v.joursOuv > 0 ? Math.round(coutTotal / v.joursOuv) : 0,
+                };
+            }).sort((a, b) => b.kgParOuvJour - a.kgParOuvJour);
+            const cycleTotalKg = cycleVarStats.reduce((s, v) => s + v.kg, 0);
+            const cycleTotalJours = cycleVarStats.reduce((s, v) => s + v.joursOuv, 0);
+            const cycleTotalCout = cycleVarStats.reduce((s, v) => s + v.coutTotal, 0);
+            const cycleAvgKgJ = cycleTotalJours > 0 ? +(cycleTotalKg / cycleTotalJours).toFixed(1) : 0;
+            const cycleAvgDhKg = cycleTotalKg > 0 ? +(cycleTotalCout / cycleTotalKg).toFixed(2) : null;
+            const cycleAvgDhJ = cycleTotalJours > 0 ? Math.round(cycleTotalCout / cycleTotalJours) : 0;
+
             const dhColor = (val) => {
                 if (val === null) return 'var(--gray-400)';
                 if (val <= 5) return '#059669';
@@ -7042,13 +7669,14 @@
                                 byW[k].salaire += (r.cout || 0);
                             });
                             const wList = Object.values(byW);
+                            const dayPeriode = (dayRows.find(r => r.periode) || {}).periode || '';
                             let tSalaire = 0, tTransport = 0, tPrime = 0, tCharges = 0, tKg = 0;
                             wList.forEach(w => {
                                 const culture = w.culture || resolveCulture(w);
                                 const isMyrt = /myrtille/i.test(culture);
                                 const prefix = getEquipePrefix(w.matricule);
                                 tSalaire += w.salaire;
-                                tTransport += getTransport(prefix);
+                                tTransport += getTransport(prefix, dayPeriode);
                                 tPrime += calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour);
                                 tCharges += CHARGES_SOCIALES;
                                 tKg += w.kg;
@@ -7114,6 +7742,59 @@
                             </div>
                         );
                     })()}
+
+                    {/* ---- Synthèse par Variété — Cycle Complet ---- */}
+                    <Panel title="Synthèse par Variété — Cycle Complet" icon="fa-chart-line" defaultOpen={true}>
+                        <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
+                            <span style={{fontSize:11,color:'var(--gray-600)',fontWeight:600}}>Cycle :</span>
+                            {[{v:1,l:'Cycle 1 (Sep–Déc)'},{v:2,l:'Cycle 2 (Jan–Juin)'},{v:0,l:'Les deux'}].map(o => (
+                                <button key={o.v} onClick={() => setCycleSelected(o.v)} style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600,background:cycleSelected===o.v?'var(--berry)':'white',color:cycleSelected===o.v?'white':'var(--gray-600)',cursor:'pointer'}}>{o.l}</button>
+                            ))}
+                            <span style={{marginLeft:'auto',fontSize:10,color:'var(--gray-500)',fontStyle:'italic'}}>
+                                <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>
+                                Cumul sur le cycle entier — indépendant du filtre date/quinzaine
+                            </span>
+                        </div>
+                        {cycleVarStats.length === 0 ? (
+                            <div style={{padding:20,textAlign:'center',color:'var(--gray-400)',fontSize:12}}>Aucune donnée pour ce cycle.</div>
+                        ) : (
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr>
+                                <th>Variété</th>
+                                <th style={{textAlign:'right'}}>Kg total</th>
+                                <th style={{textAlign:'right'}}>J-Ouvriers</th>
+                                <th style={{textAlign:'right',fontWeight:700,background:'#fef3c7'}}>Kg/ouv/j</th>
+                                <th style={{textAlign:'right'}}>Coût total (DH)</th>
+                                <th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th>
+                                <th style={{textAlign:'right',fontWeight:700,background:'#fef3c7'}}>DH/ouv/j</th>
+                            </tr></thead>
+                            <tbody>
+                                {cycleVarStats.map(v => (
+                                    <tr key={v.variete}>
+                                        <td><span style={{fontWeight:600}}>{v.variete}</span></td>
+                                        <td style={{textAlign:'right'}}>{fmt(v.kg)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(v.joursOuv)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,fontSize:13,background:'#fffbeb'}}>{v.kgParOuvJour}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(v.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(v.dhParKg),fontSize:13}}>{fmt2(v.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,fontSize:13,background:'#fffbeb'}}>{fmt(v.dhParOuvJour)}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}>
+                                <td>Total</td>
+                                <td style={{textAlign:'right'}}>{fmt(cycleTotalKg)}</td>
+                                <td style={{textAlign:'right'}}>{fmt(cycleTotalJours)}</td>
+                                <td style={{textAlign:'right',fontSize:13}}>{cycleAvgKgJ}</td>
+                                <td style={{textAlign:'right'}}>{fmt(cycleTotalCout)}</td>
+                                <td style={{textAlign:'right',color:dhColor(cycleAvgDhKg),fontSize:13}}>{fmt2(cycleAvgDhKg)}</td>
+                                <td style={{textAlign:'right',fontSize:13}}>{fmt(cycleAvgDhJ)}</td>
+                            </tr></tfoot>
+                        </table>
+                        </div>
+                        )}
+                    </Panel>
 
                     {/* ---- Par Culture ---- */}
                     <Panel title="Coût par Culture" icon="fa-seedling" defaultOpen={true}>
@@ -8092,6 +8773,15 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
             const [recolteEquipeRows, setRecolteEquipeRows] = useState([]);
             const [transportPopup, setTransportPopup] = useState(null);
             const [analytiqueData, setAnalytiqueData] = useState([]);
+            const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
+            useEffect(() => {
+                if (!analytiqueFullscreen) return;
+                const onKey = (e) => { if (e.key === 'Escape') setAnalytiqueFullscreen(false); };
+                window.addEventListener('keydown', onKey);
+                const prev = document.body.style.overflow;
+                document.body.style.overflow = 'hidden';
+                return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+            }, [analytiqueFullscreen]);
             const [reposData, setReposData] = useState(null);
             const [alertesData, setAlertesData] = useState(null);
             const [expandedReposEquipe, setExpandedReposEquipe] = useState(null);
@@ -8514,66 +9204,121 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                             totByOp[r.operationFamille].jh += r.jh;
                             totByOp[r.operationFamille].cout += r.cout;
                         });
-                        return (
-                        <Panel title="Affectation Analytique" icon="fa-table-cells">
-                            <div className="table-responsive">
-                            {(() => {
-                                // Totals by parcelle
-                                const totByParc = {};
-                                parcelles.forEach(p => {
-                                    totByParc[p] = { jh: 0, cout: 0 };
-                                    opFamilles.forEach(op => {
-                                        totByParc[p].jh += (pivot[p]?.[op]?.jh || 0);
-                                        totByParc[p].cout += (pivot[p]?.[op]?.cout || 0);
-                                    });
-                                });
-                                const activeParcelles = parcelles.filter(p => totByParc[p].jh > 0);
-                                return (
-                                <table className="data-table" style={{fontSize:11}}>
+                        const totByParc = {};
+                        parcelles.forEach(p => {
+                            totByParc[p] = { jh: 0, cout: 0 };
+                            opFamilles.forEach(op => {
+                                totByParc[p].jh += (pivot[p]?.[op]?.jh || 0);
+                                totByParc[p].cout += (pivot[p]?.[op]?.cout || 0);
+                            });
+                        });
+                        const activeParcelles = parcelles.filter(p => totByParc[p].jh > 0);
+                        const FIRST_COL = 220;
+                        const PARC_COL = 130;
+                        const TOT_COL = 140;
+                        const minWidth = FIRST_COL + activeParcelles.length * PARC_COL + TOT_COL;
+                        const grandJH = Object.values(totByOp).reduce((s, t) => s + t.jh, 0);
+                        const grandCout = Object.values(totByOp).reduce((s, t) => s + t.cout, 0);
+                        const stickyShadow = '2px 0 4px -2px rgba(0,0,0,0.08)';
+                        const renderTable = (maxH, fill) => (
+                                <div style={{overflowX:'auto',overflowY:'auto',maxHeight:fill?undefined:maxH,height:fill?'100%':undefined,minHeight:0,border:'1px solid var(--gray-100)',borderRadius:10,background:'#fff',WebkitOverflowScrolling:'touch'}}>
+                                <table style={{minWidth,width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12}}>
                                     <thead>
                                         <tr>
-                                            <th style={{position:'sticky',left:0,background:'#fff',zIndex:1}}>Opération</th>
-                                            {activeParcelles.map(p => <th key={p} style={{textAlign:'center',fontSize:10,whiteSpace:'nowrap'}}>{p}</th>)}
-                                            <th style={{textAlign:'center',fontWeight:700}}>Total</th>
+                                            <th style={{position:'sticky',left:0,top:0,zIndex:3,background:'#f8f9fa',padding:'12px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--gray-200)',boxShadow:stickyShadow,minWidth:FIRST_COL}}>Opération</th>
+                                            {activeParcelles.map(p => (
+                                                <th key={p} style={{position:'sticky',top:0,zIndex:2,background:'#f8f9fa',padding:'12px 10px',textAlign:'center',fontSize:10,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.3,borderBottom:'2px solid var(--gray-200)',whiteSpace:'nowrap',minWidth:PARC_COL}}>{p}</th>
+                                            ))}
+                                            <th style={{position:'sticky',top:0,right:0,zIndex:3,background:'#f5e6ec',padding:'12px 14px',textAlign:'center',fontSize:11,fontWeight:700,color:'var(--berry)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--berry)',minWidth:TOT_COL}}>Total</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {opFamilles.map(op => {
+                                        {opFamilles.map((op, idx) => {
                                             const rowTotal = activeParcelles.reduce((s, p) => s + (pivot[p]?.[op]?.jh || 0), 0);
                                             if (rowTotal === 0) return null;
+                                            const rowBg = idx % 2 === 0 ? '#fff' : '#fafbfc';
                                             return (
-                                            <tr key={op}>
-                                                <td style={{fontWeight:600,fontSize:10,position:'sticky',left:0,background:'#fff',whiteSpace:'nowrap'}}>{op.replace(/^\d+\.\s*/, '')}</td>
+                                            <tr key={op} className="aa-row">
+                                                <td style={{position:'sticky',left:0,zIndex:1,background:rowBg,padding:'10px 14px',fontWeight:600,fontSize:12,color:'var(--gray-800)',whiteSpace:'nowrap',borderBottom:'1px solid var(--gray-100)',boxShadow:stickyShadow}}>{op.replace(/^\d+\.\s*/, '')}</td>
                                                 {activeParcelles.map(p => {
                                                     const cell = pivot[p]?.[op];
-                                                    return <td key={p} style={{textAlign:'center',fontSize:10}}>
-                                                        {cell ? <div><div style={{fontWeight:600}}>{Math.round(cell.jh * 10) / 10}</div><div style={{fontSize:9,color:'var(--gray-400)'}}>{Math.round(cell.cout).toLocaleString('fr-FR')} DH</div></div> : <span style={{color:'var(--gray-200)'}}>-</span>}
+                                                    return <td key={p} style={{padding:'10px',textAlign:'center',borderBottom:'1px solid var(--gray-100)',background:rowBg}}>
+                                                        {cell ? (
+                                                            <div>
+                                                                <div style={{fontWeight:600,fontSize:13,color:'var(--gray-800)'}}>{Math.round(cell.jh * 10) / 10}</div>
+                                                                <div style={{fontSize:10,color:'var(--gray-400)',marginTop:2}}>{Math.round(cell.cout).toLocaleString('fr-FR')} DH</div>
+                                                            </div>
+                                                        ) : <span style={{color:'var(--gray-200)'}}>—</span>}
                                                     </td>;
                                                 })}
-                                                <td style={{textAlign:'center',fontWeight:700,color:'var(--berry)'}}>
-                                                    <div>{Math.round((totByOp[op]?.jh || 0) * 10) / 10} JH</div>
-                                                    <div style={{fontSize:9}}>{Math.round((totByOp[op]?.cout || 0)).toLocaleString('fr-FR')} DH</div>
+                                                <td style={{padding:'10px 14px',textAlign:'center',background:'var(--berry-pale)',borderBottom:'1px solid var(--gray-100)',borderLeft:'1px solid var(--gray-100)'}}>
+                                                    <div style={{fontWeight:700,fontSize:13,color:'var(--berry)'}}>{Math.round((totByOp[op]?.jh || 0) * 10) / 10} JH</div>
+                                                    <div style={{fontSize:10,color:'var(--berry)',opacity:0.75,marginTop:2}}>{Math.round((totByOp[op]?.cout || 0)).toLocaleString('fr-FR')} DH</div>
                                                 </td>
                                             </tr>);
                                         })}
-                                        <tr style={{background:'var(--berry-pale)',fontWeight:700}}>
-                                            <td style={{position:'sticky',left:0,background:'var(--berry-pale)'}}>TOTAL</td>
+                                        <tr>
+                                            <td style={{position:'sticky',left:0,bottom:0,zIndex:2,background:'var(--berry)',color:'#fff',padding:'12px 14px',fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:0.4,boxShadow:stickyShadow}}>Total</td>
                                             {activeParcelles.map(p => (
-                                                <td key={p} style={{textAlign:'center',fontSize:10}}>
-                                                    <div>{Math.round(totByParc[p].jh * 10) / 10}</div>
-                                                    <div style={{fontSize:9,color:'var(--berry)'}}>{Math.round(totByParc[p].cout).toLocaleString('fr-FR')} DH</div>
+                                                <td key={p} style={{position:'sticky',bottom:0,zIndex:1,background:'var(--berry)',color:'#fff',padding:'12px 10px',textAlign:'center'}}>
+                                                    <div style={{fontWeight:700,fontSize:13}}>{Math.round(totByParc[p].jh * 10) / 10}</div>
+                                                    <div style={{fontSize:10,opacity:0.85,marginTop:2}}>{Math.round(totByParc[p].cout).toLocaleString('fr-FR')} DH</div>
                                                 </td>
                                             ))}
-                                            <td style={{textAlign:'center',color:'var(--berry)',fontSize:13}}>
-                                                <div>{Math.round(Object.values(totByOp).reduce((s, t) => s + t.jh, 0) * 10) / 10} JH</div>
-                                                <div style={{fontSize:10}}>{Math.round(Object.values(totByOp).reduce((s, t) => s + t.cout, 0)).toLocaleString('fr-FR')} DH</div>
+                                            <td style={{position:'sticky',bottom:0,right:0,zIndex:2,background:'var(--berry-dark, #5d1839)',color:'#fff',padding:'12px 14px',textAlign:'center',borderLeft:'1px solid rgba(255,255,255,0.2)'}}>
+                                                <div style={{fontWeight:800,fontSize:14}}>{Math.round(grandJH * 10) / 10} JH</div>
+                                                <div style={{fontSize:10,opacity:0.9,marginTop:2}}>{Math.round(grandCout).toLocaleString('fr-FR')} DH</div>
                                             </td>
                                         </tr>
                                     </tbody>
-                                </table>);
-                            })()}
+                                </table>
+                                </div>
+                        );
+                        return (
+                        <React.Fragment>
+                        <Panel title="Affectation Analytique" icon="fa-table-cells" actions={
+                            <button
+                                onClick={() => setAnalytiqueFullscreen(true)}
+                                title="Afficher en plein écran"
+                                style={{background:'var(--berry-pale)',color:'var(--berry)',border:'1px solid var(--berry)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}
+                            >
+                                <i className="fa-solid fa-up-right-and-down-left-from-center"></i>
+                                Plein écran
+                            </button>
+                        }>
+                            <div onClick={() => setAnalytiqueFullscreen(true)} style={{cursor:'zoom-in'}} title="Cliquez pour agrandir">
+                                {renderTable('70vh')}
                             </div>
                         </Panel>
+                        {analytiqueFullscreen && (
+                            <div
+                                onClick={() => setAnalytiqueFullscreen(false)}
+                                style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                            >
+                                <div
+                                    onClick={e => e.stopPropagation()}
+                                    style={{background:'#fff',borderRadius:14,width:'min(1600px, 98vw)',height:'min(95vh, 95vh)',display:'flex',flexDirection:'column',boxShadow:'0 30px 80px rgba(0,0,0,0.4)',overflow:'hidden'}}
+                                >
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderBottom:'1px solid var(--gray-100)',background:'var(--gray-50)'}}>
+                                        <h3 style={{margin:0,fontSize:15,color:'var(--berry)',display:'flex',alignItems:'center',gap:10}}>
+                                            <i className="fa-solid fa-table-cells"></i>
+                                            Affectation Analytique
+                                        </h3>
+                                        <button
+                                            onClick={() => setAnalytiqueFullscreen(false)}
+                                            title="Fermer (Échap)"
+                                            style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'var(--gray-500)',padding:'4px 10px',borderRadius:6,lineHeight:1}}
+                                        >
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{flex:1,minHeight:0,padding:16,display:'flex',flexDirection:'column'}}>
+                                        {renderTable(null, true)}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        </React.Fragment>
                         );
                     })()}
 
@@ -11927,7 +12672,8 @@ ${rejetHtml}
             const [selectedDayLots, setSelectedDayLots] = useState(null);
             const [currentLotIndex, setCurrentLotIndex] = useState(0);
             const [visibleSeries, setVisibleSeries] = useState({ Total: true, Condition: true, Apparence: true });
-            const [focusSeries, setFocusSeries] = useState('Total');
+            const [focusSeries, setFocusSeries] = useState('');
+            const [periodDays, setPeriodDays] = useState(7);
             const ranchToFerme = { '200742': 'F1', '200876': 'F5' };
 
             React.useEffect(() => {
@@ -11983,11 +12729,20 @@ ${rejetHtml}
                     .sort((a, b) => new Date(b.date) - new Date(a.date));
             }, [fermeFiltered, activeVariete]);
 
-            const len = historique.length || 1;
-            const avgCond = Math.round(historique.reduce((s, h) => s + h.avgCondition, 0) / len * 10) / 10;
-            const avgApp = Math.round(historique.reduce((s, h) => s + h.avgApparence, 0) / len * 10) / 10;
-            const avgTotal = Math.round(historique.reduce((s, h) => s + h.avgPfqTotal, 0) / len * 10) / 10;
-            const avgPass = Math.round(historique.reduce((s, h) => s + h.passRate, 0) / len);
+            const displayedHistorique = React.useMemo(() => {
+                if (!periodDays) return historique;
+                const cutoff = Date.now() - periodDays * 86400000;
+                return historique.filter(h => {
+                    const d = new Date(h.date);
+                    return !isNaN(d) && d.getTime() >= cutoff;
+                });
+            }, [historique, periodDays]);
+
+            const len = displayedHistorique.length || 1;
+            const avgCond = Math.round(displayedHistorique.reduce((s, h) => s + h.avgCondition, 0) / len * 10) / 10;
+            const avgApp = Math.round(displayedHistorique.reduce((s, h) => s + h.avgApparence, 0) / len * 10) / 10;
+            const avgTotal = Math.round(displayedHistorique.reduce((s, h) => s + h.avgPfqTotal, 0) / len * 10) / 10;
+            const avgPass = Math.round(displayedHistorique.reduce((s, h) => s + h.passRate, 0) / len);
 
             if (loading) return <div style={{textAlign:'center', padding:24, color:'var(--gray-400)'}}><i className="fa-solid fa-spinner fa-spin"></i> Chargement...</div>;
 
@@ -12012,6 +12767,15 @@ ${rejetHtml}
                                 </button>
                             ))}
                         </div>
+                        <div className="chip-group">
+                            <span className="chip-group-label">Période:</span>
+                            {[{l:'7j',v:7},{l:'30j',v:30},{l:'90j',v:90},{l:'180j',v:180},{l:'Tout',v:0}].map(p => (
+                                <button key={p.l} className={`chip c-green ${periodDays === p.v ? 'active' : ''}`}
+                                    onClick={() => setPeriodDays(p.v)}>
+                                    {p.l}
+                                </button>
+                            ))}
+                        </div>
                     </div>
 
                     <div className="kpi-grid">
@@ -12030,11 +12794,16 @@ ${rejetHtml}
                     </div>
 
                     <Panel title={`Évolution PFQ - ${activeVariete}`} icon="fa-chart-area">
-                        {historique.length > 1 ? (
+                        {displayedHistorique.length > 1 ? (
                             <React.Fragment>
                                 <SimpleAreaChart
-                                    data={[...historique].reverse().map(h => ({
-                                        date: h.date.length > 5 ? h.date.substring(0, 5) : h.date,
+                                    data={[...displayedHistorique].reverse().map(h => ({
+                                        date: (() => {
+                                            const r = h.date || '';
+                                            if (r.includes('/')) return r.substring(0, 5);
+                                            const m = r.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                            return m ? `${m[3]}/${m[2]}` : r;
+                                        })(),
                                         ...(visibleSeries.Condition ? { Condition: Math.round(h.avgCondition * 10) / 10 } : {}),
                                         ...(visibleSeries.Apparence ? { Apparence: Math.round(h.avgApparence * 10) / 10 } : {}),
                                         ...(visibleSeries.Total ? { Total: Math.round(h.avgPfqTotal * 10) / 10 } : {})
@@ -12085,7 +12854,7 @@ ${rejetHtml}
                                 </tr>
                             </thead>
                             <tbody>
-                                {historique.map((h, i) => (
+                                {displayedHistorique.map((h, i) => (
                                     <tr key={i} onClick={() => { setSelectedDayLots(h.lots); setCurrentLotIndex(0); }}
                                         style={{cursor:'pointer'}}
                                         onMouseOver={e => e.currentTarget.style.background='rgba(139,34,82,0.04)'}
@@ -12105,9 +12874,9 @@ ${rejetHtml}
                                         </td>
                                     </tr>
                                 ))}
-                                {historique.length === 0 && (
+                                {displayedHistorique.length === 0 && (
                                     <tr><td colSpan="9" style={{textAlign:'center', padding:24, color:'var(--gray-400)', fontSize:13}}>
-                                        Aucune donnée pour cette variété
+                                        Aucune donnée pour cette période
                                     </td></tr>
                                 )}
                             </tbody>
@@ -12238,7 +13007,7 @@ ${rejetHtml}
         }
 
         // ===================== QUALITE PRODUCTION TAB =====================
-        function QualiteProductionTab({ data, applyVarietyMapping, forceFerme, hideCycle1, userProfile }) {
+        function QualiteProductionTab({ data, applyVarietyMapping, forceFerme, hideCycle1, userProfile, cycle2OnlyView }) {
             const [bonsApport, setBonsApport] = useState([]);
             const [loading, setLoading] = useState(true);
             const [selectedFerme, setSelectedFerme] = useState(forceFerme || '');
@@ -12632,6 +13401,14 @@ ${rejetHtml}
             const dateFiltered = selectedDate ? typeFiltered.filter(e => e.dateISO === selectedDate || e.date === selectedDate) : typeFiltered;
             const uniqueClients = [...new Set(dateFiltered.map(e => e.client).filter(Boolean))].sort();
             const filtered = selectedClient ? dateFiltered.filter(e => e.client === selectedClient) : dateFiltered;
+            // When Écarts is on, bypass the typeVente filter (default 'Export') so Marché Local bons are included.
+            const chartSource = React.useMemo(() => {
+                if (!showEcarts || !selectedTypeVente) return filtered;
+                let s = varieteFiltered;
+                if (selectedDate) s = s.filter(e => e.dateISO === selectedDate || e.date === selectedDate);
+                if (selectedClient) s = s.filter(e => e.client === selectedClient);
+                return s;
+            }, [showEcarts, selectedTypeVente, filtered, varieteFiltered, selectedDate, selectedClient]);
             const activeCycleForHa = selectedCycle || getCycle(new Date().toISOString());
 
             // Week number: Sat-Fri weeks (calendrier Driscoll's)
@@ -12718,7 +13495,7 @@ ${rejetHtml}
             // Production by week
             const byWeek = React.useMemo(() => {
                 const acc = {};
-                filtered.forEach(e => {
+                chartSource.forEach(e => {
                     const w = getWeekNum(e.dateISO);
                     if (!w) return;
                     if (!acc[w]) acc[w] = { week: w, kg: 0, lots: 0, byVar: {}, byVarEst: {}, kgExport: 0, kgEcart: 0 };
@@ -12734,12 +13511,12 @@ ${rejetHtml}
                     }
                 });
                 return Object.values(acc).sort((a, b) => weekOrder(a.week) - weekOrder(b.week));
-            }, [filtered]);
+            }, [chartSource]);
 
             // Production by day
             const byDay = React.useMemo(() => {
                 const acc = {};
-                filtered.forEach(e => {
+                chartSource.forEach(e => {
                     const dateISO = e.dateISO;
                     if (!dateISO) return;
                     // Format label DD/MM from YYYY-MM-DD
@@ -12758,7 +13535,7 @@ ${rejetHtml}
                     }
                 });
                 return Object.values(acc).sort((a, b) => a.date.localeCompare(b.date));
-            }, [filtered]);
+            }, [chartSource]);
 
             const allVarieties = [...new Set(filtered.map(e => e.variety).filter(Boolean))].sort();
             const varColors = { 'Reyna': '#8B2252', 'Maravilla': '#3498db', 'Maravilla Long Cane': '#2980b9', 'Maravilla Green Cane': '#5dade2', 'Yazmin Sol': '#f39c12', 'Yazmin': '#f39c12', 'Yazmin Bi Cycle': '#e67e22', 'Yazmin Mow Down': '#f1c40f', 'Corrina': '#27ae60', 'Corina': '#27ae60', 'Corina (Myrtille)': '#27ae60', 'Cascade': '#9b59b6', 'Breeze': '#1abc9c' };
@@ -12784,24 +13561,91 @@ ${rejetHtml}
                 const varieties = [...new Set(filtered.map(e => e.variety).filter(Boolean))];
                 return varieties.reduce((s, v) => s + getHa(v, selectedFerme || null, activeCycleForHa), 0);
             })();
+            const chartVarieties = [...new Set(filtered.map(e => e.variety).filter(Boolean))];
+            const isAllMyrtilleChart = chartVarieties.length > 0 && chartVarieties.every(v => {
+                const r = normalizeParcelle(v);
+                return r && r.culture === 'Myrtille';
+            });
+            const chartTotalPlants = isAllMyrtilleChart
+                ? chartVarieties.reduce((s, v) => s + getPlants(v, selectedFerme || null, activeCycleForHa), 0)
+                : 0;
+            const showKgPlantChart = isAllMyrtilleChart && chartTotalPlants > 0;
             const byDayKgHa = byDay.map(d => ({
                 ...d,
                 kgha: chartTotalHa > 0 ? (d.kg / chartTotalHa) : 0,
-                byVarKgHa: Object.fromEntries(Object.entries(d.byVar).map(([v, kg]) => [v, chartTotalHa > 0 ? (kg / chartTotalHa) : 0]))
+                kgplant: chartTotalPlants > 0 ? (d.kg / chartTotalPlants) : 0,
+                byVarKgHa: Object.fromEntries(Object.entries(d.byVar).map(([v, kg]) => [v, chartTotalHa > 0 ? (kg / chartTotalHa) : 0])),
+                byVarKgPlant: Object.fromEntries(Object.entries(d.byVar).map(([v, kg]) => [v, chartTotalPlants > 0 ? (kg / chartTotalPlants) : 0]))
             }));
             const isKgHaModeChart = chartMode === 'kgha';
+            const isKgPlantModeChart = chartMode === 'kgplant';
 
             // Weekly Kg/Ha computation
             const byWeekKgHa = byWeek.map(w => ({
                 ...w,
                 kgha: chartTotalHa > 0 ? (w.kg / chartTotalHa) : 0,
+                kgplant: chartTotalPlants > 0 ? (w.kg / chartTotalPlants) : 0,
             }));
 
             // Chart: max for scaling
             const maxWeekKg = byWeek.length > 0 ? Math.max(...byWeek.map(w => w.kg)) : 1;
             const maxWeekKgHa = byWeekKgHa.length > 0 ? Math.max(...byWeekKgHa.map(w => w.kgha)) : 1;
+            const maxWeekKgPlant = byWeekKgHa.length > 0 ? Math.max(...byWeekKgHa.map(w => w.kgplant)) : 0.001;
             const maxDayKg = byDay.length > 0 ? Math.max(...byDay.map(d => d.kg)) : 1;
             const maxDayKgHa = byDayKgHa.length > 0 ? Math.max(...byDayKgHa.map(d => d.kgha)) : 1;
+            const maxDayKgPlant = byDayKgHa.length > 0 ? Math.max(...byDayKgHa.map(d => d.kgplant)) : 0.001;
+            const dayKgPlantInGrams = isKgPlantModeChart && maxDayKgPlant < 1;
+            const weekKgPlantInGrams = isKgPlantModeChart && maxWeekKgPlant < 1;
+
+            if (cycle2OnlyView) {
+                if (loading) return <div className="loading"><i className="fa-solid fa-spinner fa-spin"></i> Chargement...</div>;
+                if (cycle2Stats.length === 0) return <div style={{padding:20, color:'var(--gray-400)'}}>Aucune donnée Cycle 2.</div>;
+                return (
+                    <div className="fade-in" style={{padding:16, borderRadius:14, background:'linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%)', border:'1.5px solid #e0e7ff'}}>
+                        <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:14}}>
+                            <i className="fa-solid fa-chart-column" style={{color:'#5c6bc0'}}></i>
+                            <span style={{fontWeight:700, fontSize:14, color:'#283593'}}>Rendement Cycle 2 — Toutes variétés</span>
+                        </div>
+                        <div className="variety-cards-grid" style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:10}}>
+                            {cycle2Stats.map((s, i) => {
+                                const isMyrt = s.culture === 'Myrtille';
+                                const cardBg = isMyrt ? '#e8f5e9' : '#fff3e0';
+                                const cardBorder = isMyrt ? '#a5d6a7' : '#ffcc80';
+                                const rendColor = isMyrt ? '#2e7d32' : '#e65100';
+                                const budgetCfg = BUDGET_BGF[s.variety];
+                                const storedTotals = (() => { try { const st = localStorage.getItem('budgetBGFTotals'); return st ? JSON.parse(st) : {}; } catch(e) { return {}; } })();
+                                const budgetTotal = budgetCfg ? (storedTotals[s.variety] || budgetCfg.total) : 0;
+                                const reelKgHa = s.ha > 0 ? s.kgExport / s.ha : 0;
+                                const pctBudget = budgetTotal > 0 ? (reelKgHa / budgetTotal * 100).toFixed(0) : null;
+                                const pctColor = pctBudget !== null ? (pctBudget >= 100 ? '#22c55e' : pctBudget >= 70 ? '#f59e0b' : '#ef4444') : '#999';
+                                return (
+                                    <div key={i} style={{padding:12, borderRadius:10, background:cardBg, border:`1px solid ${cardBorder}`, position:'relative'}}>
+                                        {pctBudget !== null && (
+                                            <div style={{position:'absolute', top:8, right:10, fontSize:12, fontWeight:800, color:pctColor}}>
+                                                {pctBudget}%
+                                                <div style={{fontSize:8, fontWeight:500, color:'#999', textAlign:'right'}}>vs Budget</div>
+                                            </div>
+                                        )}
+                                        <div style={{fontWeight:700, fontSize:12, color:'#1a237e', marginBottom:2}}>{s.variety}</div>
+                                        <div style={{fontSize:10, color:'var(--gray-500)', marginBottom:8}}>{isMyrt ? '🫐 Myrtille' : '🍇 Framboise'}</div>
+                                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline'}}>
+                                            <div>
+                                                <div style={{fontSize:18, fontWeight:800, color:rendColor}}>{s.rendement}</div>
+                                                <div style={{fontSize:10, color:'var(--gray-400)'}}>{s.rendementLabel}</div>
+                                            </div>
+                                            <div style={{textAlign:'right'}}>
+                                                <div style={{fontSize:13, fontWeight:700, color:'#e65100'}}>{s.pctLocal}%</div>
+                                                <div style={{fontSize:9, color:'var(--gray-400)'}}>% Local</div>
+                                            </div>
+                                        </div>
+                                        <div style={{marginTop:6, fontSize:10, color:'var(--gray-500)'}}>Export: {s.tonnageExport} T{s.plants > 0 && <span style={{marginLeft:8, color:'#283593', fontWeight:600}}>{s.plants.toLocaleString()} plants</span>}</div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <div className="fade-in">
@@ -13405,7 +14249,11 @@ ${rejetHtml}
                     <Panel title="Production par Jour" icon="fa-chart-bar">
                         <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', marginBottom:8, gap:8}}>
                             <div className="chip-group" style={{marginBottom:0}}>
-                                {[{v:'total', l:'Total (kg)'}, {v:'kgha', l:'Kg / Ha'}].map(m => (
+                                {[
+                                    {v:'total', l:'Total (kg)'},
+                                    {v:'kgha', l:'Kg / Ha'},
+                                    ...(showKgPlantChart ? [{v:'kgplant', l: dayKgPlantInGrams ? 'g / Pl' : 'Kg / Pl'}] : [])
+                                ].map(m => (
                                     <button key={m.v} className={`chip c-berry ${chartMode === m.v ? 'active' : ''}`} onClick={() => setChartMode(m.v)} style={{padding:'4px 12px',fontSize:11}}>{m.l}</button>
                                 ))}
                             </div>
@@ -13419,13 +14267,20 @@ ${rejetHtml}
                                 Aucune surface (Ha) disponible pour le filtre actuel. Sélectionnez une ferme ou variété.
                             </div>
                         )}
+                        {isKgPlantModeChart && chartTotalPlants <= 0 && (
+                            <div style={{padding:8, fontSize:11, color:'#e74c3c', background:'#fdf0ed', borderRadius:6, marginBottom:8}}>
+                                Aucune information de plants disponible pour le filtre actuel.
+                            </div>
+                        )}
                         <div ref={dayChartScrollRef} style={{overflowX:'auto'}}>
                             <div style={{display:'flex', alignItems:'flex-end', gap:2, minHeight:220, padding:'16px 8px 0'}}>
                                 {byDayKgHa.map((d, i) => {
-                                    const val = isKgHaModeChart ? d.kgha : d.kg;
-                                    const maxVal = isKgHaModeChart ? maxDayKgHa : maxDayKg;
+                                    const val = isKgPlantModeChart ? d.kgplant : isKgHaModeChart ? d.kgha : d.kg;
+                                    const maxVal = isKgPlantModeChart ? maxDayKgPlant : isKgHaModeChart ? maxDayKgHa : maxDayKg;
                                     const h = maxVal > 0 ? (val / maxVal * 180) : 0;
-                                    const labelVal = isKgHaModeChart ? Math.round(d.kgha).toLocaleString() : Math.round(d.kg).toLocaleString();
+                                    const labelVal = isKgPlantModeChart
+                                        ? (dayKgPlantInGrams ? Math.round(d.kgplant * 1000).toLocaleString() : d.kgplant.toFixed(2))
+                                        : isKgHaModeChart ? Math.round(d.kgha).toLocaleString() : Math.round(d.kg).toLocaleString();
                                     const ecartPct = (showEcarts && d.kg > 0) ? Math.round(d.kgEcart / d.kg * 100) : 0;
                                     return (
                                         <div key={i} style={{display:'flex', flexDirection:'column', alignItems:'center', flex:'1 0 32px', minWidth:32, cursor:'pointer'}} onClick={() => { setPopupBonsFilter({type:'day', value:d.date}); setKpiPopup('tonnage'); }}>
@@ -13439,8 +14294,8 @@ ${rejetHtml}
                                                     </>
                                                 ) : (
                                                     allVarieties.map((v, vi) => {
-                                                        const vVal = isKgHaModeChart ? (d.byVarKgHa[v] || 0) : (d.byVar[v] || 0);
-                                                        const estVal = isKgHaModeChart ? ((d.byVarEst?.[v] || 0) / (chartTotalHa || 1)) : (d.byVarEst?.[v] || 0);
+                                                        const vVal = isKgPlantModeChart ? (d.byVarKgPlant[v] || 0) : isKgHaModeChart ? (d.byVarKgHa[v] || 0) : (d.byVar[v] || 0);
+                                                        const estVal = isKgPlantModeChart ? ((d.byVarEst?.[v] || 0) / (chartTotalPlants || 1)) : isKgHaModeChart ? ((d.byVarEst?.[v] || 0) / (chartTotalHa || 1)) : (d.byVarEst?.[v] || 0);
                                                         const realVal = vVal - estVal;
                                                         const realH = val > 0 ? (realVal / val * h) : 0;
                                                         const estH = val > 0 ? (estVal / val * h) : 0;
@@ -13494,7 +14349,11 @@ ${rejetHtml}
                     <Panel title="Production par Semaine" icon="fa-chart-column">
                         <div style={{display:'flex', justifyContent:'flex-end', alignItems:'center', marginBottom:8, gap:8}}>
                             <div className="chip-group" style={{marginBottom:0}}>
-                                {[{v:'total', l:'Total (kg)'}, {v:'kgha', l:'Kg / Ha'}].map(m => (
+                                {[
+                                    {v:'total', l:'Total (kg)'},
+                                    {v:'kgha', l:'Kg / Ha'},
+                                    ...(showKgPlantChart ? [{v:'kgplant', l: weekKgPlantInGrams ? 'g / Pl' : 'Kg / Pl'}] : [])
+                                ].map(m => (
                                     <button key={m.v} className={`chip c-berry ${weekChartMode === m.v ? 'active' : ''}`} onClick={() => setWeekChartMode(m.v)} style={{padding:'4px 12px',fontSize:11}}>{m.l}</button>
                                 ))}
                             </div>
@@ -13508,7 +14367,12 @@ ${rejetHtml}
                                 Aucune surface (Ha) disponible pour le filtre actuel. Sélectionnez une ferme ou variété.
                             </div>
                         )}
-                        {(weekChartMode === 'total' || chartTotalHa > 0) && (() => {
+                        {weekChartMode === 'kgplant' && chartTotalPlants <= 0 && (
+                            <div style={{padding:8, fontSize:11, color:'#e74c3c', background:'#fdf0ed', borderRadius:6, marginBottom:8}}>
+                                Aucune information de plants disponible pour le filtre actuel.
+                            </div>
+                        )}
+                        {(weekChartMode === 'total' || (weekChartMode === 'kgha' && chartTotalHa > 0) || (weekChartMode === 'kgplant' && chartTotalPlants > 0)) && (() => {
                             // Budget BGF — detect active variety budget
                             const budgetTotalStored = localStorage.getItem('budgetBGFTotals');
                             const budgetTotals = budgetTotalStored ? JSON.parse(budgetTotalStored) : {};
@@ -13538,9 +14402,10 @@ ${rejetHtml}
                             const budgetValsArr = displayWeeks.map(w => budgetWeekly[w.week] || 0);
                             const projValsArr = displayWeeks.map(w => projection[w.week] || 0);
                             const isWeekKgHa = weekChartMode === 'kgha';
-                            const weekBarVals = displayWeeks.map(w => isWeekKgHa ? w.kgha : w.kg);
+                            const isWeekKgPlant = weekChartMode === 'kgplant';
+                            const weekBarVals = displayWeeks.map(w => isWeekKgPlant ? w.kgplant : isWeekKgHa ? w.kgha : w.kg);
                             const allVals = [...weekBarVals, ...(isWeekKgHa ? [...budgetValsArr, ...projValsArr] : [])].filter(v => v > 0);
-                            const maxVal = allVals.length > 0 ? Math.max(...allVals) : 1;
+                            const maxVal = allVals.length > 0 ? Math.max(...allVals) : (isWeekKgPlant ? 0.001 : 1);
                             const barH = 200;
                             const barW = Math.max(32, Math.min(50, 600 / (displayWeeks.length || 1)));
                             const hasBudget = budgetValsArr.some(v => v > 0);
@@ -13579,13 +14444,16 @@ ${rejetHtml}
                                     {(() => {
                                         const yAxisLeft = 40;
                                         const ticks = 5;
-                                        const yLabels = Array.from({length: ticks + 1}, (_, i) => Math.round(maxVal / ticks * (ticks - i)));
+                                        const fmtAxis = (v) => isWeekKgPlant
+                                            ? (weekKgPlantInGrams ? Math.round(v * 1000).toLocaleString() : v.toFixed(2))
+                                            : Math.round(v).toLocaleString();
+                                        const yLabels = Array.from({length: ticks + 1}, (_, i) => maxVal / ticks * (ticks - i));
                                         return (
                                             <div style={{display:'flex', padding:'16px 0 0'}}>
                                                 {/* Y axis labels */}
                                                 <div style={{width: yAxisLeft, display:'flex', flexDirection:'column', justifyContent:'space-between', height: barH, paddingRight:4, flexShrink:0}}>
                                                     {yLabels.map((v, i) => (
-                                                        <div key={i} style={{fontSize:8, color:'var(--gray-400)', textAlign:'right', lineHeight:'1', fontWeight:600}}>{v.toLocaleString()}</div>
+                                                        <div key={i} style={{fontSize:8, color:'var(--gray-400)', textAlign:'right', lineHeight:'1', fontWeight:600}}>{fmtAxis(v)}</div>
                                                     ))}
                                                 </div>
                                                 {/* Chart area with fixed height container */}
@@ -13600,7 +14468,7 @@ ${rejetHtml}
                                                     {/* Bars — labels outside, bars inside fixed-height area */}
                                                     <div style={{display:'flex', alignItems:'flex-end', gap:4, height: barH}}>
                                                         {displayWeeks.map((w, i) => {
-                                                            const wVal = isWeekKgHa ? w.kgha : w.kg;
+                                                            const wVal = isWeekKgPlant ? w.kgplant : isWeekKgHa ? w.kgha : w.kg;
                                                             const h = maxVal > 0 ? (wVal / maxVal * barH) : 0;
                                                             const ecartPct = (showEcarts && w.kg > 0) ? Math.round(w.kgEcart / w.kg * 100) : 0;
                                                             return (
@@ -13633,13 +14501,16 @@ ${rejetHtml}
                                                     {/* Bar labels (above bars, positioned absolutely to not affect bar alignment) */}
                                                     <div style={{position:'absolute', top:0, left:0, display:'flex', gap:4, width:'100%', height: barH, pointerEvents:'none'}}>
                                                         {displayWeeks.map((w, i) => {
-                                                            const wVal = isWeekKgHa ? w.kgha : w.kg;
+                                                            const wVal = isWeekKgPlant ? w.kgplant : isWeekKgHa ? w.kgha : w.kg;
                                                             const h = maxVal > 0 ? (wVal / maxVal * barH) : 0;
                                                             const ecartPct = (showEcarts && w.kg > 0) ? Math.round(w.kgEcart / w.kg * 100) : 0;
+                                                            const lbl = isWeekKgPlant
+                                                                ? (weekKgPlantInGrams ? Math.round(wVal * 1000).toLocaleString() : wVal.toFixed(2))
+                                                                : Math.round(wVal).toLocaleString();
                                                             return (
                                                                 <div key={i} style={{flex:`0 0 ${barW}px`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height: barH - h, overflow:'visible'}}>
                                                                     {showEcarts && w.kgEcart > 0 && <div style={{fontSize:8, fontWeight:700, color:'#e67e22'}}>{ecartPct}%</div>}
-                                                                    <div style={{fontSize:9, fontWeight:700, color:'var(--gray-600)'}}>{wVal > 0 ? Math.round(wVal).toLocaleString() : ''}</div>
+                                                                    <div style={{fontSize:9, fontWeight:700, color:'var(--gray-600)'}}>{wVal > 0 ? lbl : ''}</div>
                                                                 </div>
                                                             );
                                                         })}
@@ -14759,7 +15630,8 @@ ${rejetHtml}
         }
 
         // ===================== QUALITE EXPEDITIONS TAB =====================
-        function QualiteExpeditionsTab({ data, applyVarietyMapping, varietyMapping, saveVarietyMapping }) {
+        function QualiteExpeditionsTab({ data, applyVarietyMapping, varietyMapping, saveVarietyMapping, userProfile, currentProfile }) {
+            const canSeeFinancials = ['finance', 'dg'].includes(currentProfile);
             const [showModal, setShowModal] = useState(false);
             const [showVarietySettings, setShowVarietySettings] = useState(false);
             const [filterStatus, setFilterStatus] = useState('');
@@ -15059,8 +15931,8 @@ ${rejetHtml}
                                     <th>Apparence</th>
                                     <th>Brix (Pts)</th>
                                     <th>Brix</th>
-                                    <th>PP Fruit</th>
-                                    <th>GS Net</th>
+                                    {canSeeFinancials && <th>PP Fruit</th>}
+                                    {canSeeFinancials && <th>GS Net</th>}
                                     <th>Résultat</th>
                                 </tr>
                             </thead>
@@ -15088,8 +15960,8 @@ ${rejetHtml}
                                         <td>{exp.pfqApparence != null ? exp.pfqApparence : '-'}</td>
                                         <td>{exp.pfqBrix != null ? Math.round(exp.pfqBrix * 100) / 100 : '-'}</td>
                                         <td>{exp.brix || '-'}</td>
-                                        <td style={{fontWeight:600, color: exp.ppFruit ? 'var(--gray-800)' : 'var(--gray-300)'}}>{exp.ppFruit ? exp.ppFruit.toFixed(2) : '-'}</td>
-                                        <td style={{fontWeight:700, color: exp.gsNet ? 'var(--green)' : 'var(--gray-300)'}}>{exp.gsNet ? Math.round(exp.gsNet).toLocaleString() : '-'}</td>
+                                        {canSeeFinancials && <td style={{fontWeight:600, color: exp.ppFruit ? 'var(--gray-800)' : 'var(--gray-300)'}}>{exp.ppFruit ? exp.ppFruit.toFixed(2) : '-'}</td>}
+                                        {canSeeFinancials && <td style={{fontWeight:700, color: exp.gsNet ? 'var(--green)' : 'var(--gray-300)'}}>{exp.gsNet ? Math.round(exp.gsNet).toLocaleString() : '-'}</td>}
                                         <td>
                                             {exp.overallResult ? (
                                                 <span style={{padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:700, display:'inline-block', whiteSpace:'nowrap',
@@ -15102,7 +15974,7 @@ ${rejetHtml}
                                     </tr>
                                 ))}
                                 {filtered.length === 0 && !loadingFb && (
-                                    <tr><td colSpan="16" style={{textAlign:'center', padding:24, color:'var(--gray-400)', fontSize:13}}>
+                                    <tr><td colSpan={canSeeFinancials ? 16 : 14} style={{textAlign:'center', padding:24, color:'var(--gray-400)', fontSize:13}}>
                                         <i className="fa-solid fa-inbox" style={{fontSize:24, display:'block', marginBottom:8}}></i>
                                         Aucune expédition. Les rapports qualité Driscoll's reçus par email apparaîtront ici automatiquement.
                                     </td></tr>
@@ -15364,8 +16236,8 @@ ${rejetHtml}
                                         </div>
                                     )}
 
-                                    {/* Liquidation section */}
-                                    {selectedExp.status === 'Liquidée' && (
+                                    {/* Liquidation section — confidentiel: Finance/DG/Admin uniquement */}
+                                    {selectedExp.status === 'Liquidée' && canSeeFinancials && (
                                         <div style={{marginBottom:20, border:'1px solid #e0e0e0', borderRadius:8, overflow:'hidden'}}>
                                             <div style={{background:'linear-gradient(135deg, #2e7d32, #43a047)', padding:'10px 16px', color:'#fff', fontWeight:700, fontSize:13, display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                                                 <span><i className="fa-solid fa-coins" style={{marginRight:8}}></i>Liquidation{selectedExp.liquidationWeek ? ` — W${selectedExp.liquidationWeek}` : ''}</span>
@@ -16099,8 +16971,30 @@ ${rejetHtml}
             );
         }
 
+        // ===================== DASHBOARD ASSOCIÉ (M. LAZRAK) =====================
+        function DashboardAssocieTab({ data, applyVarietyMapping, userProfile }) {
+            const displayName = (userProfile && userProfile.displayName) || 'M. Tarik LAZRAK';
+            return (
+                <div className="fade-in">
+                    <div style={{padding:'14px 18px', marginBottom:18, borderRadius:12, background:'linear-gradient(135deg, #fdf6ff 0%, #f5f0ff 100%)', border:'1.5px solid #e9d5ff'}}>
+                        <div style={{fontSize:18, fontWeight:700, color:'#6b21a8'}}>
+                            <i className="fa-solid fa-handshake" style={{marginRight:10, color:'#9333ea'}}></i>
+                            Bonjour {displayName}
+                        </div>
+                        <div style={{fontSize:12, color:'var(--gray-500)', marginTop:4}}>Vue synthétique — Liquidations &amp; Production Cycle 2</div>
+                    </div>
+
+                    <QualiteLiquidationsTab data={data} applyVarietyMapping={applyVarietyMapping} compactView={true} />
+
+                    <div style={{marginTop:24}}>
+                        <QualiteProductionTab data={data} applyVarietyMapping={applyVarietyMapping} hideCycle1={true} userProfile={userProfile} cycle2OnlyView={true} />
+                    </div>
+                </div>
+            );
+        }
+
         // ===================== QUALITÉ LIQUIDATIONS TAB =====================
-        function QualiteLiquidationsTab({ data, applyVarietyMapping }) {
+        function QualiteLiquidationsTab({ data, applyVarietyMapping, compactView }) {
             const [liquidations, setLiquidations] = useState([]);
             const [expeditions, setExpeditions] = useState([]);
             const [bonsApport, setBonsApport] = useState([]);
@@ -16431,19 +17325,23 @@ ${rejetHtml}
 
                     {/* KPIs */}
                     <div className="kpi-grid">
-                        <KPICard icon="fa-coins" iconClass="silver" value={nbLots} label="Lots Liquidés" />
-                        <div onClick={() => setKpiDetailPopup('qty')} style={{cursor:'pointer'}}>
-                            <KPICard icon="fa-weight-scale" iconClass="green" value={`${Math.round(totalKg).toLocaleString('fr-FR')} kg`} label="Total Quantité ⓘ" />
-                        </div>
-                        <div onClick={() => setKpiDetailPopup('gsnet')} style={{cursor:'pointer'}}>
-                            <KPICard icon="fa-money-bill-wave" iconClass="blue" value={`${Math.round(totalGsNet).toLocaleString('fr-FR')}`} label="Total GS Net (DH) ⓘ" />
-                        </div>
+                        {!compactView && <KPICard icon="fa-coins" iconClass="silver" value={nbLots} label="Lots Liquidés" />}
+                        {!compactView && (
+                            <div onClick={() => setKpiDetailPopup('qty')} style={{cursor:'pointer'}}>
+                                <KPICard icon="fa-weight-scale" iconClass="green" value={`${Math.round(totalKg).toLocaleString('fr-FR')} kg`} label="Total Quantité ⓘ" />
+                            </div>
+                        )}
+                        {!compactView && (
+                            <div onClick={() => setKpiDetailPopup('gsnet')} style={{cursor:'pointer'}}>
+                                <KPICard icon="fa-money-bill-wave" iconClass="blue" value={`${Math.round(totalGsNet).toLocaleString('fr-FR')}`} label="Total GS Net (DH) ⓘ" />
+                            </div>
+                        )}
                         <KPICard icon="fa-tags" iconClass="berry" value={avgPriceKg.toFixed(2)} label="Prix Moyen (DH/kg)" />
                         <div onClick={() => setKpiDetailPopup('commission')} style={{cursor:'pointer'}}>
                             <KPICard icon="fa-percent" iconClass="orange" value={avgCommPct != null ? `${avgCommPct.toFixed(1)}%` : '-'} label="Commission Driscoll's ⓘ" />
                         </div>
-                        <KPICard icon="fa-hourglass-half" iconClass="orange" value={`${Math.round(totalEstCA).toLocaleString('fr-FR')}`} label="CA Prév (DH)" />
-                        <KPICard icon="fa-calculator" iconClass="purple" value={`${Math.round(totalGsNet + totalEstCA).toLocaleString('fr-FR')}`} label="CA Total (DH)" />
+                        {!compactView && <KPICard icon="fa-hourglass-half" iconClass="orange" value={`${Math.round(totalEstCA).toLocaleString('fr-FR')}`} label="CA Prév (DH)" />}
+                        {!compactView && <KPICard icon="fa-calculator" iconClass="purple" value={`${Math.round(totalGsNet + totalEstCA).toLocaleString('fr-FR')}`} label="CA Total (DH)" />}
                     </div>
 
                     {/* KPI Detail Popup */}
@@ -16837,6 +17735,7 @@ ${rejetHtml}
                         );
                     })()}
 
+                    {!compactView && (<>
                     {/* ===== SEMAINES NON LIQUIDÉES ===== */}
                     {nonLiquidated.length > 0 && (() => {
                         const allVarsInNonLiq = [...new Set(nonLiquidated.flatMap(d => Object.keys(d.byVariety)))].sort();
@@ -17493,6 +18392,7 @@ ${rejetHtml}
                             </div>
                         );
                     })()}
+                    </>)}
                 </div>
             );
         }
@@ -19442,6 +20342,314 @@ ${rejetHtml}
         }
 
         // ===================== NEW RH TABS =====================
+        // Onglet RH "Équipes" : gestion versionnée des primes de transport par équipe.
+        // Persistance Firestore : rh_config/transport_primes
+        function EquipesTab({ data }) {
+            const buildAllTeams = () => {
+                const byPrefix = {};
+                (data.transportConfig || []).forEach(t => {
+                    byPrefix[t.prefix] = {
+                        prefix: t.prefix,
+                        equipe: t.equipe || `Équipe ${t.prefix}`,
+                        caporal: t.caporal || '',
+                        ferme: t.ferme || '',
+                        coutParOuvrier: t.coutParOuvrier || 0,
+                        history: Array.isArray(t.history) ? [...t.history] : [],
+                        effectif: 0,
+                    };
+                });
+                (data.equipesConfig || []).forEach(eq => {
+                    const key = eq.codeEquipe;
+                    if (!byPrefix[key]) {
+                        byPrefix[key] = { prefix: key, equipe: eq.nomEquipe || `Équipe ${key}`, caporal: eq.caporal || '', ferme: eq.ferme || '', coutParOuvrier: 0, history: [], effectif: eq.effectif || 0 };
+                    } else {
+                        byPrefix[key].effectif = eq.effectif || byPrefix[key].effectif;
+                        if (!byPrefix[key].ferme) byPrefix[key].ferme = eq.ferme || '';
+                    }
+                });
+                const detected = new Set();
+                (data.ouvriersMatricule || []).forEach(o => {
+                    if (o.equipePrefix) detected.add(o.equipePrefix);
+                    else if (o.matricule) detected.add(String(o.matricule).substring(0, 2).toUpperCase());
+                });
+                (data.recolteData || []).forEach(r => {
+                    if (r.matricule) detected.add(String(r.matricule).substring(0, 2).toUpperCase());
+                });
+                detected.forEach(p => {
+                    if (!byPrefix[p]) byPrefix[p] = { prefix: p, equipe: `Équipe ${p}`, caporal: '', ferme: '', coutParOuvrier: 0, history: [], effectif: 0 };
+                });
+                return Object.values(byPrefix).sort((a, b) => a.prefix.localeCompare(b.prefix));
+            };
+
+            const [teams, setTeams] = useState(buildAllTeams);
+            const [editingTeam, setEditingTeam] = useState(null);
+            const [editForm, setEditForm] = useState({ prefix: '', equipe: '', caporal: '', ferme: '', coutParOuvrier: 30, effectiveFrom: '' });
+            const [expandedHistory, setExpandedHistory] = useState(null);
+            const [saving, setSaving] = useState(false);
+            const [saveMsg, setSaveMsg] = useState(null);
+            const [filterFerme, setFilterFerme] = useState('');
+
+            const knownPeriodes = (() => {
+                const set = new Set();
+                (data.recolteData || []).forEach(r => { if (r.periode) set.add(r.periode); });
+                (data.pointageJour || []).forEach(r => { if (r.periode) set.add(r.periode); });
+                return [...set].sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b) - data.quinzaineOrder(a) : 0));
+            })();
+            const currentPeriode = knownPeriodes[0] || '';
+
+            const openEdit = (team) => {
+                setEditForm({ prefix: team.prefix, equipe: team.equipe, caporal: team.caporal, ferme: team.ferme, coutParOuvrier: team.coutParOuvrier || 30, effectiveFrom: currentPeriode });
+                setEditingTeam({ team, mode: 'edit' });
+            };
+            const openAdd = () => {
+                setEditForm({ prefix: '', equipe: '', caporal: '', ferme: '', coutParOuvrier: 30, effectiveFrom: currentPeriode });
+                setEditingTeam({ team: null, mode: 'add' });
+            };
+
+            const persist = async (nextTeams) => {
+                setSaving(true);
+                setSaveMsg(null);
+                try {
+                    const userEmail = (firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser.email : 'unknown';
+                    const payload = {
+                        equipes: nextTeams.filter(t => (t.history && t.history.length > 0)).map(t => ({
+                            prefix: t.prefix, equipe: t.equipe, caporal: t.caporal, ferme: t.ferme, history: t.history,
+                        })),
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                        updatedBy: userEmail,
+                    };
+                    await firebase.firestore().collection('rh_config').doc('transport_primes').set(payload, { merge: false });
+                    nextTeams.forEach(t => {
+                        if (!t.history || t.history.length === 0) return;
+                        const sortedHist = [...t.history].sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b.effectiveFrom) - data.quinzaineOrder(a.effectiveFrom) : 0));
+                        const latest = sortedHist[0];
+                        const existing = (data.transportConfig || []).find(x => x.prefix === t.prefix);
+                        if (existing) {
+                            existing.history = [...t.history];
+                            existing.coutParOuvrier = latest.coutParOuvrier;
+                            existing.equipe = t.equipe;
+                            existing.caporal = t.caporal;
+                            existing.ferme = t.ferme;
+                        } else {
+                            (data.transportConfig || []).push({ prefix: t.prefix, equipe: t.equipe, caporal: t.caporal, ferme: t.ferme, coutParOuvrier: latest.coutParOuvrier, history: [...t.history] });
+                        }
+                    });
+                    setSaveMsg({ ok: true, txt: 'Enregistré ✓' });
+                } catch (e) {
+                    console.error(e);
+                    setSaveMsg({ ok: false, txt: 'Erreur : ' + (e.message || e) });
+                } finally {
+                    setSaving(false);
+                    setTimeout(() => setSaveMsg(null), 4000);
+                }
+            };
+
+            const applyChange = async () => {
+                if (!editForm.effectiveFrom) { alert("Choisissez une quinzaine d'effet."); return; }
+                if (editingTeam.mode === 'add' && !editForm.prefix) { alert('Préfixe requis.'); return; }
+                const cout = Number(editForm.coutParOuvrier);
+                if (isNaN(cout) || cout < 0) { alert('Montant invalide.'); return; }
+                const userEmail = (firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser.email : 'unknown';
+                const newEntry = { effectiveFrom: editForm.effectiveFrom, coutParOuvrier: cout, updatedAt: new Date().toISOString(), updatedBy: userEmail };
+                let nextTeams;
+                if (editingTeam.mode === 'add') {
+                    nextTeams = [...teams, { prefix: editForm.prefix.toUpperCase(), equipe: editForm.equipe || `Équipe ${editForm.prefix.toUpperCase()}`, caporal: editForm.caporal, ferme: editForm.ferme, coutParOuvrier: cout, history: [newEntry], effectif: 0 }].sort((a, b) => a.prefix.localeCompare(b.prefix));
+                } else {
+                    nextTeams = teams.map(t => {
+                        if (t.prefix !== editingTeam.team.prefix) return t;
+                        const filteredHist = (t.history || []).filter(h => !(h.effectiveFrom === newEntry.effectiveFrom && h.coutParOuvrier === newEntry.coutParOuvrier));
+                        return { ...t, equipe: editForm.equipe, caporal: editForm.caporal, ferme: editForm.ferme, coutParOuvrier: cout, history: [...filteredHist, newEntry] };
+                    });
+                }
+                setTeams(nextTeams);
+                setEditingTeam(null);
+                await persist(nextTeams);
+            };
+
+            const removeHistEntry = async (prefix, entry) => {
+                if (!confirm(`Supprimer la version du ${entry.effectiveFrom} (${entry.coutParOuvrier} MAD) ?`)) return;
+                const nextTeams = teams.map(t => t.prefix === prefix ? { ...t, history: (t.history || []).filter(h => !(h.effectiveFrom === entry.effectiveFrom && h.updatedAt === entry.updatedAt)) } : t);
+                setTeams(nextTeams);
+                await persist(nextTeams);
+            };
+
+            const fermes = ['F1', 'F5', 'Avocatier'];
+            const filteredTeams = filterFerme ? teams.filter(t => t.ferme === filterFerme) : teams;
+            const fmtCout = (t) => {
+                if (!t.history || t.history.length === 0) return null;
+                const target = currentPeriode ? (data.quinzaineOrder ? data.quinzaineOrder(currentPeriode) : 0) : Number.MAX_SAFE_INTEGER;
+                const applicable = [...t.history].filter(h => (data.quinzaineOrder ? data.quinzaineOrder(h.effectiveFrom) : 0) <= target).sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b.effectiveFrom) - data.quinzaineOrder(a.effectiveFrom) : 0))[0];
+                return applicable ? applicable.coutParOuvrier : (t.history[t.history.length - 1].coutParOuvrier);
+            };
+
+            return (
+                <div className="fade-in" style={{padding:'8px 0'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:14,flexWrap:'wrap'}}>
+                        <h2 style={{margin:0,fontSize:18,color:'var(--berry)'}}>
+                            <i className="fa-solid fa-people-group" style={{marginRight:8}}></i>Équipes — Primes de transport
+                        </h2>
+                        <span style={{fontSize:11,color:'var(--gray-500)'}}>
+                            Quinzaine en cours : <strong>{currentPeriode || '—'}</strong>
+                        </span>
+                        <div style={{flex:1}}></div>
+                        <select value={filterFerme} onChange={e => setFilterFerme(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}}>
+                            <option value="">Toutes fermes</option>
+                            {fermes.map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                        <button onClick={openAdd} style={{padding:'8px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                            <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Ajouter équipe
+                        </button>
+                    </div>
+
+                    <div style={{padding:'10px 14px',background:'rgba(139,34,82,0.06)',border:'1px solid rgba(139,34,82,0.15)',borderRadius:8,fontSize:11,color:'var(--gray-600)',marginBottom:12,lineHeight:1.5}}>
+                        <i className="fa-solid fa-circle-info" style={{color:'var(--berry)',marginRight:6}}></i>
+                        Chaque modification s'applique <strong>à partir de la quinzaine choisie</strong> sans recalculer les quinzaines précédentes.
+                        Cliquez sur une prime pour la modifier ; cliquez sur l'icône <i className="fa-solid fa-clock-rotate-left"></i> pour voir l'historique.
+                    </div>
+
+                    {saveMsg && (
+                        <div style={{padding:'8px 12px',borderRadius:8,marginBottom:10,fontSize:12,fontWeight:600,background: saveMsg.ok ? 'rgba(46,204,113,0.1)' : 'rgba(231,76,60,0.1)',color: saveMsg.ok ? '#27ae60' : '#c0392b',border: saveMsg.ok ? '1px solid rgba(46,204,113,0.3)' : '1px solid rgba(231,76,60,0.3)'}}>
+                            {saveMsg.txt}
+                        </div>
+                    )}
+
+                    <div className="table-responsive">
+                        <table className="data-table" style={{fontSize:12}}>
+                            <thead>
+                                <tr>
+                                    <th style={{width:60}}>Préfixe</th>
+                                    <th>Équipe</th>
+                                    <th>Caporal</th>
+                                    <th style={{width:90}}>Ferme</th>
+                                    <th style={{width:70,textAlign:'right'}}>Effectif</th>
+                                    <th style={{width:170,textAlign:'right'}}>Prime transport (MAD/ouv.)</th>
+                                    <th style={{width:60,textAlign:'center'}}>Hist.</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredTeams.map(t => {
+                                    const cout = fmtCout(t);
+                                    const isExpanded = expandedHistory === t.prefix;
+                                    return (
+                                        <React.Fragment key={t.prefix}>
+                                            <tr>
+                                                <td><strong>{t.prefix}</strong></td>
+                                                <td>{t.equipe}</td>
+                                                <td style={{color:'var(--gray-600)'}}>{t.caporal || '—'}</td>
+                                                <td>{t.ferme || '—'}</td>
+                                                <td style={{textAlign:'right'}}>{t.effectif || '—'}</td>
+                                                <td style={{textAlign:'right'}}>
+                                                    <span onClick={() => openEdit(t)} style={{cursor:'pointer',padding:'4px 10px',borderRadius:6,background: cout != null ? 'rgba(139,34,82,0.08)' : 'rgba(243,156,18,0.15)',color: cout != null ? 'var(--berry)' : '#E67E22',fontWeight:700,borderBottom:'1px dashed currentColor'}} title="Cliquez pour modifier">
+                                                        {cout != null ? `${cout} MAD` : 'Non configuré'}
+                                                    </span>
+                                                </td>
+                                                <td style={{textAlign:'center'}}>
+                                                    <button onClick={() => setExpandedHistory(isExpanded ? null : t.prefix)} style={{background:'transparent',border:'none',cursor:'pointer',color:'var(--gray-500)',fontSize:14}} title="Historique">
+                                                        <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-clock-rotate-left'}`}></i>
+                                                        {(t.history && t.history.length > 0) && <span style={{fontSize:10,marginLeft:4,color:'var(--berry)',fontWeight:700}}>{t.history.length}</span>}
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && (
+                                                <tr>
+                                                    <td colSpan={7} style={{background:'var(--gray-50)',padding:12}}>
+                                                        {(!t.history || t.history.length === 0) ? (
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',fontStyle:'italic'}}>Aucun historique — cette équipe n'a jamais eu de prime configurée.</div>
+                                                        ) : (
+                                                            <table style={{width:'100%',fontSize:11}}>
+                                                                <thead>
+                                                                    <tr style={{color:'var(--gray-500)',textAlign:'left'}}>
+                                                                        <th style={{padding:'4px 8px'}}>Quinzaine d'effet</th>
+                                                                        <th style={{padding:'4px 8px',textAlign:'right'}}>Montant</th>
+                                                                        <th style={{padding:'4px 8px'}}>Modifié par</th>
+                                                                        <th style={{padding:'4px 8px'}}>Le</th>
+                                                                        <th style={{padding:'4px 8px',width:30}}></th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {[...t.history].sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b.effectiveFrom) - data.quinzaineOrder(a.effectiveFrom) : 0)).map((h, i) => (
+                                                                        <tr key={i}>
+                                                                            <td style={{padding:'4px 8px'}}>{h.effectiveFrom}</td>
+                                                                            <td style={{padding:'4px 8px',textAlign:'right',fontWeight:600,color:'var(--berry)'}}>{h.coutParOuvrier} MAD</td>
+                                                                            <td style={{padding:'4px 8px',color:'var(--gray-600)'}}>{h.updatedBy || '—'}</td>
+                                                                            <td style={{padding:'4px 8px',color:'var(--gray-500)'}}>{h.updatedAt ? new Date(h.updatedAt).toLocaleDateString('fr-FR') : '—'}</td>
+                                                                            <td style={{padding:'4px 8px'}}>
+                                                                                <button onClick={() => removeHistEntry(t.prefix, h)} style={{background:'transparent',border:'none',cursor:'pointer',color:'#c0392b',fontSize:12}} title="Supprimer cette version">
+                                                                                    <i className="fa-solid fa-trash"></i>
+                                                                                </button>
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {editingTeam && (
+                        <div className="modal-overlay" onClick={() => !saving && setEditingTeam(null)}>
+                            <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:480}}>
+                                <h3 style={{margin:'0 0 16px',fontSize:16}}>
+                                    <i className="fa-solid fa-truck" style={{color:'var(--berry)',marginRight:8}}></i>
+                                    {editingTeam.mode === 'add' ? 'Nouvelle équipe' : `Modifier prime — ${editingTeam.team.equipe} (${editingTeam.team.prefix})`}
+                                </h3>
+                                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                                    {editingTeam.mode === 'add' && (
+                                        <div>
+                                            <label style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',display:'block',marginBottom:4}}>Préfixe (2 caractères)</label>
+                                            <input type="text" maxLength={2} value={editForm.prefix} onChange={e => setEditForm({...editForm, prefix: e.target.value.toUpperCase()})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,boxSizing:'border-box',textTransform:'uppercase'}} />
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',display:'block',marginBottom:4}}>Nom de l'équipe</label>
+                                        <input type="text" value={editForm.equipe} onChange={e => setEditForm({...editForm, equipe: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,boxSizing:'border-box'}} />
+                                    </div>
+                                    <div>
+                                        <label style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',display:'block',marginBottom:4}}>Caporal / Responsable</label>
+                                        <input type="text" value={editForm.caporal} onChange={e => setEditForm({...editForm, caporal: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,boxSizing:'border-box'}} />
+                                    </div>
+                                    <div>
+                                        <label style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',display:'block',marginBottom:4}}>Ferme</label>
+                                        <select value={editForm.ferme} onChange={e => setEditForm({...editForm, ferme: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,boxSizing:'border-box'}}>
+                                            <option value="">—</option>
+                                            {fermes.map(f => <option key={f} value={f}>{f}</option>)}
+                                        </select>
+                                    </div>
+                                    <div style={{display:'flex',gap:10}}>
+                                        <div style={{flex:1}}>
+                                            <label style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',display:'block',marginBottom:4}}>Coût transport / ouvrier (MAD)</label>
+                                            <input type="number" min={0} step={5} value={editForm.coutParOuvrier} onChange={e => setEditForm({...editForm, coutParOuvrier: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,boxSizing:'border-box'}} />
+                                        </div>
+                                        <div style={{flex:1.4}}>
+                                            <label style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',display:'block',marginBottom:4}}>À partir de la quinzaine</label>
+                                            <select value={editForm.effectiveFrom} onChange={e => setEditForm({...editForm, effectiveFrom: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,boxSizing:'border-box'}}>
+                                                {knownPeriodes.length === 0 && <option value="">— Aucune quinzaine connue —</option>}
+                                                {knownPeriodes.map(p => <option key={p} value={p}>{p}{p === currentPeriode ? ' (en cours)' : ''}</option>)}
+                                            </select>
+                                            <div style={{fontSize:10,color:'var(--gray-500)',marginTop:4}}>Les quinzaines antérieures ne seront pas affectées.</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:20}}>
+                                    <button onClick={() => setEditingTeam(null)} disabled={saving} style={{padding:'8px 20px',borderRadius:8,border:'1px solid var(--gray-200)',background:'#fff',fontSize:13,cursor:'pointer'}}>Annuler</button>
+                                    <button onClick={applyChange} disabled={saving} style={{padding:'8px 20px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',fontSize:13,fontWeight:600,cursor: saving ? 'wait' : 'pointer',opacity: saving ? 0.6 : 1}}>
+                                        {saving ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Enregistrement…</> : 'Enregistrer'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         function ParametresTab({ data }) {
             const [parcelles, setParcelles] = useState(() => {
                 const copy = {};
@@ -21949,6 +23157,10 @@ ${rejetHtml}
             const [savedMsg, setSavedMsg] = useState('');
             const [todayReadings, setTodayReadings] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [nextAdvice, setNextAdvice] = useState(null);
+            const [adviceLoading, setAdviceLoading] = useState(false);
+            // F3 — live RadSum since last pulse (polled every 60s while parcelle selected)
+            const [liveRad, setLiveRad] = useState(null);
 
             const currentCycle = getCycle(new Date().toISOString());
             const parcelleOptions = React.useMemo(() => {
@@ -21959,6 +23171,53 @@ ${rejetHtml}
                         label: pc.secteurs.join('/') + ' ' + pc.variete + (pc.sousVariete ? ' ' + pc.sousVariete : ''),
                     }));
             }, [farmFilter, currentCycle]);
+
+            // F3 — fetch live RadSum since last pulse, no auth gating issues since /api/* auto-injects token
+            const fetchLiveRad = React.useCallback(async (parc) => {
+                if (!parc || !farmFilter) { setLiveRad(null); return; }
+                try {
+                    const r = await fetch('/api/stock?action=irrigation-intelligence-next-pulse&ferme=' + encodeURIComponent(farmFilter) + '&parcelle=' + encodeURIComponent(parc));
+                    const j = await r.json();
+                    if (j.success) {
+                        setLiveRad({
+                            radSumSinceLastPulseNow: j.radSumSinceLastPulseNow,
+                            radTargetJPerCm2: j.radTargetJPerCm2,
+                            radEtaMin: j.radEtaMin,
+                            radEtaTime: j.radEtaTime,
+                            lastPulseHeure: j.lastPulseHeure,
+                        });
+                    }
+                } catch (e) { /* silent */ }
+            }, [farmFilter]);
+
+            useEffect(() => {
+                if (!parcelle) { setLiveRad(null); return; }
+                fetchLiveRad(parcelle);
+                const id = setInterval(() => fetchLiveRad(parcelle), 60_000);
+                return () => clearInterval(id);
+            }, [parcelle, fetchLiveRad]);
+
+            const fetchNextPulseAdvice = React.useCallback(async (savedParcelle, savedDate) => {
+                if (!savedParcelle || !farmFilter) return;
+                setAdviceLoading(true);
+                try {
+                    const params = new URLSearchParams({
+                        action: 'irrigation-intelligence-next-pulse',
+                        ferme: farmFilter,
+                        parcelle: savedParcelle,
+                        date: savedDate,
+                    });
+                    const r = await fetch('/api/stock?' + params.toString());
+                    const j = await r.json();
+                    if (j.success) {
+                        setNextAdvice({
+                            ...j,
+                            parcelleLabel: (parcelleOptions.find(o => o.value === savedParcelle) || {}).label || savedParcelle,
+                        });
+                    }
+                } catch (e) { console.warn('next-pulse advice failed:', e.message); }
+                setAdviceLoading(false);
+            }, [farmFilter, parcelleOptions]);
 
             const loadTodayReadings = React.useCallback(async () => {
                 try {
@@ -22009,6 +23268,8 @@ ${rejetHtml}
                     };
                     await firebase.firestore().collection('irrigation_readings').add(doc);
                     setSavedMsg('Enregistré avec succès !');
+                    const savedParcelle = parcelle;
+                    const savedDate = date;
                     setParcelle('');
                     setHeure(new Date().toTimeString().slice(0, 5));
                     setDuree('10');
@@ -22019,6 +23280,7 @@ ${rejetHtml}
                         { point: { ec: '', ph: '', volume: '' }, drainage: { ec: '', ph: '', volume: '' } },
                     ]);
                     loadTodayReadings();
+                    fetchNextPulseAdvice(savedParcelle, savedDate);
                     setTimeout(() => setSavedMsg(''), 3000);
                 } catch (e) {
                     alert('Erreur lors de la sauvegarde: ' + e.message);
@@ -22034,10 +23296,106 @@ ${rejetHtml}
                 } catch (e) { alert('Erreur: ' + e.message); }
             };
 
+            // Color/icon mapping for the post-save advice banner
+            const adviceStyle = (status) => {
+                if (status === 'critical') return { color: 'var(--red)', bg: 'rgba(231,76,60,0.10)', border: 'var(--red)', icon: 'fa-circle-exclamation', emoji: '🛑' };
+                if (status === 'warning') return { color: 'var(--orange)', bg: 'rgba(243,156,18,0.10)', border: 'var(--orange)', icon: 'fa-triangle-exclamation', emoji: '⚠' };
+                if (status === 'info') return { color: 'var(--blue)', bg: 'rgba(52,152,219,0.10)', border: 'var(--blue)', icon: 'fa-circle-info', emoji: 'ℹ' };
+                return { color: 'var(--green)', bg: 'rgba(46,204,113,0.10)', border: 'var(--green)', icon: 'fa-circle-check', emoji: '✓' };
+            };
+
             return React.createElement('div', { style: { padding: '16px', maxWidth: 600, margin: '0 auto' } },
                 React.createElement('h2', { style: { fontSize: '1.2rem', marginBottom: 16, color: 'var(--berry)' } },
                     React.createElement('i', { className: 'fa-solid fa-faucet-drip', style: { marginRight: 8 } }),
                     'Saisie Irrigation — ', farmFilter
+                ),
+
+                // ===== Post-save advice banner (operator-facing) =====
+                nextAdvice && (() => {
+                    const sty = adviceStyle(nextAdvice.status);
+                    const k = nextAdvice.todayKpis;
+                    return React.createElement('div', {
+                        style: {
+                            background: sty.bg,
+                            border: '1px solid ' + sty.border + '55',
+                            borderLeft: '5px solid ' + sty.border,
+                            borderRadius: 12,
+                            padding: 14,
+                            marginBottom: 16,
+                        },
+                    },
+                        // Header line: status emoji + headline + dismiss
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 } },
+                            React.createElement('span', { style: { fontSize: 20 } }, sty.emoji),
+                            React.createElement('div', { style: { fontSize: 16, fontWeight: 700, color: sty.color, flex: 1 } }, nextAdvice.headline),
+                            React.createElement('button', {
+                                onClick: () => setNextAdvice(null),
+                                style: { background: 'transparent', border: 'none', color: 'var(--gray-400)', cursor: 'pointer', fontSize: 14, padding: 4 },
+                                'aria-label': 'Fermer',
+                            }, React.createElement('i', { className: 'fa-solid fa-xmark' })),
+                        ),
+                        // Parcelle + KPIs strip
+                        React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-600)', marginBottom: 10 } },
+                            nextAdvice.parcelleLabel,
+                            k && [
+                                ' · ', k.pulseCount, ' pulse(s)',
+                                ' · ', Math.round(k.cumulInputMl || 0), ' mL apporté',
+                                ' · ', Math.round(k.cumulDrainMl || 0), ' mL drainé',
+                                k.drainPct != null ? ' · ' + k.drainPct.toFixed(0) + ' %' : '',
+                            ],
+                        ),
+                        // Action line — what to do
+                        React.createElement('div', {
+                            style: {
+                                background: '#fff',
+                                borderRadius: 10,
+                                padding: '10px 12px',
+                                marginBottom: 8,
+                                display: 'flex', alignItems: 'flex-start', gap: 10,
+                            },
+                        },
+                            React.createElement('i', { className: 'fa-solid fa-arrow-right', style: { color: sty.color, marginTop: 3, fontSize: 14 } }),
+                            React.createElement('div', { style: { flex: 1 } },
+                                React.createElement('div', { style: { fontWeight: 700, fontSize: 14, color: 'var(--dark)', marginBottom: 2 } }, nextAdvice.nextAction.label),
+                                nextAdvice.nextAction.detail && React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-600)' } }, nextAdvice.nextAction.detail),
+                            ),
+                        ),
+                        // Timing line
+                        nextAdvice.whenNext && nextAdvice.whenNext.label && React.createElement('div', {
+                            style: { fontSize: 12, color: sty.color, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 },
+                        },
+                            React.createElement('i', { className: 'fa-solid fa-clock' }),
+                            nextAdvice.whenNext.label,
+                        ),
+                        // Disclaimer — test feature, operator judgment prevails
+                        React.createElement('div', {
+                            style: {
+                                marginTop: 10,
+                                paddingTop: 8,
+                                borderTop: '1px dashed ' + sty.border + '44',
+                                fontSize: 10.5,
+                                color: 'var(--gray-500)',
+                                lineHeight: 1.4,
+                                fontStyle: 'italic',
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: 6,
+                            },
+                        },
+                            React.createElement('i', { className: 'fa-solid fa-flask', style: { marginTop: 2, color: 'var(--gray-400)' } }),
+                            React.createElement('span', null,
+                                React.createElement('strong', null, 'Fonction de prédiction en test — peut se tromper.'),
+                                ' Vérifie toujours le terrain (substrat, plantes, météo réelle). Ton jugement de stationnaire prime sur cette suggestion.',
+                            ),
+                        ),
+                    );
+                })(),
+
+                adviceLoading && !nextAdvice && React.createElement('div', {
+                    style: { fontSize: 12, color: 'var(--gray-400)', marginBottom: 12, textAlign: 'center' },
+                },
+                    React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', style: { marginRight: 6 } }),
+                    'Analyse du pulse…',
                 ),
 
                 // Date + Heure + Durée
@@ -22064,6 +23422,53 @@ ${rejetHtml}
                         parcelleOptions.map(o => React.createElement('option', { key: o.value, value: o.value }, o.label))
                     )
                 ),
+
+                // F3 — Live RadSum widget (visible quand parcelle sélectionnée)
+                parcelle && liveRad && Number.isFinite(liveRad.radSumSinceLastPulseNow) && (() => {
+                    const acc = liveRad.radSumSinceLastPulseNow;
+                    const target = liveRad.radTargetJPerCm2 || 130;
+                    const pct = Math.min(100, (acc / target) * 100);
+                    const ready = acc >= target * 0.9;  // >=90% du target → quasi prêt
+                    const lateMargin = acc > target * 1.5;  // >150% → retard significatif
+                    const color = lateMargin ? 'var(--red)' : ready ? 'var(--green)' : 'var(--orange)';
+                    return React.createElement('div', {
+                        style: {
+                            background: 'rgba(243,156,18,0.06)',
+                            border: '1px solid rgba(243,156,18,0.25)',
+                            borderRadius: 10,
+                            padding: 12,
+                            marginBottom: 16,
+                        },
+                    },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12, color: 'var(--gray-600)' } },
+                            React.createElement('i', { className: 'fa-solid fa-sun', style: { color: 'var(--orange)' } }),
+                            React.createElement('span', null,
+                                'Depuis ', liveRad.lastPulseHeure ? 'le pulse de ' + liveRad.lastPulseHeure : 'le lever du soleil',
+                                ' :',
+                            ),
+                        ),
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 } },
+                            React.createElement('span', { style: { fontSize: 22, fontWeight: 700, color } }, Math.round(acc) + ' J/cm²'),
+                            React.createElement('span', { style: { fontSize: 12, color: 'var(--gray-500)' } }, 'cible ' + Math.round(target) + ' J/cm²'),
+                            liveRad.radEtaMin != null && liveRad.radEtaMin > 0 && React.createElement('span', { style: { fontSize: 12, color: 'var(--gray-500)', marginLeft: 'auto' } },
+                                React.createElement('i', { className: 'fa-solid fa-clock', style: { marginRight: 4 } }),
+                                'encore ~', liveRad.radEtaMin, ' min',
+                                liveRad.radEtaTime ? ' (' + liveRad.radEtaTime + ')' : '',
+                            ),
+                            ready && (liveRad.radEtaMin === 0 || liveRad.radEtaMin == null) && React.createElement('span', { style: { fontSize: 12, color: 'var(--green)', fontWeight: 700, marginLeft: 'auto' } },
+                                React.createElement('i', { className: 'fa-solid fa-circle-check', style: { marginRight: 4 } }),
+                                'cible atteinte',
+                            ),
+                        ),
+                        // progress bar
+                        React.createElement('div', { style: { height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' } },
+                            React.createElement('div', { style: { width: pct + '%', height: '100%', background: color, transition: 'width 0.3s' } }),
+                        ),
+                        React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-400)', marginTop: 6, fontStyle: 'italic' } },
+                            'Indicateur live (refresh 60 s) — repère agronomique, pas une consigne.',
+                        ),
+                    );
+                })(),
 
                 // Stations : Point + Drainage groupés (format papier)
                 stations.map((st, i) => React.createElement('div', { key: i, className: 'irrigation-point-card', style: { marginBottom: 12 } },
@@ -22141,6 +23546,174 @@ ${rejetHtml}
             );
         }
 
+        function DrainageCurve({ group, drainPctFn, sunriseMin, sunsetMin }) {
+            var W = 1000, H = 180;
+            var padL = 56, padR = 20, padT = 30, padB = 24;
+            var innerW = W - padL - padR;
+            var innerH = H - padT - padB;
+            // Fenêtre = sunrise/sunset Meteoblue (arrondi 30 min, marge 30 min), fallback 06:00–20:00
+            var startMin = (sunriseMin != null) ? Math.max(0, Math.floor((sunriseMin - 30) / 30) * 30) : 6 * 60;
+            var endMin = (sunsetMin != null) ? Math.min(24 * 60, Math.ceil((sunsetMin + 30) / 30) * 30) : 20 * 60;
+            var totalMin = endMin - startMin;
+            var pctMax = 40; // Y axis: 0% (bottom) -> 40% (top)
+
+            var minToX = function(m) {
+                var clamped = Math.max(startMin, Math.min(endMin, m));
+                return padL + ((clamped - startMin) / totalMin) * innerW;
+            };
+            var pctToY = function(p) {
+                var clamped = Math.max(0, Math.min(pctMax, p));
+                return padT + innerH - (clamped / pctMax) * innerH;
+            };
+
+            var hhmmToMin = function(s) {
+                if (!s || typeof s !== 'string' || s.indexOf(':') < 0) return null;
+                var parts = s.split(':');
+                var h = parseInt(parts[0], 10), mn = parseInt(parts[1], 10);
+                if (isNaN(h) || isNaN(mn)) return null;
+                return h * 60 + mn;
+            };
+
+            var avgField = function(arr, field) {
+                var vals = (arr || []).filter(function(x){ return x[field] > 0; });
+                if (vals.length === 0) return null;
+                return vals.reduce(function(s,x){ return s + x[field]; }, 0) / vals.length;
+            };
+            var reconColor = function(rc) {
+                if (rc == null) return 'var(--gray-400)';
+                if (rc < 1.1) return 'var(--blue)';     // besoin de réduire l'irrigation
+                if (rc <= 1.2) return 'var(--green)';   // optimal
+                return '#F1C40F';                        // besoin d'eau (flush) — jaune
+            };
+
+            // Build event list (sorted by time)
+            var events = (group.readings || [])
+                .map(function(r) {
+                    var m = hhmmToMin(r.heure);
+                    if (m == null) return null;
+                    var pctStr = drainPctFn(r);
+                    var pct = pctStr === '-' ? null : parseFloat(pctStr);
+                    var vDrain = (r.drainage || []).filter(function(d){return d.volume>0;});
+                    var avgVDrain = vDrain.length ? (vDrain.reduce(function(s,d){return s+d.volume;},0) / vDrain.length).toFixed(0) : '-';
+                    var ecPts = avgField(r.points, 'ec');
+                    var ecDr = avgField(r.drainage, 'ec');
+                    var recon = (ecPts && ecDr && ecPts > 0) ? (ecDr / ecPts) : null;
+                    var color = reconColor(recon);
+                    return { heure: r.heure, m: m, pct: pct, color: color, vDrain: avgVDrain, ecPts: ecPts, ecDr: ecDr, recon: recon };
+                })
+                .filter(function(e){ return e != null; })
+                .sort(function(a,b){ return a.m - b.m; });
+
+            // First Drain = first event with pct > 0
+            var firstDrainIdx = -1;
+            for (var i = 0; i < events.length; i++) {
+                if (events[i].pct != null && events[i].pct > 0) { firstDrainIdx = i; break; }
+            }
+            var finalIdx = events.length > 0 ? events.length - 1 : -1;
+
+            // Trend line connecting droplets (drainage progression)
+            var trendPts = events
+                .filter(function(ev){ return ev.pct != null; })
+                .map(function(ev){ return minToX(ev.m).toFixed(1) + ',' + pctToY(ev.pct).toFixed(1); });
+            var trendPath = trendPts.length > 1 ? 'M ' + trendPts.join(' L ') : null;
+
+            // Hour ticks
+            // Ticks horaires dynamiques toutes les 3h dans la fenêtre + extrémités
+            var ticks = (function() {
+                var arr = [], h0 = Math.ceil(startMin / 60), h1 = Math.floor(endMin / 60);
+                arr.push(h0);
+                for (var h = Math.ceil(h0 / 3) * 3; h < h1; h += 3) if (h > h0) arr.push(h);
+                if (h1 !== arr[arr.length - 1]) arr.push(h1);
+                return arr;
+            })();
+            // Drainage Y-axis ticks
+            var pctTicks = [0, 10, 20, 30, 40];
+
+            return React.createElement('svg', {
+                viewBox: '0 0 ' + W + ' ' + H,
+                preserveAspectRatio: 'xMidYMid meet',
+                style: { width: '100%', height: 'auto', display: 'block' }
+            },
+                // Drainage threshold zones: 0-10% orange (faible), 10-30% green (optimal), 30-40% red (excès)
+                React.createElement('rect', { x: padL, y: pctToY(10), width: innerW, height: pctToY(0) - pctToY(10), fill: 'rgba(243,156,18,0.12)' }),
+                React.createElement('rect', { x: padL, y: pctToY(30), width: innerW, height: pctToY(10) - pctToY(30), fill: 'rgba(46,204,113,0.12)' }),
+                React.createElement('rect', { x: padL, y: pctToY(pctMax), width: innerW, height: pctToY(30) - pctToY(pctMax), fill: 'rgba(231,76,60,0.12)' }),
+
+                // Y-axis grid + labels (drainage %)
+                pctTicks.map(function(p) {
+                    var y = pctToY(p);
+                    return React.createElement('g', { key: 'py' + p },
+                        React.createElement('line', { x1: padL, y1: y, x2: padL + innerW, y2: y, stroke: 'var(--gray-400)', strokeWidth: 0.5, strokeDasharray: '2,3', opacity: 0.5 }),
+                        React.createElement('text', { x: padL - 6, y: y + 3, fontSize: 10, fill: 'var(--gray-600)', textAnchor: 'end' }, p + '%')
+                    );
+                }),
+                React.createElement('text', { x: 12, y: padT + innerH / 2, fontSize: 10, fill: 'var(--gray-600)', fontWeight: 600, textAnchor: 'middle', transform: 'rotate(-90, 12, ' + (padT + innerH / 2) + ')' }, 'Drainage'),
+
+                // Hour ticks + labels
+                ticks.map(function(h) {
+                    var x = minToX(h * 60);
+                    return React.createElement('g', { key: 't' + h },
+                        React.createElement('line', { x1: x, y1: padT + innerH, x2: x, y2: padT + innerH + 4, stroke: 'var(--gray-400)', strokeWidth: 1 }),
+                        React.createElement('text', { x: x, y: H - 6, fontSize: 10, fill: 'var(--gray-600)', textAnchor: 'middle' }, (h < 10 ? '0' : '') + h + ':00')
+                    );
+                }),
+
+                // Sunrise / Sunset arrows
+                (function() {
+                    var fmt = function(m) { var h = Math.floor(m/60), mn = Math.round(m%60); return (h<10?'0':'')+h+':'+(mn<10?'0':'')+mn; };
+                    var srX = (sunriseMin != null) ? minToX(sunriseMin) : padL;
+                    var ssX = (sunsetMin != null) ? minToX(sunsetMin) : padL + innerW;
+                    var srLabel = (sunriseMin != null) ? '☀ Sunrise ' + fmt(sunriseMin) : '☀ Sunrise';
+                    var ssLabel = (sunsetMin != null) ? fmt(sunsetMin) + ' Sunset ☽' : 'Sunset ☽';
+                    return React.createElement(React.Fragment, null,
+                        React.createElement('text', { x: padL, y: padT - 12, fontSize: 10, fill: 'var(--gray-600)' }, srLabel),
+                        React.createElement('text', { x: padL + innerW, y: padT - 12, fontSize: 10, fill: 'var(--gray-600)', textAnchor: 'end' }, ssLabel),
+                        sunriseMin != null && React.createElement('line', { x1: srX, y1: padT, x2: srX, y2: padT + innerH, stroke: '#F39C12', strokeWidth: 1, strokeDasharray: '3,3', opacity: 0.5 }),
+                        sunsetMin != null && React.createElement('line', { x1: ssX, y1: padT, x2: ssX, y2: padT + innerH, stroke: '#8E44AD', strokeWidth: 1, strokeDasharray: '3,3', opacity: 0.5 })
+                    );
+                })(),
+
+                // Trend line (drainage progression)
+                trendPath && React.createElement('path', { d: trendPath, fill: 'none', stroke: '#C2185B', strokeWidth: 2, strokeDasharray: '4,3', opacity: 0.6 }),
+
+                // First Drain marker
+                firstDrainIdx >= 0 && React.createElement('g', { key: 'fd' },
+                    React.createElement('line', { x1: minToX(events[firstDrainIdx].m), y1: padT, x2: minToX(events[firstDrainIdx].m), y2: padT + innerH, stroke: 'var(--blue)', strokeWidth: 1, strokeDasharray: '2,3', opacity: 0.6 }),
+                    React.createElement('text', { x: minToX(events[firstDrainIdx].m), y: padT - 2, fontSize: 9, fill: 'var(--blue)', textAnchor: 'middle', fontWeight: 600 }, 'First Drain')
+                ),
+
+                // Final Irrigation marker
+                finalIdx >= 0 && finalIdx !== firstDrainIdx && React.createElement('g', { key: 'fi' },
+                    React.createElement('line', { x1: minToX(events[finalIdx].m), y1: padT, x2: minToX(events[finalIdx].m), y2: padT + innerH, stroke: 'var(--berry)', strokeWidth: 1, strokeDasharray: '2,3', opacity: 0.6 }),
+                    React.createElement('text', { x: minToX(events[finalIdx].m), y: padT - 2, fontSize: 9, fill: 'var(--berry)', textAnchor: 'middle', fontWeight: 600 }, 'Final Irrigation')
+                ),
+
+                // Droplets
+                events.map(function(ev, idx) {
+                    var x = minToX(ev.m), y = ev.pct == null ? pctToY(0) : pctToY(ev.pct);
+                    var pctLabel = ev.pct == null ? '-' : ev.pct.toFixed(1) + '%';
+                    var reconLabel = ev.recon == null ? '-' : ev.recon.toFixed(2) + 'x';
+                    var tip = ev.heure + ' — Drainage ' + pctLabel + ' — V drain ' + ev.vDrain + ' mL — Recon ' + reconLabel + (ev.ecPts && ev.ecDr ? ' (EC ' + ev.ecPts.toFixed(1) + '→' + ev.ecDr.toFixed(1) + ')' : '');
+                    return React.createElement('g', { key: 'd' + idx },
+                        React.createElement('title', null, tip),
+                        // droplet shape: circle + small triangle on top
+                        React.createElement('path', {
+                            d: 'M ' + x + ' ' + (y - 10) + ' Q ' + (x + 6) + ' ' + (y - 2) + ' ' + (x + 6) + ' ' + (y + 2) + ' A 6 6 0 1 1 ' + (x - 6) + ' ' + (y + 2) + ' Q ' + (x - 6) + ' ' + (y - 2) + ' ' + x + ' ' + (y - 10) + ' Z',
+                            fill: ev.color, stroke: '#fff', strokeWidth: 1.2
+                        }),
+                        // reconcentration label below droplet
+                        ev.recon != null && React.createElement('text', {
+                            x: x, y: y + 16, fontSize: 9, fontWeight: 700, textAnchor: 'middle', fill: reconColor(ev.recon)
+                        }, reconLabel),
+                        // arrow indicator: ↑ if recon > 1.2 (need more water), ↓ if recon < 1.1 (too much water)
+                        ev.recon != null && (ev.recon > 1.2 || ev.recon < 1.1) && React.createElement('text', {
+                            x: x + 10, y: y + 2, fontSize: 14, fontWeight: 900, textAnchor: 'start', fill: reconColor(ev.recon)
+                        }, ev.recon > 1.2 ? '↑' : '↓')
+                    );
+                })
+            );
+        }
+
         function StationnaireHistoriqueTab({ farmFilter, currentProfile, userProfile }) {
             const isDT = currentProfile === 'dt';
             const [selectedFarm, setSelectedFarm] = useState(farmFilter || 'F1');
@@ -22153,6 +23726,31 @@ ${rejetHtml}
             const [editMode, setEditMode] = useState(false);
             const [editData, setEditData] = useState(null);
             const [saving, setSaving] = useState(false);
+            // Calcul sunrise/sunset client-side (NOAA simplifié) : déterministe, pas d'appel API
+            const sunTimes = React.useMemo(() => {
+                var ferme = meteoFermes[activeFarm];
+                if (!ferme || !filterDate) return { sunriseMin: null, sunsetMin: null };
+                var parts = filterDate.split('-');
+                var dateUTC = new Date(Date.UTC(parseInt(parts[0],10), parseInt(parts[1],10) - 1, parseInt(parts[2],10)));
+                var startOfYear = Date.UTC(dateUTC.getUTCFullYear(), 0, 0);
+                var dayOfYear = (dateUTC - startOfYear) / 86400000;
+                var rad = Math.PI / 180;
+                var solarDecl = 23.45 * rad * Math.sin(2 * Math.PI / 365 * (dayOfYear - 81));
+                var latR = ferme.lat * rad;
+                var cosH = -Math.tan(latR) * Math.tan(solarDecl);
+                if (cosH > 1 || cosH < -1) return { sunriseMin: null, sunsetMin: null };
+                var hourAngle = Math.acos(cosH) / rad; // degrés
+                var solarNoonUTC = 12 - ferme.lon / 15; // h UTC
+                var sunriseUTC = solarNoonUTC - hourAngle / 15;
+                var sunsetUTC = solarNoonUTC + hourAngle / 15;
+                var tzOffset = 1; // Africa/Casablanca = UTC+1 (Maroc, pas de DST depuis 2018)
+                var srLocal = sunriseUTC + tzOffset;
+                var ssLocal = sunsetUTC + tzOffset;
+                return {
+                    sunriseMin: Math.round(srLocal * 60),
+                    sunsetMin: Math.round(ssLocal * 60)
+                };
+            }, [activeFarm, filterDate]);
             const todayStr = new Date().toISOString().slice(0, 10);
 
             const currentCycle = getCycle(new Date().toISOString());
@@ -22301,75 +23899,162 @@ ${rejetHtml}
                     )
                 ),
 
-                // Table groupée par parcelle
+                // Une carte par parcelle : Header → Historique → Graph → Recommandation
                 loading ? React.createElement('p', null, 'Chargement...') :
                 readings.length === 0 ? React.createElement('p', { style: { color: '#999', textAlign: 'center', marginTop: 32 } }, 'Aucune lecture pour cette date') :
-                React.createElement('div', { className: 'table-wrapper' },
-                    React.createElement('table', { className: 'data-table' },
-                        React.createElement('thead', null,
-                            React.createElement('tr', null,
-                                React.createElement('th', null, 'Heure'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'EC pts'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'pH pts'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'Vol (mL)'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'EC drain'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'pH drain'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'V (mL)'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, '% Drainage'),
-                                React.createElement('th', { style: { textAlign: 'center' } }, 'Durée'),
-                                React.createElement('th', { style: { width: 40 } }, '')
-                            )
-                        ),
-                        React.createElement('tbody', null,
-                            Object.entries(byParcelle).map(function(entry) {
-                                var parcId = entry[0], group = entry[1];
-                                var gReadings = group.readings;
-                                var gEcPts = groupAvg(gReadings, 'points', 'ec');
-                                var gPhPts = groupAvg(gReadings, 'points', 'ph');
-                                var gEcDrain = groupAvg(gReadings, 'drainage', 'ec');
-                                var gDrainPct = groupDrainPct(gReadings);
-                                var drainColor = gDrainPct === '-' ? 'var(--gray-400)' : parseFloat(gDrainPct) > 30 ? 'var(--red)' : parseFloat(gDrainPct) < 10 ? 'var(--orange)' : 'var(--green)';
-                                return [
-                                    React.createElement('tr', { key: 'grp-' + parcId, style: { background: 'linear-gradient(135deg, var(--berry-pale), rgba(139,34,82,0.06))', borderTop: '2px solid var(--berry)' } },
-                                        React.createElement('td', { colSpan: 10, style: { padding: '10px 12px', borderBottom: '1px solid rgba(139,34,82,0.15)' } },
-                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 } },
-                                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                                                    React.createElement('i', { className: 'fa-solid fa-seedling', style: { color: 'var(--berry)', fontSize: 14 } }),
-                                                    React.createElement('span', { style: { fontWeight: 700, fontSize: 13, color: 'var(--berry)' } }, group.label),
-                                                    React.createElement('span', { style: { fontSize: 10, color: 'var(--gray-400)', background: 'rgba(0,0,0,0.04)', padding: '2px 8px', borderRadius: 10 } }, gReadings.length + ' lecture' + (gReadings.length > 1 ? 's' : ''))
-                                                ),
-                                                React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
-                                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'rgba(139,34,82,0.06)', color: 'var(--gray-600)' } }, 'EC: ' + gEcPts),
-                                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'rgba(139,34,82,0.06)', color: 'var(--gray-600)' } }, 'pH: ' + gPhPts),
-                                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'var(--blue-pale)', color: 'var(--blue)' } }, 'EC dr: ' + gEcDrain),
-                                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, background: gDrainPct === '-' ? 'var(--gray-100)' : parseFloat(gDrainPct) > 30 ? 'rgba(231,76,60,0.1)' : parseFloat(gDrainPct) < 10 ? 'rgba(243,156,18,0.1)' : 'rgba(46,204,113,0.1)', color: drainColor } }, '% Drain: ' + (gDrainPct === '-' ? '-' : gDrainPct + '%'))
+                React.createElement('div', { style: { marginBottom: 20 } },
+                    Object.entries(byParcelle).map(function(entry) {
+                        var parcId = entry[0], group = entry[1];
+                        var gReadings = group.readings;
+                        var gEcPts = groupAvg(gReadings, 'points', 'ec');
+                        var gPhPts = groupAvg(gReadings, 'points', 'ph');
+                        var gEcDrain = groupAvg(gReadings, 'drainage', 'ec');
+                        var gDrainPct = groupDrainPct(gReadings);
+                        var drainColor = gDrainPct === '-' ? 'var(--gray-400)' : parseFloat(gDrainPct) > 30 ? 'var(--red)' : parseFloat(gDrainPct) < 10 ? 'var(--orange)' : 'var(--green)';
+                        var gRecon = (gEcPts !== '-' && gEcDrain !== '-' && parseFloat(gEcPts) > 0) ? (parseFloat(gEcDrain) / parseFloat(gEcPts)) : null;
+                        var gReconLabel = gRecon == null ? '-' : gRecon.toFixed(2) + 'x';
+                        var gReconColor = gRecon == null ? 'var(--gray-400)' : gRecon < 1.1 ? 'var(--blue)' : gRecon <= 1.2 ? 'var(--green)' : '#F1C40F';
+                        var gReconLabelSuffix = gRecon == null ? '' : gRecon > 1.2 ? ' · Faible ↑durée' : gRecon < 1.1 ? ' · Forte ↓durée' : ' · Optimale';
+                        return React.createElement('div', { key: 'card-' + parcId, style: { background: '#fff', border: '1px solid rgba(139,34,82,0.15)', borderRadius: 10, padding: 12, marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' } },
+                            // Header
+                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 } },
+                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                                    React.createElement('i', { className: 'fa-solid fa-seedling', style: { color: 'var(--berry)', fontSize: 14 } }),
+                                    React.createElement('span', { style: { fontWeight: 700, fontSize: 13, color: 'var(--berry)' } }, group.label),
+                                    React.createElement('span', { style: { fontSize: 10, color: 'var(--gray-400)', background: 'rgba(0,0,0,0.04)', padding: '2px 8px', borderRadius: 10 } }, gReadings.length + ' lecture' + (gReadings.length > 1 ? 's' : ''))
+                                ),
+                                React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'rgba(139,34,82,0.06)', color: 'var(--gray-600)' } }, 'EC: ' + gEcPts),
+                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'rgba(139,34,82,0.06)', color: 'var(--gray-600)' } }, 'pH: ' + gPhPts),
+                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'rgba(52,152,219,0.08)', color: 'var(--blue)' } }, 'EC dr: ' + gEcDrain),
+                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 600, background: 'rgba(0,0,0,0.04)', color: drainColor } }, '% Drain: ' + gDrainPct + (gDrainPct === '-' ? '' : '%')),
+                                    React.createElement('span', { style: { fontSize: 10, padding: '2px 8px', borderRadius: 10, fontWeight: 700, background: 'rgba(0,0,0,0.04)', color: gReconColor }, title: 'Reconcentration = EC drain / EC apport (cible 1.1–1.2)' }, 'Recon: ' + gReconLabel + gReconLabelSuffix)
+                                )
+                            ),
+                            // Historique (table des lectures de cette parcelle)
+                            React.createElement('div', { className: 'table-wrapper', style: { marginBottom: 10 } },
+                                React.createElement('table', { className: 'data-table' },
+                                    React.createElement('thead', null,
+                                        React.createElement('tr', null,
+                                            React.createElement('th', null, 'Heure'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'EC pts'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'pH pts'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'Vol (mL)'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'EC drain'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'pH drain'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'V (mL)'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, '% Drainage'),
+                                            React.createElement('th', { style: { textAlign: 'center' } }, 'Durée'),
+                                            React.createElement('th', { style: { width: 40 } }, '')
+                                        )
+                                    ),
+                                    React.createElement('tbody', null,
+                                        gReadings.map(function(r) {
+                                            return React.createElement('tr', { key: r.id, onClick: function() { setSelectedReading(r); }, style: { cursor: 'pointer' } },
+                                                React.createElement('td', { style: { fontWeight: 600 } }, r.heure || '-'),
+                                                React.createElement('td', { style: { textAlign: 'center' } }, avg(r.points, 'ec')),
+                                                React.createElement('td', { style: { textAlign: 'center' } }, avg(r.points, 'ph')),
+                                                React.createElement('td', { style: { textAlign: 'center' } }, avg(r.points, 'volume')),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, avg(r.drainage, 'ec')),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, avg(r.drainage, 'ph')),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, avg(r.drainage, 'volume')),
+                                                React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: (function() { var v = drainPct(r); return v === '-' ? 'var(--gray-400)' : parseFloat(v) > 30 ? 'var(--red)' : parseFloat(v) < 10 ? 'var(--orange)' : 'var(--green)'; })() } }, (function() { var v = drainPct(r); return v === '-' ? '-' : v + '%'; })()),
+                                                React.createElement('td', { style: { textAlign: 'center' } }, (r.duree || 0) + 'min'),
+                                                React.createElement('td', null,
+                                                    r.createdBy === currentProfile && React.createElement('button', {
+                                                        onClick: function(e) { e.stopPropagation(); handleDelete(r.id); },
+                                                        style: { background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer' },
+                                                        title: 'Supprimer'
+                                                    }, React.createElement('i', { className: 'fa-solid fa-trash-can' }))
                                                 )
+                                            );
+                                        })
+                                    ),
+                                    // Totaux journée
+                                    (function() {
+                                        var sumPtsVol = 0, sumDrVol = 0, sumDuree = 0;
+                                        var ecPtsVals = [], phPtsVals = [], ecDrVals = [], phDrVals = [];
+                                        gReadings.forEach(function(r) {
+                                            (r.points || []).forEach(function(p) {
+                                                if (p.volume > 0) sumPtsVol += p.volume;
+                                                if (p.ec > 0) ecPtsVals.push(p.ec);
+                                                if (p.ph > 0) phPtsVals.push(p.ph);
+                                            });
+                                            (r.drainage || []).forEach(function(d) {
+                                                if (d.volume > 0) sumDrVol += d.volume;
+                                                if (d.ec > 0) ecDrVals.push(d.ec);
+                                                if (d.ph > 0) phDrVals.push(d.ph);
+                                            });
+                                            sumDuree += Number(r.duree) || 0;
+                                        });
+                                        var mean = function(a) { return a.length ? (a.reduce(function(s,v){return s+v;},0)/a.length).toFixed(1) : '-'; };
+                                        var globalDrainPct = sumPtsVol > 0 ? ((sumDrVol / sumPtsVol) * 100).toFixed(1) : '-';
+                                        var globalDrainColor = globalDrainPct === '-' ? 'var(--gray-400)' : parseFloat(globalDrainPct) > 30 ? 'var(--red)' : parseFloat(globalDrainPct) < 10 ? 'var(--orange)' : 'var(--green)';
+                                        return React.createElement('tfoot', null,
+                                            React.createElement('tr', { style: { background: 'var(--berry-pale)', fontWeight: 700, borderTop: '2px solid var(--berry)' } },
+                                                React.createElement('td', { style: { fontWeight: 800, color: 'var(--berry)' } }, 'TOTAL'),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--gray-600)', fontSize: 11 } }, '⌀ ' + mean(ecPtsVals)),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--gray-600)', fontSize: 11 } }, '⌀ ' + mean(phPtsVals)),
+                                                React.createElement('td', { style: { textAlign: 'center' } }, sumPtsVol.toFixed(0)),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)', fontSize: 11 } }, '⌀ ' + mean(ecDrVals)),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)', fontSize: 11 } }, '⌀ ' + mean(phDrVals)),
+                                                React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, sumDrVol.toFixed(0)),
+                                                React.createElement('td', { style: { textAlign: 'center', color: globalDrainColor } }, globalDrainPct === '-' ? '-' : globalDrainPct + '%'),
+                                                React.createElement('td', { style: { textAlign: 'center' } }, sumDuree + 'min'),
+                                                React.createElement('td', null)
                                             )
-                                        )
+                                        );
+                                    })()
+                                )
+                            ),
+                            // Graph
+                            React.createElement(DrainageCurve, { group: group, drainPctFn: drainPct, sunriseMin: sunTimes.sunriseMin, sunsetMin: sunTimes.sunsetMin }),
+                            (function() {
+                                var sortedR = gReadings.slice().sort(function(a,b){ return (a.heure||'').localeCompare(b.heure||''); });
+                                var last = sortedR[sortedR.length - 1];
+                                if (!last) return null;
+                                var ecPtsArr = (last.points||[]).filter(function(p){return p.ec>0;});
+                                var ecDrArr = (last.drainage||[]).filter(function(d){return d.ec>0;});
+                                var lastEcPts = ecPtsArr.length ? ecPtsArr.reduce(function(s,p){return s+p.ec;},0) / ecPtsArr.length : 0;
+                                var lastEcDr = ecDrArr.length ? ecDrArr.reduce(function(s,d){return s+d.ec;},0) / ecDrArr.length : 0;
+                                var lastRecon = (lastEcPts > 0 && lastEcDr > 0) ? (lastEcDr / lastEcPts) : null;
+                                var lastDrainPct = drainPct(last);
+                                var lastDuree = Number(last.duree) || 0;
+                                var advice, action, advColor, advBg, suggestedDuree = lastDuree;
+                                if (lastRecon == null) {
+                                    advice = 'Données insuffisantes (manque EC drain ou EC apport sur la dernière lecture).';
+                                    action = '—'; advColor = 'var(--gray-600)'; advBg = 'rgba(0,0,0,0.04)';
+                                } else if (lastRecon > 1.2) {
+                                    var inc = Math.max(1, Math.round(lastDuree * 0.2));
+                                    suggestedDuree = lastDuree + inc;
+                                    advice = 'Reconcentration ' + lastRecon.toFixed(2) + 'x élevée → racines en stress salin, apport insuffisant.';
+                                    action = '↑ Augmenter la durée : ' + lastDuree + ' min → ~' + suggestedDuree + ' min (+' + inc + ' min)';
+                                    advColor = '#B7950B'; advBg = 'rgba(241,196,15,0.12)';
+                                } else if (lastRecon < 1.1) {
+                                    var dec = Math.max(1, Math.round(lastDuree * 0.2));
+                                    suggestedDuree = Math.max(2, lastDuree - dec);
+                                    advice = 'Reconcentration ' + lastRecon.toFixed(2) + 'x faible → drainage excessif, gaspillage d’eau et nutriments.';
+                                    action = '↓ Réduire la durée : ' + lastDuree + ' min → ~' + suggestedDuree + ' min (−' + dec + ' min)';
+                                    advColor = 'var(--blue)'; advBg = 'rgba(52,152,219,0.10)';
+                                } else {
+                                    advice = 'Reconcentration ' + lastRecon.toFixed(2) + 'x dans la cible (1.10–1.20) — irrigation optimale.';
+                                    action = '✓ Maintenir la durée : ' + lastDuree + ' min';
+                                    advColor = 'var(--green)'; advBg = 'rgba(46,204,113,0.10)';
+                                }
+                                return React.createElement('div', { style: { marginTop: 10, padding: '10px 12px', background: advBg, borderLeft: '3px solid ' + advColor, borderRadius: 6 } },
+                                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 } },
+                                        React.createElement('i', { className: 'fa-solid fa-lightbulb', style: { color: advColor, fontSize: 12 } }),
+                                        React.createElement('span', { style: { fontSize: 11, fontWeight: 700, color: advColor, textTransform: 'uppercase', letterSpacing: 0.4 } }, 'Recommandation — dernière lecture ' + (last.heure || '?'))
+                                    ),
+                                    React.createElement('div', { style: { fontSize: 12, color: '#444', marginBottom: 4 } }, advice),
+                                    React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: advColor } }, action),
+                                    lastRecon != null && React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-600)', marginTop: 4 } },
+                                        'EC apport ' + lastEcPts.toFixed(1) + ' → drain ' + lastEcDr.toFixed(1) + '   |   Drainage ' + (lastDrainPct === '-' ? '-' : lastDrainPct + '%') + '   |   Durée actuelle ' + lastDuree + ' min'
                                     )
-                                ].concat(gReadings.map(function(r) {
-                                    return React.createElement('tr', { key: r.id, onClick: function() { setSelectedReading(r); }, style: { cursor: 'pointer' } },
-                                        React.createElement('td', { style: { fontWeight: 600 } }, r.heure || '-'),
-                                        React.createElement('td', { style: { textAlign: 'center' } }, avg(r.points, 'ec')),
-                                        React.createElement('td', { style: { textAlign: 'center' } }, avg(r.points, 'ph')),
-                                        React.createElement('td', { style: { textAlign: 'center' } }, avg(r.points, 'volume')),
-                                        React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, avg(r.drainage, 'ec')),
-                                        React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, avg(r.drainage, 'ph')),
-                                        React.createElement('td', { style: { textAlign: 'center', color: 'var(--blue)' } }, avg(r.drainage, 'volume')),
-                                        React.createElement('td', { style: { textAlign: 'center', fontWeight: 600, color: (function() { var v = drainPct(r); return v === '-' ? 'var(--gray-400)' : parseFloat(v) > 30 ? 'var(--red)' : parseFloat(v) < 10 ? 'var(--orange)' : 'var(--green)'; })() } }, (function() { var v = drainPct(r); return v === '-' ? '-' : v + '%'; })()),
-                                        React.createElement('td', { style: { textAlign: 'center' } }, (r.duree || 0) + 'min'),
-                                        React.createElement('td', null,
-                                            r.createdBy === currentProfile && React.createElement('button', {
-                                                onClick: function(e) { e.stopPropagation(); handleDelete(r.id); },
-                                                style: { background: 'none', border: 'none', color: 'var(--red)', cursor: 'pointer' },
-                                                title: 'Supprimer'
-                                            }, React.createElement('i', { className: 'fa-solid fa-trash-can' }))
-                                        )
-                                    );
-                                }));
-                            }).flat()
-                        )
-                    )
+                                );
+                            })()
+                        );
+                    })
                 ),
 
                 // Detail / Edit modal
@@ -23075,6 +24760,1299 @@ ${rejetHtml}
             );
         }
 
+        // ===================== STATIONNAIRE: PILOTAGE IRRIGATION (INTELLIGENCE) =====================
+        // Reads from /api/stock?action=irrigation-intelligence which delegates
+        // to functions/lib/irrigation/. UI stays logic-free — every metric,
+        // diagnosis, badge and recommendation is server-computed.
+        function IrrigationIntelligenceTab({ farmFilter, currentProfile, userProfile }) {
+            const [parcelle, setParcelle] = useState('');
+            const [periodDays, setPeriodDays] = useState(7);
+            const [data, setData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState(null);
+            const [selectedKey, setSelectedKey] = useState(null);
+            // Admin: parcelle metadata config
+            const [showConfig, setShowConfig] = useState(false);
+            const [configMeta, setConfigMeta] = useState(null);
+            const [configLoading, setConfigLoading] = useState(false);
+            const [configMsg, setConfigMsg] = useState(null);
+            const [savingId, setSavingId] = useState(null);
+            const [edits, setEdits] = useState({});  // { parcelleId: { field: value } }
+            // Live RadSum since last pulse + ETA — only when parcelle selected on today's date
+            const [liveRad, setLiveRad] = useState(null);
+
+            const loadConfigMeta = React.useCallback(async () => {
+                setConfigLoading(true);
+                setConfigMsg(null);
+                try {
+                    const r = await fetch('/api/stock?action=irrigation-meta-list');
+                    const j = await r.json();
+                    if (j.success) {
+                        setConfigMeta(j.meta || {});
+                    } else {
+                        setConfigMsg({ type: 'error', text: j.error || 'Erreur chargement config' });
+                    }
+                } catch (e) {
+                    setConfigMsg({ type: 'error', text: 'Erreur réseau : ' + e.message });
+                }
+                setConfigLoading(false);
+            }, []);
+
+            const seedConfig = React.useCallback(async () => {
+                setConfigLoading(true);
+                setConfigMsg(null);
+                try {
+                    const r = await fetch('/api/stock?action=irrigation-meta-seed', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+                    const j = await r.json();
+                    if (j.success) {
+                        setConfigMsg({ type: 'ok', text: `${j.seeded} parcelles initialisées dans Firestore.` });
+                        await loadConfigMeta();
+                    } else {
+                        setConfigMsg({ type: 'error', text: j.error || 'Erreur seed' });
+                    }
+                } catch (e) {
+                    setConfigMsg({ type: 'error', text: 'Erreur réseau : ' + e.message });
+                }
+                setConfigLoading(false);
+            }, [loadConfigMeta]);
+
+            const saveOneMeta = React.useCallback(async (id, meta) => {
+                setSavingId(id);
+                setConfigMsg(null);
+                try {
+                    const r = await fetch('/api/stock?action=irrigation-meta-save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id, meta }),
+                    });
+                    const j = await r.json();
+                    if (j.success) {
+                        setConfigMsg({ type: 'ok', text: `${id} sauvegardé.` });
+                        // Update local state
+                        setConfigMeta(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...meta } }));
+                        setEdits(prev => { const n = { ...prev }; delete n[id]; return n; });
+                    } else {
+                        setConfigMsg({ type: 'error', text: j.error || 'Erreur sauvegarde' });
+                    }
+                } catch (e) {
+                    setConfigMsg({ type: 'error', text: 'Erreur réseau : ' + e.message });
+                }
+                setSavingId(null);
+            }, []);
+
+            useEffect(() => { if (showConfig && !configMeta) loadConfigMeta(); }, [showConfig, configMeta, loadConfigMeta]);
+
+            const currentCycle = getCycle(new Date().toISOString());
+            const parcelleOptions = React.useMemo(() => {
+                return PARCELLES_CULTURALES
+                    .filter(pc => pc.ferme === farmFilter && pc.cycle === currentCycle && pc.enProduction !== false)
+                    .map(pc => ({
+                        value: pc.id,
+                        label: pc.secteurs.join('/') + ' ' + pc.variete + (pc.sousVariete ? ' ' + pc.sousVariete : ''),
+                    }));
+            }, [farmFilter, currentCycle]);
+
+            const { dateFrom, dateTo } = React.useMemo(() => {
+                const today = new Date();
+                const to = today.toISOString().slice(0, 10);
+                const fromDate = new Date(today);
+                fromDate.setDate(fromDate.getDate() - (periodDays - 1));
+                return { dateFrom: fromDate.toISOString().slice(0, 10), dateTo: to };
+            }, [periodDays]);
+
+            useEffect(() => {
+                if (!farmFilter) return;
+                let cancelled = false;
+                setLoading(true);
+                setError(null);
+                const params = new URLSearchParams({
+                    action: 'irrigation-intelligence',
+                    ferme: farmFilter,
+                    dateFrom, dateTo,
+                });
+                if (parcelle) params.set('parcelle', parcelle);
+                fetch('/api/stock?' + params.toString())
+                    .then(r => r.json())
+                    .then(j => {
+                        if (cancelled) return;
+                        if (!j.success) throw new Error(j.error || 'Erreur serveur');
+                        setData(j);
+                        const first = (j.summaries || [])[0];
+                        setSelectedKey(first ? first.parcelle + '__' + first.date : null);
+                    })
+                    .catch(e => { if (!cancelled) { setError(e.message); setData(null); } })
+                    .finally(() => { if (!cancelled) setLoading(false); });
+                return () => { cancelled = true; };
+            }, [farmFilter, parcelle, dateFrom, dateTo]);
+
+            // Live RadSum + ETA — only meaningful for "today" on a specific parcelle.
+            // Polls the next-pulse endpoint every 60s and re-uses the recommendNextPulse
+            // pipeline (radSumSinceLastPulseNow + radEtaTime + radTargetJPerCm2).
+            useEffect(() => {
+                if (!farmFilter || !parcelle) { setLiveRad(null); return; }
+                let cancelled = false;
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const fetchLive = async () => {
+                    try {
+                        const r = await fetch('/api/stock?action=irrigation-intelligence-next-pulse'
+                            + '&ferme=' + encodeURIComponent(farmFilter)
+                            + '&parcelle=' + encodeURIComponent(parcelle)
+                            + '&date=' + encodeURIComponent(todayStr));
+                        const j = await r.json();
+                        if (cancelled || !j.success) return;
+                        setLiveRad({
+                            radSumSinceLastPulseNow: j.radSumSinceLastPulseNow,
+                            radTargetJPerCm2: j.radTargetJPerCm2,
+                            radEtaMin: j.radEtaMin,
+                            radEtaTime: j.radEtaTime,
+                            lastPulseHeure: j.lastPulseHeure,
+                            fetchedAt: Date.now(),
+                        });
+                    } catch (e) { /* silent */ }
+                };
+                fetchLive();
+                const id = setInterval(fetchLive, 60_000);
+                return () => { cancelled = true; clearInterval(id); };
+            }, [farmFilter, parcelle]);
+
+            // ----- formatters & style helpers -----
+            const fmtVol = v => v == null || !Number.isFinite(v) ? '—' : Math.round(v) + ' mL';
+            const fmtPct = v => v == null || !Number.isFinite(v) ? '—' : v.toFixed(1) + '%';
+            const fmtEc = v => v == null || !Number.isFinite(v) ? '—' : v.toFixed(2);
+            const fmtPh = v => v == null || !Number.isFinite(v) ? '—' : v.toFixed(2);
+            const fmtNum = v => v == null || !Number.isFinite(v) ? '—' : String(v);
+
+            const diagnosisStyle = (d) => {
+                if (d === 'critical') return { color: 'var(--red)', bg: 'rgba(231,76,60,0.10)', label: 'Critique', icon: 'fa-circle-exclamation' };
+                if (d === 'over-drain') return { color: 'var(--orange)', bg: 'rgba(243,156,18,0.10)', label: 'Drainage élevé', icon: 'fa-arrow-trend-up' };
+                if (d === 'under-drain') return { color: '#d97706', bg: 'rgba(217,119,6,0.10)', label: 'Drainage faible', icon: 'fa-arrow-trend-down' };
+                if (d === 'optimal') return { color: 'var(--green)', bg: 'rgba(46,204,113,0.10)', label: 'Optimal', icon: 'fa-circle-check' };
+                return { color: 'var(--gray-400)', bg: 'rgba(107,114,128,0.10)', label: 'Sans donnée', icon: 'fa-circle-question' };
+            };
+
+            const levelStyle = (lvl) => {
+                if (lvl === 'critical') return { color: 'var(--red)', bg: 'rgba(231,76,60,0.10)', icon: 'fa-circle-exclamation' };
+                if (lvl === 'warning') return { color: 'var(--orange)', bg: 'rgba(243,156,18,0.10)', icon: 'fa-triangle-exclamation' };
+                if (lvl === 'info') return { color: 'var(--blue)', bg: 'rgba(52,152,219,0.10)', icon: 'fa-circle-info' };
+                if (lvl === 'ok') return { color: 'var(--green)', bg: 'rgba(46,204,113,0.10)', icon: 'fa-circle-check' };
+                return { color: 'var(--gray-500)', bg: '#f3f4f6', icon: 'fa-circle' };
+            };
+
+            const pulseBadges = (p) => {
+                const out = [];
+                if (p.drainPct == null) {
+                    out.push({ text: 'Pas de drainage', color: 'var(--gray-500)', bg: '#f3f4f6' });
+                } else if (p.drainPct > 35) {
+                    out.push({ text: 'Critique', color: '#fff', bg: 'var(--red)' });
+                } else if (p.isHighDrain) {
+                    out.push({ text: 'Drain élevé', color: '#fff', bg: 'var(--orange)' });
+                } else if (p.isLowDrain) {
+                    out.push({ text: 'Drain faible', color: '#fff', bg: '#d97706' });
+                } else {
+                    out.push({ text: 'OK', color: '#fff', bg: 'var(--green)' });
+                }
+                if (p.isLateDayPulse) out.push({ text: 'Tardif', color: '#fff', bg: 'var(--blue)' });
+                if (p.ecDelta != null && p.ecDelta > 0.4) out.push({ text: 'EC↑', color: '#fff', bg: '#7c3aed' });
+                // Radiation-based badges (only when RadSum was computed)
+                if (p.radSumSincePreviousPulse != null) {
+                    if (p.radSumSincePreviousPulse < 60) out.push({ text: 'Trop tôt', color: '#fff', bg: '#0891b2' });
+                    else if (p.radSumSincePreviousPulse > 250) out.push({ text: 'Trop tard', color: '#fff', bg: '#be123c' });
+                }
+                return out;
+            };
+
+            const _today = new Date().toISOString().slice(0, 10);
+            const _findSummary = () => {
+                if (!data || !Array.isArray(data.summaries)) return null;
+                const found = data.summaries.find(s => (s.parcelle + '__' + s.date) === selectedKey);
+                if (found) return found;
+                // Virtual today (no data yet) — synthesize an empty summary
+                if (selectedKey && selectedKey.endsWith('__' + _today)) {
+                    const parc = selectedKey.split('__')[0];
+                    return {
+                        virtual: true,
+                        date: _today, parcelle: parc, ferme: data.ferme,
+                        parcelleLabel: (parcelleOptions.find(o => o.value === parc) || {}).label || parc,
+                        totalInputMl: 0, totalDrainMl: 0, totalDrainPct: null,
+                        avgEcPts: null, avgEcDrain: null, avgPhPts: null, avgPhDrain: null,
+                        pulseCount: 0, highDrainPulseCount: 0, lowDrainPulseCount: 0,
+                        irrigationCutoffTime: null, diagnosis: 'unknown', diagnosisReasons: [],
+                        drainTrend: null, pulses: [],
+                    };
+                }
+                return null;
+            };
+            const selectedSummary = _findSummary();
+            const selectedTrail = (data && data.pulseTrailByKey && selectedKey)
+                ? (data.pulseTrailByKey[selectedKey] || [])
+                : [];
+            const selectedRadRecos = (data && data.radiationRecommendationsByKey && selectedKey)
+                ? (data.radiationRecommendationsByKey[selectedKey] || [])
+                : [];
+            const selectedRecos = (data && data.recommendationsByKey && selectedKey)
+                ? (data.recommendationsByKey[selectedKey] || [])
+                : [];
+
+            // ----- shared inline panel style for visual rhythm -----
+            const panelBase = { background: '#fff', border: '1px solid #eee', borderRadius: 12, padding: 16, marginBottom: 16 };
+
+            return React.createElement('div', { className: 'fade-in', style: { padding: 16 } },
+                // ===== Header =====
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 } },
+                    React.createElement('h2', { style: { fontSize: '1.2rem', color: 'var(--berry)', margin: 0 } },
+                        React.createElement('i', { className: 'fa-solid fa-brain', style: { marginRight: 8 } }),
+                        'Pilotage Irrigation — ', farmFilter,
+                    ),
+                    React.createElement('button', {
+                        onClick: () => setShowConfig(!showConfig),
+                        style: {
+                            background: showConfig ? 'var(--berry)' : '#fff',
+                            color: showConfig ? '#fff' : 'var(--berry)',
+                            border: '1px solid var(--berry)',
+                            borderRadius: 8,
+                            padding: '6px 12px',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                        },
+                    },
+                        React.createElement('i', { className: 'fa-solid fa-gear', style: { marginRight: 6 } }),
+                        showConfig ? 'Fermer config' : 'Config parcelles',
+                    ),
+                ),
+                React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-500)', marginBottom: 8 } },
+                    'Analyse agronomique automatique des pulses, basée sur ', periodDays, ' jours de données.',
+                ),
+                // Disclaimer — test feature, agronomist judgment prevails
+                React.createElement('div', {
+                    style: {
+                        background: 'rgba(243,156,18,0.08)',
+                        border: '1px solid rgba(243,156,18,0.25)',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        fontSize: 11.5,
+                        color: 'var(--gray-600)',
+                        marginBottom: 16,
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 8,
+                        lineHeight: 1.45,
+                    },
+                },
+                    React.createElement('i', { className: 'fa-solid fa-flask', style: { color: 'var(--orange)', marginTop: 2 } }),
+                    React.createElement('span', null,
+                        React.createElement('strong', { style: { color: 'var(--gray-700)' } }, 'Outil en phase de test — peut se tromper.'),
+                        ' Les diagnostics et recommandations sont générés automatiquement à partir des règles agronomiques. À recouper avec l\'observation terrain (substrat, plantes, capteurs) avant toute décision opérationnelle.',
+                    ),
+                ),
+
+                // ===== Config panel (admin: pot volume + substrate + greenhouse type per parcelle) =====
+                showConfig && React.createElement('div', { style: { ...panelBase, padding: 16, borderColor: 'var(--berry)', borderWidth: 2 } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 } },
+                        React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: 'var(--berry)' } },
+                            React.createElement('i', { className: 'fa-solid fa-gear', style: { marginRight: 6 } }),
+                            'Configuration parcelles',
+                        ),
+                        React.createElement('div', { style: { display: 'flex', gap: 8 } },
+                            React.createElement('button', {
+                                onClick: seedConfig, disabled: configLoading,
+                                style: { background: '#fff', color: 'var(--berry)', border: '1px solid var(--berry)', borderRadius: 6, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: configLoading ? 'wait' : 'pointer' },
+                            },
+                                React.createElement('i', { className: 'fa-solid fa-database', style: { marginRight: 4 } }),
+                                'Initialiser depuis le code',
+                            ),
+                            React.createElement('button', {
+                                onClick: loadConfigMeta, disabled: configLoading,
+                                style: { background: '#fff', color: 'var(--gray-600)', border: '1px solid #ddd', borderRadius: 6, padding: '6px 12px', fontSize: 12, cursor: configLoading ? 'wait' : 'pointer' },
+                            },
+                                React.createElement('i', { className: 'fa-solid fa-arrow-rotate-right', style: { marginRight: 4 } }),
+                                'Recharger',
+                            ),
+                        ),
+                    ),
+                    React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', marginBottom: 12 } },
+                        'Édite ici le type de serre, le volume de pot et le substrat par parcelle. Sauvegarde immédiate dans Firestore (cache invalidé instantanément). Les changements sont pris en compte au prochain calcul.',
+                    ),
+                    configMsg && React.createElement('div', {
+                        style: {
+                            background: configMsg.type === 'ok' ? 'rgba(46,204,113,0.1)' : 'rgba(231,76,60,0.1)',
+                            color: configMsg.type === 'ok' ? 'var(--green)' : 'var(--red)',
+                            padding: '6px 10px', borderRadius: 6, fontSize: 12, marginBottom: 10,
+                        },
+                    },
+                        React.createElement('i', { className: 'fa-solid ' + (configMsg.type === 'ok' ? 'fa-circle-check' : 'fa-circle-exclamation'), style: { marginRight: 6 } }),
+                        configMsg.text,
+                    ),
+                    configLoading && !configMeta && React.createElement('div', { style: { padding: 16, textAlign: 'center', color: 'var(--gray-500)', fontSize: 12 } },
+                        React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', style: { marginRight: 6 } }),
+                        'Chargement…',
+                    ),
+                    configMeta && React.createElement('div', { style: { overflowX: 'auto', maxHeight: 480, overflowY: 'auto' } },
+                        React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+                            React.createElement('thead', { style: { position: 'sticky', top: 0, background: '#fff', zIndex: 1 } },
+                                React.createElement('tr', { style: { background: '#f8fafc' } },
+                                    ['Parcelle', 'Culture', 'Variété', 'Ferme', 'Type serre', 'Pot (L)', 'Substrat', ''].map((h, i) =>
+                                        React.createElement('th', { key: i, style: { padding: '8px 10px', textAlign: 'left', borderBottom: '2px solid #eee', fontWeight: 600, color: 'var(--gray-600)', whiteSpace: 'nowrap' } }, h),
+                                    ),
+                                ),
+                            ),
+                            React.createElement('tbody', null,
+                                Object.keys(configMeta).sort().map(id => {
+                                    const m = configMeta[id] || {};
+                                    const e = edits[id] || {};
+                                    const merged = { ...m, ...e };
+                                    const dirty = Object.keys(e).length > 0;
+                                    const setField = (field, value) => setEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+                                    return React.createElement('tr', { key: id, style: { borderBottom: '1px solid #f3f4f6', background: dirty ? 'rgba(243,156,18,0.04)' : 'transparent' } },
+                                        React.createElement('td', { style: { padding: '6px 10px', fontWeight: 700, fontFamily: 'monospace', fontSize: 11 } }, id),
+                                        React.createElement('td', { style: { padding: '6px 10px', color: 'var(--gray-600)' } }, merged.culture || '—'),
+                                        React.createElement('td', { style: { padding: '6px 10px', color: 'var(--gray-600)' } }, merged.variete || '—'),
+                                        React.createElement('td', { style: { padding: '6px 10px', color: 'var(--gray-600)' } }, merged.ferme || '—'),
+                                        React.createElement('td', { style: { padding: '6px 10px' } },
+                                            React.createElement('select', {
+                                                value: merged.greenhouseType || 'tunnel',
+                                                onChange: ev => setField('greenhouseType', ev.target.value),
+                                                style: { padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, background: '#fff' },
+                                            },
+                                                React.createElement('option', { value: 'tunnel' }, 'tunnel'),
+                                                React.createElement('option', { value: 'canarienne' }, 'canarienne'),
+                                                React.createElement('option', { value: 'open' }, 'plein champ'),
+                                            ),
+                                        ),
+                                        React.createElement('td', { style: { padding: '6px 10px' } },
+                                            React.createElement('input', {
+                                                type: 'number', step: '0.5', min: 0,
+                                                value: merged.potVolumeL == null ? '' : merged.potVolumeL,
+                                                onChange: ev => setField('potVolumeL', ev.target.value === '' ? null : Number(ev.target.value)),
+                                                placeholder: 'sol',
+                                                style: { padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 70 },
+                                            }),
+                                        ),
+                                        React.createElement('td', { style: { padding: '6px 10px' } },
+                                            React.createElement('input', {
+                                                type: 'text',
+                                                value: merged.substrate || '',
+                                                onChange: ev => setField('substrate', ev.target.value),
+                                                placeholder: 'coco / soil…',
+                                                style: { padding: '4px 8px', borderRadius: 4, border: '1px solid #ddd', fontSize: 12, width: 160 },
+                                            }),
+                                        ),
+                                        React.createElement('td', { style: { padding: '6px 10px' } },
+                                            dirty && React.createElement('button', {
+                                                onClick: () => saveOneMeta(id, merged),
+                                                disabled: savingId === id,
+                                                style: { background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: savingId === id ? 'wait' : 'pointer' },
+                                            },
+                                                savingId === id ? React.createElement('i', { className: 'fa-solid fa-spinner fa-spin' }) : 'Sauver',
+                                            ),
+                                        ),
+                                    );
+                                }),
+                            ),
+                        ),
+                    ),
+                ),
+
+                // ===== Filter bar =====
+                React.createElement('div', { style: { ...panelBase, padding: 12, display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' } },
+                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                        React.createElement('label', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 } }, 'Parcelle'),
+                        React.createElement('select', {
+                            value: parcelle,
+                            onChange: e => setParcelle(e.target.value),
+                            style: { padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, background: '#fff', minWidth: 220 },
+                        },
+                            React.createElement('option', { value: '' }, 'Toutes les parcelles'),
+                            parcelleOptions.map(o => React.createElement('option', { key: o.value, value: o.value }, o.label)),
+                        ),
+                    ),
+                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                        React.createElement('label', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 } }, 'Période'),
+                        React.createElement('div', { className: 'chip-group', style: { gap: 6 } },
+                            [7, 14, 30].map(d => React.createElement('button', {
+                                key: d,
+                                className: 'chip c-berry ' + (periodDays === d ? 'active' : ''),
+                                onClick: () => setPeriodDays(d),
+                                style: { padding: '6px 14px', fontSize: 12 },
+                            }, d + 'j')),
+                        ),
+                    ),
+                    React.createElement('div', { style: { marginLeft: 'auto', fontSize: 11, color: 'var(--gray-400)' } },
+                        dateFrom + ' → ' + dateTo,
+                    ),
+                ),
+
+                // ===== Weather strip (today's forecast) =====
+                data && data.weatherToday && (() => {
+                    const w = data.weatherToday;
+                    const heat = Number.isFinite(w.tmax) && w.tmax >= 32;
+                    const dry = Number.isFinite(w.humidity) && w.humidity <= 30;
+                    const rain = Number.isFinite(w.precip) && w.precip >= 5;
+                    const highEto = Number.isFinite(w.eto) && w.eto >= 5;
+                    const chip = (active, color, icon, label) => React.createElement('span', {
+                        style: {
+                            fontSize: 11, padding: '4px 10px', borderRadius: 14,
+                            background: active ? color : '#f5f5f5',
+                            color: active ? '#fff' : 'var(--gray-600)',
+                            fontWeight: active ? 700 : 500,
+                            display: 'inline-flex', alignItems: 'center', gap: 5,
+                        },
+                    },
+                        React.createElement('i', { className: 'fa-solid ' + icon }),
+                        label,
+                    );
+                    return React.createElement('div', { style: { ...panelBase, padding: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                        React.createElement('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', marginRight: 4 } },
+                            React.createElement('i', { className: 'fa-solid fa-cloud-sun', style: { marginRight: 4 } }),
+                            'Météo aujourd\'hui',
+                        ),
+                        Number.isFinite(w.tmax) && chip(heat, 'var(--red)', 'fa-temperature-high', w.tmax.toFixed(0) + '°/' + (Number.isFinite(w.tmin) ? w.tmin.toFixed(0) : '—') + '°'),
+                        Number.isFinite(w.eto) && chip(highEto, 'var(--orange)', 'fa-sun', 'ETo ' + w.eto.toFixed(1) + ' mm'),
+                        Number.isFinite(w.humidity) && chip(dry, '#7c3aed', 'fa-droplet', 'HR ' + Math.round(w.humidity) + '%'),
+                        Number.isFinite(w.precip) && chip(rain, 'var(--blue)', 'fa-cloud-rain', 'Pluie ' + w.precip.toFixed(1) + ' mm'),
+                        Number.isFinite(w.outdoorRadSumSoFarJPerCm2) && chip(
+                            w.outdoorRadSumSoFarJPerCm2 < 800,
+                            'var(--orange)', 'fa-sun',
+                            'Rad. ' + Math.round(w.outdoorRadSumSoFarJPerCm2) + (Number.isFinite(w.outdoorDailyRadJPerCm2) ? ' / ' + Math.round(w.outdoorDailyRadJPerCm2) : '') + ' J/cm²',
+                        ),
+                    );
+                })(),
+
+                // ===== Live "Pilotage temps réel" — only when a specific parcelle is selected =====
+                parcelle && liveRad && (() => {
+                    const todayStr = new Date().toISOString().slice(0, 10);
+                    const todaySummary = data && Array.isArray(data.summaries)
+                        ? data.summaries.find(s => s.parcelle === parcelle && s.date === todayStr)
+                        : null;
+                    const target = Number.isFinite(liveRad.radTargetJPerCm2) ? liveRad.radTargetJPerCm2 : null;
+                    const acc = Number.isFinite(liveRad.radSumSinceLastPulseNow) ? liveRad.radSumSinceLastPulseNow : null;
+                    const pct = (target && acc != null) ? Math.min(100, Math.max(0, (acc / target) * 100)) : 0;
+
+                    // Drainage & EC trend signals from today's pulses
+                    const pulses = (todaySummary && Array.isArray(todaySummary.pulses)) ? todaySummary.pulses : [];
+                    const drainVals = pulses.map(p => p.drainPct).filter(v => Number.isFinite(v));
+                    const avgDrain = drainVals.length ? drainVals.reduce((s, v) => s + v, 0) / drainVals.length : null;
+                    const lastDrain = drainVals.length ? drainVals[drainVals.length - 1] : null;
+                    const ecDrainVals = pulses.map(p => p.ecDrain).filter(v => Number.isFinite(v));
+                    const ecPtsVals = pulses.map(p => p.ecPts).filter(v => Number.isFinite(v));
+                    const lastEcDrain = ecDrainVals.length ? ecDrainVals[ecDrainVals.length - 1] : null;
+                    const lastEcDelta = (pulses.length && Number.isFinite(pulses[pulses.length - 1].ecDelta))
+                        ? pulses[pulses.length - 1].ecDelta : null;
+
+                    const drainSignal = avgDrain == null
+                        ? { color: 'var(--gray-500)', icon: 'fa-circle-question', text: 'Pas encore de drainage mesuré aujourd\'hui' }
+                        : avgDrain < 10
+                        ? { color: 'var(--orange)', icon: 'fa-arrow-trend-down', text: `Drainage faible (moy ${avgDrain.toFixed(0)}%) — penser à augmenter la dose` }
+                        : avgDrain > 30
+                        ? { color: '#d97706', icon: 'fa-arrow-trend-up', text: `Drainage élevé (moy ${avgDrain.toFixed(0)}%) — réduire la dose ou attendre` }
+                        : { color: 'var(--green)', icon: 'fa-circle-check', text: `Drainage OK (moy ${avgDrain.toFixed(0)}%)` };
+
+                    const ecSignal = lastEcDelta == null
+                        ? { color: 'var(--gray-500)', icon: 'fa-circle-question', text: 'EC non mesurée' }
+                        : lastEcDelta > 0.5
+                        ? { color: '#7c3aed', icon: 'fa-arrow-trend-up', text: `EC drain ↑ (Δ ${lastEcDelta.toFixed(2)}) — accumulation saline, surveiller` }
+                        : lastEcDelta < -0.3
+                        ? { color: 'var(--blue)', icon: 'fa-arrow-trend-down', text: `EC drain ↓ (Δ ${lastEcDelta.toFixed(2)}) — lessivage en cours` }
+                        : { color: 'var(--green)', icon: 'fa-circle-check', text: `EC stable (Δ ${lastEcDelta.toFixed(2)})` };
+
+                    // Mini cumulative-radiation curve with "now" + "ETA" markers
+                    const cumul = todaySummary && Array.isArray(todaySummary.hourlyRadSumCumulative)
+                        ? todaySummary.hourlyRadSumCumulative : null;
+                    const now = new Date();
+                    const nowMin = now.getHours() * 60 + now.getMinutes();
+                    const etaMin = Number.isFinite(liveRad.radEtaMin) ? Math.max(0, liveRad.radEtaMin) : null;
+                    const etaAbsMin = etaMin != null ? Math.min(24 * 60 - 1, nowMin + etaMin) : null;
+
+                    const renderMini = () => {
+                        if (!cumul) return null;
+                        const W = 600, H = 110, pad = { top: 12, right: 16, bottom: 22, left: 36 };
+                        const cw = W - pad.left - pad.right;
+                        const ch = H - pad.top - pad.bottom;
+                        const maxV = Math.max(1, ...cumul.map(v => v || 0));
+                        const xAt = h => pad.left + (h / 23) * cw;
+                        const yAt = v => pad.top + ch - ((v || 0) / maxV) * ch;
+                        const path = cumul.map((v, h) => `${h === 0 ? 'M' : 'L'} ${xAt(h)} ${yAt(v)}`).join(' ');
+                        const nowX = pad.left + (nowMin / (24 * 60)) * cw;
+                        const etaX = etaAbsMin != null ? pad.left + (etaAbsMin / (24 * 60)) * cw : null;
+                        const valueAtNow = cumul[Math.min(23, Math.floor(nowMin / 60))] || 0;
+                        return React.createElement('svg', { width: '100%', height: H, viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: 'xMidYMid meet' },
+                            // axis
+                            React.createElement('line', { x1: pad.left, y1: pad.top + ch, x2: W - pad.right, y2: pad.top + ch, stroke: '#e5e7eb' }),
+                            // hours labels (every 3h)
+                            [0, 3, 6, 9, 12, 15, 18, 21].map(h => React.createElement('text', { key: 'h' + h, x: xAt(h), y: H - 6, fontSize: 9, fill: '#9ca3af', textAnchor: 'middle' }, String(h).padStart(2, '0') + 'h')),
+                            // y axis label (max value)
+                            React.createElement('text', { x: pad.left - 4, y: pad.top + 4, fontSize: 9, fill: '#9ca3af', textAnchor: 'end' }, Math.round(maxV)),
+                            React.createElement('text', { x: pad.left - 4, y: pad.top + ch + 3, fontSize: 9, fill: '#9ca3af', textAnchor: 'end' }, '0'),
+                            // area under curve
+                            React.createElement('path', { d: path + ` L ${xAt(23)} ${pad.top + ch} L ${xAt(0)} ${pad.top + ch} Z`, fill: 'var(--orange)', opacity: 0.12 }),
+                            React.createElement('path', { d: path, fill: 'none', stroke: 'var(--orange)', strokeWidth: 2 }),
+                            // "now" vertical marker
+                            React.createElement('line', { x1: nowX, y1: pad.top, x2: nowX, y2: pad.top + ch, stroke: 'var(--berry)', strokeWidth: 1.5, strokeDasharray: '3 3' }),
+                            React.createElement('circle', { cx: nowX, cy: yAt(valueAtNow), r: 4, fill: 'var(--berry)' }),
+                            React.createElement('text', { x: nowX, y: pad.top - 2, fontSize: 10, fill: 'var(--berry)', textAnchor: 'middle', fontWeight: 700 }, 'maintenant'),
+                            // "ETA" marker
+                            etaX != null && React.createElement('line', { x1: etaX, y1: pad.top, x2: etaX, y2: pad.top + ch, stroke: 'var(--green)', strokeWidth: 1.5, strokeDasharray: '4 2' }),
+                            etaX != null && React.createElement('text', { x: etaX, y: pad.top - 2, fontSize: 10, fill: 'var(--green)', textAnchor: 'middle', fontWeight: 700 }, 'ETA ' + (liveRad.radEtaTime || '')),
+                        );
+                    };
+
+                    const etaLabel = etaMin === 0
+                        ? { text: 'Maintenant', color: 'var(--red)' }
+                        : Number.isFinite(etaMin) && liveRad.radEtaTime
+                        ? { text: liveRad.radEtaTime + '  (dans ' + (etaMin >= 60 ? Math.floor(etaMin / 60) + 'h' + String(etaMin % 60).padStart(2, '0') : etaMin + ' min') + ')', color: 'var(--green)' }
+                        : { text: '—', color: 'var(--gray-400)' };
+
+                    return React.createElement('div', { style: { ...panelBase, padding: 14, background: 'linear-gradient(135deg, #fff7ed 0%, #fff 80%)', borderColor: 'rgba(243,156,18,0.25)' } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontWeight: 700, color: 'var(--berry)' } },
+                            React.createElement('i', { className: 'fa-solid fa-bolt', style: { color: 'var(--orange)' } }),
+                            'Pilotage temps réel — prochain pulse',
+                            React.createElement('span', { style: { fontSize: 10, color: 'var(--gray-400)', fontWeight: 500, marginLeft: 'auto' } }, 'rafraîchi toutes les 60s'),
+                        ),
+                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 10 } },
+                            // RadSum progress
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 4 } }, 'RadSum depuis dernier pulse'),
+                                React.createElement('div', { style: { fontSize: 18, fontWeight: 800 } },
+                                    (acc != null ? Math.round(acc) : '—'),
+                                    target != null && React.createElement('span', { style: { fontSize: 12, color: 'var(--gray-500)', fontWeight: 500 } }, ' / ' + Math.round(target) + ' J/cm²'),
+                                ),
+                                target != null && React.createElement('div', { style: { marginTop: 6, height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden' } },
+                                    React.createElement('div', { style: { width: pct + '%', height: '100%', background: pct >= 100 ? 'var(--red)' : 'var(--orange)', transition: 'width 0.6s' } }),
+                                ),
+                            ),
+                            // ETA
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 4 } }, 'Prochain pulse estimé'),
+                                React.createElement('div', { style: { fontSize: 18, fontWeight: 800, color: etaLabel.color } }, etaLabel.text),
+                                liveRad.lastPulseHeure && React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', marginTop: 4 } },
+                                    'Dernier pulse à ', React.createElement('strong', null, liveRad.lastPulseHeure),
+                                ),
+                            ),
+                            // Drain signal
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 4 } }, 'Drainage'),
+                                React.createElement('div', { style: { fontSize: 12, color: drainSignal.color, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 } },
+                                    React.createElement('i', { className: 'fa-solid ' + drainSignal.icon }),
+                                    drainSignal.text,
+                                ),
+                                lastDrain != null && React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', marginTop: 2 } },
+                                    'Dernier pulse : ' + lastDrain.toFixed(0) + '%',
+                                ),
+                            ),
+                            // EC signal
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 4 } }, 'EC'),
+                                React.createElement('div', { style: { fontSize: 12, color: ecSignal.color, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 } },
+                                    React.createElement('i', { className: 'fa-solid ' + ecSignal.icon }),
+                                    ecSignal.text,
+                                ),
+                                lastEcDrain != null && React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', marginTop: 2 } },
+                                    'EC drain dernier : ' + lastEcDrain.toFixed(2),
+                                ),
+                            ),
+                        ),
+                        // Mini chart
+                        cumul && React.createElement('div', { style: { marginTop: 8, padding: 8, background: '#fff', borderRadius: 8, border: '1px solid #f3f4f6' } },
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600, marginBottom: 2 } }, 'RadSum cumulée aujourd\'hui (J/cm²) — capteur FarmRoad'),
+                            renderMini(),
+                        ),
+                        React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-400)', marginTop: 8, fontStyle: 'italic' } },
+                            'L\'ETA est calculée à partir de la radiation prévue (cible RadSum par culture). Drainage et EC sont affichés à titre indicatif — ajuster manuellement la dose si nécessaire.',
+                        ),
+                    );
+                })(),
+
+                // ===== Loading / error / empty states =====
+                loading && React.createElement('div', { style: { ...panelBase, textAlign: 'center', padding: 32, color: 'var(--gray-500)' } },
+                    React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', style: { fontSize: 24, marginBottom: 8 } }),
+                    React.createElement('div', null, 'Calcul des indicateurs…'),
+                ),
+                error && !loading && React.createElement('div', { style: { ...panelBase, color: 'var(--red)', background: 'rgba(231,76,60,0.05)', borderColor: 'rgba(231,76,60,0.2)' } },
+                    React.createElement('i', { className: 'fa-solid fa-circle-exclamation', style: { marginRight: 8 } }),
+                    'Erreur : ', error,
+                ),
+                !loading && !error && data && (!data.summaries || data.summaries.length === 0) && React.createElement('div', { style: { ...panelBase, textAlign: 'center', padding: 40, color: 'var(--gray-400)' } },
+                    React.createElement('i', { className: 'fa-solid fa-droplet', style: { fontSize: 40, marginBottom: 12, opacity: 0.4 } }),
+                    React.createElement('div', { style: { fontWeight: 600, color: 'var(--gray-500)' } }, 'Aucune lecture sur la période'),
+                    React.createElement('div', { style: { fontSize: 12, marginTop: 4 } }, 'Saisissez ou scannez des fiches dans Saisie / Scanner.'),
+                ),
+
+                // ===== Main content =====
+                !loading && !error && data && data.summaries && data.summaries.length > 0 && React.createElement('div', null,
+
+                    // ----- Summary day chips (today injected even when empty) -----
+                    React.createElement('div', { style: { ...panelBase, padding: 12 } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 } },
+                            React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: 'var(--gray-500)' } }, 'Sélectionner un jour'),
+                            React.createElement('button', {
+                                onClick: () => {
+                                    // Trigger refresh by re-running the fetch (period change forces useEffect)
+                                    setLoading(true);
+                                    setData(null);
+                                    setTimeout(() => setPeriodDays(periodDays), 0);
+                                },
+                                style: { background: 'transparent', border: '1px solid #ddd', borderRadius: 6, padding: '3px 10px', fontSize: 11, color: 'var(--gray-600)', cursor: 'pointer' },
+                            },
+                                React.createElement('i', { className: 'fa-solid fa-arrow-rotate-right', style: { marginRight: 4 } }),
+                                'Rafraîchir',
+                            ),
+                        ),
+                        React.createElement('div', { className: 'chip-group', style: { gap: 6, flexWrap: 'wrap' } },
+                            (() => {
+                                const today = new Date().toISOString().slice(0, 10);
+                                const summariesByParcelleAsc = (parcelle ? [parcelle] : Array.from(new Set(data.summaries.map(s => s.parcelle))));
+                                // Build a chronological set including today even if no data
+                                const allChips = [];
+                                // For each parcelle currently in scope, ensure today appears
+                                summariesByParcelleAsc.forEach(p => {
+                                    const hasToday = data.summaries.some(s => s.parcelle === p && s.date === today);
+                                    if (!hasToday) {
+                                        allChips.push({ virtual: true, parcelle: p, date: today, parcelleLabel: (parcelleOptions.find(o => o.value === p) || {}).label || p });
+                                    }
+                                });
+                                data.summaries.forEach(s => allChips.push(s));
+                                // Sort by date desc
+                                allChips.sort((a, b) => (b.date < a.date ? -1 : b.date > a.date ? 1 : 0));
+                                return allChips.map(s => {
+                                    const k = s.parcelle + '__' + s.date;
+                                    const isToday = s.date === today;
+                                    const ds = s.virtual
+                                        ? { color: 'var(--gray-400)', bg: '#f8fafc', label: 'En attente', icon: 'fa-circle-dot' }
+                                        : diagnosisStyle(s.diagnosis);
+                                    const active = k === selectedKey;
+                                    return React.createElement('button', {
+                                        key: k,
+                                        className: 'chip ' + (active ? 'active' : ''),
+                                        onClick: () => setSelectedKey(k),
+                                        style: {
+                                            padding: '6px 12px', fontSize: 12,
+                                            borderColor: active ? ds.color : '#ddd',
+                                            background: active ? ds.color : '#fff',
+                                            color: active ? '#fff' : ds.color,
+                                            fontWeight: active ? 700 : 500,
+                                            position: 'relative',
+                                        },
+                                    },
+                                        isToday && React.createElement('span', {
+                                            style: { display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#dc2626', marginRight: 5, animation: 'pulse 1.5s infinite' },
+                                            title: 'Aujourd\'hui',
+                                        }),
+                                        React.createElement('i', { className: 'fa-solid ' + ds.icon, style: { marginRight: 4, fontSize: 10 } }),
+                                        isToday ? 'AUJ.' : s.date.slice(5), ' · ',
+                                        (s.parcelleLabel || s.parcelle || '').replace(/^[A-Z0-9-]+/, '').trim() || s.parcelle,
+                                    );
+                                });
+                            })(),
+                        ),
+                    ),
+
+                    selectedSummary && React.createElement('div', null,
+
+                        // ----- Synthesis banner -----
+                        (() => {
+                            const s = selectedSummary;
+                            const ds = diagnosisStyle(s.diagnosis);
+                            return React.createElement('div', {
+                                style: {
+                                    ...panelBase, padding: 16,
+                                    background: ds.bg,
+                                    borderColor: ds.color + '33',
+                                },
+                            },
+                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 } },
+                                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column' } },
+                                        React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 } }, 'Date'),
+                                        React.createElement('div', { style: { fontSize: 18, fontWeight: 700 } }, s.date),
+                                    ),
+                                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column' } },
+                                        React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 } }, 'Parcelle'),
+                                        React.createElement('div', { style: { fontSize: 14, fontWeight: 600 } }, s.parcelleLabel || s.parcelle),
+                                    ),
+                                    React.createElement('div', { style: {
+                                        marginLeft: 'auto',
+                                        padding: '6px 14px',
+                                        borderRadius: 12,
+                                        background: ds.color,
+                                        color: '#fff',
+                                        fontWeight: 700,
+                                        fontSize: 13,
+                                        display: 'flex', alignItems: 'center', gap: 6,
+                                    } },
+                                        React.createElement('i', { className: 'fa-solid ' + ds.icon }),
+                                        ds.label,
+                                    ),
+                                ),
+                                // KPI grid
+                                React.createElement('div', {
+                                    style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 },
+                                },
+                                    (() => {
+                                        const radSoFar = s.radSumSoFarJPerCm2;
+                                        const radDay = s.dailyRadJPerCm2;
+                                        const radPct = (radSoFar != null && radDay > 0) ? Math.min(100, (radSoFar / radDay) * 100) : null;
+                                        const cards = [
+                                            { label: 'Volume apporté', value: fmtVol(s.totalInputMl), icon: 'fa-droplet', color: 'var(--blue)' },
+                                            { label: 'Volume drainé', value: fmtVol(s.totalDrainMl), icon: 'fa-arrow-down', color: '#7c3aed' },
+                                            { label: '% Drainage', value: fmtPct(s.totalDrainPct), icon: 'fa-percent', color: ds.color },
+                                            { label: 'Pulses', value: fmtNum(s.pulseCount), icon: 'fa-repeat', color: 'var(--berry)' },
+                                            { label: 'EC apport', value: fmtEc(s.avgEcPts), icon: 'fa-bolt', color: 'var(--blue)' },
+                                            { label: 'EC drain', value: fmtEc(s.avgEcDrain), icon: 'fa-bolt', color: 'var(--orange)' },
+                                            { label: 'pH apport', value: fmtPh(s.avgPhPts), icon: 'fa-flask', color: 'var(--green)' },
+                                            { label: 'Fin irrig.', value: s.irrigationCutoffTime || '—', icon: 'fa-clock', color: 'var(--gray-500)' },
+                                        ];
+                                        if (radSoFar != null && radDay != null) {
+                                            cards.push({
+                                                label: 'RadSum jour',
+                                                value: Math.round(radSoFar) + ' / ' + Math.round(radDay) + ' J/cm²',
+                                                icon: 'fa-sun',
+                                                color: 'var(--orange)',
+                                                progress: radPct,
+                                            });
+                                        }
+                                        return cards.map((k, i) => React.createElement('div', {
+                                            key: i,
+                                            style: { background: '#fff', border: '1px solid #eee', borderRadius: 8, padding: 10 },
+                                        },
+                                            React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-500)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 } },
+                                                React.createElement('i', { className: 'fa-solid ' + k.icon, style: { marginRight: 4, color: k.color } }),
+                                                k.label,
+                                            ),
+                                            React.createElement('div', { style: { fontSize: 17, fontWeight: 700, color: 'var(--dark)' } }, k.value),
+                                            k.progress != null && React.createElement('div', {
+                                                style: { marginTop: 6, height: 4, background: '#f1f5f9', borderRadius: 2, overflow: 'hidden' },
+                                            },
+                                                React.createElement('div', {
+                                                    style: { width: k.progress + '%', height: '100%', background: k.color, transition: 'width 0.3s' },
+                                                }),
+                                            ),
+                                        ));
+                                    })(),
+                                ),
+                            );
+                        })(),
+
+                        // ----- Diagnostic cards -----
+                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 } },
+                            (() => {
+                                const s = selectedSummary;
+                                const cards = [];
+                                // Over-drain — promotes severity if intra-day trend is rising
+                                const trend = s.drainTrend;
+                                const trendRising = trend && trend.slopePctPerHour >= 1.5 && trend.endPct >= 30;
+                                const overSeverity = s.totalDrainPct != null && s.totalDrainPct > 35
+                                    ? 'critical'
+                                    : (s.totalDrainPct != null && s.totalDrainPct > 30) || s.highDrainPulseCount >= 2 || trendRising
+                                    ? 'warning' : 'ok';
+                                let overDetail;
+                                if (s.totalDrainPct == null) {
+                                    overDetail = 'Aucun drainage mesuré.';
+                                } else if (overSeverity === 'critical') {
+                                    overDetail = 'Drainage > 35% — gaspillage majeur.';
+                                } else if (trendRising) {
+                                    const fromTime = trend.firstHighDrainTime ? ' à partir de ' + trend.firstHighDrainTime : '';
+                                    overDetail = 'Drainage en hausse' + fromTime + ' : ' + trend.startPct.toFixed(0) + '% → ' + trend.endPct.toFixed(0) + '% (+' + trend.slopePctPerHour.toFixed(1) + ' pp/h).';
+                                } else if (overSeverity === 'warning') {
+                                    overDetail = s.highDrainPulseCount + ' pulse(s) > 30%.';
+                                } else if (trend && Math.abs(trend.slopePctPerHour) < 0.5) {
+                                    overDetail = 'Aucun excès détecté, drainage stable.';
+                                } else {
+                                    overDetail = 'Aucun excès détecté.';
+                                }
+                                cards.push({
+                                    title: 'Surdrainage',
+                                    severity: overSeverity,
+                                    detail: overDetail,
+                                    metric: trendRising ? '↗ ' + fmtPct(s.totalDrainPct) : fmtPct(s.totalDrainPct),
+                                });
+                                // Under-drain
+                                const underSev = s.totalDrainPct != null && s.totalDrainPct < 15
+                                    ? 'warning'
+                                    : s.lowDrainPulseCount >= 2 ? 'warning' : 'ok';
+                                cards.push({
+                                    title: 'Drainage insuffisant',
+                                    severity: underSev,
+                                    detail: s.lowDrainPulseCount > 0
+                                        ? `${s.lowDrainPulseCount} pulse(s) < 15%.`
+                                        : 'Drainage suffisant pour le lessivage.',
+                                    metric: s.lowDrainPulseCount + ' pulse(s)',
+                                });
+                                // Salt accumulation
+                                const ecDelta = (Number.isFinite(s.avgEcDrain) && Number.isFinite(s.avgEcPts))
+                                    ? s.avgEcDrain - s.avgEcPts : null;
+                                const saltSev = ecDelta != null && ecDelta > 0.4 && s.totalDrainPct != null && s.totalDrainPct < 25
+                                    ? 'warning' : 'ok';
+                                cards.push({
+                                    title: 'Accumulation saline',
+                                    severity: saltSev,
+                                    detail: ecDelta == null
+                                        ? 'Données EC incomplètes.'
+                                        : saltSev === 'warning'
+                                        ? `ΔEC ${ecDelta.toFixed(2)} avec drainage ${fmtPct(s.totalDrainPct)}.`
+                                        : `ΔEC contenu (${ecDelta.toFixed(2)}).`,
+                                    metric: ecDelta == null ? '—' : 'Δ ' + ecDelta.toFixed(2),
+                                });
+                                // Late-day behaviour
+                                const lateHigh = (s.pulses || []).filter(p => p.isLateDayPulse && p.isHighDrain);
+                                const lateAny = (s.pulses || []).filter(p => p.isLateDayPulse);
+                                const lateSev = lateHigh.length > 0 ? 'warning' : 'ok';
+                                cards.push({
+                                    title: 'Fin de journée',
+                                    severity: lateSev,
+                                    detail: lateHigh.length > 0
+                                        ? `${lateHigh.length} pulse(s) tardif(s) avec drainage élevé.`
+                                        : lateAny.length > 0
+                                        ? `${lateAny.length} pulse(s) après 15h, drainage maîtrisé.`
+                                        : 'Pas d\'irrigation après 15h.',
+                                    metric: s.irrigationCutoffTime || '—',
+                                });
+                                return cards.map((c, i) => {
+                                    const ls = levelStyle(c.severity);
+                                    return React.createElement('div', {
+                                        key: i,
+                                        style: {
+                                            background: ls.bg,
+                                            border: '1px solid ' + ls.color + '33',
+                                            borderRadius: 12, padding: 14,
+                                            display: 'flex', flexDirection: 'column', gap: 6,
+                                        },
+                                    },
+                                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                                            React.createElement('i', { className: 'fa-solid ' + ls.icon, style: { color: ls.color, fontSize: 16 } }),
+                                            React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--dark)' } }, c.title),
+                                            React.createElement('div', { style: { marginLeft: 'auto', fontSize: 13, fontWeight: 700, color: ls.color } }, c.metric),
+                                        ),
+                                        React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-600)', lineHeight: 1.4 } }, c.detail),
+                                    );
+                                });
+                            })(),
+                        ),
+
+                        // ----- Pulses table -----
+                        React.createElement('div', { style: { ...panelBase, padding: 12 } },
+                            React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                                React.createElement('i', { className: 'fa-solid fa-list', style: { marginRight: 6 } }),
+                                'Détail des pulses (' + selectedSummary.pulses.length + ')',
+                            ),
+                            selectedSummary.pulses.length === 0
+                                ? React.createElement('div', { style: { color: 'var(--gray-400)', fontSize: 12, padding: 16 } }, 'Aucun pulse.')
+                                : React.createElement('div', { style: { overflowX: 'auto' } },
+                                    React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+                                        React.createElement('thead', null,
+                                            React.createElement('tr', { style: { background: '#fafafa', textAlign: 'left' } },
+                                                ['Heure', 'EC apport', 'pH apport', 'Vol apport', 'EC drain', 'pH drain', 'Vol drain', '% Drain', 'Δ EC', 'Cumul In', 'Cumul Drain', 'RadSum (J/cm²)', 'Statut']
+                                                    .map((h, i) => React.createElement('th', { key: i, style: { padding: '6px 8px', borderBottom: '1px solid #eee', fontWeight: 600, color: 'var(--gray-500)', whiteSpace: 'nowrap' } }, h)),
+                                            ),
+                                        ),
+                                        React.createElement('tbody', null,
+                                            selectedSummary.pulses.map((p, i) => {
+                                                const badges = pulseBadges(p);
+                                                return React.createElement('tr', { key: i, style: { borderBottom: '1px solid #f3f4f6' } },
+                                                    React.createElement('td', { style: { padding: '6px 8px', fontWeight: 600, whiteSpace: 'nowrap' } }, p.heure || '—'),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } }, fmtEc(p.ecPts)),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } }, fmtPh(p.phPts)),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } }, fmtVol(p.volumePtsMl)),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } }, fmtEc(p.ecDrain)),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } }, fmtPh(p.phDrain)),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } }, fmtVol(p.volumeDrainMl)),
+                                                    React.createElement('td', { style: { padding: '6px 8px', fontWeight: 700,
+                                                        color: p.drainPct == null ? 'var(--gray-400)' : p.isHighDrain ? 'var(--orange)' : p.isLowDrain ? '#d97706' : 'var(--green)',
+                                                    } }, fmtPct(p.drainPct)),
+                                                    React.createElement('td', { style: { padding: '6px 8px',
+                                                        color: p.ecDelta != null && p.ecDelta > 0.4 ? '#7c3aed' : 'var(--gray-600)',
+                                                        fontWeight: p.ecDelta != null && p.ecDelta > 0.4 ? 700 : 400,
+                                                    } }, p.ecDelta == null ? '—' : (p.ecDelta > 0 ? '+' : '') + p.ecDelta.toFixed(2)),
+                                                    React.createElement('td', { style: { padding: '6px 8px', color: 'var(--gray-500)' } }, fmtVol(p.cumulativeInputMl)),
+                                                    React.createElement('td', { style: { padding: '6px 8px', color: 'var(--gray-500)' } }, fmtVol(p.cumulativeDrainMl)),
+                                                    React.createElement('td', { style: { padding: '6px 8px', color: p.radSumSincePreviousPulse == null ? 'var(--gray-400)' : 'var(--gray-700)', fontWeight: p.radSumSincePreviousPulse != null ? 600 : 400 } },
+                                                        p.radSumSincePreviousPulse == null ? '—' : Math.round(p.radSumSincePreviousPulse),
+                                                    ),
+                                                    React.createElement('td', { style: { padding: '6px 8px' } },
+                                                        React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
+                                                            badges.map((b, j) => React.createElement('span', {
+                                                                key: j,
+                                                                style: { fontSize: 10, padding: '2px 6px', borderRadius: 6, background: b.bg, color: b.color, fontWeight: 600, whiteSpace: 'nowrap' },
+                                                            }, b.text)),
+                                                        ),
+                                                    ),
+                                                );
+                                            }),
+                                        ),
+                                    ),
+                                ),
+                        ),
+
+                        // ----- F2 — Mini-courbe : Radiation cumulée vs Pulses par heure -----
+                        Array.isArray(selectedSummary.hourlyRadSumCumulative) && React.createElement('div', { style: { ...panelBase, padding: 12 } },
+                            React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                                React.createElement('i', { className: 'fa-solid fa-sun', style: { marginRight: 6, color: 'var(--orange)' } }),
+                                'Radiation et apport d’eau par pulse',
+                            ),
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', marginBottom: 10 } },
+                                'À gauche : RadSum cumulée par heure (contexte journalier). ',
+                                'À droite : RadSum accumulé entre chaque pulse (ligne) et volume d’eau apporté à chaque pulse (barres) — pour vérifier qu’on déclenche les pulses au bon palier de radiation.',
+                            ),
+                            (() => {
+                                const cumul = selectedSummary.hourlyRadSumCumulative;
+                                // Group pulses per hour
+                                const pulsesPerHour = new Array(24).fill(0);
+                                (selectedSummary.pulses || []).forEach(p => {
+                                    if (Number.isFinite(p.minutesFromMidnight)) {
+                                        const h = Math.floor(p.minutesFromMidnight / 60);
+                                        if (h >= 0 && h < 24) pulsesPerHour[h]++;
+                                    }
+                                });
+                                // Build dataset for charts: hours 5..21 only (skip empty night)
+                                const data = [];
+                                for (let h = 5; h <= 21; h++) {
+                                    data.push({
+                                        h: String(h).padStart(2, '0') + 'h',
+                                        radCumul: Math.round(cumul[h] || 0),
+                                        nbPulses: pulsesPerHour[h],
+                                    });
+                                }
+                                return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 } },
+                                    React.createElement('div', null,
+                                        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4 } },
+                                            React.createElement('span', { style: { display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: 'var(--orange)', marginRight: 4 } }),
+                                            'RadSum cumulée (J/cm²)',
+                                        ),
+                                        React.createElement(SimpleAreaChart, {
+                                            data, dataKeys: ['radCumul'], colors: ['var(--orange)'],
+                                            xKey: 'h', height: 160,
+                                        }),
+                                    ),
+                                    (() => {
+                                        const comboData = (selectedSummary.pulses || []).map((p, i) => ({
+                                            x: p.heure || ('P' + (i + 1)),
+                                            radSum: Math.round(p.radSumSincePreviousPulse || 0),
+                                            vol: Math.round(p.volumePtsMl || 0),
+                                        }));
+                                        return React.createElement('div', null,
+                                            React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4, display: 'flex', gap: 12, flexWrap: 'wrap' } },
+                                                React.createElement('span', null,
+                                                    React.createElement('span', { style: { display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: 'var(--orange)', marginRight: 4 } }),
+                                                    'RadSum depuis pulse précédent (J/cm²)',
+                                                ),
+                                                React.createElement('span', null,
+                                                    React.createElement('span', { style: { display: 'inline-block', width: 10, height: 10, borderRadius: 2, background: '#3498db', marginRight: 4 } }),
+                                                    'Vol apport (mL)',
+                                                ),
+                                            ),
+                                            comboData.length
+                                                ? React.createElement(SimpleComboChart, {
+                                                    data: comboData,
+                                                    xKey: 'x',
+                                                    lineKey: 'radSum',
+                                                    barKey: 'vol',
+                                                    lineColor: 'var(--orange)',
+                                                    barColor: '#3498db',
+                                                    height: 200,
+                                                    lineMode: 'sawtooth',
+                                                })
+                                                : React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', padding: '20px 0', textAlign: 'center' } }, 'Aucun pulse pour cette journée'),
+                                        );
+                                    })(),
+                                );
+                            })(),
+                        ),
+
+                        // ----- Historique des conseils donnés au stationnaire (timeline) -----
+                        selectedTrail.length > 0 && React.createElement('div', { style: { ...panelBase, padding: 12 } },
+                            React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                                React.createElement('i', { className: 'fa-solid fa-comments', style: { marginRight: 6 } }),
+                                'Historique des conseils stationnaire (', selectedTrail.length, ')',
+                            ),
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', marginBottom: 10 } },
+                                'Ce qui a été conseillé au stationnaire pulse par pulse, en ordre chronologique.',
+                            ),
+                            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 360, overflowY: 'auto' } },
+                                selectedTrail.map((t, i) => {
+                                    const sty = t.advice && t.advice.status === 'critical' ? { color: 'var(--red)', bg: 'rgba(231,76,60,0.06)', emoji: '🛑' }
+                                              : t.advice && t.advice.status === 'warning' ? { color: 'var(--orange)', bg: 'rgba(243,156,18,0.06)', emoji: '⚠' }
+                                              : t.advice && t.advice.status === 'info' ? { color: 'var(--blue)', bg: 'rgba(52,152,219,0.06)', emoji: 'ℹ' }
+                                              : { color: 'var(--green)', bg: 'rgba(46,204,113,0.06)', emoji: '✓' };
+                                    return React.createElement('div', {
+                                        key: i,
+                                        style: {
+                                            background: sty.bg,
+                                            borderLeft: '3px solid ' + sty.color,
+                                            borderRadius: 6,
+                                            padding: '8px 10px',
+                                            display: 'grid',
+                                            gridTemplateColumns: '60px 1fr',
+                                            gap: 10,
+                                            alignItems: 'flex-start',
+                                            fontSize: 12,
+                                        },
+                                    },
+                                        React.createElement('div', { style: { fontWeight: 700, fontSize: 13, color: 'var(--gray-700)' } },
+                                            t.heure || '—',
+                                            t.drainPct != null && React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-500)', fontWeight: 500 } },
+                                                'drain ' + t.drainPct.toFixed(0) + '%',
+                                            ),
+                                            t.radSum != null && React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-500)', fontWeight: 500 } },
+                                                t.radSum.toFixed(0) + ' J/cm²',
+                                            ),
+                                        ),
+                                        React.createElement('div', null,
+                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 } },
+                                                React.createElement('span', { style: { fontSize: 14 } }, sty.emoji),
+                                                React.createElement('span', { style: { fontWeight: 700, color: sty.color } }, t.advice && t.advice.headline),
+                                            ),
+                                            t.advice && t.advice.actionLabel && React.createElement('div', { style: { color: 'var(--gray-700)', fontSize: 12 } },
+                                                React.createElement('i', { className: 'fa-solid fa-arrow-right', style: { color: sty.color, marginRight: 6 } }),
+                                                t.advice.actionLabel,
+                                            ),
+                                            t.advice && t.advice.whenLabel && React.createElement('div', { style: { color: sty.color, fontSize: 11, fontWeight: 600, marginTop: 2 } },
+                                                React.createElement('i', { className: 'fa-solid fa-clock', style: { marginRight: 4 } }),
+                                                t.advice.whenLabel,
+                                            ),
+                                        ),
+                                    );
+                                }),
+                            ),
+                        ),
+
+                        // ----- Empty-state when virtual today (no pulse yet) -----
+                        selectedSummary.virtual && React.createElement('div', { style: { ...panelBase, padding: 24, textAlign: 'center', color: 'var(--gray-500)' } },
+                            React.createElement('i', { className: 'fa-solid fa-hourglass-half', style: { fontSize: 28, marginBottom: 10, opacity: 0.5 } }),
+                            React.createElement('div', { style: { fontWeight: 600 } }, 'En attente du premier pulse aujourd\'hui'),
+                            React.createElement('div', { style: { fontSize: 12, marginTop: 4 } }, 'Dès qu\'un stationnaire enregistre une lecture, elle apparaîtra ici en temps réel.'),
+                        ),
+
+                        // ----- Recommendations panel (daily + radiation merged, sorted by severity) -----
+                        (() => {
+                            const order = { critical: 0, warning: 1, info: 2, ok: 3 };
+                            const merged = [...selectedRecos, ...selectedRadRecos]
+                                .slice()
+                                .sort((a, b) => (order[a.level] ?? 9) - (order[b.level] ?? 9));
+                            return React.createElement('div', { style: { ...panelBase } },
+                            React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                                React.createElement('i', { className: 'fa-solid fa-lightbulb', style: { marginRight: 6 } }),
+                                'Recommandations (' + merged.length + ')',
+                            ),
+                            merged.length === 0
+                                ? React.createElement('div', { style: { color: 'var(--gray-400)', fontSize: 12, padding: 8 } }, 'Aucune recommandation.')
+                                : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                                    merged.map((r, i) => {
+                                        const ls = levelStyle(r.level);
+                                        return React.createElement('div', {
+                                            key: i,
+                                            style: {
+                                                background: ls.bg,
+                                                border: '1px solid ' + ls.color + '33',
+                                                borderLeft: '4px solid ' + ls.color,
+                                                borderRadius: 10,
+                                                padding: 12,
+                                            },
+                                        },
+                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+                                                React.createElement('i', { className: 'fa-solid ' + ls.icon, style: { color: ls.color, fontSize: 14 } }),
+                                                React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--dark)' } }, r.title),
+                                                React.createElement('span', {
+                                                    style: { marginLeft: 'auto', fontSize: 10, padding: '2px 8px', borderRadius: 6, background: ls.color, color: '#fff', fontWeight: 700, textTransform: 'uppercase' },
+                                                }, r.level),
+                                            ),
+                                            r.message && React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-700)', marginBottom: 4 } }, r.message),
+                                            r.rationale && React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontStyle: 'italic', marginBottom: 6 } }, r.rationale),
+                                            r.suggestedAction && React.createElement('div', {
+                                                style: { fontSize: 12, fontWeight: 600, color: ls.color, paddingTop: 6, borderTop: '1px dashed ' + ls.color + '33' },
+                                            },
+                                                React.createElement('i', { className: 'fa-solid fa-arrow-right', style: { marginRight: 6 } }),
+                                                r.suggestedAction,
+                                            ),
+                                        );
+                                    }),
+                                ),
+                        );
+                        })(),
+
+                        // ----- Weather-conditioned recommendations (forward-looking) -----
+                        (() => {
+                            const wRecos = (data.weatherRecommendationsByParcelle && data.weatherRecommendationsByParcelle[selectedSummary.parcelle]) || [];
+                            if (wRecos.length === 0) return null;
+                            return React.createElement('div', { style: { ...panelBase } },
+                                React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                                    React.createElement('i', { className: 'fa-solid fa-cloud-bolt', style: { marginRight: 6 } }),
+                                    'Conseils météo — actions du jour (', wRecos.length, ')',
+                                ),
+                                React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+                                    wRecos.map((r, i) => {
+                                        const ls = levelStyle(r.level);
+                                        return React.createElement('div', {
+                                            key: i,
+                                            style: {
+                                                background: ls.bg,
+                                                border: '1px solid ' + ls.color + '33',
+                                                borderLeft: '4px solid ' + ls.color,
+                                                borderRadius: 10,
+                                                padding: 12,
+                                            },
+                                        },
+                                            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+                                                React.createElement('i', { className: 'fa-solid ' + ls.icon, style: { color: ls.color, fontSize: 14 } }),
+                                                React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--dark)' } }, r.title),
+                                                React.createElement('span', {
+                                                    style: { marginLeft: 'auto', fontSize: 10, padding: '2px 8px', borderRadius: 6, background: ls.color, color: '#fff', fontWeight: 700, textTransform: 'uppercase' },
+                                                }, r.level),
+                                            ),
+                                            r.message && React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-700)', marginBottom: 4 } }, r.message),
+                                            r.rationale && React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontStyle: 'italic', marginBottom: 6 } }, r.rationale),
+                                            r.suggestedAction && React.createElement('div', {
+                                                style: { fontSize: 12, fontWeight: 600, color: ls.color, paddingTop: 6, borderTop: '1px dashed ' + ls.color + '33' },
+                                            },
+                                                React.createElement('i', { className: 'fa-solid fa-arrow-right', style: { marginRight: 6 } }),
+                                                r.suggestedAction,
+                                            ),
+                                        );
+                                    }),
+                                ),
+                            );
+                        })(),
+
+                        // ----- Period trends panel (cross-day signals for the selected parcelle) -----
+                        (() => {
+                            const trends = data.periodTrendsByParcelle && data.periodTrendsByParcelle[selectedSummary.parcelle];
+                            const periodRecos = (data.periodRecommendationsByParcelle && data.periodRecommendationsByParcelle[selectedSummary.parcelle]) || [];
+                            if (!trends) return null;
+                            const ecSev = trends.ecDrainDrift != null && trends.ecDrainDrift >= 0.4 ? 'warning' : 'ok';
+                            const streakSev = (trends.overDrainStreak.length >= 3 || trends.underDrainStreak.length >= 3) ? 'warning' : 'ok';
+                            const stabilitySev = trends.drainStddev != null && trends.drainStddev >= 10 ? 'info' : 'ok';
+                            const drainTrendSev = trends.drainPctDrift != null && Math.abs(trends.drainPctDrift) >= 5 ? 'info' : 'ok';
+                            const isOverLonger = trends.overDrainStreak.length >= trends.underDrainStreak.length;
+                            const streakLen = isOverLonger ? trends.overDrainStreak.length : trends.underDrainStreak.length;
+                            const streakLbl = streakLen === 0 ? 'Aucune' : (isOverLonger ? 'Surdrainage' : 'Sous-drainage');
+                            const stabilityLbl = trends.drainStddev == null ? '—'
+                                : trends.drainStddev < 5 ? 'Très stable'
+                                : trends.drainStddev < 10 ? 'Stable'
+                                : trends.drainStddev < 15 ? 'Variable' : 'Instable';
+                            const kpiCard = (sev, icon, label, value, sub) => {
+                                const sty = levelStyle(sev);
+                                return React.createElement('div', { style: { background: sty.bg, border: '1px solid ' + sty.color + '33', borderRadius: 10, padding: 12 } },
+                                    React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-500)', textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 } },
+                                        React.createElement('i', { className: 'fa-solid ' + icon, style: { marginRight: 4, color: sty.color } }),
+                                        label,
+                                    ),
+                                    React.createElement('div', { style: { fontSize: 18, fontWeight: 700, color: sev === 'ok' ? 'var(--dark)' : sty.color } }, value),
+                                    sub != null && React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-500)', marginTop: 2 } }, sub),
+                                );
+                            };
+                            return React.createElement('div', { style: { ...panelBase } },
+                                React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                                    React.createElement('i', { className: 'fa-solid fa-chart-line', style: { marginRight: 6 } }),
+                                    'Tendances période — ', trends.days, ' jours',
+                                    React.createElement('span', { style: { marginLeft: 8, fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 } },
+                                        trends.dateFrom, ' → ', trends.dateTo,
+                                    ),
+                                ),
+                                React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginBottom: periodRecos.length > 0 ? 14 : 0 } },
+                                    kpiCard(
+                                        ecSev, 'fa-bolt', 'Dérive EC drain',
+                                        trends.ecDrainDrift == null ? '—' : (trends.ecDrainDrift > 0 ? '+' : '') + trends.ecDrainDrift.toFixed(2),
+                                        'mS/cm sur ' + trends.spanDays + ' j',
+                                    ),
+                                    kpiCard(
+                                        drainTrendSev, 'fa-arrow-trend-up', 'Dérive % drainage',
+                                        trends.drainPctDrift == null ? '—' : (trends.drainPctDrift > 0 ? '+' : '') + trends.drainPctDrift.toFixed(1) + ' pp',
+                                        'sur ' + trends.spanDays + ' j',
+                                    ),
+                                    kpiCard(
+                                        streakSev, 'fa-link', 'Plus longue série',
+                                        streakLen + ' j',
+                                        streakLbl,
+                                    ),
+                                    kpiCard(
+                                        stabilitySev, 'fa-wave-square', 'Stabilité drainage',
+                                        trends.drainStddev == null ? '—' : 'σ ' + trends.drainStddev.toFixed(1),
+                                        stabilityLbl,
+                                    ),
+                                ),
+                                periodRecos.length > 0 && React.createElement('div', null,
+                                    React.createElement('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', marginBottom: 6 } },
+                                        'Recommandations période (', periodRecos.length, ')',
+                                    ),
+                                    React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+                                        periodRecos.map((r, i) => {
+                                            const ls = levelStyle(r.level);
+                                            return React.createElement('div', {
+                                                key: i,
+                                                style: {
+                                                    background: ls.bg,
+                                                    border: '1px solid ' + ls.color + '33',
+                                                    borderLeft: '4px solid ' + ls.color,
+                                                    borderRadius: 10,
+                                                    padding: 12,
+                                                },
+                                            },
+                                                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
+                                                    React.createElement('i', { className: 'fa-solid ' + ls.icon, style: { color: ls.color, fontSize: 14 } }),
+                                                    React.createElement('div', { style: { fontSize: 13, fontWeight: 700, color: 'var(--dark)' } }, r.title),
+                                                    React.createElement('span', {
+                                                        style: { marginLeft: 'auto', fontSize: 10, padding: '2px 8px', borderRadius: 6, background: ls.color, color: '#fff', fontWeight: 700, textTransform: 'uppercase' },
+                                                    }, r.level),
+                                                ),
+                                                r.message && React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-700)', marginBottom: 4 } }, r.message),
+                                                r.rationale && React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', fontStyle: 'italic', marginBottom: 6 } }, r.rationale),
+                                                r.suggestedAction && React.createElement('div', {
+                                                    style: { fontSize: 12, fontWeight: 600, color: ls.color, paddingTop: 6, borderTop: '1px dashed ' + ls.color + '33' },
+                                                },
+                                                    React.createElement('i', { className: 'fa-solid fa-arrow-right', style: { marginRight: 6 } }),
+                                                    r.suggestedAction,
+                                                ),
+                                            );
+                                        }),
+                                    ),
+                                ),
+                            );
+                        })(),
+                    ),
+
+                    // ----- Comparison view (across parcelles for the period) -----
+                    !parcelle && Array.isArray(data.comparison) && data.comparison.length > 1 && React.createElement('div', { style: { ...panelBase } },
+                        React.createElement('div', { style: { fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--berry)' } },
+                            React.createElement('i', { className: 'fa-solid fa-table-cells', style: { marginRight: 6 } }),
+                            'Comparaison parcelles (', periodDays, 'j)',
+                        ),
+                        React.createElement('div', { style: { overflowX: 'auto' } },
+                            React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+                                React.createElement('thead', null,
+                                    React.createElement('tr', { style: { background: '#fafafa' } },
+                                        ['Parcelle', 'Jours', 'Drain. moyen', 'Vol apporté', 'Vol drainé', 'Pulses', '% Pulses à risque', 'Stabilité EC (σ)', 'Stabilité pH (σ)']
+                                            .map((h, i) => React.createElement('th', { key: i, style: { padding: '6px 8px', textAlign: 'left', borderBottom: '1px solid #eee', color: 'var(--gray-500)', fontWeight: 600, whiteSpace: 'nowrap' } }, h)),
+                                    ),
+                                ),
+                                React.createElement('tbody', null,
+                                    data.comparison.slice().sort((a, b) => (b.problemRatio || 0) - (a.problemRatio || 0)).map((c, i) => {
+                                        const drainColor = c.avgDrainPct == null
+                                            ? 'var(--gray-400)'
+                                            : c.avgDrainPct > 30 ? 'var(--orange)'
+                                            : c.avgDrainPct < 15 ? '#d97706' : 'var(--green)';
+                                        const probColor = !c.problemRatio
+                                            ? 'var(--green)'
+                                            : c.problemRatio > 0.4 ? 'var(--red)'
+                                            : c.problemRatio > 0.2 ? 'var(--orange)' : 'var(--green)';
+                                        return React.createElement('tr', { key: i, style: { borderBottom: '1px solid #f3f4f6' } },
+                                            React.createElement('td', { style: { padding: '6px 8px', fontWeight: 600 } }, c.parcelleLabel || c.parcelle),
+                                            React.createElement('td', { style: { padding: '6px 8px' } }, c.days),
+                                            React.createElement('td', { style: { padding: '6px 8px', fontWeight: 700, color: drainColor } }, fmtPct(c.avgDrainPct)),
+                                            React.createElement('td', { style: { padding: '6px 8px' } }, fmtVol(c.totalInputMl)),
+                                            React.createElement('td', { style: { padding: '6px 8px' } }, fmtVol(c.totalDrainMl)),
+                                            React.createElement('td', { style: { padding: '6px 8px' } }, c.pulseCount),
+                                            React.createElement('td', { style: { padding: '6px 8px', fontWeight: 700, color: probColor } },
+                                                c.problemRatio == null ? '—' : (c.problemRatio * 100).toFixed(0) + '%',
+                                            ),
+                                            React.createElement('td', { style: { padding: '6px 8px', color: 'var(--gray-600)' } }, c.ecStability == null ? '—' : c.ecStability.toFixed(2)),
+                                            React.createElement('td', { style: { padding: '6px 8px', color: 'var(--gray-600)' } }, c.phStability == null ? '—' : c.phStability.toFixed(2)),
+                                        );
+                                    }),
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            );
+        }
+
         // ===================== MAGASINIER TABS =====================
 
         // ===================== MAGASINIER: DASHBOARD STOCK =====================
@@ -23156,7 +26134,7 @@ ${rejetHtml}
                                         <td>{m.date}</td>
                                         <td>{m.ferme}</td>
                                         <td style={{fontSize:11}}>{(m.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
-                                        <td><span className={'status-badge ' + (m.status === 'valide_chef' ? 'valide' : m.status === 'rejete' ? 'rejete' : 'en-attente')}>{m.status === 'valide_chef' ? 'Validé' : m.status === 'valide_mag' ? 'Att. Achats' : m.status === 'valide_achats' ? 'Att. Chef' : m.status === 'rejete' ? 'Rejeté' : m.status}</span></td>
+                                        <td><span className={'status-badge ' + (m.status === 'valide_chef' ? 'valide' : m.status === 'rejete' ? 'rejete' : 'en-attente')}>{m.status === 'valide_chef' ? 'Validé' : m.status === 'valide_mag' ? 'À valider par Achats' : m.status === 'valide_achats' ? 'À valider par Chef' : m.status === 'rejete' ? 'Rejeté' : m.status}</span></td>
                                     </tr>
                                 ))}
                                 {movements.length === 0 && <tr><td colSpan="6" style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun mouvement enregistré.</td></tr>}
@@ -25237,6 +28215,304 @@ ${rejetHtml}
             );
         }
 
+        // ============================================================
+        // FinPlantsTab — Répartition des factures plants par variété
+        // Permet de lisser le coût des plants sur 1 ou 2 années
+        // ============================================================
+        function FinPlantsTab({ data, currentProfile }) {
+            const [invoices, setInvoices] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
+            const [error, setError] = React.useState(null);
+            const [allocationConfig, setAllocationConfig] = React.useState({}); // { invoiceId: { years: 1|2, startYear: 2025, ferme: 'F1', variete: 'Maravilla', sousVariete: 'Long Cane' } }
+            const [editingId, setEditingId] = React.useState(null);
+            const [savingConfig, setSavingConfig] = React.useState(false);
+
+            // Variétés disponibles (cycle 2 actuel)
+            const varieteOptions = React.useMemo(() => {
+                const list = (PARCELLES_CULTURALES || []).filter(p => p.cycle === 2 && p.enProduction !== false);
+                return list.map(p => ({
+                    key: p.variete + '|' + (p.sousVariete || '') + '|' + p.ferme,
+                    variete: p.variete,
+                    sousVariete: p.sousVariete,
+                    ferme: p.ferme,
+                    ha: p.ha,
+                    label: (p.sousVariete ? p.variete + ' ' + p.sousVariete : p.variete) + ' (' + p.ferme + ' · ' + p.ha + ' Ha)',
+                }));
+            }, []);
+
+            // Détection automatique de la variété à partir du libellé facture
+            const detectVarieteFromLabel = (label) => {
+                if (!label) return null;
+                const u = label.toUpperCase();
+                if (u.includes('MARAVILLA')) {
+                    if (u.includes('GREEN') || u.includes('GG')) return { variete: 'Maravilla', sousVariete: 'Green Cane', ferme: 'F1' };
+                    if (u.includes('MOTTE') || u.includes('LONG') || u.includes('LG')) return { variete: 'Maravilla', sousVariete: 'Long Cane', ferme: 'F1' };
+                    if (u.includes('MOW')) return { variete: 'Maravilla', sousVariete: 'Mow Down', ferme: 'F1' };
+                    return { variete: 'Maravilla', sousVariete: 'Long Cane', ferme: 'F1' };
+                }
+                if (u.includes('YAZMIN') || u.includes('YASMIN')) {
+                    if (u.includes('MOTTE') || u.includes('BI') || u.includes('CUT')) return { variete: 'Yazmin', sousVariete: 'Bi Cycle', ferme: 'F5' };
+                    if (u.includes('MOW')) return { variete: 'Yazmin', sousVariete: 'Mow Down', ferme: 'F5' };
+                    return { variete: 'Yazmin', sousVariete: null, ferme: 'F5' };
+                }
+                if (u.includes('REYNA') || u.includes('REINA')) return { variete: 'Reyna', sousVariete: null, ferme: 'F5' };
+                if (u.includes('CORINA') || u.includes('CORRINA')) return { variete: 'Corina', sousVariete: null, ferme: 'F5' };
+                if (u.includes('BREEZE')) return { variete: 'Breeze', sousVariete: null, ferme: 'F5' };
+                if (u.includes('CASCADE')) return { variete: 'Cascade', sousVariete: null, ferme: 'F5' };
+                return null;
+            };
+
+            // Charger factures + config d'affectation
+            React.useEffect(() => {
+                Promise.all([
+                    fetch('/api/email-analysis?action=plant-invoices').then(r => r.json()),
+                    typeof firebase !== 'undefined' && firebase.firestore
+                        ? firebase.firestore().collection('plants_allocation_config').get().then(snap => {
+                            const cfg = {};
+                            snap.forEach(d => { cfg[d.id] = d.data(); });
+                            return cfg;
+                        }).catch(() => ({}))
+                        : Promise.resolve({}),
+                ]).then(([invJson, cfg]) => {
+                    if (invJson.success) {
+                        setInvoices(invJson.invoices || []);
+                        // Auto-détection des variétés non configurées
+                        const initialCfg = { ...cfg };
+                        (invJson.invoices || []).forEach(inv => {
+                            if (!initialCfg[inv.id]) {
+                                const detected = detectVarieteFromLabel(inv.variete);
+                                initialCfg[inv.id] = detected
+                                    ? { ...detected, years: 1, startYear: new Date(inv.date.split('/').reverse().join('-')).getFullYear() || 2025 }
+                                    : { years: 1, startYear: 2025 };
+                            }
+                        });
+                        setAllocationConfig(initialCfg);
+                    } else {
+                        setError(invJson.error || 'Erreur chargement factures');
+                    }
+                    setLoading(false);
+                }).catch(err => { setError(err.message); setLoading(false); });
+            }, []);
+
+            // Sauvegarder une config en Firestore
+            const saveConfig = async (invoiceId, config) => {
+                if (typeof firebase === 'undefined' || !firebase.firestore) return;
+                setSavingConfig(true);
+                try {
+                    await firebase.firestore().collection('plants_allocation_config').doc(invoiceId).set({
+                        ...config, updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    });
+                    setAllocationConfig(prev => ({ ...prev, [invoiceId]: config }));
+                } catch (e) { alert('Erreur sauvegarde: ' + e.message); }
+                setSavingConfig(false);
+            };
+
+            if (loading) return <div style={{textAlign:'center',padding:60}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:24,color:'var(--berry)'}}></i><p style={{marginTop:12,color:'var(--gray-500)'}}>Chargement factures plants...</p></div>;
+            if (error) return <div style={{textAlign:'center',padding:60,color:'var(--red)'}}><i className="fa-solid fa-triangle-exclamation"></i> {error}</div>;
+            if (!invoices) return null;
+
+            // Calcul de la répartition par variété et par année
+            const allocationByVariete = {};
+            const allocationByYear = {};
+            const totalGlobal = invoices.reduce((s, i) => s + (i.montant || 0), 0);
+
+            invoices.forEach(inv => {
+                const cfg = allocationConfig[inv.id] || { years: 1, startYear: new Date().getFullYear() };
+                const montant = inv.montant || 0;
+                const yearsCount = cfg.years || 1;
+                const startYear = cfg.startYear || new Date().getFullYear();
+                const annualShare = montant / yearsCount;
+                const varieteKey = (cfg.variete || 'Non assigné') + '|' + (cfg.sousVariete || '') + '|' + (cfg.ferme || '');
+
+                if (!allocationByVariete[varieteKey]) {
+                    allocationByVariete[varieteKey] = {
+                        variete: cfg.variete || 'Non assigné',
+                        sousVariete: cfg.sousVariete,
+                        ferme: cfg.ferme || '-',
+                        total: 0,
+                        invoices: [],
+                        byYear: {},
+                    };
+                }
+                allocationByVariete[varieteKey].total += montant;
+                allocationByVariete[varieteKey].invoices.push({ ...inv, config: cfg });
+
+                for (let i = 0; i < yearsCount; i++) {
+                    const y = startYear + i;
+                    allocationByVariete[varieteKey].byYear[y] = (allocationByVariete[varieteKey].byYear[y] || 0) + annualShare;
+                    allocationByYear[y] = (allocationByYear[y] || 0) + annualShare;
+                }
+            });
+
+            const allYears = [...new Set(Object.keys(allocationByYear).map(Number))].sort();
+            const sortedVarietes = Object.values(allocationByVariete).sort((a, b) => b.total - a.total);
+            const unassigned = invoices.filter(inv => !allocationConfig[inv.id]?.variete);
+
+            return (
+                <div className="fade-in">
+                    {/* Header KPIs */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:12,marginBottom:20}}>
+                        <KPICard icon="fa-file-invoice" iconClass="berry" value={invoices.length} label="Factures Plants" />
+                        <KPICard icon="fa-coins" iconClass="green" value={Math.round(totalGlobal/1000) + 'k'} label="Total Facturé (DH)" />
+                        <KPICard icon="fa-circle-check" iconClass="blue" value={invoices.length - unassigned.length} label="Variétés Affectées" />
+                        <KPICard icon="fa-circle-exclamation" iconClass={unassigned.length > 0 ? 'red' : 'green'} value={unassigned.length} label="Non Affectées" />
+                    </div>
+
+                    {/* Répartition par variété */}
+                    <Panel title="Répartition par Variété" icon="fa-chart-pie" actions={
+                        <span style={{fontSize:11,color:'var(--gray-400)'}}>{sortedVarietes.length} variété(s)</span>
+                    }>
+                        {sortedVarietes.length === 0 ? (
+                            <div style={{textAlign:'center',padding:30,color:'var(--gray-400)'}}>Aucune répartition configurée</div>
+                        ) : (
+                            <div style={{overflowX:'auto'}}>
+                                <table className="data-table" style={{fontSize:12}}>
+                                    <thead>
+                                        <tr>
+                                            <th>Variété</th>
+                                            <th>Sous-variété</th>
+                                            <th>Ferme</th>
+                                            <th style={{textAlign:'right'}}>Nb Factures</th>
+                                            <th style={{textAlign:'right'}}>Total Facturé</th>
+                                            {allYears.map(y => <th key={y} style={{textAlign:'right'}}>{y}</th>)}
+                                            <th style={{textAlign:'right'}}>%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sortedVarietes.map((v, i) => {
+                                            const pct = totalGlobal > 0 ? (v.total / totalGlobal * 100) : 0;
+                                            return (
+                                                <tr key={i} style={v.variete === 'Non assigné' ? {background:'rgba(231,76,60,0.05)'} : {}}>
+                                                    <td><strong>{v.variete}</strong></td>
+                                                    <td style={{color:'var(--gray-500)'}}>{v.sousVariete || '-'}</td>
+                                                    <td><span style={{padding:'2px 8px',borderRadius:12,fontSize:10,fontWeight:600,background:'rgba(45,139,78,0.1)',color:'#2D8B4E'}}>{v.ferme}</span></td>
+                                                    <td style={{textAlign:'right'}}>{v.invoices.length}</td>
+                                                    <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:700}}>{Math.round(v.total).toLocaleString('fr-FR')}</td>
+                                                    {allYears.map(y => (
+                                                        <td key={y} style={{textAlign:'right',fontFamily:'monospace',color: v.byYear[y] ? '#2D8B4E' : '#ccc'}}>
+                                                            {v.byYear[y] ? Math.round(v.byYear[y]).toLocaleString('fr-FR') : '-'}
+                                                        </td>
+                                                    ))}
+                                                    <td style={{textAlign:'right',color:'var(--gray-500)'}}>{pct.toFixed(1)}%</td>
+                                                </tr>
+                                            );
+                                        })}
+                                        <tr style={{background:'var(--berry-pale)',fontWeight:700}}>
+                                            <td colSpan={4}>TOTAL</td>
+                                            <td style={{textAlign:'right',fontFamily:'monospace'}}>{Math.round(totalGlobal).toLocaleString('fr-FR')}</td>
+                                            {allYears.map(y => (
+                                                <td key={y} style={{textAlign:'right',fontFamily:'monospace'}}>{Math.round(allocationByYear[y] || 0).toLocaleString('fr-FR')}</td>
+                                            ))}
+                                            <td style={{textAlign:'right'}}>100%</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </Panel>
+
+                    {/* Configuration par facture */}
+                    <Panel title="Configuration des Factures" icon="fa-cog" actions={
+                        <span style={{fontSize:11,color:'var(--gray-400)'}}>{invoices.length} facture(s)</span>
+                    }>
+                        <div style={{background:'rgba(52,152,219,0.08)',border:'1px solid rgba(52,152,219,0.2)',borderRadius:8,padding:'10px 14px',marginBottom:12,fontSize:12,color:'#2c3e50'}}>
+                            <i className="fa-solid fa-circle-info" style={{marginRight:6,color:'var(--blue)'}}></i>
+                            Affectez chaque facture à une variété et choisissez de lisser le coût sur 1 ou 2 années.
+                            La variété est pré-détectée depuis le libellé de la facture, vérifiez et ajustez si nécessaire.
+                        </div>
+                        <div style={{overflowX:'auto'}}>
+                            <table className="data-table" style={{fontSize:11}}>
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Référence</th>
+                                        <th>Variété Driscoll's</th>
+                                        <th>Quantité</th>
+                                        <th style={{textAlign:'right'}}>Montant</th>
+                                        <th>Affecté à</th>
+                                        <th>Lissage</th>
+                                        <th>Année départ</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {invoices.map(inv => {
+                                        const cfg = allocationConfig[inv.id] || {};
+                                        const isEditing = editingId === inv.id;
+                                        const selectedKey = cfg.variete ? cfg.variete + '|' + (cfg.sousVariete || '') + '|' + (cfg.ferme || '') : '';
+                                        const isAssigned = !!cfg.variete;
+                                        return (
+                                            <tr key={inv.id} style={!isAssigned ? {background:'rgba(231,76,60,0.05)'} : {}}>
+                                                <td>{inv.date}</td>
+                                                <td><strong style={{color:'var(--blue)'}}>{inv.ref}</strong></td>
+                                                <td>{inv.variete}</td>
+                                                <td>{inv.qte ? inv.qte.toLocaleString('fr-FR') : '-'}</td>
+                                                <td style={{textAlign:'right',fontWeight:600,fontFamily:'monospace'}}>{Math.round(inv.montant).toLocaleString('fr-FR')}</td>
+                                                <td>
+                                                    {isEditing ? (
+                                                        <select value={selectedKey} onChange={e => {
+                                                            const [variete, sousVariete, ferme] = e.target.value.split('|');
+                                                            setAllocationConfig(prev => ({ ...prev, [inv.id]: { ...prev[inv.id], variete, sousVariete: sousVariete || null, ferme } }));
+                                                        }} style={{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11,minWidth:200}}>
+                                                            <option value="">— Choisir —</option>
+                                                            {varieteOptions.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+                                                        </select>
+                                                    ) : (
+                                                        cfg.variete ? (
+                                                            <span style={{padding:'2px 8px',borderRadius:12,fontSize:10,fontWeight:600,background:'rgba(139,34,82,0.08)',color:'var(--berry)'}}>
+                                                                {cfg.variete}{cfg.sousVariete ? ' ' + cfg.sousVariete : ''} ({cfg.ferme})
+                                                            </span>
+                                                        ) : <span style={{color:'var(--red)',fontWeight:600}}>Non assigné</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {isEditing ? (
+                                                        <select value={cfg.years || 1} onChange={e => setAllocationConfig(prev => ({ ...prev, [inv.id]: { ...prev[inv.id], years: parseInt(e.target.value) } }))}
+                                                            style={{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}}>
+                                                            <option value={1}>1 an</option>
+                                                            <option value={2}>2 ans</option>
+                                                        </select>
+                                                    ) : (
+                                                        <span style={{padding:'2px 8px',borderRadius:12,fontSize:10,fontWeight:600,background: cfg.years === 2 ? 'rgba(212,168,71,0.15)' : 'rgba(45,139,78,0.1)',color: cfg.years === 2 ? '#8B6914' : '#2D8B4E'}}>
+                                                            {cfg.years || 1} an{(cfg.years || 1) > 1 ? 's' : ''}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    {isEditing ? (
+                                                        <input type="number" value={cfg.startYear || new Date().getFullYear()} onChange={e => setAllocationConfig(prev => ({ ...prev, [inv.id]: { ...prev[inv.id], startYear: parseInt(e.target.value) } }))}
+                                                            style={{padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11,width:80}} />
+                                                    ) : cfg.startYear || '-'}
+                                                </td>
+                                                <td style={{textAlign:'right'}}>
+                                                    {isEditing ? (
+                                                        <div style={{display:'flex',gap:4}}>
+                                                            <button onClick={async () => { await saveConfig(inv.id, allocationConfig[inv.id]); setEditingId(null); }} disabled={savingConfig}
+                                                                style={{background:'var(--green)',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',fontSize:10,cursor:'pointer',fontWeight:600}}>
+                                                                <i className="fa-solid fa-check"></i>
+                                                            </button>
+                                                            <button onClick={() => setEditingId(null)} style={{background:'#ccc',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',fontSize:10,cursor:'pointer'}}>
+                                                                <i className="fa-solid fa-times"></i>
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button onClick={() => setEditingId(inv.id)}
+                                                            style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:6,padding:'4px 10px',fontSize:10,cursor:'pointer',fontWeight:600}}>
+                                                            <i className="fa-solid fa-pen"></i> Modifier
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </Panel>
+                </div>
+            );
+        }
+
         function FinCarburantTab({ data }) {
             const [carb, setCarb] = React.useState(null);
             const [cardMapping, setCardMapping] = React.useState({});
@@ -25493,7 +28769,7 @@ ${rejetHtml}
                     {/* ===== KPIs ===== */}
                     <div className="kpi-grid" style={{gridTemplateColumns: 'repeat(4, 1fr)'}}>
                         <KPICard icon="fa-gas-pump" iconClass="orange" value={(carb.totalMois/1000).toFixed(1)} label="Total Mois (K DH)" onClick={() => setExpandedKPI(expandedKPI === 'carburant' ? null : 'carburant')} />
-                        <KPICard icon="fa-chart-line" iconClass="blue" value={(carb.totalCampagne/1000).toFixed(0)} label="Total Campagne (K DH)" />
+                        <KPICard icon="fa-chart-line" iconClass="blue" value={(carb.totalCampagne/1000).toFixed(0)} label="Total Carburants (K DH)" onClick={() => setExpandedKPI(expandedKPI === 'campagne' ? null : 'campagne')} />
                         <KPICard icon="fa-road" iconClass="green" value={(carb.totalPeages/1000).toFixed(1)} label="Total Péages (K DH)" onClick={() => setExpandedKPI(expandedKPI === 'peages' ? null : 'peages')} />
                         <KPICard icon="fa-droplet" iconClass="berry" value={carb.prixMoyenLitre.toFixed(2)} label="Prix Moyen / Litre (DH)" onClick={() => setExpandedKPI(expandedKPI === 'prix' ? null : 'prix')} />
                     </div>
@@ -25512,6 +28788,38 @@ ${rejetHtml}
                         <div style={{marginTop:8, marginBottom:16}}>
                             <Panel title="Péages par Mois" icon="fa-road">
                                 <SimpleBarChart data={(carb.evolution || []).map(e => ({ mois: e.label || e.mois, 'Péages': e.peages }))} dataKeys={['Péages']} colors={['#E74C3C']} xKey="mois" height={220} />
+                            </Panel>
+                        </div>
+                    )}
+
+                    {/* ===== DÉTAIL KPI CAMPAGNE — CUMUL & ÉVOLUTION ===== */}
+                    {expandedKPI === 'campagne' && (
+                        <div style={{marginTop:8, marginBottom:16}}>
+                            <Panel title="Carburant — Cumul Campagne (carburant seul, hors péages)" icon="fa-chart-line">
+                                <div style={{display:'flex',gap:16,marginBottom:16,flexWrap:'wrap',padding:'12px',background:'#f8f9fa',borderRadius:10}}>
+                                    <div style={{flex:1,minWidth:140,textAlign:'center'}}>
+                                        <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:4}}>Carburant Campagne</div>
+                                        <div style={{fontSize:20,fontWeight:700,color:'#3498DB'}}>{(carb.totalCampagne/1000).toFixed(1)}k DH</div>
+                                    </div>
+                                    <div style={{flex:1,minWidth:140,textAlign:'center'}}>
+                                        <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:4}}>+ Péages</div>
+                                        <div style={{fontSize:20,fontWeight:700,color:'#E74C3C'}}>{(carb.totalPeages/1000).toFixed(1)}k DH</div>
+                                    </div>
+                                    <div style={{flex:1,minWidth:140,textAlign:'center',borderLeft:'2px solid #ddd',paddingLeft:16}}>
+                                        <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:4}}>Total Gasoil & Gaz</div>
+                                        <div style={{fontSize:22,fontWeight:700,color:'#2C3E50'}}>{((carb.totalCampagne + carb.totalPeages)/1000).toFixed(1)}k DH</div>
+                                    </div>
+                                    <div style={{flex:1,minWidth:140,textAlign:'center'}}>
+                                        <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:4}}>Litres Total</div>
+                                        <div style={{fontSize:20,fontWeight:700,color:'#27AE60'}}>{((carb.totalCampagne / (carb.prixMoyenLitre || 1))).toLocaleString('fr-FR', {maximumFractionDigits:0})} L</div>
+                                    </div>
+                                </div>
+                                {(() => {
+                                    const evol = carb.evolution || [];
+                                    let cumul = 0;
+                                    const cumulData = evol.map(e => { cumul += (e.carburant || 0); return { mois: e.label || e.mois, 'Carburant Mois': e.carburant, 'Cumul': Math.round(cumul) }; });
+                                    return React.createElement(SimpleBarChart, { data: cumulData, dataKeys:['Carburant Mois','Cumul'], colors:['#3498DB','#1ABC9C'], xKey:'mois', height:240 });
+                                })()}
                             </Panel>
                         </div>
                     )}
@@ -25559,6 +28867,22 @@ ${rejetHtml}
 
                         <Panel title="Évolution Carburant + Péages" icon="fa-chart-bar">
                             <SimpleBarChart data={chartDataEvol} dataKeys={['Carburant', 'Péages']} colors={['#F39C12', '#E74C3C']} xKey="mois" height={220} />
+                            <div style={{marginTop:12,padding:'10px 14px',background:'#f8f9fa',borderRadius:8,display:'flex',gap:16,flexWrap:'wrap',justifyContent:'space-around',alignItems:'center'}}>
+                                <div style={{textAlign:'center'}}>
+                                    <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:2}}>Carburants</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'#F39C12'}}>{(carb.totalCampagne/1000).toFixed(1)}k DH</div>
+                                </div>
+                                <div style={{fontSize:18,color:'#aaa',fontWeight:700}}>+</div>
+                                <div style={{textAlign:'center'}}>
+                                    <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:2}}>Péages</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'#E74C3C'}}>{(carb.totalPeages/1000).toFixed(1)}k DH</div>
+                                </div>
+                                <div style={{fontSize:18,color:'#aaa',fontWeight:700}}>=</div>
+                                <div style={{textAlign:'center',padding:'4px 14px',background:'#fff',borderRadius:8,border:'2px solid #2C3E50'}}>
+                                    <div style={{fontSize:10,textTransform:'uppercase',color:'#888',marginBottom:2,fontWeight:600}}>Total Carburant & Péages</div>
+                                    <div style={{fontSize:18,fontWeight:800,color:'#2C3E50'}}>{((carb.totalCampagne + carb.totalPeages)/1000).toFixed(1)}k DH</div>
+                                </div>
+                            </div>
                         </Panel>
                     </div>
 
@@ -25855,18 +29179,361 @@ ${rejetHtml}
                     <div style={{marginTop: 16, padding: 16, background: 'var(--orange-pale)', borderRadius: 12, fontSize: 12, color: 'var(--gray-600)'}}>
                         <div><strong><i className="fa-solid fa-circle-info" style={{marginRight: 6}}></i>Source:</strong> Espace Business IAM — Factures télécom entreprise. {telecom.nbFactures} factures ({telecom.campagne}).</div>
                         <div style={{marginTop: 8, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap'}}>
-                            {syncTime && (
-                                <span style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                                    <i className="fa-solid fa-clock-rotate-left" style={{color: '#3498db'}}></i>
-                                    <strong>Dernière synchro :</strong> {syncTime.toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'})} à {syncTime.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}
-                                </span>
-                            )}
+                            {telecom.lastSyncAt && (() => {
+                                const syncDate = new Date(telecom.lastSyncAt);
+                                return (
+                                    <span style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                        <i className="fa-solid fa-clock-rotate-left" style={{color: '#3498db'}}></i>
+                                        <strong>Dernière synchronisation automatique :</strong> {syncDate.toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'})} à {syncDate.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})}
+                                    </span>
+                                );
+                            })()}
                             {telecom.dernieresFactures && telecom.dernieresFactures.length > 0 && (
                                 <span style={{display: 'flex', alignItems: 'center', gap: 6}}>
                                     <i className="fa-solid fa-file-invoice" style={{color: '#3498db'}}></i>
                                     <strong>Dernière facture :</strong> {telecom.dernieresFactures[0].periode}
                                 </span>
                             )}
+                        </div>
+                        <div style={{marginTop: 8, fontSize: 11, color: 'var(--gray-500)', fontStyle: 'italic'}}>
+                            <i className="fa-solid fa-robot" style={{marginRight: 6}}></i>
+                            Récupération automatique du 1<sup>er</sup> au 5 de chaque mois (08h et 15h). Si la facture n'est pas encore publiée, le système réessaie automatiquement les jours suivants.
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ===================== FIN OJRA TAB (Paie & charges sociales) =====================
+        // Source: export Excel manuel d'OJRA (logiciel de paie hébergé en RDP).
+        // Phase 2 : automatisation SQL si la base d'OJRA devient accessible (cf. plan Phase 1).
+        function FinOjraTab({ data }) {
+            const [summary, setSummary] = React.useState(null);
+            const [loading, setLoading] = React.useState(true);
+            const [error, setError] = React.useState(null);
+
+            // Upload state
+            const [selectedFile, setSelectedFile] = React.useState(null);
+            const [period, setPeriod] = React.useState(() => {
+                // Default to most recent Saturday (start of current Sat-Fri quinzaine)
+                const d = new Date();
+                const day = d.getDay(); // 0=Sun..6=Sat
+                const diffToSat = (day - 6 + 7) % 7;
+                d.setDate(d.getDate() - diffToSat);
+                return d.toISOString().slice(0, 10);
+            });
+            const [uploading, setUploading] = React.useState(false);
+            const [uploadResult, setUploadResult] = React.useState(null);
+            const [uploadError, setUploadError] = React.useState(null);
+            const [dryRunPreview, setDryRunPreview] = React.useState(null);
+
+            // Detail view
+            const [selectedPeriod, setSelectedPeriod] = React.useState(null);
+            const [periodDetail, setPeriodDetail] = React.useState(null);
+            const [loadingDetail, setLoadingDetail] = React.useState(false);
+            const [search, setSearch] = React.useState('');
+
+            const reloadSummary = React.useCallback(() => {
+                setLoading(true);
+                fetch('/api/ojra?action=summary')
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.success) {
+                            setSummary(d);
+                            if (d.latest && !selectedPeriod) setSelectedPeriod(d.latest.period);
+                        } else setError(d.error || 'Erreur API');
+                    })
+                    .catch(e => setError(e.message))
+                    .finally(() => setLoading(false));
+            }, [selectedPeriod]);
+
+            React.useEffect(() => { reloadSummary(); }, []);
+
+            React.useEffect(() => {
+                if (!selectedPeriod) return;
+                setLoadingDetail(true);
+                fetch('/api/ojra?action=detail&period=' + encodeURIComponent(selectedPeriod))
+                    .then(r => r.json())
+                    .then(d => { if (d.success) setPeriodDetail(d); })
+                    .finally(() => setLoadingDetail(false));
+            }, [selectedPeriod]);
+
+            const fileToBase64 = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const result = reader.result;
+                    const base64 = String(result).split(',')[1] || '';
+                    resolve(base64);
+                };
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(file);
+            });
+
+            const runImport = async (dryRun) => {
+                if (!selectedFile) { setUploadError('Choisir un fichier Excel'); return; }
+                if (!period) { setUploadError('Choisir une période (samedi début de quinzaine)'); return; }
+                setUploading(true);
+                setUploadError(null);
+                setUploadResult(null);
+                setDryRunPreview(null);
+                try {
+                    const base64 = await fileToBase64(selectedFile);
+                    const resp = await fetch('/api/ojra?action=import', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            file: base64,
+                            period,
+                            dryRun: !!dryRun,
+                            importedBy: (firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser.email : null,
+                        }),
+                    });
+                    const data = await resp.json();
+                    if (!data.success) {
+                        setUploadError(data.error || 'Erreur import');
+                        if (data.sheets) setDryRunPreview({ sheets: data.sheets });
+                    } else if (dryRun) {
+                        setDryRunPreview(data);
+                    } else {
+                        setUploadResult(data);
+                        setSelectedFile(null);
+                        setSelectedPeriod(period);
+                        reloadSummary();
+                    }
+                } catch (e) {
+                    setUploadError(e.message);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
+            if (loading) return <div style={{textAlign:'center', padding:60}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:24, color:'var(--gray-400)'}}></i><p style={{marginTop:12, color:'var(--gray-500)'}}>Chargement des données OJRA...</p></div>;
+            if (error) return <div style={{textAlign:'center', padding:60, color:'var(--red-500)'}}><i className="fa-solid fa-triangle-exclamation" style={{fontSize:24}}></i><p style={{marginTop:12}}>{error}</p></div>;
+
+            const periods = (summary && summary.periods) || [];
+            const latest = summary && summary.latest;
+
+            // Freshness alert
+            let decalageJours = null;
+            if (summary && summary.lastImportAt) {
+                decalageJours = Math.floor((Date.now() - new Date(summary.lastImportAt).getTime()) / 86400000);
+            }
+            const decalageWarning = decalageJours !== null && decalageJours >= 21;
+            const decalageCritical = decalageJours !== null && decalageJours >= 35;
+
+            // Evolution chart over the last periods (oldest → newest)
+            const evolutionData = [...periods].reverse().map(p => ({
+                periode: p.period.slice(5), // MM-DD
+                Brut: Math.round(p.salaireBrut),
+                Net: Math.round(p.salaireNet),
+                Charges: Math.round(p.chargesSocialesTotal),
+            }));
+
+            // Detail filtering
+            const detailRecords = (periodDetail && periodDetail.records) || [];
+            const filteredRecords = search
+                ? detailRecords.filter(r => {
+                    const q = search.toLowerCase();
+                    return (r.nom || '').toLowerCase().includes(q) ||
+                           (r.matricule || '').toLowerCase().includes(q) ||
+                           (r.poste || '').toLowerCase().includes(q);
+                  })
+                : detailRecords;
+
+            return (
+                <div className="fade-in">
+                    {/* ===== ALERTE FRAÎCHEUR ===== */}
+                    {decalageWarning && (
+                        <div style={{padding:'12px 16px', background: decalageCritical ? 'rgba(231,76,60,0.1)' : 'rgba(243,156,18,0.1)', border: '1px solid ' + (decalageCritical ? 'rgba(231,76,60,0.3)' : 'rgba(243,156,18,0.3)'), borderRadius:10, marginBottom:16, display:'flex', alignItems:'center', gap:12, fontSize:13}}>
+                            <i className={'fa-solid ' + (decalageCritical ? 'fa-circle-exclamation' : 'fa-triangle-exclamation')} style={{fontSize:18, color: decalageCritical ? '#e74c3c' : '#f39c12'}}></i>
+                            <div>
+                                <span style={{fontWeight:700, color: decalageCritical ? '#c0392b' : '#856404'}}>Aucun import OJRA depuis {decalageJours} jours</span>
+                                {summary.lastPeriod && <span style={{marginLeft:8, color:'var(--gray-500)', fontSize:11}}>(dernière période : {summary.lastPeriod})</span>}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ===== KPIs (dernière quinzaine) ===== */}
+                    {latest ? (
+                        <div className="kpi-grid" style={{gridTemplateColumns: 'repeat(4, 1fr)'}}>
+                            <KPICard icon="fa-money-bill-wave" iconClass="berry" value={(latest.salaireBrut/1000).toFixed(1)} label="Masse Salariale Brute (K DH)" />
+                            <KPICard icon="fa-hand-holding-dollar" iconClass="green" value={(latest.salaireNet/1000).toFixed(1)} label="Net à Payer (K DH)" />
+                            <KPICard icon="fa-shield-halved" iconClass="orange" value={(latest.chargesSocialesTotal/1000).toFixed(1)} label="Charges Sociales (K DH)" />
+                            <KPICard icon="fa-users" iconClass="blue" value={latest.nbEmployes} label="Effectif Payé" />
+                        </div>
+                    ) : (
+                        <div style={{padding: 24, background: 'var(--orange-pale)', borderRadius: 12, marginBottom: 16, fontSize: 13, color: 'var(--gray-600)', textAlign: 'center'}}>
+                            <i className="fa-solid fa-circle-info" style={{marginRight: 8}}></i>
+                            Aucune donnée OJRA importée. Utiliser le formulaire ci-dessous pour uploader le journal de paie Excel exporté depuis OJRA (en bureau à distance).
+                        </div>
+                    )}
+
+                    {/* ===== UPLOAD EXCEL ===== */}
+                    <Panel title="Importer un journal de paie OJRA" icon="fa-cloud-arrow-up">
+                        <div style={{padding: 16}}>
+                            <div style={{display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end'}}>
+                                <div style={{flex: '1 1 240px'}}>
+                                    <label style={{display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase', marginBottom: 4}}>Période (samedi début de quinzaine)</label>
+                                    <input
+                                        type="date"
+                                        value={period}
+                                        onChange={e => setPeriod(e.target.value)}
+                                        style={{padding: '8px 10px', border: '1px solid var(--gray-200)', borderRadius: 8, fontSize: 13, width: '100%'}}
+                                    />
+                                </div>
+                                <div style={{flex: '2 1 320px'}}>
+                                    <label style={{display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase', marginBottom: 4}}>Fichier Excel OJRA</label>
+                                    <input
+                                        type="file"
+                                        accept=".xlsx,.xls"
+                                        onChange={e => { setSelectedFile(e.target.files[0] || null); setUploadError(null); setUploadResult(null); setDryRunPreview(null); }}
+                                        style={{padding: '6px 0', fontSize: 13, width: '100%'}}
+                                    />
+                                </div>
+                                <div style={{display: 'flex', gap: 8}}>
+                                    <button
+                                        onClick={() => runImport(true)}
+                                        disabled={uploading || !selectedFile}
+                                        style={{padding: '8px 14px', background: 'var(--gray-100)', color: 'var(--dark)', border: '1px solid var(--gray-200)', borderRadius: 8, cursor: uploading || !selectedFile ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 600, opacity: uploading || !selectedFile ? 0.5 : 1}}>
+                                        <i className="fa-solid fa-eye" style={{marginRight: 6}}></i>Aperçu
+                                    </button>
+                                    <button
+                                        onClick={() => runImport(false)}
+                                        disabled={uploading || !selectedFile}
+                                        style={{padding: '8px 14px', background: 'var(--berry)', color: 'white', border: 'none', borderRadius: 8, cursor: uploading || !selectedFile ? 'not-allowed' : 'pointer', fontSize: 12, fontWeight: 600, opacity: uploading || !selectedFile ? 0.5 : 1}}>
+                                        {uploading ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight: 6}}></i>Import...</> : <><i className="fa-solid fa-upload" style={{marginRight: 6}}></i>Importer</>}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {uploadError && (
+                                <div style={{marginTop: 12, padding: 10, background: 'rgba(231,76,60,0.1)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: 8, color: '#c0392b', fontSize: 12}}>
+                                    <i className="fa-solid fa-circle-exclamation" style={{marginRight: 6}}></i>{uploadError}
+                                </div>
+                            )}
+                            {uploadResult && (
+                                <div style={{marginTop: 12, padding: 10, background: 'rgba(46,204,113,0.1)', border: '1px solid rgba(46,204,113,0.3)', borderRadius: 8, color: '#1e8449', fontSize: 12}}>
+                                    <i className="fa-solid fa-circle-check" style={{marginRight: 6}}></i>
+                                    {uploadResult.imported} ligne{uploadResult.imported > 1 ? 's' : ''} importée{uploadResult.imported > 1 ? 's' : ''} pour la période {uploadResult.period}.
+                                    Brut total : {(uploadResult.totals.salaireBrut/1000).toFixed(1)} K DH · Net : {(uploadResult.totals.salaireNet/1000).toFixed(1)} K DH · Charges : {(uploadResult.totals.chargesSocialesTotal/1000).toFixed(1)} K DH.
+                                </div>
+                            )}
+                            {dryRunPreview && (
+                                <div style={{marginTop: 12, padding: 12, background: 'var(--blue-pale)', borderRadius: 8, fontSize: 12}}>
+                                    <div style={{fontWeight: 700, marginBottom: 6}}><i className="fa-solid fa-eye" style={{marginRight: 6}}></i>Aperçu de l'import</div>
+                                    {dryRunPreview.totals && (
+                                        <div style={{marginBottom: 8}}>
+                                            <strong>{dryRunPreview.totals.nbEmployes}</strong> employés · Brut <strong>{(dryRunPreview.totals.salaireBrut/1000).toFixed(1)} K DH</strong> · Net <strong>{(dryRunPreview.totals.salaireNet/1000).toFixed(1)} K DH</strong> · Charges <strong>{(dryRunPreview.totals.chargesSocialesTotal/1000).toFixed(1)} K DH</strong>
+                                        </div>
+                                    )}
+                                    {dryRunPreview.sheets && dryRunPreview.sheets.map((s, i) => (
+                                        <div key={i} style={{marginTop: 4, fontSize: 11}}>
+                                            <strong>{s.name}</strong> — {s.skipped ? <span style={{color: '#c0392b'}}>ignorée ({s.reason || 'aucun en-tête reconnu'})</span> : <span>{s.nbRecords} lignes — colonnes détectées : {(s.detectedColumns || []).join(', ')}</span>}
+                                        </div>
+                                    ))}
+                                    {dryRunPreview.sample && dryRunPreview.sample.length > 0 && (
+                                        <div style={{marginTop: 8, fontSize: 11, color: 'var(--gray-600)'}}>
+                                            <em>Échantillon (1ère ligne) :</em> {dryRunPreview.sample[0].nomComplet || dryRunPreview.sample[0].nom || '—'} · Brut {dryRunPreview.sample[0].salaireBrut} · Net {dryRunPreview.sample[0].salaireNet}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </Panel>
+
+                    {/* ===== ÉVOLUTION + RÉPARTITION CHARGES ===== */}
+                    {periods.length > 0 && (
+                        <div className="two-col" style={{marginTop: 16}}>
+                            <Panel title="Évolution Masse Salariale" icon="fa-chart-line">
+                                <SimpleBarChart data={evolutionData} dataKeys={['Brut', 'Net', 'Charges']} colors={['#9b59b6', '#2ECC71', '#E67E22']} xKey="periode" height={240} />
+                            </Panel>
+                            <Panel title="Répartition Charges (dernière quinzaine)" icon="fa-shield-halved">
+                                {latest && (
+                                    <div style={{padding: 16}}>
+                                        <table className="data-table" style={{fontSize: 12}}>
+                                            <tbody>
+                                                <tr><td>CNSS — part salariale</td><td style={{textAlign: 'right'}}><strong>{(latest.cnssEmploye || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                                <tr><td>CNSS — part patronale</td><td style={{textAlign: 'right'}}><strong>{(latest.cnssEmployeur || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                                <tr><td>AMO — part salariale</td><td style={{textAlign: 'right'}}><strong>{(latest.amoEmploye || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                                <tr><td>AMO — part patronale</td><td style={{textAlign: 'right'}}><strong>{(latest.amoEmployeur || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                                <tr><td>IR (impôt sur le revenu)</td><td style={{textAlign: 'right'}}><strong>{(latest.ir || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                                <tr><td>CIMR / retraite compl.</td><td style={{textAlign: 'right'}}><strong>{(latest.cimr || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                                <tr style={{borderTop: '2px solid var(--gray-200)'}}><td><strong>Total charges sociales</strong></td><td style={{textAlign: 'right'}}><strong style={{color: 'var(--berry)'}}>{(latest.chargesSocialesTotal || 0).toLocaleString('fr-FR')} DH</strong></td></tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </Panel>
+                        </div>
+                    )}
+
+                    {/* ===== DÉTAIL EMPLOYÉS PAR QUINZAINE ===== */}
+                    {periods.length > 0 && (
+                        <div style={{marginTop: 16}}>
+                            <Panel title="Détail Employés" icon="fa-users">
+                                <div style={{padding: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderBottom: '1px solid var(--gray-100)'}}>
+                                    <label style={{fontSize: 12, color: 'var(--gray-500)'}}>Quinzaine :</label>
+                                    <select value={selectedPeriod || ''} onChange={e => setSelectedPeriod(e.target.value)} style={{padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 12}}>
+                                        {periods.map(p => <option key={p.period} value={p.period}>{p.period} ({p.nbEmployes} pers.)</option>)}
+                                    </select>
+                                    <input
+                                        type="text"
+                                        placeholder="Rechercher (nom, matricule, poste)..."
+                                        value={search}
+                                        onChange={e => setSearch(e.target.value)}
+                                        style={{padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 12, flex: '1 1 200px'}}
+                                    />
+                                    <span style={{fontSize: 11, color: 'var(--gray-400)'}}>{filteredRecords.length} / {detailRecords.length} employés</span>
+                                </div>
+                                <div style={{maxHeight: 480, overflowY: 'auto'}}>
+                                    {loadingDetail ? (
+                                        <div style={{padding: 30, textAlign: 'center', color: 'var(--gray-400)'}}><i className="fa-solid fa-spinner fa-spin"></i> Chargement...</div>
+                                    ) : (
+                                        <table className="data-table" style={{fontSize: 12}}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Matricule</th>
+                                                    <th>Nom</th>
+                                                    <th>Poste</th>
+                                                    <th style={{textAlign: 'right'}}>Brut</th>
+                                                    <th style={{textAlign: 'right'}}>CNSS</th>
+                                                    <th style={{textAlign: 'right'}}>AMO</th>
+                                                    <th style={{textAlign: 'right'}}>IR</th>
+                                                    <th style={{textAlign: 'right'}}>Net</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredRecords.map(r => (
+                                                    <tr key={r.id}>
+                                                        <td>{r.matricule || '—'}</td>
+                                                        <td><strong>{r.nom || '—'}</strong></td>
+                                                        <td>{r.poste || '—'}</td>
+                                                        <td style={{textAlign: 'right'}}>{(r.salaireBrut || 0).toLocaleString('fr-FR')}</td>
+                                                        <td style={{textAlign: 'right', color: 'var(--gray-500)'}}>{(r.cnssEmploye || 0).toLocaleString('fr-FR')}</td>
+                                                        <td style={{textAlign: 'right', color: 'var(--gray-500)'}}>{(r.amoEmploye || 0).toLocaleString('fr-FR')}</td>
+                                                        <td style={{textAlign: 'right', color: 'var(--gray-500)'}}>{(r.ir || 0).toLocaleString('fr-FR')}</td>
+                                                        <td style={{textAlign: 'right'}}><strong style={{color: 'var(--green)'}}>{(r.salaireNet || 0).toLocaleString('fr-FR')}</strong></td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            </Panel>
+                        </div>
+                    )}
+
+                    {/* ===== INFO SOURCE ===== */}
+                    <div style={{marginTop: 16, padding: 16, background: 'var(--orange-pale)', borderRadius: 12, fontSize: 12, color: 'var(--gray-600)'}}>
+                        <div><strong><i className="fa-solid fa-circle-info" style={{marginRight: 6}}></i>Source :</strong> Logiciel de paie OJRA (serveur Windows accessible en bureau à distance). Export Excel manuel à uploader chaque quinzaine.</div>
+                        {summary && summary.lastImportAt && (
+                            <div style={{marginTop: 8}}>
+                                <i className="fa-solid fa-clock-rotate-left" style={{color: '#3498db', marginRight: 6}}></i>
+                                <strong>Dernier import :</strong> {new Date(summary.lastImportAt).toLocaleDateString('fr-FR', {day:'2-digit', month:'short', year:'numeric'})} à {new Date(summary.lastImportAt).toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'})} — période {summary.lastPeriod}
+                            </div>
+                        )}
+                        <div style={{marginTop: 8, fontSize: 11, color: 'var(--gray-500)', fontStyle: 'italic'}}>
+                            Le parser détecte automatiquement les colonnes (matricule, nom, brut, net, CNSS, AMO, IR…). Si certaines colonnes manquent dans l'aperçu, vérifier que les en-têtes du fichier OJRA contiennent ces mots-clés.
                         </div>
                     </div>
                 </div>
@@ -29117,6 +32784,50 @@ ${rejetHtml}
             var accHistory = fcData.accuracyHistory || [];
             var globalMape = fcData.globalMape;
 
+            // ---- CSV export of accuracy history ----
+            var exportAccHistoryCSV = function(rows) {
+                var metrics = ['tMax', 'tMin', 'hr', 'co2', 'vpd', 'par', 'radiation', 'substrate', 'dewpoint', 'pressure'];
+                var types = ['canarienne', 'tunnel'];
+                var headers = ['date'];
+                types.forEach(function(t) {
+                    headers.push(t + '_mape');
+                    metrics.forEach(function(m) {
+                        headers.push(t + '_' + m + '_error');
+                        headers.push(t + '_' + m + '_pct');
+                    });
+                });
+                var esc = function(v) {
+                    if (v == null) return '';
+                    var s = String(v);
+                    return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+                };
+                var lines = [headers.join(',')];
+                // Sort ascending by date for ML study
+                var sorted = rows.slice().sort(function(a, b) { return (a.date || '') < (b.date || '') ? -1 : 1; });
+                sorted.forEach(function(r) {
+                    var row = [esc(r.date)];
+                    types.forEach(function(t) {
+                        var d = r[t] || {};
+                        row.push(esc(d.mape));
+                        metrics.forEach(function(m) {
+                            row.push(esc(d[m + '_error']));
+                            row.push(esc(d[m + '_pct']));
+                        });
+                    });
+                    lines.push(row.join(','));
+                });
+                var csv = '﻿' + lines.join('\n');
+                var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'forecast-interieur-historique-' + new Date().toISOString().slice(0, 10) + '.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
             // ---- FORECAST PARAMS CONFIG ----
             var FC_PARAMS = [
                 { key: 'tMax', label: 'T. max', unit: '\u00B0C', icon: 'fa-temperature-high', color: '#E53935', actualKey: 'tMax' },
@@ -29464,7 +33175,15 @@ ${rejetHtml}
                         React.createElement('div', { style: { padding: '12px 18px', borderBottom: '1px solid var(--gray-100)', display: 'flex', alignItems: 'center', gap: 10 } },
                             React.createElement('i', { className: 'fa-solid fa-chart-line', style: { color: 'var(--berry)', fontSize: 16 } }),
                             React.createElement('h3', { style: { margin: 0, fontSize: 15 } }, 'Historique Precision'),
-                            accHistory.length > 0 && React.createElement('span', { style: { fontSize: 10, color: 'var(--gray-400)', marginLeft: 'auto' } }, accHistory.length + ' jours')
+                            accHistory.length > 0 && React.createElement('span', { style: { fontSize: 10, color: 'var(--gray-400)', marginLeft: 'auto' } }, accHistory.length + ' jours'),
+                            accHistory.length > 0 && React.createElement('button', {
+                                onClick: function() { exportAccHistoryCSV(accHistory); },
+                                title: 'Exporter l\'historique en CSV',
+                                style: { marginLeft: accHistory.length > 0 ? 8 : 'auto', padding: '5px 12px', borderRadius: 8, border: '1px solid var(--gray-200)', background: 'white', color: 'var(--berry)', fontSize: 11, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }
+                            },
+                                React.createElement('i', { className: 'fa-solid fa-file-csv' }),
+                                'Export CSV'
+                            )
                         ),
                         React.createElement('div', { style: { padding: 16, overflowX: 'auto' } },
                             accHistory.length > 0 ? React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12, minWidth: 500 } },
@@ -29517,6 +33236,57 @@ ${rejetHtml}
                 BAROMETRIC_PRESSURE_INSIDE: { label: 'Pression', icon: 'fa-compass', unit: 'kPa', color: '#546E7A' }
             };
             var MEASURE_ORDER = ['TEMPERATURE_INSIDE', 'RH_INSIDE', 'CO2_LEVEL', 'PAR_INTENSITY', 'RADIATION_INTENSITY_INSIDE', 'SUBSTRATE_MOISTURE_CONTENT', 'DEWPOINT_INSIDE', 'ESTIMATED_VPD_INSIDE', 'BAROMETRIC_PRESSURE_INSIDE'];
+
+            // Indicateurs agronomiques calculés en backend (cf. computeFarmroadKPIs)
+            // thr.good(v) → vert, thr.warn(v) → orange, sinon rouge. Pas de thr → neutre.
+            var KPI_FAMILIES = [
+                { id: 'lumiere', label: 'Lumière', icon: 'fa-sun', color: '#FDD835', items: [
+                    { key: 'dli', label: 'DLI', unit: 'mol/m²/j', dec: 1, tip: 'Daily Light Integral = Σ PAR × 900s / 1e6. Cible fraises ≥17, déficit <12.', thr: { good: function(v){return v>=17;}, warn: function(v){return v>=12;} } },
+                    { key: 'radum', label: 'RADUM', unit: 'MJ/m²/j', dec: 1, tip: 'Cumul rayonnement journalier = Σ Rad × 900s / 1e6.' },
+                    { key: 'hPARutile', label: 'h PAR>200', unit: 'h', dec: 1, tip: 'Heures avec photosynthèse active (PAR > 200 µmol/m²/s).' },
+                    { key: 'hPARsat', label: 'h PAR>800', unit: 'h', dec: 1, tip: 'Heures de saturation lumineuse (gain marginal nul).' },
+                ]},
+                { id: 'thermique', label: 'Thermique', icon: 'fa-temperature-half', color: '#E53935', items: [
+                    { key: 'dif', label: 'DIF', unit: '°C', dec: 1, tip: 'T° moy jour − T° moy nuit. Influe sur élongation et qualité fruit.' },
+                    { key: 'tDay', label: 'T° jour', unit: '°C', dec: 1 },
+                    { key: 'tNight', label: 'T° nuit', unit: '°C', dec: 1 },
+                    { key: 'ampl24', label: 'Amplitude 24h', unit: '°C', dec: 1, tip: 'T°max − T°min du jour.' },
+                    { key: 'hStressChaud', label: 'h T°>30', unit: 'h', dec: 1, tip: 'Heures de stress chaud.', thr: { good: function(v){return v===0;}, warn: function(v){return v<=3;} } },
+                    { key: 'hStressFroid', label: 'h T°<5', unit: 'h', dec: 1, tip: 'Heures de stress froid.', thr: { good: function(v){return v===0;}, warn: function(v){return v<=2;} } },
+                    { key: 'hChill', label: 'h chill <7°C', unit: 'h', dec: 1, tip: 'Cumul vernalisation.' },
+                ]},
+                { id: 'hydrique', label: 'Hydrique', icon: 'fa-droplet', color: '#1E88E5', items: [
+                    { key: 'vpdJour', label: 'VPD jour', unit: 'kPa', dec: 2, tip: 'Cible 0.7-1.2 kPa. <0.4 = condensation, >1.5 = stress.', thr: { good: function(v){return v>=0.7 && v<=1.2;}, warn: function(v){return v>=0.4 && v<=1.5;} } },
+                    { key: 'vpdNuit', label: 'VPD nuit', unit: 'kPa', dec: 2 },
+                    { key: 'hStressVPDHaut', label: 'h VPD>1.5', unit: 'h', dec: 1, tip: 'Heures de stress hydrique haut.', thr: { good: function(v){return v===0;}, warn: function(v){return v<=2;} } },
+                    { key: 'hStressVPDBas', label: 'h VPD<0.4', unit: 'h', dec: 1, tip: 'Heures de risque condensation pendant photopériode.', thr: { good: function(v){return v===0;}, warn: function(v){return v<=2;} } },
+                ]},
+                { id: 'phyto', label: 'Phyto', icon: 'fa-bug', color: '#8E24AA', items: [
+                    { key: 'hMouillage', label: 'h mouillage', unit: 'h', dec: 1, tip: 'Heures où T°−Tdew < 2°C. Proxy risque Botrytis.', thr: { good: function(v){return v<2;}, warn: function(v){return v<6;} } },
+                    { key: 'hHRsat', label: 'h HR>90%', unit: 'h', dec: 1, tip: 'Risque mildiou / oïdium.', thr: { good: function(v){return v<2;}, warn: function(v){return v<6;} } },
+                    { key: 'indexBotrytis', label: 'Index Botrytis', unit: '/100', dec: 0, tip: 'Score composite: 40% mouillage + 30% T°∈[15-25] + 30% HR>85%.', thr: { good: function(v){return v<30;}, warn: function(v){return v<60;} } },
+                ]},
+                { id: 'co2etp', label: 'CO₂ & ETP', icon: 'fa-leaf', color: '#43A047', items: [
+                    { key: 'co2Jour', label: 'CO₂ jour', unit: 'ppm', dec: 0 },
+                    { key: 'co2Nuit', label: 'CO₂ nuit', unit: 'ppm', dec: 0 },
+                    { key: 'hCO2sub', label: 'h CO₂<400 (j)', unit: 'h', dec: 1, tip: 'Heures où CO2 < 400 pendant photopériode active. Indique sur-ventilation ou enrichissement insuffisant.' },
+                    { key: 'etpCapteur', label: 'ETP capteur', unit: 'mm/j', dec: 2, tip: 'Stanghellini simplifié: (0.288×RADUM + 0.288×VPDjour) / 2.45.' },
+                    { key: 'gddJour', label: 'GDD jour', unit: '°Cj', dec: 1, tip: 'Degree-day journalier (base 7°C, plafond 30°C).' },
+                    { key: 'ptq', label: 'PTQ', unit: 'mol/°Cj', dec: 2, tip: 'Photothermal Quotient = DLI / GDD_jour. Prédicteur fermeté/sucre.' },
+                ]},
+            ];
+
+            var kpiColor = function(item, v) {
+                if (v == null || !item.thr) return { bg: 'var(--gray-50)', val: 'var(--gray-700)', border: 'var(--gray-100)' };
+                if (item.thr.good && item.thr.good(v)) return { bg: '#E8F5E9', val: '#2E7D32', border: '#C8E6C9' };
+                if (item.thr.warn && item.thr.warn(v)) return { bg: '#FFF3E0', val: '#E65100', border: '#FFE0B2' };
+                return { bg: '#FFEBEE', val: '#C62828', border: '#FFCDD2' };
+            };
+
+            var formatKPI = function(v, dec) {
+                if (v == null) return '—';
+                return dec === 0 ? String(Math.round(v)) : v.toFixed(dec);
+            };
 
             var todayStr = new Date().toISOString().slice(0, 10);
             var _dateState = React.useState(todayStr);
@@ -29908,7 +33678,7 @@ ${rejetHtml}
                 if (orderedTypes.length === 0) return null;
 
                 var co2Avg = (dev.measurements && dev.measurements.CO2_LEVEL) ? dev.measurements.CO2_LEVEL.avg : 0;
-                return { deviceId: dev.deviceId, co2Avg: co2Avg, measurements: dev.measurements, timeseries: dev.timeseries || {}, orderedTypes: orderedTypes };
+                return { deviceId: dev.deviceId, co2Avg: co2Avg, measurements: dev.measurements, timeseries: dev.timeseries || {}, orderedTypes: orderedTypes, kpis: dev.kpis || null };
             }).filter(Boolean);
 
             // Trier par CO2 decroissant: le plus eleve = Canarienne, l'autre = Tunnel
@@ -30031,6 +33801,38 @@ ${rejetHtml}
                             React.createElement('i', { className: 'fa-solid ' + p.icon, style: { color: 'var(--berry)', fontSize: 16 } }),
                             React.createElement('h3', { style: { margin: 0, fontSize: 16, color: 'var(--gray-800)' } }, p.name),
                             React.createElement('span', { style: { fontSize: 11, color: 'var(--gray-400)', marginLeft: 'auto' } }, farmName)
+                        ),
+                        // ----- Indicateurs agronomiques (KPIs) -----
+                        p.kpis && React.createElement('div', { style: { padding: '14px 16px 4px', background: 'linear-gradient(180deg, #FAFBFC 0%, #fff 100%)', borderBottom: '1px solid var(--gray-100)' } },
+                            React.createElement('div', { style: { fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 } },
+                                React.createElement('i', { className: 'fa-solid fa-chart-simple', style: { fontSize: 11 } }),
+                                'Indicateurs agronomiques'
+                            ),
+                            KPI_FAMILIES.map(function(fam) {
+                                return React.createElement('div', { key: fam.id, style: { marginBottom: 10 } },
+                                    React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: fam.color, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 } },
+                                        React.createElement('i', { className: 'fa-solid ' + fam.icon, style: { fontSize: 11 } }),
+                                        fam.label
+                                    ),
+                                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 6 } },
+                                        fam.items.map(function(it) {
+                                            var v = p.kpis[it.key];
+                                            var c = kpiColor(it, v);
+                                            return React.createElement('div', {
+                                                key: it.key,
+                                                title: (it.tip || it.label) + (v != null ? '\nValeur: ' + formatKPI(v, it.dec) + ' ' + it.unit : ''),
+                                                style: { background: c.bg, border: '1px solid ' + c.border, borderRadius: 8, padding: '6px 8px', cursor: 'help' }
+                                            },
+                                                React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-500)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, it.label),
+                                                React.createElement('div', { style: { fontSize: 16, fontWeight: 700, color: c.val, lineHeight: 1.1 } },
+                                                    formatKPI(v, it.dec),
+                                                    React.createElement('span', { style: { fontSize: 9, fontWeight: 400, color: 'var(--gray-400)', marginLeft: 3 } }, it.unit)
+                                                )
+                                            );
+                                        })
+                                    )
+                                );
+                            })
                         ),
                         React.createElement('div', { style: { padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 } },
                             p.orderedTypes.map(function(mType) {
@@ -32873,8 +36675,8 @@ ${rejetHtml}
             const [loading, setLoading] = useState(true);
             const [error, setError] = useState(null);
             const [variete, setVariete] = useState('');
-            const [days, setDays] = useState(30);
-            const [activeIndicator, setActiveIndicator] = useState('delta_t');
+            const [days, setDays] = useState(7);
+            const [activeIndicator, setActiveIndicator] = useState('imc');
 
             useEffect(() => {
                 let cancelled = false;
@@ -32924,7 +36726,7 @@ ${rejetHtml}
                     React.createElement('div', null,
                         React.createElement('label', { style: { fontSize: 11, fontWeight: 600, color: 'var(--gray-400)', display: 'block', marginBottom: 4 } }, 'P\u00e9riode'),
                         React.createElement('div', { className: 'chip-group' },
-                            [15, 30, 45].map(function(d) {
+                            [7, 15, 30, 45].map(function(d) {
                                 return React.createElement('button', {
                                     key: d, onClick: function() { setDays(d); },
                                     className: 'chip c-berry' + (days === d ? ' active' : ''),
@@ -32942,13 +36744,30 @@ ${rejetHtml}
             var plotW = svgW - padL - padR, plotH = svgH - padT - padB;
             var maxProd = Math.max.apply(null, daily.map(function(d) { return d.production_kg; }).concat([1]));
             var indicatorVals = daily.map(function(d) { return d[activeIndicator]; }).filter(function(v) { return v !== null; });
-            var maxInd = indicatorVals.length > 0 ? Math.max.apply(null, indicatorVals) : 1;
-            var minInd = indicatorVals.length > 0 ? Math.min.apply(null, indicatorVals) : 0;
+            var maxInd, minInd;
+            if (activeIndicator === 'imc') {
+                minInd = 0; maxInd = 100;
+            } else {
+                maxInd = indicatorVals.length > 0 ? Math.max.apply(null, indicatorVals) : 1;
+                minInd = indicatorVals.length > 0 ? Math.min.apply(null, indicatorVals) : 0;
+            }
             var indRange = maxInd - minInd || 1;
             var barW = daily.length > 0 ? Math.max(4, Math.min(20, (plotW / daily.length) * 0.6)) : 10;
 
-            var indicatorLabels = { delta_t: '\u0394T (\u00b0C)', gdd: 'GDD (\u00b0Cd)', vpd: 'VPD (kPa)', dli: 'DLI (mol)' };
-            var indicatorColors = { delta_t: '#f59e0b', gdd: '#10b981', vpd: '#8b5cf6', dli: '#3b82f6' };
+            var indicatorLabels = { imc: 'Maturit\u00e9 (%)', gdd_cumule: 'GDD cumul\u00e9 (\u00b0Cd)', delta_t: '\u0394T (\u00b0C)', vpd: 'VPD (kPa)', dli: 'DLI (mol)' };
+            var indicatorColors = { imc: '#dc2626', gdd_cumule: '#10b981', delta_t: '#f59e0b', vpd: '#8b5cf6', dli: '#3b82f6' };
+            var imcAlerteColors = {
+                PRECOCE: { bg: '#dbeafe', color: '#1d4ed8', label: 'Pr\u00e9coce' },
+                EN_COURS: { bg: '#fef3c7', color: '#b45309', label: 'En cours' },
+                SURVEILLER_J3: { bg: '#ffedd5', color: '#c2410c', label: 'Surveiller J-3' },
+                RECOLTE_IMMINENTE: { bg: '#fee2e2', color: '#dc2626', label: 'R\u00e9colte imminente !' }
+            };
+            var imcBands = [
+                { from: 0, to: 50, color: '#dbeafe', label: 'Pr\u00e9coce' },
+                { from: 50, to: 70, color: '#fef3c7', label: 'En cours' },
+                { from: 70, to: 85, color: '#ffedd5', label: 'Surveiller J-3' },
+                { from: 85, to: 100, color: '#fee2e2', label: 'R\u00e9colte imminente' }
+            ];
 
             var bars = daily.map(function(d, i) {
                 var x = padL + (i + 0.5) * (plotW / daily.length) - barW / 2;
@@ -32991,19 +36810,17 @@ ${rejetHtml}
             }
 
             var chart = React.createElement('div', { className: 'card', style: { padding: 20, marginBottom: 16 } },
-                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
-                    React.createElement('h4', { style: { margin: 0, fontSize: 14, fontWeight: 600 } }, 'Production vs Climat'),
-                    React.createElement('div', { className: 'chip-group' },
-                        Object.keys(indicatorLabels).map(function(k) {
-                            return React.createElement('button', {
-                                key: k, onClick: function() { setActiveIndicator(k); },
-                                className: 'chip' + (activeIndicator === k ? ' active' : ''),
-                                style: { padding: '4px 12px', fontSize: 11, borderColor: indicatorColors[k], color: activeIndicator === k ? '#fff' : indicatorColors[k], background: activeIndicator === k ? indicatorColors[k] : 'transparent' }
-                            }, indicatorLabels[k]);
-                        })
-                    )
+                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap', gap: 8 } },
+                    React.createElement('h4', { style: { margin: 0, fontSize: 14, fontWeight: 600 } }, 'Production vs Maturité'),
+                    React.createElement('span', { style: { fontSize: 11, color: 'var(--gray-400)' } }, 'Indice de Maturation Composite (IMC) — 0 à 100%')
                 ),
                 React.createElement('svg', { viewBox: '0 0 ' + svgW + ' ' + svgH, style: { width: '100%', height: 'auto' } },
+                    activeIndicator === 'imc' ? imcBands.map(function(b, i) {
+                        var y1 = padT + plotH - (b.to / 100) * plotH;
+                        var y2 = padT + plotH - (b.from / 100) * plotH;
+                        return React.createElement('rect', { key: 'imcb' + i, x: padL, y: y1, width: plotW, height: y2 - y1, fill: b.color, opacity: 0.45 },
+                            React.createElement('title', null, b.label + ' (' + b.from + '–' + b.to + '%)'));
+                    }) : null,
                     yTicksProd, yTicksInd, bars, xLabels,
                     linePath && React.createElement('path', { d: linePath, fill: 'none', stroke: indicatorColors[activeIndicator], strokeWidth: 2.5, strokeLinejoin: 'round' }),
                     linePoints.map(function(p, i) {
@@ -33020,13 +36837,52 @@ ${rejetHtml}
                 )
             );
 
-            // --- Correlations table ---
-            var corrs = data.correlations ? Object.entries(data.correlations).sort(function(a, b) { return Math.abs(b[1].r) - Math.abs(a[1].r); }) : [];
+            // --- Tendance jours actifs (sparkline) ---
+            var tend = data.tendance || { jours_actifs: [] };
+            var actifs = tend.jours_actifs || [];
+            var tendCard = null;
+            if (actifs.length >= 2) {
+                var maxP = Math.max.apply(null, actifs.map(function(a) { return a.prod || 0; }).concat([1]));
+                var spW = 320, spH = 60;
+                var spStep = actifs.length > 1 ? spW / (actifs.length - 1) : 0;
+                var prodPath = actifs.map(function(a, i) {
+                    var x = i * spStep;
+                    var y = spH - (a.prod / maxP) * (spH - 6) - 3;
+                    return (i === 0 ? 'M' : 'L') + x.toFixed(1) + ',' + y.toFixed(1);
+                }).join(' ');
+                var imcPath = actifs.map(function(a, i) {
+                    if (a.imc == null) return null;
+                    var x = i * spStep;
+                    var y = spH - (a.imc / 100) * (spH - 6) - 3;
+                    return { x: x, y: y };
+                }).filter(Boolean).map(function(p, i) {
+                    return (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1);
+                }).join(' ');
+                var slopeStr = (tend.prod_slope_kg_par_jour >= 0 ? '+' : '') + tend.prod_slope_kg_par_jour + ' kg/j';
+                var imcSlopeStr = (tend.imc_slope_par_jour >= 0 ? '+' : '') + tend.imc_slope_par_jour + ' pts/j';
+                tendCard = React.createElement('div', { className: 'card', style: { padding: 16, marginBottom: 16 } },
+                    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', gap: 8 } },
+                        React.createElement('h4', { style: { margin: 0, fontSize: 14, fontWeight: 600 } }, 'Tendance ' + actifs.length + ' derniers jours actifs'),
+                        React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)' } },
+                            React.createElement('span', { style: { color: 'var(--berry)', fontWeight: 700, marginRight: 12 } }, 'Production : ' + slopeStr),
+                            React.createElement('span', { style: { color: '#dc2626', fontWeight: 700 } }, 'Maturité : ' + imcSlopeStr)
+                        )
+                    ),
+                    React.createElement('svg', { viewBox: '0 0 ' + spW + ' ' + spH, style: { width: '100%', height: 80 } },
+                        prodPath && React.createElement('path', { d: prodPath, fill: 'none', stroke: '#9d174d', strokeWidth: 2.5, strokeLinejoin: 'round' }),
+                        imcPath && React.createElement('path', { d: imcPath, fill: 'none', stroke: '#dc2626', strokeWidth: 2, strokeLinejoin: 'round', strokeDasharray: '3,3' })
+                    ),
+                    React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-400)', marginTop: 4 } }, 'Trait plein = production (kg) — Pointillé = maturité IMC (%)')
+                );
+            }
+
+            // Variables conservées vides (anciennes corrélations supprimées) pour ne pas casser le reste du rendu.
+            var corrs = [], bestLag = null;
             var corrColors = { 'Forte': '#16a34a', 'Mod\u00e9r\u00e9e': '#f59e0b', 'Mod\u00e9r\u00e9e (inverse)': '#f59e0b', 'Faible': '#9ca3af', 'Non significative': '#d1d5db' };
 
             var corrTable = React.createElement('div', { className: 'card', style: { padding: 20, marginBottom: 16 } },
-                React.createElement('h4', { style: { margin: '0 0 12px 0', fontSize: 14, fontWeight: 600 } }, 'Corr\u00e9lations Climat \u2194 Production'),
-                React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)', marginBottom: 12 } }, 'Coefficient de Pearson avec d\u00e9calage temporel optimal (le climat de J-N influence la r\u00e9colte de J)'),
+                React.createElement('h4', { style: { margin: '0 0 12px 0', fontSize: 14, fontWeight: 600 } }, 'Maturit\u00e9 \u2194 Production : test des d\u00e9calages courts'),
+                React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)', marginBottom: 12 } }, 'Coefficient de Pearson \u2014 quel d\u00e9calage pr\u00e9dit le mieux la r\u00e9colte du jour ? (J = m\u00eame jour, J-1 = veille)'),
                 corrs.length === 0 ? React.createElement('div', { style: { fontSize: 12, color: 'var(--gray-400)' } }, 'Pas assez de donn\u00e9es pour calculer les corr\u00e9lations.') :
                 React.createElement('div', { style: { overflowX: 'auto' } },
                     React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12.5 } },
@@ -33045,14 +36901,17 @@ ${rejetHtml}
                                 var absR = Math.abs(c.r);
                                 var barPct = Math.round(absR * 100);
                                 var interpColor = corrColors[c.interpretation] || '#9ca3af';
-                                return React.createElement('tr', { key: key, style: { borderBottom: '1px solid #f3f4f6' } },
+                                var isBest = bestLag === c.lag_optimal;
+                                var lagLabel = c.lag_optimal === 0 ? 'J (jour même)' : 'J-' + c.lag_optimal;
+                                return React.createElement('tr', { key: key, style: { borderBottom: '1px solid #f3f4f6', background: isBest ? '#fef2f2' : 'transparent' } },
                                     React.createElement('td', { style: { padding: '10px 6px', fontWeight: 600 } },
-                                        React.createElement('span', { style: { display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: indicatorColors[key] || '#9ca3af', marginRight: 6, verticalAlign: 'middle' } }),
-                                        c.label || key
+                                        React.createElement('span', { style: { display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#dc2626', marginRight: 6, verticalAlign: 'middle' } }),
+                                        c.label || key,
+                                        isBest ? React.createElement('span', { style: { marginLeft: 6, fontSize: 10, padding: '2px 6px', borderRadius: 8, background: '#dc2626', color: '#fff', fontWeight: 700 } }, 'meilleur') : null
                                     ),
                                     React.createElement('td', { style: { textAlign: 'center', padding: '10px 6px', fontWeight: 700, color: c.r >= 0 ? '#16a34a' : '#dc2626' } }, (c.r >= 0 ? '+' : '') + c.r.toFixed(2)),
                                     React.createElement('td', { style: { textAlign: 'center', padding: '10px 6px' } },
-                                        React.createElement('span', { style: { background: '#f3f4f6', padding: '3px 10px', borderRadius: 12, fontWeight: 600, fontSize: 11 } }, 'J-' + c.lag_optimal)
+                                        React.createElement('span', { style: { background: '#f3f4f6', padding: '3px 10px', borderRadius: 12, fontWeight: 600, fontSize: 11 } }, lagLabel)
                                     ),
                                     React.createElement('td', { style: { padding: '10px 6px' } },
                                         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
@@ -33072,30 +36931,64 @@ ${rejetHtml}
                 )
             );
 
-            // --- Prediction ---
-            var predCard = data.prediction ? React.createElement('div', { className: 'card', style: { padding: 20, marginBottom: 16, border: '2px solid #dcfce7' } },
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 } },
-                    React.createElement('div', { style: { width: 40, height: 40, borderRadius: 12, background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-                        React.createElement('i', { className: 'fa-solid fa-crystal-ball', style: { fontSize: 18, color: '#16a34a' } })
+            // --- Pr\u00e9vision demain + recommandation \u00e9quipe (c\u0153ur op\u00e9rationnel) ---
+            var pred = data.prediction;
+            var reco = data.teamRecommendation;
+            var ft = data.forecastTomorrow;
+            var predCard;
+            if (pred && reco) {
+                var ftAlerteKey = (ft && ft.alerte) || pred.alerte_demain || (pred.imc_aujourdhui >= 85 ? 'RECOLTE_IMMINENTE' : pred.imc_aujourdhui >= 70 ? 'SURVEILLER_J3' : pred.imc_aujourdhui >= 50 ? 'EN_COURS' : 'PRECOCE');
+                var ftAlerteInfo = imcAlerteColors[ftAlerteKey] || imcAlerteColors.PRECOCE;
+                var recoColors = {
+                    augmenter: { bg: '#dcfce7', color: '#166534', border: '#16a34a', icon: 'fa-arrow-trend-up', verbe: 'Renforcer' },
+                    reduire: { bg: '#fee2e2', color: '#991b1b', border: '#dc2626', icon: 'fa-arrow-trend-down', verbe: 'R\u00e9duire' },
+                    stable: { bg: '#f3f4f6', color: '#374151', border: '#9ca3af', icon: 'fa-equals', verbe: 'Maintenir' }
+                };
+                var rc = recoColors[reco.action] || recoColors.stable;
+                var deltaSign = reco.delta_pct > 0 ? '+' : '';
+                predCard = React.createElement('div', { className: 'card', style: { padding: 20, marginBottom: 16, border: '2px solid ' + rc.border, background: '#fff' } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 } },
+                        React.createElement('div', { style: { width: 44, height: 44, borderRadius: 12, background: rc.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+                            React.createElement('i', { className: 'fa-solid ' + rc.icon, style: { fontSize: 20, color: rc.color } })
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('div', { style: { fontSize: 15, fontWeight: 700, color: 'var(--gray-800)' } }, 'Pr\u00e9vision demain' + (ft ? ' \u2014 ' + ft.date : '')),
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)' } }, pred.source)
+                        )
                     ),
-                    React.createElement('div', null,
-                        React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: 'var(--gray-800)' } }, 'Pr\u00e9diction Demain'),
-                        React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)' } }, 'Bas\u00e9e sur ' + data.prediction.indicateur + ' \u00e0 J-' + data.prediction.lag)
+                    React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 16 } },
+                        React.createElement('div', { style: { padding: 12, background: '#fafafa', borderRadius: 10 } },
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)', marginBottom: 4 } }, 'Production estim\u00e9e'),
+                            React.createElement('div', { style: { fontSize: 28, fontWeight: 800, color: 'var(--berry)', lineHeight: 1 } }, '~' + pred.kg_estime + ' kg'),
+                            React.createElement('div', { style: { fontSize: 10, color: 'var(--gray-400)', marginTop: 4 } }, 'vs base ' + pred.baseline_kg + ' kg')
+                        ),
+                        React.createElement('div', { style: { padding: 12, background: ftAlerteInfo.bg, borderRadius: 10 } },
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)', marginBottom: 4 } }, 'Maturit\u00e9 demain'),
+                            React.createElement('div', { style: { fontSize: 28, fontWeight: 800, color: ftAlerteInfo.color, lineHeight: 1 } }, (pred.imc_demain != null ? pred.imc_demain : pred.imc_aujourdhui) + '%'),
+                            React.createElement('div', { style: { fontSize: 10, color: ftAlerteInfo.color, marginTop: 4, fontWeight: 600 } }, ftAlerteInfo.label)
+                        ),
+                        React.createElement('div', { style: { padding: 12, background: rc.bg, borderRadius: 10, border: '1px dashed ' + rc.border } },
+                            React.createElement('div', { style: { fontSize: 11, color: rc.color, marginBottom: 4, fontWeight: 600 } }, 'Recommandation \u00e9quipe'),
+                            React.createElement('div', { style: { fontSize: 22, fontWeight: 800, color: rc.color, lineHeight: 1.1 } }, rc.verbe + ' ' + (reco.action !== 'stable' ? deltaSign + reco.delta_pct + '%' : '')),
+                            React.createElement('div', { style: { fontSize: 10, color: rc.color, marginTop: 4 } }, reco.action === 'stable' ? 'Variation < 15 %' : 'Volume vs moyenne 3 j actifs')
+                        )
+                    ),
+                    React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-500)', display: 'flex', gap: 16, flexWrap: 'wrap', paddingTop: 8, borderTop: '1px solid #f3f4f6' } },
+                        React.createElement('span', null, 'Tendance prod : \u00d7' + pred.facteur_tendance),
+                        React.createElement('span', null, 'Zone maturit\u00e9 : \u00d7' + pred.facteur_zone),
+                        React.createElement('span', null, '\u0394 IMC J\u2192J+1 : \u00d7' + pred.facteur_delta_imc),
+                        ft ? React.createElement('span', null, 'Tmax demain : ' + ft.tmax + ' \u00b0C') : null,
+                        ft ? React.createElement('span', null, 'HR : ' + ft.hr + ' %') : null
                     )
-                ),
-                React.createElement('div', { style: { display: 'flex', gap: 16, alignItems: 'center' } },
-                    React.createElement('div', { style: { fontSize: 36, fontWeight: 800, color: 'var(--berry)' } }, '~' + data.prediction.kg_estime),
-                    React.createElement('div', null,
-                        React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: 'var(--gray-600)' } }, 'kg estim\u00e9s'),
-                        React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)' } }, 'Confiance : ' + data.prediction.confiance + ' \u2022 ' + data.prediction.nb_jours_similaires + ' jours similaires')
+                );
+            } else {
+                predCard = React.createElement('div', { className: 'card', style: { padding: 20, marginBottom: 16, background: '#fefce8' } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                        React.createElement('i', { className: 'fa-solid fa-circle-info', style: { color: '#ca8a04' } }),
+                        React.createElement('span', { style: { fontSize: 12, color: '#854d0e' } }, 'Pas encore assez de jours actifs de r\u00e9colte pour g\u00e9n\u00e9rer une pr\u00e9vision (minimum 2 jours avec r\u00e9colte > 0).')
                     )
-                )
-            ) : React.createElement('div', { className: 'card', style: { padding: 20, marginBottom: 16, background: '#fefce8' } },
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-                    React.createElement('i', { className: 'fa-solid fa-circle-info', style: { color: '#ca8a04' } }),
-                    React.createElement('span', { style: { fontSize: 12, color: '#854d0e' } }, 'Pas assez de donn\u00e9es pour g\u00e9n\u00e9rer une pr\u00e9diction fiable. Continuez \u00e0 accumuler les donn\u00e9es de r\u00e9colte.')
-                )
-            );
+                );
+            }
 
             // --- Photo placeholder ---
             var photoPlaceholder = React.createElement('div', { className: 'card', style: { padding: 20, background: '#f9fafb', border: '2px dashed #e5e7eb', textAlign: 'center' } },
@@ -33104,7 +36997,44 @@ ${rejetHtml}
                 React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)' } }, 'Bient\u00f4t disponible \u2014 t\u00e9l\u00e9charger des photos de la parcelle pour affiner les pr\u00e9dictions.')
             );
 
-            return React.createElement('div', { className: 'fade-in' }, controls, chart, corrTable, predCard, photoPlaceholder);
+            // --- Statut maturité aujourd'hui ---
+            var lastImcDay = null;
+            for (var li = data.dailyData.length - 1; li >= 0; li--) {
+                if (data.dailyData[li].imc != null) { lastImcDay = data.dailyData[li]; break; }
+            }
+            var maturityCard = null;
+            if (lastImcDay) {
+                var alerteKey = lastImcDay.alerte || (lastImcDay.imc >= 85 ? 'RECOLTE_IMMINENTE' : lastImcDay.imc >= 70 ? 'SURVEILLER_J3' : lastImcDay.imc >= 50 ? 'EN_COURS' : 'PRECOCE');
+                var alerteInfo = imcAlerteColors[alerteKey] || imcAlerteColors.PRECOCE;
+                var gddCible = 300; // GDD_CIBLE backend
+                var gddCum = lastImcDay.gdd_cumule;
+                var pctGdd = gddCum != null ? Math.min(100, Math.round((gddCum / gddCible) * 100)) : null;
+                maturityCard = React.createElement('div', { className: 'card', style: { padding: 16, marginBottom: 16, borderLeft: '4px solid ' + alerteInfo.color } },
+                    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' } },
+                        React.createElement('div', { style: { flex: '0 0 auto' } },
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)', marginBottom: 4 } }, 'Statut maturité — ' + lastImcDay.date),
+                            React.createElement('div', { style: { fontSize: 28, fontWeight: 800, color: alerteInfo.color, lineHeight: 1 } }, lastImcDay.imc + '%'),
+                            React.createElement('span', { style: { display: 'inline-block', marginTop: 6, padding: '3px 10px', borderRadius: 12, background: alerteInfo.bg, color: alerteInfo.color, fontSize: 11, fontWeight: 700 } }, alerteInfo.label)
+                        ),
+                        React.createElement('div', { style: { flex: 1, minWidth: 180 } },
+                            React.createElement('div', { style: { fontSize: 11, color: 'var(--gray-400)', marginBottom: 4 } }, 'GDD cumulé / cible (' + gddCible + ' °Cd)'),
+                            React.createElement('div', { style: { fontSize: 16, fontWeight: 700 } }, (gddCum != null ? gddCum : '—') + ' °Cd' + (pctGdd != null ? '  (' + pctGdd + '%)' : '')),
+                            React.createElement('div', { style: { width: '100%', height: 8, background: '#f3f4f6', borderRadius: 4, overflow: 'hidden', marginTop: 6 } },
+                                React.createElement('div', { style: { width: (pctGdd || 0) + '%', height: '100%', background: alerteInfo.color, borderRadius: 4 } })
+                            )
+                        ),
+                        React.createElement('div', { style: { flex: 1, minWidth: 200, fontSize: 12, color: 'var(--gray-500)' } },
+                            React.createElement('div', { style: { fontWeight: 600, marginBottom: 4 } }, 'Lecture'),
+                            alerteKey === 'RECOLTE_IMMINENTE' ? 'Pic de récolte attendu sous 24–72 h. Mobiliser les équipes.' :
+                            alerteKey === 'SURVEILLER_J3' ? 'Récolte sous 3 à 5 jours. Préparer la logistique cueillette.' :
+                            alerteKey === 'EN_COURS' ? 'Maturation en cours. Continuer le suivi quotidien.' :
+                            'Stade précoce. Pas d\'action récolte requise.'
+                        )
+                    )
+                );
+            }
+
+            return React.createElement('div', { className: 'fade-in' }, controls, maturityCard, predCard, chart, tendCard, photoPlaceholder);
         }
 
         // ===================== CHEF: AGRONOMIE TAB =====================
@@ -34044,7 +37974,7 @@ ${rejetHtml}
                                                     ['Ferme', order.ferme],
                                                     ['Fournisseur', order.fournisseur?.nom || '—'],
                                                     ['Montant TTC', order.total_ttc ? order.total_ttc.toLocaleString('fr-FR',{minimumFractionDigits:2}) + ' MAD' : '—'],
-                                                    ['Mode paiement', order.mode_paiement === 'caisse' ? 'Caisse' : 'Virement'],
+                                                    ['Mode paiement', formatModePaiement(order.mode_paiement)],
                                                     ['BL fournisseur', order.bl_numero || '—'],
                                                     ['N° Facture', order.facture_numero || '—'],
                                                 ].map(([k,v]) => (
@@ -35837,15 +39767,22 @@ ${rejetHtml}
                 rejete:           { label: 'Rejeté',           color: '#dc2626', bg: '#fef2f2' },
                 annule:           { label: 'Annulé',           color: '#6b7280', bg: '#f3f4f6' },
             };
-            const STEPS = [
-                { key: 'creation',        label: 'Créé',            icon: 'fa-plus-circle' },
-                { key: 'soumission',      label: 'Soumis',          icon: 'fa-paper-plane',  action: 'soumission' },
-                { key: 'validation_chef', label: 'Chef',            icon: 'fa-user-check',   action: 'validation_chef' },
-                { key: 'validation_dg',   label: 'DG',              icon: 'fa-stamp',        action: 'validation_dg' },
-                { key: 'envoi',           label: 'Envoyé',          icon: 'fa-truck',        action: 'envoi_fournisseur' },
-                { key: 'virement_lance',  label: 'Virement Lancé',  icon: 'fa-money-bill-transfer', action: 'virement_lance' },
-                { key: 'virement_signe',  label: 'Virement Signé',  icon: 'fa-signature',    action: 'virement_signe' },
-            ];
+            const STEP_DEFS = {
+                creation:        { key: 'creation',        label: 'Créé',            icon: 'fa-plus-circle' },
+                soumission:      { key: 'soumission',      label: 'Soumis',          icon: 'fa-paper-plane',  action: 'soumission' },
+                validation_chef: { key: 'validation_chef', label: 'Chef',            icon: 'fa-user-check',   action: 'validation_chef' },
+                validation_dg:   { key: 'validation_dg',   label: 'DG',              icon: 'fa-stamp',        action: 'validation_dg' },
+                virement_lance:  { key: 'virement_lance',  label: 'Virement Lancé',  icon: 'fa-money-bill-transfer', action: 'virement_lance' },
+                virement_signe:  { key: 'virement_signe',  label: 'Virement Signé',  icon: 'fa-signature',    action: 'virement_signe' },
+                envoi:           { key: 'envoi',           label: 'Envoyé',          icon: 'fa-truck',        action: 'envoi_fournisseur' },
+            };
+            const getStepsForBdc = (bdc) => {
+                const base = ['creation', 'soumission', 'validation_chef', 'validation_dg'];
+                if (isModeVirement(bdc.mode_paiement)) {
+                    return [...base, 'virement_lance', 'virement_signe', 'envoi'].map(k => STEP_DEFS[k]);
+                }
+                return [...base, 'envoi'].map(k => STEP_DEFS[k]);
+            };
 
             const fmtDur = (ms) => {
                 if (!ms || ms < 0) return null;
@@ -35874,8 +39811,10 @@ ${rejetHtml}
                 };
             };
 
-            const getDurations = (times) => {
-                const keys = ['creation', 'soumission', 'validation_chef', 'validation_dg', 'envoi', 'virement_lance', 'virement_signe'];
+            const getDurations = (times, bdc) => {
+                const keys = isModeVirement(bdc?.mode_paiement)
+                    ? ['creation', 'soumission', 'validation_chef', 'validation_dg', 'virement_lance', 'virement_signe', 'envoi']
+                    : ['creation', 'soumission', 'validation_chef', 'validation_dg', 'envoi'];
                 const result = {};
                 for (let i = 1; i < keys.length; i++) {
                     const from = times[keys[i - 1]];
@@ -35888,9 +39827,9 @@ ${rejetHtml}
 
             const getCurrentStep = (bdc) => {
                 if (bdc.status === 'rejete') return 'rejete';
+                if (bdc.status === 'envoye') return 'envoi';
                 if (bdc.status === 'virement_signe') return 'virement_signe';
                 if (bdc.status === 'virement_lance') return 'virement_lance';
-                if (bdc.status === 'envoye') return 'envoi';
                 if (bdc.status === 'valide_dg') return 'validation_dg';
                 if (bdc.status === 'en_attente_dg') return 'validation_chef';
                 if (bdc.status === 'en_attente_chef') return 'soumission';
@@ -35969,8 +39908,9 @@ ${rejetHtml}
                             {filteredBdc.map(bdc => {
                                 const cfg = STATUT_CFG[bdc.status] || { label: bdc.status, color: '#64748b', bg: '#f1f5f9' };
                                 const times = getStepTimes(bdc);
-                                const durations = getDurations(times);
+                                const durations = getDurations(times, bdc);
                                 const currentStep = getCurrentStep(bdc);
+                                const STEPS = getStepsForBdc(bdc);
                                 const isExpanded = expanded[bdc.id];
                                 const isRejected = bdc.status === 'rejete';
                                 const rejectEntry = (bdc.history || []).slice().reverse().find(h => h.action?.includes('rejet'));
@@ -36038,7 +39978,7 @@ ${rejetHtml}
                                                     <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Créé par</div><div style={{ fontWeight: 600, fontSize: 12 }}>{bdc.created_by?.name || '—'}</div></div>
                                                     <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Livraison prévue</div><div style={{ fontWeight: 600, fontSize: 12 }}>{bdc.date_livraison_prevue || '—'}</div></div>
                                                     {bdc.code_analytique && <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Code analytique</div><div style={{ fontWeight: 600, fontSize: 12, fontFamily: 'monospace' }}>{bdc.code_analytique}</div></div>}
-                                                    {bdc.mode_paiement && <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Paiement</div><div style={{ fontWeight: 600, fontSize: 12 }}>{bdc.mode_paiement === 'caisse' ? 'Caisse' : 'Virement'}</div></div>}
+                                                    {bdc.mode_paiement && <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Paiement</div><div style={{ fontWeight: 600, fontSize: 12 }}>{formatModePaiement(bdc.mode_paiement)}</div></div>}
                                                     {bdc.validated_by_chef && <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Validé Chef</div><div style={{ fontWeight: 600, fontSize: 12, color: '#16a34a' }}>{bdc.validated_by_chef.name}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>{fmtDateFull(bdc.validated_by_chef.at)}</div></div>}
                                                     {bdc.validated_by_dg && <div><div style={{ fontSize: 11, color: '#94a3b8' }}>Validé DG</div><div style={{ fontWeight: 600, fontSize: 12, color: '#2563eb' }}>{bdc.validated_by_dg.name}</div><div style={{ fontSize: 10, color: '#94a3b8' }}>{fmtDateFull(bdc.validated_by_dg.at)}</div></div>}
                                                     {bdc.notified_finance && <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '6px 10px' }}><div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600 }}><i className="fa-solid fa-circle-check" style={{ marginRight: 4 }} />Transmis Finance</div><div style={{ fontSize: 10, color: '#94a3b8' }}>{fmtDateFull(bdc.notified_finance_at)}</div></div>}
@@ -36089,8 +40029,8 @@ ${rejetHtml}
                                                         </div>
                                                     )}
                                                 </div>
-                                                {/* Bouton Lancer virement (Finance) */}
-                                                {bdc.status === 'envoye' && bdc.mode_paiement === 'virement_bancaire' && (
+                                                {/* Bouton Lancer virement (Finance) — disponible dès Validé DG pour Comptant–Virement */}
+                                                {bdc.status === 'valide_dg' && isModeVirement(bdc.mode_paiement) && currentProfile === 'finance' && (
                                                     <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #e2e8f0' }}>
                                                         <button onClick={(e) => { e.stopPropagation(); if (!confirm('Confirmer le lancement du virement pour ' + bdc.numero + ' ?')) return;
                                                             fetch('/api/stock?action=update-bdc-virement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -36237,6 +40177,18 @@ ${rejetHtml}
             );
         }
 
+        // Helper: format mode_paiement (handles legacy values)
+        function formatModePaiement(mode) {
+            if (mode === 'comptant_virement' || mode === 'virement_bancaire') return 'Comptant – Virement';
+            if (mode === 'comptant_especes' || mode === 'caisse') return 'Comptant – Espèces';
+            if (mode === 'facilite' || mode === 'comptant') return 'Facilité';
+            return mode || '—';
+        }
+        function isModeVirement(mode) { return mode === 'comptant_virement' || mode === 'virement_bancaire'; }
+        function isModeEspeces(mode) { return mode === 'comptant_especes' || mode === 'caisse'; }
+        function isModeFacilite(mode) { return mode === 'facilite' || mode === 'comptant'; }
+        function isModeComptant(mode) { return isModeVirement(mode) || isModeEspeces(mode); }
+
         // ===================== ACHATS: BONS DE COMMANDE TAB =====================
         function AchatsBDCTab({ currentProfile, profileData }) {
             const [bdcList, setBdcList] = useState([]);
@@ -36249,7 +40201,7 @@ ${rejetHtml}
             const FARMS = ['Toutes', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'];
             const TVA_RATES = [0, 7, 10, 14, 20];
             const emptyItem = { article: '', categorie: 'engrais', quantite: '', unite: 'kg', prix_unitaire: '', taux_tva: 20 };
-            const [form, setForm] = useState({ supplier_id: '', purchase_request_id: '', fournisseur: { nom: '', ice: '', adresse: '', ville: '', tel: '', email: '' }, ferme: 'F1', date_livraison_prevue: '', code_analytique: '', mode_paiement: 'virement_bancaire', items: [{ ...emptyItem }] });
+            const [form, setForm] = useState({ supplier_id: '', purchase_request_id: '', fournisseur: { nom: '', ice: '', adresse: '', ville: '', tel: '', email: '' }, ferme: 'F1', date_livraison_prevue: '', code_analytique: '', mode_paiement: 'comptant_virement', items: [{ ...emptyItem }] });
             const [codesAnalytiques, setCodesAnalytiques] = useState([]);
             const [catalogueArticles, setCatalogueArticles] = useState([]);
             const [daApprouvees, setDaApprouvees] = useState([]);
@@ -36364,7 +40316,22 @@ ${rejetHtml}
             const handleSubmit = (id) => { if (!confirm('Soumettre ce BDC pour validation ?')) return; fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
             const handleSubmitDirect = (id) => { fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { setShowForm(false); setJustCreated(null); loadBdc(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
             const handleSend = (id) => { if (!confirm('Marquer ce BDC comme envoyé au fournisseur ?')) return; fetch('/api/stock?action=send-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, sent_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
-            const handleDeleteBdc = (id) => { if (!confirm('Supprimer définitivement ce BDC brouillon ?')) return; fetch('/api/stock?action=delete-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).then(r => r.json()).then(json => { if (json.success) { setSelectedBdc(null); setBdcDetail(null); loadBdc(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
+            const handleDeleteBdc = (id, status) => { const isValidated = status && status !== 'brouillon'; const msg = isValidated ? 'Ce BDC a déjà été validé. Voulez-vous vraiment le supprimer définitivement ?' : 'Supprimer définitivement ce BDC brouillon ?'; if (!confirm(msg)) return; fetch('/api/stock?action=delete-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, deleted_by: { profileId: currentProfile, name: profileData?.fullName || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { setSelectedBdc(null); setBdcDetail(null); loadBdc(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
+            const handleRemindBdc = (id, status) => {
+                const profileLabel = status === 'en_attente_chef' ? 'Chef de ferme'
+                    : status === 'en_attente_dg' ? 'DG'
+                    : status === 'envoye' ? 'Finance (virement)'
+                    : status === 'virement_lance' ? 'Finance + DG (signature virement)'
+                    : 'destinataire';
+                if (!confirm(`Envoyer un rappel WhatsApp à ${profileLabel} pour ce BDC ?`)) return;
+                fetch('/api/stock?action=remind-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) })
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.success) { alert(`Rappel envoyé à ${json.profiles.join(', ')} (en attente depuis ${json.duration})`); loadBdc(); if (bdcDetail) openDetail(id); }
+                        else alert('Erreur: ' + (json.error || 'Echec'));
+                    })
+                    .catch(() => alert('Erreur réseau'));
+            };
 
             const openDetail = (id) => { setSelectedBdc(id); setEditMode(null); fetch('/api/stock?action=get-bdc&id=' + id).then(r => r.json()).then(json => { if (json.success) setBdcDetail(json); }).catch(() => {}); };
 
@@ -36403,7 +40370,7 @@ ${rejetHtml}
                 const chefVisa = bdc.validated_by_chef ? `<div style="font-family:'Dancing Script',cursive;font-size:22px;color:#2D8B4E;font-weight:700">${bdc.validated_by_chef.name||'Chef'}</div><div style="font-size:10px;color:#666;margin-top:2px">Signé électroniquement le ${new Date(bdc.validated_by_chef.at).toLocaleString('fr-FR')}</div>` : '<p style="color:#aaa">En attente</p>';
                 const analytique = bdc.code_analytique ? `<p><strong>Code analytique :</strong> <span style="font-family:monospace;background:#f0f0f0;padding:2px 6px;border-radius:4px">${bdc.code_analytique}</span></p>` : '';
                 const consultation = bdc.consultation_id ? `<p><strong>Réf. Consultation :</strong> ${bdc.consultation_id}</p>` : '';
-                const modePmt = bdc.mode_paiement === 'caisse' ? '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">CAISSE</span>' : bdc.mode_paiement === 'comptant' ? '<span style="background:#27ae60;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">COMPTANT</span>' : '<span style="background:#2980b9;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">VIREMENT BANCAIRE</span>';
+                const modePmt = isModeEspeces(bdc.mode_paiement) ? '<span style="background:#f39c12;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">COMPTANT — ESPÈCES</span>' : isModeFacilite(bdc.mode_paiement) ? '<span style="background:#27ae60;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">FACILITÉ</span>' : '<span style="background:#2980b9;color:#fff;padding:2px 8px;border-radius:4px;font-size:11px">COMPTANT — VIREMENT</span>';
                 const html = `<html><head><title>BDC ${bdc.numero}</title><link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap" rel="stylesheet"><style>body{font-family:Arial,sans-serif;margin:40px;color:#333;font-size:13px}h1{color:#8B2252;font-size:20px;margin:0}table{width:100%;border-collapse:collapse;margin:16px 0}th,td{padding:7px 10px;border:1px solid #ddd;text-align:left;font-size:12px}th{background:#f5f5f5;font-weight:600}.sig-box{border:1px solid #ddd;border-radius:6px;padding:12px;text-align:center;min-height:70px;display:flex;flex-direction:column;justify-content:center}@media print{body{margin:15px}}</style></head><body>
                 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid #8B2252">
                   <div><h1>BON DE COMMANDE</h1><p style="margin:4px 0"><strong>${bdc.numero}</strong> &nbsp;|&nbsp; Date : ${new Date(bdc.created_at).toLocaleDateString('fr-FR')} &nbsp;|&nbsp; Ferme : ${bdc.ferme}</p>${analytique}${consultation}<p>Mode paiement : ${modePmt}</p></div>
@@ -36500,7 +40467,7 @@ ${rejetHtml}
                 doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(50);
                 doc.text('Date : ' + new Date(bdc.created_at).toLocaleDateString('fr-FR'), M, y);
                 doc.text('Ferme : ' + (bdc.ferme || ''), M + 60, y);
-                const modePmt = bdc.mode_paiement === 'comptant' ? 'Comptant' : bdc.mode_paiement === 'caisse' ? 'Caisse' : 'Virement bancaire';
+                const modePmt = formatModePaiement(bdc.mode_paiement);
                 doc.text('Paiement : ' + modePmt, M + 110, y); y += 5;
                 if (bdc.code_analytique) { doc.text('Code analytique : ' + bdc.code_analytique, M, y); y += 5; }
                 if (bdc.date_livraison_prevue) { doc.text('Livraison pr\u00e9vue : ' + bdc.date_livraison_prevue, M, y); y += 5; }
@@ -36636,7 +40603,7 @@ ${rejetHtml}
                                 </button>
                             ))}
                         </div>
-                        <button data-tour="btn-new-bdc" onClick={() => { setForm({ supplier_id: '', purchase_request_id: '', fournisseur: { nom: '', ice: '', adresse: '', ville: '', tel: '', email: '' }, ferme: 'F1', date_livraison_prevue: '', code_analytique: '', mode_paiement: 'virement_bancaire', items: [{ ...emptyItem }] }); setShowForm(true); }}
+                        <button data-tour="btn-new-bdc" onClick={() => { setForm({ supplier_id: '', purchase_request_id: '', fournisseur: { nom: '', ice: '', adresse: '', ville: '', tel: '', email: '' }, ferme: 'F1', date_livraison_prevue: '', code_analytique: '', mode_paiement: 'comptant_virement', items: [{ ...emptyItem }] }); setShowForm(true); }}
                             style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                             <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau BDC
                         </button>
@@ -36658,8 +40625,8 @@ ${rejetHtml}
                                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                                         <div style={{display:'flex',gap:12,alignItems:'center'}}>
                                         {b.status === 'brouillon' && <button onClick={() => handleSubmit(b.id)} title="Soumettre" style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13}}><i className="fa-solid fa-paper-plane"></i></button>}
-                                        {b.status === 'brouillon' && <button onClick={() => handleDeleteBdc(b.id)} title="Supprimer" style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button>}
-                                        {b.status === 'valide_dg' && <button onClick={() => handleSend(b.id)} title="Envoyer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:13}}><i className="fa-solid fa-truck"></i></button>}
+                                        {(b.status === 'brouillon' || currentProfile === 'achats' || currentProfile === 'admin') && <button onClick={() => handleDeleteBdc(b.id, b.status)} title={b.status === 'brouillon' ? 'Supprimer' : 'Supprimer (BDC validé)'} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button>}
+                                        {currentProfile === 'achats' && ((isModeVirement(b.mode_paiement) && b.status === 'virement_signe') || (!isModeVirement(b.mode_paiement) && b.status === 'valide_dg')) && <button onClick={() => handleSend(b.id)} title="Envoyer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:13}}><i className="fa-solid fa-truck"></i></button>}
                                         </div>
                                     </td>
                                 </tr>
@@ -36706,15 +40673,29 @@ ${rejetHtml}
                                             <option value="">-- Sélectionner --</option>
                                             {codesAnalytiques.map(c => <option key={c.id} value={c.code}>{c.code} — {c.libelle}</option>)}
                                         </select></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Mode de paiement</label>
-                                        <div style={{display:'flex',gap:12,marginTop:4}}>
-                                            {[{v:'virement_bancaire',l:'Virement bancaire',icon:'fa-building-columns'},{v:'comptant',l:'Comptant',icon:'fa-money-bill'},{v:'caisse',l:'Caisse',icon:'fa-cash-register'}].map(opt => (
-                                                <label key={opt.v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'6px 12px',borderRadius:8,border: form.mode_paiement===opt.v ? '2px solid var(--berry)' : '1px solid #ddd',background: form.mode_paiement===opt.v ? 'var(--berry-pale)' : '#fff',fontSize:12,fontWeight:600}}>
-                                                    <input type="radio" name="mode_paiement" value={opt.v} checked={form.mode_paiement===opt.v} onChange={e => setForm({...form, mode_paiement: e.target.value})} style={{display:'none'}} />
-                                                    <i className={'fa-solid '+opt.icon} style={{color: form.mode_paiement===opt.v ? 'var(--berry)' : '#888'}}></i>{opt.l}
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Type de paiement</label>
+                                        <div style={{display:'flex',gap:12,marginTop:4,flexWrap:'wrap'}}>
+                                            {[{v:'comptant',l:'Comptant',icon:'fa-money-bill-wave'},{v:'facilite',l:'Facilité',icon:'fa-calendar-days'}].map(opt => {
+                                                const active = (opt.v === 'comptant' && isModeComptant(form.mode_paiement)) || (opt.v === 'facilite' && isModeFacilite(form.mode_paiement));
+                                                return (
+                                                <label key={opt.v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'6px 12px',borderRadius:8,border: active ? '2px solid var(--berry)' : '1px solid #ddd',background: active ? 'var(--berry-pale)' : '#fff',fontSize:12,fontWeight:600}}>
+                                                    <input type="radio" name="paiement_type" value={opt.v} checked={active} onChange={() => setForm({...form, mode_paiement: opt.v === 'comptant' ? 'comptant_virement' : 'facilite'})} style={{display:'none'}} />
+                                                    <i className={'fa-solid '+opt.icon} style={{color: active ? 'var(--berry)' : '#888'}}></i>{opt.l}
                                                 </label>
-                                            ))}
-                                        </div></div>
+                                                );
+                                            })}
+                                        </div>
+                                        {isModeComptant(form.mode_paiement) && (
+                                            <div style={{display:'flex',gap:12,marginTop:8,flexWrap:'wrap'}}>
+                                                {[{v:'comptant_virement',l:'Virement bancaire',icon:'fa-building-columns'},{v:'comptant_especes',l:'Espèces',icon:'fa-cash-register'}].map(opt => (
+                                                    <label key={opt.v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'5px 10px',borderRadius:8,border: form.mode_paiement===opt.v ? '2px solid var(--berry)' : '1px solid #ddd',background: form.mode_paiement===opt.v ? 'var(--berry-pale)' : '#fff',fontSize:11,fontWeight:600}}>
+                                                        <input type="radio" name="mode_paiement_method" value={opt.v} checked={form.mode_paiement===opt.v} onChange={e => setForm({...form, mode_paiement: e.target.value})} style={{display:'none'}} />
+                                                        <i className={'fa-solid '+opt.icon} style={{color: form.mode_paiement===opt.v ? 'var(--berry)' : '#888'}}></i>{opt.l}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                                 <div data-tour="bdc-form-items" style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
                                     <h4 style={{margin:0}}>Articles</h4>
@@ -36778,6 +40759,11 @@ ${rejetHtml}
                                         {(bdcDetail.bdc.status === 'brouillon' || bdcDetail.bdc.status === 'rejete') && !editMode && (
                                             <button onClick={() => startEdit(bdcDetail.bdc)} style={{background:'var(--berry-pale)',border:'1.5px solid var(--berry)',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'var(--berry)',fontWeight:600}}><i className="fa-solid fa-pen" style={{marginRight:4}}></i>Modifier</button>
                                         )}
+                                        {['en_attente_chef','en_attente_dg','envoye','virement_lance'].includes(bdcDetail.bdc.status) && currentProfile === 'achats' && (
+                                            <button onClick={() => handleRemindBdc(bdcDetail.bdc.id, bdcDetail.bdc.status)} style={{background:'#f39c12',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}} title="Envoyer un rappel WhatsApp à la personne qui bloque le BDC">
+                                                <i className="fa-solid fa-bell" style={{marginRight:4}}></i>Relancer
+                                            </button>
+                                        )}
                                         {(['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status)) && <button onClick={() => printBdc(bdcDetail.bdc)} style={{background:'none',border:'1px solid #ddd',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12}}><i className="fa-solid fa-print" style={{marginRight:4}}></i>Imprimer</button>}
                                         {(['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status)) && <button onClick={() => handleDownloadPdf(bdcDetail.bdc)} style={{background:'#e74c3c',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}}><i className="fa-solid fa-file-pdf" style={{marginRight:4}}></i>PDF</button>}
                                         {(['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status)) && <button onClick={() => handleSendEmail(bdcDetail.bdc)} style={{background:'#2980b9',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}}><i className="fa-solid fa-envelope" style={{marginRight:4}}></i>Email</button>}
@@ -36816,15 +40802,28 @@ ${rejetHtml}
                                                         <option value="">-- Sélectionner --</option>
                                                         {codesAnalytiques.map(c => <option key={c.id} value={c.code}>{c.code} — {c.libelle}</option>)}
                                                     </select></div>
-                                                <div style={{gridColumn:'1 / -1'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Modalités de paiement</label>
+                                                <div style={{gridColumn:'1 / -1'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Type de paiement</label>
                                                     <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                                                        {[{v:'virement_bancaire',l:'Virement bancaire',icon:'fa-building-columns'},{v:'comptant',l:'Comptant',icon:'fa-money-bill'},{v:'caisse',l:'Caisse',icon:'fa-cash-register'}].map(opt => (
-                                                            <label key={opt.v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'6px 12px',borderRadius:8,border: editForm.mode_paiement===opt.v ? '2px solid var(--berry)' : '1px solid #ddd',background: editForm.mode_paiement===opt.v ? 'var(--berry-pale)' : '#fff',fontSize:12,fontWeight:600}}>
-                                                                <input type="radio" name="edit_mode_paiement" value={opt.v} checked={editForm.mode_paiement===opt.v} onChange={e => setEditForm({...editForm, mode_paiement: e.target.value})} style={{display:'none'}} />
-                                                                <i className={'fa-solid '+opt.icon} style={{color: editForm.mode_paiement===opt.v ? 'var(--berry)' : '#888'}}></i>{opt.l}
+                                                        {[{v:'comptant',l:'Comptant',icon:'fa-money-bill-wave'},{v:'facilite',l:'Facilité',icon:'fa-calendar-days'}].map(opt => {
+                                                            const active = (opt.v === 'comptant' && isModeComptant(editForm.mode_paiement)) || (opt.v === 'facilite' && isModeFacilite(editForm.mode_paiement));
+                                                            return (
+                                                            <label key={opt.v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'6px 12px',borderRadius:8,border: active ? '2px solid var(--berry)' : '1px solid #ddd',background: active ? 'var(--berry-pale)' : '#fff',fontSize:12,fontWeight:600}}>
+                                                                <input type="radio" name="edit_paiement_type" value={opt.v} checked={active} onChange={() => setEditForm({...editForm, mode_paiement: opt.v === 'comptant' ? 'comptant_virement' : 'facilite'})} style={{display:'none'}} />
+                                                                <i className={'fa-solid '+opt.icon} style={{color: active ? 'var(--berry)' : '#888'}}></i>{opt.l}
                                                             </label>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
+                                                    {isModeComptant(editForm.mode_paiement) && (
+                                                        <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:8}}>
+                                                            {[{v:'comptant_virement',l:'Virement bancaire',icon:'fa-building-columns'},{v:'comptant_especes',l:'Espèces',icon:'fa-cash-register'}].map(opt => (
+                                                                <label key={opt.v} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',padding:'5px 10px',borderRadius:8,border: editForm.mode_paiement===opt.v ? '2px solid var(--berry)' : '1px solid #ddd',background: editForm.mode_paiement===opt.v ? 'var(--berry-pale)' : '#fff',fontSize:11,fontWeight:600}}>
+                                                                    <input type="radio" name="edit_mode_paiement_method" value={opt.v} checked={editForm.mode_paiement===opt.v} onChange={e => setEditForm({...editForm, mode_paiement: e.target.value})} style={{display:'none'}} />
+                                                                    <i className={'fa-solid '+opt.icon} style={{color: editForm.mode_paiement===opt.v ? 'var(--berry)' : '#888'}}></i>{opt.l}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
@@ -36868,7 +40867,7 @@ ${rejetHtml}
                                     <div><div style={{fontSize:12,color:'var(--gray-400)'}}>Ferme</div><div style={{fontWeight:600}}>{bdcDetail.bdc.ferme}</div></div>
                                     <div><div style={{fontSize:12,color:'var(--gray-400)'}}>Statut</div><span className={'status-badge ' + statusClass(bdcDetail.bdc.status)}>{statusLabels[bdcDetail.bdc.status] || bdcDetail.bdc.status}</span></div>
                                     <div><div style={{fontSize:12,color:'var(--gray-400)'}}>Date livraison prévue</div><div style={{fontWeight:600}}>{bdcDetail.bdc.date_livraison_prevue || '—'}</div></div>
-                                    <div><div style={{fontSize:12,color:'var(--gray-400)'}}>Modalités de paiement</div><div style={{fontWeight:600}}>{bdcDetail.bdc.mode_paiement === 'comptant' ? 'Comptant' : bdcDetail.bdc.mode_paiement === 'caisse' ? 'Caisse' : 'Virement bancaire'}</div></div>
+                                    <div><div style={{fontSize:12,color:'var(--gray-400)'}}>Modalités de paiement</div><div style={{fontWeight:600}}>{formatModePaiement(bdcDetail.bdc.mode_paiement)}</div></div>
                                     {bdcDetail.bdc.code_analytique && <div><div style={{fontSize:12,color:'var(--gray-400)'}}>Code Analytique</div><div style={{fontWeight:600,fontFamily:'monospace'}}>{bdcDetail.bdc.code_analytique}</div></div>}
                                 </div>
                                 {bdcDetail.bdc.fournisseur?.nom === 'À définir' && (
@@ -36890,8 +40889,8 @@ ${rejetHtml}
                                 <div style={{display:'flex',gap:8,marginTop:16,flexWrap:'wrap'}}>
                                     {bdcDetail.bdc.status === 'brouillon' && <button onClick={() => startEdit(bdcDetail.bdc)} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid var(--berry)',background:'var(--berry-pale)',color:'var(--berry)',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-pen" style={{marginRight:6}}></i>Modifier</button>}
                                     {bdcDetail.bdc.status === 'brouillon' && <button onClick={() => handleSubmit(selectedBdc)} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--blue)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>Soumettre pour validation</button>}
-                                    {bdcDetail.bdc.status === 'brouillon' && <button onClick={() => handleDeleteBdc(selectedBdc)} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid #e74c3c',background:'rgba(231,76,60,0.08)',color:'#e74c3c',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-trash" style={{marginRight:6}}></i>Supprimer</button>}
-                                    {bdcDetail.bdc.status === 'valide_dg' && <button onClick={() => handleSend(selectedBdc)} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--green)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-truck" style={{marginRight:6}}></i>Marquer envoyé</button>}
+                                    {(bdcDetail.bdc.status === 'brouillon' || currentProfile === 'achats' || currentProfile === 'admin') && <button onClick={() => handleDeleteBdc(selectedBdc, bdcDetail.bdc.status)} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid #e74c3c',background:'rgba(231,76,60,0.08)',color:'#e74c3c',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-trash" style={{marginRight:6}}></i>Supprimer</button>}
+                                    {currentProfile === 'achats' && ((isModeVirement(bdcDetail.bdc.mode_paiement) && bdcDetail.bdc.status === 'virement_signe') || (!isModeVirement(bdcDetail.bdc.mode_paiement) && bdcDetail.bdc.status === 'valide_dg')) && <button onClick={() => handleSend(selectedBdc)} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--green)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-truck" style={{marginRight:6}}></i>Marquer envoyé</button>}
                                     {['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status) && !bdcDetail.bdc.pending_change_request && (
                                         <React.Fragment>
                                             <button onClick={() => { setChangeRequestModal({ type: 'modification' }); setChangeMotif(''); }} style={{padding:'8px 16px',borderRadius:8,border:'1.5px solid #e67e22',background:'rgba(230,126,34,0.08)',color:'#e67e22',cursor:'pointer',fontWeight:600,fontSize:13}}><i className="fa-solid fa-pen-to-square" style={{marginRight:6}}></i>Demander modification</button>
@@ -37604,7 +41603,7 @@ ${rejetHtml}
                                             <span><i className="fa-solid fa-warehouse" style={{marginRight:4}}></i>{bdcDetail.ferme}</span>
                                             <span><i className="fa-regular fa-calendar" style={{marginRight:4}}></i>{bdcDetail.created_at ? new Date(bdcDetail.created_at).toLocaleDateString('fr-FR') : '—'}</span>
                                             {bdcDetail.code_analytique && <span><i className="fa-solid fa-barcode" style={{marginRight:4}}></i>{bdcDetail.code_analytique}</span>}
-                                            {bdcDetail.mode_paiement && <span style={{background:'#eff6ff', color:'#2563eb', padding:'2px 8px', borderRadius:8, fontWeight:600, fontSize:11}}>{bdcDetail.mode_paiement === 'caisse' ? 'Caisse' : bdcDetail.mode_paiement === 'comptant' ? 'Comptant' : 'Virement bancaire'}</span>}
+                                            {bdcDetail.mode_paiement && <span style={{background:'#eff6ff', color:'#2563eb', padding:'2px 8px', borderRadius:8, fontWeight:600, fontSize:11}}>{formatModePaiement(bdcDetail.mode_paiement)}</span>}
                                         </div>
                                     </div>
                                     <button onClick={() => setBdcDetail(null)} style={{background:'none', border:'none', fontSize:22, cursor:'pointer', color:'#999', padding:'0 4px', lineHeight:1}}>×</button>
@@ -37707,12 +41706,258 @@ ${rejetHtml}
             );
         }
 
-        // ===================== MAGASINIER: RECEPTION (BR) TAB =====================
+        // ===================== MAGASINIER: BONS DE RÉCEPTION (LISTE BR SAISIS) =====================
         function MagReceptionTab({ currentProfile, profileData }) {
+            const [receptions, setReceptions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [query, setQuery] = useState('');
+            const [filterFerme, setFilterFerme] = useState('');
+            const [filterStatus, setFilterStatus] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+            const MAGASINS_BR = ['F1', 'F2', 'F5', 'F6'];
+            const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
+            const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
+
+            const emptyForm = { date: '', ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null };
+            const [showForm, setShowForm] = useState(false);
+            const [form, setForm] = useState(emptyForm);
+            const [submitting, setSubmitting] = useState(false);
+            const [articles, setArticles] = useState([]);
+            const [suppliers, setSuppliers] = useState([]);
+
+            const loadReceptions = () => {
+                setLoading(true);
+                let url = '/api/stock?action=list-movements&type=reception&limit=500';
+                if (filterFerme) url += '&ferme=' + filterFerme;
+                if (filterStatus) url += '&status=' + filterStatus;
+                fetch(url).then(r => r.json())
+                    .then(json => { if (json.success) setReceptions(json.movements || []); })
+                    .catch(err => console.warn(err)).finally(() => setLoading(false));
+            };
+            useEffect(() => { loadReceptions(); }, [filterFerme, filterStatus]);
+            useEffect(() => {
+                cachedFetch('/api/stock?action=list-articles').then(json => { if (json.success) setArticles((json.articles || []).filter(a => a.active !== false)); }).catch(() => {});
+                cachedFetch('/api/stock?action=list-suppliers&status=valide').then(json => { if (json.success) setSuppliers(json.suppliers || []); }).catch(() => {});
+            }, []);
+
+            const updateItem = (idx, field, value) => {
+                const items = [...form.items]; items[idx] = { ...items[idx], [field]: value };
+                setForm({ ...form, items });
+            };
+            const addItem = () => setForm({ ...form, items: [...form.items, { article: '', quantite: '', unite: 'kg' }] });
+            const removeItem = (idx) => { if (form.items.length > 1) setForm({ ...form, items: form.items.filter((_, i) => i !== idx) }); };
+
+            const handleScanFile = (file) => {
+                if (!file) return;
+                if (file.size > 10 * 1024 * 1024) { alert('Fichier trop volumineux (max 10 Mo)'); return; }
+                const reader = new FileReader();
+                reader.onload = (e) => setForm(prev => ({ ...prev, scan_file: e.target.result, scan_preview: file.type.startsWith('image/') ? e.target.result : file.name }));
+                reader.readAsDataURL(file);
+            };
+            const uploadScan = async (base64) => {
+                if (!base64) return null;
+                const res = await fetch('/api/stock?action=upload-scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_base64: base64, filename: 'scan_bl.jpg', contentType: 'image/jpeg' }) });
+                const json = await res.json();
+                return json.success ? json.url : null;
+            };
+
+            const handleCreate = async () => {
+                const motifFinal = form.motif === 'Autre' ? (form.motif_autre || '').trim() : form.motif;
+                if (!motifFinal) { alert('Motif obligatoire'); return; }
+                if (!form.magasin) { alert('Magasin requis'); return; }
+                const validItems = form.items.filter(i => i.article && i.quantite);
+                if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
+                setSubmitting(true);
+                try {
+                    const scanUrl = form.scan_file ? await uploadScan(form.scan_file) : null;
+                    const res = await fetch('/api/stock?action=create-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'reception',
+                            date: form.date || new Date().toISOString().split('T')[0],
+                            lieu_destination: { type: 'magasin', id: form.magasin },
+                            ferme: form.magasin,
+                            ref_bl_fournisseur: form.ref_bl_fournisseur,
+                            reception_libre: true, reception_libre_motif: motifFinal,
+                            single_validation: true,
+                            fournisseur_nom: form.fournisseur_nom || null,
+                            scan_url: scanUrl,
+                            items: validItems.map(i => ({ article_ref: i.article, article_nom: i.article, quantite: parseFloat(i.quantite), unite: i.unite })),
+                            created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
+                        }),
+                    });
+                    const json = await res.json();
+                    if (json.success) {
+                        alert('Bon d\'entrée ' + json.numero + ' créé et validé.');
+                        setShowForm(false); setForm(emptyForm); loadReceptions();
+                    } else {
+                        alert('Erreur: ' + (json.error || 'Echec'));
+                    }
+                } catch (e) {
+                    alert('Erreur réseau');
+                } finally {
+                    setSubmitting(false);
+                }
+            };
+
+            const isImport = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
+            const statusLabel = (s, m) => {
+                if (m && isImport(m)) return 'Importé';
+                if (s === 'valide_chef') return 'Validé';
+                if (s === 'rejete') return 'Rejeté';
+                if (s === 'valide_mag') return 'À valider par Achats';
+                if (s === 'valide_achats') return 'À valider par Chef';
+                return s || '—';
+            };
+            const statusClass = (s, m) => {
+                if (s === 'rejete') return 'rejete';
+                if ((m && isImport(m)) || s === 'valide_chef') return 'valide';
+                return 'en-attente';
+            };
+
+            const matches = (r) => {
+                if (dateFrom && r.date && r.date < dateFrom) return false;
+                if (dateTo && r.date && r.date > dateTo) return false;
+                if (!query) return true;
+                const q = query.toLowerCase();
+                if ((r.numero || '').toLowerCase().includes(q)) return true;
+                if ((r.ref_bl_fournisseur || '').toLowerCase().includes(q)) return true;
+                if ((r.fournisseur_nom || '').toLowerCase().includes(q)) return true;
+                if ((r.lieu_destination?.id || '').toLowerCase().includes(q)) return true;
+                if ((r.reception_libre_motif || '').toLowerCase().includes(q)) return true;
+                return (r.items || []).some(i => ((i.article_nom || i.article_ref || '').toLowerCase().includes(q)));
+            };
+            const filtered = receptions.filter(matches);
+
+            const typeLabel = (r) => {
+                if (isImport(r)) return 'Import';
+                if (r.reception_libre && r.single_validation) return 'Entrée libre';
+                if (r.reception_libre) return 'Libre';
+                return 'BDC';
+            };
+
+            if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
+
+            return (
+                <div className="fade-in">
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8,color:'var(--berry)'}}></i>Bons de Réception ({filtered.length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                            <input type="search" placeholder="Rechercher (n°, article, fournisseur, motif…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <span style={{fontSize:11,color:'var(--gray-400)'}}>→</span>
+                            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Date fin" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <select value={filterFerme} onChange={e => setFilterFerme(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Toutes fermes</option>
+                                {MAGASINS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Tous statuts</option>
+                                <option value="valide_mag">À valider par Achats</option>
+                                <option value="valide_achats">À valider par Chef</option>
+                                <option value="valide_chef">Validé</option>
+                                <option value="rejete">Rejeté</option>
+                            </select>
+                            {currentProfile === 'magasinier' && (
+                                <button onClick={() => { setForm({ ...emptyForm, date: new Date().toISOString().split('T')[0] }); setShowForm(true); }}
+                                    style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
+                                    <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon d'entrée
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                    <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
+                        <thead><tr><th>N° BR</th><th>Date</th><th>Magasin</th><th>Réf BL</th><th>Type</th><th>Articles</th><th>Statut</th><th>Créé par</th></tr></thead>
+                        <tbody>
+                            {filtered.map((r) => (
+                                <tr key={r.id}>
+                                    <td style={{fontWeight:700,color:'var(--berry)'}}>{r.numero}</td>
+                                    <td>{r.date}</td>
+                                    <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{r.lieu_destination?.id || r.ferme || '—'}</span></td>
+                                    <td style={{fontSize:11}}>{r.ref_bl_fournisseur || '—'}</td>
+                                    <td style={{fontSize:11}}>{typeLabel(r)}</td>
+                                    <td style={{fontSize:11}}>{(r.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
+                                    <td><span className={'status-badge ' + statusClass(r.status, r)}>{statusLabel(r.status, r)}</span></td>
+                                    <td style={{fontSize:11}}>{r.created_by?.name || '—'}</td>
+                                </tr>
+                            ))}
+                            {filtered.length === 0 && <tr><td colSpan={8} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de réception trouvé.</td></tr>}
+                        </tbody>
+                    </table></div>
+
+                    {showForm && (
+                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
+                            <div className="modal-content" style={{maxWidth:650,maxHeight:'90vh',overflowY:'auto'}}>
+                                <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-plus-circle" style={{marginRight:8}}></i>Nouveau bon d'entrée</h3>
+                                <div style={{background:'#e8f5e9',borderRadius:8,padding:10,marginBottom:16,fontSize:12,color:'#1b5e20'}}>
+                                    <i className="fa-solid fa-info-circle" style={{marginRight:6}}></i>Saisie directe d'une entrée en stock. Sera validée immédiatement et impactera les soldes.
+                                </div>
+                                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date</label>
+                                        <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination *</label>
+                                        <select value={form.magasin} onChange={e => setForm({...form, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                            {MAGASINS_BR.map(m => <option key={m} value={m}>{m}</option>)}
+                                        </select></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Fournisseur</label>
+                                        <select value={form.fournisseur_nom} onChange={e => setForm({...form, fournisseur_nom: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                            <option value="">-- Sélectionner --</option>
+                                            {suppliers.map(s => <option key={s.id} value={s.nom}>{s.nom}{s.ville ? ' ('+s.ville+')' : ''}</option>)}
+                                        </select></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Réf BL Fournisseur</label>
+                                        <input value={form.ref_bl_fournisseur} onChange={e => setForm({...form, ref_bl_fournisseur: e.target.value})} placeholder="Référence" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif / Justification *</label>
+                                        <select value={form.motif} onChange={e => setForm({...form, motif: e.target.value, motif_autre: ''})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                            <option value="">-- Sélectionner --</option>
+                                            {MOTIFS_RECEPTION.map(m => <option key={m} value={m}>{m}</option>)}
+                                            <option value="Autre">Autre (à préciser)</option>
+                                        </select></div>
+                                    {form.motif === 'Autre' && (
+                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Préciser le motif *</label>
+                                            <input value={form.motif_autre} onChange={e => setForm({...form, motif_autre: e.target.value})} placeholder="Précisez..." style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    )}
+                                </div>
+                                <div style={{marginBottom:16}}>
+                                    <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Scanner le BL fournisseur</label>
+                                    <input type="file" accept="image/*,application/pdf" onChange={e => handleScanFile(e.target.files[0])} style={{fontSize:12}} />
+                                    {form.scan_preview && (typeof form.scan_preview === 'string' && form.scan_preview.startsWith('data:image') ? <img src={form.scan_preview} alt="Scan" style={{maxHeight:80,marginTop:6,borderRadius:6}} /> : <span style={{fontSize:11,color:'var(--green)',marginLeft:8}}><i className="fa-solid fa-check"></i> Fichier sélectionné</span>)}
+                                </div>
+                                <h4 style={{fontSize:13,marginBottom:8}}>Articles reçus</h4>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                    <thead><tr style={{background:'#f8f8f8'}}><th style={{padding:'6px 8px',textAlign:'left'}}>Article</th><th style={{padding:'6px 8px',width:80}}>Qté</th><th style={{padding:'6px 8px',width:70}}>Unité</th><th style={{width:30}}></th></tr></thead>
+                                    <tbody>
+                                        {form.items.map((it, idx) => (
+                                            <tr key={idx}>
+                                                <td><input list="articles-list-bon-entree" value={it.article} onChange={e => updateItem(idx, 'article', e.target.value)} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
+                                                    <datalist id="articles-list-bon-entree">{articles.map(a => <option key={a.reference || a.nom} value={a.nom}>{a.nom}</option>)}</datalist></td>
+                                                <td><input type="number" value={it.quantite} onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                                <td><select value={it.unite} onChange={e => updateItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{UNITES_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
+                                                <td><button onClick={() => removeItem(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <button onClick={addItem} style={{marginTop:8,background:'none',border:'1px dashed #ddd',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,color:'var(--berry)'}}>+ Ajouter article</button>
+                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                                    <button onClick={() => setShowForm(false)} disabled={submitting} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:submitting?'not-allowed':'pointer',fontSize:13}}>Annuler</button>
+                                    <button onClick={handleCreate} disabled={submitting} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:submitting?'not-allowed':'pointer',fontWeight:600,fontSize:13,opacity:submitting?0.6:1}}>
+                                        {submitting ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Création...</> : 'Créer le bon d\'entrée'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // ===================== MAGASINIER: BDC À RÉCEPTIONNER =====================
+        function MagBdcReceptionTab({ currentProfile, profileData }) {
             const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
             const [bdcList, setBdcList] = useState([]);
             const [receptions, setReceptions] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [bdcQuery, setBdcQuery] = useState('');
             const [selectedBdc, setSelectedBdc] = useState(null);
             const [showForm, setShowForm] = useState(false);
             const [showFreeForm, setShowFreeForm] = useState(false);
@@ -37823,7 +42068,7 @@ ${rejetHtml}
                 }).catch(() => alert('Erreur réseau'));
             };
 
-            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'Att. Chef' : s === 'valide_achats' ? 'Att. Chef' : s === 'rejete' ? 'Rejeté' : s;
+            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'À valider par Achats' : s === 'valide_achats' ? 'À valider par Chef' : s === 'rejete' ? 'Rejeté' : s;
             const statusClass = (s) => s === 'valide_chef' ? 'valide' : s === 'rejete' ? 'rejete' : 'en-attente';
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
@@ -37831,61 +42076,50 @@ ${rejetHtml}
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8,color:'var(--berry)'}}></i>Réception de Stock</h3>
-                        <button onClick={() => { setFreeForm({ date: new Date().toISOString().split('T')[0], ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null }); setShowFreeForm(true); }}
-                            style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
-                            <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Réception libre
-                        </button>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-clipboard-check" style={{marginRight:8,color:'var(--berry)'}}></i>BDC à réceptionner</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <input type="search" placeholder="Rechercher (n°, fournisseur, article…)" value={bdcQuery} onChange={e => setBdcQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            <button onClick={() => { setFreeForm({ date: new Date().toISOString().split('T')[0], ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null }); setShowFreeForm(true); }}
+                                style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
+                                <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Réception libre
+                            </button>
+                        </div>
                     </div>
 
                     {/* BDC prêts à recevoir */}
                     <div className="panel" style={{marginBottom:20}}>
-                        <h4 style={{marginTop:0}}>BDC en attente de livraison ({bdcList.length})</h4>
-                        {bdcList.length === 0 ? (
-                            <p style={{color:'var(--gray-400)',textAlign:'center',padding:20}}>Aucun BDC validé en attente de livraison.</p>
-                        ) : (
-                            <div className="table-responsive"><table className="data-table">
-                                <thead><tr><th>N° BDC</th><th>Fournisseur</th><th>Ferme</th><th>Articles</th><th>Total TTC</th><th>Livraison</th><th></th></tr></thead>
-                                <tbody>
-                                    {bdcList.map((b) => (
-                                        <tr key={b.id}>
-                                            <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{b.numero}</td>
-                                            <td style={{fontWeight:600}}>{b.fournisseur?.nom || '—'}</td>
-                                            <td>{b.ferme}</td>
-                                            <td style={{textAlign:'center'}}>{b.items?.length || 0}</td>
-                                            <td style={{fontWeight:700}}>{(b.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
-                                            <td><span className={'status-badge ' + (b.delivery_status === 'complet' ? 'valide' : b.delivery_status === 'partiel' ? 'en-attente' : 'brouillon')}>{b.delivery_status === 'complet' ? 'Complet' : b.delivery_status === 'partiel' ? 'Partiel' : 'Non livré'}</span></td>
-                                            <td><button onClick={() => openBdcForBl(b)} style={{padding:'5px 12px',borderRadius:6,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:11}}><i className="fa-solid fa-plus" style={{marginRight:4}}></i>Réceptionner</button></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table></div>
-                        )}
-                    </div>
-
-                    {/* Historique Réceptions */}
-                    <div className="panel">
-                        <h4 style={{marginTop:0}}>Bons de Réception ({receptions.length})</h4>
-                        {receptions.length === 0 ? (
-                            <p style={{color:'var(--gray-400)',textAlign:'center',padding:20}}>Aucun bon de réception enregistré.</p>
-                        ) : (
-                            <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                                <thead><tr><th>N° BR</th><th>Date</th><th>Magasin</th><th>Réf BL</th><th>Type</th><th>Articles</th><th>Statut</th></tr></thead>
-                                <tbody>
-                                    {receptions.map((r) => (
-                                        <tr key={r.id}>
-                                            <td style={{fontWeight:700,color:'var(--berry)' }}>{r.numero}</td>
-                                            <td>{r.date}</td>
-                                            <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{r.lieu_destination?.id || r.ferme}</span></td>
-                                            <td style={{fontSize:11}}>{r.ref_bl_fournisseur || '—'}</td>
-                                            <td style={{fontSize:11}}>{r.reception_libre ? 'Libre' : 'BDC'}</td>
-                                            <td style={{fontSize:11}}>{(r.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
-                                            <td><span className={'status-badge ' + statusClass(r.status)}>{statusLabel(r.status)}</span></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table></div>
-                        )}
+                        {(() => {
+                            const q = bdcQuery.toLowerCase();
+                            const filteredBdc = !q ? bdcList : bdcList.filter(b =>
+                                (b.numero||'').toLowerCase().includes(q)
+                                || (b.fournisseur?.nom||'').toLowerCase().includes(q)
+                                || (b.ferme||'').toLowerCase().includes(q)
+                                || (b.items||[]).some(i => (i.article||'').toLowerCase().includes(q))
+                            );
+                            return (<>
+                            <h4 style={{marginTop:0}}>BDC en attente de livraison ({filteredBdc.length})</h4>
+                            {filteredBdc.length === 0 ? (
+                                <p style={{color:'var(--gray-400)',textAlign:'center',padding:20}}>Aucun BDC validé en attente de livraison.</p>
+                            ) : (
+                                <div className="table-responsive"><table className="data-table">
+                                    <thead><tr><th>N° BDC</th><th>Fournisseur</th><th>Ferme</th><th>Articles</th><th>Total TTC</th><th>Livraison</th><th></th></tr></thead>
+                                    <tbody>
+                                        {filteredBdc.map((b) => (
+                                            <tr key={b.id}>
+                                                <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{b.numero}</td>
+                                                <td style={{fontWeight:600}}>{b.fournisseur?.nom || '—'}</td>
+                                                <td>{b.ferme}</td>
+                                                <td style={{textAlign:'center'}}>{b.items?.length || 0}</td>
+                                                <td style={{fontWeight:700}}>{(b.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
+                                                <td><span className={'status-badge ' + (b.delivery_status === 'complet' ? 'valide' : b.delivery_status === 'partiel' ? 'en-attente' : 'brouillon')}>{b.delivery_status === 'complet' ? 'Complet' : b.delivery_status === 'partiel' ? 'Partiel' : 'Non livré'}</span></td>
+                                                <td>{currentProfile === 'magasinier' && <button onClick={() => openBdcForBl(b)} style={{padding:'5px 12px',borderRadius:6,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:11}}><i className="fa-solid fa-plus" style={{marginRight:4}}></i>Réceptionner</button>}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table></div>
+                            )}
+                            </>);
+                        })()}
                     </div>
 
                     {/* Create BL from BDC Modal */}
@@ -38137,7 +42371,7 @@ ${rejetHtml}
                         if (j.success) {
                             const map = {};
                             (j.articles || []).forEach(a => {
-                                const prix = parseFloat(a.prix_ht) || parseFloat(a.prix_ref) || 0;
+                                const prix = parseFloat(a.prix_ttc) || parseFloat(a.prix_ht) || parseFloat(a.prix_ref) || 0;
                                 if (a.nom) map[a.nom.toLowerCase()] = prix;
                                 if (a.reference) map[a.reference.toLowerCase()] = prix;
                             });
@@ -41332,6 +45566,8 @@ ${rejetHtml}
             const [showPfqDqrModal, setShowPfqDqrModal] = useState(false);
             const [modalDate, setModalDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); });
             const [problemOnly, setProblemOnly] = useState(false);
+            const [showEcartsSummary, setShowEcartsSummary] = useState(false);
+            const [ecartsRangeDays, setEcartsRangeDays] = useState(30);
 
             // Navigate to next/prev problem day using actual matching algorithm
             const navParseDate = (raw) => { if (!raw) return ''; const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/); if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`; const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}` : ''; };
@@ -41442,6 +45678,55 @@ ${rejetHtml}
                     });
                     const data = await resp.json();
                     setReprocessResult(data);
+                    delete _apiCache['/api/email-analysis?action=expeditions&limit=1000'];
+                    localStorage.removeItem('cache_/api/email-analysis?action=expeditions&limit=1000');
+                    const expJson = await cachedFetch('/api/email-analysis?action=expeditions&limit=1000');
+                    if (expJson?.expeditions) setExpeditions(expJson.expeditions);
+                } catch (err) {
+                    setReprocessResult({ success: false, error: err.message });
+                }
+                setReprocessing(false);
+            };
+
+            const cleanupDuplicateDqr = async () => {
+                setReprocessing(true);
+                setReprocessResult(null);
+                try {
+                    const token = await firebase.auth().currentUser.getIdToken();
+                    const dryResp = await fetch('/api/email-analysis?action=cleanup-duplicate-dqr', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ apply: false })
+                    });
+                    const dry = await dryResp.json();
+                    if (!dry.success) throw new Error(dry.error || 'Dry-run échoué');
+                    if (dry.docsToDelete === 0) {
+                        setReprocessResult({ success: true, message: `Aucun doublon détecté (${dry.totalDqrDocs} expéditions DQR examinées).` });
+                        setReprocessing(false);
+                        return;
+                    }
+                    const dateBreakdown = Object.entries(dry.summaryByDate || {})
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([d, n]) => `${d}: ${n}`)
+                        .join('\n');
+                    const ok = confirm(
+                        `Nettoyer ${dry.docsToDelete} expéditions DQR doublons ?\n\n` +
+                        `${dry.duplicateGroups} groupes batches concernés sur ${dry.totalDqrDocs} expéditions au total.\n\n` +
+                        `Répartition par date:\n${dateBreakdown}\n\n` +
+                        `Re-Inspection conservées, Initial supprimées.`
+                    );
+                    if (!ok) {
+                        setReprocessResult({ success: true, message: `Annulé. ${dry.docsToDelete} doublons identifiés (non supprimés).` });
+                        setReprocessing(false);
+                        return;
+                    }
+                    const applyResp = await fetch('/api/email-analysis?action=cleanup-duplicate-dqr', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ apply: true })
+                    });
+                    const data = await applyResp.json();
+                    setReprocessResult({ success: data.success, message: `${data.deleted || 0} doublons DQR supprimés.` });
                     delete _apiCache['/api/email-analysis?action=expeditions&limit=1000'];
                     localStorage.removeItem('cache_/api/email-analysis?action=expeditions&limit=1000');
                     const expJson = await cachedFetch('/api/email-analysis?action=expeditions&limit=1000');
@@ -41719,6 +46004,15 @@ ${rejetHtml}
                                 onClick: () => { setModalDate(filterDate); setShowPfqDqrModal(true); },
                                 style:{padding:'8px 14px',borderRadius:8,border:'1px solid #6366f1',background:'white',color:'#6366f1',cursor:'pointer',fontSize:12,fontWeight:600}
                             }, React.createElement('i', {className:'fa-solid fa-columns', style:{marginRight:6}}), 'PFQ vs DQR'),
+                            React.createElement('button', {
+                                onClick: () => setShowEcartsSummary(true),
+                                style:{padding:'8px 14px',borderRadius:8,border:'1px solid #f59e0b',background:'white',color:'#b45309',cursor:'pointer',fontSize:12,fontWeight:600}
+                            }, React.createElement('i', {className:'fa-solid fa-chart-line', style:{marginRight:6}}), 'Résumé écarts'),
+                            React.createElement('button', {
+                                onClick: cleanupDuplicateDqr,
+                                disabled: reprocessing,
+                                style:{padding:'8px 14px',borderRadius:8,border:'1px solid #7c3aed',background:'white',color:'#7c3aed',cursor:reprocessing?'wait':'pointer',fontSize:12,fontWeight:600,opacity:reprocessing?0.6:1}
+                            }, reprocessing ? React.createElement('i', {className:'fa-solid fa-spinner fa-spin', style:{marginRight:6}}) : React.createElement('i', {className:'fa-solid fa-broom', style:{marginRight:6}}), 'Nettoyer doublons DQR'),
                             React.createElement('span', {style:{padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700,background:activeSource==='DQR'?'#fef3c7':'#dbeafe',color:activeSource==='DQR'?'#92400e':'#1e40af'}}, 'Source: ', activeSource)
                         )
                     ),
@@ -41965,6 +46259,156 @@ ${rejetHtml}
                                 React.createElement('div', {style:{display:'flex',gap:16,flexWrap:'wrap'}},
                                     expTable(mPfq, 'PFQ'),
                                     expTable(mDqr, 'DQR')
+                                )
+                            )
+                        );
+                    })(),
+                    // ---- Écarts summary modal ----
+                    showEcartsSummary && (() => {
+                        const sParseDate = (d) => {
+                            if (!d) return null;
+                            const iso = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+                            if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+                            const m = String(d).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+                            return m ? `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}` : null;
+                        };
+                        // Build set of dates in last N days
+                        const today = new Date();
+                        const dates = [];
+                        for (let i = 0; i < ecartsRangeDays; i++) {
+                            const d = new Date(today);
+                            d.setDate(d.getDate() - i);
+                            dates.push(d.toISOString().slice(0, 10));
+                        }
+                        // Group bons by date
+                        const bonsByDate = {};
+                        bons.forEach(b => {
+                            if (b.typeVente === 'Marché Local') return;
+                            if (filterFerme && (b.blocFerme || b.ferme) !== filterFerme) return;
+                            const dt = (b.date || '').slice(0, 10);
+                            if (!dt) return;
+                            (bonsByDate[dt] = bonsByDate[dt] || []).push(b);
+                        });
+                        // Group expeditions by date
+                        const expByDate = {};
+                        expeditions.forEach(e => {
+                            const res = (e.overallResult || '').toUpperCase();
+                            if (res === 'REJECT' || res === 'FAIL') return;
+                            if (filterFerme && (ranchToFerme[e.ranch] || '') !== filterFerme) return;
+                            const dt = sParseDate(e.date);
+                            if (!dt) return;
+                            (expByDate[dt] = expByDate[dt] || []).push(e);
+                        });
+                        // Build summary rows
+                        const rows = dates.map(dt => {
+                            const bs = bonsByDate[dt] || [];
+                            const es = expByDate[dt] || [];
+                            const hasDqr = es.some(e => e.source === 'dqr-auto-created');
+                            const esF = hasDqr ? es.filter(e => e.source === 'dqr-auto-created') : es;
+                            const bonsKg = bs.reduce((s, b) => s + (parseFloat(b.poidsLot) || 0), 0);
+                            const expKg = esF.reduce((s, e) => s + (parseFloat(e.batchWeight) || 0), 0);
+                            return {
+                                date: dt,
+                                bonsCount: bs.length,
+                                bonsKg,
+                                expCount: esF.length,
+                                expKg,
+                                ecart: expKg - bonsKg,
+                                source: hasDqr ? 'DQR' : (es.length > 0 ? 'PFQ' : '-')
+                            };
+                        }).filter(r => r.bonsCount > 0 || r.expCount > 0);
+                        const totalEcart = rows.reduce((s, r) => s + r.ecart, 0);
+                        const totalBons = rows.reduce((s, r) => s + r.bonsKg, 0);
+                        const totalExp = rows.reduce((s, r) => s + r.expKg, 0);
+                        const problemDays = rows.filter(r => Math.abs(r.ecart) > 50).length;
+                        const goToDay = (dt) => { setFilterDate(dt); setShowEcartsSummary(false); };
+                        return React.createElement('div', {style:{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}, onClick:() => setShowEcartsSummary(false)},
+                            React.createElement('div', {style:{background:'white',borderRadius:16,padding:24,maxWidth:900,width:'95%',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}, onClick:e => e.stopPropagation()},
+                                React.createElement('div', {style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}},
+                                    React.createElement('h3', {style:{margin:0,fontSize:18,color:'var(--dark)'}},
+                                        React.createElement('i', {className:'fa-solid fa-chart-line', style:{marginRight:10,color:'#f59e0b'}}),
+                                        'Résumé des écarts par jour',
+                                        filterFerme ? React.createElement('span', {style:{marginLeft:10,fontSize:12,padding:'2px 10px',borderRadius:12,background:'#fef3c7',color:'#92400e'}}, filterFerme) : null
+                                    ),
+                                    React.createElement('button', {onClick:() => setShowEcartsSummary(false), style:{background:'none',border:'none',fontSize:24,cursor:'pointer',color:'#999'}}, '×')
+                                ),
+                                React.createElement('div', {style:{display:'flex',alignItems:'center',gap:12,marginBottom:16}},
+                                    React.createElement('label', {style:{fontSize:13,color:'#666'}}, 'Période:'),
+                                    [7, 15, 30, 60, 90].map(n => React.createElement('button', {
+                                        key: n,
+                                        onClick: () => setEcartsRangeDays(n),
+                                        style:{padding:'6px 12px',borderRadius:8,border: ecartsRangeDays===n ? '2px solid #f59e0b' : '1px solid #ddd',background: ecartsRangeDays===n ? '#fef3c7' : 'white',color: ecartsRangeDays===n ? '#b45309' : '#666',cursor:'pointer',fontSize:12,fontWeight:600}
+                                    }, n + ' j'))
+                                ),
+                                React.createElement('div', {style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:20}},
+                                    React.createElement('div', {className:'kpi-card'},
+                                        React.createElement('div', {className:'kpi-label'}, 'Total Bons'),
+                                        React.createElement('div', {className:'kpi-value', style:{fontSize:18}}, totalBons.toFixed(1) + ' kg')
+                                    ),
+                                    React.createElement('div', {className:'kpi-card'},
+                                        React.createElement('div', {className:'kpi-label'}, 'Total Expéditions'),
+                                        React.createElement('div', {className:'kpi-value', style:{fontSize:18}}, totalExp.toFixed(1) + ' kg')
+                                    ),
+                                    React.createElement('div', {className:'kpi-card'},
+                                        React.createElement('div', {className:'kpi-label'}, 'Écart total'),
+                                        React.createElement('div', {className:'kpi-value', style:{fontSize:18,color: Math.abs(totalEcart) > 100 ? 'var(--red)' : 'var(--green)'}}, (totalEcart >= 0 ? '+' : '') + totalEcart.toFixed(1) + ' kg')
+                                    ),
+                                    React.createElement('div', {className:'kpi-card'},
+                                        React.createElement('div', {className:'kpi-label'}, 'Jours à problème'),
+                                        React.createElement('div', {className:'kpi-value', style:{fontSize:18,color: problemDays > 0 ? 'var(--orange)' : 'var(--green)'}}, problemDays + ' / ' + rows.length)
+                                    )
+                                ),
+                                React.createElement('div', {style:{overflowX:'auto'}},
+                                    React.createElement('table', {className:'data-table', style:{fontSize:12,width:'100%'}},
+                                        React.createElement('thead', null,
+                                            React.createElement('tr', null,
+                                                React.createElement('th', null, 'Date'),
+                                                React.createElement('th', {style:{textAlign:'right'}}, 'Bons'),
+                                                React.createElement('th', {style:{textAlign:'right'}}, 'Poids Bons (kg)'),
+                                                React.createElement('th', {style:{textAlign:'right'}}, 'Expéditions'),
+                                                React.createElement('th', {style:{textAlign:'right'}}, 'Poids Exp. (kg)'),
+                                                React.createElement('th', {style:{textAlign:'right'}}, 'Écart (kg)'),
+                                                React.createElement('th', null, 'Source'),
+                                                React.createElement('th', null, '')
+                                            )
+                                        ),
+                                        React.createElement('tbody', null,
+                                            rows.length === 0
+                                                ? React.createElement('tr', null, React.createElement('td', {colSpan:8,style:{textAlign:'center',padding:20,color:'#999'}}, 'Aucune donnée sur la période'))
+                                                : rows.map(r => {
+                                                    const isProblem = Math.abs(r.ecart) > 50;
+                                                    return React.createElement('tr', {
+                                                        key: r.date,
+                                                        onClick: () => goToDay(r.date),
+                                                        style:{cursor:'pointer', background: isProblem ? '#fef2f2' : undefined}
+                                                    },
+                                                        React.createElement('td', {style:{fontWeight:600}}, r.date),
+                                                        React.createElement('td', {style:{textAlign:'right'}}, r.bonsCount),
+                                                        React.createElement('td', {style:{textAlign:'right'}}, r.bonsKg.toFixed(1)),
+                                                        React.createElement('td', {style:{textAlign:'right'}}, r.expCount),
+                                                        React.createElement('td', {style:{textAlign:'right'}}, r.expKg.toFixed(1)),
+                                                        React.createElement('td', {style:{textAlign:'right',fontWeight:700,color: isProblem ? 'var(--red)' : 'var(--green)'}}, (r.ecart >= 0 ? '+' : '') + r.ecart.toFixed(1)),
+                                                        React.createElement('td', null, React.createElement('span', {style:{padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,background:r.source==='DQR'?'#fef3c7':(r.source==='PFQ'?'#dbeafe':'#f3f4f6'),color:r.source==='DQR'?'#92400e':(r.source==='PFQ'?'#1e40af':'#999')}}, r.source)),
+                                                        React.createElement('td', {style:{color:'#6366f1'}}, React.createElement('i', {className:'fa-solid fa-arrow-right'}))
+                                                    );
+                                                })
+                                        ),
+                                        rows.length > 0 && React.createElement('tfoot', null,
+                                            React.createElement('tr', {style:{fontWeight:700,background:'#f9fafb'}},
+                                                React.createElement('td', null, 'TOTAL'),
+                                                React.createElement('td', {style:{textAlign:'right'}}, rows.reduce((s,r) => s + r.bonsCount, 0)),
+                                                React.createElement('td', {style:{textAlign:'right'}}, totalBons.toFixed(1)),
+                                                React.createElement('td', {style:{textAlign:'right'}}, rows.reduce((s,r) => s + r.expCount, 0)),
+                                                React.createElement('td', {style:{textAlign:'right'}}, totalExp.toFixed(1)),
+                                                React.createElement('td', {style:{textAlign:'right',color: Math.abs(totalEcart) > 100 ? 'var(--red)' : 'var(--green)'}}, (totalEcart >= 0 ? '+' : '') + totalEcart.toFixed(1)),
+                                                React.createElement('td', {colSpan:2}, '')
+                                            )
+                                        )
+                                    )
+                                ),
+                                React.createElement('div', {style:{marginTop:12,fontSize:11,color:'#888',fontStyle:'italic'}},
+                                    React.createElement('i', {className:'fa-solid fa-info-circle', style:{marginRight:6}}),
+                                    'Cliquez sur une ligne pour ouvrir le détail du jour. Les jours avec |écart| > 50 kg sont marqués en rouge.'
                                 )
                             )
                         );
@@ -42678,10 +47122,26 @@ ${rejetHtml}
             const [scanFileBC, setScanFileBC] = useState(null);
             const [scanPreviewBC, setScanPreviewBC] = useState(null);
 
+            const [query, setQuery] = useState('');
             const loadBcs = () => {
-                fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json())
-                    .then(json => { if (json.success) setBcs(json.bcs || []); })
-                    .catch(err => console.warn(err)).finally(() => setLoading(false));
+                Promise.all([
+                    fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({ success: false })),
+                    fetch('/api/stock?action=list-movements&type=consommation&limit=500').then(r => r.json()).catch(() => ({ success: false })),
+                ]).then(([bcJson, movJson]) => {
+                    const list = bcJson.success ? (bcJson.bcs || []) : [];
+                    const movs = movJson.success ? (movJson.movements || []) : [];
+                    // Append movements without bc_id (imports / direct mouvements) as virtual BC rows
+                    const extras = movs.filter(m => !m.bc_id).map(m => ({
+                        id: 'mov_' + m.id,
+                        numero: m.numero,
+                        date: m.date,
+                        ferme: m.ferme,
+                        items: (m.items || []).map(i => ({ article: i.article_nom || i.article_ref, quantite: i.quantite, unite: i.unite, parcelle: m.lieu_destination?.id || '', ferme: m.ferme })),
+                        created_by: m.created_by || {},
+                        _isImport: (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva',
+                    }));
+                    setBcs([...list, ...extras]);
+                }).finally(() => setLoading(false));
             };
             useEffect(() => { loadBcs(); }, []);
             useEffect(() => { cachedFetch('/api/stock?action=stock-levels').then(json => { if (json.success) setStocks(json.stocks || []); }).catch(() => {}); }, []);
@@ -42733,17 +47193,20 @@ ${rejetHtml}
 
             return (
                 <div className="fade-in">
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                        <h3 style={{margin:0}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bons de Consommation {label} ({bcs.length})</h3>
-                        <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setShowForm(true); }}
-                            style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
-                            <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon
-                        </button>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                        <h3 style={{margin:0}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bons de Consommation {label} ({bcs.filter(bc => { if (!query) return true; const q = query.toLowerCase(); return (bc.numero||'').toLowerCase().includes(q) || (bc.items||[]).some(i => (i.article||'').toLowerCase().includes(q) || (i.parcelle||'').toLowerCase().includes(q)) || (bc.ferme||'').toLowerCase().includes(q); }).length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <input type="search" placeholder="Rechercher (n°, article, parcelle…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setShowForm(true); }}
+                                style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
+                                <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon
+                            </button>}
+                        </div>
                     </div>
                     <div className="table-responsive"><table className="data-table">
                         <thead><tr><th>N°</th><th>Date</th><th>Parcelles</th><th>Fermes</th><th>Articles</th><th>Cree par</th></tr></thead>
                         <tbody>
-                            {bcs.map((bc) => { const parcelles_list = [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))]; const fermes_list = [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))]; return (
+                            {bcs.filter(bc => { if (!query) return true; const q = query.toLowerCase(); return (bc.numero||'').toLowerCase().includes(q) || (bc.items||[]).some(i => (i.article||'').toLowerCase().includes(q) || (i.parcelle||'').toLowerCase().includes(q)) || (bc.ferme||'').toLowerCase().includes(q); }).map((bc) => { const parcelles_list = [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))]; const fermes_list = [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))]; return (
                                 <tr key={bc.id}>
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{bc.numero}</td>
                                     <td style={{fontSize:12}}>{bc.date || '—'}</td>
@@ -42823,6 +47286,7 @@ ${rejetHtml}
             const [loading, setLoading] = useState(true);
             const [showForm, setShowForm] = useState(false);
             const [articles, setArticles] = useState([]);
+            const [query, setQuery] = useState('');
             const emptyItem = { article: '', quantite: '', unite: 'kg' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], ref_bon_physique: '', magasin_depart: 'F1', magasin_arrivee: 'F5', items: [{ ...emptyItem }] });
             const [scanFile, setScanFile] = useState(null);
@@ -42877,17 +47341,20 @@ ${rejetHtml}
 
             return (
                 <div className="fade-in">
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-right-left" style={{marginRight:8,color:'var(--blue)'}}></i>Transferts Inter-Fermes ({transferts.length})</h3>
-                        <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], ref_bon_physique: '', magasin_depart: 'F1', magasin_arrivee: 'F5', items: [{ ...emptyItem }] }); setShowForm(true); }}
-                            style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
-                            <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau transfert
-                        </button>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-right-left" style={{marginRight:8,color:'var(--blue)'}}></i>Transferts Inter-Fermes ({transferts.filter(t => { if (!query) return true; const q = query.toLowerCase(); return (t.numero||'').toLowerCase().includes(q) || (t.lieu_source?.id||'').toLowerCase().includes(q) || (t.lieu_destination?.id||'').toLowerCase().includes(q) || (t.ref_bon_physique||'').toLowerCase().includes(q) || (t.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], ref_bon_physique: '', magasin_depart: 'F1', magasin_arrivee: 'F5', items: [{ ...emptyItem }] }); setShowForm(true); }}
+                                style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
+                                <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau transfert
+                            </button>}
+                        </div>
                     </div>
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
                         <thead><tr><th>N°</th><th>Date</th><th>Départ</th><th>Arrivée</th><th>Réf bon</th><th>Articles</th><th>Statut</th></tr></thead>
                         <tbody>
-                            {transferts.map((t) => (
+                            {transferts.filter(t => { if (!query) return true; const q = query.toLowerCase(); return (t.numero||'').toLowerCase().includes(q) || (t.lieu_source?.id||'').toLowerCase().includes(q) || (t.lieu_destination?.id||'').toLowerCase().includes(q) || (t.ref_bon_physique||'').toLowerCase().includes(q) || (t.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((t) => (
                                 <tr key={t.id}>
                                     <td style={{fontWeight:700,color:'var(--blue)'}}>{t.numero}</td>
                                     <td>{t.date}</td>
@@ -42964,6 +47431,7 @@ ${rejetHtml}
             const [showForm, setShowForm] = useState(false);
             const [articles, setArticles] = useState([]);
             const [suppliers, setSuppliers] = useState([]);
+            const [query, setQuery] = useState('');
             const emptyItem = { article: '', quantite: '', unite: 'kg' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_depart_type: 'magasin', lieu_depart_id: 'F1', lieu_destination: '', sortie_type: 'retour_fournisseur', beneficiaire: '', motif_rebut: '', items: [{ ...emptyItem }] });
             const [scanFileBS, setScanFileBS] = useState(null);
@@ -43025,7 +47493,7 @@ ${rejetHtml}
                 }).catch(() => alert('Erreur réseau'));
             };
 
-            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'Att. Chef' : s === 'valide_achats' ? 'Att. Chef' : s === 'rejete' ? 'Rejeté' : s;
+            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'À valider par Achats' : s === 'valide_achats' ? 'À valider par Chef' : s === 'rejete' ? 'Rejeté' : s;
             const statusClass = (s) => s === 'valide_chef' ? 'valide' : s === 'rejete' ? 'rejete' : 'en-attente';
             const sortieTypeLabel = (t) => SORTIE_TYPES.find(s => s.id === t)?.label || t;
 
@@ -43033,17 +47501,20 @@ ${rejetHtml}
 
             return (
                 <div className="fade-in">
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8,color:'var(--red)'}}></i>Sorties de Stock ({sorties.length})</h3>
-                        <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_depart_type: 'magasin', lieu_depart_id: 'F1', lieu_destination: '', sortie_type: 'retour_fournisseur', beneficiaire: '', motif_rebut: '', items: [{ ...emptyItem }] }); setJustificatifFile(null); setJustificatifPreview(null); setShowForm(true); }}
-                            style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
-                            <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouvelle sortie
-                        </button>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8,color:'var(--red)'}}></i>Sorties de Stock ({sorties.filter(s => { if (!query) return true; const q = query.toLowerCase(); return (s.numero||'').toLowerCase().includes(q) || (s.lieu_source?.id||'').toLowerCase().includes(q) || (typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id||'')).toLowerCase().includes(q) || (s.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                            <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_depart_type: 'magasin', lieu_depart_id: 'F1', lieu_destination: '', sortie_type: 'retour_fournisseur', beneficiaire: '', motif_rebut: '', items: [{ ...emptyItem }] }); setJustificatifFile(null); setJustificatifPreview(null); setShowForm(true); }}
+                                style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
+                                <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouvelle sortie
+                            </button>}
+                        </div>
                     </div>
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
                         <thead><tr><th>N°</th><th>Date</th><th>Départ</th><th>Destination</th><th>Type</th><th>Articles</th><th>Statut</th></tr></thead>
                         <tbody>
-                            {sorties.map((s) => (
+                            {sorties.filter(s => { if (!query) return true; const q = query.toLowerCase(); return (s.numero||'').toLowerCase().includes(q) || (s.lieu_source?.id||'').toLowerCase().includes(q) || (typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id||'')).toLowerCase().includes(q) || (s.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((s) => (
                                 <tr key={s.id}>
                                     <td style={{fontWeight:700,color:'var(--red)'}}>{s.numero}</td>
                                     <td>{s.date}</td>
@@ -43140,6 +47611,8 @@ ${rejetHtml}
             const [filterFerme, setFilterFerme] = useState('');
             const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
 
+            const [hideImports, setHideImports] = useState(false);
+            const [query, setQuery] = useState('');
             const loadMovements = () => {
                 setLoading(true);
                 let url = '/api/stock?action=list-movements&limit=500';
@@ -43149,9 +47622,9 @@ ${rejetHtml}
                 fetch(url).then(r => r.json())
                     .then(json => {
                         let movs = json.success ? (json.movements || []) : [];
-                        // For achats/chef, only show reception+sortie (types needing multi-validation)
+                        // For chef validation view: only show reception+sortie, exclude imports
                         if (defaultStatus && !filterType) {
-                            movs = movs.filter(m => m.type === 'reception' || m.type === 'sortie');
+                            movs = movs.filter(m => (m.type === 'reception' || m.type === 'sortie') && !(m.numero||'').startsWith('IMP-'));
                         }
                         setMovements(movs);
                     })
@@ -43161,8 +47634,23 @@ ${rejetHtml}
 
             const typeLabels = { reception: 'Réception', transfert: 'Transfert', consommation: 'Consommation', sortie: 'Sortie' };
             const typeColors = { reception: 'var(--green)', transfert: 'var(--blue)', consommation: 'var(--gold)', sortie: 'var(--red)' };
-            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'Att. Chef' : s === 'valide_achats' ? 'Att. Chef' : s === 'rejete' ? 'Rejeté' : s;
-            const statusClass = (s) => s === 'valide_chef' || s === 'valide_mag' && !['reception','sortie'].includes('') ? 'valide' : s === 'rejete' ? 'rejete' : 'en-attente';
+            // Transfert/consommation: stock impact applied immediately, valide_mag = auto-validated
+            const needsMultiValid = (t) => t === 'reception' || t === 'sortie';
+            const isImport = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
+            const statusLabel = (s, t, m) => {
+                if (m && isImport(m)) return 'Importé';
+                if (s === 'valide_chef') return 'Validé';
+                if (s === 'rejete') return 'Rejeté';
+                if (!needsMultiValid(t)) return 'Validé';
+                if (s === 'valide_mag') return 'À valider par Achats';
+                if (s === 'valide_achats') return 'À valider par Chef';
+                return s;
+            };
+            const statusClass = (s, t, m) => {
+                if (s === 'rejete') return 'rejete';
+                if ((m && isImport(m)) || s === 'valide_chef' || !needsMultiValid(t)) return 'valide';
+                return 'en-attente';
+            };
 
             // Validate/Reject handlers for achats/chef profiles
             const handleValidate = (mov) => {
@@ -43186,6 +47674,8 @@ ${rejetHtml}
             };
 
             const canValidate = (mov) => {
+                if (isImport(mov)) return false;
+                if (!needsMultiValid(mov.type)) return false;
                 if (['chef_f1', 'chef_f5', 'chef_avo'].includes(currentProfile) && (mov.status === 'valide_mag' || mov.status === 'valide_achats')) return true;
                 return false;
             };
@@ -43206,22 +47696,29 @@ ${rejetHtml}
                             </select>
                             <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setLoading(true); }} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
                                 <option value="">Tous statuts</option>
-                                <option value="valide_mag">Att. Achats</option>
-                                <option value="valide_achats">Att. Chef</option>
+                                <option value="valide_mag">À valider par Achats</option>
+                                <option value="valide_achats">À valider par Chef</option>
                                 <option value="valide_chef">Validé</option>
                                 <option value="rejete">Rejeté</option>
                             </select>
+                            <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
                             <select value={filterFerme} onChange={e => { setFilterFerme(e.target.value); setLoading(true); }} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
                                 <option value="">Toutes fermes</option>
                                 {MAGASINS.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
+                            {!defaultStatus && (
+                                <label style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,cursor:'pointer',background: hideImports ? 'rgba(139,34,82,0.08)' : '#fff'}}>
+                                    <input type="checkbox" checked={hideImports} onChange={e => setHideImports(e.target.checked)} />
+                                    Masquer imports
+                                </label>
+                            )}
                         </div>
                     </div>
 
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
                         <thead><tr><th>N°</th><th>Type</th><th>Date</th><th>Source</th><th>Destination</th><th>Articles</th><th>Statut</th><th>Créé par</th>{(currentProfile === 'achats' || currentProfile?.startsWith('chef_')) && <th>Actions</th>}</tr></thead>
                         <tbody>
-                            {movements.map((m) => (
+                            {movements.filter(m => !hideImports || !isImport(m)).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.lieu_source?.id||'').toLowerCase().includes(q) || (m.lieu_destination?.id||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((m) => (
                                 <tr key={m.id}>
                                     <td style={{fontWeight:700,color: typeColors[m.type] || '#666'}}>{m.numero}</td>
                                     <td><span style={{color: typeColors[m.type] || '#666',fontWeight:600,fontSize:11}}>{typeLabels[m.type] || m.type}</span></td>
@@ -43229,7 +47726,7 @@ ${rejetHtml}
                                     <td style={{fontSize:11}}>{m.lieu_source ? m.lieu_source.id : '—'}</td>
                                     <td style={{fontSize:11}}>{m.lieu_destination ? m.lieu_destination.id : '—'}</td>
                                     <td style={{fontSize:11}}>{(m.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
-                                    <td><span className={'status-badge ' + (m.status === 'valide_chef' ? 'valide' : m.status === 'valide_mag' && !['reception','sortie'].includes(m.type) ? 'valide' : m.status === 'rejete' ? 'rejete' : 'en-attente')}>{statusLabel(m.status)}</span>
+                                    <td><span className={'status-badge ' + statusClass(m.status, m.type, m)}>{statusLabel(m.status, m.type, m)}</span>
                                         {m.rejection && <div style={{fontSize:10,color:'var(--red)',marginTop:2}}>Motif: {m.rejection.reason}</div>}
                                     </td>
                                     <td style={{fontSize:11}}>{m.created_by?.name || '—'}</td>
@@ -44227,6 +48724,8 @@ ${rejetHtml}
             alimentation: { label: 'Alimentation', icon: 'fa-arrow-down', color: 'var(--green)', bg: 'rgba(45,139,78,0.1)' },
             depense: { label: 'Dépense', icon: 'fa-arrow-up', color: 'var(--red)', bg: 'rgba(231,76,60,0.1)' },
             sortie: { label: 'Sortie', icon: 'fa-arrow-right-from-bracket', color: 'var(--orange)', bg: 'rgba(243,156,18,0.1)' },
+            paie: { label: 'Paie', icon: 'fa-money-check-dollar', color: '#9b59b6', bg: 'rgba(155,89,182,0.1)' },
+            transport: { label: 'Transport', icon: 'fa-truck', color: '#16a085', bg: 'rgba(22,160,133,0.1)' },
             transfer_out: { label: 'Transfert sortant', icon: 'fa-arrow-right', color: 'var(--berry)', bg: 'rgba(139,34,82,0.08)' },
             transfer_in: { label: 'Transfert entrant', icon: 'fa-arrow-left', color: 'var(--blue)', bg: 'rgba(52,152,219,0.1)' },
         };
@@ -44254,6 +48753,9 @@ ${rejetHtml}
                 { id: 'caisse_dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
                 { id: 'caisse_transactions', label: 'Transactions', icon: 'fa-list' },
                 isSaisie ? { id: 'caisse_saisie', label: 'Nouvelle Saisie', icon: 'fa-plus-circle' } : null,
+                { id: 'caisse_alimentations', label: 'Alimentations', icon: 'fa-arrow-down' },
+                { id: 'caisse_paie', label: 'Paie', icon: 'fa-money-check-dollar' },
+                { id: 'caisse_transport', label: 'Transport', icon: 'fa-truck' },
                 { id: 'caisse_transferts', label: 'Transferts', icon: 'fa-right-left' },
                 isControle ? { id: 'caisse_validation', label: 'Validation', icon: 'fa-check-double' } : null,
                 { id: 'caisse_rapports', label: 'Rapports', icon: 'fa-file-pdf' },
@@ -44306,6 +48808,9 @@ ${rejetHtml}
                     {subTab === 'caisse_dashboard' && <CaisseDashboardSub dashData={dashData} caisses={caisses} isControle={isControle} onNavigate={setSubTab} />}
                     {subTab === 'caisse_transactions' && <CaisseTransactionsSub caisses={caisses} />}
                     {subTab === 'caisse_saisie' && <CaisseSaisieSub caisses={caisses} onDone={() => { refresh(); setSubTab('caisse_transactions'); }} />}
+                    {subTab === 'caisse_alimentations' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="alimentation" title="Alimentations" icon="fa-arrow-down" isSaisie={isSaisie} onDone={refresh} />}
+                    {subTab === 'caisse_paie' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="paie" title="Paie" icon="fa-money-check-dollar" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
+                    {subTab === 'caisse_transport' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="transport" title="Transport" icon="fa-truck" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
                     {subTab === 'caisse_transferts' && <CaisseTransfertsSub caisses={caisses} isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_validation' && <CaisseValidationSub caisses={caisses} onDone={refresh} />}
                     {subTab === 'caisse_rapports' && <CaisseRapportsSub caisses={caisses} />}
@@ -44316,10 +48821,93 @@ ${rejetHtml}
 
         // ---- Dashboard Sub ----
         function CaisseDashboardSub({ dashData, caisses, isControle, onNavigate }) {
+            const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10));
+            const [selectedCaisseId, setSelectedCaisseId] = useState('');
+            const [allTx, setAllTx] = useState([]);
+            const [txLoaded, setTxLoaded] = useState(false);
+
+            React.useEffect(() => {
+                fetch('/api/caisse?action=list-transactions&limit=2000').then(r => r.json())
+                    .then(json => { if (json.success) { setAllTx(json.transactions || []); setTxLoaded(true); } })
+                    .catch(() => {});
+            }, []);
+
+            const computeBalanceForDate = (caisseId, dateStr) => {
+                const caisse = caisses.find(c => c.id === caisseId);
+                if (!caisse) return 0;
+                let bal = caisse.solde_initial || 0;
+                allTx.forEach(t => {
+                    if (t.caisse_id !== caisseId) return;
+                    if (t.status !== 'valide') return;
+                    if (t.date > dateStr) return;
+                    const m = t.montant || 0;
+                    if (t.type === 'alimentation' || t.type === 'transfer_in') bal += m;
+                    else if (['depense','sortie','transfer_out','paie','transport'].includes(t.type)) bal -= m;
+                });
+                return bal;
+            };
+
+            const computeDayMovements = (caisseId, dateStr) => {
+                const txOfDay = allTx.filter(t => t.date === dateStr && t.status === 'valide' && (caisseId ? t.caisse_id === caisseId : true));
+                let entrees = 0, sorties = 0;
+                txOfDay.forEach(t => {
+                    const m = t.montant || 0;
+                    if (t.type === 'alimentation' || t.type === 'transfer_in') entrees += m;
+                    else if (['depense','sortie','transfer_out','paie','transport'].includes(t.type)) sorties += m;
+                });
+                return { entrees, sorties, count: txOfDay.length };
+            };
+
+            const shiftDay = (delta) => {
+                const d = new Date(selectedDate + 'T12:00');
+                d.setDate(d.getDate() + delta);
+                setSelectedDate(d.toISOString().slice(0,10));
+            };
+
+            const soldeJour = selectedCaisseId
+                ? computeBalanceForDate(selectedCaisseId, selectedDate)
+                : caisses.reduce((s, c) => s + computeBalanceForDate(c.id, selectedDate), 0);
+            const dayMov = computeDayMovements(selectedCaisseId, selectedDate);
+
             if (!dashData) return null;
             const totalSolde = caisses.reduce((s, c) => s + (c.solde_actuel || 0), 0);
             return (
                 <div>
+                    {/* Real-time balance with day navigation */}
+                    <div style={{padding:'18px 24px',background:'white',borderRadius:12,marginBottom:20,border:'2px solid var(--berry)',boxShadow:'0 2px 8px rgba(139,34,82,0.08)'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
+                            <div style={{display:'flex',alignItems:'center',gap:14}}>
+                                <button onClick={() => shiftDay(-1)} style={{width:36,height:36,borderRadius:'50%',border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:14,color:'var(--berry)'}}>
+                                    <i className="fa-solid fa-chevron-left"></i>
+                                </button>
+                                <div style={{textAlign:'center',minWidth:140}}>
+                                    <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--gray-600)'}}>Solde au</div>
+                                    <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)}
+                                        style={{padding:'4px 8px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:13,fontWeight:600,textAlign:'center'}} />
+                                </div>
+                                <button onClick={() => shiftDay(1)} style={{width:36,height:36,borderRadius:'50%',border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:14,color:'var(--berry)'}}>
+                                    <i className="fa-solid fa-chevron-right"></i>
+                                </button>
+                                <button onClick={() => setSelectedDate(new Date().toISOString().slice(0,10))} style={{padding:'6px 12px',borderRadius:6,border:'1px solid var(--gray-200)',background:'#f5f5f5',cursor:'pointer',fontSize:11}}>Aujourd'hui</button>
+                            </div>
+                            <select value={selectedCaisseId} onChange={e => setSelectedCaisseId(e.target.value)}
+                                style={{padding:'8px 14px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,fontWeight:600}}>
+                                <option value="">Toutes caisses</option>
+                                {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                            </select>
+                            <div style={{textAlign:'right'}}>
+                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--gray-600)'}}>Solde de fin de journée</div>
+                                <div style={{fontSize:24,fontWeight:700,color: soldeJour >= 0 ? 'var(--berry)' : 'var(--red)'}}>{txLoaded ? formatMAD(soldeJour) : '...'}</div>
+                                <div style={{fontSize:11,color:'var(--gray-600)',marginTop:2}}>
+                                    <span style={{color:'var(--green)'}}>+{formatMAD(dayMov.entrees)}</span>
+                                    <span style={{margin:'0 6px',color:'var(--gray-400)'}}>•</span>
+                                    <span style={{color:'var(--red)'}}>-{formatMAD(dayMov.sorties)}</span>
+                                    <span style={{margin:'0 6px',color:'var(--gray-400)'}}>•</span>
+                                    <span>{dayMov.count} mvt(s)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     {/* Total banner */}
                     <div style={{padding:'18px 24px',background:'linear-gradient(135deg, var(--berry) 0%, var(--berry-light) 100%)',borderRadius:12,marginBottom:20,color:'white'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
@@ -44601,8 +49189,8 @@ ${rejetHtml}
         }
 
         // ---- Saisie Sub (Achats only) ----
-        function CaisseSaisieSub({ caisses, onDone }) {
-            const [form, setForm] = useState({ caisse_id: caisses[0]?.id || '', type: 'depense', montant: '', reference: '', description: '', code_analytique: '', date: new Date().toISOString().slice(0,10), files: [] });
+        function CaisseSaisieSub({ caisses, onDone, defaultType, defaultCaisseId }) {
+            const [form, setForm] = useState({ caisse_id: defaultCaisseId || caisses[0]?.id || '', type: defaultType || 'depense', montant: '', reference: '', description: '', code_analytique: '', date: new Date().toISOString().slice(0,10), files: [], matricule: '', beneficiaire_nom: '' });
             const [saving, setSaving] = useState(false);
             const [codesAnalytiques, setCodesAnalytiques] = useState([]);
 
@@ -44665,12 +49253,12 @@ ${rejetHtml}
                             </div>
                             <div>
                                 <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Type *</label>
-                                <div style={{display:'flex',gap:6}}>
-                                    {['alimentation','depense','sortie'].map(t => {
+                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                    {['alimentation','depense','sortie','paie','transport'].map(t => {
                                         const tt = TXN_TYPE_LABELS[t];
                                         return (
                                             <button key={t} onClick={()=>setForm({...form,type:t})}
-                                                style={{flex:1,padding:'8px 6px',borderRadius:8,border: form.type===t ? `2px solid ${tt.color}` : '1px solid var(--gray-200)',
+                                                style={{flex:'1 0 calc(33% - 6px)',padding:'8px 6px',borderRadius:8,border: form.type===t ? `2px solid ${tt.color}` : '1px solid var(--gray-200)',
                                                     background: form.type===t ? tt.bg : 'white', color: form.type===t ? tt.color : 'var(--gray-600)',
                                                     fontSize:11,fontWeight:form.type===t?700:500,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
                                                 <i className={`fa-solid ${tt.icon}`}></i>{tt.label}
@@ -44698,6 +49286,18 @@ ${rejetHtml}
                                     {codesAnalytiques.map(c => <option key={c} value={c}>{c}</option>)}
                                 </select>
                             </div>
+                            {(form.type === 'paie' || form.type === 'transport') && (
+                                <>
+                                    <div>
+                                        <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Matricule</label>
+                                        <input type="text" value={form.matricule} onChange={e=>setForm({...form,matricule:e.target.value})} style={inputStyle} placeholder="Ex: 02123" />
+                                    </div>
+                                    <div>
+                                        <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Bénéficiaire (Nom)</label>
+                                        <input type="text" value={form.beneficiaire_nom} onChange={e=>setForm({...form,beneficiaire_nom:e.target.value})} style={inputStyle} placeholder="Nom de l'employé" />
+                                    </div>
+                                </>
+                            )}
                             <div style={{gridColumn:'1/-1'}}>
                                 <label style={{fontSize:11,fontWeight:600,color:'var(--gray-600)',marginBottom:4,display:'block'}}>Description</label>
                                 <textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} style={{...inputStyle,minHeight:70,resize:'vertical'}} placeholder="Description de la transaction..." />
@@ -44732,6 +49332,183 @@ ${rejetHtml}
                             </button>
                         </div>
                     </div>
+                </div>
+            );
+        }
+
+        // ---- Filtered Type Sub (Alimentations / Paie / Transport) ----
+        function CaisseFilteredTypeSub({ caisses, typeFilter, title, icon, isSaisie, onDone, hasEmployee }) {
+            const [transactions, setTransactions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showForm, setShowForm] = useState(false);
+            const [search, setSearch] = useState('');
+            const [filterCaisse, setFilterCaisse] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+
+            const load = () => {
+                setLoading(true);
+                let url = '/api/caisse?action=list-transactions&limit=500';
+                if (filterCaisse) url += '&caisse_id=' + filterCaisse;
+                if (dateFrom) url += '&date_from=' + dateFrom;
+                if (dateTo) url += '&date_to=' + dateTo;
+                fetch(url).then(r => r.json())
+                    .then(json => {
+                        if (json.success) {
+                            const filtered = (json.transactions || []).filter(t => t.type === typeFilter);
+                            setTransactions(filtered);
+                        }
+                    })
+                    .catch(() => {})
+                    .finally(() => setLoading(false));
+            };
+
+            React.useEffect(() => { load(); }, [filterCaisse, dateFrom, dateTo, typeFilter]);
+
+            let filtered = transactions;
+            if (search && hasEmployee) {
+                const q = search.toLowerCase();
+                filtered = filtered.filter(t =>
+                    (t.matricule || '').toLowerCase().includes(q) ||
+                    (t.beneficiaire_nom || '').toLowerCase().includes(q) ||
+                    (t.description || '').toLowerCase().includes(q) ||
+                    (t.reference || '').toLowerCase().includes(q)
+                );
+            } else if (search) {
+                const q = search.toLowerCase();
+                filtered = filtered.filter(t =>
+                    (t.description || '').toLowerCase().includes(q) ||
+                    (t.reference || '').toLowerCase().includes(q)
+                );
+            }
+
+            // Group by employee if hasEmployee
+            const byEmployee = {};
+            if (hasEmployee) {
+                filtered.forEach(t => {
+                    const key = t.matricule || t.beneficiaire_nom || '—';
+                    if (!byEmployee[key]) byEmployee[key] = { matricule: t.matricule || '', nom: t.beneficiaire_nom || '', count: 0, total: 0, transactions: [] };
+                    byEmployee[key].count += 1;
+                    byEmployee[key].total += (t.montant || 0);
+                    byEmployee[key].transactions.push(t);
+                });
+            }
+
+            const totalMontant = filtered.filter(t => t.status === 'valide').reduce((s, t) => s + (t.montant || 0), 0);
+            const totalEnAttente = filtered.filter(t => t.status === 'soumis').reduce((s, t) => s + (t.montant || 0), 0);
+            const tt = TXN_TYPE_LABELS[typeFilter] || {};
+
+            if (showForm) {
+                return (
+                    <div>
+                        <button onClick={() => setShowForm(false)} style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,marginBottom:16}}>
+                            <i className="fa-solid fa-arrow-left" style={{marginRight:6}}></i>Retour à la liste
+                        </button>
+                        <CaisseSaisieSub caisses={caisses} defaultType={typeFilter} onDone={() => { setShowForm(false); load(); onDone && onDone(); }} />
+                    </div>
+                );
+            }
+
+            return (
+                <div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                        <h4 style={{margin:0,display:'flex',alignItems:'center',gap:8}}>
+                            <i className={`fa-solid ${icon}`} style={{color:tt.color || 'var(--berry)'}}></i>{title} ({filtered.length})
+                        </h4>
+                        {isSaisie && (
+                            <button onClick={() => setShowForm(true)} style={{padding:'8px 16px',borderRadius:8,border:'none',background: tt.color || 'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                                <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouvelle saisie {title}
+                            </button>
+                        )}
+                    </div>
+
+                    <div className="kpi-grid" style={{gridTemplateColumns:'repeat(3,1fr)',marginBottom:16}}>
+                        <div className="kpi-card"><div className="kpi-icon" style={{background:tt.bg,color:tt.color}}><i className={`fa-solid ${icon}`}></i></div><div className="kpi-value">{formatMAD(totalMontant)}</div><div className="kpi-label">Total validé</div></div>
+                        <div className="kpi-card"><div className="kpi-icon" style={{background:'rgba(243,156,18,0.12)',color:'#E67E22'}}><i className="fa-solid fa-clock"></i></div><div className="kpi-value">{formatMAD(totalEnAttente)}</div><div className="kpi-label">En attente</div></div>
+                        <div className="kpi-card"><div className="kpi-icon" style={{background:'rgba(52,152,219,0.12)',color:'var(--blue)'}}><i className="fa-solid fa-list"></i></div><div className="kpi-value">{filtered.length}</div><div className="kpi-label">Nb transactions</div></div>
+                    </div>
+
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12}}>
+                        <select value={filterCaisse} onChange={e => setFilterCaisse(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}}>
+                            <option value="">Toutes caisses</option>
+                            {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                        </select>
+                        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Du"
+                            style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} />
+                        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Au"
+                            style={{padding:'6px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} />
+                        <input value={search} onChange={e => setSearch(e.target.value)}
+                            placeholder={hasEmployee ? 'Rechercher matricule, nom, description...' : 'Rechercher...'}
+                            style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,flex:'1 1 250px'}} />
+                    </div>
+
+                    {loading && <div style={{textAlign:'center',padding:40}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:24,color:'var(--berry)'}}></i></div>}
+
+                    {!loading && hasEmployee && Object.keys(byEmployee).length > 0 && (
+                        <div style={{marginBottom:16}}>
+                            <h5 style={{fontSize:12,fontWeight:600,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-users" style={{marginRight:6}}></i>Récapitulatif par employé</h5>
+                            <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden'}}>
+                                <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+                                    <thead><tr style={{background:'var(--gray-100)'}}>
+                                        <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Matricule</th>
+                                        <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Nom</th>
+                                        <th style={{padding:'10px 14px',textAlign:'right',fontWeight:600}}>Nb transactions</th>
+                                        <th style={{padding:'10px 14px',textAlign:'right',fontWeight:600}}>Total (DH)</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {Object.values(byEmployee).sort((a,b) => b.total - a.total).map((e, i) => (
+                                            <tr key={i} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                <td style={{padding:'8px 14px',fontWeight:600}}>{e.matricule || '—'}</td>
+                                                <td style={{padding:'8px 14px'}}>{e.nom || '—'}</td>
+                                                <td style={{padding:'8px 14px',textAlign:'right'}}>{e.count}</td>
+                                                <td style={{padding:'8px 14px',textAlign:'right',fontWeight:700,color:tt.color}}>{formatMAD(e.total)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {!loading && (
+                        <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden'}}>
+                            <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+                                <thead><tr style={{background:'var(--gray-100)'}}>
+                                    <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Date</th>
+                                    <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Caisse</th>
+                                    {hasEmployee && <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Matricule</th>}
+                                    {hasEmployee && <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Bénéficiaire</th>}
+                                    <th style={{padding:'10px 14px',textAlign:'left',fontWeight:600}}>Description</th>
+                                    <th style={{padding:'10px 14px',textAlign:'right',fontWeight:600}}>Montant</th>
+                                    <th style={{padding:'10px 14px',textAlign:'center',fontWeight:600}}>Statut</th>
+                                </tr></thead>
+                                <tbody>
+                                    {filtered.map((tx) => {
+                                        const ss = STATUS_LABELS[tx.status] || {};
+                                        const caisseName = caisses.find(c => c.id === tx.caisse_id)?.nom || tx.caisse_id;
+                                        return (
+                                            <tr key={tx.id} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                <td style={{padding:'8px 14px',whiteSpace:'nowrap'}}>{tx.date}</td>
+                                                <td style={{padding:'8px 14px',fontSize:11}}>{caisseName}</td>
+                                                {hasEmployee && <td style={{padding:'8px 14px',fontWeight:600}}>{tx.matricule || '—'}</td>}
+                                                {hasEmployee && <td style={{padding:'8px 14px'}}>{tx.beneficiaire_nom || '—'}</td>}
+                                                <td style={{padding:'8px 14px',maxWidth:250,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tx.description || tx.reference}</td>
+                                                <td style={{padding:'8px 14px',textAlign:'right',fontWeight:600,color: typeFilter === 'alimentation' ? 'var(--green)' : 'var(--red)'}}>
+                                                    {typeFilter === 'alimentation' ? '+' : '-'}{formatMAD(tx.montant)}
+                                                </td>
+                                                <td style={{padding:'8px 14px',textAlign:'center'}}>
+                                                    <span style={{padding:'3px 10px',borderRadius:12,background:ss.bg||'#eee',color:ss.color||'#333',fontSize:11,fontWeight:600}}>{ss.label||tx.status}</span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {filtered.length === 0 && (
+                                        <tr><td colSpan={hasEmployee ? 7 : 5} style={{padding:40,textAlign:'center',color:'var(--gray-400)'}}>Aucune transaction trouvée.</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -45296,17 +50073,154 @@ ${rejetHtml}
         }
 
         // ===================== ADMIN CONSOLE =====================
+        function TemplateSimulator({ authFetch, testPhone, setMsg }) {
+            const TEMPLATES = [
+                { name: 'welcome_smartberry', label: 'Bienvenue', sample: ['Mohamed'], placeholders: ['Prénom'], type: 'welcome', profiles: ['chef'] },
+                { name: 'bdc_validation_needed', label: 'BDC à valider (Chef)', sample: ['BDC-2026-0042', 'Engrais NPK', '45000 MAD'], placeholders: ['Numéro BDC', 'Description', 'Montant'], type: 'bdc_submit', profiles: ['chef'] },
+                { name: 'bdc_chef_approved', label: 'BDC validé Chef → DG', sample: ['BDC-2026-0042'], placeholders: ['Numéro BDC'], type: 'bdc_chef_approved', profiles: ['dg'] },
+                { name: 'bdc_dg_approved', label: 'BDC validé DG → Achats/Finance', sample: ['BDC-2026-0042', 'Engrais NPK', '45000 MAD'], placeholders: ['Numéro', 'Description', 'Montant'], type: 'bdc_dg_approved', profiles: ['achats', 'finance'] },
+                { name: 'bdc_rejected', label: 'BDC rejeté → Achats', sample: ['BDC-2026-0042', 'Prix trop élevé'], placeholders: ['Numéro', 'Motif'], type: 'bdc_rejected', profiles: ['achats'] },
+                { name: 'bdc_sent_to_supplier', label: 'BDC envoyé fournisseur → Finance', sample: ['BDC-2026-0042', 'Maroc Engrais SARL'], placeholders: ['Numéro', 'Fournisseur'], type: 'bdc_sent_to_supplier', profiles: ['finance'] },
+                { name: 'bdc_virement_update', label: 'Virement (lancé/signé)', sample: ['BDC-2026-0042', 'Virement signé'], placeholders: ['Numéro', 'Statut'], type: 'bdc_virement_signed', profiles: ['achats', 'finance'] },
+                { name: 'pointage_validation_needed', label: 'Pointage à valider', sample: ['2026-05-01', 'BSAA'], placeholders: ['Date', 'Ferme'], type: 'pointage_validation', profiles: ['chef'] },
+                { name: 'quality_alert', label: 'Alerte qualité', sample: ['Expédition manquante détectée le 2026-05-01'], placeholders: ['Message'], type: 'quality_alert', profiles: ['qualite', 'dg'] },
+                { name: 'general_alert', label: 'Alerte générale', sample: ['Nouvelle alerte sur le tableau de bord'], placeholders: ['Message'], type: 'general_alert', profiles: ['dg'] },
+                { name: 'expedition_rejected', label: 'Rejet d\'expédition', sample: ['RPT-TEST-001', '01/05/2026 14:30', 'Sweet Sensation', 'BSAA', '1250', 'Soft fruit 18%'], placeholders: ['Receipt', 'Date/heure', 'Variété', 'Ferme', 'Volume kg', 'Motif'], type: 'expedition_rejected', profiles: ['chef', 'qualite', 'dg'] },
+            ];
+
+            const [selectedTemplate, setSelectedTemplate] = React.useState(TEMPLATES[0].name);
+            const [params, setParams] = React.useState(TEMPLATES[0].sample);
+            const [mode, setMode] = React.useState('phone'); // 'phone' or 'profiles'
+            const [phone, setPhone] = React.useState('');
+            const [profiles, setProfiles] = React.useState([]);
+            const [ferme, setFerme] = React.useState('BSAA');
+            const [sending, setSending] = React.useState(false);
+
+            const tpl = TEMPLATES.find(t => t.name === selectedTemplate);
+
+            const handleTemplateChange = (name) => {
+                setSelectedTemplate(name);
+                const t = TEMPLATES.find(x => x.name === name);
+                if (t) {
+                    setParams(t.sample);
+                    setProfiles(t.profiles);
+                }
+            };
+
+            const handleSend = async () => {
+                if (!sending) setSending(true);
+                try {
+                    const body = { template_name: selectedTemplate, params };
+                    if (mode === 'phone') {
+                        if (!phone) { setMsg('Numéro requis'); setSending(false); return; }
+                        body.phone = phone;
+                    } else {
+                        if (profiles.length === 0) { setMsg('Au moins un profil requis'); setSending(false); return; }
+                        body.profiles = profiles;
+                        body.type = tpl.type;
+                        body.ferme = ferme;
+                        // Build data for dispatcher mapping
+                        body.data = {};
+                        if (tpl.type === 'bdc_submit' || tpl.type === 'bdc_dg_approved') {
+                            body.data = { numero: params[0], description: params[1] || '', montant: params[2] || '' };
+                        } else if (tpl.type === 'bdc_chef_approved') body.data = { numero: params[0] };
+                        else if (tpl.type === 'bdc_rejected') body.data = { numero: params[0], motif: params[1] || '' };
+                        else if (tpl.type === 'bdc_sent_to_supplier') body.data = { numero: params[0], supplier: params[1] || '' };
+                        else if (tpl.type === 'bdc_virement_signed') body.data = { numero: params[0] };
+                        else if (tpl.type === 'pointage_validation') body.data = { date: params[0], ferme: params[1] };
+                        else if (tpl.type === 'quality_alert' || tpl.type === 'general_alert') body.data = { message: params[0] };
+                        else if (tpl.type === 'welcome') body.data = { displayName: params[0] };
+                        else if (tpl.type === 'expedition_rejected') body.data = { receiptId: params[0], dateTime: params[1], variety: params[2], ranch: params[3], weightKg: params[4], reason: params[5] };
+                    }
+                    const r = await authFetch('/api/whatsapp-admin?action=simulate-template', { method: 'POST', body: JSON.stringify(body) });
+                    const json = await r.json();
+                    setMsg(json.success ? '✓ Simulation envoyée' : 'Erreur: ' + (json.error || 'Inconnue'));
+                } catch (e) { setMsg(e.message); }
+                setSending(false);
+            };
+
+            const PROFILE_OPTIONS = ['chef', 'caporal', 'rh', 'dg', 'achats', 'finance', 'qualite'];
+
+            return (
+                <div>
+                    <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>🧪 Simulateur de templates</div>
+                    <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:10}}>Tester n'importe quel template avec des données personnalisées.</div>
+
+                    <div style={{marginBottom:10}}>
+                        <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>Template</label>
+                        <select value={selectedTemplate} onChange={e => handleTemplateChange(e.target.value)}
+                            style={{width:'100%',padding:'6px 10px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:12,boxSizing:'border-box'}}>
+                            {TEMPLATES.map(t => <option key={t.name} value={t.name}>{t.label} ({t.name})</option>)}
+                        </select>
+                    </div>
+
+                    <div style={{marginBottom:10}}>
+                        <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>Paramètres</label>
+                        {tpl.placeholders.map((ph, i) => (
+                            <div key={i} style={{marginBottom:4}}>
+                                <input value={params[i] || ''} onChange={e => { const p = [...params]; p[i] = e.target.value; setParams(p); }}
+                                    placeholder={ph}
+                                    style={{width:'100%',padding:'6px 10px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11,boxSizing:'border-box'}} />
+                            </div>
+                        ))}
+                    </div>
+
+                    <div style={{marginBottom:10,display:'flex',gap:8}}>
+                        <label style={{fontSize:11,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                            <input type="radio" checked={mode === 'phone'} onChange={() => setMode('phone')} /> Envoi à un numéro
+                        </label>
+                        <label style={{fontSize:11,fontWeight:600,display:'flex',alignItems:'center',gap:4}}>
+                            <input type="radio" checked={mode === 'profiles'} onChange={() => setMode('profiles')} /> Envoi à des profils
+                        </label>
+                    </div>
+
+                    {mode === 'phone' ? (
+                        <input value={phone} onChange={e => setPhone(e.target.value)} placeholder="+212 6XX XXX XXX"
+                            style={{width:'100%',padding:'6px 10px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:12,boxSizing:'border-box',marginBottom:10}} />
+                    ) : (
+                        <div style={{marginBottom:10}}>
+                            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:6}}>
+                                {PROFILE_OPTIONS.map(p => (
+                                    <label key={p} style={{fontSize:11,padding:'4px 8px',background: profiles.includes(p) ? 'var(--berry)' : 'var(--gray-100)',color: profiles.includes(p) ? '#fff' : 'var(--gray-600)',borderRadius:6,cursor:'pointer'}}>
+                                        <input type="checkbox" checked={profiles.includes(p)} onChange={e => {
+                                            if (e.target.checked) setProfiles([...profiles, p]);
+                                            else setProfiles(profiles.filter(x => x !== p));
+                                        }} style={{display:'none'}} />
+                                        {p}
+                                    </label>
+                                ))}
+                            </div>
+                            {profiles.includes('chef') && (
+                                <input value={ferme} onChange={e => setFerme(e.target.value)} placeholder="Ferme (filtre pour Chef)"
+                                    style={{width:'100%',padding:'6px 10px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11,boxSizing:'border-box'}} />
+                            )}
+                        </div>
+                    )}
+
+                    <button onClick={handleSend} disabled={sending}
+                        style={{padding:'6px 16px',background: sending ? 'var(--gray-300)' : '#6f42c1',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor: sending ? 'wait' : 'pointer'}}>
+                        <i className={`fa-solid ${sending ? 'fa-spinner fa-spin' : 'fa-flask'}`} style={{marginRight:4}}></i>
+                        Lancer la simulation
+                    </button>
+                </div>
+            );
+        }
+
         function WhatsAppConfigPanel({ authFetch }) {
             const [waConfig, setWaConfig] = useState(null);
             const [waLogs, setWaLogs] = useState([]);
             const [waLoading, setWaLoading] = useState(true);
             const [waEditing, setWaEditing] = useState(false);
-            const [waForm, setWaForm] = useState({ phone_number_id: '', access_token: '', enabled: false });
+            const [waForm, setWaForm] = useState({ phone_number_id: '', waba_id: '', access_token: '', enabled: false });
             const [waSaving, setWaSaving] = useState(false);
             const [waMsg, setWaMsg] = useState('');
             const [waTestPhone, setWaTestPhone] = useState('');
             const [waTesting, setWaTesting] = useState(false);
             const [waShowLogs, setWaShowLogs] = useState(false);
+            const [waShowMessages, setWaShowMessages] = useState(false);
+            const [waMessagesList, setWaMessagesList] = useState([]);
+            const [waShowWebhook, setWaShowWebhook] = useState(false);
+            const [waVerifyToken, setWaVerifyToken] = useState('');
 
             const loadConfig = async () => {
                 setWaLoading(true);
@@ -45324,6 +50238,32 @@ ${rejetHtml}
                     const json = await r.json();
                     if (json.success) setWaLogs(json.logs || []);
                 } catch (e) { console.warn(e); }
+            };
+
+            const loadMessages = async () => {
+                try {
+                    const r = await authFetch('/api/whatsapp-admin?action=get-messages&limit=50');
+                    const json = await r.json();
+                    if (json.success) setWaMessagesList(json.messages || []);
+                } catch (e) { console.warn(e); }
+            };
+
+            const loadVerifyToken = async () => {
+                try {
+                    const r = await authFetch('/api/whatsapp-admin?action=get-verify-token');
+                    const json = await r.json();
+                    if (json.success) setWaVerifyToken(json.verify_token || '');
+                } catch (e) { console.warn(e); }
+            };
+
+            const generateVerifyToken = async () => {
+                if (!confirm('Générer un nouveau verify token ? L\'ancien sera invalidé et il faudra reconfigurer le webhook dans Meta.')) return;
+                try {
+                    const r = await authFetch('/api/whatsapp-admin?action=generate-verify-token', { method: 'POST', body: JSON.stringify({}) });
+                    const json = await r.json();
+                    if (json.success) { setWaVerifyToken(json.verify_token); setWaMsg('Verify token généré. Configurez-le dans Meta.'); }
+                    else setWaMsg(json.error || 'Erreur');
+                } catch (e) { setWaMsg(e.message); }
             };
 
             useEffect(() => { loadConfig(); }, []);
@@ -45365,13 +50305,21 @@ ${rejetHtml}
                             {waConfig?.phone_number_id && <span style={{fontSize:11,color:'var(--gray-400)'}}>Phone ID: {waConfig.phone_number_id}</span>}
                         </div>
                         <div style={{display:'flex',gap:8}}>
-                            <button onClick={() => { setWaEditing(!waEditing); setWaForm({ phone_number_id: waConfig?.phone_number_id || '', access_token: '', enabled: waConfig?.enabled || false }); }}
+                            <button onClick={() => { setWaEditing(!waEditing); setWaForm({ phone_number_id: waConfig?.phone_number_id || '', waba_id: waConfig?.waba_id || '', access_token: '', enabled: waConfig?.enabled || false }); }}
                                 style={{padding:'6px 14px',background:'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:600}}>
                                 <i className="fa-solid fa-gear" style={{marginRight:4}}></i>Configurer
                             </button>
                             <button onClick={() => { setWaShowLogs(!waShowLogs); if (!waShowLogs) loadLogs(); }}
                                 style={{padding:'6px 14px',background:'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:600}}>
-                                <i className="fa-solid fa-list" style={{marginRight:4}}></i>Logs
+                                <i className="fa-solid fa-list" style={{marginRight:4}}></i>Logs envoyés
+                            </button>
+                            <button onClick={() => { setWaShowMessages(!waShowMessages); if (!waShowMessages) loadMessages(); }}
+                                style={{padding:'6px 14px',background:'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:600}}>
+                                <i className="fa-solid fa-inbox" style={{marginRight:4}}></i>Réponses reçues
+                            </button>
+                            <button onClick={() => { setWaShowWebhook(!waShowWebhook); if (!waShowWebhook) loadVerifyToken(); }}
+                                style={{padding:'6px 14px',background:'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:600}}>
+                                <i className="fa-solid fa-link" style={{marginRight:4}}></i>Webhook
                             </button>
                         </div>
                     </div>
@@ -45381,10 +50329,15 @@ ${rejetHtml}
                             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:12}}>
                                 <div>
                                     <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>Phone Number ID (Meta)</label>
-                                    <input value={waForm.phone_number_id} onChange={e => setWaForm({...waForm, phone_number_id: e.target.value})} placeholder="Ex: 123456789"
+                                    <input value={waForm.phone_number_id} onChange={e => setWaForm({...waForm, phone_number_id: e.target.value})} placeholder="Ex: 1040240149168335"
                                         style={{width:'100%',padding:'8px 12px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:12,boxSizing:'border-box'}} />
                                 </div>
                                 <div>
+                                    <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>WABA ID (compte WhatsApp Business)</label>
+                                    <input value={waForm.waba_id} onChange={e => setWaForm({...waForm, waba_id: e.target.value})} placeholder="Ex: 1435674314903560"
+                                        style={{width:'100%',padding:'8px 12px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:12,boxSizing:'border-box'}} />
+                                </div>
+                                <div style={{gridColumn:'1 / -1'}}>
                                     <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>Access Token</label>
                                     <input type="password" value={waForm.access_token} onChange={e => setWaForm({...waForm, access_token: e.target.value})} placeholder="Laisser vide pour ne pas changer"
                                         style={{width:'100%',padding:'8px 12px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:12,boxSizing:'border-box'}} />
@@ -45406,12 +50359,15 @@ ${rejetHtml}
                     {waConfig?.enabled && (
                         <div style={{background:'var(--gray-50)',borderRadius:10,padding:16,marginBottom:16}}>
                             <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Envoyer un message de test</div>
-                            <div style={{display:'flex',gap:8}}>
+                            <div style={{display:'flex',gap:8,marginBottom:12}}>
                                 <input value={waTestPhone} onChange={e => setWaTestPhone(e.target.value)} placeholder="+212 6XX XXX XXX"
                                     style={{flex:1,padding:'8px 12px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:12}} />
                                 <button onClick={handleTestMessage} disabled={waTesting} style={{padding:'6px 16px',background: waTesting ? 'var(--gray-300)' : '#25D366',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor: waTesting ? 'wait' : 'pointer',whiteSpace:'nowrap'}}>
                                     <i className={`fa-solid ${waTesting ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} style={{marginRight:4}}></i>Tester
                                 </button>
+                            </div>
+                            <div style={{borderTop:'1px solid var(--gray-200)',paddingTop:12}}>
+                                <TemplateSimulator authFetch={authFetch} testPhone={waTestPhone} setMsg={setWaMsg} />
                             </div>
                         </div>
                     )}
@@ -45424,6 +50380,7 @@ ${rejetHtml}
                                         <th>Date</th>
                                         <th>Destinataire</th>
                                         <th>Template</th>
+                                        <th>Contenu</th>
                                         <th>Statut</th>
                                     </tr>
                                 </thead>
@@ -45431,17 +50388,113 @@ ${rejetHtml}
                                     {waLogs.map(log => (
                                         <tr key={log.id}>
                                             <td style={{whiteSpace:'nowrap'}}>{new Date(log.sentAt).toLocaleString('fr-FR')}</td>
-                                            <td style={{fontFamily:'monospace'}}>{log.to}</td>
-                                            <td>{log.templateName}</td>
                                             <td>
-                                                {log.status === 'sent' ? <span style={{color:'#25D366',fontWeight:600}}>Envoyé</span>
-                                                    : <span style={{color:'#dc3545',fontWeight:600}} title={log.error || ''}>Échoué</span>}
+                                                {log.toName && <div style={{fontWeight:600,fontSize:11}}>{log.toName}</div>}
+                                                <div style={{fontFamily:'monospace',fontSize:10,color:'var(--gray-500)'}}>{log.to}</div>
+                                            </td>
+                                            <td>{log.templateName}</td>
+                                            <td style={{maxWidth:300,fontSize:11,color:'var(--gray-600)'}}>
+                                                {log.params && log.params.length > 0 ? log.params.join(' | ') : <span style={{color:'var(--gray-400)'}}>—</span>}
+                                            </td>
+                                            <td>
+                                                {log.status === 'read' ? <span style={{color:'#25D366',fontWeight:600}} title="Lu">✓✓ Lu</span>
+                                                    : log.status === 'delivered' ? <span style={{color:'#25D366',fontWeight:600}} title="Livré">✓✓ Livré</span>
+                                                    : log.status === 'sent' ? <span style={{color:'var(--gray-500)',fontWeight:600}}>✓ Envoyé</span>
+                                                    : log.status === 'failed' ? (
+                                                        <div>
+                                                            <div style={{color:'#dc3545',fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+                                                                <span>✗ Échec</span>
+                                                                {log.retried_at ? (
+                                                                    <span style={{fontSize:9,color:'#28a745',fontWeight:500}}>✓ Renvoyé</span>
+                                                                ) : (
+                                                                    <button type="button" onClick={async (e) => {
+                                                                        console.log('[Retry] Click sur log', log.id);
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        setWaMsg('⏳ Envoi en cours...');
+                                                                        try {
+                                                                            const r = await authFetch('/api/whatsapp-admin?action=retry-log', { method: 'POST', body: JSON.stringify({ log_id: log.id }) });
+                                                                            console.log('[Retry] HTTP status:', r.status);
+                                                                            const json = await r.json();
+                                                                            console.log('[Retry] Réponse:', json);
+                                                                            if (json.success) {
+                                                                                setWaMsg(`✓ Message renvoyé à ${log.to}`);
+                                                                                setWaLogs(prev => prev.map(l => l.id === log.id ? { ...l, retried_at: Date.now() } : l));
+                                                                                setTimeout(() => loadLogs(), 1500);
+                                                                            } else {
+                                                                                setWaMsg(`✗ Erreur: ${json.error || 'Inconnue'}`);
+                                                                            }
+                                                                        } catch (err) {
+                                                                            console.error('[Retry] Erreur:', err);
+                                                                            setWaMsg('Erreur réseau: ' + err.message);
+                                                                        }
+                                                                    }} style={{background:'#dc3545',border:'none',borderRadius:6,padding:'4px 10px',cursor:'pointer',fontSize:11,color:'#fff',fontWeight:600}} title="Réessayer cet envoi">
+                                                                        <i className="fa-solid fa-rotate-right" style={{marginRight:4}}></i>Retenter
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            {log.error && <div style={{fontSize:9,color:'#dc3545',maxWidth:240,wordBreak:'break-word',marginTop:2,opacity:0.8}}>{log.error}</div>}
+                                                        </div>
+                                                    )
+                                                    : <span style={{color:'var(--gray-400)',fontWeight:600}}>{log.status}</span>}
                                             </td>
                                         </tr>
                                     ))}
-                                    {waLogs.length === 0 && <tr><td colSpan={4} style={{textAlign:'center',color:'var(--gray-400)'}}>Aucun log</td></tr>}
+                                    {waLogs.length === 0 && <tr><td colSpan={5} style={{textAlign:'center',color:'var(--gray-400)'}}>Aucun log</td></tr>}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+
+                    {waShowMessages && (
+                        <div style={{maxHeight:400,overflowY:'auto',marginTop:12}}>
+                            <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Messages reçus des utilisateurs</div>
+                            {waMessagesList.length === 0 && <div style={{textAlign:'center',color:'var(--gray-400)',fontSize:12,padding:20}}>Aucun message reçu</div>}
+                            {waMessagesList.map(m => (
+                                <div key={m.id} style={{background:'var(--gray-50)',borderRadius:8,padding:10,marginBottom:8,borderLeft:'3px solid #25D366'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                                        <span style={{fontSize:11,fontWeight:600}}>
+                                            <i className="fa-brands fa-whatsapp" style={{color:'#25D366',marginRight:4}}></i>
+                                            {m.userName || m.contactName || m.from}
+                                            {m.userName && <span style={{color:'var(--gray-400)',fontWeight:400,marginLeft:4}}>({m.from})</span>}
+                                        </span>
+                                        <span style={{fontSize:10,color:'var(--gray-400)'}}>{new Date(m.receivedAt).toLocaleString('fr-FR')}</span>
+                                    </div>
+                                    <div style={{fontSize:12,color:'var(--gray-700)'}}>
+                                        {m.text || (m.type !== 'text' ? <em style={{color:'var(--gray-500)'}}>[{m.type}]</em> : '')}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {waShowWebhook && (
+                        <div style={{background:'var(--gray-50)',borderRadius:10,padding:16,marginTop:12}}>
+                            <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Configuration du webhook Meta</div>
+                            <div style={{fontSize:11,color:'var(--gray-600)',marginBottom:12,lineHeight:1.5}}>
+                                Le webhook permet de recevoir les confirmations de livraison/lecture et les réponses des utilisateurs.
+                                Configurez-le dans Meta App → WhatsApp → Configuration → Webhooks.
+                            </div>
+                            <div style={{marginBottom:10}}>
+                                <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>URL du webhook (à coller dans Meta)</label>
+                                <input readOnly value="https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/whatsappWebhook"
+                                    onClick={e => e.target.select()}
+                                    style={{width:'100%',padding:'8px 12px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11,boxSizing:'border-box',fontFamily:'monospace',background:'#fff'}} />
+                            </div>
+                            <div style={{marginBottom:10}}>
+                                <label style={{display:'block',fontSize:11,fontWeight:600,marginBottom:4}}>Verify Token</label>
+                                <div style={{display:'flex',gap:8}}>
+                                    <input readOnly value={waVerifyToken || '(non généré)'}
+                                        onClick={e => e.target.select()}
+                                        style={{flex:1,padding:'8px 12px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11,boxSizing:'border-box',fontFamily:'monospace',background:'#fff'}} />
+                                    <button onClick={generateVerifyToken} style={{padding:'6px 14px',background:'#25D366',color:'#fff',border:'none',borderRadius:8,fontSize:11,fontWeight:600,cursor:'pointer',whiteSpace:'nowrap'}}>
+                                        {waVerifyToken ? 'Régénérer' : 'Générer'}
+                                    </button>
+                                </div>
+                            </div>
+                            <div style={{fontSize:11,color:'var(--gray-600)',marginTop:12,lineHeight:1.5}}>
+                                <strong>Champs à activer dans Meta:</strong> <code>messages</code>, <code>message_status</code>
+                            </div>
                         </div>
                     )}
                 </Panel>
@@ -45737,9 +50790,30 @@ ${rejetHtml}
                     <Panel title="Gestion des Utilisateurs" icon="fa-users-gear">
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
                             <div style={{fontSize:12,color:'var(--gray-500)'}}>{users.length} utilisateur{users.length > 1 ? 's' : ''} enregistré{users.length > 1 ? 's' : ''}</div>
-                            <button onClick={() => { setShowCreate(true); setEditUser(null); }} style={{padding:'8px 16px',background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>
-                                <i className="fa-solid fa-user-plus" style={{marginRight:6}}></i>Nouvel utilisateur
-                            </button>
+                            <div style={{display:'flex',gap:8}}>
+                                <button onClick={async () => {
+                                    const usersWithPhone = users.filter(u => u.whatsappPhone && !u.disabled);
+                                    const notSent = usersWithPhone.filter(u => !u.welcome_sent_at).length;
+                                    const msg = `Envoyer le message de bienvenue à ${notSent} utilisateur${notSent > 1 ? 's' : ''} qui ne l'ont pas encore reçu ?\n\n(${usersWithPhone.length} utilisateurs WhatsApp au total, ${usersWithPhone.length - notSent} déjà reçus seront skippés)`;
+                                    if (!confirm(msg)) return;
+                                    setMsg('Envoi en cours...');
+                                    try {
+                                        const r = await authFetch('/api/whatsapp-admin?action=send-welcome-all', { method: 'POST', body: JSON.stringify({}) });
+                                        const json = await r.json();
+                                        if (json.success) {
+                                            setMsg(`✓ ${json.sent} envoyé${json.sent > 1 ? 's' : ''}, ${json.skipped} skippé${json.skipped > 1 ? 's' : ''}, ${json.failed} échec${json.failed > 1 ? 's' : ''}`);
+                                            loadUsers();
+                                        } else {
+                                            setMsg('Erreur: ' + (json.error || 'Inconnue'));
+                                        }
+                                    } catch (e) { setMsg(e.message); }
+                                }} style={{padding:'8px 16px',background:'#25D366',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                                    <i className="fa-brands fa-whatsapp" style={{marginRight:6}}></i>Envoyer bienvenue à tous
+                                </button>
+                                <button onClick={() => { setShowCreate(true); setEditUser(null); }} style={{padding:'8px 16px',background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                                    <i className="fa-solid fa-user-plus" style={{marginRight:6}}></i>Nouvel utilisateur
+                                </button>
+                            </div>
                         </div>
 
                         <table className="data-table" style={{fontSize:12}}>
@@ -45764,7 +50838,24 @@ ${rejetHtml}
                                         <td><span style={{background:'var(--gray-100)',padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:600}}>{profileLabel(u.profileId)}</span></td>
                                         <td><span style={{color: roleColors[u.role] || 'var(--gray-500)',fontWeight:700,fontSize:11,textTransform:'uppercase'}}>{u.role}</span></td>
                                         <td style={{textAlign:'center'}}>{u.googleLinked ? <i className="fa-brands fa-google" style={{color:'#4285F4'}}></i> : <span style={{color:'var(--gray-300)'}}>-</span>}</td>
-                                        <td style={{textAlign:'center'}}>{u.whatsappPhone ? <i className="fa-brands fa-whatsapp" style={{color:'#25D366'}} title={u.whatsappPhone}></i> : <span style={{color:'var(--gray-300)'}}>-</span>}</td>
+                                        <td style={{textAlign:'center'}}>
+                                            {u.whatsappPhone ? (
+                                                <span style={{display:'inline-flex',alignItems:'center',gap:6}}>
+                                                    <i className="fa-brands fa-whatsapp" style={{color:'#25D366'}} title={u.whatsappPhone}></i>
+                                                    <button onClick={async () => {
+                                                        if (!confirm('Envoyer le message de bienvenue à ' + (u.displayName || u.email) + ' ?')) return;
+                                                        try {
+                                                            const r = await authFetch('/api/whatsapp-admin?action=send-welcome', { method: 'POST', body: JSON.stringify({ uid: u.uid }) });
+                                                            const json = await r.json();
+                                                            if (json.success) setMsg('Message de bienvenue envoyé à ' + (u.displayName || u.email));
+                                                            else setMsg('Erreur: ' + (json.error || 'Inconnue'));
+                                                        } catch (e) { setMsg(e.message); }
+                                                    }} style={{background:'none',border:'none',color:'#25D366',cursor:'pointer',fontSize:11,padding:0}} title="Envoyer message de bienvenue">
+                                                        <i className="fa-solid fa-paper-plane"></i>
+                                                    </button>
+                                                </span>
+                                            ) : <span style={{color:'var(--gray-300)'}}>-</span>}
+                                        </td>
                                         <td style={{textAlign:'center'}}>
                                             {u.disabled ? <span className="status-badge" style={{background:'rgba(220,53,69,0.1)',color:'#dc3545',fontSize:10}}>Désactivé</span>
                                                 : <span className="status-badge" style={{background:'rgba(40,167,69,0.1)',color:'#28a745',fontSize:10}}>Actif</span>}
@@ -49113,6 +54204,16 @@ ${rejetHtml}
             const [agroApiData, setAgroApiData] = useState(null);
             const [agroApiStatus, setAgroApiStatus] = useState('idle');
             const [weeklyQRData, setWeeklyQRData] = useState(null);
+            // Primes transport persistées (Firestore: rh_config/transport_primes)
+            // Shape: [{ prefix, equipe, caporal, ferme, history: [{ effectiveFrom, coutParOuvrier, updatedAt, updatedBy }] }]
+            const [transportPrimesOverride, setTransportPrimesOverride] = useState(null);
+            React.useEffect(() => {
+                try {
+                    firebase.firestore().collection('rh_config').doc('transport_primes').get()
+                        .then(snap => { if (snap.exists) setTransportPrimesOverride(snap.data().equipes || []); })
+                        .catch(e => console.warn('[transport_primes] load failed', e));
+                } catch (e) { console.warn('[transport_primes] init failed', e); }
+            }, []);
             const [weeklyBerryFilter, setWeeklyBerryFilter] = useState('framboise');
             const [refreshKey, setRefreshKey] = useState(0);
             const [pullDist, setPullDist] = useState(0);
@@ -49231,6 +54332,11 @@ ${rejetHtml}
             const meteoCacheRef = useRef({ data: null, ts: 0 });
 
             const fetchNotifications = React.useCallback(async (profileId, showPopup) => {
+                if (profileId === 'qualite') {
+                    setNotifData({ categories: { validations: [], taches: [], alertes: [] }, items: [], profileId, profileLabel: 'Qualité F1' });
+                    setNotifCount(0);
+                    return;
+                }
                 const p = PROFILES.find(x => x.id === profileId);
                 const ferme = p?.farm || '';
                 const url = '/api/notifications?profile=' + profileId + (ferme ? '&ferme=' + ferme : '');
@@ -49395,6 +54501,35 @@ ${rejetHtml}
 
             const data = useMemo(() => {
                 const mockData = generateMockData(farmFilter || 'F1');
+
+                // Override transportConfig depuis Firestore (rh_config/transport_primes)
+                // Pour chaque équipe Firestore : merge sur le seed (par prefix), ajout si nouveau.
+                if (transportPrimesOverride && Array.isArray(transportPrimesOverride)) {
+                    const seedByPrefix = {};
+                    (mockData.transportConfig || []).forEach(t => { seedByPrefix[t.prefix] = t; });
+                    transportPrimesOverride.forEach(fs => {
+                        if (!fs || !fs.prefix) return;
+                        const existing = seedByPrefix[fs.prefix];
+                        if (existing) {
+                            existing.history = fs.history || [];
+                            if (fs.equipe) existing.equipe = fs.equipe;
+                            if (fs.caporal) existing.caporal = fs.caporal;
+                            if (fs.ferme) existing.ferme = fs.ferme;
+                        } else {
+                            mockData.transportConfig.push({
+                                prefix: fs.prefix,
+                                equipe: fs.equipe || fs.prefix,
+                                caporal: fs.caporal || '',
+                                ferme: fs.ferme || '',
+                                coutParOuvrier: (fs.history && fs.history.length > 0)
+                                    ? fs.history[fs.history.length - 1].coutParOuvrier
+                                    : 30,
+                                history: fs.history || [],
+                            });
+                        }
+                    });
+                }
+
                 // Si les données API sont disponibles, remplacer les données agro hardcodées
                 if (agroApiData) {
                     mockData.agroData = {
@@ -49472,7 +54607,7 @@ ${rejetHtml}
                 }
 
                 return mockData;
-            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter]);
+            }, [farmFilter, agroApiData, agroApiStatus, weeklyQRData, weeklyBerryFilter, transportPrimesOverride]);
             const isChef = currentProfile.startsWith('chef_');
 
             const isDGUser = userProfile.profileId === 'dg';
@@ -49493,7 +54628,8 @@ ${rejetHtml}
                 : (currentProfile === 'agronomie' ? NAV_ITEMS_AGRO
                 : (currentProfile.startsWith('stationnaire_') ? NAV_ITEMS_STATIONNAIRE
                 : (currentProfile === 'securite' ? NAV_ITEMS_SECURITE.filter(n => !n.f5Only || farmFilter === 'F5')
-                : NAV_ITEMS_OTHER))))))))))));
+                : (currentProfile === 'associe_lazrak' ? NAV_ITEMS_ASSOCIE
+                : NAV_ITEMS_OTHER)))))))))))));
 
             // Add Historique Irrigation for Chef de Ferme and DT
             if (isChef && (currentProfile === 'chef_f1' || currentProfile === 'chef_f5') || currentProfile === 'dt') {
@@ -49673,22 +54809,9 @@ ${rejetHtml}
                                             ))}
                                         </div>
                                     )}
-                                    {/* Avo Sub-Farm Switcher */}
-                                    {(currentProfile === 'chef_avo' || currentProfile === 'caporal_avo') && (
-                                        <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:20,padding:3,overflowX:'auto',maxWidth:420,WebkitOverflowScrolling:'touch'}}>
-                                            {AVO_SUB_FARMS.map(f => (
-                                                <button key={f} onClick={() => { setAvoFarm(f); localStorage.setItem('avoFarm', f); }}
-                                                    style={{padding:'5px 10px',borderRadius:18,border:'none',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all 0.2s',whiteSpace:'nowrap',flexShrink:0,
-                                                        background: avoFarm === f ? '#D4A847' : 'transparent',
-                                                        color: avoFarm === f ? '#fff' : 'var(--gray-600)'}}>
-                                                    <i className="fa-solid fa-tree" style={{marginRight:4}}></i>{f}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    )}
                                     {/* Mobile profile switcher */}
                                     {isFullAccess && (
-                                        <div className="mobile-profile-switcher" style={{position:'relative'}}>
+                                        <div className="mobile-profile-switcher" style={{position:'relative',flexShrink:0,order:-1}}>
                                             <button onClick={() => setShowMobileProfileMenu(v => !v)}
                                                 style={{display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:20, border:'1.5px solid var(--berry)', background:'var(--berry-pale)', color:'var(--berry)', fontSize:12, fontWeight:600, cursor:'pointer'}}>
                                                 <i className={`fa-solid ${profile?.icon || 'fa-user'}`}></i>
@@ -49729,10 +54852,23 @@ ${rejetHtml}
                                             )}
                                         </div>
                                     )}
+                                    {/* Avo Sub-Farm Switcher */}
+                                    {(currentProfile === 'chef_avo' || currentProfile === 'caporal_avo') && (
+                                        <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:20,padding:3,overflowX:'auto',maxWidth:240,minWidth:0,flexShrink:1,WebkitOverflowScrolling:'touch'}}>
+                                            {AVO_SUB_FARMS.map(f => (
+                                                <button key={f} onClick={() => { setAvoFarm(f); localStorage.setItem('avoFarm', f); }}
+                                                    style={{padding:'5px 10px',borderRadius:18,border:'none',fontSize:11,fontWeight:700,cursor:'pointer',transition:'all 0.2s',whiteSpace:'nowrap',flexShrink:0,
+                                                        background: avoFarm === f ? '#D4A847' : 'transparent',
+                                                        color: avoFarm === f ? '#fff' : 'var(--gray-600)'}}>
+                                                    <i className="fa-solid fa-tree" style={{marginRight:4}}></i>{f}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                     {(() => {
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'recolte', 'hors_recolte', 'quinzaine', 'primes', 'evolution'];
                                         const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
-                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_fournisseurs', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
+                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_fournisseurs', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
@@ -49806,6 +54942,7 @@ ${rejetHtml}
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
                                 {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter }, 'Quinzaine')}
+                                {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter }, 'Primes')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
@@ -49813,12 +54950,13 @@ ${rejetHtml}
                                 {renderTab('qualite_pfq_interne', QualitePFQInterneTab, { data, userProfile }, 'Qualité PFQ')}
                                 {renderTab('qualite_bons_apport', QualiteBonsApportTab, { data, userProfile }, 'Bons Apport')}
                                 {renderTab('qualite_dashboard', QualiteDashboardTab, { data, weeklyBerryFilter, setWeeklyBerryFilter }, 'Qualité Dashboard')}
-                                {renderTab('qualite_inspections', QualiteInspectionsTab, { data, applyVarietyMapping, farmFilter }, 'Inspections')}
+                                {renderTab('qualite_inspections', QualiteInspectionsTab, { data, applyVarietyMapping, farmFilter: currentProfile === 'qualite' ? '' : farmFilter }, 'Inspections')}
                                 {renderTab('qualite_ecarts', QualiteEcartsTab, { data }, 'Écarts')}
                                 {renderTab('qualite_historique', QualiteHistoriqueTab, { data, applyVarietyMapping }, 'Historique Qualité')}
                                 {renderTab('qualite_brix', QualiteBrixTab, { data, applyVarietyMapping }, 'Brix')}
-                                {renderTab('qualite_expeditions', QualiteExpeditionsTab, { data, applyVarietyMapping, varietyMapping, saveVarietyMapping }, 'Expéditions')}
+                                {renderTab('qualite_expeditions', QualiteExpeditionsTab, { data, applyVarietyMapping, varietyMapping, saveVarietyMapping, userProfile, currentProfile }, 'Expéditions')}
                                 {renderTab('qualite_liquidations', QualiteLiquidationsTab, { data, applyVarietyMapping }, 'Liquidations Qualité')}
+                                {renderTab('dashboard_associe', DashboardAssocieTab, { data, applyVarietyMapping, userProfile }, 'Dashboard Associé')}
                                 {renderTab('qualite_reconciliation', QualiteReconciliationTab, { data, applyVarietyMapping }, 'Réconciliation')}
                                 {renderTab('qualite_production', QualiteProductionTab, { data, applyVarietyMapping, hideCycle1, userProfile }, 'Production Qualité')}
                                 {renderTab('chef_production', QualiteProductionTab, { data, applyVarietyMapping, forceFerme: farmFilter, hideCycle1, userProfile }, 'Production Chef')}
@@ -49826,7 +54964,8 @@ ${rejetHtml}
                                 {renderTab('qualite_marche_local', QualiteMarcheLocalTab, { data, userProfile: PROFILES.find(p => p.id === currentProfile) }, 'Marché Local')}
                                 {renderTab('mag_dashboard', MagDashboardStockTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Stock Dashboard')}
                                 {renderTab('mag_parc', MagParcTab, { data }, 'Parc')}
-                                {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Réception')}
+                                {renderTab('mag_bdc_reception', MagBdcReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BDC à réceptionner')}
+                                {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Réception')}
                                 {renderTab('mag_transfert', MagTransfertTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Transfert')}
                                 {renderTab('mag_sortie', MagSortieTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Sortie')}
                                 {renderTab('mag_stock_intrants', MagStockIntrantsTab, {}, 'Stock Intrants')}
@@ -49840,6 +54979,7 @@ ${rejetHtml}
                                 {renderTab('station_historique', StationnaireHistoriqueTab, { farmFilter, currentProfile, userProfile }, 'Historique Irrigation')}
                                 {renderTab('station_scan', StationnaireImportScanTab, { farmFilter, currentProfile }, 'Scanner Fiche')}
                                 {renderTab('station_analyse', StationnaireAnalyseTab, { farmFilter, currentProfile }, 'Analyse Irrigation')}
+                                {renderTab('station_intelligence', IrrigationIntelligenceTab, { farmFilter, currentProfile, userProfile }, 'Pilotage Irrigation')}
                                 {renderTab('station_meteo', MeteoTab, { data, farmFilter }, 'Météo')}
                                 {renderTab('sec_registre', SecurityRegistreTab, { farmFilter, currentProfile }, 'Registre Sécurité')}
                                 {renderTab('sec_scan', SecurityScanRegistreTab, { farmFilter, currentProfile }, 'Scan Registre')}
@@ -49847,7 +54987,9 @@ ${rejetHtml}
                                 {renderTab('fin_dashboard', FinDashboardTab, { data, farmFilter, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Finance Dashboard')}
                                 {renderTab('fin_ca', FinCATab, { data }, 'Chiffre Affaires')}
                                 {renderTab('fin_carburant', FinCarburantTab, { data }, 'Carburant')}
+                                {renderTab('fin_plants', FinPlantsTab, { data, currentProfile }, 'Plants')}
                                 {renderTab('fin_telecom', FinTelecomTab, { data }, 'Maroc Télécom')}
+                                {renderTab('fin_ojra', FinOjraTab, { data }, 'OJRA Paie')}
                                 {renderTab('fin_stock', FinStockTab, { data }, 'Stock Finance')}
                                 {renderTab('fin_liquidations', FinLiquidationsTab, { data, currentProfile }, 'Liquidations')}
                                 {renderTab('fin_marche_local', FinanceMarcheLocalTab, { data, userProfile: PROFILES.find(p => p.id === currentProfile) }, 'Marché Local Finance')}

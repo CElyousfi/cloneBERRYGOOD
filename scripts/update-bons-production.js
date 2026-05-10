@@ -78,8 +78,14 @@ function run() {
 
   // ===== 1. Parse BONS from EXPORT + LOCAL sheets =====
   for (const sheet of SHEETS) {
-    const ws = wb.Sheets[sheet.name];
-    if (!ws) { console.warn(`Sheet "${sheet.name}" introuvable`); continue; }
+    let ws = wb.Sheets[sheet.name];
+    if (!ws) ws = wb.Sheets[sheet.name.trim()];
+    if (!ws) {
+      const target = sheet.name.trim().toUpperCase();
+      const match = Object.entries(wb.Sheets).find(([k]) => k.trim().toUpperCase() === target);
+      if (match) ws = match[1];
+    }
+    if (!ws) { console.warn(`Sheet "${sheet.name}" introuvable. Feuilles: ${wb.SheetNames.join(', ')}`); continue; }
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
 
     for (const row of rows) {
@@ -236,7 +242,7 @@ function run() {
     const deduped = [];
     let idx = 0;
     for (const bon of allParsed) {
-      const key = `${bon.bonApport}_${bon.designation}`;
+      const key = `${bon.bonApport}_${bon.designation}_${bon.poidsLot}`;
       if (seen.has(key)) continue;
       seen.add(key);
       idx++;
@@ -260,13 +266,13 @@ function run() {
   }
   console.log(`Bons existants: ${existing.length}`);
 
-  const existingCompositeKeys = new Set(existing.map(b => `${b.bonApport}_${b.designation}`));
+  const existingCompositeKeys = new Set(existing.map(b => `${b.bonApport}_${b.designation}_${b.poidsLot}`));
   const newBonsFinal = [];
   const seenComposite = new Set();
   let nextIdx = existing.length;
 
   for (const bon of allParsed) {
-    const compositeKey = `${bon.bonApport}_${bon.designation}`;
+    const compositeKey = `${bon.bonApport}_${bon.designation}_${bon.poidsLot}`;
     if (existingCompositeKeys.has(compositeKey)) continue;
     if (seenComposite.has(compositeKey)) continue;
     seenComposite.add(compositeKey);

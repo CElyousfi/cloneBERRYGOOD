@@ -1,5 +1,15 @@
 [
   {
+    "id": "enc_28",
+    "client": "Mr MONAIM LOCAL",
+    "date": "2026-03-26",
+    "montant": 20000,
+    "semaine": "SEMAINE 13",
+    "bonNum": "-",
+    "ferme": "F1",
+    "source": "excel_import"
+  },
+  {
     "id": "enc_26",
     "client": "MUSTAPHA CHAFIK A",
     "date": "2026-03-18",
@@ -70,7 +80,7 @@
     "source": "excel_import"
   },
   {
-    "id": "enc_28",
+    "id": "enc_29",
     "client": "MUSTAPHA CHAFIK A",
     "date": "2026-02-08",
     "montant": 7600,
@@ -277,26 +287,6 @@
     "semaine": "SEMAINE 36",
     "bonNum": "",
     "ferme": "F5",
-    "source": "excel_import"
-  },
-  {
-    "id": "enc_29",
-    "client": "IRAQI MOHAMED",
-    "date": "2025-12-08",
-    "montant": 11025,
-    "semaine": "SEMAINE 50",
-    "bonNum": "-",
-    "ferme": "F1",
-    "source": "excel_import"
-  },
-  {
-    "id": "enc_30",
-    "client": "IRAQI MOHAMED",
-    "date": "2025-12-10",
-    "montant": 750,
-    "semaine": "SEMAINE 50",
-    "bonNum": "-",
-    "ferme": "F1",
     "source": "excel_import"
   }
 ]
