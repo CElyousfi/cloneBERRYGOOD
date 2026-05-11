@@ -2,10 +2,9 @@ name: Fetch Telecom Data
 
 on:
   schedule:
-    # Les factures IAM sont publiées vers le 1er-2 du mois.
-    # On scrape du 1 au 5 de chaque mois, deux fois par jour, pour être sûr de capter la nouvelle facture.
-    - cron: '0 7 1-5 * *'   # 07:00 UTC = 08:00 Maroc
-    - cron: '0 14 1-5 * *'  # 14:00 UTC = 15:00 Maroc
+    # Scrape quotidien à 08:00 Maroc — capte la nouvelle facture dès publication
+    # et reste à jour si IAM met à jour des données existantes.
+    - cron: '0 7 * * *'   # 07:00 UTC = 08:00 Maroc
   workflow_dispatch: # Permet de lancer manuellement depuis GitHub
 
 jobs:
