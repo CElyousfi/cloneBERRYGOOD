@@ -344,6 +344,7 @@
             { id: 'dt', label: 'Dir. Technique', name: 'Directeur Technique', icon: 'fa-helmet-safety', farm: 'F1', fullName: 'Directeur Technique', switchableFarms: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'] },
             { id: 'stationnaire_f1', label: 'Station. F1', name: 'Stationnaire F1', icon: 'fa-faucet-drip', farm: 'F1', fullName: 'Stationnaire Irrigation F1' },
             { id: 'stationnaire_f5', label: 'Station. F5', name: 'Stationnaire F5', icon: 'fa-faucet-drip', farm: 'F5', fullName: 'Stationnaire Irrigation F5' },
+            { id: 'stationnaire_avo', label: 'Station. Avo.', name: 'Stationnaire Avocatier', icon: 'fa-faucet-drip', farm: 'F2', fullName: 'Stationnaire Irrigation Avocatier', switchableFarms: ['F2', 'F3', 'F4', 'F6', 'BAHIA'] },
             { id: 'securite', label: 'Sécurité', name: 'BSNL Sécurité', icon: 'fa-shield-halved', farm: 'F1', fullName: 'BSNL Sécurité', switchableFarms: ['F1', 'F5'] },
         ];
 
@@ -376,6 +377,7 @@
             { id: 'recolte', label: 'Récolte', icon: 'fa-basket-shopping' },
             { id: 'cout_recolte', label: 'Coût Récolte', icon: 'fa-calculator' },
             { id: 'qualite_inspections', label: 'Inspections', icon: 'fa-clipboard-check', chefOnly: true },
+            { id: 'productivity_report', label: 'Productivity Driscoll\'s', icon: 'fa-chart-line', chefOnly: true },
             { id: 'hors_recolte', label: 'Hors Récolte', icon: 'fa-trowel' },
             { id: 'hors_recolte_suivi', label: 'Rendement Hors Récolte', icon: 'fa-chart-gantt' },
             { id: 'chef_suivi_caporal', label: 'Suivi Caporal', icon: 'fa-clipboard-list', chefOnly: true },
@@ -383,6 +385,7 @@
             { id: 'rh_equipes', label: 'Équipes', icon: 'fa-people-group', rhOnly: true },
             { id: 'primes', label: 'Primes', icon: 'fa-award', rhOnly: true },
             { id: 'chef_agronomie', label: 'Agronomie', icon: 'fa-seedling' },
+            { id: 'paie', label: 'Paie', icon: 'fa-money-bill-wave', rhOnly: true },
             { id: 'parametres', label: 'Paramètres', icon: 'fa-sliders', rhOnly: true },
             { id: 'chef_production', label: 'Production', icon: 'fa-industry', chefOnly: true },
             { id: 'chef_tracking', label: 'Suivi Commandes', icon: 'fa-route', chefOnly: true },
@@ -396,6 +399,9 @@
 
         const NAV_ITEMS_QUALITE = [
             { id: 'qualite_inspections', label: 'Inspections du Jour', icon: 'fa-clipboard-check' },
+            { id: 'qualite_pfq_interne', label: 'PFQ Interne', icon: 'fa-clipboard-list' },
+            { id: 'qualite_ecarts', label: 'Écarts & Défauts', icon: 'fa-triangle-exclamation' },
+            { id: 'qualite_suivi_calibre', label: 'Suivi Calibre', icon: 'fa-ruler-combined' },
             { id: 'qualite_historique', label: 'Historique PFQ', icon: 'fa-chart-line' },
             { id: 'achats_rapprochement', label: 'Rapprochement', icon: 'fa-code-compare' },
             { id: 'caporal_suivi', label: 'Saisie Hors Récolte', icon: 'fa-clipboard-list' },
@@ -442,6 +448,7 @@
             { id: 'cout_recolte', label: 'Coût Récolte', icon: 'fa-calculator' },
             { id: 'quinzaine', label: 'Dashboard Quinzaine', icon: 'fa-calendar-days', dgOnly: true },
             { id: 'fin_dashboard', label: 'CPC / Dashboard', icon: 'fa-chart-pie' },
+            { id: 'fin_tresorerie', label: 'Trésorerie', icon: 'fa-vault' },
             { id: 'fin_ca', label: 'Chiffre d\'Affaires', icon: 'fa-coins' },
             { id: 'fin_carburant', label: 'Carburant', icon: 'fa-gas-pump' },
             { id: 'fin_plants', label: 'Plants', icon: 'fa-seedling', dgOnly: true },
@@ -451,6 +458,7 @@
             { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
             { id: 'mag_inventaire', label: 'Inventaire', icon: 'fa-clipboard-list' },
             { id: 'fin_liquidations', label: 'Suivi Liquidations', icon: 'fa-file-invoice-dollar' },
+            { id: 'productivity_report', label: 'Productivity Driscoll\'s', icon: 'fa-chart-line' },
             { id: 'qualite_liquidations', label: 'Liquidations Qualité', icon: 'fa-coins' },
             { id: 'qualite_reconciliation', label: 'Réconciliation', icon: 'fa-scale-balanced' },
             { id: 'fin_bdc', label: 'Suivi BDC', icon: 'fa-file-contract' },
@@ -539,6 +547,8 @@
         const NAV_ITEMS_SECURITE = [
             { id: 'sec_registre', label: 'Registre Entrées/Sorties', icon: 'fa-book' },
             { id: 'sec_scan', label: 'Scan Registre', icon: 'fa-file-image' },
+            { id: 'sec_envois_wa', label: 'Registres WhatsApp', icon: 'fa-paper-plane' },
+            { id: 'sec_incidents', label: 'Incidents', icon: 'fa-triangle-exclamation' },
             { id: 'sec_tunnels', label: 'Photos Tunnels', icon: 'fa-camera', f5Only: true },
         ];
 
@@ -1635,9 +1645,9 @@
                   parMois: [{m:'Jul',v:0},{m:'Aoû',v:0},{m:'Sep',v:157632},{m:'Oct',v:0},{m:'Nov',v:53233},{m:'Déc',v:200161}],
                   detail: [{desc:'Maravilla TP 45cc (21 888 plants)', montant:157632},{desc:'Yazmin TP 45cc (22 640 plants)', montant:163052},{desc:'Reyna TP 45cc (27 796 plants)', montant:200162},{desc:'Cascade TP 45cc (414 plants)', montant:2982}],
                   fournisseur: "Driscoll's Du Maroc SARL", ferme: 'F1 + F5' },
-                { poste: 'Loyer Terrains', total: 335375, icon: 'fa-land-mine-on', color: '#8B6914',
-                  parMois: [{m:'Jul',v:55896},{m:'Aoû',v:55896},{m:'Sep',v:55896},{m:'Oct',v:55896},{m:'Nov',v:55896},{m:'Déc',v:55896}],
-                  detail: [{desc:'Ferme 172 (F1) - 5.7 Ha', montant:199500},{desc:'Ferme 195 (F5) - 3.1 Ha', montant:108375},{desc:'Terrain Avocatier - 0.8 Ha', montant:27500}],
+                { poste: 'Loyer Terrains', total: 670750, icon: 'fa-land-mine-on', color: '#8B6914',
+                  parMois: [{m:'Jul',v:55896},{m:'Aoû',v:55896},{m:'Sep',v:55896},{m:'Oct',v:55896},{m:'Nov',v:55896},{m:'Déc',v:55896},{m:'Jan',v:55896},{m:'Fév',v:55896},{m:'Mar',v:55896},{m:'Avr',v:55896},{m:'Mai',v:55896},{m:'Jui',v:55894}],
+                  detail: [{desc:'Ferme 172 (F1) - 5.7 Ha', montant:399000},{desc:'Ferme 195 (F5) - 3.1 Ha', montant:216750},{desc:'Terrain Avocatier - 0.8 Ha', montant:55000}],
                   fournisseur: 'Propriétaires fonciers', ferme: 'Toutes' },
                 { poste: 'Engrais', total: 773519, icon: 'fa-flask', color: '#27AE60',
                   parMois: [{m:'Jul',v:85000},{m:'Aoû',v:142000},{m:'Sep',v:168000},{m:'Oct',v:135000},{m:'Nov',v:128519},{m:'Déc',v:115000}],
@@ -1695,9 +1705,24 @@
                   parMois: [{m:'Jul',v:85000},{m:'Aoû',v:88000},{m:'Sep',v:95000},{m:'Oct',v:102000},{m:'Nov',v:98612},{m:'Déc',v:93000}],
                   detail: [{desc:'Honoraires comptable / juridique', montant:145000},{desc:'Assurances (AT, RC, Multirisque)', montant:125000},{desc:'Télécom et internet', montant:48000},{desc:'Fournitures et consommables', montant:82612},{desc:'Frais bancaires', montant:65000},{desc:'Location bureaux / stockage', montant:56000},{desc:'Divers et imprévus', montant:40000}],
                   fournisseur: 'Divers prestataires', ferme: 'Toutes' },
+                { poste: 'Amortissement & Frais Financiers', total: 1669000, icon: 'fa-chart-line', color: '#5D6D7E',
+                  parMois: [{m:'Jul',v:139083},{m:'Aoû',v:139083},{m:'Sep',v:139083},{m:'Oct',v:139083},{m:'Nov',v:139083},{m:'Déc',v:139083},{m:'Jan',v:139083},{m:'Fév',v:139083},{m:'Mar',v:139083},{m:'Avr',v:139083},{m:'Mai',v:139083},{m:'Jui',v:139087}],
+                  detail: [
+                    {desc:'AVOCAT - 30.7 Ha', montant:935005},
+                    {desc:'S3/S7 Maravilla MT F1 - 5.2 Ha', montant:158372},
+                    {desc:'S1/S4 Maravilla MD F1 - 4.2 Ha', montant:127916},
+                    {desc:'S2/S5 Yazmin MD F1 - 2.0 Ha', montant:60912},
+                    {desc:'Cascade S8-1 F1 - 1.5 Ha', montant:45684},
+                    {desc:'Breeze S8-2 F1 - 1.0 Ha', montant:30456},
+                    {desc:'S10 Yazmin MT F5 - 1.9 Ha', montant:57867},
+                    {desc:'S13 Yazmin MD F5 - 2.8 Ha', montant:85277},
+                    {desc:'S9 Reyna F5 - 3.0 Ha', montant:91368},
+                    {desc:'Corina S8 F5 - 2.5 Ha', montant:76140},
+                  ],
+                  fournisseur: 'Banques / Comptabilité', ferme: 'Toutes' },
             ];
-            const totalChargesGlobales = 7680190;
-            const cfDea = 834500;
+            const totalChargesGlobales = 9684565;
+            const cfDea = 1669000;
 
             // EBE par variété Framboise
             const ebeParVariete = [
@@ -2345,6 +2370,13 @@
               designations: ['F5 BREEZE'], enProduction: false },
             { id: 'C2-NP-CAS',      cycle: 2, variete: 'Cascade',   sousVariete: 'Nouvelle plantation', ferme: 'F5', ha: 1.96, culture: 'Myrtille', nbTunnels: 0, nbPlants: 8540, secteurs: ['ex-S13'],
               designations: ['F5 CASCADE'], enProduction: false },
+
+            // === AVOCATIER — culture pérenne, une parcelle par sous-ferme (cycle unique) ===
+            { id: 'AVO-F2',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F2',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F2'],    designations: ['AVOCATIER F2'] },
+            { id: 'AVO-F3',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F3',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F3'],    designations: ['AVOCATIER F3'] },
+            { id: 'AVO-F4',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F4',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F4'],    designations: ['AVOCATIER F4'] },
+            { id: 'AVO-F6',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F6',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F6'],    designations: ['AVOCATIER F6'] },
+            { id: 'AVO-BAH', cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'BAHIA', ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['BAHIA'], designations: ['AVOCATIER BAHIA'] },
         ];
 
         // Lookup plat : toute designation → { variete, sousVariete, ferme, culture }
@@ -3174,7 +3206,7 @@
 
             // Map bons to parcelles using normalizeParcelle
             const currentCycle = getCycle(new Date().toISOString());
-            const parcelles = PARCELLES_CULTURALES.filter(pc => pc.ferme === farmFilter && pc.cycle === currentCycle && pc.enProduction !== false);
+            const parcelles = PARCELLES_CULTURALES.filter(pc => pc.ferme === farmFilter && (pc.culture === 'Avocatier' || pc.cycle === currentCycle) && pc.enProduction !== false);
             const parcelleStats = {};
             parcelles.forEach(pc => {
                 const label = pc.sousVariete ? `${pc.variete} ${pc.sousVariete}` : pc.variete;
@@ -9409,6 +9441,215 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
             );
         }
 
+        // ===================== SUIVI CALIBRE TAB =====================
+        function QualiteSuiviCalibreTab({ data }) {
+            const [records, setRecords] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [filterFerme, setFilterFerme] = useState('');
+            const [filterVariete, setFilterVariete] = useState('');
+            const [filterBloc, setFilterBloc] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+
+            useEffect(() => {
+                const load = async () => {
+                    setLoading(true);
+                    try {
+                        let firestoreData = [];
+                        if (typeof firebase !== 'undefined' && firebase.firestore) {
+                            const db = firebase.firestore();
+                            const snap = await db.collection('pfq_interne')
+                                .orderBy('createdAt', 'desc').limit(500).get();
+                            firestoreData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                        }
+                        const localData = JSON.parse(localStorage.getItem('pfq_interne_local') || '[]');
+                        setRecords([...localData, ...firestoreData]);
+                    } catch (e) {
+                        console.error('Error loading suivi calibre:', e);
+                        setRecords(JSON.parse(localStorage.getItem('pfq_interne_local') || '[]'));
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                load();
+            }, []);
+
+            // Aplatir: une ligne par barquette avec calibre
+            const rows = useMemo(() => {
+                const out = [];
+                records.forEach(r => {
+                    (r.barquettes || []).forEach(b => {
+                        const cal = b.calibre != null ? b.calibre : (b.poids > 0 && b.nbFruits > 0 ? Math.round(((b.poids - (b.poidsEmballage || 7)) / b.nbFruits) * 100) / 100 : null);
+                        if (cal == null) return;
+                        out.push({
+                            date: r.date || (r.createdAt ? String(r.createdAt).slice(0, 10) : ''),
+                            ferme: r.blocFerme || '',
+                            variete: r.blocVariete || '',
+                            bloc: r.blocLabel || r.bloc || '',
+                            bonApport: r.bonApport || '',
+                            numero: b.numero,
+                            poids: b.poids,
+                            poidsEmballage: b.poidsEmballage || 0,
+                            nbFruits: b.nbFruits,
+                            calibre: cal,
+                        });
+                    });
+                });
+                return out;
+            }, [records]);
+
+            const fermes = useMemo(() => Array.from(new Set(rows.map(r => r.ferme).filter(Boolean))).sort(), [rows]);
+            const varietes = useMemo(() => Array.from(new Set(rows.map(r => r.variete).filter(Boolean))).sort(), [rows]);
+            const blocs = useMemo(() => Array.from(new Set(rows.map(r => r.bloc).filter(Boolean))).sort(), [rows]);
+
+            const filtered = useMemo(() => rows.filter(r => {
+                if (filterFerme && r.ferme !== filterFerme) return false;
+                if (filterVariete && r.variete !== filterVariete) return false;
+                if (filterBloc && r.bloc !== filterBloc) return false;
+                if (dateFrom && r.date < dateFrom) return false;
+                if (dateTo && r.date > dateTo) return false;
+                return true;
+            }), [rows, filterFerme, filterVariete, filterBloc, dateFrom, dateTo]);
+
+            // Moyennes par bloc/variete
+            const aggByBloc = useMemo(() => {
+                const map = {};
+                filtered.forEach(r => {
+                    const key = r.bloc;
+                    if (!map[key]) map[key] = { bloc: r.bloc, ferme: r.ferme, variete: r.variete, sum: 0, n: 0, min: Infinity, max: -Infinity };
+                    map[key].sum += r.calibre;
+                    map[key].n += 1;
+                    map[key].min = Math.min(map[key].min, r.calibre);
+                    map[key].max = Math.max(map[key].max, r.calibre);
+                });
+                return Object.values(map).map(o => ({ ...o, avg: o.n > 0 ? o.sum / o.n : 0 })).sort((a, b) => b.avg - a.avg);
+            }, [filtered]);
+
+            const aggByVariete = useMemo(() => {
+                const map = {};
+                filtered.forEach(r => {
+                    const key = r.variete;
+                    if (!map[key]) map[key] = { variete: r.variete, sum: 0, n: 0 };
+                    map[key].sum += r.calibre;
+                    map[key].n += 1;
+                });
+                return Object.values(map).map(o => ({ ...o, avg: o.n > 0 ? o.sum / o.n : 0 })).sort((a, b) => b.avg - a.avg);
+            }, [filtered]);
+
+            const globalAvg = filtered.length > 0 ? filtered.reduce((s, r) => s + r.calibre, 0) / filtered.length : 0;
+
+            const calColor = (c) => c >= 4 ? 'var(--green)' : c >= 3 ? 'var(--blue)' : c >= 2 ? 'var(--orange)' : 'var(--red)';
+
+            if (loading) return <div className="tab-content fade-in"><Panel title="Suivi Calibre" icon="fa-ruler-combined"><div style={{padding:40,textAlign:'center',color:'var(--gray-500)'}}>Chargement…</div></Panel></div>;
+
+            return (
+                <div className="tab-content fade-in">
+                    <Panel title="Suivi Calibre — PFQ Interne" icon="fa-ruler-combined">
+                        <div style={{padding:16}}>
+                            {/* Filtres */}
+                            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16}}>
+                                <select value={filterFerme} onChange={e => setFilterFerme(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13}}>
+                                    <option value="">Toutes fermes</option>
+                                    {fermes.map(f => <option key={f} value={f}>{f}</option>)}
+                                </select>
+                                <select value={filterVariete} onChange={e => setFilterVariete(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13}}>
+                                    <option value="">Toutes variétés</option>
+                                    {varietes.map(v => <option key={v} value={v}>{v}</option>)}
+                                </select>
+                                <select value={filterBloc} onChange={e => setFilterBloc(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13}}>
+                                    <option value="">Tous blocs</option>
+                                    {blocs.map(b => <option key={b} value={b}>{b}</option>)}
+                                </select>
+                                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13}} />
+                                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{padding:'6px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13}} />
+                            </div>
+
+                            {/* KPI globaux */}
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:12,marginBottom:20}}>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Calibre moyen</div>
+                                    <div style={{fontSize:26,fontWeight:700,color:calColor(globalAvg),marginTop:4}}>{globalAvg.toFixed(2)} g</div>
+                                </div>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Barquettes</div>
+                                    <div style={{fontSize:26,fontWeight:700,marginTop:4}}>{filtered.length}</div>
+                                </div>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Blocs suivis</div>
+                                    <div style={{fontSize:26,fontWeight:700,marginTop:4}}>{aggByBloc.length}</div>
+                                </div>
+                            </div>
+
+                            {/* Calibre moyen par variété */}
+                            <div style={{marginBottom:24}}>
+                                <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>Calibre moyen par variété</h3>
+                                <table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
+                                    <thead><tr style={{background:'var(--gray-50)'}}><th style={{textAlign:'left',padding:'8px 10px'}}>Variété</th><th style={{textAlign:'right',padding:'8px 10px'}}>Barquettes</th><th style={{textAlign:'right',padding:'8px 10px'}}>Calibre moyen (g)</th></tr></thead>
+                                    <tbody>
+                                        {aggByVariete.map(v => (
+                                            <tr key={v.variete} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                <td style={{padding:'6px 10px',fontWeight:600}}>{v.variete}</td>
+                                                <td style={{padding:'6px 10px',textAlign:'right'}}>{v.n}</td>
+                                                <td style={{padding:'6px 10px',textAlign:'right',fontWeight:700,color:calColor(v.avg)}}>{v.avg.toFixed(2)}</td>
+                                            </tr>
+                                        ))}
+                                        {aggByVariete.length === 0 && <tr><td colSpan={3} style={{padding:20,textAlign:'center',color:'var(--gray-400)'}}>Aucune donnée</td></tr>}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Calibre par bloc */}
+                            <div style={{marginBottom:24}}>
+                                <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>Calibre moyen par bloc</h3>
+                                <table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
+                                    <thead><tr style={{background:'var(--gray-50)'}}><th style={{textAlign:'left',padding:'8px 10px'}}>Bloc</th><th style={{textAlign:'left',padding:'8px 10px'}}>Ferme</th><th style={{textAlign:'left',padding:'8px 10px'}}>Variété</th><th style={{textAlign:'right',padding:'8px 10px'}}>Barq.</th><th style={{textAlign:'right',padding:'8px 10px'}}>Min</th><th style={{textAlign:'right',padding:'8px 10px'}}>Moyen</th><th style={{textAlign:'right',padding:'8px 10px'}}>Max</th></tr></thead>
+                                    <tbody>
+                                        {aggByBloc.map(b => (
+                                            <tr key={b.bloc} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                <td style={{padding:'6px 10px',fontWeight:600}}>{b.bloc}</td>
+                                                <td style={{padding:'6px 10px'}}>{b.ferme}</td>
+                                                <td style={{padding:'6px 10px'}}>{b.variete}</td>
+                                                <td style={{padding:'6px 10px',textAlign:'right'}}>{b.n}</td>
+                                                <td style={{padding:'6px 10px',textAlign:'right'}}>{b.min.toFixed(2)}</td>
+                                                <td style={{padding:'6px 10px',textAlign:'right',fontWeight:700,color:calColor(b.avg)}}>{b.avg.toFixed(2)}</td>
+                                                <td style={{padding:'6px 10px',textAlign:'right'}}>{b.max.toFixed(2)}</td>
+                                            </tr>
+                                        ))}
+                                        {aggByBloc.length === 0 && <tr><td colSpan={7} style={{padding:20,textAlign:'center',color:'var(--gray-400)'}}>Aucune donnée</td></tr>}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Détail par barquette */}
+                            <div>
+                                <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>Détail des barquettes ({filtered.length})</h3>
+                                <div style={{maxHeight:400,overflowY:'auto',border:'1px solid var(--gray-100)',borderRadius:8}}>
+                                    <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+                                        <thead style={{position:'sticky',top:0,background:'var(--gray-50)'}}><tr><th style={{textAlign:'left',padding:'6px 10px'}}>Date</th><th style={{textAlign:'left',padding:'6px 10px'}}>Bloc</th><th style={{textAlign:'left',padding:'6px 10px'}}>Variété</th><th style={{textAlign:'right',padding:'6px 10px'}}>BA</th><th style={{textAlign:'right',padding:'6px 10px'}}>Barq.</th><th style={{textAlign:'right',padding:'6px 10px'}}>P. avec emb.</th><th style={{textAlign:'right',padding:'6px 10px'}}>P. emb.</th><th style={{textAlign:'right',padding:'6px 10px'}}>Nb fruits</th><th style={{textAlign:'right',padding:'6px 10px'}}>Calibre</th></tr></thead>
+                                        <tbody>
+                                            {filtered.slice(0, 500).map((r, i) => (
+                                                <tr key={i} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                    <td style={{padding:'5px 10px'}}>{r.date}</td>
+                                                    <td style={{padding:'5px 10px'}}>{r.bloc}</td>
+                                                    <td style={{padding:'5px 10px'}}>{r.variete}</td>
+                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{r.bonApport}</td>
+                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{r.numero}</td>
+                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{r.poids}</td>
+                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{r.poidsEmballage}</td>
+                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{r.nbFruits}</td>
+                                                    <td style={{padding:'5px 10px',textAlign:'right',fontWeight:700,color:calColor(r.calibre)}}>{r.calibre.toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </Panel>
+                </div>
+            );
+        }
+
         // ===================== PFQ INTERNE TAB =====================
         function QualitePFQInterneTab({ data, userProfile }) {
             // Charger la config PFQ depuis localStorage (définie dans Paramètres)
@@ -9468,6 +9709,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
 
             const emptyBarquette = () => ({
                 poids: '',
+                poidsEmballage: '',
                 nbFruits: '',
                 defauts: Object.fromEntries([...DEFAUTS_CONDITION, ...DEFAUTS_APPARENCE].map(d => [d.key, 0])),
             });
@@ -9525,6 +9767,8 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
 
             const nbBarqRecommande = getNbBarquettesRecommande(parseFloat(formData.poidsLot));
             const [barquettes, setBarquettes] = useState(draft?.barquettes || [emptyBarquette(), emptyBarquette(), emptyBarquette()]);
+            // Wizard step: 0 = infos bon d'apport, 1..N = barquettes, N+1 = résultat
+            const [wizardStep, setWizardStep] = useState(draft?.wizardStep || 0);
 
             // Sauvegarde auto dans sessionStorage à chaque modification
             useEffect(() => {
@@ -9557,8 +9801,6 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
             const [saving, setSaving] = useState(false);
             const [showBonApport, setShowBonApport] = useState(false);
             const [savedPFQ, setSavedPFQ] = useState(null);
-            // Wizard step: 0 = infos bon d'apport, 1..N = barquettes, N+1 = résultat
-            const [wizardStep, setWizardStep] = useState(draft?.wizardStep || 0);
             const totalSteps = barquettes.length + 2;
 
             // Confection types: chargées depuis localStorage (configurable dans Paramètres) + expéditions Driscoll's
@@ -9636,12 +9878,14 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                 });
             };
 
-            // Calcul du calibre: (poids - 7g tare) / nb_fruits
+            // Calcul du calibre: (poids avec emballage - poids emballage) / nb_fruits
             const getCalibre = (b) => {
                 const p = parseFloat(b.poids);
                 const n = parseInt(b.nbFruits);
                 if (!p || !n) return null;
-                return Math.round(((p - 7) / n) * 100) / 100;
+                const tare = parseFloat(b.poidsEmballage);
+                const tareValue = isNaN(tare) ? 7 : tare;
+                return Math.round(((p - tareValue) / n) * 100) / 100;
             };
 
             // Calcul PFQ GLOBAL — méthode Excel Driscoll's:
@@ -9718,6 +9962,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                         barquettes: barquettes.map((b, i) => ({
                             numero: i + 1,
                             poids: parseFloat(b.poids) || 0,
+                            poidsEmballage: parseFloat(b.poidsEmballage) || 0,
                             nbFruits: parseInt(b.nbFruits) || 0,
                             calibre: getCalibre(b),
                             defauts: b.defauts,
@@ -9869,6 +10114,9 @@ ${rejetHtml}
                     <div className="tab-content fade-in">
                         <Panel title="PFQ Interne — Rapport d'Inspection" icon="fa-file-invoice" actions={
                             <div style={{display:'flex',gap:8}}>
+                                <button onClick={() => setShowBonApport(false)} style={{padding:'6px 14px',background:'var(--gray-100)',color:'var(--gray-700)',border:'1px solid var(--gray-300)',borderRadius:8,fontSize:12,cursor:'pointer',fontWeight:600}}>
+                                    <i className="fa-solid fa-arrow-left" style={{marginRight:6}}></i>Retour
+                                </button>
                                 <button onClick={handlePrint} style={{padding:'6px 14px',background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,fontSize:12,cursor:'pointer',fontWeight:600}}>
                                     <i className="fa-solid fa-print" style={{marginRight:6}}></i>Imprimer
                                 </button>
@@ -10248,12 +10496,17 @@ ${rejetHtml}
                                         )}
                                     </div>
 
-                                    {/* Poids, Nb Fruits, Calibre */}
-                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+                                    {/* Poids avec emballage, Poids emballage, Nb Fruits */}
+                                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
                                         <div>
-                                            <label style={labelStyle}>Poids (g)</label>
+                                            <label style={labelStyle}>Poids avec Emballage (g)</label>
                                             <input type="number" placeholder="142" value={barq.poids}
                                                 onChange={e => updateBarquette(barqIdx, 'poids', e.target.value)} style={{...inputStyle,fontSize:16,fontWeight:600}} />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Poids Emballage (g)</label>
+                                            <input type="number" placeholder="7" value={barq.poidsEmballage}
+                                                onChange={e => updateBarquette(barqIdx, 'poidsEmballage', e.target.value)} style={{...inputStyle,fontSize:16,fontWeight:600}} />
                                         </div>
                                         <div>
                                             <label style={labelStyle}>Nombre de fruits *</label>
@@ -17006,6 +17259,8 @@ ${rejetHtml}
             const [chartVariete, setChartVariete] = useState('');
             const [popupWeek, setPopupWeek] = useState(null); // { week, year }
             const [kpiDetailPopup, setKpiDetailPopup] = useState(null); // 'gsnet' | 'qty' | null
+            const [forecastsByFruit, setForecastsByFruit] = useState({ framboise: {}, myrtille: {} }); // { framboise: { week: {minMad,maxMad,avgMad,year,updatedAt} } }
+            const [forecastModal, setForecastModal] = useState(null); // { fruitCode, year, step, file, imageB64, mediaType, weeks, loading, error }
 
             // ISO week number helper
             const getISOWeek = (dateStr) => {
@@ -17028,15 +17283,114 @@ ${rejetHtml}
             };
 
             React.useEffect(() => {
+                const yr = new Date().getFullYear();
                 Promise.all([
                     cachedFetch('/api/email-analysis?action=liquidations'),
                     cachedFetch('/api/email-analysis?action=expeditions&limit=2000'),
-                ]).then(([liqJson, expJson]) => {
+                    cachedFetch('/api/email-analysis?action=liquidation-forecast-list&year=' + yr),
+                ]).then(([liqJson, expJson, fcJson]) => {
                     if (liqJson.success) setLiquidations(liqJson.liquidations.filter(l => l.rows && l.rows.length > 0));
                     if (expJson.success && expJson.expeditions) setExpeditions(expJson.expeditions);
+                    if (fcJson && fcJson.success) {
+                        const byFruit = { framboise: {}, myrtille: {} };
+                        (fcJson.forecasts || []).forEach(f => {
+                            const k = f.fruit;
+                            if (!byFruit[k]) byFruit[k] = {};
+                            Object.entries(f.weeks || {}).forEach(([w, v]) => {
+                                byFruit[k][w] = { ...v, year: f.year, updatedAt: f.updatedAt };
+                            });
+                        });
+                        setForecastsByFruit(byFruit);
+                    }
                 }).catch(() => {}).finally(() => setLoading(false));
                 loadBonsFromFirestore().then(bons => setBonsApport(bons)).catch(() => {});
             }, []);
+
+            // Forecast lookup helper: returns avg MAD/kg for (fruit, week) or null
+            const getForecastPrice = (fruit, week) => {
+                const f = (fruit || '').toLowerCase();
+                const w = String(week);
+                const entry = forecastsByFruit?.[f]?.[w];
+                return entry && Number.isFinite(entry.avgMad) ? entry.avgMad : null;
+            };
+
+            // File → base64 helper
+            const fileToBase64 = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+
+            const openForecastImport = (fruitCode) => {
+                setForecastModal({ fruitCode: fruitCode || 'RASP', year: new Date().getFullYear(), step: 'pick', file: null, imageB64: null, mediaType: null, weeks: [], loading: false, error: null });
+            };
+
+            const handleForecastFile = async (file) => {
+                if (!file) return;
+                setForecastModal(m => ({ ...m, file, loading: true, error: null }));
+                try {
+                    const dataUrl = await fileToBase64(file);
+                    const mediaType = file.type || 'image/png';
+                    setForecastModal(m => ({ ...m, imageB64: dataUrl, mediaType, loading: false, step: 'ready' }));
+                } catch (e) {
+                    setForecastModal(m => ({ ...m, loading: false, error: 'Lecture du fichier impossible' }));
+                }
+            };
+
+            const runForecastExtract = async () => {
+                setForecastModal(m => ({ ...m, loading: true, error: null }));
+                try {
+                    const m0 = forecastModal;
+                    const resp = await fetch('/api/email-analysis?action=liquidation-forecast-extract', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fruitCode: m0.fruitCode, imageBase64: m0.imageB64, mediaType: m0.mediaType }),
+                    });
+                    const j = await resp.json();
+                    if (!j.success) throw new Error(j.error || 'Extraction échouée');
+                    const yr = (j.weeks && j.weeks[0] && j.weeks[0].year) || m0.year;
+                    setForecastModal(m => ({ ...m, loading: false, step: 'review', weeks: j.weeks || [], year: yr }));
+                } catch (e) {
+                    setForecastModal(m => ({ ...m, loading: false, error: e.message || 'Erreur extraction' }));
+                }
+            };
+
+            const saveForecast = async () => {
+                setForecastModal(m => ({ ...m, loading: true, error: null }));
+                try {
+                    const m0 = forecastModal;
+                    const cleanWeeks = (m0.weeks || [])
+                        .map(w => ({ week: parseInt(w.week), minMad: parseFloat(w.minMad), maxMad: parseFloat(w.maxMad) }))
+                        .filter(w => Number.isFinite(w.week) && Number.isFinite(w.minMad) && Number.isFinite(w.maxMad));
+                    if (cleanWeeks.length === 0) throw new Error('Aucune semaine valide à enregistrer');
+                    const resp = await fetch('/api/email-analysis?action=liquidation-forecast-save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fruitCode: m0.fruitCode, year: m0.year, weeks: cleanWeeks, imageBase64: m0.imageB64, mediaType: m0.mediaType }),
+                    });
+                    const j = await resp.json();
+                    if (!j.success) throw new Error(j.error || 'Sauvegarde échouée');
+                    // Reload forecasts (bypass cache)
+                    try { invalidateCache('/api/email-analysis?action=liquidation-forecast-list'); } catch(_) {}
+                    const fcResp = await fetch('/api/email-analysis?action=liquidation-forecast-list&year=' + m0.year);
+                    const fcJson = await fcResp.json();
+                    if (fcJson && fcJson.success) {
+                        const byFruit = { framboise: {}, myrtille: {} };
+                        (fcJson.forecasts || []).forEach(f => {
+                            const k = f.fruit;
+                            if (!byFruit[k]) byFruit[k] = {};
+                            Object.entries(f.weeks || {}).forEach(([w, v]) => {
+                                byFruit[k][w] = { ...v, year: f.year, updatedAt: f.updatedAt };
+                            });
+                        });
+                        setForecastsByFruit(byFruit);
+                    }
+                    setForecastModal(null);
+                } catch (e) {
+                    setForecastModal(m => ({ ...m, loading: false, error: e.message || 'Erreur sauvegarde' }));
+                }
+            };
 
             // Sat-Fri week number (calendrier Driscoll's)
             const getWeekNum = (dateStr) => {
@@ -17151,7 +17505,8 @@ ${rejetHtml}
             // KPIs — aggregate by unique receipt ID to avoid double-counting grade splits
             const byReceiptId = {};
             filtered.forEach(r => {
-                const rid = r.receiptId || ('row_' + Math.random());
+                const baseRid = r.receiptId || ('row_' + Math.random());
+                const rid = `${r.fruit || 'framboise'}__${baseRid}`;
                 if (!byReceiptId[rid]) byReceiptId[rid] = { kg: 0, gsNet: 0 };
                 byReceiptId[rid].kg += (r.receiptQtyKg || 0);
                 byReceiptId[rid].gsNet += (r.gsNet || 0);
@@ -17192,6 +17547,10 @@ ${rejetHtml}
                     ? (resolved.sousVariete ? `${resolved.variete} ${resolved.sousVariete}` : resolved.variete)
                     : (b.blocVariete || '?');
                 const culture = resolved ? resolved.culture.toLowerCase() : 'framboise';
+                const ferme = resolved ? resolved.ferme : '';
+                if (selectedFruit && culture !== selectedFruit) return;
+                if (selectedFerme && ferme !== selectedFerme) return;
+                if (selectedVariete && variety !== selectedVariete) return;
                 const key = `${y}-W${w}-${culture}`;
                 if (!prodByWeek[key]) prodByWeek[key] = { week: w, year: y, culture, byVariety: {}, totalKg: 0, lots: 0 };
                 prodByWeek[key].totalKg += kg;
@@ -17248,13 +17607,24 @@ ${rejetHtml}
                 const culture = varietyToCulture(v);
                 return priceByCulture[culture] || { price: 0, weeks: '?', count: 0, detail: '-' };
             };
+            // Per-week forecast estimation: prefer Driscoll's forecast over historical avg.
+            const getEstForWeek = (variety, week) => {
+                const culture = varietyToCulture(variety);
+                const fc = getForecastPrice(culture, week);
+                if (fc != null && fc > 0) {
+                    return { price: fc, weeks: 'Forecast Driscoll\'s W' + week, count: 1, detail: fc.toFixed(2) + ' DH/kg (Driscoll\'s)', source: 'forecast' };
+                }
+                const hist = getPriceForVariety(variety);
+                if (hist.price > 0) return { ...hist, source: 'history' };
+                return { price: globalAvgPrice, weeks: '?', count: 0, detail: '-', source: 'global' };
+            };
             const globalAvgPrice = allRows.length > 0 ? totalGsNet / totalKg : 0;
             let totalEstCA = 0;
             let totalNonLiqKg = 0;
             const totalEstByCulture = {};
             nonLiquidated.forEach(d => {
                 Object.entries(d.byVariety).forEach(([v, kg]) => {
-                    const est = getPriceForVariety(v).price > 0 ? getPriceForVariety(v) : { price: globalAvgPrice, weeks: '?', count: 0, detail: '-' };
+                    const est = getEstForWeek(v, d.week);
                     const culture = varietyToCulture(v);
                     if (!totalEstByCulture[culture]) totalEstByCulture[culture] = { kg: 0, ca: 0 };
                     totalEstByCulture[culture].kg += kg;
@@ -17320,6 +17690,22 @@ ${rejetHtml}
                             <span className="chip-group-label">Variété:</span>
                             <button className={`chip c-dark ${!selectedVariete ? 'active' : ''}`} onClick={() => setSelectedVariete('')}>Toutes</button>
                             {varietes.filter(v => !selectedFerme || fermeOf(v) === selectedFerme).map(v => <button key={v} className={`chip c-dark ${selectedVariete === v ? 'active' : ''}`} onClick={() => setSelectedVariete(v)}>{v}</button>)}
+                        </div>
+                        <div style={{marginLeft:'auto', display:'flex', gap:8}}>
+                            <button
+                                className="btn-secondary"
+                                onClick={() => openForecastImport('RASP')}
+                                title="Importer un slide Driscoll's de prévision Framboise"
+                                style={{fontSize:12, padding:'6px 12px'}}>
+                                <i className="fa-solid fa-camera" style={{marginRight:6}}></i>📸 Prévision 🍓
+                            </button>
+                            <button
+                                className="btn-secondary"
+                                onClick={() => openForecastImport('BLUE')}
+                                title="Importer un slide Driscoll's de prévision Myrtille"
+                                style={{fontSize:12, padding:'6px 12px'}}>
+                                <i className="fa-solid fa-camera" style={{marginRight:6}}></i>📸 Prévision 🫐
+                            </button>
                         </div>
                     </div>
 
@@ -17564,7 +17950,58 @@ ${rejetHtml}
                             }
                             return filled;
                         })();
-                        const maxPrice = Math.max(...chartData.map(d => d.price), 1);
+                        // Forecast par fruit (visible uniquement quand une variété est sélectionnée)
+                        const chartFruit = chartVariete
+                            ? (() => {
+                                const resolved = normalizeParcelle(chartVariete);
+                                return resolved ? (resolved.culture || '').toLowerCase() : null;
+                              })()
+                            : null;
+                        const forecastByWeek = {};
+                        if (chartFruit && (chartFruit === 'framboise' || chartFruit === 'myrtille')) {
+                            Object.entries(forecastsByFruit[chartFruit] || {}).forEach(([w, v]) => {
+                                if (v && Number.isFinite(v.avgMad)) forecastByWeek[String(w)] = v.avgMad;
+                            });
+                        }
+                        const showForecast = Object.keys(forecastByWeek).length > 0;
+                        const forecastUpdatedAt = (() => {
+                            if (!showForecast) return null;
+                            const entries = Object.values(forecastsByFruit[chartFruit] || {});
+                            for (const e of entries) { if (e && e.updatedAt) return e.updatedAt; }
+                            return null;
+                        })();
+                        const formatForecastDate = (ua) => {
+                            if (!ua) return '';
+                            let d = null;
+                            if (typeof ua === 'string') d = new Date(ua);
+                            else if (typeof ua === 'number') d = new Date(ua);
+                            else if (ua._seconds) d = new Date(ua._seconds * 1000);
+                            else if (ua.seconds) d = new Date(ua.seconds * 1000);
+                            else if (ua.toDate) { try { d = ua.toDate(); } catch {} }
+                            if (!d || isNaN(d.getTime())) return '';
+                            const dd = String(d.getDate()).padStart(2, '0');
+                            const mm = String(d.getMonth() + 1).padStart(2, '0');
+                            return `${dd}/${mm}/${d.getFullYear()}`;
+                        };
+                        // Ajouter les semaines forecastées absentes de chartData pour qu'elles soient visibles
+                        if (showForecast && chartData.length > 0) {
+                            const presentKeys = new Set(chartData.map(d => d.year * 100 + d.week));
+                            const baseYear = chartData[chartData.length - 1].year;
+                            Object.keys(forecastByWeek).forEach(wStr => {
+                                const w = parseInt(wStr, 10);
+                                if (!w) return;
+                                const k = baseYear * 100 + w;
+                                if (!presentKeys.has(k)) {
+                                    chartData.push({ week: w, year: baseYear, sortKey: k, label: `W${w}`, price: 0, kg: 0, forecastOnly: true });
+                                }
+                            });
+                            chartData.sort((a, b) => a.sortKey - b.sortKey);
+                        }
+                        const maxPrice = Math.max(
+                            ...chartData.map(d => d.price),
+                            ...(showForecast ? Object.values(forecastByWeek) : []),
+                            1
+                        );
                         const showVolumeLine = !!(chartVariete || selectedFruit || selectedVariete);
                         const maxKg = showVolumeLine ? Math.max(...chartData.map(d => d.kg), 1) : 1;
                         const chartW = 700, chartH = showVolumeLine ? 220 : 200, padL = 50, padR = showVolumeLine ? 55 : 20, padT = 20, padB = 30;
@@ -17594,12 +18031,21 @@ ${rejetHtml}
                                     {showVolumeLine && <text x={chartW-padR+4} y={padT-6} textAnchor="start" fontSize={8} fill="var(--blue)" fontWeight={600}>kg</text>}
                                     {chartData.map((d, i) => {
                                         const x = padL + i * gap + gap / 2;
+                                        const realW = showForecast ? barW * 0.5 : barW;
+                                        const realX = showForecast ? x - barW/2 : x - barW/2;
                                         const h = d.price > 0 ? Math.max((d.price / maxPrice) * innerH, 0) : 0;
                                         const y = padT + innerH - h;
+                                        const fc = showForecast ? forecastByWeek[String(d.week)] : null;
+                                        const fcH = fc ? Math.max((fc / maxPrice) * innerH, 0) : 0;
+                                        const fcY = padT + innerH - fcH;
+                                        const fcW = barW * 0.5;
+                                        const fcX = x + 1;
                                         return <g key={i} style={{cursor:'pointer'}} onClick={() => setPopupWeek({ week: d.week, year: d.year })}>
                                             <rect x={x - barW/2 - 4} y={padT} width={barW + 8} height={innerH + padB} fill="transparent" />
-                                            {d.price > 0 && <rect x={x - barW/2} y={y} width={barW} height={h} fill="var(--berry)" rx={3} opacity={0.85} />}
-                                            {d.price > 0 && <text x={x} y={y - 4} textAnchor="middle" fontSize={9} fontWeight={600} fill="var(--berry)">{d.price}</text>}
+                                            {d.price > 0 && <rect x={realX} y={y} width={realW} height={h} fill="var(--berry)" rx={3} opacity={0.85} />}
+                                            {d.price > 0 && <text x={showForecast ? realX + realW/2 : x} y={y - 4} textAnchor="middle" fontSize={9} fontWeight={600} fill="var(--berry)">{d.price}</text>}
+                                            {fc != null && <rect x={fcX} y={fcY} width={fcW} height={fcH} fill="none" stroke="var(--berry)" strokeWidth={1.5} strokeDasharray="3,2" rx={2} opacity={0.75} />}
+                                            {fc != null && <text x={fcX + fcW/2} y={fcY - 3} textAnchor="middle" fontSize={8} fontStyle="italic" fill="#888">{Math.round(fc)}</text>}
                                             <text x={x} y={chartH - 4} textAnchor="middle" fontSize={9} fill="#666">{d.label}</text>
                                         </g>;
                                     })}
@@ -17635,6 +18081,12 @@ ${rejetHtml}
                                         <text x={padL+122} y={11} fontSize={9} fill="#666">Volume (kg)</text>
                                         <line x1={padL+200} y1={7} x2={padL+218} y2={7} stroke="var(--blue)" strokeWidth={2} strokeDasharray="6,4" opacity={0.6} />
                                         <text x={padL+222} y={11} fontSize={9} fill="#666">En attente</text>
+                                        {showForecast && <g>
+                                            <rect x={padL+280} y={2} width={10} height={10} fill="none" stroke="var(--berry)" strokeWidth={1.5} strokeDasharray="3,2" rx={2} opacity={0.75} />
+                                            <text x={padL+294} y={11} fontSize={9} fill="#666">
+                                                Prévision Driscoll's{forecastUpdatedAt ? ` (maj ${formatForecastDate(forecastUpdatedAt)})` : ''}
+                                            </text>
+                                        </g>}
                                     </g>}
                                 </svg>
                             </Panel>
@@ -17642,6 +18094,114 @@ ${rejetHtml}
                     })()}
 
                     {/* ===== POPUP DÉTAIL LIQUIDATION SEMAINE ===== */}
+                    {forecastModal && (() => {
+                        const m = forecastModal;
+                        const fruitLabel = m.fruitCode === 'RASP' ? '🍓 Framboise (Raspberries)' : '🫐 Myrtille (Blueberries)';
+                        const updateWeek = (idx, field, value) => {
+                            setForecastModal(prev => {
+                                const next = [...(prev.weeks || [])];
+                                next[idx] = { ...next[idx], [field]: value };
+                                return { ...prev, weeks: next };
+                            });
+                        };
+                        const removeWeek = (idx) => {
+                            setForecastModal(prev => {
+                                const next = [...(prev.weeks || [])];
+                                next.splice(idx, 1);
+                                return { ...prev, weeks: next };
+                            });
+                        };
+                        const addWeek = () => {
+                            setForecastModal(prev => ({ ...prev, weeks: [...(prev.weeks || []), { week: '', year: prev.year, minMad: '', maxMad: '' }] }));
+                        };
+                        return (
+                            <div className="modal-overlay" onClick={() => !m.loading && setForecastModal(null)}>
+                                <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:720, maxHeight:'90vh', overflow:'auto'}}>
+                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, paddingBottom:12, borderBottom:'2px solid var(--berry)'}}>
+                                        <div>
+                                            <div style={{fontSize:18, fontWeight:700, color:'var(--dark)'}}>Importer prévisions Driscoll's</div>
+                                            <div style={{fontSize:12, color:'var(--gray-400)', marginTop:2}}>{fruitLabel} · année {m.year}</div>
+                                        </div>
+                                        <button onClick={() => !m.loading && setForecastModal(null)} style={{background:'none', border:'none', fontSize:24, cursor:'pointer', color:'#999'}}>×</button>
+                                    </div>
+
+                                    {m.error && <div style={{background:'#ffebee', color:'#c62828', padding:10, borderRadius:8, marginBottom:12, fontSize:12}}>{m.error}</div>}
+
+                                    {/* Step 1: file picker */}
+                                    {(m.step === 'pick' || m.step === 'ready') && (
+                                        <div>
+                                            <p style={{fontSize:13, color:'#555', marginBottom:12}}>
+                                                Upload le slide Driscoll's correspondant. On extrait la ligne <strong>"2026 Grower return prices"</strong> et on calcule la moyenne (min+max)/2.
+                                            </p>
+                                            <input
+                                                type="file"
+                                                accept="image/png,image/jpeg,image/jpg,image/webp"
+                                                onChange={(e) => handleForecastFile(e.target.files[0])}
+                                                style={{marginBottom:12}}
+                                            />
+                                            {m.imageB64 && (
+                                                <div style={{marginBottom:12}}>
+                                                    <img src={m.imageB64} alt="slide" style={{maxWidth:'100%', maxHeight:260, border:'1px solid var(--gray-200)', borderRadius:6}} />
+                                                </div>
+                                            )}
+                                            <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                                                <button className="btn-secondary" onClick={() => setForecastModal(null)} disabled={m.loading}>Annuler</button>
+                                                <button className="btn-primary" onClick={runForecastExtract} disabled={!m.imageB64 || m.loading}>
+                                                    {m.loading ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Extraction…</> : 'Extraire les prix'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Step 2: review extracted weeks */}
+                                    {m.step === 'review' && (
+                                        <div>
+                                            <p style={{fontSize:13, color:'#555', marginBottom:12}}>
+                                                Vérifie et corrige si besoin avant d'enregistrer. La moyenne (avgMad) est recalculée automatiquement côté serveur.
+                                            </p>
+                                            <table className="data-table" style={{fontSize:12, width:'100%', marginBottom:12}}>
+                                                <thead>
+                                                    <tr>
+                                                        <th>Semaine</th>
+                                                        <th>Année</th>
+                                                        <th>Min (MAD/kg)</th>
+                                                        <th>Max (MAD/kg)</th>
+                                                        <th style={{textAlign:'right'}}>Moy.</th>
+                                                        <th></th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {(m.weeks || []).map((w, i) => {
+                                                        const mn = parseFloat(w.minMad);
+                                                        const mx = parseFloat(w.maxMad);
+                                                        const avg = (Number.isFinite(mn) && Number.isFinite(mx)) ? ((mn + mx) / 2).toFixed(2) : '-';
+                                                        return (
+                                                            <tr key={i}>
+                                                                <td><input type="number" value={w.week} onChange={(e) => updateWeek(i, 'week', e.target.value)} style={{width:60}} /></td>
+                                                                <td><input type="number" value={w.year || m.year} onChange={(e) => updateWeek(i, 'year', e.target.value)} style={{width:80}} /></td>
+                                                                <td><input type="number" step="0.01" value={w.minMad} onChange={(e) => updateWeek(i, 'minMad', e.target.value)} style={{width:90}} /></td>
+                                                                <td><input type="number" step="0.01" value={w.maxMad} onChange={(e) => updateWeek(i, 'maxMad', e.target.value)} style={{width:90}} /></td>
+                                                                <td style={{textAlign:'right', fontWeight:600, color:'var(--berry)'}}>{avg}</td>
+                                                                <td><button onClick={() => removeWeek(i)} style={{background:'none', border:'none', color:'#c62828', cursor:'pointer'}} title="Supprimer">×</button></td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                            <button className="btn-secondary" onClick={addWeek} style={{fontSize:11, padding:'4px 10px', marginBottom:12}}>+ Ajouter une semaine</button>
+                                            <div style={{display:'flex', gap:8, justifyContent:'flex-end'}}>
+                                                <button className="btn-secondary" onClick={() => setForecastModal(m0 => ({ ...m0, step: 'ready' }))} disabled={m.loading}>← Retour</button>
+                                                <button className="btn-primary" onClick={saveForecast} disabled={m.loading || (m.weeks || []).length === 0}>
+                                                    {m.loading ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Enregistrement…</> : 'Enregistrer'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {popupWeek && (() => {
                         const pw = popupWeek;
                         const weekRows = filtered.filter(r => r.week === pw.week && (r.year || 2025) === pw.year);
@@ -17799,6 +18359,7 @@ ${rejetHtml}
                                                 <th>Lots</th>
                                                 <th>Total Kg</th>
                                                 {allVarsInNonLiq.map(v => <th key={v} style={{textAlign:'right'}}>{v} (kg)</th>)}
+                                                <th style={{textAlign:'right'}}>Prév. Driscoll's<br/><span style={{fontSize:9, fontWeight:400, color:'var(--gray-400)'}}>(DH/kg)</span></th>
                                                 <th style={{textAlign:'right'}}>CA Estimé (DH)</th>
                                                 <th style={{fontSize:10, color:'var(--gray-400)'}}>Base prix</th>
                                             </tr>
@@ -17806,11 +18367,18 @@ ${rejetHtml}
                                         <tbody>
                                             {nonLiquidated.map(d => {
                                                 let rowEstCA = 0;
-                                                const usedWeeks = new Set();
+                                                const usedSources = new Set();
+                                                const fcDetails = []; // [{ fruit, minMad, maxMad, avgMad }]
                                                 Object.entries(d.byVariety).forEach(([v, kg]) => {
-                                                    const est = getPriceForVariety(v).price > 0 ? getPriceForVariety(v) : { price: globalAvgPrice, weeks: '?', count: 0, detail: '-' };
+                                                    const est = getEstForWeek(v, d.week);
                                                     rowEstCA += kg * est.price;
-                                                    usedWeeks.add(est.weeks || '?');
+                                                    usedSources.add(est.weeks || '?');
+                                                });
+                                                // Forecast row display: one chip per fruit present in this week
+                                                const fruitsInRow = new Set(Object.keys(d.byVariety).map(v => varietyToCulture(v)));
+                                                fruitsInRow.forEach(fr => {
+                                                    const entry = forecastsByFruit?.[fr]?.[String(d.week)];
+                                                    if (entry) fcDetails.push({ fruit: fr, ...entry });
                                                 });
                                                 return (
                                                     <tr key={d.key}>
@@ -17818,8 +18386,15 @@ ${rejetHtml}
                                                         <td>{d.lots}</td>
                                                         <td style={{fontWeight:600}}>{Math.round(d.totalKg).toLocaleString('fr-FR')}</td>
                                                         {allVarsInNonLiq.map(v => <td key={v} style={{textAlign:'right'}}>{d.byVariety[v] ? Math.round(d.byVariety[v]).toLocaleString('fr-FR') : '-'}</td>)}
+                                                        <td style={{textAlign:'right', fontSize:11}}>
+                                                            {fcDetails.length === 0 ? <span style={{color:'var(--gray-400)'}}>-</span> : fcDetails.map((f, i) => (
+                                                                <div key={i} title={`Min ${f.minMad?.toFixed(2)} – Max ${f.maxMad?.toFixed(2)} DH/kg`} style={{color:'var(--berry)', fontWeight:600}}>
+                                                                    {f.fruit === 'framboise' ? '🍓' : '🫐'} {f.avgMad?.toFixed(2)}
+                                                                </div>
+                                                            ))}
+                                                        </td>
                                                         <td style={{textAlign:'right', fontWeight:600, color:'var(--green)'}}>{Math.round(rowEstCA).toLocaleString('fr-FR')}</td>
-                                                        <td style={{fontSize:10, color:'var(--gray-400)'}}>{[...usedWeeks].join(', ')}</td>
+                                                        <td style={{fontSize:10, color:'var(--gray-400)'}}>{[...usedSources].join(', ')}</td>
                                                     </tr>
                                                 );
                                             })}
@@ -17831,6 +18406,7 @@ ${rejetHtml}
                                                     const vTotal = nonLiquidated.reduce((s, d) => s + (d.byVariety[v] || 0), 0);
                                                     return <td key={v} style={{textAlign:'right'}}>{vTotal > 0 ? Math.round(vTotal).toLocaleString('fr-FR') : '-'}</td>;
                                                 })}
+                                                <td></td>
                                                 <td style={{textAlign:'right', color:'var(--green)'}}>{Math.round(totalEstCA).toLocaleString('fr-FR')}</td>
                                                 <td></td>
                                             </tr>
@@ -18399,564 +18975,487 @@ ${rejetHtml}
 
         // ===================== QUALITÉ ÉCARTS TAB =====================
         function QualiteEcartsTab({ data }) {
-            const [pesages, setPesages] = useState([]);
+            const [expeditions, setExpeditions] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [saving, setSaving] = useState(false);
-            const [filterFerme, setFilterFerme] = useState('');
-            const [filterCulture, setFilterCulture] = useState('');
             const [filterVariete, setFilterVariete] = useState('');
-            const [showSaisie, setShowSaisie] = useState(false);
-            const [selectedPesage, setSelectedPesage] = useState(null);
-            const [customDefauts, setCustomDefauts] = useState([]);
-            const [showAddDefaut, setShowAddDefaut] = useState(false);
-            const [newDefaut, setNewDefaut] = useState('');
-            const [chartView, setChartView] = useState('ecart');
-            const [saisieForm, setSaisieForm] = useState({ ferme: 'F1', variete: 'Maravilla', kgExport: '', kgLocal: '', defauts: {} });
+            const [filterFerme, setFilterFerme] = useState('');
+            const [filterBerry, setFilterBerry] = useState('');
+            const today = new Date();
+            const defaultFrom = new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+            const defaultTo = today.toISOString().slice(0, 10);
+            const [dateFrom, setDateFrom] = useState(defaultFrom);
+            const [dateTo, setDateTo] = useState(defaultTo);
+            const [viewMode, setViewMode] = useState('top');
+            const [evolKey, setEvolKey] = useState('avgPfqTotal');
 
-            const cultureMap = { 'Maravilla': 'Framboise', 'Maravilla Long Cane': 'Framboise', 'Reyna': 'Framboise', 'Adelita': 'Framboise', 'Kwanza': 'Framboise', 'Yazmin': 'Framboise', 'Corina': 'Myrtille', 'Cascade': 'Myrtille', 'Breeze': 'Myrtille', 'Jewel': 'Myrtille' };
-
-            const cultureMappingOptions = {
-                'Framboise': ['Maravilla', 'Maravilla Long Cane', 'Reyna', 'Adelita', 'Kwanza', 'Yazmin'],
-                'Myrtille': ['Corina', 'Cascade', 'Breeze', 'Jewel']
-            };
-
-            // Fetch pesages + config from Firestore API
-            const fetchData = () => {
-                setLoading(true);
-                Promise.all([
-                    fetch('/api/ecarts?action=list&limit=500').then(r => r.json()),
-                    fetch('/api/ecarts?action=config').then(r => r.json())
-                ]).then(([pesagesRes, configRes]) => {
-                    if (pesagesRes.success) setPesages(pesagesRes.pesages || []);
-                    if (configRes.success && configRes.config) setCustomDefauts(configRes.config.defauts || []);
-                }).catch(err => {
-                    console.warn('Erreur chargement écarts:', err);
-                }).finally(() => setLoading(false));
-            };
-
-            useEffect(() => { fetchData(); }, []);
-
-            // Save new pesage to Firestore
-            const handleSavePesage = () => {
-                if (!saisieForm.kgExport && !saisieForm.kgLocal) return;
-                setSaving(true);
-                fetch('/api/ecarts?action=create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-                        ferme: saisieForm.ferme,
-                        variete: saisieForm.variete,
-                        culture: cultureMap[saisieForm.variete] || '',
-                        kgExport: parseFloat(saisieForm.kgExport) || 0,
-                        kgLocal: parseFloat(saisieForm.kgLocal) || 0,
-                        defauts: saisieForm.defauts,
-                        operateur: 'FatimZahra'
-                    })
-                }).then(r => r.json()).then(res => {
-                    if (res.success) {
-                        setShowSaisie(false);
-                        setSaisieForm({ ferme: 'F1', variete: 'Maravilla', kgExport: '', kgLocal: '', defauts: {} });
-                        fetchData();
+            useEffect(() => {
+                cachedFetch('/api/email-analysis?action=expeditions&limit=5000').then(json => {
+                    if (json && json.success && Array.isArray(json.expeditions)) {
+                        setExpeditions(json.expeditions);
+                    } else {
+                        setExpeditions([]);
                     }
-                }).catch(err => console.error('Erreur sauvegarde:', err))
-                .finally(() => setSaving(false));
+                }).catch(err => {
+                    console.warn('Erreur chargement expeditions:', err);
+                    setExpeditions([]);
+                }).finally(() => setLoading(false));
+            }, []);
+
+            // Helpers
+            const getDateISO = (e) => {
+                const d = e.dateISO || e.receiptDate || e.date;
+                if (!d) return null;
+                return String(d).slice(0, 10);
             };
 
-            // Delete pesage from Firestore
-            const handleDeletePesage = (id) => {
-                if (!confirm('Supprimer ce pesage ?')) return;
-                fetch('/api/ecarts?action=delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                }).then(r => r.json()).then(res => {
-                    if (res.success) { setSelectedPesage(null); fetchData(); }
-                }).catch(err => console.error('Erreur suppression:', err));
+            // Driscoll's Sat-Fri week key — anchor: a known Saturday
+            const SAT_ANCHOR = new Date('2024-01-06T00:00:00Z'); // Saturday
+            const getSatFriWeekKey = (dateISO) => {
+                if (!dateISO) return null;
+                const d = new Date(dateISO + 'T00:00:00Z');
+                const diffDays = Math.floor((d - SAT_ANCHOR) / 86400000);
+                const weekIdx = Math.floor(diffDays / 7);
+                const satDate = new Date(SAT_ANCHOR.getTime() + weekIdx * 7 * 86400000);
+                const friDate = new Date(satDate.getTime() + 6 * 86400000);
+                const year = satDate.getUTCFullYear();
+                // Compute week-of-year approx: week number = floor((satDate - firstSatOfYear)/7)+1
+                const yearStart = new Date(Date.UTC(year, 0, 1));
+                const dayOfWeek = yearStart.getUTCDay();
+                const firstSatOffset = (6 - dayOfWeek + 7) % 7;
+                const firstSat = new Date(yearStart.getTime() + firstSatOffset * 86400000);
+                let weekNum = Math.floor((satDate - firstSat) / (7 * 86400000)) + 1;
+                if (weekNum < 1) weekNum = 1;
+                const fmt = (dt) => String(dt.getUTCDate()).padStart(2, '0') + '/' + String(dt.getUTCMonth() + 1).padStart(2, '0');
+                return {
+                    key: year + '-W' + String(weekNum).padStart(2, '0'),
+                    label: 'S' + String(weekNum).padStart(2, '0') + ' (' + fmt(satDate) + '-' + fmt(friDate) + ')',
+                    weekNum,
+                    satDate: satDate.toISOString().slice(0, 10),
+                };
             };
 
-            // Save defauts config to Firestore
-            const handleSaveConfig = (defautsList) => {
-                fetch('/api/ecarts?action=save-config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ defauts: defautsList })
-                }).catch(err => console.error('Erreur config:', err));
-            };
-
-            // Filter pesages
-            let filtered = pesages;
-            if (filterFerme) filtered = filtered.filter(p => p.ferme === filterFerme);
-            if (filterCulture) filtered = filtered.filter(p => (p.culture || cultureMap[p.variete]) === filterCulture);
-            if (filterVariete) filtered = filtered.filter(p => p.variete === filterVariete);
-
-            // Calculate aggregated stats
-            const totalExport = filtered.reduce((s, p) => s + (p.kgExport || 0), 0);
-            const totalLocal = filtered.reduce((s, p) => s + (p.kgLocal || 0), 0);
-            const totalProd = totalExport + totalLocal;
-            const ecartPct = totalProd > 0 ? (totalLocal / totalProd * 100) : 0;
-
-            // Average defauts across filtered pesages
-            const avgDefauts = {};
-            customDefauts.forEach(d => {
-                const vals = filtered.filter(p => p.defauts && p.defauts[d] !== undefined).map(p => p.defauts[d]);
-                avgDefauts[d] = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-            });
-
-            // Compute weekly history from real pesages data
-            const weeklyHistory = React.useMemo(() => {
-                const weekMap = {};
-                pesages.forEach(p => {
-                    if (!p.date) return;
-                    const parts = p.date.split('/');
-                    if (parts.length !== 3) return;
-                    const d = new Date(parts[2], parts[1] - 1, parts[0]);
-                    if (isNaN(d.getTime())) return;
-                    const jan1 = new Date(d.getFullYear(), 0, 1);
-                    const weekNum = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
-                    const key = `S${String(weekNum).padStart(2, '0')}`;
-                    if (!weekMap[key]) weekMap[key] = { semaine: key, f1: [], f5: [] };
-                    weekMap[key][p.ferme === 'F5' ? 'f5' : 'f1'].push(p);
-                });
-                return Object.values(weekMap).sort((a, b) => a.semaine.localeCompare(b.semaine)).slice(-6).map(w => {
-                    const calcEcart = (arr) => {
-                        const totE = arr.reduce((s, p) => s + (p.kgExport || 0), 0);
-                        const totL = arr.reduce((s, p) => s + (p.kgLocal || 0), 0);
-                        return (totE + totL) > 0 ? (totL / (totE + totL) * 100) : 0;
-                    };
-                    const calcDefauts = (arr) => {
-                        const result = {};
-                        ['Rouille', 'Thrips', 'Fruit cassé', 'Surmaturité'].forEach(dk => {
-                            const vals = arr.filter(p => p.defauts && p.defauts[dk] !== undefined).map(p => p.defauts[dk]);
-                            result[dk] = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-                        });
-                        return result;
-                    };
-                    return {
-                        semaine: w.semaine,
-                        f1EcartPct: parseFloat(calcEcart(w.f1).toFixed(1)),
-                        f5EcartPct: parseFloat(calcEcart(w.f5).toFixed(1)),
-                        f1Defauts: calcDefauts(w.f1),
-                        f5Defauts: calcDefauts(w.f5)
-                    };
-                });
-            }, [pesages]);
-
-            const handleAddDefaut = () => {
-                if (newDefaut.trim() && !customDefauts.includes(newDefaut.trim())) {
-                    const updated = [...customDefauts, newDefaut.trim()];
-                    setCustomDefauts(updated);
-                    handleSaveConfig(updated);
-                    setNewDefaut('');
-                    setShowAddDefaut(false);
+            const inferFerme = (e) => {
+                if (e.ferme) return e.ferme;
+                if (e.ranchName) {
+                    if (/200742|F1/i.test(e.ranchName)) return 'F1';
+                    if (/200876|F5/i.test(e.ranchName)) return 'F5';
                 }
+                return '';
             };
 
-            const handleRemoveDefaut = (d) => {
-                const updated = customDefauts.filter(x => x !== d);
-                setCustomDefauts(updated);
-                handleSaveConfig(updated);
-            };
+            // Filter expéditions
+            const filtered = useMemo(() => {
+                return expeditions.filter(e => {
+                    const d = getDateISO(e);
+                    if (!d) return false;
+                    if (dateFrom && d < dateFrom) return false;
+                    if (dateTo && d > dateTo) return false;
+                    if (filterVariete && e.variety !== filterVariete) return false;
+                    if (filterBerry && e.berryType !== filterBerry) return false;
+                    if (filterFerme && inferFerme(e) !== filterFerme) return false;
+                    const hasDefects = (Array.isArray(e.conditionDefects) && e.conditionDefects.length) || (Array.isArray(e.appearanceDefects) && e.appearanceDefects.length);
+                    const hasPfq = e.pfqTotal != null || e.pfqCondition != null || e.pfqApparence != null;
+                    return hasDefects || hasPfq;
+                });
+            }, [expeditions, filterVariete, filterFerme, filterBerry, dateFrom, dateTo]);
 
-            if (loading) return (
-                <div className="fade-in" style={{display:'flex', justifyContent:'center', alignItems:'center', padding:60, flexDirection:'column', gap:12}}>
-                    <i className="fa-solid fa-spinner fa-spin" style={{fontSize:28, color:'var(--berry)'}}></i>
-                    <div style={{fontSize:13, color:'var(--gray-400)'}}>Chargement des données écarts...</div>
-                </div>
-            );
+            // Lists for filter dropdowns
+            const varietes = useMemo(() => Array.from(new Set(expeditions.map(e => e.variety).filter(Boolean))).sort(), [expeditions]);
+            const fermes = useMemo(() => Array.from(new Set(expeditions.map(inferFerme).filter(Boolean))).sort(), [expeditions]);
+            const berryTypes = useMemo(() => Array.from(new Set(expeditions.map(e => e.berryType).filter(Boolean))).sort(), [expeditions]);
+
+            // KPIs
+            const kpi = useMemo(() => {
+                const n = filtered.length;
+                if (n === 0) return { n: 0, avgPfq: 0, avgCond: 0, avgApp: 0, passRate: 0 };
+                const sumPfq = filtered.reduce((s, e) => s + (parseFloat(e.pfqTotal) || 0), 0);
+                const sumCond = filtered.reduce((s, e) => s + (parseFloat(e.pfqCondition) || 0), 0);
+                const sumApp = filtered.reduce((s, e) => s + (parseFloat(e.pfqApparence) || 0), 0);
+                const nPass = filtered.filter(e => String(e.overallResult).toUpperCase() === 'PASS').length;
+                return {
+                    n,
+                    avgPfq: Math.round(sumPfq / n * 10) / 10,
+                    avgCond: Math.round(sumCond / n * 10) / 10,
+                    avgApp: Math.round(sumApp / n * 10) / 10,
+                    passRate: Math.round(nPass / n * 100),
+                };
+            }, [filtered]);
+
+            // Top défauts cumulés
+            const topDefauts = useMemo(() => {
+                const map = {};
+                filtered.forEach(e => {
+                    const v = e.variety || '?';
+                    (e.conditionDefects || []).forEach(d => {
+                        const key = 'C|' + d.name;
+                        if (!map[key]) map[key] = { name: d.name, cat: 'Condition', occurrences: 0, sumPct: 0, sumPoints: 0, varieties: new Set() };
+                        map[key].occurrences += 1;
+                        map[key].sumPct += parseFloat(d.percent) || 0;
+                        map[key].sumPoints += parseFloat(d.points) || 0;
+                        map[key].varieties.add(v);
+                    });
+                    (e.appearanceDefects || []).forEach(d => {
+                        const key = 'A|' + d.name;
+                        if (!map[key]) map[key] = { name: d.name, cat: 'Apparence', occurrences: 0, sumPct: 0, sumPoints: 0, varieties: new Set() };
+                        map[key].occurrences += 1;
+                        map[key].sumPct += parseFloat(d.percent) || 0;
+                        map[key].sumPoints += parseFloat(d.points) || 0;
+                        map[key].varieties.add(v);
+                    });
+                });
+                return Object.values(map).map(o => ({
+                    name: o.name,
+                    cat: o.cat,
+                    occurrences: o.occurrences,
+                    avgPct: o.occurrences > 0 ? Math.round(o.sumPct / o.occurrences * 10) / 10 : 0,
+                    avgPoints: o.occurrences > 0 ? Math.round(o.sumPoints / o.occurrences * 10) / 10 : 0,
+                    totalPoints: Math.round(o.sumPoints * 10) / 10,
+                    varieties: Array.from(o.varieties).sort(),
+                })).sort((a, b) => b.totalPoints - a.totalPoints);
+            }, [filtered]);
+
+            // Daily aggregation (for evolution chart + tableau journalier)
+            const dailyAgg = useMemo(() => {
+                const map = {};
+                filtered.forEach(e => {
+                    const d = getDateISO(e);
+                    if (!map[d]) map[d] = { date: d, sumPfq: 0, sumCond: 0, sumApp: 0, n: 0 };
+                    map[d].sumPfq += parseFloat(e.pfqTotal) || 0;
+                    map[d].sumCond += parseFloat(e.pfqCondition) || 0;
+                    map[d].sumApp += parseFloat(e.pfqApparence) || 0;
+                    map[d].n += 1;
+                });
+                return Object.values(map).map(o => ({
+                    date: o.date,
+                    avgPfqTotal: Math.round(o.sumPfq / o.n * 10) / 10,
+                    avgCondition: Math.round(o.sumCond / o.n * 10) / 10,
+                    avgApparence: Math.round(o.sumApp / o.n * 10) / 10,
+                    nbLots: o.n,
+                })).sort((a, b) => a.date.localeCompare(b.date));
+            }, [filtered]);
+
+            // Weekly aggregation per variety
+            const weeklyPivot = useMemo(() => {
+                const weekSet = {};
+                const map = {};
+                filtered.forEach(e => {
+                    const d = getDateISO(e);
+                    const w = getSatFriWeekKey(d);
+                    if (!w) return;
+                    weekSet[w.key] = w;
+                    const v = e.variety || '?';
+                    if (!map[v]) map[v] = {};
+                    if (!map[v][w.key]) map[v][w.key] = { sumPfq: 0, n: 0 };
+                    map[v][w.key].sumPfq += parseFloat(e.pfqTotal) || 0;
+                    map[v][w.key].n += 1;
+                });
+                const weeks = Object.values(weekSet).sort((a, b) => a.satDate.localeCompare(b.satDate));
+                const varieties = Object.keys(map).sort();
+                return { weeks, varieties, map };
+            }, [filtered]);
+
+            // Daily pivot per variety (last 14 days within range)
+            const dailyPivot = useMemo(() => {
+                const dateSet = {};
+                const map = {};
+                filtered.forEach(e => {
+                    const d = getDateISO(e);
+                    dateSet[d] = true;
+                    const v = e.variety || '?';
+                    if (!map[v]) map[v] = {};
+                    if (!map[v][d]) map[v][d] = { sumPfq: 0, n: 0 };
+                    map[v][d].sumPfq += parseFloat(e.pfqTotal) || 0;
+                    map[v][d].n += 1;
+                });
+                const dates = Object.keys(dateSet).sort().slice(-14);
+                const varieties = Object.keys(map).sort();
+                return { dates, varieties, map };
+            }, [filtered]);
+
+            // Détail défauts par variété
+            const varieteBreakdown = useMemo(() => {
+                const map = {};
+                filtered.forEach(e => {
+                    const v = e.variety || '?';
+                    if (!map[v]) map[v] = { variete: v, n: 0, sumPfq: 0, defauts: {} };
+                    map[v].n += 1;
+                    map[v].sumPfq += parseFloat(e.pfqTotal) || 0;
+                    [...(e.conditionDefects || []).map(d => ({ ...d, cat: 'C' })), ...(e.appearanceDefects || []).map(d => ({ ...d, cat: 'A' }))].forEach(d => {
+                        const k = d.cat + '|' + d.name;
+                        if (!map[v].defauts[k]) map[v].defauts[k] = { name: d.name, cat: d.cat === 'C' ? 'Condition' : 'Apparence', occurrences: 0, sumPct: 0, sumPoints: 0 };
+                        map[v].defauts[k].occurrences += 1;
+                        map[v].defauts[k].sumPct += parseFloat(d.percent) || 0;
+                        map[v].defauts[k].sumPoints += parseFloat(d.points) || 0;
+                    });
+                });
+                return Object.values(map).map(o => ({
+                    variete: o.variete,
+                    n: o.n,
+                    avgPfq: o.n > 0 ? Math.round(o.sumPfq / o.n * 10) / 10 : 0,
+                    topDefauts: Object.values(o.defauts).map(d => ({
+                        name: d.name,
+                        cat: d.cat,
+                        occurrences: d.occurrences,
+                        avgPct: d.occurrences > 0 ? Math.round(d.sumPct / d.occurrences * 10) / 10 : 0,
+                        avgPoints: d.occurrences > 0 ? Math.round(d.sumPoints / d.occurrences * 10) / 10 : 0,
+                        totalPoints: Math.round(d.sumPoints * 10) / 10,
+                    })).sort((a, b) => b.totalPoints - a.totalPoints).slice(0, 5),
+                })).sort((a, b) => a.avgPfq - b.avgPfq); // pires PFQ en premier
+            }, [filtered]);
+
+            const pfqColor = (v) => v >= 85 ? 'var(--green)' : v >= 70 ? 'var(--blue)' : v >= 55 ? 'var(--orange)' : 'var(--red)';
+
+            if (loading) {
+                return <div className="tab-content fade-in"><Panel title="Écarts & Défauts — DQR Driscoll's" icon="fa-triangle-exclamation"><div style={{padding:40,textAlign:'center',color:'var(--gray-500)'}}>Chargement des DQR…</div></Panel></div>;
+            }
+
+            const views = [
+                { id: 'top', label: 'Top Défauts', icon: 'fa-ranking-star' },
+                { id: 'evolution', label: 'Évolution', icon: 'fa-chart-line' },
+                { id: 'weekly', label: 'Hebdo Sat-Fri', icon: 'fa-calendar-week' },
+                { id: 'daily', label: 'Journalier', icon: 'fa-calendar-day' },
+                { id: 'variete', label: 'Par Variété', icon: 'fa-seedling' },
+            ];
+
+            const inputStyle = { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--gray-200)', fontSize: 13 };
 
             return (
-                <div className="fade-in">
-                    {/* KPIs */}
-                    <div className="kpi-grid">
-                        <KPICard icon="fa-weight-scale" iconClass="green" value={`${totalExport.toLocaleString('fr-FR')} kg`} label="Export (Driscoll's)" />
-                        <KPICard icon="fa-store" iconClass="orange" value={`${totalLocal.toLocaleString('fr-FR')} kg`} label="Marché Local" />
-                        <KPICard icon="fa-scale-unbalanced" iconClass={ecartPct > 15 ? 'red' : ecartPct > 10 ? 'orange' : 'green'}
-                            value={`${ecartPct.toFixed(1)}%`} label="% Écart Marché Local"
-                            subItems={[{value: `${totalLocal.toFixed(0)} / ${totalProd.toFixed(0)}`, label: 'Local / Total'}]} />
-                        <KPICard icon="fa-list-check" iconClass="berry" value={filtered.length} label="Pesages enregistrés" />
-                    </div>
-
-                    {/* Filters + Actions */}
-                    <div style={{display:'flex', gap:12, marginBottom:16, alignItems:'center', flexWrap:'wrap'}}>
-                        <select className="filter-select" value={filterFerme} onChange={e => setFilterFerme(e.target.value)} style={{padding:'8px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}>
-                            <option value="">Toutes les fermes</option>
-                            <option value="F1">Ferme 172 (F1)</option>
-                            <option value="F5">Ferme 195 (F5)</option>
-                        </select>
-                        <select className="filter-select" value={filterCulture} onChange={e => { setFilterCulture(e.target.value); setFilterVariete(''); }} style={{padding:'8px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}>
-                            <option value="">Toutes cultures</option>
-                            <option value="Framboise">Framboise</option>
-                            <option value="Myrtille">Myrtille</option>
-                        </select>
-                        <select className="filter-select" value={filterVariete} onChange={e => setFilterVariete(e.target.value)} disabled={!filterCulture} style={{padding:'8px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12, opacity: !filterCulture ? 0.5 : 1}}>
-                            <option value="">Toutes variétés</option>
-                            {filterCulture && cultureMappingOptions[filterCulture] && cultureMappingOptions[filterCulture].map((v, i) => (
-                                <option key={i} value={v}>{v}</option>
-                            ))}
-                        </select>
-                        <button onClick={() => setShowSaisie(true)} style={{padding:'8px 16px', background:'var(--berry)', color:'white', border:'none', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6}}>
-                            <i className="fa-solid fa-plus"></i> Nouveau Pesage
-                        </button>
-                        <button onClick={() => setShowAddDefaut(true)} style={{padding:'8px 16px', background:'var(--blue)', color:'white', border:'none', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6}}>
-                            <i className="fa-solid fa-gear"></i> Configurer Défauts
-                        </button>
-                        <button onClick={fetchData} style={{padding:'8px 16px', background:'var(--gray-100)', color:'var(--gray-600)', border:'1px solid var(--gray-200)', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:6, marginLeft:'auto'}}>
-                            <i className="fa-solid fa-arrow-rotate-right"></i> Rafraîchir
-                        </button>
-                    </div>
-
-                    {/* Pesages Table */}
-                    <Panel title={`Pesages Marché Local (${filtered.length})`} icon="fa-scale-balanced">
-                        <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:8}}><i className="fa-solid fa-hand-pointer" style={{marginRight:4}}></i> Cliquez sur un pesage pour voir les défauts détaillés</div>
-                        <table className="data-table" style={{fontSize:12}}>
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Ferme</th>
-                                    <th>Variété</th>
-                                    <th style={{textAlign:'right'}}>Export (Kg)</th>
-                                    <th style={{textAlign:'right'}}>Local (Kg)</th>
-                                    <th style={{textAlign:'right'}}>% Écart</th>
-                                    <th>Photo</th>
-                                    <th>Top Défaut</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filtered.length === 0 && (
-                                    <tr><td colSpan="8" style={{textAlign:'center', padding:30, color:'var(--gray-400)', fontSize:12}}>
-                                        <i className="fa-solid fa-inbox" style={{fontSize:20, display:'block', marginBottom:8}}></i>
-                                        Aucun pesage enregistré. Cliquez sur "Nouveau Pesage" pour commencer.
-                                    </td></tr>
-                                )}
-                                {filtered.map((p, i) => {
-                                    const total = (p.kgExport || 0) + (p.kgLocal || 0);
-                                    const pctE = total > 0 ? ((p.kgLocal || 0) / total * 100) : 0;
-                                    const defautEntries = p.defauts ? Object.entries(p.defauts).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]) : [];
-                                    const topDefaut = defautEntries.length > 0 ? defautEntries[0] : null;
-                                    return (
-                                        <tr key={p.id || i} onClick={() => setSelectedPesage(p)} style={{cursor:'pointer'}}
-                                            onMouseOver={e => e.currentTarget.style.background='rgba(139,34,82,0.04)'}
-                                            onMouseOut={e => e.currentTarget.style.background=''}>
-                                            <td>{p.date}</td>
-                                            <td><span className={`status-badge ${p.ferme==='F1'?'berry':'green'}`} style={{fontSize:10}}>{p.ferme}</span></td>
-                                            <td style={{fontWeight:600}}>{p.variete}</td>
-                                            <td style={{textAlign:'right'}}>{(p.kgExport || 0).toLocaleString('fr-FR')}</td>
-                                            <td style={{textAlign:'right', fontWeight:600, color:'var(--orange)'}}>{p.kgLocal || 0}</td>
-                                            <td style={{textAlign:'right'}}>
-                                                <span style={{fontWeight:700, color: pctE > 15 ? 'var(--red)' : pctE > 10 ? 'var(--orange)' : 'var(--green)'}}>
-                                                    {pctE.toFixed(1)}%
-                                                </span>
-                                            </td>
-                                            <td style={{textAlign:'center'}}>
-                                                {p.photoId ? <i className="fa-solid fa-image" style={{color:'var(--green)'}}></i> : <i className="fa-solid fa-camera" style={{color:'var(--gray-300)'}}></i>}
-                                            </td>
-                                            <td>{topDefaut ? <span style={{fontSize:11, color:'var(--red)'}}>{topDefaut[0]} ({topDefaut[1]}%)</span> : <span style={{fontSize:11, color:'var(--gray-300)'}}>-</span>}</td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </Panel>
-
-                    {/* Moyenne des Défauts */}
-                    <Panel title="Moyenne des Défauts (%)" icon="fa-bug">
-                        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:10}}>
-                            {customDefauts.map((d, i) => {
-                                const val = avgDefauts[d] || 0;
-                                return (
-                                    <div key={i} style={{padding:12, background:'var(--gray-100)', borderRadius:10, textAlign:'center', borderLeft:`4px solid ${val > 8 ? 'var(--red)' : val > 5 ? 'var(--orange)' : 'var(--green)'}`}}>
-                                        <div style={{fontSize:11, fontWeight:600, color:'var(--gray-600)', marginBottom:4}}>{d}</div>
-                                        <div style={{fontSize:20, fontWeight:700, color: val > 8 ? 'var(--red)' : val > 5 ? 'var(--orange)' : 'var(--green)'}}>{val.toFixed(1)}%</div>
-                                        <div style={{height:4, background:'var(--gray-200)', borderRadius:2, marginTop:6}}>
-                                            <div style={{height:'100%', width:`${Math.min(val*5, 100)}%`, background: val > 8 ? 'var(--red)' : val > 5 ? 'var(--orange)' : 'var(--green)', borderRadius:2}}></div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </Panel>
-
-                    {/* Suivi Hebdomadaire */}
-                    <Panel title="Suivi Hebdomadaire" icon="fa-chart-line">
-                        <div className="chip-group" style={{marginBottom:16}}>
-                            <button className={`chip c-berry ${chartView==='ecart' ? 'active' : ''}`} onClick={() => setChartView('ecart')}>% Écart par Ferme</button>
-                            <button className={`chip c-berry ${chartView==='defauts' ? 'active' : ''}`} onClick={() => setChartView('defauts')}>Défauts par Semaine</button>
-                        </div>
-
-                        {chartView === 'ecart' ? (
-                            <div>
-                                {(() => {
-                                    const hist = weeklyHistory;
-                                    if (hist.length === 0) return <div style={{padding:30, textAlign:'center', color:'var(--gray-400)', fontSize:12}}><i className="fa-solid fa-chart-bar" style={{fontSize:24, display:'block', marginBottom:8}}></i>Pas encore de données hebdomadaires. Ajoutez des pesages pour voir le graphique.</div>;
-                                    const chartW = 700, chartH = 220, padL = 45, padR = 20, padT = 15, padB = 35;
-                                    const plotW = chartW - padL - padR;
-                                    const plotH = chartH - padT - padB;
-                                    const maxVal = 25;
-                                    const yScale = v => padT + plotH - (v / maxVal) * plotH;
-                                    const groupW = plotW / hist.length;
-
-                                    return (
-                                        <div>
-                                            <div style={{display:'flex', gap:16, marginBottom:8, fontSize:11}}>
-                                                <span><span style={{display:'inline-block',width:12,height:12,background:'var(--berry)',borderRadius:2,marginRight:4,verticalAlign:'middle'}}></span> F1</span>
-                                                <span><span style={{display:'inline-block',width:12,height:12,background:'var(--green)',borderRadius:2,marginRight:4,verticalAlign:'middle'}}></span> F5</span>
-                                                <span style={{color:'var(--red)', fontSize:10}}>--- Seuil alerte 15%</span>
-                                            </div>
-                                            <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{width:'100%', maxWidth:chartW}}>
-                                                {[0,5,10,15,20,25].map(v => (
-                                                    <g key={v}>
-                                                        <line x1={padL} y1={yScale(v)} x2={chartW-padR} y2={yScale(v)} stroke="#eee" strokeWidth="1"/>
-                                                        <text x={padL-5} y={yScale(v)+3} textAnchor="end" fontSize="9" fill="#999">{v}%</text>
-                                                    </g>
-                                                ))}
-                                                {/* Alert threshold at 15% */}
-                                                <line x1={padL} y1={yScale(15)} x2={chartW-padR} y2={yScale(15)} stroke="var(--red)" strokeWidth="1.5" strokeDasharray="6,3" opacity="0.6"/>
-                                                {hist.map((h, i) => {
-                                                    const cx = padL + groupW * i + groupW / 2;
-                                                    const barW = 18;
-                                                    return (
-                                                        <g key={i}>
-                                                            <rect x={cx - barW - 2} y={yScale(h.f1EcartPct)} width={barW} height={yScale(0) - yScale(h.f1EcartPct)} rx={3} fill="var(--berry)" opacity="0.8"/>
-                                                            <text x={cx - barW/2 - 2} y={yScale(h.f1EcartPct) - 4} textAnchor="middle" fontSize="8" fill="var(--berry)" fontWeight="600">{h.f1EcartPct}%</text>
-                                                            <rect x={cx + 2} y={yScale(h.f5EcartPct)} width={barW} height={yScale(0) - yScale(h.f5EcartPct)} rx={3} fill="var(--green)" opacity="0.8"/>
-                                                            <text x={cx + barW/2 + 2} y={yScale(h.f5EcartPct) - 4} textAnchor="middle" fontSize="8" fill="var(--green)" fontWeight="600">{h.f5EcartPct}%</text>
-                                                            <text x={cx} y={chartH - 5} textAnchor="middle" fontSize="10" fill="var(--gray-600)" fontWeight="500">{h.semaine}</text>
-                                                        </g>
-                                                    );
-                                                })}
-                                            </svg>
-                                        </div>
-                                    );
-                                })()}
+                <div className="tab-content fade-in">
+                    <Panel title="Écarts & Défauts — DQR Driscoll's" icon="fa-triangle-exclamation">
+                        <div style={{padding:16}}>
+                            {/* Filtres */}
+                            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16}}>
+                                <select value={filterVariete} onChange={e => setFilterVariete(e.target.value)} style={inputStyle}>
+                                    <option value="">Toutes variétés</option>
+                                    {varietes.map(v => <option key={v} value={v}>{v}</option>)}
+                                </select>
+                                <select value={filterBerry} onChange={e => setFilterBerry(e.target.value)} style={inputStyle}>
+                                    <option value="">Tous types</option>
+                                    {berryTypes.map(b => <option key={b} value={b}>{b}</option>)}
+                                </select>
+                                <select value={filterFerme} onChange={e => setFilterFerme(e.target.value)} style={inputStyle}>
+                                    <option value="">Toutes fermes</option>
+                                    {fermes.map(f => <option key={f} value={f}>{f}</option>)}
+                                </select>
+                                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={inputStyle} />
+                                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={inputStyle} />
+                                <button onClick={() => { setFilterVariete(''); setFilterBerry(''); setFilterFerme(''); setDateFrom(defaultFrom); setDateTo(defaultTo); }} style={{...inputStyle,cursor:'pointer',background:'var(--gray-50)'}}>Réinitialiser</button>
                             </div>
-                        ) : (
-                            <div>
-                                {(() => {
-                                    const hist = weeklyHistory;
-                                    if (hist.length < 2) return <div style={{padding:30, textAlign:'center', color:'var(--gray-400)', fontSize:12}}><i className="fa-solid fa-chart-line" style={{fontSize:24, display:'block', marginBottom:8}}></i>Minimum 2 semaines de données nécessaires pour ce graphique.</div>;
-                                    const defautKeys = ['Rouille', 'Thrips', 'Fruit cassé', 'Surmaturité'];
-                                    const colors = ['#E74C3C', '#F39C12', '#3498DB', '#9B59B6'];
-                                    const chartW = 700, chartH = 220, padL = 45, padR = 20, padT = 15, padB = 35;
-                                    const plotW = chartW - padL - padR;
-                                    const plotH = chartH - padT - padB;
-                                    const maxVal = 15;
-                                    const yScale = v => padT + plotH - (v / maxVal) * plotH;
-                                    const xScale = i => padL + (plotW / (hist.length - 1)) * i;
 
-                                    return (
-                                        <div>
-                                            <div style={{display:'flex', gap:12, marginBottom:8, fontSize:11, flexWrap:'wrap'}}>
-                                                {defautKeys.map((d, i) => (
-                                                    <span key={i}><span style={{display:'inline-block',width:12,height:3,background:colors[i],marginRight:4,verticalAlign:'middle'}}></span> {d}</span>
-                                                ))}
-                                                <span style={{marginLeft:8, fontSize:10, color:'var(--gray-400)'}}>Données F1 (moyenne)</span>
-                                            </div>
-                                            <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{width:'100%', maxWidth:chartW}}>
-                                                {[0,5,10,15].map(v => (
-                                                    <g key={v}>
-                                                        <line x1={padL} y1={yScale(v)} x2={chartW-padR} y2={yScale(v)} stroke="#eee" strokeWidth="1"/>
-                                                        <text x={padL-5} y={yScale(v)+3} textAnchor="end" fontSize="9" fill="#999">{v}%</text>
-                                                    </g>
-                                                ))}
-                                                {defautKeys.map((dk, di) => {
-                                                    const pts = hist.map((h, i) => `${xScale(i)},${yScale(h.f1Defauts[dk] || 0)}`).join(' ');
-                                                    return (
-                                                        <g key={di}>
-                                                            <polyline points={pts} fill="none" stroke={colors[di]} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                                            {hist.map((h, i) => (
-                                                                <circle key={i} cx={xScale(i)} cy={yScale(h.f1Defauts[dk] || 0)} r="3.5" fill="white" stroke={colors[di]} strokeWidth="2"/>
-                                                            ))}
-                                                        </g>
-                                                    );
-                                                })}
-                                                {hist.map((h, i) => (
-                                                    <text key={i} x={xScale(i)} y={chartH - 5} textAnchor="middle" fontSize="10" fill="var(--gray-600)" fontWeight="500">{h.semaine}</text>
-                                                ))}
-                                            </svg>
-                                        </div>
-                                    );
-                                })()}
+                            {/* KPI */}
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(150px, 1fr))',gap:12,marginBottom:20}}>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Lots</div>
+                                    <div style={{fontSize:26,fontWeight:700,marginTop:4}}>{kpi.n}</div>
+                                </div>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>PFQ moyen</div>
+                                    <div style={{fontSize:26,fontWeight:700,color:pfqColor(kpi.avgPfq),marginTop:4}}>{kpi.avgPfq}</div>
+                                </div>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Condition</div>
+                                    <div style={{fontSize:22,fontWeight:700,marginTop:4}}>{kpi.avgCond}</div>
+                                </div>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Apparence</div>
+                                    <div style={{fontSize:22,fontWeight:700,marginTop:4}}>{kpi.avgApp}</div>
+                                </div>
+                                <div style={{padding:14,background:'var(--gray-50)',borderRadius:10,textAlign:'center'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:1}}>Pass rate</div>
+                                    <div style={{fontSize:22,fontWeight:700,color:kpi.passRate >= 80 ? 'var(--green)' : 'var(--orange)',marginTop:4}}>{kpi.passRate}%</div>
+                                </div>
                             </div>
-                        )}
-                    </Panel>
 
-                    {/* ===== PESAGE DETAIL POPUP ===== */}
-                    {selectedPesage && (() => {
-                        const p = selectedPesage;
-                        const total = (p.kgExport || 0) + (p.kgLocal || 0);
-                        const pctE = total > 0 ? ((p.kgLocal || 0) / total * 100) : 0;
-                        const sortedDefauts = p.defauts ? Object.entries(p.defauts).filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]) : [];
-                        return (
-                            <div className="modal-overlay" onClick={() => setSelectedPesage(null)}>
-                                <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:'600px', maxHeight:'90vh', overflowY:'auto'}}>
-                                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, paddingBottom:12, borderBottom:'3px solid var(--berry)'}}>
-                                        <div>
-                                            <div style={{fontSize:18, fontWeight:700}}>Pesage {p.id}</div>
-                                            <div style={{fontSize:12, color:'var(--gray-400)'}}>{p.date} | {p.ferme} | {p.variete}</div>
-                                        </div>
-                                        <div style={{textAlign:'right'}}>
-                                            <div style={{fontSize:22, fontWeight:700, color: pctE > 15 ? 'var(--red)' : 'var(--orange)'}}>{pctE.toFixed(1)}%</div>
-                                            <div style={{fontSize:10, color:'var(--gray-400)'}}>Écart Marché Local</div>
-                                        </div>
-                                    </div>
+                            {/* Onglets internes */}
+                            <div style={{display:'flex',gap:6,marginBottom:16,borderBottom:'1px solid var(--gray-200)',flexWrap:'wrap'}}>
+                                {views.map(v => (
+                                    <button key={v.id} onClick={() => setViewMode(v.id)} style={{padding:'8px 14px',background:viewMode===v.id?'var(--berry)':'transparent',color:viewMode===v.id?'#fff':'var(--gray-600)',border:'none',borderRadius:'8px 8px 0 0',cursor:'pointer',fontSize:13,fontWeight:600}}>
+                                        <i className={'fa-solid '+v.icon} style={{marginRight:6}}></i>{v.label}
+                                    </button>
+                                ))}
+                            </div>
 
-                                    {/* Production */}
-                                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:16}}>
-                                        <div style={{padding:10, background:'var(--green-pale)', borderRadius:8, textAlign:'center'}}>
-                                            <div style={{fontSize:10, color:'var(--gray-400)'}}>Export</div>
-                                            <div style={{fontSize:18, fontWeight:700, color:'var(--green)'}}>{p.kgExport || 0} kg</div>
-                                        </div>
-                                        <div style={{padding:10, background:'var(--orange-pale)', borderRadius:8, textAlign:'center'}}>
-                                            <div style={{fontSize:10, color:'var(--gray-400)'}}>Marché Local</div>
-                                            <div style={{fontSize:18, fontWeight:700, color:'var(--orange)'}}>{p.kgLocal || 0} kg</div>
-                                        </div>
-                                        <div style={{padding:10, background:'var(--gray-100)', borderRadius:8, textAlign:'center'}}>
-                                            <div style={{fontSize:10, color:'var(--gray-400)'}}>Total</div>
-                                            <div style={{fontSize:18, fontWeight:700}}>{(p.kgExport || 0) + (p.kgLocal || 0)} kg</div>
-                                        </div>
-                                    </div>
-
-                                    {/* Photo placeholder */}
-                                    <div style={{padding:20, background:'var(--gray-100)', borderRadius:10, textAlign:'center', marginBottom:16, border:'2px dashed var(--gray-200)'}}>
-                                        <i className="fa-solid fa-camera" style={{fontSize:24, color:'var(--gray-300)', marginBottom:8, display:'block'}}></i>
-                                        <div style={{fontSize:12, color:'var(--gray-400)'}}>Photo balance : {p.photoId ? 'Disponible' : 'Non prise'}</div>
-                                        <button style={{marginTop:8, padding:'6px 12px', background:'var(--blue)', color:'white', border:'none', borderRadius:6, fontSize:11, cursor:'pointer'}}>
-                                            <i className="fa-solid fa-camera" style={{marginRight:4}}></i> Prendre photo
-                                        </button>
-                                    </div>
-
-                                    {/* Défauts */}
-                                    <div style={{fontSize:13, fontWeight:600, marginBottom:8}}>Détail des Défauts</div>
-                                    <table className="data-table" style={{fontSize:12, marginBottom:16}}>
-                                        <thead>
-                                            <tr><th>Défaut</th><th style={{textAlign:'right'}}>%</th><th style={{width:200}}>Niveau</th></tr>
-                                        </thead>
-                                        <tbody>
-                                            {sortedDefauts.map(([name, val], i) => (
-                                                <tr key={i}>
-                                                    <td style={{fontWeight:600}}>{name}</td>
-                                                    <td style={{textAlign:'right', fontWeight:700, color: val > 8 ? 'var(--red)' : val > 5 ? 'var(--orange)' : 'var(--green)'}}>{val}%</td>
-                                                    <td>
-                                                        <div style={{height:6, background:'var(--gray-200)', borderRadius:3}}>
-                                                            <div style={{height:'100%', width:`${Math.min(val*5, 100)}%`, background: val > 8 ? 'var(--red)' : val > 5 ? 'var(--orange)' : 'var(--green)', borderRadius:3}}></div>
-                                                        </div>
-                                                    </td>
+                            {/* Vue Top Défauts */}
+                            {viewMode === 'top' && (
+                                <div>
+                                    <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>Top défauts cumulés ({topDefauts.length})</h3>
+                                    <div style={{maxHeight:600,overflowY:'auto',border:'1px solid var(--gray-100)',borderRadius:8}}>
+                                        <table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
+                                            <thead style={{position:'sticky',top:0,background:'var(--gray-50)'}}>
+                                                <tr>
+                                                    <th style={{textAlign:'left',padding:'8px 10px'}}>Défaut</th>
+                                                    <th style={{textAlign:'left',padding:'8px 10px'}}>Catégorie</th>
+                                                    <th style={{textAlign:'right',padding:'8px 10px'}}>Occurr.</th>
+                                                    <th style={{textAlign:'right',padding:'8px 10px'}}>% moyen</th>
+                                                    <th style={{textAlign:'right',padding:'8px 10px'}}>Points moy.</th>
+                                                    <th style={{textAlign:'right',padding:'8px 10px'}}>Points cumul.</th>
+                                                    <th style={{textAlign:'left',padding:'8px 10px'}}>Variétés</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-
-                                    <div style={{display:'flex', gap:10}}>
-                                        <button onClick={() => setSelectedPesage(null)} style={{flex:1, padding:'10px', background:'var(--berry)', color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer'}}>
-                                            <i className="fa-solid fa-xmark" style={{marginRight:6}}></i> Fermer
-                                        </button>
-                                        <button onClick={() => handleDeletePesage(p.id)} style={{padding:'10px 16px', background:'var(--red)', color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer'}}>
-                                            <i className="fa-solid fa-trash" style={{marginRight:6}}></i> Supprimer
-                                        </button>
+                                            </thead>
+                                            <tbody>
+                                                {topDefauts.map((d, i) => (
+                                                    <tr key={i} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                        <td style={{padding:'6px 10px',fontWeight:600}}>{d.name}</td>
+                                                        <td style={{padding:'6px 10px'}}><span style={{padding:'2px 8px',borderRadius:10,fontSize:11,background:d.cat==='Condition'?'rgba(244,67,54,0.1)':'rgba(33,150,243,0.1)',color:d.cat==='Condition'?'var(--red)':'var(--blue)'}}>{d.cat}</span></td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right'}}>{d.occurrences}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right'}}>{d.avgPct}%</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right'}}>{d.avgPoints}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{d.totalPoints}</td>
+                                                        <td style={{padding:'6px 10px',fontSize:11}}>{d.varieties.slice(0, 4).join(', ')}{d.varieties.length > 4 ? '…' : ''}</td>
+                                                    </tr>
+                                                ))}
+                                                {topDefauts.length === 0 && <tr><td colSpan={7} style={{padding:20,textAlign:'center',color:'var(--gray-400)'}}>Aucun défaut sur la période</td></tr>}
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })()}
+                            )}
 
-                    {/* ===== SAISIE PESAGE MODAL ===== */}
-                    {showSaisie && (
-                        <div className="modal-overlay" onClick={() => setShowSaisie(false)}>
-                            <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:'550px'}}>
-                                <div style={{fontSize:18, fontWeight:700, marginBottom:16, paddingBottom:12, borderBottom:'3px solid var(--berry)'}}>
-                                    <i className="fa-solid fa-plus-circle" style={{marginRight:8, color:'var(--berry)'}}></i>Nouveau Pesage Marché Local
-                                </div>
-
-                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16}}>
-                                    <div>
-                                        <label style={{fontSize:11, fontWeight:600, display:'block', marginBottom:4}}>Ferme</label>
-                                        <select value={saisieForm.ferme} onChange={e => setSaisieForm({...saisieForm, ferme:e.target.value})} style={{width:'100%', padding:'8px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}>
-                                            <option value="F1">Ferme 172 (F1)</option>
-                                            <option value="F5">Ferme 195 (F5)</option>
-                                        </select>
+                            {/* Vue Évolution */}
+                            {viewMode === 'evolution' && (
+                                <div>
+                                    <div style={{display:'flex',gap:6,marginBottom:12}}>
+                                        <button onClick={() => setEvolKey('avgPfqTotal')} style={{padding:'6px 12px',background:evolKey==='avgPfqTotal'?'var(--berry)':'var(--gray-50)',color:evolKey==='avgPfqTotal'?'#fff':'var(--gray-600)',border:'1px solid var(--gray-200)',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600}}>PFQ Total</button>
+                                        <button onClick={() => setEvolKey('split')} style={{padding:'6px 12px',background:evolKey==='split'?'var(--berry)':'var(--gray-50)',color:evolKey==='split'?'#fff':'var(--gray-600)',border:'1px solid var(--gray-200)',borderRadius:8,cursor:'pointer',fontSize:12,fontWeight:600}}>Condition vs Apparence</button>
                                     </div>
-                                    <div>
-                                        <label style={{fontSize:11, fontWeight:600, display:'block', marginBottom:4}}>Variété</label>
-                                        <select value={saisieForm.variete} onChange={e => setSaisieForm({...saisieForm, variete:e.target.value})} style={{width:'100%', padding:'8px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}>
-                                            <option>Maravilla</option><option>Maravilla Long Cane</option><option>Reyna</option><option>Adelita</option><option>Kwanza</option><option>Yazmin</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label style={{fontSize:11, fontWeight:600, display:'block', marginBottom:4}}>Quantité Export (Kg)</label>
-                                        <input type="number" value={saisieForm.kgExport} onChange={e => setSaisieForm({...saisieForm, kgExport:e.target.value})} placeholder="Ex: 350" style={{width:'100%', padding:'8px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}/>
-                                    </div>
-                                    <div>
-                                        <label style={{fontSize:11, fontWeight:600, display:'block', marginBottom:4}}>Quantité Marché Local (Kg)</label>
-                                        <input type="number" value={saisieForm.kgLocal} onChange={e => setSaisieForm({...saisieForm, kgLocal:e.target.value})} placeholder="Ex: 45" style={{width:'100%', padding:'8px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}/>
+                                    {dailyAgg.length > 0 ? (
+                                        evolKey === 'avgPfqTotal' ? (
+                                            <SimpleAreaChart data={dailyAgg} dataKeys={['avgPfqTotal']} colors={['#9C27B0']} xKey="date" height={280} />
+                                        ) : (
+                                            <SimpleAreaChart data={dailyAgg} dataKeys={['avgCondition','avgApparence']} colors={['#F44336','#2196F3']} xKey="date" height={280} />
+                                        )
+                                    ) : (
+                                        <div style={{padding:40,textAlign:'center',color:'var(--gray-400)'}}>Aucune donnée pour la période</div>
+                                    )}
+                                    <div style={{display:'flex',gap:16,marginTop:12,fontSize:12,color:'var(--gray-600)',justifyContent:'center'}}>
+                                        {evolKey === 'split' ? (
+                                            <>
+                                                <span><span style={{display:'inline-block',width:10,height:10,background:'#F44336',borderRadius:2,marginRight:4}}></span>Condition</span>
+                                                <span><span style={{display:'inline-block',width:10,height:10,background:'#2196F3',borderRadius:2,marginRight:4}}></span>Apparence</span>
+                                            </>
+                                        ) : (
+                                            <span><span style={{display:'inline-block',width:10,height:10,background:'#9C27B0',borderRadius:2,marginRight:4}}></span>PFQ Total</span>
+                                        )}
                                     </div>
                                 </div>
+                            )}
 
-                                {/* Photo */}
-                                <div style={{padding:16, background:'var(--gray-100)', borderRadius:10, textAlign:'center', marginBottom:16, border:'2px dashed var(--gray-200)'}}>
-                                    <i className="fa-solid fa-camera" style={{fontSize:20, color:'var(--gray-300)', marginBottom:6, display:'block'}}></i>
-                                    <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:6}}>Photo de la balance</div>
-                                    <button style={{padding:'6px 12px', background:'var(--blue)', color:'white', border:'none', borderRadius:6, fontSize:11, cursor:'pointer'}}>
-                                        <i className="fa-solid fa-camera" style={{marginRight:4}}></i> Capturer
-                                    </button>
+                            {/* Vue Hebdo Sat-Fri */}
+                            {viewMode === 'weekly' && (
+                                <div>
+                                    <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>PFQ moyen par variété et semaine (Samedi → Vendredi)</h3>
+                                    <div style={{overflowX:'auto',border:'1px solid var(--gray-100)',borderRadius:8}}>
+                                        <table style={{width:'100%',fontSize:12,borderCollapse:'collapse',minWidth:600}}>
+                                            <thead style={{background:'var(--gray-50)'}}>
+                                                <tr>
+                                                    <th style={{textAlign:'left',padding:'8px 10px',position:'sticky',left:0,background:'var(--gray-50)',zIndex:1}}>Variété</th>
+                                                    {weeklyPivot.weeks.map(w => <th key={w.key} style={{textAlign:'center',padding:'8px 6px',whiteSpace:'nowrap'}}>{w.label}</th>)}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {weeklyPivot.varieties.map(v => (
+                                                    <tr key={v} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                        <td style={{padding:'6px 10px',fontWeight:600,position:'sticky',left:0,background:'#fff',zIndex:1}}>{v}</td>
+                                                        {weeklyPivot.weeks.map(w => {
+                                                            const cell = weeklyPivot.map[v] && weeklyPivot.map[v][w.key];
+                                                            if (!cell) return <td key={w.key} style={{padding:'6px',textAlign:'center',color:'var(--gray-300)'}}>—</td>;
+                                                            const avg = Math.round(cell.sumPfq / cell.n * 10) / 10;
+                                                            return <td key={w.key} style={{padding:'6px',textAlign:'center'}}>
+                                                                <div style={{fontWeight:700,color:pfqColor(avg)}}>{avg}</div>
+                                                                <div style={{fontSize:10,color:'var(--gray-400)'}}>{cell.n} lot{cell.n>1?'s':''}</div>
+                                                            </td>;
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                                {weeklyPivot.varieties.length === 0 && <tr><td colSpan={(weeklyPivot.weeks.length||0)+1} style={{padding:20,textAlign:'center',color:'var(--gray-400)'}}>Aucune donnée</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
+                            )}
 
-                                {/* Défauts saisie */}
-                                <div style={{fontSize:13, fontWeight:600, marginBottom:8}}>Défauts constatés (%)</div>
-                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16}}>
-                                    {customDefauts.map((d, i) => (
-                                        <div key={i} style={{display:'flex', alignItems:'center', gap:6}}>
-                                            <label style={{fontSize:11, flex:1, fontWeight:500}}>{d}</label>
-                                            <input type="number" step="0.1" min="0" max="100" placeholder="0" style={{width:'60px', padding:'6px', borderRadius:6, border:'1px solid var(--gray-200)', fontSize:11, textAlign:'right'}}
-                                                onChange={e => setSaisieForm({...saisieForm, defauts: {...saisieForm.defauts, [d]: parseFloat(e.target.value)||0}})}/>
-                                            <span style={{fontSize:10, color:'var(--gray-400)'}}>%</span>
-                                        </div>
-                                    ))}
+                            {/* Vue Journalier */}
+                            {viewMode === 'daily' && (
+                                <div>
+                                    <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>PFQ moyen par variété et jour (14 derniers jours dans la plage)</h3>
+                                    <div style={{overflowX:'auto',border:'1px solid var(--gray-100)',borderRadius:8}}>
+                                        <table style={{width:'100%',fontSize:12,borderCollapse:'collapse',minWidth:600}}>
+                                            <thead style={{background:'var(--gray-50)'}}>
+                                                <tr>
+                                                    <th style={{textAlign:'left',padding:'8px 10px',position:'sticky',left:0,background:'var(--gray-50)',zIndex:1}}>Variété</th>
+                                                    {dailyPivot.dates.map(d => <th key={d} style={{textAlign:'center',padding:'8px 6px',whiteSpace:'nowrap'}}>{d.slice(5)}</th>)}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {dailyPivot.varieties.map(v => (
+                                                    <tr key={v} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                        <td style={{padding:'6px 10px',fontWeight:600,position:'sticky',left:0,background:'#fff',zIndex:1}}>{v}</td>
+                                                        {dailyPivot.dates.map(d => {
+                                                            const cell = dailyPivot.map[v] && dailyPivot.map[v][d];
+                                                            if (!cell) return <td key={d} style={{padding:'6px',textAlign:'center',color:'var(--gray-300)'}}>—</td>;
+                                                            const avg = Math.round(cell.sumPfq / cell.n * 10) / 10;
+                                                            return <td key={d} style={{padding:'6px',textAlign:'center'}}>
+                                                                <div style={{fontWeight:700,color:pfqColor(avg)}}>{avg}</div>
+                                                                <div style={{fontSize:10,color:'var(--gray-400)'}}>{cell.n}</div>
+                                                            </td>;
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                                {dailyPivot.varieties.length === 0 && <tr><td colSpan={(dailyPivot.dates.length||0)+1} style={{padding:20,textAlign:'center',color:'var(--gray-400)'}}>Aucune donnée</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
                                 </div>
+                            )}
 
-                                <div style={{display:'flex', gap:10}}>
-                                    <button onClick={handleSavePesage} disabled={saving} style={{flex:1, padding:'10px', background: saving ? 'var(--gray-300)' : 'var(--green)', color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor: saving ? 'wait' : 'pointer'}}>
-                                        <i className={`fa-solid ${saving ? 'fa-spinner fa-spin' : 'fa-check'}`} style={{marginRight:6}}></i> {saving ? 'Enregistrement...' : 'Enregistrer'}
-                                    </button>
-                                    <button onClick={() => setShowSaisie(false)} style={{padding:'10px 20px', background:'var(--gray-200)', color:'var(--gray-600)', border:'none', borderRadius:8, fontSize:13, cursor:'pointer'}}>Annuler</button>
+                            {/* Vue Par variété */}
+                            {viewMode === 'variete' && (
+                                <div>
+                                    <h3 style={{fontSize:14,margin:'0 0 8px',color:'var(--gray-700)'}}>Détail par variété (triées du pire PFQ au meilleur)</h3>
+                                    <div style={{display:'grid',gap:12}}>
+                                        {varieteBreakdown.map(v => (
+                                            <div key={v.variete} style={{border:'1px solid var(--gray-200)',borderRadius:10,padding:14,background:'#fff'}}>
+                                                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+                                                    <div style={{fontWeight:700,fontSize:14}}>{v.variete}</div>
+                                                    <div style={{display:'flex',gap:14,fontSize:12,color:'var(--gray-600)'}}>
+                                                        <div>Lots: <strong>{v.n}</strong></div>
+                                                        <div>PFQ moyen: <strong style={{color:pfqColor(v.avgPfq)}}>{v.avgPfq}</strong></div>
+                                                    </div>
+                                                </div>
+                                                {v.topDefauts.length > 0 ? (
+                                                    <table style={{width:'100%',fontSize:12,borderCollapse:'collapse'}}>
+                                                        <thead><tr style={{background:'var(--gray-50)'}}>
+                                                            <th style={{textAlign:'left',padding:'6px 10px'}}>Défaut</th>
+                                                            <th style={{textAlign:'left',padding:'6px 10px'}}>Catégorie</th>
+                                                            <th style={{textAlign:'right',padding:'6px 10px'}}>Occurr.</th>
+                                                            <th style={{textAlign:'right',padding:'6px 10px'}}>% moyen</th>
+                                                            <th style={{textAlign:'right',padding:'6px 10px'}}>Pts moy.</th>
+                                                            <th style={{textAlign:'right',padding:'6px 10px'}}>Pts cumul.</th>
+                                                        </tr></thead>
+                                                        <tbody>
+                                                            {v.topDefauts.map((d, i) => (
+                                                                <tr key={i} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                                    <td style={{padding:'5px 10px'}}>{d.name}</td>
+                                                                    <td style={{padding:'5px 10px',fontSize:11,color:d.cat==='Condition'?'var(--red)':'var(--blue)'}}>{d.cat}</td>
+                                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{d.occurrences}</td>
+                                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{d.avgPct}%</td>
+                                                                    <td style={{padding:'5px 10px',textAlign:'right'}}>{d.avgPoints}</td>
+                                                                    <td style={{padding:'5px 10px',textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{d.totalPoints}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                ) : (
+                                                    <div style={{fontSize:12,color:'var(--gray-400)',padding:8}}>Aucun défaut détaillé</div>
+                                                )}
+                                            </div>
+                                        ))}
+                                        {varieteBreakdown.length === 0 && <div style={{padding:20,textAlign:'center',color:'var(--gray-400)'}}>Aucune variété sur la période</div>}
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                         </div>
-                    )}
-
-                    {/* ===== CONFIGURER DÉFAUTS MODAL ===== */}
-                    {showAddDefaut && (
-                        <div className="modal-overlay" onClick={() => setShowAddDefaut(false)}>
-                            <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:'450px'}}>
-                                <div style={{fontSize:18, fontWeight:700, marginBottom:16, paddingBottom:12, borderBottom:'3px solid var(--blue)'}}>
-                                    <i className="fa-solid fa-gear" style={{marginRight:8, color:'var(--blue)'}}></i>Configurer les Défauts
-                                </div>
-
-                                <div style={{marginBottom:16}}>
-                                    {customDefauts.map((d, i) => (
-                                        <div key={i} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 12px', background:'var(--gray-100)', borderRadius:8, marginBottom:6}}>
-                                            <span style={{fontSize:13, fontWeight:500}}><i className="fa-solid fa-bug" style={{marginRight:8, color:'var(--orange)'}}></i>{d}</span>
-                                            <button onClick={() => handleRemoveDefaut(d)} style={{background:'none', border:'none', color:'var(--red)', cursor:'pointer', fontSize:14, padding:'2px 6px'}}>
-                                                <i className="fa-solid fa-trash"></i>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div style={{display:'flex', gap:8, marginBottom:16}}>
-                                    <input type="text" value={newDefaut} onChange={e => setNewDefaut(e.target.value)} placeholder="Nouveau défaut..." onKeyDown={e => e.key === 'Enter' && handleAddDefaut()}
-                                        style={{flex:1, padding:'8px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:12}}/>
-                                    <button onClick={handleAddDefaut} style={{padding:'8px 16px', background:'var(--green)', color:'white', border:'none', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer'}}>
-                                        <i className="fa-solid fa-plus"></i> Ajouter
-                                    </button>
-                                </div>
-
-                                <button onClick={() => setShowAddDefaut(false)} style={{width:'100%', padding:'10px', background:'var(--berry)', color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer'}}>
-                                    <i className="fa-solid fa-check" style={{marginRight:6}}></i> Terminé
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                    </Panel>
                 </div>
             );
         }
@@ -20650,6 +21149,503 @@ ${rejetHtml}
             );
         }
 
+        // ===================== PAIE — Helpers + Composants =====================
+        const PAIE_BAREMES_DEFAULT = {
+            smagBrutJournalier: 88.58,
+            smagNetJournalier: 82.61,
+            joursParMois: 26,
+            tauxChargesPatronales: 0.26,
+            tauxCotisationsSalariales: 0.0674,
+            paliers: [
+                { seuilJours: 624,  pourcentage: 5,  label: '≥ 2 ans' },
+                { seuilJours: 1560, pourcentage: 10, label: '≥ 5 ans' },
+                { seuilJours: 3120, pourcentage: 15, label: '≥ 10 ans' },
+            ],
+        };
+
+        function trouverPalierAnciennete(anciennete, paliers) {
+            const sorted = [...(paliers || [])].sort((a, b) => (b.seuilJours || 0) - (a.seuilJours || 0));
+            const p = sorted.find(x => anciennete >= (x.seuilJours || 0));
+            return { palier: p?.label || '—', pourcentage: p?.pourcentage ?? 0 };
+        }
+
+        function calculerPaieOuvrier({ declare, joursTravailles, anciennete, baremes }) {
+            const jrs = Number(joursTravailles) || 0;
+            const b = { ...PAIE_BAREMES_DEFAULT, ...(baremes || {}) };
+            if (!declare) {
+                const net = (b.smagNetJournalier || 0) * jrs;
+                return { net, brut: net, prime: 0, palier: '—', pourcentage: 0,
+                    chargesPatronales: 0, cotisationsSalariales: 0, coutEmployeur: net };
+            }
+            const brutBase = (b.smagBrutJournalier || 0) * jrs;
+            const { palier, pourcentage } = trouverPalierAnciennete(anciennete || 0, b.paliers);
+            const prime = brutBase * (pourcentage / 100);
+            const brut = brutBase + prime;
+            const cotisSal = brut * (b.tauxCotisationsSalariales || 0);
+            const chargesPat = brut * (b.tauxChargesPatronales || 0);
+            return { net: brut - cotisSal, brut, prime, palier, pourcentage,
+                chargesPatronales: chargesPat, cotisationsSalariales: cotisSal,
+                coutEmployeur: brut + chargesPat };
+        }
+
+        // Lit sql_mirror_pointage entre minDate et maxDate (IDs YYYY-MM-DD)
+        // → Map<matricule, { joursPointes:Set<dateISO>, nom }>
+        async function loadPointageDistinctDays(db, minDate, maxDate) {
+            const out = new Map();
+            if (!minDate) return out;
+            const max = maxDate || new Date().toISOString().slice(0, 10);
+            const snap = await db.collection('sql_mirror_pointage')
+                .where(firebase.firestore.FieldPath.documentId(), '>=', minDate)
+                .where(firebase.firestore.FieldPath.documentId(), '<=', max)
+                .get();
+            snap.forEach(d => {
+                const dateISO = d.id;
+                const docData = d.data() || {};
+                const rows = docData.rows || [];
+                rows.forEach(r => {
+                    const mat = String(r.Personnel_Matricule || '').trim();
+                    if (!mat) return;
+                    const nom = (r.Personnel_Nom || '').trim();
+                    const entry = out.get(mat) || { joursPointes: new Set(), nom };
+                    entry.joursPointes.add(dateISO);
+                    if (!entry.nom && nom) entry.nom = nom;
+                    out.set(mat, entry);
+                });
+            });
+            return out;
+        }
+
+        function BaremesPaiePanel() {
+            const [baremes, setBaremes] = useState(PAIE_BAREMES_DEFAULT);
+            const [loaded, setLoaded] = useState(false);
+            const [saving, setSaving] = useState(false);
+            const [saveMsg, setSaveMsg] = useState('');
+            useEffect(() => {
+                firebase.firestore().collection('app_settings').doc('paie_baremes').get()
+                    .then(doc => { if (doc.exists) setBaremes({ ...PAIE_BAREMES_DEFAULT, ...doc.data() }); })
+                    .catch(() => {})
+                    .finally(() => setLoaded(true));
+            }, []);
+            const setNum = (k, v) => setBaremes(b => ({ ...b, [k]: Number(v) }));
+            const setPalier = (i, k, v) => setBaremes(b => {
+                const arr = [...(b.paliers || [])];
+                arr[i] = { ...arr[i], [k]: k === 'label' ? v : Number(v) };
+                return { ...b, paliers: arr };
+            });
+            const addPalier = () => setBaremes(b => ({ ...b, paliers: [...(b.paliers || []), { seuilJours: 0, pourcentage: 0, label: '' }] }));
+            const removePalier = (i) => setBaremes(b => ({ ...b, paliers: (b.paliers || []).filter((_, idx) => idx !== i) }));
+            const save = async () => {
+                setSaving(true); setSaveMsg('');
+                try {
+                    await firebase.firestore().collection('app_settings').doc('paie_baremes').set({
+                        ...baremes, updatedAt: Date.now(),
+                    }, { merge: true });
+                    setSaveMsg('Enregistré ✓');
+                    setTimeout(() => setSaveMsg(''), 2500);
+                } catch (e) { setSaveMsg('Erreur: ' + e.message); }
+                finally { setSaving(false); }
+            };
+            if (!loaded) return null;
+            const inputStyle = { padding: '4px 6px', borderRadius: 6, border: '1px solid var(--gray-300)', fontSize: 11, width: 100 };
+            return (
+                <Panel title="Barèmes Paie (SMAG, charges, ancienneté)" icon="fa-money-bill-wave">
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap:12, marginBottom:16}}>
+                        <label style={{fontSize:11, display:'flex', flexDirection:'column', gap:4}}>
+                            <span style={{fontWeight:600, color:'var(--gray-500)'}}>SMAG brut journalier (DH)</span>
+                            <input type="number" step="0.01" value={baremes.smagBrutJournalier} onChange={e => setNum('smagBrutJournalier', e.target.value)} style={inputStyle} />
+                        </label>
+                        <label style={{fontSize:11, display:'flex', flexDirection:'column', gap:4}}>
+                            <span style={{fontWeight:600, color:'var(--gray-500)'}}>SMAG net journalier (DH)</span>
+                            <input type="number" step="0.01" value={baremes.smagNetJournalier} onChange={e => setNum('smagNetJournalier', e.target.value)} style={inputStyle} />
+                        </label>
+                        <label style={{fontSize:11, display:'flex', flexDirection:'column', gap:4}}>
+                            <span style={{fontWeight:600, color:'var(--gray-500)'}}>Jours / mois</span>
+                            <input type="number" step="1" value={baremes.joursParMois} onChange={e => setNum('joursParMois', e.target.value)} style={inputStyle} />
+                        </label>
+                        <label style={{fontSize:11, display:'flex', flexDirection:'column', gap:4}}>
+                            <span style={{fontWeight:600, color:'var(--gray-500)'}}>Charges patronales (%)</span>
+                            <input type="number" step="0.01" value={(baremes.tauxChargesPatronales * 100).toFixed(2)}
+                                onChange={e => setBaremes(b => ({...b, tauxChargesPatronales: Number(e.target.value) / 100}))} style={inputStyle} />
+                        </label>
+                        <label style={{fontSize:11, display:'flex', flexDirection:'column', gap:4}}>
+                            <span style={{fontWeight:600, color:'var(--gray-500)'}}>Cotisations salariales (%)</span>
+                            <input type="number" step="0.01" value={(baremes.tauxCotisationsSalariales * 100).toFixed(2)}
+                                onChange={e => setBaremes(b => ({...b, tauxCotisationsSalariales: Number(e.target.value) / 100}))} style={inputStyle} />
+                        </label>
+                    </div>
+                    <h4 style={{fontSize:12, fontWeight:700, marginBottom:8, color:'var(--berry)'}}>Paliers prime d'ancienneté</h4>
+                    <table className="data-table" style={{fontSize:11, marginBottom:12}}>
+                        <thead><tr>
+                            <th>Label</th>
+                            <th style={{textAlign:'right'}}>Seuil (jours travaillés)</th>
+                            <th style={{textAlign:'right'}}>Prime (%)</th>
+                            <th style={{width:40}}></th>
+                        </tr></thead>
+                        <tbody>
+                            {(baremes.paliers || []).map((p, i) => (
+                                <tr key={i}>
+                                    <td><input value={p.label || ''} onChange={e => setPalier(i, 'label', e.target.value)} style={{...inputStyle, width:'90%'}} /></td>
+                                    <td style={{textAlign:'right'}}><input type="number" value={p.seuilJours} onChange={e => setPalier(i, 'seuilJours', e.target.value)} style={{...inputStyle, textAlign:'right'}} /></td>
+                                    <td style={{textAlign:'right'}}><input type="number" step="0.5" value={p.pourcentage} onChange={e => setPalier(i, 'pourcentage', e.target.value)} style={{...inputStyle, textAlign:'right', width:70}} /></td>
+                                    <td><button onClick={() => removePalier(i)} style={{background:'transparent', border:'none', color:'var(--red)', cursor:'pointer'}} title="Supprimer"><i className="fa-solid fa-trash"></i></button></td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    <div style={{display:'flex', gap:8, alignItems:'center'}}>
+                        <button onClick={addPalier} style={{padding:'6px 12px', background:'var(--gray-100)', color:'var(--gray-500)', border:'1px solid var(--gray-300)', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                            <i className="fa-solid fa-plus" style={{marginRight:4}}></i> Ajouter un palier
+                        </button>
+                        <button onClick={save} disabled={saving} style={{padding:'6px 16px', background:'var(--berry)', color:'white', border:'none', borderRadius:8, fontSize:11, fontWeight:600, cursor: saving ? 'wait' : 'pointer'}}>
+                            {saving ? 'Enregistrement…' : 'Enregistrer'}
+                        </button>
+                        {saveMsg && <span style={{fontSize:11, color: saveMsg.startsWith('Erreur') ? 'var(--red)' : 'var(--green)', fontWeight:600}}>{saveMsg}</span>}
+                    </div>
+                </Panel>
+            );
+        }
+
+        function PaieTab({ data, currentProfile }) {
+            const [registry, setRegistry] = useState({});
+            const [pointageMap, setPointageMap] = useState(new Map());
+            const [baremes, setBaremes] = useState(PAIE_BAREMES_DEFAULT);
+            const [meta, setMeta] = useState(null);
+            const [loading, setLoading] = useState(true);
+            const [filter, setFilter] = useState('all');
+            const [search, setSearch] = useState('');
+            const [periodStart, setPeriodStart] = useState(() => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10); });
+            const [periodEnd, setPeriodEnd] = useState(() => new Date().toISOString().slice(0, 10));
+            const [defaultBaselineDate, setDefaultBaselineDate] = useState(() => new Date().toISOString().slice(0, 10));
+            const declareFileRef = React.useRef(null);
+            const baselineFileRef = React.useRef(null);
+
+            // Live subscription on barèmes
+            useEffect(() => {
+                const unsub = firebase.firestore().collection('app_settings').doc('paie_baremes')
+                    .onSnapshot(doc => { if (doc.exists) setBaremes({ ...PAIE_BAREMES_DEFAULT, ...doc.data() }); });
+                return () => unsub && unsub();
+            }, []);
+
+            // Initial load
+            useEffect(() => {
+                const db = firebase.firestore();
+                let cancelled = false;
+                (async () => {
+                    try {
+                        const [regSnap, metaDoc] = await Promise.all([
+                            db.collection('ouvriers_registry').get(),
+                            db.collection('app_settings').doc('paie_import_meta').get(),
+                        ]);
+                        if (cancelled) return;
+                        const reg = {};
+                        regSnap.forEach(d => { reg[d.id] = { matricule: d.id, ...d.data() }; });
+                        setRegistry(reg);
+                        if (metaDoc.exists) setMeta(metaDoc.data());
+                        const minBase = Object.values(reg).map(r => r.baselineDate).filter(Boolean).sort()[0];
+                        const minDate = (minBase && minBase < periodStart) ? minBase : periodStart;
+                        const map = await loadPointageDistinctDays(db, minDate, periodEnd);
+                        if (cancelled) return;
+                        setPointageMap(map);
+                    } catch (e) { console.error('Paie load:', e); }
+                    finally { if (!cancelled) setLoading(false); }
+                })();
+                return () => { cancelled = true; };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, []);
+
+            // Reload pointage when period bounds change
+            useEffect(() => {
+                if (loading) return;
+                const db = firebase.firestore();
+                const minBase = Object.values(registry).map(r => r.baselineDate).filter(Boolean).sort()[0];
+                const minDate = (minBase && minBase < periodStart) ? minBase : periodStart;
+                loadPointageDistinctDays(db, minDate, periodEnd).then(setPointageMap).catch(e => console.error('reload pointage:', e));
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [periodStart, periodEnd]);
+
+            const rows = useMemo(() => {
+                const mats = new Set([...Object.keys(registry), ...pointageMap.keys()]);
+                const list = [];
+                mats.forEach(mat => {
+                    const r = registry[mat] || {};
+                    const pt = pointageMap.get(mat) || { joursPointes: new Set(), nom: '' };
+                    const baselineDate = r.baselineDate || '';
+                    const baselineJours = Number(r.baselineJours || 0);
+                    let joursDepuisBaseline = 0;
+                    let joursPeriode = 0;
+                    pt.joursPointes.forEach(dISO => {
+                        if (!baselineDate || dISO >= baselineDate) joursDepuisBaseline++;
+                        if (dISO >= periodStart && dISO <= periodEnd) joursPeriode++;
+                    });
+                    const anciennete = baselineJours + joursDepuisBaseline;
+                    const declare = !!r.declare;
+                    const paie = calculerPaieOuvrier({ declare, joursTravailles: joursPeriode, anciennete, baremes });
+                    list.push({ matricule: mat, nom: r.nom || pt.nom || '', declare,
+                        baselineJours, baselineDate, joursDepuisBaseline, anciennete, joursPeriode, paie });
+                });
+                list.sort((a, b) => (b.paie.coutEmployeur || 0) - (a.paie.coutEmployeur || 0));
+                return list;
+            }, [registry, pointageMap, baremes, periodStart, periodEnd]);
+
+            const filteredRows = useMemo(() => {
+                const q = search.trim().toLowerCase();
+                return rows.filter(r => {
+                    if (filter === 'declared' && !r.declare) return false;
+                    if (filter === 'undeclared' && r.declare) return false;
+                    if (q && !((r.nom || '').toLowerCase().includes(q) || r.matricule.toLowerCase().includes(q))) return false;
+                    return true;
+                });
+            }, [rows, filter, search]);
+
+            const totals = useMemo(() => filteredRows.reduce((acc, r) => {
+                acc.net += r.paie.net || 0;
+                acc.brut += r.paie.brut || 0;
+                acc.prime += r.paie.prime || 0;
+                acc.charges += r.paie.chargesPatronales || 0;
+                acc.cotis += r.paie.cotisationsSalariales || 0;
+                acc.cout += r.paie.coutEmployeur || 0;
+                return acc;
+            }, { net: 0, brut: 0, prime: 0, charges: 0, cotis: 0, cout: 0 }), [filteredRows]);
+
+            const toggleDeclare = async (matricule, nextVal) => {
+                const db = firebase.firestore();
+                const prev = registry[matricule] || { matricule };
+                setRegistry(prevReg => ({ ...prevReg, [matricule]: { ...prev, declare: nextVal, declareSource: 'manual' } }));
+                try {
+                    await db.collection('ouvriers_registry').doc(matricule).set({
+                        matricule, declare: nextVal, declareSource: 'manual',
+                        nom: prev.nom || pointageMap.get(matricule)?.nom || '',
+                        updatedAt: Date.now(),
+                    }, { merge: true });
+                } catch (e) {
+                    console.error('toggleDeclare:', e);
+                    setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
+                    alert('Erreur enregistrement: ' + e.message);
+                }
+            };
+
+            const parseDateCell = (raw, fallback) => {
+                if (raw == null || raw === '') return fallback;
+                if (typeof raw === 'number') {
+                    const dt = new Date((raw - 25569) * 86400 * 1000);
+                    return dt.toISOString().slice(0, 10);
+                }
+                const s = String(raw).trim();
+                const dm = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                if (dm) return `${dm[3]}-${dm[2]}-${dm[1]}`;
+                if (s.match(/^\d{4}-\d{2}-\d{2}$/)) return s;
+                return fallback;
+            };
+
+            const handleImportDeclares = (file) => {
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    try {
+                        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const xlsxRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                        const db = firebase.firestore();
+                        let batch = db.batch(); let count = 0; let ok = 0;
+                        const newRegistry = { ...registry };
+                        for (const row of xlsxRows) {
+                            const mat = String(row['Matricule'] || row['matricule'] || row['MATRICULE'] || '').trim();
+                            if (!mat) continue;
+                            const nom = String(row['Nom'] || row['NOM'] || row['nom'] || '').trim();
+                            const ref = db.collection('ouvriers_registry').doc(mat);
+                            const payload = { matricule: mat, declare: true, declareSource: 'import', updatedAt: Date.now() };
+                            if (nom) payload.nom = nom;
+                            batch.set(ref, payload, { merge: true });
+                            newRegistry[mat] = { ...(newRegistry[mat] || {}), ...payload };
+                            count++; ok++;
+                            if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
+                        }
+                        if (count > 0) await batch.commit();
+                        const metaPayload = { lastDeclaresImportAt: Date.now(), lastDeclaresImportCount: ok, lastDeclaresImportFile: file.name };
+                        await db.collection('app_settings').doc('paie_import_meta').set(metaPayload, { merge: true });
+                        setRegistry(newRegistry);
+                        setMeta(prev => ({ ...(prev || {}), ...metaPayload }));
+                        alert(`Import OK : ${ok} ouvrier(s) marqué(s) déclaré(s).`);
+                    } catch (e) {
+                        console.error('Import déclarés:', e);
+                        alert('Erreur import : ' + e.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            const handleImportBaseline = (file) => {
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = async (ev) => {
+                    try {
+                        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+                        const ws = wb.Sheets[wb.SheetNames[0]];
+                        const xlsxRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+                        const db = firebase.firestore();
+                        let batch = db.batch(); let count = 0; let ok = 0;
+                        const newRegistry = { ...registry };
+                        for (const row of xlsxRows) {
+                            const mat = String(row['Matricule'] || row['matricule'] || '').trim();
+                            if (!mat) continue;
+                            const jours = Number(row['JoursTravailles'] || row['Jours'] || row['joursTravailles'] || row['jours'] || 0);
+                            const cutoff = parseDateCell(row['DateCoupure'] || row['dateCoupure'] || row['Date'] || '', defaultBaselineDate);
+                            const nom = String(row['Nom'] || row['nom'] || '').trim();
+                            const ref = db.collection('ouvriers_registry').doc(mat);
+                            const payload = { matricule: mat, baselineJours: jours, baselineDate: cutoff, updatedAt: Date.now() };
+                            if (nom) payload.nom = nom;
+                            batch.set(ref, payload, { merge: true });
+                            newRegistry[mat] = { ...(newRegistry[mat] || {}), ...payload };
+                            count++; ok++;
+                            if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
+                        }
+                        if (count > 0) await batch.commit();
+                        const metaPayload = { lastBaselineImportAt: Date.now(), lastBaselineImportCount: ok, lastBaselineImportFile: file.name };
+                        await db.collection('app_settings').doc('paie_import_meta').set(metaPayload, { merge: true });
+                        setRegistry(newRegistry);
+                        setMeta(prev => ({ ...(prev || {}), ...metaPayload }));
+                        alert(`Import baseline OK : ${ok} ligne(s).`);
+                    } catch (e) {
+                        console.error('Import baseline:', e);
+                        alert('Erreur import : ' + e.message);
+                    }
+                };
+                reader.readAsBinaryString(file);
+            };
+
+            const fmt = (n) => (n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const fmtInt = (n) => (n || 0).toLocaleString('fr-FR');
+
+            return (
+                <div className="fade-in">
+                    <Panel title="Paie — Ouvriers, ancienneté, prime" icon="fa-money-bill-wave"
+                        actions={
+                            <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+                                <input type="file" accept=".xlsx,.xls,.csv" ref={declareFileRef} style={{display:'none'}}
+                                    onChange={e => { handleImportDeclares(e.target.files?.[0]); if (e.target) e.target.value = ''; }} />
+                                <input type="file" accept=".xlsx,.xls,.csv" ref={baselineFileRef} style={{display:'none'}}
+                                    onChange={e => { handleImportBaseline(e.target.files?.[0]); if (e.target) e.target.value = ''; }} />
+                                <button onClick={() => declareFileRef.current?.click()} style={{padding:'6px 12px', background:'var(--berry)', color:'white', border:'none', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                                    <i className="fa-solid fa-file-import" style={{marginRight:4}}></i> Importer liste déclarés
+                                </button>
+                                <button onClick={() => baselineFileRef.current?.click()} style={{padding:'6px 12px', background:'var(--orange)', color:'white', border:'none', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                                    <i className="fa-solid fa-file-import" style={{marginRight:4}}></i> Importer baseline ancienneté
+                                </button>
+                            </div>
+                        }
+                    >
+                        <div style={{display:'flex', gap:12, flexWrap:'wrap', alignItems:'flex-end', marginBottom:12, fontSize:11}}>
+                            <label style={{display:'flex', flexDirection:'column', gap:4}}>
+                                <span style={{color:'var(--gray-500)', fontWeight:600}}>Période — début</span>
+                                <input type="date" value={periodStart} onChange={e => setPeriodStart(e.target.value)} style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:4}}>
+                                <span style={{color:'var(--gray-500)', fontWeight:600}}>Période — fin</span>
+                                <input type="date" value={periodEnd} onChange={e => setPeriodEnd(e.target.value)} style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:4}}>
+                                <span style={{color:'var(--gray-500)', fontWeight:600}}>Date coupure par défaut</span>
+                                <input type="date" value={defaultBaselineDate} onChange={e => setDefaultBaselineDate(e.target.value)} style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:4}}>
+                                <span style={{color:'var(--gray-500)', fontWeight:600}}>Filtre</span>
+                                <select value={filter} onChange={e => setFilter(e.target.value)} style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}}>
+                                    <option value="all">Tous</option>
+                                    <option value="declared">Déclarés</option>
+                                    <option value="undeclared">Non déclarés</option>
+                                </select>
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:4, flex:1, minWidth:160}}>
+                                <span style={{color:'var(--gray-500)', fontWeight:600}}>Recherche</span>
+                                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Matricule ou nom…" style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
+                            </label>
+                        </div>
+
+                        {meta && (
+                            <div style={{fontSize:10, color:'var(--gray-400)', marginBottom:10}}>
+                                {meta.lastDeclaresImportAt && <span style={{marginRight:14}}><i className="fa-solid fa-clock"></i> Déclarés : {new Date(meta.lastDeclaresImportAt).toLocaleString('fr-FR')} — {meta.lastDeclaresImportCount} ligne(s){meta.lastDeclaresImportFile ? ` (${meta.lastDeclaresImportFile})` : ''}</span>}
+                                {meta.lastBaselineImportAt && <span><i className="fa-solid fa-clock"></i> Baseline : {new Date(meta.lastBaselineImportAt).toLocaleString('fr-FR')} — {meta.lastBaselineImportCount} ligne(s){meta.lastBaselineImportFile ? ` (${meta.lastBaselineImportFile})` : ''}</span>}
+                            </div>
+                        )}
+
+                        {loading ? (
+                            <div style={{padding:20, textAlign:'center', color:'var(--gray-400)'}}>Chargement…</div>
+                        ) : (
+                            <div style={{overflowX:'auto'}}>
+                                <table className="data-table" style={{fontSize:10, whiteSpace:'nowrap'}}>
+                                    <thead>
+                                        <tr>
+                                            <th>Matricule</th>
+                                            <th>Nom</th>
+                                            <th style={{textAlign:'center'}}>Déclaré</th>
+                                            <th style={{textAlign:'right'}}>Baseline (j)</th>
+                                            <th style={{textAlign:'center'}}>Date coupure</th>
+                                            <th style={{textAlign:'right'}}>Depuis (j)</th>
+                                            <th style={{textAlign:'right'}}>Ancienneté (j)</th>
+                                            <th>Palier</th>
+                                            <th style={{textAlign:'right'}}>Jours période</th>
+                                            <th style={{textAlign:'right'}}>Brut</th>
+                                            <th style={{textAlign:'right'}}>Prime</th>
+                                            <th style={{textAlign:'right'}}>Cotis. sal.</th>
+                                            <th style={{textAlign:'right', background:'rgba(46,204,113,0.08)'}}>Net à virer</th>
+                                            <th style={{textAlign:'right'}}>Charges patr.</th>
+                                            <th style={{textAlign:'right', background:'rgba(139,34,82,0.08)'}}>Coût employeur</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredRows.map(r => (
+                                            <tr key={r.matricule}>
+                                                <td style={{fontWeight:600, color:'var(--gray-500)'}}>{r.matricule}</td>
+                                                <td>{r.nom || <span style={{color:'var(--gray-300)'}}>—</span>}</td>
+                                                <td style={{textAlign:'center'}}>
+                                                    <input type="checkbox" checked={r.declare} onChange={e => toggleDeclare(r.matricule, e.target.checked)} />
+                                                </td>
+                                                <td style={{textAlign:'right'}}>{fmtInt(r.baselineJours)}</td>
+                                                <td style={{textAlign:'center', color:'var(--gray-400)'}}>{r.baselineDate || '—'}</td>
+                                                <td style={{textAlign:'right'}}>{fmtInt(r.joursDepuisBaseline)}</td>
+                                                <td style={{textAlign:'right', fontWeight:700}}>{fmtInt(r.anciennete)}</td>
+                                                <td style={{fontSize:9}}>{r.declare ? `${r.paie.palier} (${r.paie.pourcentage}%)` : '—'}</td>
+                                                <td style={{textAlign:'right'}}>{fmtInt(r.joursPeriode)}</td>
+                                                <td style={{textAlign:'right'}}>{fmt(r.paie.brut)}</td>
+                                                <td style={{textAlign:'right', color: r.paie.prime > 0 ? 'var(--berry)' : 'var(--gray-300)'}}>{fmt(r.paie.prime)}</td>
+                                                <td style={{textAlign:'right', color:'var(--red)'}}>{fmt(r.paie.cotisationsSalariales)}</td>
+                                                <td style={{textAlign:'right', fontWeight:700, background:'rgba(46,204,113,0.08)'}}>{fmt(r.paie.net)}</td>
+                                                <td style={{textAlign:'right', color:'var(--gray-500)'}}>{fmt(r.paie.chargesPatronales)}</td>
+                                                <td style={{textAlign:'right', fontWeight:700, background:'rgba(139,34,82,0.08)'}}>{fmt(r.paie.coutEmployeur)}</td>
+                                            </tr>
+                                        ))}
+                                        {filteredRows.length === 0 && (
+                                            <tr><td colSpan={15} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
+                                        )}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr style={{fontWeight:700, background:'var(--gray-50)'}}>
+                                            <td colSpan={9} style={{textAlign:'right'}}>Totaux ({filteredRows.length} ouvrier{filteredRows.length > 1 ? 's' : ''})</td>
+                                            <td style={{textAlign:'right'}}>{fmt(totals.brut)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(totals.prime)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(totals.cotis)}</td>
+                                            <td style={{textAlign:'right', background:'rgba(46,204,113,0.15)'}}>{fmt(totals.net)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(totals.charges)}</td>
+                                            <td style={{textAlign:'right', background:'rgba(139,34,82,0.15)'}}>{fmt(totals.cout)}</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        )}
+
+                        <div style={{marginTop:10, fontSize:10, color:'var(--gray-400)', lineHeight:1.5}}>
+                            <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>
+                            <strong>Non déclarés</strong> : SMAG net × jours pointés sur la période — pas de charges, pas de prime.
+                            <br />
+                            <strong>Déclarés</strong> : Brut = SMAG brut × jours + prime ancienneté ; Net à virer = Brut − cotisations salariales ; Coût employeur = Brut + charges patronales.
+                            <br />
+                            Les barèmes (SMAG, taux, paliers) sont éditables dans <em>Paramètres</em> et appliqués en temps réel.
+                        </div>
+                    </Panel>
+                </div>
+            );
+        }
+
         function ParametresTab({ data }) {
             const [parcelles, setParcelles] = useState(() => {
                 const copy = {};
@@ -21591,6 +22587,8 @@ ${rejetHtml}
                         </table>
                         )}
                     </Panel>
+
+                    <BaremesPaiePanel />
                 </div>
             );
         }
@@ -23165,7 +24163,7 @@ ${rejetHtml}
             const currentCycle = getCycle(new Date().toISOString());
             const parcelleOptions = React.useMemo(() => {
                 return PARCELLES_CULTURALES
-                    .filter(pc => pc.ferme === farmFilter && pc.cycle === currentCycle && pc.enProduction !== false)
+                    .filter(pc => pc.ferme === farmFilter && (pc.culture === 'Avocatier' || pc.cycle === currentCycle) && pc.enProduction !== false)
                     .map(pc => ({
                         value: pc.id,
                         label: pc.secteurs.join('/') + ' ' + pc.variete + (pc.sousVariete ? ' ' + pc.sousVariete : ''),
@@ -24403,7 +25401,7 @@ ${rejetHtml}
             const currentCycle = getCycle(new Date().toISOString());
             const parcelleOptions = React.useMemo(() => {
                 return PARCELLES_CULTURALES
-                    .filter(pc => pc.ferme === farmFilter && pc.cycle === currentCycle && pc.enProduction !== false)
+                    .filter(pc => pc.ferme === farmFilter && (pc.culture === 'Avocatier' || pc.cycle === currentCycle) && pc.enProduction !== false)
                     .map(pc => ({ value: pc.id, label: pc.secteurs.join('/') + ' ' + pc.variete + (pc.sousVariete ? ' ' + pc.sousVariete : '') }));
             }, [farmFilter, currentCycle]);
 
@@ -24845,7 +25843,7 @@ ${rejetHtml}
             const currentCycle = getCycle(new Date().toISOString());
             const parcelleOptions = React.useMemo(() => {
                 return PARCELLES_CULTURALES
-                    .filter(pc => pc.ferme === farmFilter && pc.cycle === currentCycle && pc.enProduction !== false)
+                    .filter(pc => pc.ferme === farmFilter && (pc.culture === 'Avocatier' || pc.cycle === currentCycle) && pc.enProduction !== false)
                     .map(pc => ({
                         value: pc.id,
                         label: pc.secteurs.join('/') + ' ' + pc.variete + (pc.sousVariete ? ' ' + pc.sousVariete : ''),
@@ -26846,6 +27844,180 @@ ${rejetHtml}
             );
         }
 
+        // ─── Registres reçus par WhatsApp (lecture seule) ────────────────────
+        function SecurityEnvoisWATab({ farmFilter }) {
+            const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+            const [items, setItems] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [viewItem, setViewItem] = useState(null);
+
+            const load = React.useCallback(async () => {
+                setLoading(true);
+                try {
+                    let q = firebase.firestore().collection('security_envois_registre');
+                    if (farmFilter) q = q.where('ferme', '==', farmFilter);
+                    q = q.where('date', '==', date).orderBy('createdAt', 'desc');
+                    const snap = await q.get();
+                    setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                } catch (e) { console.error('Erreur chargement envois WA:', e); }
+                setLoading(false);
+            }, [farmFilter, date]);
+            useEffect(() => { load(); }, [load]);
+
+            const inputStyle = { padding: '10px 12px', borderRadius: 10, border: '1px solid #ddd', fontSize: 15 };
+
+            return React.createElement('div', { style: { padding: 16, maxWidth: 900, margin: '0 auto' } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, padding: '16px 20px', background: 'linear-gradient(135deg, #1a237e 0%, #3f51b5 100%)', borderRadius: 16, color: '#fff' } },
+                    React.createElement('i', { className: 'fa-brands fa-whatsapp', style: { fontSize: 36 } }),
+                    React.createElement('div', null,
+                        React.createElement('h2', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'Registres reçus par WhatsApp'),
+                        React.createElement('div', { style: { opacity: 0.85, fontSize: '0.9rem', marginTop: 2 } }, 'Envois des agents BSNL — Ferme ', farmFilter)
+                    )
+                ),
+                React.createElement('div', { style: { marginBottom: 16 } },
+                    React.createElement('input', { type: 'date', value: date, onChange: e => setDate(e.target.value), style: inputStyle })
+                ),
+                loading && React.createElement('div', { style: { textAlign: 'center', padding: 40, color: '#888' } },
+                    React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', style: { fontSize: 24 } })
+                ),
+                !loading && items.length === 0 && React.createElement('div', { style: { textAlign: 'center', padding: 40, color: '#999', background: '#fafafa', borderRadius: 12 } },
+                    React.createElement('i', { className: 'fa-solid fa-inbox', style: { fontSize: 32, marginBottom: 8, display: 'block' } }),
+                    'Aucun registre reçu pour cette date'
+                ),
+                !loading && items.length > 0 && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 } },
+                    items.map(it => React.createElement('div', { key: it.id, onClick: () => setViewItem(it), style: { background: '#fff', borderRadius: 12, border: '1px solid #e0e0e0', overflow: 'hidden', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' } },
+                        it.scan_url && React.createElement('div', { style: { aspectRatio: '3/4', overflow: 'hidden', background: '#f5f5f5' } },
+                            React.createElement('img', { src: it.scan_url, alt: 'Registre', style: { width: '100%', height: '100%', objectFit: 'cover' }, loading: 'lazy' })
+                        ),
+                        React.createElement('div', { style: { padding: '8px 10px' } },
+                            React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: '#333' } }, (it.ocr && it.ocr.lignes ? it.ocr.lignes.length : 0), ' visiteur(s)'),
+                            React.createElement('div', { style: { fontSize: 11, color: '#888', marginTop: 2 } }, it.agent_name || it.agent_phone || '?'),
+                            React.createElement('div', { style: { fontSize: 11, color: '#aaa' } }, new Date(it.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))
+                        )
+                    ))
+                ),
+                viewItem && React.createElement('div', { onClick: () => setViewItem(null), style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex', padding: 16, overflow: 'auto' } },
+                    React.createElement('div', { onClick: e => e.stopPropagation(), style: { background: '#fff', borderRadius: 12, padding: 16, maxWidth: 900, margin: 'auto', width: '100%', maxHeight: '95vh', overflow: 'auto' } },
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                            React.createElement('h3', { style: { margin: 0, color: '#1a237e' } }, 'Registre du ', viewItem.date),
+                            React.createElement('button', { onClick: () => setViewItem(null), style: { background: '#f5f5f5', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' } }, 'Fermer')
+                        ),
+                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 } },
+                            React.createElement('div', null,
+                                viewItem.scan_url && React.createElement('img', { src: viewItem.scan_url, alt: 'Scan', style: { width: '100%', borderRadius: 8 } })
+                            ),
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 13, color: '#666', marginBottom: 8 } },
+                                    React.createElement('strong', null, 'Envoyé par : '), viewItem.agent_name || viewItem.agent_phone
+                                ),
+                                React.createElement('table', { style: { width: '100%', fontSize: 12, borderCollapse: 'collapse' } },
+                                    React.createElement('thead', null,
+                                        React.createElement('tr', { style: { background: '#f5f7ff' } },
+                                            ['Nom', 'Entreprise', 'Arrivée', 'Départ', 'Motif'].map(h => React.createElement('th', { key: h, style: { padding: 6, textAlign: 'left', borderBottom: '1px solid #ddd' } }, h))
+                                        )
+                                    ),
+                                    React.createElement('tbody', null,
+                                        ((viewItem.ocr && viewItem.ocr.lignes) || []).map((l, i) => React.createElement('tr', { key: i, style: { borderBottom: '1px solid #f0f0f0' } },
+                                            React.createElement('td', { style: { padding: 6 } }, l.nom || '—'),
+                                            React.createElement('td', { style: { padding: 6 } }, l.entreprise || '—'),
+                                            React.createElement('td', { style: { padding: 6 } }, l.heure_arrivee || '—'),
+                                            React.createElement('td', { style: { padding: 6 } }, l.heure_depart || '—'),
+                                            React.createElement('td', { style: { padding: 6 } }, l.motif || '—')
+                                        ))
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            );
+        }
+
+        // ─── Incidents Sécurité reçus par WhatsApp (lecture seule) ───────────
+        function SecurityIncidentsTab({ farmFilter }) {
+            const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+            const [items, setItems] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [viewItem, setViewItem] = useState(null);
+
+            const load = React.useCallback(async () => {
+                setLoading(true);
+                try {
+                    let q = firebase.firestore().collection('security_incidents');
+                    if (farmFilter) q = q.where('ferme', '==', farmFilter);
+                    q = q.where('date', '==', date).orderBy('createdAt', 'desc');
+                    const snap = await q.get();
+                    setItems(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+                } catch (e) { console.error('Erreur chargement incidents:', e); }
+                setLoading(false);
+            }, [farmFilter, date]);
+            useEffect(() => { load(); }, [load]);
+
+            return React.createElement('div', { style: { padding: 16, maxWidth: 900, margin: '0 auto' } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20, padding: '16px 20px', background: 'linear-gradient(135deg, #b71c1c 0%, #e53935 100%)', borderRadius: 16, color: '#fff' } },
+                    React.createElement('i', { className: 'fa-solid fa-triangle-exclamation', style: { fontSize: 32 } }),
+                    React.createElement('div', null,
+                        React.createElement('h2', { style: { margin: 0, fontSize: '1.2rem', fontWeight: 700 } }, 'Incidents Sécurité'),
+                        React.createElement('div', { style: { opacity: 0.85, fontSize: '0.9rem', marginTop: 2 } }, 'Signalements WhatsApp — Ferme ', farmFilter)
+                    )
+                ),
+                React.createElement('div', { style: { marginBottom: 16 } },
+                    React.createElement('input', { type: 'date', value: date, onChange: e => setDate(e.target.value), style: { padding: '10px 12px', borderRadius: 10, border: '1px solid #ddd', fontSize: 15 } })
+                ),
+                loading && React.createElement('div', { style: { textAlign: 'center', padding: 40, color: '#888' } },
+                    React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', style: { fontSize: 24 } })
+                ),
+                !loading && items.length === 0 && React.createElement('div', { style: { textAlign: 'center', padding: 40, color: '#999', background: '#fafafa', borderRadius: 12 } },
+                    React.createElement('i', { className: 'fa-solid fa-shield-halved', style: { fontSize: 32, marginBottom: 8, display: 'block', color: '#4caf50' } }),
+                    'Aucun incident signalé pour cette date'
+                ),
+                !loading && items.length > 0 && React.createElement('div', { style: { display: 'grid', gap: 12 } },
+                    items.map(it => {
+                        const emp = it.badge_ocr ? [it.badge_ocr.prenom, it.badge_ocr.nom].filter(Boolean).join(' ') : null;
+                        return React.createElement('div', { key: it.id, onClick: () => setViewItem(it), style: { background: '#fff', borderRadius: 12, border: '1px solid #ffcdd2', padding: 12, cursor: 'pointer', display: 'flex', gap: 12, alignItems: 'center' } },
+                            it.incident_url && React.createElement('img', { src: it.incident_url, alt: 'Incident', style: { width: 80, height: 80, objectFit: 'cover', borderRadius: 8 }, loading: 'lazy' }),
+                            React.createElement('div', { style: { flex: 1 } },
+                                React.createElement('div', { style: { fontWeight: 600, color: '#b71c1c' } }, emp || 'Employé non identifié', it.badge_ocr?.matricule ? ' — mat. ' + it.badge_ocr.matricule : ''),
+                                React.createElement('div', { style: { fontSize: 13, color: '#555', marginTop: 4 } }, it.description || React.createElement('em', { style: { color: '#aaa' } }, 'pas de description')),
+                                React.createElement('div', { style: { fontSize: 11, color: '#999', marginTop: 4 } }, 'Signalé par ', it.agent_name || it.agent_phone, ' — ', new Date(it.createdAt).toLocaleString('fr-FR'))
+                            )
+                        );
+                    })
+                ),
+                viewItem && React.createElement('div', { onClick: () => setViewItem(null), style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 9999, display: 'flex', padding: 16, overflow: 'auto' } },
+                    React.createElement('div', { onClick: e => e.stopPropagation(), style: { background: '#fff', borderRadius: 12, padding: 16, maxWidth: 800, margin: 'auto', width: '100%', maxHeight: '95vh', overflow: 'auto' } },
+                        React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+                            React.createElement('h3', { style: { margin: 0, color: '#b71c1c' } }, 'Incident du ', viewItem.date),
+                            React.createElement('button', { onClick: () => setViewItem(null), style: { background: '#f5f5f5', border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' } }, 'Fermer')
+                        ),
+                        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 } },
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 12, color: '#666', marginBottom: 4 } }, 'Badge employé'),
+                                viewItem.badge_url && React.createElement('img', { src: viewItem.badge_url, alt: 'Badge', style: { width: '100%', borderRadius: 8 } })
+                            ),
+                            React.createElement('div', null,
+                                React.createElement('div', { style: { fontSize: 12, color: '#666', marginBottom: 4 } }, 'Incident'),
+                                viewItem.incident_url && React.createElement('img', { src: viewItem.incident_url, alt: 'Incident', style: { width: '100%', borderRadius: 8 } })
+                            )
+                        ),
+                        viewItem.badge_ocr && React.createElement('div', { style: { background: '#fafafa', padding: 12, borderRadius: 8, marginBottom: 12 } },
+                            React.createElement('div', { style: { fontSize: 12, color: '#666', marginBottom: 4 } }, 'Identification automatique :'),
+                            React.createElement('div', null, React.createElement('strong', null, 'Matricule : '), viewItem.badge_ocr.matricule || '—'),
+                            React.createElement('div', null, React.createElement('strong', null, 'Nom : '), [viewItem.badge_ocr.prenom, viewItem.badge_ocr.nom].filter(Boolean).join(' ') || '—'),
+                            React.createElement('div', null, React.createElement('strong', null, 'Fonction : '), viewItem.badge_ocr.fonction || '—')
+                        ),
+                        viewItem.description && React.createElement('div', { style: { marginBottom: 12 } },
+                            React.createElement('div', { style: { fontSize: 12, color: '#666', marginBottom: 4 } }, 'Description :'),
+                            React.createElement('div', { style: { background: '#fff3e0', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap' } }, viewItem.description)
+                        ),
+                        React.createElement('div', { style: { fontSize: 12, color: '#999', borderTop: '1px solid #eee', paddingTop: 8 } },
+                            'Signalé par ', viewItem.agent_name || viewItem.agent_phone, ' le ', new Date(viewItem.createdAt).toLocaleString('fr-FR')
+                        )
+                    )
+                )
+            );
+        }
+
         function FinDashboardTab({ data, farmFilter, onNavigateMeteo }) {
             const [viewMode, setViewMode] = useState('global');
             const [selectedCharge, setSelectedCharge] = useState(null);
@@ -26929,6 +28101,58 @@ ${rejetHtml}
             const varietes = data.cpcVarietes;
             const ccSummary = consumptionCosts && consumptionCosts['_summary'];
 
+            // Campagne Jul→Juin : map mois → [année, mois 1-12]
+            const MOIS_CAMPAGNE = { 'Jul':[2025,7],'Aoû':[2025,8],'Sep':[2025,9],'Oct':[2025,10],'Nov':[2025,11],'Déc':[2025,12],'Jan':[2026,1],'Fév':[2026,2],'Mar':[2026,3],'Avr':[2026,4],'Mai':[2026,5],'Jui':[2026,6] };
+            const _today = new Date();
+            const _todayY = _today.getFullYear();
+            const _todayM = _today.getMonth() + 1;
+            const _todayD = _today.getDate();
+            // État d'un mois par rapport à aujourd'hui : 'past' | 'current' | 'future'
+            const moisStatus = (label) => {
+                const ym = MOIS_CAMPAGNE[label]; if (!ym) return 'past';
+                const [y,mo] = ym;
+                if (y < _todayY || (y === _todayY && mo < _todayM)) return 'past';
+                if (y === _todayY && mo === _todayM) return 'current';
+                return 'future';
+            };
+            // Total écoulé à date avec pro-rata du mois courant
+            const elapsedTotal = (parMois) => {
+                if (!Array.isArray(parMois)) return 0;
+                let t = 0;
+                for (const { m, v } of parMois) {
+                    const s = moisStatus(m);
+                    if (s === 'past') t += v;
+                    else if (s === 'current') {
+                        const [y, mo] = MOIS_CAMPAGNE[m];
+                        const daysInMonth = new Date(y, mo, 0).getDate();
+                        t += v * (_todayD / daysInMonth);
+                    }
+                }
+                return Math.round(t);
+            };
+            // Nombre de mois écoulés (avec fraction pour le mois courant) sur la campagne
+            const elapsedMonthsCount = (() => {
+                let n = 0;
+                for (const label of Object.keys(MOIS_CAMPAGNE)) {
+                    const s = moisStatus(label);
+                    if (s === 'past') n += 1;
+                    else if (s === 'current') {
+                        const [y, mo] = MOIS_CAMPAGNE[label];
+                        n += _todayD / new Date(y, mo, 0).getDate();
+                    }
+                }
+                return n;
+            })();
+            // Pour les charges dont parMois s'arrête à Déc (variables Jul-Déc), elapsed = total
+            const chargeElapsed = (c) => {
+                if (!c.parMois || c.parMois.length === 0) return c.total;
+                const sumParMois = c.parMois.reduce((s, x) => s + (x.v || 0), 0);
+                // si parMois ne couvre que les mois passés réalisés (ex: 6 mois Jul-Déc), total = somme parMois
+                if (Math.abs(sumParMois - c.total) < 1) return elapsedTotal(c.parMois);
+                // sinon (cas mixte) : prorata sur le total
+                return Math.round(c.total * elapsedTotal(c.parMois) / sumParMois);
+            };
+
             // --- Live KPI totals ---
             // CA Live from liquidations
             const liveCAExport = liqData ? (() => {
@@ -26949,14 +28173,14 @@ ${rejetHtml}
             const totalCADisplay = totalCAExportDisplay + totalCALocalDisplay;
 
             // Charges: MO live + intrants live + structure hardcodée
-            const moCharges = liveMO !== null ? liveMO : charges.filter(c => ['M.O Récolte','M.O Hors Récolte','STC Ouvriers'].includes(c.poste)).reduce((s,c) => s+c.total, 0);
+            const moCharges = liveMO !== null ? liveMO : charges.filter(c => ['M.O Récolte','M.O Hors Récolte','STC Ouvriers'].includes(c.poste)).reduce((s,c) => s+chargeElapsed(c), 0);
             const intrantsCharges = charges.filter(c => ['Plants','Engrais','Pesticides','Eau ORMVAL','Autres Intrants'].includes(c.poste)).reduce((s,c) => {
                 if (ccSummary && c.poste === 'Engrais') return s + ccSummary.total_engrais_ttc;
                 if (ccSummary && c.poste === 'Pesticides') return s + ccSummary.total_pesticides_ttc;
-                return s + c.total;
+                return s + chargeElapsed(c);
             }, 0);
-            const structureCharges = charges.filter(c => ['Encadrement','CNSS','IR','Frais Généraux','Loyer Terrains','Électricité','Gasoil & Gaz','Transport & Divers'].includes(c.poste)).reduce((s,c) => s+c.total, 0);
-            const totalChargesDisplay = liveMO !== null ? (moCharges + intrantsCharges + structureCharges) : data.totalChargesGlobales;
+            const structureCharges = charges.filter(c => ['Encadrement','CNSS','IR','Frais Généraux','Loyer Terrains','Électricité','Gasoil & Gaz','Transport & Divers','Amortissement & Frais Financiers'].includes(c.poste)).reduce((s,c) => s+chargeElapsed(c), 0);
+            const totalChargesDisplay = moCharges + intrantsCharges + structureCharges;
             const resultatDisplay = totalCADisplay - totalChargesDisplay;
 
             // Charges par poste — override live values
@@ -26980,7 +28204,7 @@ ${rejetHtml}
                             <div>
                                 <div style={{fontSize:'11px', textTransform:'uppercase', letterSpacing:'1px', opacity:0.6, marginBottom:'4px'}}>CPC Campagne</div>
                                 <div style={{fontSize:'22px', fontWeight:'700'}}>2025-2026</div>
-                                <div style={{fontSize:'12px', opacity:0.7}}>{liveCAExport !== null ? 'Données LIVE' : 'Arrêté au 31/12/2025'} | {data.totalHa} Ha cultivés</div>
+                                <div style={{fontSize:'12px', opacity:0.7}}>{liveCAExport !== null ? 'Données LIVE' : `À date ${_today.toLocaleDateString('fr-FR')} · ${elapsedMonthsCount.toFixed(1)}/12 mois`} | {data.totalHa} Ha cultivés</div>
                             </div>
                             <div style={{display:'flex', gap:'24px', textAlign:'center'}}>
                                 <div>
@@ -27132,7 +28356,7 @@ ${rejetHtml}
                         <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'10px'}}>
                             {charges.map((c, i) => {
                                 const liveVal = liveChargeOverrides[c.poste];
-                                const displayTotal = liveVal !== undefined ? liveVal : c.total;
+                                const displayTotal = liveVal !== undefined ? liveVal : chargeElapsed(c);
                                 const pct = totalChargesDisplay > 0 ? (displayTotal / totalChargesDisplay * 100).toFixed(1) : '0';
                                 const isLive = liveVal !== undefined;
                                 return (
@@ -27157,17 +28381,17 @@ ${rejetHtml}
                             <div style={{flex:1, textAlign:'center'}}>
                                 <div style={{fontSize:'10px', fontWeight:'600', color:'var(--gray-400)', textTransform:'uppercase'}}>Intrants & Terrain</div>
                                 <div style={{fontSize:'16px', fontWeight:'700', color:'var(--green)'}}>{(intrantsCharges/1000).toFixed(0)}K DH</div>
-                                <div style={{fontSize:'10px', color:'var(--gray-400)'}}>{Math.round(intrantsCharges/data.totalChargesGlobales*100)}%</div>
+                                <div style={{fontSize:'10px', color:'var(--gray-400)'}}>{Math.round(intrantsCharges/totalChargesDisplay*100)}%</div>
                             </div>
                             <div style={{flex:1, textAlign:'center'}}>
                                 <div style={{fontSize:'10px', fontWeight:'600', color:'var(--gray-400)', textTransform:'uppercase'}}>Main d'Oeuvre</div>
                                 <div style={{fontSize:'16px', fontWeight:'700', color:'var(--red)'}}>{(moCharges/1000).toFixed(0)}K DH</div>
-                                <div style={{fontSize:'10px', color:'var(--gray-400)'}}>{Math.round(moCharges/data.totalChargesGlobales*100)}%</div>
+                                <div style={{fontSize:'10px', color:'var(--gray-400)'}}>{Math.round(moCharges/totalChargesDisplay*100)}%</div>
                             </div>
                             <div style={{flex:1, textAlign:'center'}}>
                                 <div style={{fontSize:'10px', fontWeight:'600', color:'var(--gray-400)', textTransform:'uppercase'}}>Structure & Frais</div>
                                 <div style={{fontSize:'16px', fontWeight:'700', color:'var(--blue)'}}>{(structureCharges/1000).toFixed(0)}K DH</div>
-                                <div style={{fontSize:'10px', color:'var(--gray-400)'}}>{Math.round(structureCharges/data.totalChargesGlobales*100)}%</div>
+                                <div style={{fontSize:'10px', color:'var(--gray-400)'}}>{Math.round(structureCharges/totalChargesDisplay*100)}%</div>
                             </div>
                         </div>
                     </Panel>
@@ -27751,8 +28975,8 @@ ${rejetHtml}
                                         </div>
                                     </div>
                                     <div style={{textAlign:'right'}}>
-                                        <div style={{fontSize:22, fontWeight:700, color:selectedCharge.color}}>{(selectedCharge.total/1000).toFixed(0)}K DH</div>
-                                        <div style={{fontSize:11, color:'var(--gray-400)'}}>{(selectedCharge.total / data.totalChargesGlobales * 100).toFixed(1)}% du total charges</div>
+                                        <div style={{fontSize:22, fontWeight:700, color:selectedCharge.color}}>{(chargeElapsed(selectedCharge)/1000).toFixed(0)}K DH <span style={{fontSize:10, opacity:0.6, fontWeight:500}}>/ {(selectedCharge.total/1000).toFixed(0)}K</span></div>
+                                        <div style={{fontSize:11, color:'var(--gray-400)'}}>{totalChargesDisplay > 0 ? (chargeElapsed(selectedCharge) / totalChargesDisplay * 100).toFixed(1) : '0'}% du total charges à date</div>
                                     </div>
                                 </div>
 
@@ -27787,15 +29011,22 @@ ${rejetHtml}
                                         const maxV = Math.max(...mois.map(m => m.v));
                                         return (
                                             <div style={{display:'flex', alignItems:'flex-end', gap:6, height:120, padding:'0 10px'}}>
-                                                {mois.map((m, i) => (
-                                                    <div key={i} style={{flex:1, textAlign:'center'}}>
-                                                        <div style={{fontSize:9, fontWeight:600, color:selectedCharge.color, marginBottom:2}}>
-                                                            {m.v > 0 ? `${(m.v/1000).toFixed(0)}K` : '-'}
+                                                {mois.map((m, i) => {
+                                                    const st = moisStatus(m.m);
+                                                    const [yy, mm] = MOIS_CAMPAGNE[m.m] || [0,0];
+                                                    const displayV = st === 'current' ? Math.round(m.v * (_todayD / new Date(yy, mm, 0).getDate())) : (st === 'past' ? m.v : 0);
+                                                    const barColor = st === 'future' ? 'var(--gray-200)' : (st === 'current' ? '#D4A847' : selectedCharge.color);
+                                                    const labelColor = st === 'future' ? 'var(--gray-300)' : (st === 'current' ? '#D4A847' : selectedCharge.color);
+                                                    return (
+                                                        <div key={i} style={{flex:1, textAlign:'center'}}>
+                                                            <div style={{fontSize:9, fontWeight:600, color:labelColor, marginBottom:2}}>
+                                                                {displayV > 0 ? `${(displayV/1000).toFixed(0)}K` : '-'}
+                                                            </div>
+                                                            <div style={{height: maxV > 0 ? Math.max(m.v / maxV * 80, 2) : 2, background: barColor, borderRadius:'3px 3px 0 0', opacity: st === 'future' ? 0.35 : 0.85, transition:'height 0.3s'}}></div>
+                                                            <div style={{fontSize:9, color: st === 'future' ? 'var(--gray-300)' : 'var(--gray-400)', marginTop:4, fontWeight: st === 'current' ? 700 : 400}}>{m.m}</div>
                                                         </div>
-                                                        <div style={{height: maxV > 0 ? Math.max(m.v / maxV * 80, 2) : 2, background: m.v > 0 ? selectedCharge.color : 'var(--gray-200)', borderRadius:'3px 3px 0 0', opacity:0.8, transition:'height 0.3s'}}></div>
-                                                        <div style={{fontSize:9, color:'var(--gray-400)', marginTop:4}}>{m.m}</div>
-                                                    </div>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         );
                                     })()}
@@ -27804,8 +29035,8 @@ ${rejetHtml}
                                 {/* KPIs */}
                                 <div style={{display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:16}}>
                                     <div style={{padding:10, background:'var(--gray-100)', borderRadius:8, textAlign:'center'}}>
-                                        <div style={{fontSize:10, color:'var(--gray-400)'}}>Moyenne / Mois</div>
-                                        <div style={{fontSize:16, fontWeight:700}}>{(selectedCharge.total/6/1000).toFixed(0)}K DH</div>
+                                        <div style={{fontSize:10, color:'var(--gray-400)'}}>Moyenne / Mois écoulé</div>
+                                        <div style={{fontSize:16, fontWeight:700}}>{elapsedMonthsCount > 0 ? (chargeElapsed(selectedCharge)/elapsedMonthsCount/1000).toFixed(0) : '0'}K DH</div>
                                     </div>
                                     <div style={{padding:10, background:'var(--gray-100)', borderRadius:8, textAlign:'center'}}>
                                         <div style={{fontSize:10, color:'var(--gray-400)'}}>Par Hectare</div>
@@ -29197,7 +30428,7 @@ ${rejetHtml}
                         </div>
                         <div style={{marginTop: 8, fontSize: 11, color: 'var(--gray-500)', fontStyle: 'italic'}}>
                             <i className="fa-solid fa-robot" style={{marginRight: 6}}></i>
-                            Récupération automatique du 1<sup>er</sup> au 5 de chaque mois (08h et 15h). Si la facture n'est pas encore publiée, le système réessaie automatiquement les jours suivants.
+                            Récupération automatique chaque jour. Si la facture n'est pas encore publiée, le système réessaie automatiquement le lendemain.
                         </div>
                     </div>
                 </div>
@@ -29715,6 +30946,410 @@ ${rejetHtml}
             };
         }
 
+        // ===================== TRÉSORERIE (Finance & DG) =====================
+        // Sat-Fri week (calendrier Driscoll's) — début = samedi 00:00 local
+        function getSatFriWeek(date) {
+            const d = new Date(date);
+            d.setHours(0, 0, 0, 0);
+            const day = d.getDay(); // 0=Sun..6=Sat
+            const diffToSat = (day - 6 + 7) % 7;
+            const start = new Date(d);
+            start.setDate(d.getDate() - diffToSat);
+            const end = new Date(start);
+            end.setDate(start.getDate() + 6);
+            end.setHours(23, 59, 59, 999);
+            return { start, end };
+        }
+        function tresoParseDMY(s) {
+            if (!s) return null;
+            const parts = String(s).split('/');
+            if (parts.length !== 3) return null;
+            const [d, m, y] = parts.map(Number);
+            if (!d || !m || !y) return null;
+            return new Date(y, m - 1, d);
+        }
+        function tresoFmtMAD(n) {
+            return (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' MAD';
+        }
+        function tresoFmtDate(d) {
+            if (!d) return '';
+            const dd = String(d.getDate()).padStart(2, '0');
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            return `${dd}/${mm}`;
+        }
+
+        function FinTresorerieTab({ data, currentProfile }) {
+            const canEdit = currentProfile === 'finance' || currentProfile === 'dg';
+            const [items, setItems] = useState([]);
+            const [itemsLoading, setItemsLoading] = useState(true);
+            const [factures, setFactures] = useState([]);
+            const [facturesLoading, setFacturesLoading] = useState(true);
+            const [ojraSummary, setOjraSummary] = useState(null);
+            const [showForm, setShowForm] = useState(false);
+            const [editing, setEditing] = useState(null);
+            const emptyForm = { type: 'loyer', libelle: '', beneficiaire: '', montant: '', recurrence: 'mensuelle', dateEcheance: '', jourDuMois: '', dateFin: '' };
+            const [form, setForm] = useState(emptyForm);
+
+            useEffect(() => {
+                const db = firebase.firestore();
+                const unsub = db.collection('tresorerie_items').onSnapshot(snap => {
+                    const rows = [];
+                    snap.forEach(doc => rows.push({ id: doc.id, ...doc.data() }));
+                    setItems(rows.filter(r => r.actif !== false));
+                    setItemsLoading(false);
+                }, err => { console.warn('tresorerie_items snapshot error', err); setItemsLoading(false); });
+                return () => unsub();
+            }, []);
+
+            useEffect(() => {
+                fetch('/api/stock?action=list-factures').then(r => r.json())
+                    .then(json => {
+                        if (json.success) {
+                            const all = json.factures || [];
+                            const pending = all.filter(f => {
+                                const s = String(f.payment_status || '').toLowerCase();
+                                return s !== 'paye' && s !== 'payee' && s !== 'payée';
+                            });
+                            setFactures(pending);
+                        }
+                    })
+                    .catch(err => console.warn('factures load error', err))
+                    .finally(() => setFacturesLoading(false));
+            }, []);
+
+            useEffect(() => {
+                fetch('/api/ojra?action=summary').then(r => r.json())
+                    .then(json => { if (json.success) setOjraSummary(json); })
+                    .catch(() => {});
+            }, []);
+
+            const weeks = useMemo(() => {
+                const cur = getSatFriWeek(new Date());
+                const arr = [];
+                for (let i = 0; i < 9; i++) {
+                    const start = new Date(cur.start);
+                    start.setDate(cur.start.getDate() + i * 7);
+                    arr.push(getSatFriWeek(start));
+                }
+                return arr;
+            }, []);
+
+            const expandedSorties = useMemo(() => {
+                const out = [];
+                if (!weeks.length) return out;
+                const windowStart = weeks[0].start;
+                const windowEnd = weeks[weeks.length - 1].end;
+                items.forEach(it => {
+                    const montant = Number(it.montant) || 0;
+                    if (!montant) return;
+                    if (it.recurrence === 'mensuelle') {
+                        const jour = Math.min(Math.max(Number(it.jourDuMois) || 1, 1), 28);
+                        const fin = it.dateFin ? new Date(it.dateFin) : null;
+                        const start = new Date(windowStart.getFullYear(), windowStart.getMonth(), 1);
+                        for (let m = 0; m < 4; m++) {
+                            const occ = new Date(start.getFullYear(), start.getMonth() + m, jour);
+                            if (occ < windowStart || occ > windowEnd) continue;
+                            if (fin && occ > fin) continue;
+                            out.push({ date: occ, type: it.type, libelle: it.libelle, montant, beneficiaire: it.beneficiaire, id: it.id });
+                        }
+                    } else {
+                        const dt = it.dateEcheance ? new Date(it.dateEcheance) : null;
+                        if (!dt) return;
+                        if (dt >= windowStart && dt <= windowEnd) {
+                            out.push({ date: dt, type: it.type, libelle: it.libelle, montant, beneficiaire: it.beneficiaire, id: it.id });
+                        }
+                    }
+                });
+                return out;
+            }, [items, weeks]);
+
+            const weeklyRows = useMemo(() => {
+                const liquidations = (data?.liquidations?.aVenir) || [];
+                let cumul = 0;
+                return weeks.map(w => {
+                    const entrees = liquidations.reduce((sum, l) => {
+                        const dt = tresoParseDMY(l.dateEstimee);
+                        if (!dt) return sum;
+                        if (dt >= w.start && dt <= w.end) return sum + (Number(l.montantEstime) || 0);
+                        return sum;
+                    }, 0);
+                    const sortiesFactures = factures.reduce((sum, f) => {
+                        const raw = f.date_echeance || f.date_facture || f.dateEcheance;
+                        if (!raw) return sum;
+                        const dt = new Date(raw);
+                        if (isNaN(dt)) return sum;
+                        if (dt >= w.start && dt <= w.end) return sum + (Number(f.total_ttc) || 0);
+                        return sum;
+                    }, 0);
+                    const inWeek = expandedSorties.filter(s => s.date >= w.start && s.date <= w.end);
+                    const sortiesLoyers = inWeek.filter(s => s.type === 'loyer').reduce((a, b) => a + b.montant, 0);
+                    const sortiesPaie = inWeek.filter(s => s.type === 'paie').reduce((a, b) => a + b.montant, 0);
+                    const sortiesAutres = inWeek.filter(s => s.type !== 'loyer' && s.type !== 'paie').reduce((a, b) => a + b.montant, 0);
+                    const sorties = sortiesFactures + sortiesLoyers + sortiesPaie + sortiesAutres;
+                    const net = entrees - sorties;
+                    cumul += net;
+                    return { week: w, entrees, sortiesFactures, sortiesLoyers, sortiesPaie, sortiesAutres, sorties, net, cumul };
+                });
+            }, [weeks, data, factures, expandedSorties]);
+
+            const kpis = useMemo(() => {
+                const today = new Date(); today.setHours(0, 0, 0, 0);
+                const in7 = new Date(today); in7.setDate(today.getDate() + 7);
+                const retards = factures.reduce((sum, f) => {
+                    const raw = f.date_echeance || f.dateEcheance;
+                    if (!raw) return sum;
+                    const dt = new Date(raw);
+                    if (isNaN(dt)) return sum;
+                    return dt < today ? sum + (Number(f.total_ttc) || 0) : sum;
+                }, 0);
+                const ech7j = factures.reduce((sum, f) => {
+                    const raw = f.date_echeance || f.dateEcheance;
+                    if (!raw) return sum;
+                    const dt = new Date(raw);
+                    if (isNaN(dt)) return sum;
+                    return (dt >= today && dt <= in7) ? sum + (Number(f.total_ttc) || 0) : sum;
+                }, 0) + expandedSorties.filter(s => s.date >= today && s.date <= in7).reduce((a, b) => a + b.montant, 0);
+                const totalEntrees = weeklyRows.reduce((a, r) => a + r.entrees, 0);
+                const soldeProj = weeklyRows.length ? weeklyRows[weeklyRows.length - 1].cumul : 0;
+                return { retards, ech7j, totalEntrees, soldeProj };
+            }, [factures, expandedSorties, weeklyRows]);
+
+            const saveItem = () => {
+                if (!canEdit) return;
+                const db = firebase.firestore();
+                const payload = {
+                    type: form.type,
+                    libelle: form.libelle.trim(),
+                    beneficiaire: form.beneficiaire.trim(),
+                    montant: Number(form.montant) || 0,
+                    recurrence: form.recurrence,
+                    dateEcheance: form.recurrence === 'unique' ? form.dateEcheance : null,
+                    jourDuMois: form.recurrence === 'mensuelle' ? (Number(form.jourDuMois) || 1) : null,
+                    dateFin: form.dateFin || null,
+                    actif: true,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    updatedBy: currentProfile,
+                };
+                if (!payload.libelle || !payload.montant) { alert('Libellé et montant obligatoires.'); return; }
+                const op = editing
+                    ? db.collection('tresorerie_items').doc(editing).update(payload)
+                    : db.collection('tresorerie_items').add({ ...payload, createdAt: firebase.firestore.FieldValue.serverTimestamp(), createdBy: currentProfile });
+                op.then(() => { setShowForm(false); setEditing(null); setForm(emptyForm); })
+                  .catch(err => alert('Erreur sauvegarde: ' + err.message));
+            };
+            const deleteItem = (id) => {
+                if (!canEdit) return;
+                if (!confirm('Supprimer cet élément ?')) return;
+                firebase.firestore().collection('tresorerie_items').doc(id).update({ actif: false, updatedAt: firebase.firestore.FieldValue.serverTimestamp() })
+                    .catch(err => alert('Erreur: ' + err.message));
+            };
+            const startEdit = (it) => {
+                setEditing(it.id);
+                setForm({
+                    type: it.type || 'loyer',
+                    libelle: it.libelle || '',
+                    beneficiaire: it.beneficiaire || '',
+                    montant: it.montant || '',
+                    recurrence: it.recurrence || 'mensuelle',
+                    dateEcheance: it.dateEcheance || '',
+                    jourDuMois: it.jourDuMois || '',
+                    dateFin: it.dateFin || '',
+                });
+                setShowForm(true);
+            };
+
+            const ojraNet = ojraSummary?.latest?.totalNet || ojraSummary?.latest?.total || 0;
+
+            return (
+                <div className="fade-in" style={{ padding: '16px 4px' }}>
+                    <h3 style={{ margin: '0 0 16px' }}>
+                        <i className="fa-solid fa-vault" style={{ marginRight: 8, color: 'var(--berry)' }}></i>
+                        Trésorerie — Cash-flow prévisionnel
+                    </h3>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 20 }}>
+                        <div className="kpi-card" style={{ borderLeft: `4px solid ${kpis.soldeProj >= 0 ? 'var(--green)' : '#e74c3c'}` }}>
+                            <div style={{ fontSize: 11, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Solde net projeté (8 sem.)</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: kpis.soldeProj >= 0 ? 'var(--green)' : '#e74c3c', marginTop: 6 }}>{tresoFmtMAD(kpis.soldeProj)}</div>
+                        </div>
+                        <div className="kpi-card" style={{ borderLeft: '4px solid #e67e22' }}>
+                            <div style={{ fontSize: 11, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Échéances 7 prochains jours</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: '#e67e22', marginTop: 6 }}>{tresoFmtMAD(kpis.ech7j)}</div>
+                        </div>
+                        <div className="kpi-card" style={{ borderLeft: '4px solid #e74c3c' }}>
+                            <div style={{ fontSize: 11, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Factures en retard</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: '#e74c3c', marginTop: 6 }}>{tresoFmtMAD(kpis.retards)}</div>
+                        </div>
+                        <div className="kpi-card" style={{ borderLeft: '4px solid var(--berry)' }}>
+                            <div style={{ fontSize: 11, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Entrées Driscoll's attendues</div>
+                            <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--berry)', marginTop: 6 }}>{tresoFmtMAD(kpis.totalEntrees)}</div>
+                        </div>
+                        {ojraNet > 0 && (
+                            <div className="kpi-card" style={{ borderLeft: '4px solid #3498db' }}>
+                                <div style={{ fontSize: 11, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: 0.5 }}>Dernière paie OJRA</div>
+                                <div style={{ fontSize: 18, fontWeight: 700, color: '#3498db', marginTop: 6 }}>{tresoFmtMAD(ojraNet)}</div>
+                                <div style={{ fontSize: 10, color: 'var(--gray-400)' }}>{ojraSummary?.latest?.period || ''}</div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div style={{ marginBottom: 24 }}>
+                        <h4 style={{ margin: '0 0 8px', fontSize: 14 }}>
+                            <i className="fa-solid fa-calendar-week" style={{ marginRight: 6 }}></i>
+                            Calendrier hebdomadaire (Samedi → Vendredi, calendrier Driscoll's)
+                        </h4>
+                        {(facturesLoading || itemsLoading) && <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>Chargement…</div>}
+                        <div className="table-responsive"><table className="data-table" style={{ fontSize: 12 }}>
+                            <thead>
+                                <tr>
+                                    <th>Semaine</th>
+                                    <th style={{ textAlign: 'right' }}>Entrées Driscoll's</th>
+                                    <th style={{ textAlign: 'right' }}>Factures</th>
+                                    <th style={{ textAlign: 'right' }}>Loyers</th>
+                                    <th style={{ textAlign: 'right' }}>Paie</th>
+                                    <th style={{ textAlign: 'right' }}>Autres</th>
+                                    <th style={{ textAlign: 'right' }}>Solde net</th>
+                                    <th style={{ textAlign: 'right' }}>Cumul</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {weeklyRows.map((r, i) => {
+                                    const cumulColor = r.cumul >= 0 ? 'var(--green)' : '#e74c3c';
+                                    return (
+                                        <tr key={i} style={i === 0 ? { background: '#fff8e1' } : null}>
+                                            <td style={{ fontWeight: 600 }}>{tresoFmtDate(r.week.start)} → {tresoFmtDate(r.week.end)}{i === 0 ? ' (en cours)' : ''}</td>
+                                            <td style={{ textAlign: 'right', color: r.entrees > 0 ? 'var(--green)' : 'var(--gray-400)' }}>{r.entrees > 0 ? tresoFmtMAD(r.entrees) : '—'}</td>
+                                            <td style={{ textAlign: 'right' }}>{r.sortiesFactures > 0 ? tresoFmtMAD(r.sortiesFactures) : '—'}</td>
+                                            <td style={{ textAlign: 'right' }}>{r.sortiesLoyers > 0 ? tresoFmtMAD(r.sortiesLoyers) : '—'}</td>
+                                            <td style={{ textAlign: 'right' }}>{r.sortiesPaie > 0 ? tresoFmtMAD(r.sortiesPaie) : '—'}</td>
+                                            <td style={{ textAlign: 'right' }}>{r.sortiesAutres > 0 ? tresoFmtMAD(r.sortiesAutres) : '—'}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 600, color: r.net >= 0 ? 'var(--green)' : '#e74c3c' }}>{tresoFmtMAD(r.net)}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 700, color: cumulColor }}>{tresoFmtMAD(r.cumul)}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table></div>
+                    </div>
+
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                            <h4 style={{ margin: 0, fontSize: 14 }}>
+                                <i className="fa-solid fa-list-check" style={{ marginRight: 6 }}></i>
+                                Échéances & engagements ({items.length})
+                            </h4>
+                            {canEdit && (
+                                <button onClick={() => { setEditing(null); setForm(emptyForm); setShowForm(!showForm); }} style={{ background: 'var(--berry)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
+                                    <i className={`fa-solid ${showForm ? 'fa-xmark' : 'fa-plus'}`} style={{ marginRight: 4 }}></i>{showForm ? 'Annuler' : 'Ajouter'}
+                                </button>
+                            )}
+                        </div>
+
+                        {showForm && canEdit && (
+                            <div style={{ background: '#fff', border: '1px solid var(--gray-200)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10 }}>
+                                    <label style={{ fontSize: 11 }}>Type
+                                        <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} style={{ width: '100%', padding: 6 }}>
+                                            <option value="loyer">Loyer</option>
+                                            <option value="paie">Paie</option>
+                                            <option value="echeance">Échéance (crédit, traite…)</option>
+                                            <option value="autre">Autre</option>
+                                        </select>
+                                    </label>
+                                    <label style={{ fontSize: 11 }}>Libellé *
+                                        <input value={form.libelle} onChange={e => setForm({ ...form, libelle: e.target.value })} style={{ width: '100%', padding: 6 }} placeholder="Loyer bureau Casa" />
+                                    </label>
+                                    <label style={{ fontSize: 11 }}>Bénéficiaire
+                                        <input value={form.beneficiaire} onChange={e => setForm({ ...form, beneficiaire: e.target.value })} style={{ width: '100%', padding: 6 }} />
+                                    </label>
+                                    <label style={{ fontSize: 11 }}>Montant (MAD) *
+                                        <input type="number" value={form.montant} onChange={e => setForm({ ...form, montant: e.target.value })} style={{ width: '100%', padding: 6 }} />
+                                    </label>
+                                    <label style={{ fontSize: 11 }}>Récurrence
+                                        <select value={form.recurrence} onChange={e => setForm({ ...form, recurrence: e.target.value })} style={{ width: '100%', padding: 6 }}>
+                                            <option value="mensuelle">Mensuelle</option>
+                                            <option value="unique">Unique</option>
+                                        </select>
+                                    </label>
+                                    {form.recurrence === 'mensuelle' ? (
+                                        <>
+                                            <label style={{ fontSize: 11 }}>Jour du mois (1-28)
+                                                <input type="number" min="1" max="28" value={form.jourDuMois} onChange={e => setForm({ ...form, jourDuMois: e.target.value })} style={{ width: '100%', padding: 6 }} />
+                                            </label>
+                                            <label style={{ fontSize: 11 }}>Date de fin (optionnel)
+                                                <input type="date" value={form.dateFin} onChange={e => setForm({ ...form, dateFin: e.target.value })} style={{ width: '100%', padding: 6 }} />
+                                            </label>
+                                        </>
+                                    ) : (
+                                        <label style={{ fontSize: 11 }}>Date d'échéance *
+                                            <input type="date" value={form.dateEcheance} onChange={e => setForm({ ...form, dateEcheance: e.target.value })} style={{ width: '100%', padding: 6 }} />
+                                        </label>
+                                    )}
+                                </div>
+                                <div style={{ marginTop: 10, textAlign: 'right' }}>
+                                    <button onClick={saveItem} style={{ background: 'var(--green)', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
+                                        <i className="fa-solid fa-check" style={{ marginRight: 4 }}></i>{editing ? 'Mettre à jour' : 'Enregistrer'}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="table-responsive"><table className="data-table" style={{ fontSize: 12 }}>
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Libellé</th>
+                                    <th>Bénéficiaire</th>
+                                    <th style={{ textAlign: 'right' }}>Montant</th>
+                                    <th>Récurrence</th>
+                                    <th>Prochaine échéance</th>
+                                    {canEdit && <th>Actions</th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.length === 0 && (
+                                    <tr><td colSpan={canEdit ? 7 : 6} style={{ textAlign: 'center', color: 'var(--gray-400)', padding: 24 }}>Aucun engagement enregistré.</td></tr>
+                                )}
+                                {items.map(it => {
+                                    let prochaine = '—';
+                                    if (it.recurrence === 'unique' && it.dateEcheance) {
+                                        const dt = new Date(it.dateEcheance);
+                                        prochaine = tresoFmtDate(dt) + '/' + dt.getFullYear();
+                                    } else if (it.recurrence === 'mensuelle' && it.jourDuMois) {
+                                        const today = new Date();
+                                        const jour = Math.min(it.jourDuMois, 28);
+                                        let next = new Date(today.getFullYear(), today.getMonth(), jour);
+                                        if (next < today) next = new Date(today.getFullYear(), today.getMonth() + 1, jour);
+                                        prochaine = tresoFmtDate(next) + '/' + next.getFullYear();
+                                    }
+                                    return (
+                                        <tr key={it.id}>
+                                            <td><span style={{ background: '#f0f0f0', padding: '2px 6px', borderRadius: 4, fontSize: 10, textTransform: 'uppercase' }}>{it.type}</span></td>
+                                            <td style={{ fontWeight: 600 }}>{it.libelle}</td>
+                                            <td>{it.beneficiaire || '—'}</td>
+                                            <td style={{ textAlign: 'right', fontWeight: 600 }}>{tresoFmtMAD(it.montant)}</td>
+                                            <td>{it.recurrence === 'mensuelle' ? `Mensuelle (j${it.jourDuMois})` : 'Unique'}</td>
+                                            <td>{prochaine}</td>
+                                            {canEdit && (
+                                                <td>
+                                                    <button onClick={() => startEdit(it)} title="Modifier" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--berry)', marginRight: 6 }}><i className="fa-solid fa-pen"></i></button>
+                                                    <button onClick={() => deleteItem(it.id)} title="Supprimer" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c' }}><i className="fa-solid fa-trash"></i></button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table></div>
+                        <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 8 }}>
+                            <i className="fa-solid fa-info-circle" style={{ marginRight: 4 }}></i>
+                            Les factures fournisseurs et liquidations Driscoll's sont agrégées automatiquement. La paie peut être ajoutée comme item récurrent.
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         function FinLiquidationsTab({ data, currentProfile }) {
             const isAdmin = currentProfile === 'dg' || currentProfile === 'finance';
             const [subTab, setSubTab] = useState('situation');
@@ -29730,7 +31365,8 @@ ${rejetHtml}
             const [uploadingInvoice, setUploadingInvoice] = useState(false);
             const [uploadResult, setUploadResult] = useState(null);
             const [uploadProgress, setUploadProgress] = useState(null); // { current, total, currentName }
-            const [deductionMontants, setDeductionMontants] = useState({ cropAdvance: 0, fruitAdvance: 0 });
+            // Per-culture deduction montants. Shape: { framboise: { cropAdvance, fruitAdvance }, myrtille: { cropAdvance, fruitAdvance } }.
+            const [deductionMontants, setDeductionMontants] = useState({ framboise: { cropAdvance: 0, fruitAdvance: 0 }, myrtille: { cropAdvance: 0, fruitAdvance: 0 } });
             const [editingMontant, setEditingMontant] = useState(null); // 'cropAdvance' | 'fruitAdvance' | null
             const [editMontantValue, setEditMontantValue] = useState('');
             const [invoiceDragOver, setInvoiceDragOver] = useState(false);
@@ -29799,14 +31435,44 @@ ${rejetHtml}
                     if (plantJson && plantJson.success) setPlantInvoices(plantJson.invoices || []);
                     else setPlantInvoices([]);
                 }).catch(() => { setFetchedDocs([]); setFetchedExpeditions([]); setPlantInvoices([]); });
-                // Load deduction montants from Firestore
+                // Load deduction montants from Firestore — migrate legacy flat shape to per-culture.
                 firebase.firestore().collection('app_settings').doc('deduction_montants').get()
-                    .then(doc => { if (doc.exists) setDeductionMontants(doc.data()); })
+                    .then(doc => {
+                        if (!doc.exists) return;
+                        const data = doc.data() || {};
+                        const isLegacy = !data.framboise && !data.myrtille && (data.cropAdvance != null || data.fruitAdvance != null);
+                        if (isLegacy) {
+                            setDeductionMontants({
+                                framboise: { cropAdvance: data.cropAdvance || 0, fruitAdvance: data.fruitAdvance || 0 },
+                                myrtille: { cropAdvance: 0, fruitAdvance: 0 },
+                            });
+                        } else {
+                            setDeductionMontants({
+                                framboise: { cropAdvance: 0, fruitAdvance: 0, ...(data.framboise || {}) },
+                                myrtille: { cropAdvance: 0, fruitAdvance: 0, ...(data.myrtille || {}) },
+                            });
+                        }
+                    })
                     .catch(() => {});
             }, []);
 
+            // Resolve montants for the current culture filter. "Toutes" => sum both.
+            const getMontantsForCulture = (culture) => {
+                if (culture === 'framboise') return deductionMontants.framboise || { cropAdvance: 0, fruitAdvance: 0 };
+                if (culture === 'myrtille') return deductionMontants.myrtille || { cropAdvance: 0, fruitAdvance: 0 };
+                const f = deductionMontants.framboise || {};
+                const m = deductionMontants.myrtille || {};
+                return { cropAdvance: (f.cropAdvance || 0) + (m.cropAdvance || 0), fruitAdvance: (f.fruitAdvance || 0) + (m.fruitAdvance || 0) };
+            };
+
             const saveDeductionMontant = async (type, value) => {
-                const updated = { ...deductionMontants, [type]: value };
+                // Editing is only enabled when a culture is selected — guard anyway.
+                const culture = selectedFruit;
+                if (!culture) { setEditingMontant(null); return; }
+                const updated = {
+                    ...deductionMontants,
+                    [culture]: { ...(deductionMontants[culture] || {}), [type]: value },
+                };
                 setDeductionMontants(updated);
                 setEditingMontant(null);
                 try {
@@ -29989,10 +31655,9 @@ ${rejetHtml}
             if (liveAVenir) liq = { ...liq, aVenir: liveAVenir };
 
             // Inject plant invoices from Firestore if any have been uploaded
+            const filteredInvoices = (plantInvoices || []).filter(inv => !selectedFruit || (inv.culture || 'framboise') === selectedFruit);
             if (plantInvoices && plantInvoices.length > 0) {
-                const filteredInv = selectedFruit
-                    ? plantInvoices.filter(inv => (inv.culture || 'framboise') === selectedFruit)
-                    : plantInvoices;
+                const filteredInv = filteredInvoices;
                 const sorted = [...filteredInv].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
                 const totalFacture = sorted.reduce((s, inv) => s + (inv.montant || 0), 0);
                 const factures = sorted.map(inv => ({
@@ -30022,9 +31687,10 @@ ${rejetHtml}
                 };
             }
 
-            // Inject configured montants for Crop Advance and Fruit Advance
-            const cropMontant = deductionMontants.cropAdvance || 0;
-            const fruitMontant = deductionMontants.fruitAdvance || 0;
+            // Inject configured montants for Crop Advance and Fruit Advance (per culture).
+            const _curMontants = getMontantsForCulture(selectedFruit);
+            const cropMontant = _curMontants.cropAdvance || 0;
+            const fruitMontant = _curMontants.fruitAdvance || 0;
             liq = {
                 ...liq,
                 deductions: {
@@ -30240,7 +31906,11 @@ ${rejetHtml}
                                         {value: `${Math.round(liq.deductions.plants.totalPreleve/1000)}K`, label: 'Prélevé'},
                                         {value: `${pctPlants.toFixed(1)}%`, label: 'Avancement'}
                                     ]} />
-                                <div onClick={() => { setEditingMontant('cropAdvance'); setEditMontantValue(String(deductionMontants.cropAdvance || '')); }} style={{cursor:'pointer'}}>
+                                <div onClick={() => {
+                                        if (!selectedFruit) { alert("Sélectionnez une culture (Framboise ou Myrtille) pour éditer le montant."); return; }
+                                        setEditingMontant('cropAdvance');
+                                        setEditMontantValue(String(getMontantsForCulture(selectedFruit).cropAdvance || ''));
+                                    }} style={{cursor: selectedFruit ? 'pointer' : 'not-allowed', opacity: selectedFruit ? 1 : 0.7}}>
                                 <KPICard icon="fa-handshake" iconClass="blue"
                                     value={`${Math.round(liq.deductions.cropAdvance.resteADeduire/1000).toLocaleString('fr-FR')}K`}
                                     label="Reste Crop Advance"
@@ -30250,7 +31920,11 @@ ${rejetHtml}
                                         {value: `${pctPret.toFixed(1)}%`, label: 'Avancement'}
                                     ]} />
                                 </div>
-                                <div onClick={() => { setEditingMontant('fruitAdvance'); setEditMontantValue(String(deductionMontants.fruitAdvance || '')); }} style={{cursor:'pointer'}}>
+                                <div onClick={() => {
+                                        if (!selectedFruit) { alert("Sélectionnez une culture (Framboise ou Myrtille) pour éditer le montant."); return; }
+                                        setEditingMontant('fruitAdvance');
+                                        setEditMontantValue(String(getMontantsForCulture(selectedFruit).fruitAdvance || ''));
+                                    }} style={{cursor: selectedFruit ? 'pointer' : 'not-allowed', opacity: selectedFruit ? 1 : 0.7}}>
                                 <KPICard icon="fa-apple-whole" iconClass="orange"
                                     value={`${Math.round(liq.deductions.fruitAdvance.resteADeduire/1000).toLocaleString('fr-FR')}K`}
                                     label="Reste Fruit Advance"
@@ -30287,7 +31961,7 @@ ${rejetHtml}
 
                             {/* Factures Plants */}
                             <Panel title={`Factures ${liq.deductions.plants.designation}`} icon="fa-file-invoice" actions={
-                                plantInvoices !== null && <span style={{fontSize:11, color:'var(--gray-400)'}}>{plantInvoices.length} facture(s)</span>
+                                plantInvoices !== null && <span style={{fontSize:11, color:'var(--gray-400)'}}>{filteredInvoices.length} facture(s)</span>
                             }>
                                 {/* Drop zone — clickable + drag-and-drop, multi-file */}
                                 <input type="file" ref={fileInputRef} accept="application/pdf,image/jpeg,image/png,image/webp" multiple style={{display:'none'}}
@@ -30618,7 +32292,7 @@ ${rejetHtml}
                             {editingMontant && (
                                 <div className="modal-overlay" onClick={() => setEditingMontant(null)}>
                                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:400}}>
-                                        <h2><i className="fa-solid fa-pen"></i> {editingMontant === 'cropAdvance' ? 'Montant Crop Advance' : 'Montant Fruit Advance'}</h2>
+                                        <h2><i className="fa-solid fa-pen"></i> {editingMontant === 'cropAdvance' ? 'Montant Crop Advance' : 'Montant Fruit Advance'}{selectedFruit ? ` — ${selectedFruit === 'myrtille' ? 'Myrtille' : 'Framboise'}` : ''}</h2>
                                         <p style={{fontSize:12, color:'var(--gray-500)', marginBottom:16}}>
                                             Saisissez le montant total convenu avec Driscoll's pour cette saison. Cette valeur sera utilisée pour calculer le reste à déduire et l'avancement.
                                         </p>
@@ -30630,7 +32304,7 @@ ${rejetHtml}
                                                 autoFocus style={{fontSize:16, fontWeight:700}} />
                                         </div>
                                         <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:16}}>
-                                            Valeur actuelle : <strong>{(deductionMontants[editingMontant] || 0).toLocaleString('fr-FR')} DH</strong>
+                                            Valeur actuelle : <strong>{((getMontantsForCulture(selectedFruit)[editingMontant]) || 0).toLocaleString('fr-FR')} DH</strong>
                                         </div>
                                         <div className="form-actions">
                                             <button className="btn-secondary" onClick={() => setEditingMontant(null)}>Annuler</button>
@@ -39777,7 +41451,9 @@ ${rejetHtml}
                 envoi:           { key: 'envoi',           label: 'Envoyé',          icon: 'fa-truck',        action: 'envoi_fournisseur' },
             };
             const getStepsForBdc = (bdc) => {
-                const base = ['creation', 'soumission', 'validation_chef', 'validation_dg'];
+                const base = bdc.ferme === 'Avocatier'
+                    ? ['creation', 'soumission', 'validation_dg']
+                    : ['creation', 'soumission', 'validation_chef', 'validation_dg'];
                 if (isModeVirement(bdc.mode_paiement)) {
                     return [...base, 'virement_lance', 'virement_signe', 'envoi'].map(k => STEP_DEFS[k]);
                 }
@@ -39812,9 +41488,12 @@ ${rejetHtml}
             };
 
             const getDurations = (times, bdc) => {
+                const baseKeys = bdc?.ferme === 'Avocatier'
+                    ? ['creation', 'soumission', 'validation_dg']
+                    : ['creation', 'soumission', 'validation_chef', 'validation_dg'];
                 const keys = isModeVirement(bdc?.mode_paiement)
-                    ? ['creation', 'soumission', 'validation_chef', 'validation_dg', 'virement_lance', 'virement_signe', 'envoi']
-                    : ['creation', 'soumission', 'validation_chef', 'validation_dg', 'envoi'];
+                    ? [...baseKeys, 'virement_lance', 'virement_signe', 'envoi']
+                    : [...baseKeys, 'envoi'];
                 const result = {};
                 for (let i = 1; i < keys.length; i++) {
                     const from = times[keys[i - 1]];
@@ -39831,7 +41510,7 @@ ${rejetHtml}
                 if (bdc.status === 'virement_signe') return 'virement_signe';
                 if (bdc.status === 'virement_lance') return 'virement_lance';
                 if (bdc.status === 'valide_dg') return 'validation_dg';
-                if (bdc.status === 'en_attente_dg') return 'validation_chef';
+                if (bdc.status === 'en_attente_dg') return bdc.ferme === 'Avocatier' ? 'soumission' : 'validation_chef';
                 if (bdc.status === 'en_attente_chef') return 'soumission';
                 return 'creation';
             };
@@ -40313,9 +41992,76 @@ ${rejetHtml}
                 }).then(r => r.json()).then(json => { if (json.success) { setJustCreated({ id: json.id, numero: json.numero }); loadBdc(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau'));
             };
 
-            const handleSubmit = (id) => { if (!confirm('Soumettre ce BDC pour validation ?')) return; fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
-            const handleSubmitDirect = (id) => { fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { setShowForm(false); setJustCreated(null); loadBdc(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
+            // Génère le PDF du BDC et l'upload vers Storage pour qu'il soit joint à la notification WhatsApp.
+            // Retourne l'URL téléchargeable, ou null en cas d'échec (la soumission n'est pas bloquée).
+            const uploadBdcPdf = async (id) => {
+                try {
+                    const bdc = bdcList.find(b => b.id === id) || (bdcDetail && bdcDetail.bdc && bdcDetail.bdc.id === id ? bdcDetail.bdc : null);
+                    if (!bdc) return null;
+                    if (typeof generatePdfBdc !== 'function') return null;
+                    const doc = generatePdfBdc(bdc);
+                    const blob = doc.output('blob');
+                    const ref = firebase.storage().ref().child(`bdc_pdfs/${id}.pdf`);
+                    await ref.put(blob, { contentType: 'application/pdf' });
+                    return await ref.getDownloadURL();
+                } catch (err) {
+                    console.warn('PDF upload BDC échoué (non bloquant):', err && err.message);
+                    return null;
+                }
+            };
+
+            const handleSubmit = async (id) => {
+                if (!confirm('Soumettre ce BDC pour validation ?')) return;
+                const pdf_url = await uploadBdcPdf(id);
+                try {
+                    const r = await fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdf_url, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) });
+                    const json = await r.json();
+                    if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                } catch (_) { alert('Erreur réseau'); }
+            };
+            const handleSubmitDirect = async (id) => {
+                const pdf_url = await uploadBdcPdf(id);
+                try {
+                    const r = await fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdf_url, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) });
+                    const json = await r.json();
+                    if (json.success) { setShowForm(false); setJustCreated(null); loadBdc(); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                } catch (_) { alert('Erreur réseau'); }
+            };
             const handleSend = (id) => { if (!confirm('Marquer ce BDC comme envoyé au fournisseur ?')) return; fetch('/api/stock?action=send-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, sent_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
+
+            // Upload de l'avis de virement (PDF) — pour Finance/DG/Admin sur BDC en virement_signe.
+            const handleUploadAvisVirement = async (id) => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'application/pdf';
+                input.onchange = async () => {
+                    const file = input.files && input.files[0];
+                    if (!file) return;
+                    if (file.type !== 'application/pdf') { alert('Veuillez sélectionner un fichier PDF.'); return; }
+                    if (file.size > 10 * 1024 * 1024) { alert('PDF trop volumineux (max 10 MB).'); return; }
+                    try {
+                        const ref = firebase.storage().ref().child(`bdc_avis_virement/${id}.pdf`);
+                        await ref.put(file, { contentType: 'application/pdf' });
+                        const avis_pdf_url = await ref.getDownloadURL();
+                        const r = await fetch('/api/stock?action=upload-virement-avis', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id, avis_pdf_url, uploaded_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
+                        });
+                        const json = await r.json();
+                        if (json.success) {
+                            alert('Avis de virement enregistré. Achats sera notifié via WhatsApp.');
+                            loadBdc(); if (bdcDetail) openDetail(id);
+                        } else {
+                            alert('Erreur: ' + (json.error || 'Echec'));
+                        }
+                    } catch (err) {
+                        alert('Erreur upload: ' + (err && err.message ? err.message : 'inconnue'));
+                    }
+                };
+                input.click();
+            };
             const handleDeleteBdc = (id, status) => { const isValidated = status && status !== 'brouillon'; const msg = isValidated ? 'Ce BDC a déjà été validé. Voulez-vous vraiment le supprimer définitivement ?' : 'Supprimer définitivement ce BDC brouillon ?'; if (!confirm(msg)) return; fetch('/api/stock?action=delete-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, deleted_by: { profileId: currentProfile, name: profileData?.fullName || currentProfile } }) }).then(r => r.json()).then(json => { if (json.success) { setSelectedBdc(null); setBdcDetail(null); loadBdc(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur réseau')); };
             const handleRemindBdc = (id, status) => {
                 const profileLabel = status === 'en_attente_chef' ? 'Chef de ferme'
@@ -40768,6 +42514,16 @@ ${rejetHtml}
                                         {(['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status)) && <button onClick={() => handleDownloadPdf(bdcDetail.bdc)} style={{background:'#e74c3c',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}}><i className="fa-solid fa-file-pdf" style={{marginRight:4}}></i>PDF</button>}
                                         {(['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status)) && <button onClick={() => handleSendEmail(bdcDetail.bdc)} style={{background:'#2980b9',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}}><i className="fa-solid fa-envelope" style={{marginRight:4}}></i>Email</button>}
                                         {(['valide_dg','envoye','virement_lance','virement_signe'].includes(bdcDetail.bdc.status)) && <button onClick={() => handleShareWhatsApp(bdcDetail.bdc)} style={{background:'#25D366',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}}><i className="fa-brands fa-whatsapp" style={{marginRight:4}}></i>WhatsApp</button>}
+                                        {(['virement_signe','envoye'].includes(bdcDetail.bdc.status)) && ['finance','dg','admin'].includes(currentProfile) && !bdcDetail.bdc.avis_virement_url && (
+                                            <button onClick={() => handleUploadAvisVirement(bdcDetail.bdc.id)} style={{background:'#7c3aed',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}} title="Joindre le PDF de l'avis de virement exécuté">
+                                                <i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Joindre avis virement
+                                            </button>
+                                        )}
+                                        {bdcDetail.bdc.avis_virement_url && (
+                                            <a href={bdcDetail.bdc.avis_virement_url} target="_blank" rel="noopener noreferrer" style={{background:'#22c55e',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600,textDecoration:'none',display:'inline-flex',alignItems:'center'}} title="Voir l'avis de virement joint">
+                                                <i className="fa-solid fa-file-circle-check" style={{marginRight:4}}></i>Avis virement
+                                            </a>
+                                        )}
                                         <button onClick={() => { setSelectedBdc(null); setBdcDetail(null); setEditMode(null); }} style={{background:'none',border:'none',cursor:'pointer',fontSize:18,color:'#999'}}><i className="fa-solid fa-xmark"></i></button>
                                     </div>
                                 </div>
@@ -48759,6 +50515,7 @@ ${rejetHtml}
                 { id: 'caisse_transferts', label: 'Transferts', icon: 'fa-right-left' },
                 isControle ? { id: 'caisse_validation', label: 'Validation', icon: 'fa-check-double' } : null,
                 { id: 'caisse_rapports', label: 'Rapports', icon: 'fa-file-pdf' },
+                (isSaisie || isControle) ? { id: 'caisse_import', label: 'Import Excel', icon: 'fa-file-import' } : null,
                 isControle ? { id: 'caisse_config', label: 'Configuration', icon: 'fa-gear' } : null,
             ].filter(Boolean);
 
@@ -48814,6 +50571,7 @@ ${rejetHtml}
                     {subTab === 'caisse_transferts' && <CaisseTransfertsSub caisses={caisses} isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_validation' && <CaisseValidationSub caisses={caisses} onDone={refresh} />}
                     {subTab === 'caisse_rapports' && <CaisseRapportsSub caisses={caisses} />}
+                    {subTab === 'caisse_import' && <CaisseImportSub caisses={caisses} onDone={refresh} />}
                     {subTab === 'caisse_config' && <CaisseConfigSub caisses={caisses} onDone={refresh} />}
                 </div>
             );
@@ -49023,7 +50781,7 @@ ${rejetHtml}
         }
 
         // ---- Transactions List Sub ----
-        function CaisseTransactionsSub({ caisses }) {
+        function CaisseTransactionsSub({ caisses: caissesProp }) {
             const [transactions, setTransactions] = useState([]);
             const [loading, setLoading] = useState(true);
             const [filterCaisse, setFilterCaisse] = useState('');
@@ -49031,17 +50789,37 @@ ${rejetHtml}
             const [filterDateFrom, setFilterDateFrom] = useState('');
             const [filterDateTo, setFilterDateTo] = useState('');
             const [selectedTx, setSelectedTx] = useState(null);
+            const [localCaisses, setLocalCaisses] = useState([]);
+
+            // Use prop if non-empty, else fall back to locally-fetched caisses
+            const caisses = (caissesProp && caissesProp.length > 0) ? caissesProp : localCaisses;
+
+            // Totaux footer (recalculés sur les transactions courantes via useMemo)
+            const totals = useMemo(
+                () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(transactions) : { count: transactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
+                [transactions]
+            );
+
+            // Fetch caisses directly if prop is empty (defensive — avoid empty dropdown)
+            React.useEffect(() => {
+                if (!caissesProp || caissesProp.length === 0) {
+                    fetch('/api/caisse?action=list-caisses').then(r => r.json()).then(json => {
+                        if (json.success) setLocalCaisses(json.caisses || []);
+                    }).catch(() => {});
+                }
+            }, [caissesProp]);
 
             const load = () => {
                 setLoading(true);
-                let url = '/api/caisse?action=list-transactions&limit=200';
-                if (filterCaisse) url += '&caisse_id=' + filterCaisse;
-                if (filterStatus) url += '&status=' + filterStatus;
+                let url = '/api/caisse?action=list-transactions&limit=500';
+                if (filterCaisse) url += '&caisse_id=' + encodeURIComponent(filterCaisse);
+                if (filterStatus) url += '&status=' + encodeURIComponent(filterStatus);
                 if (filterDateFrom) url += '&date_from=' + filterDateFrom;
                 if (filterDateTo) url += '&date_to=' + filterDateTo;
                 fetch(url).then(r => r.json()).then(json => {
                     if (json.success) setTransactions(json.transactions || []);
-                }).catch(() => {}).finally(() => setLoading(false));
+                    else { console.warn('list-transactions error:', json.error); setTransactions([]); }
+                }).catch(err => { console.warn('list-transactions failed:', err); setTransactions([]); }).finally(() => setLoading(false));
             };
 
             React.useEffect(() => { load(); }, [filterCaisse, filterStatus, filterDateFrom, filterDateTo]);
@@ -49128,6 +50906,24 @@ ${rejetHtml}
                                             );
                                         })}
                                     </tbody>
+                                    {/* Sticky footer — totaux suivent les filtres */}
+                                    <tfoot>
+                                        <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
+                                            <td colSpan={9} style={{padding:'12px 14px',fontSize:12}}>
+                                                <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
+                                                    <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
+                                                    <span style={{color:'var(--gray-400)'}}>·</span>
+                                                    <span>Dépenses op : <strong style={{color:'var(--red)'}}>−{formatMAD(totals.totalDepensesOp)}</strong></span>
+                                                    <span style={{color:'var(--gray-400)'}}>·</span>
+                                                    <span>Recettes : <strong style={{color:'var(--green)'}}>+{formatMAD(totals.totalRecettes)}</strong></span>
+                                                    <span style={{color:'var(--gray-400)'}}>·</span>
+                                                    <span>Transferts inter-caisses : <strong style={{color: totals.totalTransfers === 0 ? 'var(--gray-600)' : (totals.totalTransfers > 0 ? 'var(--green)' : 'var(--red)')}}>{totals.totalTransfers >= 0 ? '+' : '−'}{formatMAD(Math.abs(totals.totalTransfers))}</strong></span>
+                                                    <span style={{color:'var(--gray-400)'}}>·</span>
+                                                    <span style={{marginLeft:'auto',fontSize:13}}>Solde net : <strong style={{color: totals.soldeNet >= 0 ? 'var(--green)' : 'var(--red)',fontSize:14}}>{totals.soldeNet >= 0 ? '+' : '−'}{formatMAD(Math.abs(totals.soldeNet))}</strong></span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    </tfoot>
                                 </table>
                             </div>
                         </div>
@@ -49863,6 +51659,137 @@ ${rejetHtml}
                             })()}
                         </div>
                     ) : null}
+                </div>
+            );
+        }
+
+        // ---- Import Excel Sub (Achats/DG/Finance) ----
+        // Mapping caisse_id → format Excel attendu (doit correspondre au backend)
+        const CAISSE_EXCEL_FORMATS = {
+            caisse_depenses: { format: 'depenses_monthly', label: 'Multi-feuilles mensuelles', hint: 'Une feuille par mois (JANVIER 2025, FEVRIER 2025…) avec entêtes ligne 7' },
+            caisse_paie: { format: 'paie_recap', label: 'Feuille Récap quinzaines', hint: 'Feuille "Récap" avec une ligne par quinzaine (1Q07/2025, 2Q07/2025…)' },
+            caisse_depenses_bahia: { format: 'bahia_single', label: 'Feuille unique "Les dépenses"', hint: 'Feuille "Les dépenses" avec codes analytiques 1 et 2' },
+        };
+
+        function CaisseImportSub({ caisses, onDone }) {
+            const [fileByCaisse, setFileByCaisse] = useState({});
+            const [overwriteByCaisse, setOverwriteByCaisse] = useState({});
+            const [resultByCaisse, setResultByCaisse] = useState({});
+            const [loadingByCaisse, setLoadingByCaisse] = useState({});
+
+            const handleFileSelect = (caisseId, e) => {
+                const f = e.target.files && e.target.files[0];
+                setFileByCaisse(prev => ({ ...prev, [caisseId]: f || null }));
+                setResultByCaisse(prev => { const next = { ...prev }; delete next[caisseId]; return next; });
+            };
+
+            const fileToBase64 = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+
+            const handleUpload = async (caisseId) => {
+                const file = fileByCaisse[caisseId];
+                if (!file) return alert('Veuillez sélectionner un fichier Excel');
+                setLoadingByCaisse(prev => ({ ...prev, [caisseId]: true }));
+                try {
+                    const b64 = await fileToBase64(file);
+                    const r = await fetch('/api/caisse?action=import-excel-file', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            caisse_id: caisseId,
+                            file_base64: b64,
+                            force_overwrite: !!overwriteByCaisse[caisseId],
+                        }),
+                    });
+                    const json = await r.json();
+                    setResultByCaisse(prev => ({ ...prev, [caisseId]: json }));
+                    if (json.success) onDone();
+                } catch (err) {
+                    setResultByCaisse(prev => ({ ...prev, [caisseId]: { success: false, error: err.message } }));
+                } finally {
+                    setLoadingByCaisse(prev => ({ ...prev, [caisseId]: false }));
+                }
+            };
+
+            return (
+                <div>
+                    <div style={{padding:14,background:'rgba(212,168,71,0.08)',border:'1px solid rgba(212,168,71,0.3)',borderRadius:10,marginBottom:20,fontSize:12.5,color:'var(--gray-800)'}}>
+                        <i className="fa-solid fa-info-circle" style={{color:'var(--gold)',marginRight:8}}></i>
+                        <strong>Mise à jour depuis Excel</strong> — Sélectionnez le fichier Excel correspondant à chaque caisse et cliquez sur <em>Importer</em>. Le format attendu est indiqué sous chaque caisse. L'import est <strong>idempotent</strong> : les lignes déjà importées sont skippées, sauf si vous cochez "Écraser les existants".
+                    </div>
+
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(360px,1fr))',gap:14}}>
+                        {caisses.map(c => {
+                            const fmt = CAISSE_EXCEL_FORMATS[c.id];
+                            const cc = getCaisseColor(c.id);
+                            const file = fileByCaisse[c.id];
+                            const loading = loadingByCaisse[c.id];
+                            const result = resultByCaisse[c.id];
+                            const supported = !!fmt;
+                            return (
+                                <div key={c.id} style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',padding:16,position:'relative',overflow:'hidden'}}>
+                                    <div style={{position:'absolute',top:0,left:0,width:4,height:'100%',background:cc.color}}></div>
+                                    <div style={{paddingLeft:12}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+                                            <div style={{width:36,height:36,borderRadius:10,background:cc.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                                <i className={`fa-solid ${cc.icon}`} style={{color:cc.color,fontSize:14}}></i>
+                                            </div>
+                                            <div>
+                                                <div style={{fontWeight:600,fontSize:13}}>{c.nom}</div>
+                                                <div style={{fontSize:11,color:'var(--gray-400)'}}>{formatMAD(c.solde_actuel)}</div>
+                                            </div>
+                                        </div>
+
+                                        {!supported ? (
+                                            <div style={{padding:12,background:'var(--gray-100)',borderRadius:8,fontSize:11,color:'var(--gray-600)'}}>
+                                                <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                                Aucun format d'import Excel configuré pour cette caisse. Saisie manuelle uniquement.
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <div style={{fontSize:11,color:'var(--gray-600)',marginBottom:8,padding:'8px 10px',background:'var(--gray-100)',borderRadius:6}}>
+                                                    <div style={{fontWeight:600,marginBottom:2}}>{fmt.label}</div>
+                                                    <div style={{color:'var(--gray-400)'}}>{fmt.hint}</div>
+                                                </div>
+                                                <label style={{display:'block',padding:'10px',border:'1px dashed var(--gray-200)',borderRadius:8,cursor:'pointer',textAlign:'center',marginBottom:8,fontSize:12,color: file ? 'var(--berry)' : 'var(--gray-400)'}}>
+                                                    <i className={`fa-solid ${file ? 'fa-file-excel' : 'fa-cloud-arrow-up'}`} style={{marginRight:6}}></i>
+                                                    {file ? file.name : 'Choisir un fichier Excel (.xlsx, .xlsm)'}
+                                                    <input type="file" accept=".xlsx,.xlsm,.xls" onChange={e => handleFileSelect(c.id, e)} style={{display:'none'}} />
+                                                </label>
+                                                <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--gray-600)',marginBottom:10,cursor:'pointer'}}>
+                                                    <input type="checkbox" checked={!!overwriteByCaisse[c.id]} onChange={e => setOverwriteByCaisse(prev => ({ ...prev, [c.id]: e.target.checked }))} />
+                                                    Écraser les transactions existantes (forcer la mise à jour)
+                                                </label>
+                                                <button onClick={() => handleUpload(c.id)} disabled={!file || loading}
+                                                    style={{width:'100%',padding:'10px',borderRadius:8,border:'none',background: file && !loading ? cc.color : 'var(--gray-200)',color:'white',fontSize:12,fontWeight:600,cursor: file && !loading ? 'pointer' : 'not-allowed'}}>
+                                                    {loading ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Import en cours...</> : <><i className="fa-solid fa-upload" style={{marginRight:6}}></i>Importer</>}
+                                                </button>
+                                                {result && (
+                                                    <div style={{marginTop:10,padding:10,borderRadius:8,fontSize:11,background: result.success ? 'rgba(45,139,78,0.08)' : 'rgba(231,76,60,0.08)',color: result.success ? 'var(--green)' : 'var(--red)'}}>
+                                                        {result.success ? (
+                                                            <>
+                                                                <div style={{fontWeight:600,marginBottom:4}}><i className="fa-solid fa-check" style={{marginRight:4}}></i>Import réussi</div>
+                                                                <div>{result.imported} importée(s), {result.skipped} skippée(s) sur {result.parsed} parsée(s)</div>
+                                                                <div style={{marginTop:4,color:'var(--gray-600)'}}>Solde actuel : <strong>{formatMAD(result.solde_actuel)}</strong></div>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <div style={{fontWeight:600}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>Erreur</div>
+                                                                <div>{result.error}</div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             );
         }
@@ -53853,6 +55780,484 @@ ${rejetHtml}
             );
         }
 
+        // ============================================================
+        // Productivity Report — Driscoll's Grower Productivity weekly tracker
+        // 3 vues : 1) synthèse semaine, 2) histogramme par traitement, 3) évolution hebdo
+        // Source : Firestore collection productivity_reports
+        // ============================================================
+        function ProductivityReportTab({ data, currentProfile, userProfile }) {
+            const [weeks, setWeeks] = React.useState([]);
+            const [selectedWeekId, setSelectedWeekId] = React.useState(null);
+            const [report, setReport] = React.useState(null);
+            const [loading, setLoading] = React.useState(false);
+            const [error, setError] = React.useState(null);
+            const [farmFilter, setFarmFilter] = React.useState('both');
+            const [categoryFilter, setCategoryFilter] = React.useState('all');
+            const [selectedTreatmentTitle, setSelectedTreatmentTitle] = React.useState(null);
+            const [trendData, setTrendData] = React.useState(null);
+            const [refreshingFromEmail, setRefreshingFromEmail] = React.useState(false);
+            const [refetchStatus, setRefetchStatus] = React.useState(null);
+
+            const canTriggerRefetch = currentProfile === 'dg' || currentProfile === 'finance';
+            const myFarm = currentProfile === 'chef_f1' ? 'F1' : currentProfile === 'chef_f5' ? 'F5' : null;
+
+            React.useEffect(() => {
+                let cancelled = false;
+                (async () => {
+                    try {
+                        const r = await fetch('/api/email-analysis?action=productivity-list&limit=52');
+                        const j = await r.json();
+                        if (cancelled) return;
+                        if (!j.success) { setError(j.error || 'Erreur chargement'); return; }
+                        const items = (j.items || []).sort((a, b) => (b.week || 0) - (a.week || 0));
+                        setWeeks(items);
+                        if (items.length > 0 && !selectedWeekId) setSelectedWeekId(items[0].id);
+                    } catch (e) {
+                        if (!cancelled) setError(e.message);
+                    }
+                })();
+                return () => { cancelled = true; };
+            }, []); // eslint-disable-line
+
+            React.useEffect(() => {
+                if (!selectedWeekId) { setReport(null); return; }
+                let cancelled = false;
+                setLoading(true); setError(null);
+                (async () => {
+                    try {
+                        const r = await fetch('/api/email-analysis?action=productivity-detail&id=' + encodeURIComponent(selectedWeekId));
+                        const j = await r.json();
+                        if (cancelled) return;
+                        if (!j.success) { setError(j.error || 'Erreur'); setReport(null); }
+                        else setReport(j.report);
+                    } catch (e) { if (!cancelled) setError(e.message); }
+                    finally { if (!cancelled) setLoading(false); }
+                })();
+                return () => { cancelled = true; };
+            }, [selectedWeekId]);
+
+            React.useEffect(() => {
+                if (!selectedTreatmentTitle || !report) { setTrendData(null); return; }
+                let cancelled = false;
+                (async () => {
+                    try {
+                        const sameCampaign = weeks.filter(w => w.campaign === report.campaign).slice(0, 8);
+                        const details = await Promise.all(sameCampaign.map(w =>
+                            fetch('/api/email-analysis?action=productivity-detail&id=' + encodeURIComponent(w.id))
+                                .then(r => r.json()).then(j => j.success ? j.report : null).catch(() => null)
+                        ));
+                        if (cancelled) return;
+                        const series = details.filter(Boolean).map(rep => {
+                            const t = (rep.treatments || []).find(x => x.title === selectedTreatmentTitle);
+                            if (!t) return null;
+                            return {
+                                week: rep.week, campaign: rep.campaign,
+                                average: t.average, top25Threshold: t.top25Threshold,
+                                f1: t.f1, f5: t.f5,
+                            };
+                        }).filter(Boolean).sort((a, b) => a.week - b.week);
+                        setTrendData(series);
+                    } catch (e) { /* silent */ }
+                })();
+                return () => { cancelled = true; };
+            }, [selectedTreatmentTitle, report, weeks]);
+
+            const triggerRefetch = async (onlyNew) => {
+                setRefreshingFromEmail(true); setRefetchStatus(null);
+                try {
+                    const token = firebaseAuth && firebaseAuth.currentUser ? await firebaseAuth.currentUser.getIdToken() : null;
+                    const url = '/api/email-analysis?action=refetch-productivity' + (onlyNew ? '&onlyNew=1' : '');
+                    const r = await fetch(url, { method: 'POST', headers: token ? { 'Authorization': 'Bearer ' + token } : {} });
+                    const j = await r.json();
+                    setRefetchStatus(j.success ? `${j.processed} rapport(s) traité(s), ${j.skipped} ignoré(s)` : (j.error || 'Erreur'));
+                    const l = await fetch('/api/email-analysis?action=productivity-list&limit=52').then(x => x.json());
+                    if (l.success) setWeeks((l.items || []).sort((a, b) => (b.week || 0) - (a.week || 0)));
+                } catch (e) { setRefetchStatus('Erreur : ' + e.message); }
+                finally { setRefreshingFromEmail(false); }
+            };
+
+            const filteredTreatments = React.useMemo(() => {
+                if (!report || !Array.isArray(report.treatments)) return [];
+                return report.treatments.filter(t => {
+                    if (categoryFilter !== 'all' && t.category !== categoryFilter) return false;
+                    if (farmFilter === 'F1' && !t.f1) return false;
+                    if (farmFilter === 'F5' && !t.f5) return false;
+                    if (farmFilter === 'both' && !t.f1 && !t.f5) return false;
+                    if (myFarm === 'F1' && !t.f1) return false;
+                    if (myFarm === 'F5' && !t.f5) return false;
+                    return true;
+                });
+            }, [report, categoryFilter, farmFilter, myFarm]);
+
+            return (
+                <div style={{ padding: '16px', height: '100%', overflowY: 'auto', background: 'var(--gray-50, #f8f9fa)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 12 }}>
+                        <div>
+                            <h2 style={{ margin: 0, color: 'var(--primary, #0a5d3d)' }}>
+                                <i className="fa-solid fa-chart-line" style={{ marginRight: 8 }}></i>
+                                Productivity Report — Driscoll's
+                            </h2>
+                            <div style={{ fontSize: 13, color: 'var(--gray-600, #6c757d)', marginTop: 4 }}>
+                                Suivi hebdomadaire du classement F1 (172) et F5 (195) vs autres growers · Objectif : top 25 %
+                            </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                            <select value={selectedWeekId || ''} onChange={e => setSelectedWeekId(e.target.value)}
+                                style={{ padding: '6px 10px', border: '1px solid var(--gray-300, #ced4da)', borderRadius: 6, fontSize: 14 }}>
+                                {weeks.length === 0 && <option value="">— aucune semaine —</option>}
+                                {weeks.map(w => <option key={w.id} value={w.id}>{w.campaign} · Week {w.week}</option>)}
+                            </select>
+                            {canTriggerRefetch && (
+                                <React.Fragment>
+                                    <button onClick={() => triggerRefetch(true)} disabled={refreshingFromEmail}
+                                        style={{ padding: '6px 12px', background: 'var(--primary, #0a5d3d)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                                        <i className={refreshingFromEmail ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-envelope-open-text'} style={{ marginRight: 6 }}></i>
+                                        Nouveaux emails
+                                    </button>
+                                    <button onClick={() => { if (confirm('Re-scanner TOUS les emails (backfill complet) ?')) triggerRefetch(false); }} disabled={refreshingFromEmail}
+                                        style={{ padding: '6px 12px', background: '#fff', color: 'var(--primary, #0a5d3d)', border: '1px solid var(--primary, #0a5d3d)', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>
+                                        <i className="fa-solid fa-rotate"></i> Backfill
+                                    </button>
+                                </React.Fragment>
+                            )}
+                        </div>
+                    </div>
+
+                    {refetchStatus && (
+                        <div style={{ padding: '8px 12px', background: '#e7f5e7', border: '1px solid #5cb85c', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+                            {refetchStatus}
+                        </div>
+                    )}
+                    {error && (
+                        <div style={{ padding: '8px 12px', background: '#fdecea', border: '1px solid #e74c3c', borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+                            <i className="fa-solid fa-triangle-exclamation"></i> {error}
+                        </div>
+                    )}
+                    {loading && <div style={{ padding: 20, textAlign: 'center', color: 'var(--gray-600)' }}><i className="fa-solid fa-spinner fa-spin"></i> Chargement…</div>}
+
+                    {!loading && weeks.length === 0 && !error && (
+                        <div style={{ padding: 30, textAlign: 'center', background: '#fff', borderRadius: 8, border: '1px solid var(--gray-300)' }}>
+                            <i className="fa-solid fa-inbox fa-3x" style={{ color: 'var(--gray-400)', marginBottom: 12 }}></i>
+                            <div style={{ fontSize: 16, fontWeight: 600 }}>Aucun rapport pour le moment</div>
+                            <div style={{ fontSize: 13, color: 'var(--gray-600)', marginTop: 8 }}>
+                                Les rapports Driscoll's "Grower productivity report" seront ingérés automatiquement à leur arrivée sur qualiteberrygoodfarms@gmail.com.
+                            </div>
+                            {canTriggerRefetch && (
+                                <button onClick={() => triggerRefetch(false)} style={{ marginTop: 16, padding: '8px 18px', background: 'var(--primary, #0a5d3d)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+                                    Scanner les emails existants
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {report && !loading && (
+                        <React.Fragment>
+                            <ProductivityFarmSummaryBanner report={report} myFarm={myFarm} farmFilter={farmFilter} onFarmFilter={setFarmFilter} />
+
+                            <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+                                {['all', 'raspberry', 'blackberry', 'strawberry', 'blueberry'].map(c => (
+                                    <button key={c} onClick={() => setCategoryFilter(c)}
+                                        style={{
+                                            padding: '4px 12px', fontSize: 12, borderRadius: 16,
+                                            border: '1px solid ' + (categoryFilter === c ? 'var(--primary, #0a5d3d)' : 'var(--gray-300)'),
+                                            background: categoryFilter === c ? 'var(--primary, #0a5d3d)' : '#fff',
+                                            color: categoryFilter === c ? '#fff' : 'var(--gray-700)',
+                                            cursor: 'pointer', textTransform: 'capitalize',
+                                        }}>
+                                        {c === 'all' ? 'Toutes catégories' : c}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <ProductivityTreatmentsTable
+                                treatments={filteredTreatments}
+                                myFarm={myFarm}
+                                onSelectTreatment={setSelectedTreatmentTitle}
+                                selectedTitle={selectedTreatmentTitle} />
+
+                            {selectedTreatmentTitle && (
+                                <ProductivityTreatmentDetail
+                                    treatment={filteredTreatments.find(t => t.title === selectedTreatmentTitle) || report.treatments.find(t => t.title === selectedTreatmentTitle)}
+                                    trendSeries={trendData}
+                                    onClose={() => setSelectedTreatmentTitle(null)} />
+                            )}
+
+                            <div style={{ marginTop: 24, padding: 10, fontSize: 11, color: 'var(--gray-500)', borderTop: '1px solid var(--gray-200)' }}>
+                                Reçu : {report.receivedAt && new Date(report.receivedAt).toLocaleString('fr-FR')} · Modèle parser : {report.parser?.model || '—'} · {report.treatments.length} traitements
+                                {report.parseWarnings && report.parseWarnings.length > 0 && (
+                                    <span style={{ color: '#e67e22', marginLeft: 8 }}>· ⚠ {report.parseWarnings.join(', ')}</span>
+                                )}
+                            </div>
+                        </React.Fragment>
+                    )}
+                </div>
+            );
+        }
+
+        function ProductivityFarmSummaryBanner({ report, myFarm, farmFilter, onFarmFilter }) {
+            const summary = report.summary || { f1: { present: 0, inTop25: 0, avgRank: null, avgRankTotal: null }, f5: { present: 0, inTop25: 0, avgRank: null, avgRankTotal: null } };
+            const card = (farmKey, label, color) => {
+                const s = summary[farmKey] || { present: 0, inTop25: 0, avgRank: null, avgRankTotal: null };
+                const pctTop25 = s.present > 0 ? Math.round((s.inTop25 / s.present) * 100) : 0;
+                const bgColor = pctTop25 >= 75 ? '#e7f5e7' : pctTop25 >= 25 ? '#fff8e6' : '#fdecea';
+                const accentColor = pctTop25 >= 75 ? '#2ecc71' : pctTop25 >= 25 ? '#f39c12' : '#e74c3c';
+                const isSelected = farmFilter === farmKey.toUpperCase() || (myFarm && myFarm === farmKey.toUpperCase());
+                return (
+                    <div onClick={() => onFarmFilter(farmFilter === farmKey.toUpperCase() ? 'both' : farmKey.toUpperCase())}
+                        style={{
+                            flex: 1, minWidth: 240, padding: 16, borderRadius: 10,
+                            border: '2px solid ' + (isSelected ? color : 'transparent'),
+                            background: bgColor, cursor: 'pointer', position: 'relative',
+                        }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                            <div style={{ width: 12, height: 12, background: color, borderRadius: 3 }}></div>
+                            <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--gray-800)' }}>{label}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            <div>
+                                <div style={{ fontSize: 11, color: 'var(--gray-600)' }}>Top 25 %</div>
+                                <div style={{ fontSize: 24, fontWeight: 800, color: accentColor }}>
+                                    {s.inTop25}/{s.present} <span style={{ fontSize: 14, color: 'var(--gray-600)' }}>({pctTop25}%)</span>
+                                </div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 11, color: 'var(--gray-600)' }}>Rang moyen</div>
+                                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--gray-700)' }}>
+                                    {s.avgRank !== null ? s.avgRank.toFixed(1) : '—'}
+                                    {s.avgRankTotal !== null && <span style={{ fontSize: 14, color: 'var(--gray-500)' }}>/{Math.round(s.avgRankTotal)}</span>}
+                                </div>
+                            </div>
+                            <div>
+                                <div style={{ fontSize: 11, color: 'var(--gray-600)' }}>Traitements</div>
+                                <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--gray-700)' }}>{s.present}</div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+            return (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                    {(!myFarm || myFarm === 'F1') && card('f1', 'F1 — Framboise Larache (172)', '#e74c3c')}
+                    {(!myFarm || myFarm === 'F5') && card('f5', 'F5 — Myrtille/Framboise Laaouamra (195)', '#3498db')}
+                </div>
+            );
+        }
+
+        function ProductivityTreatmentsTable({ treatments, myFarm, onSelectTreatment, selectedTitle }) {
+            if (!treatments || treatments.length === 0) {
+                return <div style={{ padding: 20, background: '#fff', borderRadius: 8, textAlign: 'center', color: 'var(--gray-500)' }}>Aucun traitement concerné par les filtres actuels.</div>;
+            }
+            const cell = (stats, color) => {
+                if (!stats) return <td style={{ padding: 8, color: 'var(--gray-400)', textAlign: 'center' }}>—</td>;
+                const isLast = stats.rank === stats.rankTotal;
+                const bg = stats.inTop25 ? '#e7f5e7' : isLast ? '#fdecea' : 'transparent';
+                return (
+                    <td style={{ padding: 8, background: bg, textAlign: 'center', fontSize: 13 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                            <span style={{ fontWeight: 700 }}>{stats.yield.toLocaleString('fr-FR')}</span>
+                            <span style={{ padding: '2px 8px', borderRadius: 12, background: color, color: '#fff', fontSize: 12, fontWeight: 700, minWidth: 36, textAlign: 'center' }}>{stats.rank}/{stats.rankTotal}</span>
+                            {stats.inTop25 && <i className="fa-solid fa-trophy" style={{ color: '#f1c40f', fontSize: 12 }} title="Top 25%"></i>}
+                        </div>
+                        {stats.vsAveragePct !== null && (
+                            <div style={{ fontSize: 11, color: stats.vsAveragePct >= 0 ? '#2ecc71' : '#e74c3c', marginTop: 2 }}>
+                                {stats.vsAveragePct >= 0 ? '+' : ''}{stats.vsAveragePct}% vs moy
+                            </div>
+                        )}
+                    </td>
+                );
+            };
+            return (
+                <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--gray-200)', overflow: 'auto', marginBottom: 16 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead style={{ background: 'var(--gray-100, #f1f3f5)', position: 'sticky', top: 0 }}>
+                            <tr>
+                                <th style={{ padding: 10, textAlign: 'left' }}>Traitement</th>
+                                <th style={{ padding: 10, textAlign: 'left' }}>Catégorie</th>
+                                <th style={{ padding: 10, textAlign: 'right' }}>Moyenne</th>
+                                <th style={{ padding: 10, textAlign: 'right' }}>Seuil Top 25 %</th>
+                                {(!myFarm || myFarm === 'F1') && <th style={{ padding: 10, textAlign: 'center', background: '#fdecea' }}>F1 (172)</th>}
+                                {(!myFarm || myFarm === 'F5') && <th style={{ padding: 10, textAlign: 'center', background: '#eaf3fd' }}>F5 (195)</th>}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {treatments.map((t, i) => (
+                                <tr key={t.title + i} onClick={() => onSelectTreatment(t.title)}
+                                    style={{
+                                        cursor: 'pointer', borderTop: '1px solid var(--gray-200)',
+                                        background: selectedTitle === t.title ? '#fff8e6' : (i % 2 === 0 ? '#fff' : '#fafbfc'),
+                                    }}>
+                                    <td style={{ padding: 8, fontWeight: 600 }}>{t.title}</td>
+                                    <td style={{ padding: 8, fontSize: 12, color: 'var(--gray-600)', textTransform: 'capitalize' }}>{t.category || '—'}</td>
+                                    <td style={{ padding: 8, textAlign: 'right' }}>{t.average ? t.average.toLocaleString('fr-FR') : '—'} <span style={{ color: 'var(--gray-500)', fontSize: 11 }}>{t.unit}</span></td>
+                                    <td style={{ padding: 8, textAlign: 'right', color: '#e67e22', fontWeight: 600 }}>{t.top25Threshold ? t.top25Threshold.toLocaleString('fr-FR') : '—'}</td>
+                                    {(!myFarm || myFarm === 'F1') && cell(t.f1, '#e74c3c')}
+                                    {(!myFarm || myFarm === 'F5') && cell(t.f5, '#3498db')}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
+        function ProductivityTreatmentDetail({ treatment, trendSeries, onClose }) {
+            if (!treatment) return null;
+            return (
+                <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--gray-200)', padding: 16, marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div>
+                            <h3 style={{ margin: 0 }}>{treatment.title}</h3>
+                            <div style={{ fontSize: 12, color: 'var(--gray-600)' }}>
+                                {treatment.totalGrowers} growers · Moyenne {treatment.average?.toLocaleString('fr-FR')} {treatment.unit} · Seuil top 25 % : <strong style={{ color: '#e67e22' }}>{treatment.top25Threshold?.toLocaleString('fr-FR')}</strong>
+                            </div>
+                        </div>
+                        <button onClick={onClose} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--gray-500)' }}><i className="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <ProductivityHistogramSvg treatment={treatment} />
+                    {trendSeries && trendSeries.length > 1 && (
+                        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid var(--gray-200)' }}>
+                            <h4 style={{ margin: '0 0 12px 0', color: 'var(--gray-700)' }}>
+                                <i className="fa-solid fa-chart-line" style={{ marginRight: 6 }}></i>
+                                Évolution hebdomadaire ({trendSeries.length} semaines)
+                            </h4>
+                            <ProductivityTrendSvg series={trendSeries} unit={treatment.unit} />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        function ProductivityHistogramSvg({ treatment }) {
+            const growers = (treatment.growers || []).slice().sort((a, b) => b.yield - a.yield);
+            if (growers.length === 0) return <div style={{ color: 'var(--gray-500)' }}>Aucun grower</div>;
+            const avgIdx = treatment.average ? growers.findIndex(g => g.yield < treatment.average) : -1;
+            const allBars = growers.slice();
+            if (treatment.average && avgIdx >= 0) {
+                allBars.splice(avgIdx, 0, { code: 'Average', yield: treatment.average, plantingWeek: null, _isAverage: true });
+            } else if (treatment.average) {
+                allBars.push({ code: 'Average', yield: treatment.average, _isAverage: true });
+            }
+            const W = Math.max(800, allBars.length * 40);
+            const H = 380;
+            const padL = 50, padR = 20, padT = 30, padB = 90;
+            const maxY = Math.max(...allBars.map(b => b.yield)) * 1.05;
+            const yScale = (y) => H - padB - (y / maxY) * (H - padT - padB);
+            const barW = (W - padL - padR) / allBars.length * 0.75;
+            const xPos = (i) => padL + (i + 0.5) * (W - padL - padR) / allBars.length;
+            const top25Y = treatment.top25Threshold ? yScale(treatment.top25Threshold) : null;
+            const avgY = treatment.average ? yScale(treatment.average) : null;
+            const colorFor = (g) => {
+                if (g._isAverage) return '#9b59b6';
+                if (g.code === '172') return '#e74c3c';
+                if (g.code === '195') return '#3498db';
+                return '#f5b7b1';
+            };
+            const ticks = [];
+            const tickStep = Math.pow(10, Math.floor(Math.log10(maxY))) / 2;
+            for (let t = 0; t <= maxY; t += tickStep) ticks.push(t);
+            return (
+                <div style={{ width: '100%', overflowX: 'auto', background: '#fafbfc', borderRadius: 6, padding: 8 }}>
+                    <svg width={W} height={H} style={{ display: 'block' }}>
+                        {ticks.map((t, i) => (
+                            <g key={i}>
+                                <line x1={padL} y1={yScale(t)} x2={W - padR} y2={yScale(t)} stroke="#e9ecef" strokeWidth="1" />
+                                <text x={padL - 6} y={yScale(t) + 4} textAnchor="end" fontSize="10" fill="#6c757d">{Math.round(t).toLocaleString('fr-FR')}</text>
+                            </g>
+                        ))}
+                        {allBars.map((g, i) => {
+                            const x = xPos(i) - barW / 2;
+                            const y = yScale(g.yield);
+                            const h = H - padB - y;
+                            const isHighlight = g.code === '172' || g.code === '195' || g._isAverage;
+                            return (
+                                <g key={i}>
+                                    <title>{g.code} · {g.yield.toLocaleString('fr-FR')} {treatment.unit}{g.plantingWeek ? ' · plant. W' + g.plantingWeek : ''}</title>
+                                    <rect x={x} y={y} width={barW} height={h} fill={colorFor(g)}
+                                        stroke={isHighlight ? '#000' : 'none'} strokeWidth="0.5" />
+                                    <text x={xPos(i)} y={H - padB + 14} textAnchor="middle"
+                                        fontSize={isHighlight ? 11 : 9} fontWeight={isHighlight ? 700 : 400}
+                                        fill={colorFor(g)}
+                                        transform={'rotate(-45 ' + xPos(i) + ',' + (H - padB + 14) + ')'}>{g.code}</text>
+                                </g>
+                            );
+                        })}
+                        {top25Y !== null && (
+                            <g>
+                                <line x1={padL} y1={top25Y} x2={W - padR} y2={top25Y} stroke="#e67e22" strokeWidth="2" strokeDasharray="6 4" />
+                                <text x={W - padR - 4} y={top25Y - 4} textAnchor="end" fontSize="11" fill="#e67e22" fontWeight="700">
+                                    Objectif Top 25 % = {treatment.top25Threshold.toLocaleString('fr-FR')}
+                                </text>
+                            </g>
+                        )}
+                        {avgY !== null && (
+                            <g>
+                                <line x1={padL} y1={avgY} x2={W - padR} y2={avgY} stroke="#9b59b6" strokeWidth="1.5" strokeDasharray="3 3" />
+                                <text x={padL + 4} y={avgY - 4} fontSize="10" fill="#9b59b6">Moyenne</text>
+                            </g>
+                        )}
+                    </svg>
+                </div>
+            );
+        }
+
+        function ProductivityTrendSvg({ series, unit }) {
+            if (!series || series.length === 0) return null;
+            const W = 760, H = 280;
+            const padL = 55, padR = 110, padT = 20, padB = 40;
+            const weeks = series.map(s => s.week);
+            const yields = [];
+            series.forEach(s => {
+                if (s.f1) yields.push(s.f1.yield);
+                if (s.f5) yields.push(s.f5.yield);
+                if (s.average) yields.push(s.average);
+                if (s.top25Threshold) yields.push(s.top25Threshold);
+            });
+            const maxY = Math.max(...yields) * 1.1;
+            const wMin = Math.min(...weeks), wMax = Math.max(...weeks);
+            const xScale = (w) => padL + ((w - wMin) / Math.max(1, wMax - wMin)) * (W - padL - padR);
+            const yScale = (y) => H - padB - (y / maxY) * (H - padT - padB);
+            const lineFor = (getter, color, strokeDash) => {
+                const pts = series.map(s => { const y = getter(s); return y == null ? null : { x: xScale(s.week), y: yScale(y) }; }).filter(Boolean);
+                if (pts.length === 0) return null;
+                const d = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p.x + ',' + p.y).join(' ');
+                return (
+                    <g>
+                        <path d={d} fill="none" stroke={color} strokeWidth="2" strokeDasharray={strokeDash || 'none'} />
+                        {pts.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="3.5" fill={color} />)}
+                    </g>
+                );
+            };
+            const ticks = [];
+            const tickStep = Math.pow(10, Math.floor(Math.log10(maxY))) / 2;
+            for (let t = 0; t <= maxY; t += tickStep) ticks.push(t);
+            return (
+                <div style={{ width: '100%', overflowX: 'auto', background: '#fafbfc', borderRadius: 6, padding: 8 }}>
+                    <svg width={W} height={H}>
+                        {ticks.map((t, i) => (
+                            <g key={i}>
+                                <line x1={padL} y1={yScale(t)} x2={W - padR} y2={yScale(t)} stroke="#e9ecef" />
+                                <text x={padL - 6} y={yScale(t) + 4} textAnchor="end" fontSize="10" fill="#6c757d">{Math.round(t).toLocaleString('fr-FR')}</text>
+                            </g>
+                        ))}
+                        {weeks.map((w, i) => (
+                            <text key={i} x={xScale(w)} y={H - padB + 16} textAnchor="middle" fontSize="11" fill="#6c757d">W{w}</text>
+                        ))}
+                        {lineFor(s => s.average, '#9b59b6', '4 2')}
+                        {lineFor(s => s.top25Threshold, '#e67e22', '6 3')}
+                        {lineFor(s => s.f1 ? s.f1.yield : null, '#e74c3c', null)}
+                        {lineFor(s => s.f5 ? s.f5.yield : null, '#3498db', null)}
+                        <g transform={'translate(' + (W - padR + 8) + ', ' + (padT + 10) + ')'}>
+                            <g><rect width="10" height="10" fill="#e74c3c" /><text x="14" y="9" fontSize="11">F1 (172)</text></g>
+                            <g transform="translate(0, 18)"><rect width="10" height="10" fill="#3498db" /><text x="14" y="9" fontSize="11">F5 (195)</text></g>
+                            <g transform="translate(0, 36)"><line x1="0" y1="5" x2="10" y2="5" stroke="#9b59b6" strokeWidth="2" strokeDasharray="4 2" /><text x="14" y="9" fontSize="11">Moyenne</text></g>
+                            <g transform="translate(0, 54)"><line x1="0" y1="5" x2="10" y2="5" stroke="#e67e22" strokeWidth="2" strokeDasharray="6 3" /><text x="14" y="9" fontSize="11">Top 25 %</text></g>
+                        </g>
+                        <text x={padL} y={padT - 5} fontSize="11" fill="#6c757d">{unit || ''}</text>
+                    </svg>
+                </div>
+            );
+        }
+
         // Auth wrapper component
         function App() {
             const [authUser, setAuthUser] = useState(null);
@@ -54310,7 +56715,9 @@ ${rejetHtml}
             }, []);
 
             const profile = PROFILES.find(p => p.id === currentProfile);
-            const farmFilter = (currentProfile === 'dt' || currentProfile === 'securite') ? dtFarm : (profile?.farm || null);
+            const farmFilter = (currentProfile === 'dt' || currentProfile === 'securite' || currentProfile === 'stationnaire_avo')
+                ? (profile?.switchableFarms && !profile.switchableFarms.includes(dtFarm) ? profile.switchableFarms[0] : dtFarm)
+                : (profile?.farm || null);
             const avoSubFilter = (currentProfile === 'chef_avo' || currentProfile === 'caporal_avo') && avoFarm !== 'Toutes' ? avoFarm : null;
 
             // DG Settings — hide Cycle 1 per profile
@@ -54328,7 +56735,7 @@ ${rejetHtml}
             const hideCycle1 = (dgSettings.hideCycle1Profiles || []).includes(currentProfile);
 
             // ===== NOTIFICATION SYSTEM =====
-            const METEO_PROFILES = ['rh', 'chef_f1', 'chef_f5', 'chef_avo', 'caporal_f1', 'caporal_f5', 'caporal_avo', 'dg', 'qualite', 'agronomie', 'dt', 'stationnaire_f1', 'stationnaire_f5'];
+            const METEO_PROFILES = ['rh', 'chef_f1', 'chef_f5', 'chef_avo', 'caporal_f1', 'caporal_f5', 'caporal_avo', 'dg', 'qualite', 'agronomie', 'dt', 'stationnaire_f1', 'stationnaire_f5', 'stationnaire_avo'];
             const meteoCacheRef = useRef({ data: null, ts: 0 });
 
             const fetchNotifications = React.useCallback(async (profileId, showPopup) => {
@@ -54797,7 +57204,7 @@ ${rejetHtml}
                                         </button>
                                     )}
                                     {/* DT Farm Switcher — all farms */}
-                                    {(currentProfile === 'dt' || currentProfile === 'securite') && (
+                                    {(currentProfile === 'dt' || currentProfile === 'securite' || currentProfile === 'stationnaire_avo') && (
                                         <div data-tour="dt-farm-switcher" style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:20,padding:3,overflowX:'auto',maxWidth:420,WebkitOverflowScrolling:'touch'}}>
                                             {(profile?.switchableFarms || FARMS).map(f => (
                                                 <button key={f} onClick={() => { setDtFarm(f); localStorage.setItem('dtFarm', f); }}
@@ -54867,8 +57274,9 @@ ${rejetHtml}
                                     )}
                                     {(() => {
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'recolte', 'hors_recolte', 'quinzaine', 'primes', 'evolution'];
-                                        const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
-                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_fournisseurs', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
+                                        const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_suivi_calibre', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
+                                        const webScrapeTabs = ['fin_telecom'];
+                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_fournisseurs', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
@@ -54883,6 +57291,11 @@ ${rejetHtml}
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
                                                 React.createElement('span', { style:{color:'#155724', fontSize:11, fontWeight:600} }, 'Firestore')
+                                            );
+                                        } else if (webScrapeTabs.includes(currentTab)) {
+                                            return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
+                                                React.createElement('i', { className:'fa-solid fa-globe', style:{color:'#155724', marginRight:6, fontSize:11} }),
+                                                React.createElement('span', { style:{color:'#155724', fontSize:11, fontWeight:600} }, 'Live (Site Web)')
                                             );
                                         } else {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#fff3cd', padding:'4px 12px', borderRadius:12} },
@@ -54944,6 +57357,7 @@ ${rejetHtml}
                                 {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter }, 'Quinzaine')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter }, 'Primes')}
+                                {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
                                 {renderTab('suivi', SuiviTab, { data }, 'Suivi')}
@@ -54952,6 +57366,7 @@ ${rejetHtml}
                                 {renderTab('qualite_dashboard', QualiteDashboardTab, { data, weeklyBerryFilter, setWeeklyBerryFilter }, 'Qualité Dashboard')}
                                 {renderTab('qualite_inspections', QualiteInspectionsTab, { data, applyVarietyMapping, farmFilter: currentProfile === 'qualite' ? '' : farmFilter }, 'Inspections')}
                                 {renderTab('qualite_ecarts', QualiteEcartsTab, { data }, 'Écarts')}
+                                {renderTab('qualite_suivi_calibre', QualiteSuiviCalibreTab, { data }, 'Suivi Calibre')}
                                 {renderTab('qualite_historique', QualiteHistoriqueTab, { data, applyVarietyMapping }, 'Historique Qualité')}
                                 {renderTab('qualite_brix', QualiteBrixTab, { data, applyVarietyMapping }, 'Brix')}
                                 {renderTab('qualite_expeditions', QualiteExpeditionsTab, { data, applyVarietyMapping, varietyMapping, saveVarietyMapping, userProfile, currentProfile }, 'Expéditions')}
@@ -54983,8 +57398,11 @@ ${rejetHtml}
                                 {renderTab('station_meteo', MeteoTab, { data, farmFilter }, 'Météo')}
                                 {renderTab('sec_registre', SecurityRegistreTab, { farmFilter, currentProfile }, 'Registre Sécurité')}
                                 {renderTab('sec_scan', SecurityScanRegistreTab, { farmFilter, currentProfile }, 'Scan Registre')}
+                                {renderTab('sec_envois_wa', SecurityEnvoisWATab, { farmFilter, currentProfile }, 'Registres WhatsApp')}
+                                {renderTab('sec_incidents', SecurityIncidentsTab, { farmFilter, currentProfile }, 'Incidents')}
                                 {renderTab('sec_tunnels', SecurityTunnelsTab, { farmFilter, currentProfile }, 'Photos Tunnels')}
                                 {renderTab('fin_dashboard', FinDashboardTab, { data, farmFilter, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Finance Dashboard')}
+                                {renderTab('fin_tresorerie', FinTresorerieTab, { data, currentProfile }, 'Trésorerie')}
                                 {renderTab('fin_ca', FinCATab, { data }, 'Chiffre Affaires')}
                                 {renderTab('fin_carburant', FinCarburantTab, { data }, 'Carburant')}
                                 {renderTab('fin_plants', FinPlantsTab, { data, currentProfile }, 'Plants')}
@@ -54992,6 +57410,7 @@ ${rejetHtml}
                                 {renderTab('fin_ojra', FinOjraTab, { data }, 'OJRA Paie')}
                                 {renderTab('fin_stock', FinStockTab, { data }, 'Stock Finance')}
                                 {renderTab('fin_liquidations', FinLiquidationsTab, { data, currentProfile }, 'Liquidations')}
+                                {renderTab('productivity_report', ProductivityReportTab, { data, currentProfile, userProfile: PROFILES.find(p => p.id === currentProfile) }, 'Productivity Driscoll\'s')}
                                 {renderTab('fin_marche_local', FinanceMarcheLocalTab, { data, userProfile: PROFILES.find(p => p.id === currentProfile) }, 'Marché Local Finance')}
                                 {renderTab('dg_validations', DGValidationsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Validations DG')}
                                 {renderTab('achats_dashboard', AchatsDashboardTab, { currentProfile, onNavigate: (tab, filter) => { if (filter) localStorage.setItem('achats_' + tab.replace('achats_','') + '_filter', filter); setCurrentTab(tab); localStorage.setItem('lastTab', tab); } }, 'Achats Dashboard')}

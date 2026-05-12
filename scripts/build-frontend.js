@@ -34,10 +34,11 @@ for (const s of SENTINELS) {
   }
 }
 
-// 3. Cache-bust: rewrite <script src="app.js?v=...">
+// 3. Cache-bust: rewrite <script src="app.js?v=..."> AND <script src="lib/*.js?v=...">
 const version = Date.now().toString(36);
 const html = fs.readFileSync(HTML, "utf8");
-const updated = html.replace(/(<script[^>]+src=["']app\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
+let updated = html.replace(/(<script[^>]+src=["']app\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
+updated = updated.replace(/(<script[^>]+src=["']lib\/[A-Za-z0-9_.\-]+\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
 if (updated === html) {
   console.error("[build-frontend] could not find <script src=\"app.js\"> in index.html");
   process.exit(3);
