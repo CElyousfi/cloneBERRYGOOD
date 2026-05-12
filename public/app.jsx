@@ -50823,6 +50823,19 @@ ${rejetHtml}
                 [displayedTransactions]
             );
 
+            // Pre-compute anomalies once per displayed list (Map<txId, Anomaly[]>)
+            // Avoid recomputing inside the render loop. Empty arrays are not stored — absence = no anomaly.
+            const anomaliesByTx = useMemo(() => {
+                const map = new Map();
+                if (!window.CaisseUtils) return map;
+                const now = new Date();
+                for (const tx of displayedTransactions) {
+                    const found = window.CaisseUtils.detectCaisseAnomalies(tx, now);
+                    if (found && found.length > 0) map.set(tx.id || tx.reference, found);
+                }
+                return map;
+            }, [displayedTransactions]);
+
             // Apply quick period chip → updates filterDateFrom/filterDateTo (which re-triggers API load)
             const applyQuickPeriod = (period) => {
                 setQuickPeriod(period);
@@ -50996,6 +51009,7 @@ ${rejetHtml}
                             <div style={{overflowX:'auto'}}>
                                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                                     <thead><tr style={{background:'var(--gray-100)'}}>
+                                        <th style={{padding:'10px 6px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',width:32}} title="Anomalies détectées">⚠</th>
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Date</th>
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Caisse</th>
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Type</th>
@@ -51010,9 +51024,19 @@ ${rejetHtml}
                                         {displayedTransactions.map((tx, i) => {
                                             const tt = TXN_TYPE_LABELS[tx.type]||{};
                                             const ss = STATUS_LABELS[tx.status]||{};
+                                            const txAnomalies = anomaliesByTx.get(tx.id || tx.reference) || null;
+                                            const hasAnomaly = !!txAnomalies;
+                                            const baseBg = hasAnomaly ? '#FEF9E7' : '';
                                             return (
-                                                <tr key={tx.id||i} onClick={()=>setSelectedTx(tx)} style={{borderBottom:'1px solid var(--gray-100)',cursor:'pointer',transition:'background 0.15s'}}
-                                                    onMouseEnter={e=>e.currentTarget.style.background='var(--berry-pale)'} onMouseLeave={e=>e.currentTarget.style.background=''}>
+                                                <tr key={tx.id||i} data-anomaly={hasAnomaly ? '1' : '0'} onClick={()=>setSelectedTx(tx)} style={{borderBottom:'1px solid var(--gray-100)',cursor:'pointer',transition:'background 0.15s',background:baseBg}}
+                                                    onMouseEnter={e=>e.currentTarget.style.background='var(--berry-pale)'} onMouseLeave={e=>e.currentTarget.style.background=baseBg}>
+                                                    <td style={{padding:'10px 6px',textAlign:'center'}}>
+                                                        {hasAnomaly && (
+                                                            <span title={txAnomalies.map(a => `• ${a.message}`).join('\n')}
+                                                                style={{display:'inline-block',cursor:'help',fontSize:14,lineHeight:1}}
+                                                                aria-label={`${txAnomalies.length} anomalie(s)`}>🚩</span>
+                                                        )}
+                                                    </td>
                                                     <td style={{padding:'10px 12px',whiteSpace:'nowrap'}}>{tx.date}</td>
                                                     <td style={{padding:'10px 12px',fontSize:11}}>{caisses.find(c=>c.id===tx.caisse_id)?.nom||tx.caisse_id}</td>
                                                     <td style={{padding:'10px 12px'}}>
@@ -51037,7 +51061,7 @@ ${rejetHtml}
                                     {/* Sticky footer — totaux suivent les filtres */}
                                     <tfoot>
                                         <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
-                                            <td colSpan={9} style={{padding:'12px 14px',fontSize:12}}>
+                                            <td colSpan={10} style={{padding:'12px 14px',fontSize:12}}>
                                                 <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
                                                     <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
                                                     <span style={{color:'var(--gray-400)'}}>·</span>
