@@ -50793,6 +50793,8 @@ ${rejetHtml}
             const [searchInput, setSearchInput] = useState('');       // Immediate input value
             const [searchQuery, setSearchQuery] = useState('');       // Debounced (200ms) — used by memo
             const searchInputRef = React.useRef(null);
+            const [quickPeriod, setQuickPeriod] = useState('all');    // 'all' | 'today' | 'last7' | 'thisMonth' | 'lastMonth'
+            const [quickType, setQuickType] = useState('all');        // 'all' | 'depenses' | 'recettes' | 'transferts'
 
             // Use prop if non-empty, else fall back to locally-fetched caisses
             const caisses = (caissesProp && caissesProp.length > 0) ? caissesProp : localCaisses;
@@ -50809,11 +50811,37 @@ ${rejetHtml}
                 [transactions, searchQuery]
             );
 
-            // Totaux footer (recalculés sur la liste affichée — après recherche)
-            const totals = useMemo(
-                () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(searchedTransactions) : { count: searchedTransactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
-                [searchedTransactions]
+            // Apply quick-type chip filter on top of search
+            const displayedTransactions = useMemo(
+                () => (window.CaisseUtils ? window.CaisseUtils.filterByQuickType(searchedTransactions, quickType) : searchedTransactions),
+                [searchedTransactions, quickType]
             );
+
+            // Totaux footer (recalculés sur la liste affichée — après recherche ET filtre type)
+            const totals = useMemo(
+                () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(displayedTransactions) : { count: displayedTransactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
+                [displayedTransactions]
+            );
+
+            // Apply quick period chip → updates filterDateFrom/filterDateTo (which re-triggers API load)
+            const applyQuickPeriod = (period) => {
+                setQuickPeriod(period);
+                const range = window.CaisseUtils ? window.CaisseUtils.quickPeriodToDateRange(period) : null;
+                if (range === null) {
+                    setFilterDateFrom('');
+                    setFilterDateTo('');
+                } else {
+                    setFilterDateFrom(range.from);
+                    setFilterDateTo(range.to);
+                }
+            };
+
+            // When user manually changes a date picker, deactivate the quick period chip
+            const onManualDateChange = (which, value) => {
+                if (which === 'from') setFilterDateFrom(value);
+                else setFilterDateTo(value);
+                if (quickPeriod !== 'all') setQuickPeriod('all');
+            };
 
             // Keyboard shortcut: '/' to focus search, 'Escape' to clear + blur (when focused)
             React.useEffect(() => {
@@ -50859,7 +50887,7 @@ ${rejetHtml}
             const exportExcel = () => {
                 if (!window.XLSX) return alert('XLSX non disponible');
                 // Export the visible (post-filter, post-search) list so what you see is what you export.
-                const exportList = (typeof searchedTransactions !== 'undefined' && searchedTransactions) ? searchedTransactions : transactions;
+                const exportList = (typeof displayedTransactions !== 'undefined' && displayedTransactions) ? displayedTransactions : transactions;
                 const ws = XLSX.utils.json_to_sheet(exportList.map(tx => ({
                     Date: tx.date, Caisse: caisses.find(c=>c.id===tx.caisse_id)?.nom||tx.caisse_id,
                     Type: TXN_TYPE_LABELS[tx.type]?.label||tx.type, Référence: tx.reference,
@@ -50871,8 +50899,44 @@ ${rejetHtml}
                 XLSX.writeFile(wb, `Caisse_Transactions_${new Date().toISOString().slice(0,10)}.xlsx`);
             };
 
+            // Chip style helpers
+            const chipStyle = (active) => ({
+                padding: '5px 12px', borderRadius: 14, fontSize: 11.5, fontWeight: active ? 600 : 500,
+                cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.15s',
+                border: active ? '1px solid var(--berry)' : '1px solid var(--gray-200)',
+                background: active ? 'var(--berry)' : 'var(--gray-100)',
+                color: active ? 'white' : 'var(--gray-800)',
+            });
+            const periodChips = [
+                { id: 'all',       label: 'Tout' },
+                { id: 'today',     label: "Aujourd'hui" },
+                { id: 'last7',     label: '7 jours' },
+                { id: 'thisMonth', label: 'Ce mois' },
+                { id: 'lastMonth', label: 'Mois dernier' },
+            ];
+            const typeChips = [
+                { id: 'all',        label: 'Tous' },
+                { id: 'depenses',   label: 'Dépenses' },
+                { id: 'recettes',   label: 'Recettes' },
+                { id: 'transferts', label: 'Transferts' },
+            ];
+
             return (
                 <div>
+                    {/* Quick filter chips — period */}
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:8,alignItems:'center'}}>
+                        <span style={{fontSize:10.5,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:0.5,marginRight:6,fontWeight:600}}>Période</span>
+                        {periodChips.map(c => (
+                            <button key={c.id} data-chip-period={c.id} onClick={() => applyQuickPeriod(c.id)} style={chipStyle(quickPeriod === c.id)}>{c.label}</button>
+                        ))}
+                    </div>
+                    {/* Quick filter chips — type */}
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16,alignItems:'center'}}>
+                        <span style={{fontSize:10.5,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:0.5,marginRight:6,fontWeight:600}}>Type</span>
+                        {typeChips.map(c => (
+                            <button key={c.id} data-chip-type={c.id} onClick={() => setQuickType(c.id)} style={chipStyle(quickType === c.id)}>{c.label}</button>
+                        ))}
+                    </div>
                     {/* Filters */}
                     <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16,alignItems:'center'}}>
                         {/* Global search */}
@@ -50906,8 +50970,8 @@ ${rejetHtml}
                             <option value="valide">Validé</option>
                             <option value="rejete">Rejeté</option>
                         </select>
-                        <input type="date" value={filterDateFrom} onChange={e=>setFilterDateFrom(e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Du" />
-                        <input type="date" value={filterDateTo} onChange={e=>setFilterDateTo(e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Au" />
+                        <input type="date" value={filterDateFrom} onChange={e=>onManualDateChange('from', e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Du" />
+                        <input type="date" value={filterDateTo} onChange={e=>onManualDateChange('to', e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}} placeholder="Au" />
                         <button onClick={exportExcel} style={{padding:'8px 14px',borderRadius:8,background:'var(--green)',color:'white',border:'none',cursor:'pointer',fontSize:12,fontWeight:600,marginLeft:'auto'}}>
                             <i className="fa-solid fa-file-excel" style={{marginRight:4}}></i>Exporter
                         </button>
@@ -50917,12 +50981,14 @@ ${rejetHtml}
                         <div style={{textAlign:'center',padding:40}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:20,color:'var(--berry)'}}></i></div>
                     ) : transactions.length === 0 ? (
                         <div style={{textAlign:'center',padding:40,color:'var(--gray-400)',fontSize:13}}>Aucune transaction trouvée</div>
-                    ) : searchedTransactions.length === 0 ? (
+                    ) : displayedTransactions.length === 0 ? (
                         <div style={{textAlign:'center',padding:40,color:'var(--gray-400)',fontSize:13}}>
-                            <i className="fa-solid fa-magnifying-glass" style={{marginRight:6}}></i>
-                            Aucun résultat pour « {searchQuery} »
-                            <div style={{marginTop:8}}>
-                                <button onClick={() => setSearchInput('')} style={{padding:'4px 12px',borderRadius:6,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:11}}>Effacer la recherche</button>
+                            <i className="fa-solid fa-filter" style={{marginRight:6}}></i>
+                            Aucun résultat {searchQuery ? `pour « ${searchQuery} »` : 'pour les filtres appliqués'}
+                            <div style={{marginTop:8,display:'flex',gap:8,justifyContent:'center'}}>
+                                {searchQuery && <button onClick={() => setSearchInput('')} style={{padding:'4px 12px',borderRadius:6,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:11}}>Effacer la recherche</button>}
+                                {quickType !== 'all' && <button onClick={() => setQuickType('all')} style={{padding:'4px 12px',borderRadius:6,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:11}}>Réinitialiser type</button>}
+                                {quickPeriod !== 'all' && <button onClick={() => applyQuickPeriod('all')} style={{padding:'4px 12px',borderRadius:6,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:11}}>Réinitialiser période</button>}
                             </div>
                         </div>
                     ) : (
@@ -50941,7 +51007,7 @@ ${rejetHtml}
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Saisi par</th>
                                     </tr></thead>
                                     <tbody>
-                                        {searchedTransactions.map((tx, i) => {
+                                        {displayedTransactions.map((tx, i) => {
                                             const tt = TXN_TYPE_LABELS[tx.type]||{};
                                             const ss = STATUS_LABELS[tx.status]||{};
                                             return (
