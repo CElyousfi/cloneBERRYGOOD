@@ -50790,15 +50790,47 @@ ${rejetHtml}
             const [filterDateTo, setFilterDateTo] = useState('');
             const [selectedTx, setSelectedTx] = useState(null);
             const [localCaisses, setLocalCaisses] = useState([]);
+            const [searchInput, setSearchInput] = useState('');       // Immediate input value
+            const [searchQuery, setSearchQuery] = useState('');       // Debounced (200ms) — used by memo
+            const searchInputRef = React.useRef(null);
 
             // Use prop if non-empty, else fall back to locally-fetched caisses
             const caisses = (caissesProp && caissesProp.length > 0) ? caissesProp : localCaisses;
 
-            // Totaux footer (recalculés sur les transactions courantes via useMemo)
-            const totals = useMemo(
-                () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(transactions) : { count: transactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
-                [transactions]
+            // Debounce the search input → searchQuery (200ms)
+            React.useEffect(() => {
+                const t = setTimeout(() => setSearchQuery(searchInput), 200);
+                return () => clearTimeout(t);
+            }, [searchInput]);
+
+            // Apply search on the loaded transactions (client-side, post-API filters)
+            const searchedTransactions = useMemo(
+                () => (window.CaisseUtils ? window.CaisseUtils.searchTransactions(transactions, searchQuery) : transactions),
+                [transactions, searchQuery]
             );
+
+            // Totaux footer (recalculés sur la liste affichée — après recherche)
+            const totals = useMemo(
+                () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(searchedTransactions) : { count: searchedTransactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
+                [searchedTransactions]
+            );
+
+            // Keyboard shortcut: '/' to focus search, 'Escape' to clear + blur (when focused)
+            React.useEffect(() => {
+                const onKeyDown = (e) => {
+                    const tag = (e.target && e.target.tagName) || '';
+                    const inField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable);
+                    if (e.key === '/' && !inField) {
+                        e.preventDefault();
+                        if (searchInputRef.current) searchInputRef.current.focus();
+                    } else if (e.key === 'Escape' && document.activeElement === searchInputRef.current) {
+                        setSearchInput('');
+                        if (searchInputRef.current) searchInputRef.current.blur();
+                    }
+                };
+                window.addEventListener('keydown', onKeyDown);
+                return () => window.removeEventListener('keydown', onKeyDown);
+            }, []);
 
             // Fetch caisses directly if prop is empty (defensive — avoid empty dropdown)
             React.useEffect(() => {
@@ -50826,7 +50858,9 @@ ${rejetHtml}
 
             const exportExcel = () => {
                 if (!window.XLSX) return alert('XLSX non disponible');
-                const ws = XLSX.utils.json_to_sheet(transactions.map(tx => ({
+                // Export the visible (post-filter, post-search) list so what you see is what you export.
+                const exportList = (typeof searchedTransactions !== 'undefined' && searchedTransactions) ? searchedTransactions : transactions;
+                const ws = XLSX.utils.json_to_sheet(exportList.map(tx => ({
                     Date: tx.date, Caisse: caisses.find(c=>c.id===tx.caisse_id)?.nom||tx.caisse_id,
                     Type: TXN_TYPE_LABELS[tx.type]?.label||tx.type, Référence: tx.reference,
                     Description: tx.description, Montant: tx.montant, 'Code Analytique': tx.code_analytique, Statut: STATUS_LABELS[tx.status]?.label||tx.status,
@@ -50841,6 +50875,26 @@ ${rejetHtml}
                 <div>
                     {/* Filters */}
                     <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:16,alignItems:'center'}}>
+                        {/* Global search */}
+                        <div data-testid="caisse-search" style={{position:'relative',flex:'1 1 280px',maxWidth:420,minWidth:220}}>
+                            <i className="fa-solid fa-magnifying-glass" style={{position:'absolute',left:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'var(--gray-400)',pointerEvents:'none'}}></i>
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchInput}
+                                onChange={e => setSearchInput(e.target.value)}
+                                placeholder="Rechercher (description, référence, montant, bénéficiaire)…  ( / )"
+                                aria-label="Recherche transactions"
+                                style={{width:'100%',padding:'8px 32px 8px 32px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}}
+                            />
+                            {searchInput && (
+                                <button onClick={() => { setSearchInput(''); if (searchInputRef.current) searchInputRef.current.focus(); }}
+                                    aria-label="Effacer la recherche"
+                                    style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--gray-400)',cursor:'pointer',padding:4,fontSize:14}}>
+                                    <i className="fa-solid fa-xmark"></i>
+                                </button>
+                            )}
+                        </div>
                         <select value={filterCaisse} onChange={e=>setFilterCaisse(e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}}>
                             <option value="">Toutes les caisses</option>
                             {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
@@ -50863,6 +50917,14 @@ ${rejetHtml}
                         <div style={{textAlign:'center',padding:40}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:20,color:'var(--berry)'}}></i></div>
                     ) : transactions.length === 0 ? (
                         <div style={{textAlign:'center',padding:40,color:'var(--gray-400)',fontSize:13}}>Aucune transaction trouvée</div>
+                    ) : searchedTransactions.length === 0 ? (
+                        <div style={{textAlign:'center',padding:40,color:'var(--gray-400)',fontSize:13}}>
+                            <i className="fa-solid fa-magnifying-glass" style={{marginRight:6}}></i>
+                            Aucun résultat pour « {searchQuery} »
+                            <div style={{marginTop:8}}>
+                                <button onClick={() => setSearchInput('')} style={{padding:'4px 12px',borderRadius:6,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:11}}>Effacer la recherche</button>
+                            </div>
+                        </div>
                     ) : (
                         <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden'}}>
                             <div style={{overflowX:'auto'}}>
@@ -50879,7 +50941,7 @@ ${rejetHtml}
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Saisi par</th>
                                     </tr></thead>
                                     <tbody>
-                                        {transactions.map((tx, i) => {
+                                        {searchedTransactions.map((tx, i) => {
                                             const tt = TXN_TYPE_LABELS[tx.type]||{};
                                             const ss = STATUS_LABELS[tx.status]||{};
                                             return (
