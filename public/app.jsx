@@ -7714,6 +7714,34 @@
             const cycleAvgDhKg = cycleTotalKg > 0 ? +(cycleTotalCout / cycleTotalKg).toFixed(2) : null;
             const cycleAvgDhJ = cycleTotalJours > 0 ? Math.round(cycleTotalCout / cycleTotalJours) : 0;
 
+            // ---- Logistique pour le Cycle Complet (mêmes filtres ferme/culture, cycle) ----
+            const cycleLogRecordsRaw = (equipeRows || []).filter(r => {
+                if (!r || !logistiqueOps.test(r.operation || '')) return false;
+                if (fermeFilter && r.ferme !== fermeFilter) return false;
+                if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return false;
+                if (cultureFilter) {
+                    const cult = r.culture || '';
+                    if (/myrtille/i.test(cult) !== (cultureFilter === 'Myrtille')) return false;
+                }
+                if (cycleSelected && getCycle(r.jour) !== cycleSelected) return false;
+                return true;
+            });
+            const cycleLogByWD = {};
+            cycleLogRecordsRaw.forEach(r => {
+                const key = `${r.matricule}|${r.jour}`;
+                if (!cycleLogByWD[key]) cycleLogByWD[key] = { matricule: r.matricule, jour: r.jour, salaire: 0 };
+                cycleLogByWD[key].salaire += (r.cout || 0);
+            });
+            let cycleLogSalaire = 0, cycleLogTransport = 0, cycleLogCharges = 0;
+            Object.values(cycleLogByWD).forEach(d => {
+                cycleLogSalaire += d.salaire;
+                cycleLogTransport += getTransport(getEquipePrefix(d.matricule));
+                cycleLogCharges += CHARGES_SOCIALES;
+            });
+            const cycleLogCout = cycleLogSalaire + cycleLogTransport + cycleLogCharges;
+            const cycleDhParKgLog = cycleTotalKg > 0 ? +(cycleLogCout / cycleTotalKg).toFixed(2) : 0;
+            const cycleAvgDhKgNet = cycleTotalKg > 0 ? +((cycleTotalCout + cycleLogCout) / cycleTotalKg).toFixed(2) : null;
+
             const dhColor = (val) => {
                 if (val === null) return 'var(--gray-400)';
                 if (val <= 5) return '#059669';
@@ -7727,7 +7755,8 @@
 
             return (
                 <div className="fade-in">
-                    <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <div style={{position:'sticky',top:0,zIndex:5,background:'var(--berry-bg)',paddingTop:4,paddingBottom:8,marginBottom:8,boxShadow:'0 4px 6px -4px rgba(0,0,0,0.08)'}}>
+                    <div style={{marginBottom:8,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                         <span style={{background:'#fef3c7',color:'#92400e',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-calculator" style={{marginRight:4}}></i>Coût Récolte — DH/Kg
                         </span>
@@ -7774,6 +7803,7 @@
                         )}
                     </div>
                     )}
+                    </div>
 
                     <div className="kpi-grid">
                         <KPICard icon="fa-coins" iconClass="purple" value={dhParKgNet !== null ? dhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: dhParKgGlobal !== null ? dhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: dhParKgLog !== null ? dhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
@@ -7894,7 +7924,110 @@
                         );
                     })()}
 
-                    {/* ---- Synthèse par Variété — Cycle Complet ---- */}
+                    {/* ---- Par Culture ---- */}
+                    <Panel title="Coût par Culture" icon="fa-seedling" defaultOpen={true}>
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr><th>Culture</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
+                            <tbody>
+                                {cultStats.map(c => {
+                                    const netVal = c.dhParKg !== null && dhParKgLog !== null ? +(c.dhParKg + dhParKgLog).toFixed(2) : null;
+                                    return (
+                                    <tr key={c.culture}>
+                                        <td><span style={{fontWeight:600}}>{c.culture}</span></td>
+                                        <td>{c.nbOuv}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.kg)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.salaire)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.transport)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.prime)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.charges)}</td>
+                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(c.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(c.dhParKg),fontSize:13}}>{fmt2(c.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netVal),fontSize:13,background:'#faf5ff'}}>{fmt2(netVal)}</td>
+                                    </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td><td style={{textAlign:'right',color:dhColor(dhParKgNet),fontSize:13,background:'#faf5ff'}}>{fmt2(dhParKgNet)}</td></tr></tfoot>
+                        </table>
+                        </div>
+                    </Panel>
+
+                    {/* ---- Par Équipe ---- */}
+                    <Panel title="Coût par Équipe" icon="fa-users" defaultOpen={true}>
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr><th>Équipe</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
+                            <tbody>
+                                {equipeStats.map(e => {
+                                    const netE = e.dhParKg !== null && dhParKgLog !== null ? +(e.dhParKg + dhParKgLog).toFixed(2) : null;
+                                    return (
+                                    <React.Fragment key={e.prefix}>
+                                    <tr style={{cursor:'pointer',background:expandedEquipe===e.prefix?'var(--gray-50)':'white'}} onClick={() => setExpandedEquipe(expandedEquipe===e.prefix?null:e.prefix)}>
+                                        <td><i className={`fa-solid ${expandedEquipe===e.prefix?'fa-chevron-down':'fa-chevron-right'}`} style={{fontSize:9,marginRight:6,color:'var(--gray-400)'}}></i><span style={{fontWeight:600}}>{e.equipe}</span></td>
+                                        <td>{e.effectif}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.kg)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.salaire)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.transport)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.prime)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.charges)}</td>
+                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(e.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(e.dhParKg),fontSize:13}}>{fmt2(e.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netE),fontSize:13,background:'#faf5ff'}}>{fmt2(netE)}</td>
+                                    </tr>
+                                    {expandedEquipe===e.prefix && e.workers.sort((a,b) => { if(a.dhParKg===null) return 1; if(b.dhParKg===null) return -1; return a.dhParKg-b.dhParKg; }).map((w,i) => {
+                                        const netW = w.dhParKg !== null && dhParKgLog !== null ? +(w.dhParKg + dhParKgLog).toFixed(2) : null;
+                                        return (
+                                        <tr key={w.matricule+i} style={{background:'var(--gray-25)',fontSize:10}}>
+                                            <td style={{paddingLeft:28}}>{w.matricule} — {w.nom}</td>
+                                            <td></td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.kg)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.salaire)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.transport)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.prime)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.charges)}</td>
+                                            <td style={{textAlign:'right',fontWeight:600}}>{fmt(w.coutTotal)}</td>
+                                            <td style={{textAlign:'right',fontWeight:700,color:dhColor(w.dhParKg)}}>{fmt2(w.dhParKg)}</td>
+                                            <td style={{textAlign:'right',fontWeight:700,color:dhColor(netW),background:'#faf5ff'}}>{fmt2(netW)}</td>
+                                        </tr>
+                                        );
+                                    })}
+                                    </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td><td style={{textAlign:'right',color:dhColor(dhParKgNet),fontSize:13,background:'#faf5ff'}}>{fmt2(dhParKgNet)}</td></tr></tfoot>
+                        </table>
+                        </div>
+                    </Panel>
+
+                    {/* ---- Par Parcelle ---- */}
+                    <Panel title="Coût par Parcelle" icon="fa-map" defaultOpen={false}>
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr><th>Parcelle</th><th>Ferme</th><th>Culture</th><th>Ouvriers</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
+                            <tbody>
+                                {parcStats.map(p => {
+                                    const netP = p.dhParKg !== null && dhParKgLog !== null ? +(p.dhParKg + dhParKgLog).toFixed(2) : null;
+                                    return (
+                                    <tr key={p.parcelle}>
+                                        <td style={{fontWeight:600}}>{p.parcelle}</td>
+                                        <td>{p.ferme}</td>
+                                        <td>{p.culture}</td>
+                                        <td>{p.nbOuv}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(p.kg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(p.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(p.dhParKg),fontSize:13}}>{fmt2(p.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netP),fontSize:13,background:'#faf5ff'}}>{fmt2(netP)}</td>
+                                    </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        </div>
+                    </Panel>
+
+                    {/* ---- Synthèse par Variété — Cycle Complet (déplacée en bas) ---- */}
                     <Panel title="Synthèse par Variété — Cycle Complet" icon="fa-chart-line" defaultOpen={true}>
                         <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
                             <span style={{fontSize:11,color:'var(--gray-600)',fontWeight:600}}>Cycle :</span>
@@ -7917,11 +8050,14 @@
                                 <th style={{textAlign:'right'}}>J-Ouvriers</th>
                                 <th style={{textAlign:'right',fontWeight:700,background:'#fef3c7'}}>Kg/ouv/j</th>
                                 <th style={{textAlign:'right'}}>Coût total (DH)</th>
-                                <th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th>
+                                <th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th>
+                                <th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th>
                                 <th style={{textAlign:'right',fontWeight:700,background:'#fef3c7'}}>DH/ouv/j</th>
                             </tr></thead>
                             <tbody>
-                                {cycleVarStats.map(v => (
+                                {cycleVarStats.map(v => {
+                                    const netV = v.dhParKg !== null && cycleDhParKgLog !== null ? +(v.dhParKg + cycleDhParKgLog).toFixed(2) : null;
+                                    return (
                                     <tr key={v.variete}>
                                         <td><span style={{fontWeight:600}}>{v.variete}</span></td>
                                         <td style={{textAlign:'right'}}>{fmt(v.kg)}</td>
@@ -7929,9 +8065,11 @@
                                         <td style={{textAlign:'right',fontWeight:700,fontSize:13,background:'#fffbeb'}}>{v.kgParOuvJour}</td>
                                         <td style={{textAlign:'right'}}>{fmt(v.coutTotal)}</td>
                                         <td style={{textAlign:'right',fontWeight:700,color:dhColor(v.dhParKg),fontSize:13}}>{fmt2(v.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netV),fontSize:13,background:'#faf5ff'}}>{fmt2(netV)}</td>
                                         <td style={{textAlign:'right',fontWeight:700,fontSize:13,background:'#fffbeb'}}>{fmt(v.dhParOuvJour)}</td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                             <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}>
                                 <td>Total</td>
@@ -7940,98 +8078,12 @@
                                 <td style={{textAlign:'right',fontSize:13}}>{cycleAvgKgJ}</td>
                                 <td style={{textAlign:'right'}}>{fmt(cycleTotalCout)}</td>
                                 <td style={{textAlign:'right',color:dhColor(cycleAvgDhKg),fontSize:13}}>{fmt2(cycleAvgDhKg)}</td>
+                                <td style={{textAlign:'right',color:dhColor(cycleAvgDhKgNet),fontSize:13,background:'#faf5ff'}}>{fmt2(cycleAvgDhKgNet)}</td>
                                 <td style={{textAlign:'right',fontSize:13}}>{fmt(cycleAvgDhJ)}</td>
                             </tr></tfoot>
                         </table>
                         </div>
                         )}
-                    </Panel>
-
-                    {/* ---- Par Culture ---- */}
-                    <Panel title="Coût par Culture" icon="fa-seedling" defaultOpen={true}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>Culture</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {cultStats.map(c => (
-                                    <tr key={c.culture}>
-                                        <td><span style={{fontWeight:600}}>{c.culture}</span></td>
-                                        <td>{c.nbOuv}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.kg)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.salaire)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.transport)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.prime)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.charges)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(c.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(c.dhParKg),fontSize:13}}>{fmt2(c.dhParKg)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td></tr></tfoot>
-                        </table>
-                        </div>
-                    </Panel>
-
-                    {/* ---- Par Équipe ---- */}
-                    <Panel title="Coût par Équipe" icon="fa-users" defaultOpen={true}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>Équipe</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {equipeStats.map(e => (
-                                    <React.Fragment key={e.prefix}>
-                                    <tr style={{cursor:'pointer',background:expandedEquipe===e.prefix?'var(--gray-50)':'white'}} onClick={() => setExpandedEquipe(expandedEquipe===e.prefix?null:e.prefix)}>
-                                        <td><i className={`fa-solid ${expandedEquipe===e.prefix?'fa-chevron-down':'fa-chevron-right'}`} style={{fontSize:9,marginRight:6,color:'var(--gray-400)'}}></i><span style={{fontWeight:600}}>{e.equipe}</span></td>
-                                        <td>{e.effectif}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.kg)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.salaire)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.transport)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.prime)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.charges)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(e.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(e.dhParKg),fontSize:13}}>{fmt2(e.dhParKg)}</td>
-                                    </tr>
-                                    {expandedEquipe===e.prefix && e.workers.sort((a,b) => { if(a.dhParKg===null) return 1; if(b.dhParKg===null) return -1; return a.dhParKg-b.dhParKg; }).map((w,i) => (
-                                        <tr key={w.matricule+i} style={{background:'var(--gray-25)',fontSize:10}}>
-                                            <td style={{paddingLeft:28}}>{w.matricule} — {w.nom}</td>
-                                            <td></td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.kg)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.salaire)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.transport)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.prime)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.charges)}</td>
-                                            <td style={{textAlign:'right',fontWeight:600}}>{fmt(w.coutTotal)}</td>
-                                            <td style={{textAlign:'right',fontWeight:700,color:dhColor(w.dhParKg)}}>{fmt2(w.dhParKg)}</td>
-                                        </tr>
-                                    ))}
-                                    </React.Fragment>
-                                ))}
-                            </tbody>
-                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td></tr></tfoot>
-                        </table>
-                        </div>
-                    </Panel>
-
-                    {/* ---- Par Parcelle ---- */}
-                    <Panel title="Coût par Parcelle" icon="fa-map" defaultOpen={false}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>Parcelle</th><th>Ferme</th><th>Culture</th><th>Ouvriers</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {parcStats.map(p => (
-                                    <tr key={p.parcelle}>
-                                        <td style={{fontWeight:600}}>{p.parcelle}</td>
-                                        <td>{p.ferme}</td>
-                                        <td>{p.culture}</td>
-                                        <td>{p.nbOuv}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(p.kg)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(p.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(p.dhParKg),fontSize:13}}>{fmt2(p.dhParKg)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        </div>
                     </Panel>
 
                 </div>
