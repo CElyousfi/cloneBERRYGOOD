@@ -204,9 +204,10 @@ async function sendDailyProductionReport(dateISO, opts = {}) {
     };
   }
 
-  // Send to each audience. Uses Meta-approved template "production_digest_dg"
-  // (generic recap shell — also works for chefs since the body is fully
-  // contained in the {{2}} parameter).
+  // Send to each audience. Uses Meta-approved template "production_digest_v2"
+  // (v1 "production_digest_dg" was approved with a single-line example and
+  // rejected our multi-line body with #132018 — v2 has a rich multi-line
+  // example matching the actual digest format).
   const allResults = [];
   for (const a of audiences) {
     const recipients = await whatsappService.resolveRecipientsForProfile(a.profileId, a.fermeFilter);
@@ -217,7 +218,7 @@ async function sendDailyProductionReport(dateISO, opts = {}) {
     }
     const results = await Promise.allSettled(
       recipients.map(r => whatsappService.sendTemplateMessage(
-        r.phone, 'production_digest_dg', [a.dateParam, a.body], undefined, r.displayName
+        r.phone, 'production_digest_v2', [a.dateParam, a.body], undefined, r.displayName
       ))
     );
     const sent = results.filter(r => r.status === 'fulfilled' && r.value && r.value.success).length;
