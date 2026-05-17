@@ -7587,6 +7587,21 @@
             const logFiltered1 = cultureFilter ? logFiltered0.filter(r => /myrtille/i.test(r.culture || '') === (cultureFilter === 'Myrtille')) : logFiltered0;
             const logFiltered = varieteFilter ? logFiltered1.filter(r => r.variete === varieteFilter) : logFiltered1;
 
+            // Logistique agrégée par dimension : chaque ligne de tableau attribue SA part de logistique (pas un ratio global).
+            // Évite la divergence Net Framboise selon filtre Toutes vs Framboise.
+            const coutOfLog = (r) => (r.salaire || 0) + (r.transport || 0) + (r.prime || 0) + (r.charges || 0);
+            const logByCulture = {};
+            const logByEquipe = {};
+            const logByParcelle = {};
+            logFiltered.forEach(r => {
+                const c = r.culture || 'Autre';
+                logByCulture[c] = (logByCulture[c] || 0) + coutOfLog(r);
+                const ek = r.prefix;
+                if (ek) logByEquipe[ek] = (logByEquipe[ek] || 0) + coutOfLog(r);
+                const pk = r.parcelle || 'N/A';
+                logByParcelle[pk] = (logByParcelle[pk] || 0) + coutOfLog(r);
+            });
+
             // Sort by DH/Kg ascending (most efficient first), nulls last
             const sorted = [...allFiltered].sort((a, b) => {
                 if (a.dhParKg === null && b.dhParKg === null) return 0;
@@ -7726,17 +7741,22 @@
                 if (cycleSelected && getCycle(r.jour) !== cycleSelected) return false;
                 return true;
             });
+            // Garde la variété par worker-day pour pouvoir attribuer la logistique par variété
             const cycleLogByWD = {};
             cycleLogRecordsRaw.forEach(r => {
                 const key = `${r.matricule}|${r.jour}`;
-                if (!cycleLogByWD[key]) cycleLogByWD[key] = { matricule: r.matricule, jour: r.jour, salaire: 0 };
+                if (!cycleLogByWD[key]) cycleLogByWD[key] = { matricule: r.matricule, jour: r.jour, variete: r.variete, salaire: 0 };
                 cycleLogByWD[key].salaire += (r.cout || 0);
             });
+            const cycleLogByVariete = {};
             let cycleLogSalaire = 0, cycleLogTransport = 0, cycleLogCharges = 0;
             Object.values(cycleLogByWD).forEach(d => {
+                const t = getTransport(getEquipePrefix(d.matricule));
                 cycleLogSalaire += d.salaire;
-                cycleLogTransport += getTransport(getEquipePrefix(d.matricule));
+                cycleLogTransport += t;
                 cycleLogCharges += CHARGES_SOCIALES;
+                const v = d.variete || 'N/A';
+                cycleLogByVariete[v] = (cycleLogByVariete[v] || 0) + d.salaire + t + CHARGES_SOCIALES;
             });
             const cycleLogCout = cycleLogSalaire + cycleLogTransport + cycleLogCharges;
             const cycleDhParKgLog = cycleTotalKg > 0 ? +(cycleLogCout / cycleTotalKg).toFixed(2) : 0;
@@ -7941,7 +7961,8 @@
                             <thead><tr><th>Culture</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
                             <tbody>
                                 {cultStats.map(c => {
-                                    const netVal = c.dhParKg !== null && dhParKgLog !== null ? +(c.dhParKg + dhParKgLog).toFixed(2) : null;
+                                    const logShareC = logByCulture[c.culture] || 0;
+                                    const netVal = c.kg > 0 ? +((c.coutTotal + logShareC) / c.kg).toFixed(2) : null;
                                     return (
                                     <tr key={c.culture}>
                                         <td><span style={{fontWeight:600}}>{c.culture}</span></td>
@@ -7970,7 +7991,9 @@
                             <thead><tr><th>Équipe</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
                             <tbody>
                                 {equipeStats.map(e => {
-                                    const netE = e.dhParKg !== null && dhParKgLog !== null ? +(e.dhParKg + dhParKgLog).toFixed(2) : null;
+                                    const logShareE = logByEquipe[e.prefix] || 0;
+                                    const netE = e.kg > 0 ? +((e.coutTotal + logShareE) / e.kg).toFixed(2) : null;
+                                    const equipeLogPerKg = e.kg > 0 ? logShareE / e.kg : 0;
                                     return (
                                     <React.Fragment key={e.prefix}>
                                     <tr style={{cursor:'pointer',background:expandedEquipe===e.prefix?'var(--gray-50)':'white'}} onClick={() => setExpandedEquipe(expandedEquipe===e.prefix?null:e.prefix)}>
@@ -7986,7 +8009,7 @@
                                         <td style={{textAlign:'right',fontWeight:700,color:dhColor(netE),fontSize:13,background:'#faf5ff'}}>{fmt2(netE)}</td>
                                     </tr>
                                     {expandedEquipe===e.prefix && e.workers.sort((a,b) => { if(a.dhParKg===null) return 1; if(b.dhParKg===null) return -1; return a.dhParKg-b.dhParKg; }).map((w,i) => {
-                                        const netW = w.dhParKg !== null && dhParKgLog !== null ? +(w.dhParKg + dhParKgLog).toFixed(2) : null;
+                                        const netW = w.dhParKg !== null ? +(w.dhParKg + equipeLogPerKg).toFixed(2) : null;
                                         return (
                                         <tr key={w.matricule+i} style={{background:'var(--gray-25)',fontSize:10}}>
                                             <td style={{paddingLeft:28}}>{w.matricule} — {w.nom}</td>
@@ -8018,7 +8041,8 @@
                             <thead><tr><th>Parcelle</th><th>Ferme</th><th>Culture</th><th>Ouvriers</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
                             <tbody>
                                 {parcStats.map(p => {
-                                    const netP = p.dhParKg !== null && dhParKgLog !== null ? +(p.dhParKg + dhParKgLog).toFixed(2) : null;
+                                    const logShareP = logByParcelle[p.parcelle] || 0;
+                                    const netP = p.kg > 0 ? +((p.coutTotal + logShareP) / p.kg).toFixed(2) : null;
                                     return (
                                     <tr key={p.parcelle}>
                                         <td style={{fontWeight:600}}>{p.parcelle}</td>
@@ -8066,7 +8090,8 @@
                             </tr></thead>
                             <tbody>
                                 {cycleVarStats.map(v => {
-                                    const netV = v.dhParKg !== null && cycleDhParKgLog !== null ? +(v.dhParKg + cycleDhParKgLog).toFixed(2) : null;
+                                    const logShareV = cycleLogByVariete[v.variete] || 0;
+                                    const netV = v.kg > 0 ? +((v.coutTotal + logShareV) / v.kg).toFixed(2) : null;
                                     return (
                                     <tr key={v.variete}>
                                         <td><span style={{fontWeight:600}}>{v.variete}</span></td>
