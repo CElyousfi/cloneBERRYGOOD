@@ -1511,8 +1511,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
-          // Load ~7 derniers mois (14 quinzaines) pour permettre la navigation historique 6 mois côté UI.
-          const targetPeriodes = periodes.slice(0, 14);
+          // Load les 4 quinzaines disponibles (~60 jours = nav historique ~45 jours pour le chart).
+          // Le mirror n'expose pas plus que ça ; pas la peine de slicer plus large (= fetch perf).
+          const targetPeriodes = periodes.slice(0, 4);
           const allRows = [];
           for (const p of targetPeriodes) {
             const pRows = await getPointageRowsForPeriode(p);

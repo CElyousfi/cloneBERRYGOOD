@@ -7894,11 +7894,17 @@
                             const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
                             return { date, label, salaire: agg.salaire, transport: agg.transport, prime: agg.prime, charges: agg.charges, cout: agg.cout, kg: agg.kg, dhKg, dhKgLog, nb: agg.nb };
                         });
-                        // maxDhKg basé sur le Coût Net (brut + logistique) pour que les barres tiennent dans le graphique
-                        const maxDhKg = Math.max(
-                            ...trendData.map(d => (d.dhKg || 0) + (d.dhKgLog || 0)),
-                            1
-                        );
+                        // Échelle Y stable : calculée sur TOUTES les dates disponibles, pas seulement la fenêtre.
+                        // Évite que les barres "grandissent" ou "rétrécissent" en navigant entre fenêtres.
+                        const allDhKgNet = allDatesDesc.map(date => {
+                            const dRecRows = varieteFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
+                            const dLogRows = varieteFilteredEq.filter(r => r.jour === date && logOps.test(r.operation || ''));
+                            const a = aggregateRows(dRecRows);
+                            const lA = aggregateRows(dLogRows);
+                            if (a.kg <= 0) return 0;
+                            return (a.cout + lA.cout) / a.kg;
+                        });
+                        const maxDhKg = Math.max(...allDhKgNet, 1);
                         const BAR_H = 200;
                         const todayStr = new Date().toISOString().slice(0, 10);
                         const recolteDate = selectedDate || todayStr;
