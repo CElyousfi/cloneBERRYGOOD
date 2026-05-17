@@ -23664,7 +23664,7 @@ ${rejetHtml}
             }
 
             // Chart geometry
-            const W = 900, H = 360, pad = { t: 24, b: 36, l: 78, r: 56 };
+            const W = 900, H = 360, pad = { t: 24, b: 36, l: 78, r: 96 };
             const innerW = W - pad.l - pad.r;
             const innerH = H - pad.t - pad.b;
             const N = hours.length || 24;
@@ -23688,6 +23688,8 @@ ${rejetHtml}
             const etoMax = Math.max(0.2, etoArr.length ? Math.max.apply(null, etoArr) : 0.2);
             const etoBarMaxH = innerH * 0.45;
             const etoBarH = function(v) { return Math.max(0, (v / etoMax) * etoBarMaxH); };
+            // y position of an ETo value on the right axis (0 at bottom, etoMax at top of bars zone)
+            const yE = function(v) { return pad.t + innerH - (v / etoMax) * etoBarMaxH; };
             const barW = Math.max(6, xStep * 0.55);
 
             const tempPath = hours.map(function(h, i) { return (i === 0 ? 'M' : 'L') + xAt(i) + ',' + yT(h.tempRaw); }).join(' ');
@@ -23788,15 +23790,22 @@ ${rejetHtml}
                                 <text x={pad.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#5DADE2" fontWeight="600">{Math.round(tVal)}</text>
                             </g>;
                         })}
-                        {/* Right J/cm² axis */}
+                        {/* Right J/cm² axis (radiation cumulée) */}
                         {hasRadiation && [0,1,2,3,4].map(function(i) {
                             const v = radMax * (1 - i/4);
                             const y = pad.t + innerH * (i/4);
-                            return <text key={'r'+i} x={W - pad.r + 8} y={y + 4} textAnchor="start" fontSize="10" fill="var(--gray-400)">{Math.round(v)}</text>;
+                            return <text key={'r'+i} x={W - pad.r + 8} y={y + 4} textAnchor="start" fontSize="10" fill="#E74C3C" fontWeight="600">{Math.round(v)}</text>;
+                        })}
+                        {/* Right ETo axis (mm), aligné sur la zone des barres (bas du chart) */}
+                        {hasEto && [0, 0.5, 1].map(function(frac, i) {
+                            const v = etoMax * frac;
+                            const y = yE(v);
+                            return <text key={'e'+i} x={W - pad.r + 42} y={y + 4} textAnchor="start" fontSize="10" fill="#2E7D32" fontWeight="600">{v.toFixed(1)}</text>;
                         })}
                         <text x={pad.l - 50} y={pad.t + innerH/2} fontSize="10" fill="#8E44AD" fontWeight="700" transform={'rotate(-90 ' + (pad.l - 50) + ' ' + (pad.t + innerH/2) + ')'}>kPa</text>
                         <text x={pad.l - 22} y={pad.t + innerH/2} fontSize="10" fill="#5DADE2" fontWeight="700" transform={'rotate(-90 ' + (pad.l - 22) + ' ' + (pad.t + innerH/2) + ')'}>°C</text>
-                        {hasRadiation && <text x={W - pad.r + 30} y={pad.t + innerH/2} fontSize="10" fill="var(--gray-400)" transform={'rotate(-90 ' + (W - pad.r + 30) + ' ' + (pad.t + innerH/2) + ')'}>J/cm²</text>}
+                        {hasRadiation && <text x={W - pad.r + 30} y={pad.t + innerH/2} fontSize="10" fill="#E74C3C" fontWeight="700" transform={'rotate(-90 ' + (W - pad.r + 30) + ' ' + (pad.t + innerH/2) + ')'}>J/cm²</text>}
+                        {hasEto && <text x={W - pad.r + 70} y={pad.t + innerH - etoBarMaxH/2} fontSize="10" fill="#2E7D32" fontWeight="700" transform={'rotate(-90 ' + (W - pad.r + 70) + ' ' + (pad.t + innerH - etoBarMaxH/2) + ')'}>mm ETo</text>}
 
                         {/* X axis ticks every 2h */}
                         {hours.map(function(h, i) {
