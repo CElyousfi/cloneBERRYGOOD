@@ -10,6 +10,8 @@
 
 const { db } = require("./config/firebase");
 const whatsapp = require("./whatsappService");
+// chefBdcBot is required lazily inside sendWhatsAppToProfiles to avoid a
+// circular dependency (chefBdcBot → bdcValidationService → notificationDispatcher).
 
 /**
  * Template mapping: notification type → WhatsApp template name + param builder.
@@ -20,6 +22,11 @@ const whatsapp = require("./whatsappService");
 const TEMPLATE_MAP = {
   bdc_submit: {
     template: "bdc_validation_needed",
+    params: (d) => [d.numero || "—", d.description || "Aucune description", d.montant || "Non précisé"],
+  },
+  bdc_submit_doc: {
+    template: "bdc_validation_needed_doc",
+    supportsDocument: true,
     params: (d) => [d.numero || "—", d.description || "Aucune description", d.montant || "Non précisé"],
   },
   bdc_chef_approved: {
@@ -77,6 +84,22 @@ const TEMPLATE_MAP = {
     template: "bdc_reminder",
     params: (d) => [d.numero || "—", d.montant || "—", d.duration || "quelques jours"],
   },
+  bdc_avis_virement: {
+    template: "bdc_avis_virement",
+    params: (d) => [d.numero || "—", d.supplier || "Fournisseur"],
+  },
+  expedition_rejected_doc: {
+    template: "expedition_rejected_doc",
+    supportsDocument: true,
+    params: (d) => [
+      d.receiptId || "—",
+      d.dateTime || "—",
+      d.variety || "—",
+      d.ranch || "—",
+      d.weightKg || "0",
+      d.reason || "Non précisé",
+    ],
+  },
 };
 
 /**
@@ -91,7 +114,7 @@ const TEMPLATE_MAP = {
  * @param {string[]} [opts.channels] - Channels to use (default: ["in_app", "whatsapp"])
  * @param {string} [opts.relatedDoc] - Related Firestore document path for logging
  */
-async function dispatchNotification({ type, profiles, ferme, data, channels, relatedDoc }) {
+async function dispatchNotification({ type, profiles, ferme, data, channels, relatedDoc, document }) {
   const activeChannels = channels || ["in_app", "whatsapp"];
 
   const promises = [];
@@ -105,11 +128,55 @@ async function dispatchNotification({ type, profiles, ferme, data, channels, rel
   // WhatsApp
   if (willSendWhatsApp) {
     const mapping = TEMPLATE_MAP[type];
-    promises.push(sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc));
+    promises.push(sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc, type, document));
   }
 
   // Execute all channels in parallel, catch errors silently
   await Promise.allSettled(promises);
+}
+
+/**
+ * Build a concise WhatsApp-ready summary for a BDC (≤1024 chars to fit document caption).
+ * Falls back gracefully if some fields are missing.
+ */
+function buildBdcWhatsAppSummary(bdc) {
+  if (!bdc) return "";
+  const numero = bdc.numero || bdc.id || "—";
+  const supplier = (bdc.fournisseur && bdc.fournisseur.nom) || bdc.supplier_name || "Fournisseur ?";
+  const ferme = bdc.ferme || "—";
+  const totalTtc = bdc.total_ttc != null
+    ? `${Number(bdc.total_ttc).toLocaleString("fr-FR")} MAD TTC`
+    : "—";
+  const items = Array.isArray(bdc.items) ? bdc.items : [];
+  const top = items.slice(0, 3).map((it) => {
+    const lib = it.article || it.designation || "Article";
+    const qte = it.quantite || "?";
+    const unit = it.unite || "";
+    return `• ${String(lib).slice(0, 50)} ×${qte}${unit ? " " + unit : ""}`;
+  });
+  const more = items.length > 3 ? `\n… et ${items.length - 3} autre(s) article(s)` : "";
+  const paiementLabel = {
+    virement_bancaire: "Virement bancaire",
+    comptant_virement: "Comptant (virement)",
+    comptant_cheque: "Comptant (chèque)",
+    comptant_especes: "Comptant (espèces)",
+  };
+  const paiement = paiementLabel[bdc.mode_paiement] || bdc.mode_paiement || "—";
+
+  return [
+    `📋 BDC #${numero}`,
+    `🏭 ${supplier} — Ferme ${ferme}`,
+    `💰 ${totalTtc}`,
+    "",
+    `Articles (${items.length}):`,
+    ...top,
+    more,
+    "",
+    `Mode paiement : ${paiement}`,
+    "",
+    `Répondez *OK* pour valider ou *NON* pour rejeter,`,
+    `ou utilisez les boutons ci-dessous.`,
+  ].filter(Boolean).join("\n").slice(0, 1024);
 }
 
 /**
@@ -136,7 +203,7 @@ async function createInAppAlert(type, profiles, message, severity, whatsappDispa
 /**
  * Send WhatsApp template messages to all users matching the given profiles.
  */
-async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc) {
+async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc, type, document) {
   try {
     // Resolve all recipients across all target profiles
     const recipientSets = await Promise.all(
@@ -155,17 +222,28 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     if (unique.length === 0) return;
 
     const bodyParams = mapping.params(data);
+    const useDocument = !!(mapping.supportsDocument && document && (document.mediaId || document.link));
 
     // Send to all recipients in parallel
     const results = await Promise.allSettled(
       unique.map(async (recipient) => {
-        const result = await whatsapp.sendTemplateMessage(
-          recipient.phone,
-          mapping.template,
-          bodyParams,
-          undefined,
-          recipient.displayName
-        );
+        const result = useDocument
+          ? await whatsapp.sendTemplateMessageWithDocument(
+              recipient.phone,
+              mapping.template,
+              document.mediaId ? { mediaId: document.mediaId } : { link: document.link },
+              document.filename,
+              bodyParams,
+              undefined,
+              recipient.displayName
+            )
+          : await whatsapp.sendTemplateMessage(
+              recipient.phone,
+              mapping.template,
+              bodyParams,
+              undefined,
+              recipient.displayName
+            );
         // Update log with related doc reference
         if (relatedDoc && result.success) {
           try {
@@ -186,9 +264,143 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     if (failed > 0) {
       console.warn(`WhatsApp dispatch [${mapping.template}]: ${sent} sent, ${failed} failed`);
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // BDC submission: after the template (which opens the 24h session), send
+    // the PDF document + interactive buttons and persist an approval session
+    // so chefBdcBot can route the reply.
+    // ─────────────────────────────────────────────────────────────────────
+    if ((type === "bdc_submit" || type === "bdc_submit_doc") && data.bdc_id) {
+      const chefBdcBot = require("./chefBdcBot");
+      const caption = data.summary || `📋 BDC #${data.numero || data.bdc_id}\nRépondez *OK* pour valider ou *NON* pour rejeter.`;
+      const filename = `BDC_${data.numero || data.bdc_id}.pdf`;
+      // If we used the doc-template variant, the PDF was already attached to the
+      // template message — skip the separate document send to avoid duplication.
+      const pdfAlreadySent = useDocument;
+
+      await Promise.allSettled(unique.map(async (recipient) => {
+        try {
+          // Determine the role for validation based on which profile this recipient matches
+          // (priority: chef > dg > skip)
+          const role = recipient.profileId === "chef" ? "chef"
+                     : recipient.profileId === "dg" ? "dg"
+                     : null;
+          if (!role) return; // we only set up session for chef/dg
+
+          // 1) Send PDF document if available (skipped when already attached via template)
+          if (!pdfAlreadySent) {
+            if (data.pdf_url) {
+              await whatsapp.sendDocumentMessage(recipient.phone, data.pdf_url, filename, caption);
+            } else {
+              // Fallback: just send the summary as a text
+              await whatsapp.sendTextMessage(recipient.phone, caption);
+            }
+          }
+
+          // 2) Send interactive buttons (within the 24h session opened by the template).
+          // When the doc-template was used, the body params don't carry the full
+          // summary — include it as the buttons body so chefs still see the detail.
+          const buttonsBody = pdfAlreadySent
+            ? caption
+            : `Décision pour BDC #${data.numero || data.bdc_id} ?`;
+          await whatsapp.sendInteractiveButtons(
+            recipient.phone,
+            buttonsBody,
+            [
+              { id: chefBdcBot.BTN.APPROVE, title: "✅ Valider" },
+              { id: chefBdcBot.BTN.REJECT, title: "❌ Rejeter" },
+            ]
+          );
+
+          // 3) Persist approval session keyed by phone
+          await chefBdcBot.startBdcApprovalSession(recipient.phone, {
+            bdc_id: data.bdc_id,
+            role,
+            ferme: role === "chef" ? (recipient.ferme || ferme) : null,
+          });
+        } catch (err) {
+          console.error(`BDC approval setup failed for ${recipient.phone}:`, err.message);
+        }
+      }));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // DG-approved BDC (virement mode): Finance also receives an action button
+    // to confirm the virement has been entered ("saisi"). Other profiles
+    // (achats) only get the informational template.
+    // ─────────────────────────────────────────────────────────────────────
+    if (type === "bdc_dg_approved" && data.bdc_id) {
+      const chefBdcBot = require("./chefBdcBot");
+      await Promise.allSettled(unique.map(async (recipient) => {
+        if (recipient.profileId !== "finance") return;
+        try {
+          await whatsapp.sendInteractiveButtons(
+            recipient.phone,
+            `BDC #${data.numero || data.bdc_id} validé par DG. Confirmez la saisie du virement quand c'est fait :`,
+            [{ id: chefBdcBot.BTN.VIREMENT_SAISI, title: "💸 Virement saisi" }]
+          );
+          await chefBdcBot.startVirementLanceSession(recipient.phone, { bdc_id: data.bdc_id });
+        } catch (err) {
+          console.error(`Virement-lance setup failed for ${recipient.phone}:`, err.message);
+        }
+      }));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Virement launched: DG gets an action button to confirm signature.
+    // ─────────────────────────────────────────────────────────────────────
+    if (type === "bdc_virement_launched" && data.bdc_id) {
+      const chefBdcBot = require("./chefBdcBot");
+      await Promise.allSettled(unique.map(async (recipient) => {
+        if (recipient.profileId !== "dg") return;
+        try {
+          await whatsapp.sendInteractiveButtons(
+            recipient.phone,
+            `BDC #${data.numero || data.bdc_id} — virement à signer. Confirmez après signature :`,
+            [{ id: chefBdcBot.BTN.VIREMENT_SIGNED, title: "✍️ Virement signé" }]
+          );
+          await chefBdcBot.startVirementSigneSession(recipient.phone, { bdc_id: data.bdc_id });
+        } catch (err) {
+          console.error(`Virement-signe setup failed for ${recipient.phone}:`, err.message);
+        }
+      }));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Virement signed: remind Finance to upload the "avis de virement" PDF.
+    // ─────────────────────────────────────────────────────────────────────
+    if (type === "bdc_virement_signed" && data.bdc_id) {
+      await Promise.allSettled(unique.map(async (recipient) => {
+        if (recipient.profileId !== "finance") return;
+        try {
+          await whatsapp.sendTextMessage(
+            recipient.phone,
+            `📎 Pensez à joindre l'avis de virement signé sur Smart Berry pour le BDC #${data.numero || data.bdc_id}.`
+          );
+        } catch (err) {
+          console.error(`Finance avis reminder failed for ${recipient.phone}:`, err.message);
+        }
+      }));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Avis de virement: send PDF document right after the template
+    // (informational — no buttons, no session).
+    // ─────────────────────────────────────────────────────────────────────
+    if (type === "bdc_avis_virement" && data.bdc_id && data.pdf_url) {
+      const filename = `AvisVirement_${data.numero || data.bdc_id}.pdf`;
+      const caption = `📎 Avis de virement — BDC #${data.numero || data.bdc_id}\n🏭 ${data.supplier || "Fournisseur"}`;
+      await Promise.allSettled(unique.map(async (recipient) => {
+        try {
+          await whatsapp.sendDocumentMessage(recipient.phone, data.pdf_url, filename, caption);
+        } catch (err) {
+          console.error(`Avis virement document send failed for ${recipient.phone}:`, err.message);
+        }
+      }));
+    }
   } catch (err) {
     console.error("WhatsApp dispatch error:", err.message);
   }
 }
 
-module.exports = { dispatchNotification, TEMPLATE_MAP };
+module.exports = { dispatchNotification, TEMPLATE_MAP, buildBdcWhatsAppSummary };

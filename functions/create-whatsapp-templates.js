@@ -29,6 +29,12 @@ const TEMPLATES = [
     examples: ["BDC-2026-0042", "Engrais NPK", "45000 MAD"],
   },
   {
+    name: "bdc_validation_needed_doc",
+    body: "Bonjour, le BDC {{1}} ({{2}}) d'un montant de {{3}} est en attente de votre validation. PDF en pièce jointe.",
+    examples: ["BDC-2026-0042", "Engrais NPK", "45000 MAD"],
+    headerType: "DOCUMENT",
+  },
+  {
     name: "bdc_chef_approved",
     body: "Le BDC {{1}} a été approuvé par le Chef. En attente de validation DG.",
     examples: ["BDC-2026-0042"],
@@ -79,26 +85,51 @@ const TEMPLATES = [
     examples: ["RPT-2026-0123", "01/05/2026 14:30", "Sweet Sensation", "BSAA", "1250", "Soft fruit"],
   },
   {
+    name: "expedition_rejected_doc",
+    body: "Rejet d'expédition Driscoll's : Receipt {{1}} le {{2}}. Variété {{3}}, ferme {{4}}, volume {{5}} kg. Motif principal : {{6}}. PDF d'inspection en pièce jointe.",
+    examples: ["RPT-2026-0123", "01/05/2026 14:30", "Sweet Sensation", "BSAA", "1250", "Soft fruit"],
+    headerType: "DOCUMENT",
+  },
+  {
     name: "bdc_reminder",
     body: "Rappel SmartBerry : le BDC {{1}} d'un montant de {{2}} est en attente de votre validation depuis {{3}}. Merci de le traiter rapidement.",
     examples: ["BDC-2026-0042", "45000 MAD", "2 jours"],
   },
+  {
+    name: "production_digest_dg",
+    body: "SmartBerry — Production {{1}}\n\n{{2}}",
+    examples: [
+      "17/05",
+      "🎯 Estimation Cycle 2\n🍇 Framboise\n• Maravilla Green Cane — 9.37 T/Ha (Budget 72%, Local 12.0%, Export 37.47 T)\n🫐 Myrtille\n• Corina — 3.48 Kg/Pl (Budget 87%, Local 2.8%, Export 28.72 T)",
+    ],
+  },
 ];
 
 async function createTemplate(tpl) {
+  const components = [];
+  if (tpl.headerType === "DOCUMENT") {
+    // Meta requires a sample handle for media headers. Provide one via WA_SAMPLE_PDF_HANDLE
+    // (obtained from the resumable upload API). If absent, submit without — Meta may still
+    // approve UTILITY templates without a sample, otherwise fall back to manual creation.
+    const headerComponent = { type: "HEADER", format: "DOCUMENT" };
+    if (process.env.WA_SAMPLE_PDF_HANDLE) {
+      headerComponent.example = { header_handle: [process.env.WA_SAMPLE_PDF_HANDLE] };
+    }
+    components.push(headerComponent);
+  }
+  components.push({
+    type: "BODY",
+    text: tpl.body,
+    ...(tpl.examples.length > 0 ? {
+      example: { body_text: [tpl.examples] },
+    } : {}),
+  });
+
   const payload = {
     name: tpl.name,
     language: "fr",
     category: "UTILITY",
-    components: [
-      {
-        type: "BODY",
-        text: tpl.body,
-        ...(tpl.examples.length > 0 ? {
-          example: { body_text: [tpl.examples] },
-        } : {}),
-      },
-    ],
+    components,
   };
 
   const response = await fetch(

@@ -39,6 +39,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Production harvest scans (Tracabilite_recolte) — synced every 15 min from prod SQL.
+    // Read-only for authenticated users (used by the Récolte tab live listener).
+    match /prod_tracabilite_recolte/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // sync service only (admin SDK)
+    }
+
     // Quinzaine archive — persisted summaries for older quinzaines
     match /quinzaine_archive/{docId} {
       allow read: if request.auth != null;
@@ -97,6 +104,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Driscoll's weekly forecast prices (Grower return prices) imported from slides
+    match /liquidation_forecasts/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // written only via Cloud Function (admin SDK)
+    }
+
+    // Driscoll's Grower productivity reports — weekly ranking F1 (172) / F5 (195)
+    // Read filtering is enforced UI-side via NAV items (chef_f1/chef_f5/finance/dg only)
+    match /productivity_reports/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // written only via Cloud Function (admin SDK)
+    }
+
     // Notifications
     match /notifications/{docId} {
       allow read: if request.auth != null;
@@ -139,6 +159,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null;
     }
 
+    // Netafim — registre des parcelles BAHIA découvert dynamiquement par le cron.
+    // Lecture par utilisateurs authentifiés ; écriture réservée au cron (admin SDK).
+    match /netafim_parcelles_bahia/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Security — mouvements entrées/sorties et photos tunnels
     match /security_mouvements/{docId} {
       allow read, write: if request.auth != null;
@@ -148,6 +175,20 @@ service cloud.firestore {
     }
     match /security_tunnel_photos/{docId} {
       allow read, write: if request.auth != null;
+    }
+    // WhatsApp bot — registres envoyés par les agents sécurité
+    match /security_envois_registre/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // écrit uniquement par le webhook (Cloud Function)
+    }
+    // WhatsApp bot — incidents signalés par les agents sécurité
+    match /security_incidents/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false; // écrit uniquement par le webhook (Cloud Function)
+    }
+    // WhatsApp bot — état conversationnel par numéro (privé, server-only)
+    match /whatsapp_sessions/{phone} {
+      allow read, write: if false;
     }
 
     // Stock movements — read-only for authenticated users, write via Cloud Functions
@@ -201,6 +242,16 @@ service cloud.firestore {
     // RH config (transport_primes, etc.) — read for all auth, write for auth
     // (le profil RH est filtré côté UI ; les autres profils n'ont pas l'onglet)
     match /rh_config/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Ouvriers registry — registre des ouvriers (déclaré/non déclaré, baseline ancienneté)
+    match /ouvriers_registry/{matricule} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Trésorerie — échéances, loyers, paie, engagements (Finance & DG via UI)
+    match /tresorerie_items/{docId} {
       allow read, write: if request.auth != null;
     }
   }

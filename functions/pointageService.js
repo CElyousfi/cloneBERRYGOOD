@@ -83,11 +83,37 @@ function resolveMyrtilleVariete(variete, parcelle) {
  * Resolve parcelle name to { variete, culture, ferme } for analytical accounting.
  * Mirrors the frontend normalizeParcelle() logic.
  */
+// Detect sub-cycle type from parcelle name.
+// 1) Explicit keywords win: "LONG CANE/LC/MT/BI CYCLE" → Long Cane ; "MOW DOWN/MD/GREEN CANE/GC/MOTTE" → Mow Down
+// 2) Fallback by sector code (S1-S14) based on cpcVarietes layout:
+//    Maravilla: S1,S4 = Mow Down ; S3,S7 = Long Cane
+//    Yazmin:    S2,S5,S13 = Mow Down ; S10 = Long Cane
+// Returns ' Long Cane', ' Mow Down', or '' (unknown).
+function detectFramboiseSubType(parcelle, varieteName) {
+  const u = (parcelle || "").toUpperCase();
+  if (/\bLONG\s*CANE\b|\bLC\b|\bMT\b|\bBI[\s-]*CYCLE\b/.test(u)) return ' Long Cane';
+  if (/\bMOW\s*DOWN\b|\bMD\b|\bGREEN\s*CANE\b|\bGC\b|\bMOTTE\b/.test(u)) return ' Mow Down';
+  // Sector-based fallback
+  const sMatch = u.match(/\bS(\d{1,2})\b/);
+  if (sMatch) {
+    const s = parseInt(sMatch[1], 10);
+    if (varieteName === 'Maravilla') {
+      if (s === 1 || s === 4) return ' Mow Down';
+      if (s === 3 || s === 7) return ' Long Cane';
+    }
+    if (varieteName === 'Yazmin') {
+      if (s === 2 || s === 5 || s === 13) return ' Mow Down';
+      if (s === 10) return ' Long Cane';
+    }
+  }
+  return '';
+}
+
 function resolveVariete(parcelle, refParcelle) {
   const u = (parcelle || "").toUpperCase();
   const ferme = deriveFerme(refParcelle, parcelle);
-  if (u.includes('MARAVILLA')) return { variete: 'Maravilla', culture: 'Framboise', ferme };
-  if (u.includes('YAZMIN') || u.includes('YASMIN')) return { variete: 'Yazmin', culture: 'Framboise', ferme };
+  if (u.includes('MARAVILLA')) return { variete: 'Maravilla' + detectFramboiseSubType(parcelle, 'Maravilla'), culture: 'Framboise', ferme };
+  if (u.includes('YAZMIN') || u.includes('YASMIN')) return { variete: 'Yazmin' + detectFramboiseSubType(parcelle, 'Yazmin'), culture: 'Framboise', ferme };
   if (u.includes('REYNA') || u.includes('REINA')) return { variete: 'Reyna', culture: 'Framboise', ferme };
   if (u.includes('CORINA') || u.includes('CORRINA')) return { variete: 'Corina', culture: 'Myrtille', ferme };
   if (u.includes('CASCADE')) return { variete: 'Cascade', culture: 'Myrtille', ferme };
@@ -1960,6 +1986,180 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           }));
 
           return { success: true, parVariete, parQuinzaine, totaux, periodes: allPeriodes };
+        });
+        return res.json(cached);
+      }
+
+      // ------ CAMPAGNE-MO-VARIETE: cumulative labor cost by variety for current fiscal year (Jul→Jun) ------
+      if (action === "campagne-mo-variete") {
+        const today = new Date();
+        const y = today.getFullYear();
+        const startYear = today.getMonth() >= 6 ? y : y - 1;
+        const campagne = {
+          start: `${startYear}-07-01`,
+          end: `${startYear + 1}-06-30`,
+          label: `${startYear}-${startYear + 1} (Jul-Jun)`,
+        };
+
+        const cycle1End = `${startYear}-12-31`;
+        const cycle2Start = `${startYear + 1}-01-01`;
+
+        const cached = await withCache(`campagne_mo_variete_v4_${campagne.start}`, 30 * 60 * 1000, async () => {
+          const meta = await getPointageMeta();
+          const allPeriodes = meta?.allPeriodes || [];
+          const mirrorPeriodes = meta?.periodes || [];
+
+          const mirrorPeriodesList = allPeriodes.filter(p => mirrorPeriodes.includes(p) && meta?.periodeMap?.[p]);
+          const archivedPeriodesList = allPeriodes.filter(p => !mirrorPeriodes.includes(p) || !meta?.periodeMap?.[p]);
+
+          // segments: each row tagged with cycle1Weight / cycle2Weight / annuelWeight
+          // mirror rows: weight = 1 for the cycle the date belongs to, 0 for the other; 1 for annuel
+          // archive rows: prorated by fraction of dates in each cycle within campagne range
+          const taggedRows = []; // { parcelle, refParcelle, operationFamille, jh, cout, w1, w2, wA }
+
+          // 1. Mirror periodes
+          const mirrorResults = await Promise.all(mirrorPeriodesList.map(async (periode) => {
+            const dates = (meta.periodeMap[periode] || []).filter(d => d >= campagne.start && d <= campagne.end);
+            const out = [];
+            for (let i = 0; i < dates.length; i += 10) {
+              const batch = dates.slice(i, i + 10);
+              const batchResults = await Promise.all(batch.map(d => getPointageRowsForDate(d).then(rows => ({ d, rows }))));
+              for (const { d, rows: rawRows } of batchResults) {
+                const inCycle1 = d <= cycle1End ? 1 : 0;
+                const inCycle2 = d >= cycle2Start ? 1 : 0;
+                // group per-date to reduce row count
+                const groups = {};
+                for (const r of rawRows) {
+                  const key = `${r.Parcelle_Culturale}|${r.Ref_parcelle}|${r.Operation_Famille}`;
+                  if (!groups[key]) groups[key] = { parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), operationFamille: r.Operation_Famille, jh: 0, cout: 0 };
+                  groups[key].jh += r.Nombre_Jr || 0;
+                  groups[key].cout += r.Cout || 0;
+                }
+                for (const g of Object.values(groups)) {
+                  out.push({ ...g, w1: inCycle1, w2: inCycle2, wA: 1 });
+                }
+              }
+            }
+            return out;
+          }));
+          for (const arr of mirrorResults) for (const r of arr) taggedRows.push(r);
+
+          // 2. Archive periodes — prorate per cycle
+          const archiveDocs = await Promise.all(archivedPeriodesList.map(async (periode) => {
+            const doc = await db_firestore.collection("quinzaine_archive").doc(periode).get();
+            if (!doc.exists) return null;
+            const d = doc.data();
+            const analytique = d.analytique;
+            if (!analytique) return null;
+            const allDates = (d.reposData && d.reposData.quinzaineDates) || (d.alertesData && d.alertesData.quinzaineDates) || (meta?.periodeMap?.[periode]) || [];
+            const datesInCampagne = allDates.filter(dt => dt >= campagne.start && dt <= campagne.end);
+            const datesInCycle1 = datesInCampagne.filter(dt => dt <= cycle1End);
+            const datesInCycle2 = datesInCampagne.filter(dt => dt >= cycle2Start);
+            const total = allDates.length || datesInCampagne.length || 1;
+            const fA = datesInCampagne.length / total;
+            const f1 = datesInCycle1.length / total;
+            const f2 = datesInCycle2.length / total;
+            if (fA === 0) return null;
+            return { f1, f2, fA, analytique };
+          }));
+          for (const result of archiveDocs) {
+            if (!result) continue;
+            for (const row of result.analytique) {
+              taggedRows.push({
+                parcelle: row.parcelle,
+                refParcelle: row.refParcelle,
+                operationFamille: row.operationFamille,
+                jh: row.jh || 0,
+                cout: row.cout || 0,
+                w1: result.f1,
+                w2: result.f2,
+                wA: result.fA,
+              });
+            }
+          }
+
+          // 3. Aggregate per segment per variete
+          function emptyBucket(resolved) {
+            return {
+              variete: resolved.variete, culture: resolved.culture, ferme: resolved.ferme,
+              recolte: { jh: 0, cout: 0 }, horsRecolte: { jh: 0, cout: 0 }, postesFixes: { jh: 0, cout: 0 },
+              total: { jh: 0, cout: 0 }, kgRecolte: 0,
+            };
+          }
+          const seg = { cycle1: {}, cycle2: {}, annuel: {} };
+          for (const row of taggedRows) {
+            const resolved = resolveVariete(row.parcelle, row.refParcelle);
+            const key = `${resolved.variete}|${resolved.ferme}`;
+            const type = classifyType(row.operationFamille);
+            for (const [segName, w] of [['cycle1', row.w1], ['cycle2', row.w2], ['annuel', row.wA]]) {
+              if (!w) continue;
+              if (!seg[segName][key]) seg[segName][key] = emptyBucket(resolved);
+              const b = seg[segName][key];
+              const jhW = row.jh * w;
+              const coutW = row.cout * w;
+              b[type].jh += jhW;
+              b[type].cout += coutW;
+              b.total.jh += jhW;
+              b.total.cout += coutW;
+            }
+          }
+
+          // 4. Kg récolté par variété (from prod_tracabilite_recolte) per segment
+          //    Doc IDs are YYYY-MM-DD. Query the campagne range.
+          const prodSnap = await db_firestore.collection("prod_tracabilite_recolte")
+            .where(admin.firestore.FieldPath.documentId(), ">=", campagne.start)
+            .where(admin.firestore.FieldPath.documentId(), "<=", campagne.end)
+            .get();
+          for (const docSnap of prodSnap.docs) {
+            const dateStr = docSnap.id;
+            const inCycle1 = dateStr <= cycle1End;
+            const inCycle2 = dateStr >= cycle2Start;
+            const rows = docSnap.data().rows || [];
+            for (const r of rows) {
+              const resolved = resolveVariete(r.variete || r.parcelle || '', r.refParcelle || '');
+              const key = `${resolved.variete}|${resolved.ferme}`;
+              const kg = r.totalKg || 0;
+              if (!seg.annuel[key]) seg.annuel[key] = emptyBucket(resolved);
+              seg.annuel[key].kgRecolte += kg;
+              if (inCycle1) {
+                if (!seg.cycle1[key]) seg.cycle1[key] = emptyBucket(resolved);
+                seg.cycle1[key].kgRecolte += kg;
+              }
+              if (inCycle2) {
+                if (!seg.cycle2[key]) seg.cycle2[key] = emptyBucket(resolved);
+                seg.cycle2[key].kgRecolte += kg;
+              }
+            }
+          }
+
+          function finalizeSegment(byVariete) {
+            const parVariete = Object.values(byVariete).map(v => ({
+              ...v,
+              recolte: { jh: Math.round(v.recolte.jh * 100) / 100, cout: Math.round(v.recolte.cout) },
+              horsRecolte: { jh: Math.round(v.horsRecolte.jh * 100) / 100, cout: Math.round(v.horsRecolte.cout) },
+              postesFixes: { jh: Math.round(v.postesFixes.jh * 100) / 100, cout: Math.round(v.postesFixes.cout) },
+              total: { jh: Math.round(v.total.jh * 100) / 100, cout: Math.round(v.total.cout) },
+              kgRecolte: Math.round(v.kgRecolte),
+            })).sort((a, b) => b.total.cout - a.total.cout);
+            const totaux = parVariete.reduce((acc, v) => ({
+              recolte: acc.recolte + v.recolte.cout, horsRecolte: acc.horsRecolte + v.horsRecolte.cout,
+              postesFixes: acc.postesFixes + v.postesFixes.cout, total: acc.total + v.total.cout,
+              kgRecolte: acc.kgRecolte + v.kgRecolte,
+            }), { recolte: 0, horsRecolte: 0, postesFixes: 0, total: 0, kgRecolte: 0 });
+            return { parVariete, totaux };
+          }
+
+          const result = {
+            success: true,
+            campagne,
+            cycle1: { ...finalizeSegment(seg.cycle1), start: campagne.start, end: cycle1End, label: `Cycle 1 (Juil ${startYear} → Déc ${startYear})` },
+            cycle2: { ...finalizeSegment(seg.cycle2), start: cycle2Start, end: campagne.end, label: `Cycle 2 (Jan ${startYear + 1} → Juin ${startYear + 1})` },
+            annuel: { ...finalizeSegment(seg.annuel), start: campagne.start, end: campagne.end, label: `Cumul annuel ${campagne.label}` },
+          };
+          // Back-compat with v1 shape (parVariete + totaux at root = annuel)
+          result.parVariete = result.annuel.parVariete;
+          result.totaux = result.annuel.totaux;
+          return result;
         });
         return res.json(cached);
       }

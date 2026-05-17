@@ -8,6 +8,8 @@ const { setCors } = require("./middleware/cors");
 const { withCache } = require("./middleware/cache");
 const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 const { dispatchNotification } = require("./notificationDispatcher");
+const { validateBdcCore } = require("./bdcValidationService");
+const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -33,6 +35,187 @@ exports.syncRecolteFromProd = functions.region("europe-west1").pubsub
   .schedule("*/15 11-20 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(() => prodSync.syncTracabiliteRecolte());
+
+// Daily production digest @ 20h30 Casablanca — DG (global) + Chef F1 + Chef F5.
+exports.dailyProductionDigest = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 180, memory: "512MB" })
+  .pubsub.schedule("30 20 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(async () => {
+    try {
+      const dailyProductionReport = require("./dailyProductionReport");
+      const result = await dailyProductionReport.sendDailyProductionReport();
+      console.log("[dailyProductionDigest]", result);
+    } catch (err) {
+      console.error("[dailyProductionDigest] error:", err);
+    }
+    return null;
+  });
+
+// Manual trigger for daily production report — ?date=YYYY-MM-DD (default: today Casablanca).
+exports.dailyProductionReportTrigger = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 180, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    // List configured recipients for the 3 audiences via ?checkRecipients=1.
+    if (req.query.checkRecipients === '1') {
+      try {
+        const whatsapp = require('./whatsappService');
+        const [dg, chefF1, chefF5] = await Promise.all([
+          whatsapp.resolveRecipientsForProfile('dg', null),
+          whatsapp.resolveRecipientsForProfile('chef_f1', null),
+          whatsapp.resolveRecipientsForProfile('chef_f5', null),
+        ]);
+        const mask = (p) => p ? p.slice(0, 4) + '***' + p.slice(-3) : null;
+        const fmt = (arr) => arr.map(r => ({ uid: r.uid, displayName: r.displayName, ferme: r.ferme, phone: mask(r.phone) }));
+
+        // Broader scan: any user with profileId containing "chef" and any user
+        // with whatsappEnabled=true, to spot misconfigurations.
+        const allChefSnap = await db_firestore.collection('users').get();
+        const candidates = [];
+        allChefSnap.docs.forEach(d => {
+          const u = d.data() || {};
+          const pid = String(u.profileId || '');
+          if (pid.includes('chef') || pid === 'dg') {
+            candidates.push({
+              uid: d.id,
+              profileId: pid,
+              displayName: u.displayName || null,
+              ferme: u.ferme || null,
+              whatsappEnabled: !!u.whatsappEnabled,
+              hasPhone: !!u.whatsappPhone,
+              disabled: !!u.disabled,
+            });
+          }
+        });
+        return res.json({
+          dg: { count: dg.length, recipients: fmt(dg) },
+          chefF1: { count: chefF1.length, recipients: fmt(chefF1) },
+          chefF5: { count: chefF5.length, recipients: fmt(chefF5) },
+          allCandidates: candidates,
+        });
+      } catch (err) {
+        return res.status(500).json({ error: err.message });
+      }
+    }
+
+    // One-shot: submit Meta template via ?submitTemplate=1 (uses Firestore token).
+    if (req.query.submitTemplate === '1') {
+      try {
+        const cfgDoc = await db_firestore.collection("config").doc("whatsapp").get();
+        if (!cfgDoc.exists) return res.status(500).json({ error: "config/whatsapp missing" });
+        const cfg = cfgDoc.data();
+        const token = cfg.access_token;
+        const wabaId = cfg.waba_id || "1435674314903560";
+        if (!token) return res.status(500).json({ error: "access_token missing" });
+        const payload = {
+          name: "production_digest_dg",
+          language: "fr",
+          category: "UTILITY",
+          components: [{
+            type: "BODY",
+            text: "Bonjour, voici le récap de production SmartBerry pour {{1}} :\n\n{{2}}\n\nConsultez votre tableau de bord pour le détail complet et l'historique.",
+            example: { body_text: [[
+              "17/05",
+              "Estimation Cycle 2 : Maravilla GC 9.37 T/Ha (Budget 72%), Corina 3.48 Kg/Pl (Budget 87%).",
+            ]] },
+          }],
+        };
+        const r = await fetch(`https://graph.facebook.com/v21.0/${wabaId}/message_templates`, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await r.json();
+        return res.status(r.ok ? 200 : 500).json({ ok: r.ok, status: r.status, data });
+      } catch (err) {
+        return res.status(500).json({ error: err.message });
+      }
+    }
+
+    const date = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : undefined;
+    const preview = req.query.preview === '1' || req.query.preview === 'true';
+    const debug = req.query.debug === '1' || req.query.debug === 'true';
+    try {
+      const dailyProductionReport = require("./dailyProductionReport");
+      const result = await dailyProductionReport.sendDailyProductionReport(date, { preview, debug });
+      console.log("[dailyProductionReportTrigger]", { ...result, message: undefined, stats: undefined, diagnostic: undefined });
+      res.json({ success: true, ...result, dateRequested: date || null });
+    } catch (err) {
+      console.error("[dailyProductionReportTrigger] error:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// One-shot helper to submit the `production_digest_dg` template to Meta
+// using the access token stored in Firestore (config/whatsapp). Hit once
+// and watch the response, then wait for Meta to approve.
+exports.submitProductionDigestTemplate = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    try {
+      const cfgDoc = await db_firestore.collection("config").doc("whatsapp").get();
+      if (!cfgDoc.exists) return res.status(500).json({ error: "config/whatsapp missing" });
+      const cfg = cfgDoc.data();
+      const token = cfg.access_token;
+      const wabaId = cfg.waba_id || "1435674314903560";
+      if (!token) return res.status(500).json({ error: "access_token missing in config/whatsapp" });
+
+      const tpl = {
+        name: "production_digest_dg",
+        body: "SmartBerry — Production {{1}}\n\n{{2}}",
+        examples: [
+          "17/05",
+          "🎯 Estimation Cycle 2\n🍇 Framboise\n• Maravilla Green Cane — 9.37 T/Ha (Budget 72%, Local 12.0%, Export 37.47 T)\n🫐 Myrtille\n• Corina — 3.48 Kg/Pl (Budget 87%, Local 2.8%, Export 28.72 T)",
+        ],
+      };
+      const payload = {
+        name: tpl.name,
+        language: "fr",
+        category: "UTILITY",
+        components: [{
+          type: "BODY",
+          text: tpl.body,
+          example: { body_text: [tpl.examples] },
+        }],
+      };
+      const r = await fetch(`https://graph.facebook.com/v21.0/${wabaId}/message_templates`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await r.json();
+      res.status(r.ok ? 200 : 500).json({ ok: r.ok, status: r.status, data });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+// WhatsApp recap to DG when today's harvest totalKg jumps by ≥100 kg.
+// See functions/recolteWhatsAppNotifier.js for the threshold logic.
+const recolteWhatsAppNotifier = require("./recolteWhatsAppNotifier");
+const { invalidateCache: invalidateApiCache } = require("./middleware/cache");
+exports.onProdRecolteWriteNotify = functions
+  .region("europe-west1")
+  .firestore.document("prod_tracabilite_recolte/{date}")
+  .onWrite(async (change, context) => {
+    try {
+      const result = await recolteWhatsAppNotifier.handleProdRecolteWrite(
+        { db: db_firestore, whatsapp: whatsappService, admin, invalidateCache: invalidateApiCache },
+        change,
+        context
+      );
+      if (result && (result.sent || result.skipped)) {
+        console.log("[onProdRecolteWriteNotify]", context.params.date, result);
+      }
+      return null;
+    } catch (err) {
+      console.error("[onProdRecolteWriteNotify] error:", err.message);
+      return null;
+    }
+  });
 
 // Sync présence entrée — 10h
 exports.syncPresenceEntree = functions.region("europe-west1").pubsub
@@ -3687,6 +3870,54 @@ exports.uploadEcarts = functions
 // =============================================
 Object.assign(exports, require("./emailService"));
 
+// =============================================
+// Productivity Reports — scheduled IMAP scan (15 min)
+// Picks up new Driscoll's "Grower productivity report" emails near-realtime.
+// =============================================
+exports.productivityReportsCron = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub.schedule("every 15 minutes")
+  .timeZone("Africa/Casablanca")
+  .onRun(async () => {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) { console.warn("productivityReportsCron: ANTHROPIC_API_KEY missing, skipping"); return null; }
+
+    const { ImapFlow } = require("imapflow");
+    const { simpleParser } = require("mailparser");
+    const productivity = require("./lib/productivity");
+
+    const client = new ImapFlow({
+      host: process.env.IMAP_HOST,
+      port: parseInt(process.env.IMAP_PORT || "993"),
+      secure: process.env.IMAP_TLS !== "false",
+      auth: { user: process.env.IMAP_USER, pass: process.env.IMAP_PASSWORD },
+      logger: false,
+    });
+
+    try {
+      await client.connect();
+      let bucket = null;
+      try { bucket = admin.storage().bucket("berrygood-farms-photos"); } catch (_) { /* no bucket */ }
+      const result = await productivity.refetchProductivityReports({
+        imapClient: client,
+        simpleParser,
+        db: admin.firestore(),
+        bucket,
+        apiKey,
+        mailbox: process.env.IMAP_MAILBOX || "INBOX",
+        onlyNew: true,    // cron only picks unseen messages
+        maxEmails: 50,
+      });
+      console.log(`productivityReportsCron: processed=${result.processed} skipped=${result.skipped}`);
+    } catch (err) {
+      console.error("productivityReportsCron error:", err.message);
+    } finally {
+      try { await client.logout(); } catch (_) { /* ignore */ }
+    }
+    return null;
+  });
+
 const pointageMod = require("./pointageService");
 // Keep pointageRH/pointageRH2 exported to avoid GCP deletion issues
 exports.pointageRH = pointageMod.pointageRH;
@@ -4873,7 +5104,7 @@ exports.stockManagement = functions
       }
 
       if (action === "submit-bdc" && req.method === "POST") {
-        const { id, submitted_by } = req.body;
+        const { id, submitted_by, pdf_url } = req.body;
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
         const doc = await db_firestore.collection("purchase_orders").doc(id).get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
@@ -4882,20 +5113,37 @@ exports.stockManagement = functions
           return res.status(400).json({ success: false, error: "Seul un BDC en brouillon ou rejeté peut être soumis" });
         }
         const history = current.history || [];
-        history.push({ action: "soumission", by: submitted_by || {}, at: Date.now(), comment: "" });
-        await db_firestore.collection("purchase_orders").doc(id).update({
-          status: "en_attente_chef", history, updated_at: Date.now(),
-        });
-        // WhatsApp: notify chef de ferme
+        const now = Date.now();
+        history.push({ action: "soumission", by: submitted_by || {}, at: now, comment: "" });
+        // Avocatier: pas de Chef de Ferme → soumission directe au DG
+        const skipChef = current.ferme === "Avocatier";
+        const nextStatus = skipChef ? "en_attente_dg" : "en_attente_chef";
+        if (skipChef) {
+          history.push({ action: "validation_chef_skipped", by: { profileId: "system", name: "Système" }, at: now, comment: "Ferme Avocatier — sans Chef de Ferme, soumission directe au DG" });
+        }
+        const updatePatch = { status: nextStatus, history, updated_at: now };
+        if (pdf_url) updatePatch.pdf_url = pdf_url;
+        await db_firestore.collection("purchase_orders").doc(id).update(updatePatch);
+        // WhatsApp: notify chef de ferme OU DG selon le cas
+        const { buildBdcWhatsAppSummary } = require("./notificationDispatcher");
+        const bdcForSummary = { ...current, id };
+        const bdcPdfUrl = pdf_url || current.pdf_url || null;
+        const useDocTemplate = !!bdcPdfUrl;
         dispatchNotification({
-          type: "bdc_submit", profiles: ["chef"], ferme: current.ferme,
+          type: useDocTemplate ? "bdc_submit_doc" : "bdc_submit",
+          profiles: skipChef ? ["dg"] : ["chef"],
+          ferme: skipChef ? null : current.ferme,
           data: {
             numero: current.numero || id,
             description: current.description || current.items?.[0]?.designation || "Aucune description",
             montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
-            message: `BDC ${current.numero || id} en attente de validation Chef`,
+            message: `BDC ${current.numero || id} en attente de validation ${skipChef ? "DG" : "Chef"}`,
+            bdc_id: id,
+            pdf_url: bdcPdfUrl,
+            summary: buildBdcWhatsAppSummary(bdcForSummary),
           },
           relatedDoc: `purchase_orders/${id}`,
+          ...(useDocTemplate ? { document: { link: bdcPdfUrl, filename: `BDC_${current.numero || id}.pdf` } } : {}),
         }).catch(err => console.error("WhatsApp dispatch error:", err));
         return res.json({ success: true });
       }
@@ -4916,92 +5164,13 @@ exports.stockManagement = functions
 
       if (action === "validate-bdc" && req.method === "POST") {
         const { id, decision, role, profileId, name, comment, ferme: validatorFerme } = req.body;
-        if (!id || !decision || !role) {
-          return res.status(400).json({ success: false, error: "id, decision (approve/reject), role requis" });
+        const result = await validateBdcCore({
+          id, decision, role, profileId, name, comment, ferme: validatorFerme, via: "dashboard",
+        });
+        if (!result.success) {
+          return res.status(result.statusCode || 400).json({ success: false, error: result.error });
         }
-        const doc = await db_firestore.collection("purchase_orders").doc(id).get();
-        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
-        const current = doc.data();
-        const visa = { profileId: profileId || role, name: name || role, at: Date.now(), comment: comment || "" };
-        const history = current.history || [];
-
-        if (role === "chef") {
-          if (current.status !== "en_attente_chef") {
-            return res.status(400).json({ success: false, error: "Ce BDC n'est pas en attente de validation Chef" });
-          }
-          // Chef can only validate BDC for their own farm
-          if (validatorFerme && current.ferme !== validatorFerme) {
-            return res.status(403).json({ success: false, error: "Vous ne pouvez valider que les BDC de votre ferme" });
-          }
-          if (decision === "approve") {
-            history.push({ action: "validation_chef", by: visa, at: Date.now(), comment: comment || "" });
-            await db_firestore.collection("purchase_orders").doc(id).update({
-              status: "en_attente_dg", validated_by_chef: visa, history, updated_at: Date.now(),
-            });
-            // WhatsApp: notify DG
-            dispatchNotification({
-              type: "bdc_chef_approved", profiles: ["dg"],
-              data: { numero: current.numero || id, message: `BDC ${current.numero || id} validé par Chef, en attente DG` },
-              relatedDoc: `purchase_orders/${id}`,
-            }).catch(err => console.error("WhatsApp dispatch error:", err));
-          } else {
-            history.push({ action: "rejet_chef", by: visa, at: Date.now(), comment: comment || "" });
-            await db_firestore.collection("purchase_orders").doc(id).update({
-              status: "rejete", history, updated_at: Date.now(),
-            });
-            // WhatsApp: notify achats (submitter) of rejection
-            dispatchNotification({
-              type: "bdc_rejected", profiles: ["achats"],
-              data: { numero: current.numero || id, motif: comment || "Rejeté par Chef", message: `BDC ${current.numero || id} rejeté par Chef` },
-              relatedDoc: `purchase_orders/${id}`,
-            }).catch(err => console.error("WhatsApp dispatch error:", err));
-          }
-          return res.json({ success: true });
-        }
-
-        if (role === "dg") {
-          if (current.status !== "en_attente_dg") {
-            return res.status(400).json({ success: false, error: "Ce BDC n'est pas en attente de validation DG" });
-          }
-          if (decision === "approve") {
-            const now = Date.now();
-            const isVirementMode = current.mode_paiement === "comptant_virement" || current.mode_paiement === "virement_bancaire";
-            history.push({ action: "validation_dg", by: visa, at: now, comment: comment || "" });
-            const update = { status: "valide_dg", validated_by_dg: visa, history, updated_at: now };
-            if (isVirementMode) {
-              history.push({ action: "transmission_finance", by: { profileId: "system", name: "Système" }, at: now, comment: "BDC transmis à Finance pour lancement du virement" });
-              update.notified_finance = true;
-              update.notified_finance_at = now;
-            }
-            await db_firestore.collection("purchase_orders").doc(id).update(update);
-            // WhatsApp: notify selon mode
-            const targetProfiles = isVirementMode ? ["achats", "finance"] : ["achats"];
-            dispatchNotification({
-              type: "bdc_dg_approved", profiles: targetProfiles,
-              data: {
-                numero: current.numero || id,
-                description: current.description || current.items?.[0]?.designation || "Aucune description",
-                montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
-                message: `BDC ${current.numero || id} approuvé par DG`,
-              },
-              relatedDoc: `purchase_orders/${id}`,
-            }).catch(err => console.error("WhatsApp dispatch error:", err));
-          } else {
-            history.push({ action: "rejet_dg", by: visa, at: Date.now(), comment: comment || "" });
-            await db_firestore.collection("purchase_orders").doc(id).update({
-              status: "rejete", history, updated_at: Date.now(),
-            });
-            // WhatsApp: notify achats of DG rejection
-            dispatchNotification({
-              type: "bdc_rejected", profiles: ["achats"],
-              data: { numero: current.numero || id, motif: comment || "Rejeté par DG", message: `BDC ${current.numero || id} rejeté par DG` },
-              relatedDoc: `purchase_orders/${id}`,
-            }).catch(err => console.error("WhatsApp dispatch error:", err));
-          }
-          return res.json({ success: true });
-        }
-
-        return res.status(400).json({ success: false, error: "Rôle inconnu: " + role });
+        return res.json({ success: true });
       }
 
       if (action === "send-bdc" && req.method === "POST") {
@@ -5040,38 +5209,15 @@ exports.stockManagement = functions
 
       if (action === "update-bdc-virement" && req.method === "POST") {
         const { id, decision, by } = req.body;
-        if (!id || !decision) return res.status(400).json({ success: false, error: "id et decision requis" });
-        const doc = await db_firestore.collection("purchase_orders").doc(id).get();
-        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
-        const current = doc.data();
-        if (current.mode_paiement !== "comptant_virement" && current.mode_paiement !== "virement_bancaire") {
-          return res.status(400).json({ success: false, error: "Ce BDC n'est pas payé par virement bancaire" });
-        }
-        const history = current.history || [];
-        const now = Date.now();
-        if (decision === "lancer") {
-          if (current.status !== "valide_dg") return res.status(400).json({ success: false, error: "Le BDC doit être en statut Validé DG" });
-          history.push({ action: "virement_lance", by: by || {}, at: now, comment: "" });
-          await db_firestore.collection("purchase_orders").doc(id).update({ status: "virement_lance", virement_lance_by: by || {}, virement_lance_at: now, history, updated_at: now });
-          // WhatsApp: notify finance + dg
-          dispatchNotification({
-            type: "bdc_virement_launched", profiles: ["finance", "dg"],
-            data: { numero: current.numero || id, message: `Virement lancé pour BDC ${current.numero || id}` },
-            relatedDoc: `purchase_orders/${id}`,
-          }).catch(err => console.error("WhatsApp dispatch error:", err));
-        } else if (decision === "signer") {
-          if (current.status !== "virement_lance") return res.status(400).json({ success: false, error: "Le BDC doit être en statut Virement Lancé" });
-          history.push({ action: "virement_signe", by: by || {}, at: now, comment: "" });
-          await db_firestore.collection("purchase_orders").doc(id).update({ status: "virement_signe", virement_signe_by: by || {}, virement_signe_at: now, history, updated_at: now });
-          // WhatsApp: notify achats + finance
-          dispatchNotification({
-            type: "bdc_virement_signed", profiles: ["achats", "finance"],
-            data: { numero: current.numero || id, message: `Virement signé pour BDC ${current.numero || id}` },
-            relatedDoc: `purchase_orders/${id}`,
-          }).catch(err => console.error("WhatsApp dispatch error:", err));
-        } else {
-          return res.status(400).json({ success: false, error: "Decision invalide (lancer|signer)" });
-        }
+        const result = await updateBdcVirementCore({ id, decision, by, via: "dashboard" });
+        if (!result.success) return res.status(result.statusCode || 400).json({ success: false, error: result.error });
+        return res.json({ success: true });
+      }
+
+      if (action === "upload-virement-avis" && req.method === "POST") {
+        const { id, avis_pdf_url, uploaded_by } = req.body;
+        const result = await recordVirementAvis({ id, avis_pdf_url, uploaded_by });
+        if (!result.success) return res.status(result.statusCode || 400).json({ success: false, error: result.error });
         return res.json({ success: true });
       }
 
@@ -11754,6 +11900,234 @@ exports.caisseManagement = functions
         return res.json({ success: true, weekStart, weekEnd, report });
       }
 
+      // ========== IMPORT FROM EXCEL FILE ==========
+      // Authenticated users (Achats/DG/Finance) can upload an Excel and have it parsed + imported.
+      // Format is determined by caisse_id (each caisse has its own template).
+      if (action === "import-excel-file" && req.method === "POST") {
+        const { caisse_id, file_base64, format: requestedFormat, force_overwrite } = req.body;
+        if (!caisse_id) return res.status(400).json({ success: false, error: "caisse_id requis" });
+        if (!file_base64) return res.status(400).json({ success: false, error: "file_base64 requis" });
+
+        const CAISSE_FORMATS = {
+          caisse_depenses: "depenses_monthly",
+          caisse_paie: "paie_recap",
+          caisse_depenses_bahia: "bahia_single",
+        };
+        const format = requestedFormat || CAISSE_FORMATS[caisse_id];
+        if (!format) return res.status(400).json({ success: false, error: `Aucun format Excel défini pour ${caisse_id}` });
+
+        const XLSX = require("xlsx");
+        let buffer;
+        try {
+          const b64 = file_base64.replace(/^data:[^;]+;base64,/, "");
+          buffer = Buffer.from(b64, "base64");
+        } catch (e) {
+          return res.status(400).json({ success: false, error: "file_base64 invalide" });
+        }
+
+        const wb = XLSX.read(buffer, { type: "buffer" });
+
+        const excelToISO = (serial) => {
+          if (!serial && serial !== 0) return null;
+          if (typeof serial === "string") { const d = new Date(serial); return isNaN(d) ? null : d.toISOString().slice(0, 10); }
+          const p = XLSX.SSF.parse_date_code(serial);
+          if (!p) return null;
+          return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+        };
+
+        const detectCols = (h) => {
+          const c = { date: 2, desc: 4, debit: 5, credit: 6, fournisseur: 8, numPiece: 9, numFacture: 11, ana1: 11, ana2: 12 };
+          for (let j = 0; j < h.length; j++) {
+            const cell = String(h[j] || "").toLowerCase().replace(/\s|\r|\n/g, "");
+            if (cell.includes("désignation") || cell.includes("designation")) c.desc = j;
+            else if (cell.includes("débit") || cell === "montantdebit" || cell.includes("debit")) c.debit = j;
+            else if (cell.includes("crédit") || cell.includes("credit")) c.credit = j;
+            else if (cell.includes("fournisseur") || cell.includes("beneficiaire")) c.fournisseur = j;
+            else if (cell.includes("piéce") || cell.includes("piece")) c.numPiece = j;
+            else if (cell.includes("facture")) c.numFacture = j;
+            else if (cell.includes("analytique1") || cell.includes("codeanalytique1")) c.ana1 = j;
+            else if (cell.includes("analytique2") || cell.includes("codeanalytique2")) c.ana2 = j;
+          }
+          return c;
+        };
+
+        let transactions = [];
+        let resetSoldeInitial = null;
+
+        try {
+          if (format === "depenses_monthly") {
+            const HEADER_ROW = 6;
+            for (const sheetName of wb.SheetNames) {
+              const ws = wb.Sheets[sheetName];
+              const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+              if (data.length < HEADER_ROW + 2) continue;
+              const header = data[HEADER_ROW] || [];
+              const hasDesignation = header.some(c => { const s = String(c || "").toLowerCase(); return s.includes("désignation") || s.includes("designation"); });
+              const hasDebit = header.some(c => { const s = String(c || "").toLowerCase().replace(/\s|\r|\n/g, ""); return s.includes("débit") || s.includes("debit"); });
+              if (!hasDesignation || !hasDebit) continue;
+              const cols = detectCols(header);
+              const sheetKey = sheetName.trim().replace(/\s+/g, "_").replace(/[^A-Za-z0-9_]/g, "");
+              for (let i = HEADER_ROW + 1; i < data.length; i++) {
+                const row = data[i];
+                const date = row[cols.date];
+                const debit = parseFloat(row[cols.debit]) || 0;
+                const credit = parseFloat(row[cols.credit]) || 0;
+                if (!date || (debit === 0 && credit === 0)) continue;
+                const dateISO = excelToISO(date);
+                if (!dateISO) continue;
+                const isAlim = debit > 0;
+                const montant = isAlim ? debit : credit;
+                if (montant <= 0) continue;
+                const variete = String(row[0] || "").trim();
+                const ferme = String(row[1] || "").trim();
+                transactions.push({
+                  external_id: `import_${caisse_id}_${sheetKey}_r${i}`,
+                  caisse_id, type: isAlim ? "alimentation" : "depense", montant, date: dateISO,
+                  description: String(row[cols.desc] || "").trim(),
+                  reference: String(row[cols.numPiece] || row[cols.numFacture] || `IMPORT-${sheetKey}-${i}`).trim(),
+                  code_analytique: [variete, ferme].filter(Boolean).join(" - "),
+                  fournisseur: String(row[cols.fournisseur] || "").trim(),
+                  _meta: { sheet: sheetName, row: i, debit, credit },
+                });
+              }
+            }
+          } else if (format === "paie_recap") {
+            const ws = wb.Sheets["Récap"] || wb.Sheets[wb.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+            const qzToISO = (label) => {
+              const s = String(label).trim();
+              let m = s.match(/^([12])\s*Q\s*(\d{1,2})\s*\/\s*(\d{4})$/i);
+              if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1] === "1" ? "15" : "28"}`;
+              m = s.match(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/);
+              if (m) {
+                const lastDay = new Date(m[3], parseInt(m[2]), 0).getDate();
+                return `${m[3]}-${String(parseInt(m[2])).padStart(2, "0")}-${String(Math.min(parseInt(m[1]), lastDay)).padStart(2, "0")}`;
+              }
+              return null;
+            };
+            for (let i = 6; i < data.length; i++) {
+              const row = data[i];
+              const label = String(row[0] || "").trim();
+              if (!label) continue;
+              if (label.toLowerCase().startsWith("total")) break;
+              if (label.toLowerCase().includes("liste") || label.toLowerCase().includes("somme")) break;
+              const dateISO = qzToISO(label);
+              if (!dateISO) continue;
+              const alimVir = parseFloat(row[2]) || 0;
+              const alimOmar = parseFloat(row[3]) || 0;
+              const alimRec = parseFloat(row[4]) || 0;
+              const paye = parseFloat(row[5]) || 0;
+              if (alimVir === 0 && alimOmar === 0 && alimRec === 0 && paye === 0) continue;
+              const qzKey = label.replace(/\s+/g, "").replace(/\//g, "_").replace(/[^A-Za-z0-9_]/g, "");
+              const ca = "Salaires - Paie";
+              if (alimVir > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_alim_vir`, caisse_id, type: "alimentation", montant: alimVir, date: dateISO, description: `Alimentation par virement — Quinzaine ${label}`, reference: `PAIE-VIR-${qzKey}`, code_analytique: ca, fournisseur: "Virement bancaire", _meta: { quinzaine: label, source: "alim_virement" } });
+              if (alimOmar > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_alim_omar`, caisse_id, type: "alimentation", montant: alimOmar, date: dateISO, description: `Alimentation Mr Omar — Quinzaine ${label}`, reference: `PAIE-OMR-${qzKey}`, code_analytique: ca, fournisseur: "Mr Omar", _meta: { quinzaine: label, source: "alim_omar" } });
+              if (alimRec > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_alim_rec`, caisse_id, type: "alimentation", montant: alimRec, date: dateISO, description: `Alimentation depuis caisse recettes — Quinzaine ${label}`, reference: `PAIE-REC-${qzKey}`, code_analytique: ca, fournisseur: "Caisse Recettes", _meta: { quinzaine: label, source: "alim_recettes" } });
+              if (paye > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_paye`, caisse_id, type: "depense", montant: paye, date: dateISO, description: `Paiement salaires ouvriers — Quinzaine ${label}`, reference: `PAIE-OUT-${qzKey}`, code_analytique: ca, fournisseur: "Ouvriers (paie quinzaine)", _meta: { quinzaine: label, source: "paye" } });
+            }
+            resetSoldeInitial = 0;
+          } else if (format === "bahia_single") {
+            const ws = wb.Sheets["Les dépenses"] || wb.Sheets[wb.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+            const HEADER_ROW = 5;
+            const cols = detectCols(data[HEADER_ROW] || []);
+            for (let i = HEADER_ROW + 1; i < data.length; i++) {
+              const row = data[i];
+              const date = row[cols.date];
+              const debit = parseFloat(row[cols.debit]) || 0;
+              const credit = parseFloat(row[cols.credit]) || 0;
+              if (!date || (debit === 0 && credit === 0)) continue;
+              const dateISO = excelToISO(date);
+              if (!dateISO) continue;
+              const isAlim = debit > 0;
+              const montant = isAlim ? debit : credit;
+              if (montant <= 0) continue;
+              const variete = String(row[0] || "").trim();
+              const ferme = String(row[1] || "").trim();
+              const ana1 = String(row[cols.ana1] || "").trim();
+              const ana2 = String(row[cols.ana2] || "").trim();
+              transactions.push({
+                external_id: `import_${caisse_id}_les_depenses_r${i}`,
+                caisse_id, type: isAlim ? "alimentation" : "depense", montant, date: dateISO,
+                description: String(row[cols.desc] || "").trim(),
+                reference: String(row[cols.numPiece] || row[cols.numFacture] || `IMPORT-BAHIA-${i}`).trim(),
+                code_analytique: [ana1, ana2].filter(Boolean).join(" - ") || [variete, ferme].filter(Boolean).join(" - "),
+                fournisseur: String(row[cols.fournisseur] || "").trim(),
+                _meta: { row: i, debit, credit, ana1, ana2 },
+              });
+            }
+          } else {
+            return res.status(400).json({ success: false, error: `Format inconnu: ${format}` });
+          }
+        } catch (parseErr) {
+          console.error("Erreur parsing Excel:", parseErr);
+          return res.status(400).json({ success: false, error: "Erreur parsing Excel: " + parseErr.message });
+        }
+
+        if (transactions.length === 0) {
+          return res.json({ success: false, error: "Aucune transaction trouvée dans le fichier" });
+        }
+
+        const caisseRef = db_firestore.collection("caisse_definitions").doc(caisse_id);
+        const caisseDoc = await caisseRef.get();
+        if (!caisseDoc.exists) return res.status(404).json({ success: false, error: "Caisse introuvable: " + caisse_id });
+
+        if (typeof resetSoldeInitial === "number") {
+          await caisseRef.update({ solde_initial: resetSoldeInitial, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+        }
+
+        let imported = 0, skipped = 0;
+        const BATCH_SIZE = 400;
+        for (let i = 0; i < transactions.length; i += BATCH_SIZE) {
+          const slice = transactions.slice(i, i + BATCH_SIZE);
+          const refs = slice.map(tx => db_firestore.collection("caisse_transactions").doc(tx.external_id));
+          const docs = await Promise.all(refs.map(r => r.get()));
+          const batch = db_firestore.batch();
+          slice.forEach((tx, idx) => {
+            if (docs[idx].exists && !force_overwrite) { skipped++; return; }
+            const now = Date.now();
+            batch.set(refs[idx], {
+              caisse_id: tx.caisse_id, type: tx.type, montant: tx.montant,
+              reference: tx.reference || "", description: tx.description || "",
+              code_analytique: tx.code_analytique || "", fournisseur: tx.fournisseur || "",
+              date: tx.date, status: "valide", files: [],
+              saisie_by: userInfo, soumis_par: userInfo, valide_par: userInfo,
+              soumis_at: admin.firestore.FieldValue.serverTimestamp(),
+              valide_at: admin.firestore.FieldValue.serverTimestamp(),
+              created_at: admin.firestore.FieldValue.serverTimestamp(),
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+              history: [
+                { action: "import_excel", by: userInfo, at: now, source: tx._meta || {} },
+                { action: "validation", by: userInfo, at: now },
+              ],
+              _import_meta: tx._meta || {},
+            });
+            imported++;
+          });
+          await batch.commit();
+        }
+
+        const allTxSnap = await db_firestore.collection("caisse_transactions")
+          .where("caisse_id", "==", caisse_id).where("status", "==", "valide").get();
+        let totalIn = 0, totalOut = 0;
+        allTxSnap.docs.forEach(d => {
+          const tx = d.data();
+          if (tx.type === "alimentation" || tx.type === "transfer_in") totalIn += (tx.montant || 0);
+          else if (tx.type === "depense" || tx.type === "sortie" || tx.type === "transfer_out") totalOut += (tx.montant || 0);
+        });
+        const updatedDoc = await caisseRef.get();
+        const soldeInitial = updatedDoc.data().solde_initial || 0;
+        const soldeActuel = soldeInitial + totalIn - totalOut;
+        await caisseRef.update({ solde_actuel: soldeActuel, updated_at: admin.firestore.FieldValue.serverTimestamp() });
+
+        return res.json({
+          success: true, imported, skipped, parsed: transactions.length,
+          total_transactions: allTxSnap.size,
+          solde_initial: soldeInitial, solde_actuel: soldeActuel,
+          total_in: totalIn, total_out: totalOut, format,
+        });
+      }
+
       // ========== SEED DEFAULT CAISSES ==========
       if (action === "seed-defaults" && req.method === "POST") {
         if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Accès refusé" });
@@ -12037,12 +12411,22 @@ exports.whatsappAdmin = functions
  *   Verify token: stored in config/whatsapp.webhook_verify_token
  *   Subscribe to: messages, message_status
  */
+const WA_INCOMING_TOPIC = "whatsapp-incoming";
+let _pubsubClient = null;
+function getPubSub() {
+  if (!_pubsubClient) {
+    const { PubSub } = require("@google-cloud/pubsub");
+    _pubsubClient = new PubSub();
+  }
+  return _pubsubClient;
+}
+
 exports.whatsappWebhook = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 30, memory: "256MB" })
+  .runWith({ timeoutSeconds: 15, memory: "256MB", minInstances: 1 })
   .https.onRequest(async (req, res) => {
     try {
-      // GET — webhook verification handshake
+      // GET — verification handshake
       if (req.method === "GET") {
         const mode = req.query["hub.mode"];
         const token = req.query["hub.verify_token"];
@@ -12056,81 +12440,101 @@ exports.whatsappWebhook = functions
         return res.status(403).send("Forbidden");
       }
 
-      // POST — event notification
+      // POST — publish to Pub/Sub and ack immediately
       if (req.method === "POST") {
-        const body = req.body;
-        // Always respond 200 quickly to avoid Meta retries
-        res.status(200).send("EVENT_RECEIVED");
-
-        // Process asynchronously
-        (async () => {
-          try {
-            for (const entry of (body.entry || [])) {
-              for (const change of (entry.changes || [])) {
-                const value = change.value || {};
-
-                // Handle status updates (delivered, read, failed, sent)
-                for (const status of (value.statuses || [])) {
-                  const waMessageId = status.id;
-                  const newStatus = status.status; // sent, delivered, read, failed
-                  const timestamp = parseInt(status.timestamp) * 1000;
-
-                  const snap = await db_firestore.collection("whatsapp_logs")
-                    .where("waMessageId", "==", waMessageId).limit(1).get();
-                  if (!snap.empty) {
-                    const updates = { status: newStatus, [`${newStatus}_at`]: timestamp };
-                    if (status.errors) updates.error = JSON.stringify(status.errors);
-                    await snap.docs[0].ref.update(updates);
-                  }
-                }
-
-                // Handle incoming messages (replies)
-                for (const msg of (value.messages || [])) {
-                  const from = "+" + msg.from;
-                  const messageData = {
-                    waMessageId: msg.id,
-                    from,
-                    timestamp: parseInt(msg.timestamp) * 1000,
-                    type: msg.type,
-                    receivedAt: Date.now(),
-                  };
-
-                  // Extract content based on type
-                  if (msg.type === "text") messageData.text = msg.text?.body || "";
-                  else if (msg.type === "button") messageData.text = msg.button?.text || "";
-                  else if (msg.type === "interactive") messageData.text = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || "";
-                  else if (msg.type === "image") messageData.mediaId = msg.image?.id;
-                  else if (msg.type === "document") messageData.mediaId = msg.document?.id;
-                  else if (msg.type === "audio") messageData.mediaId = msg.audio?.id;
-                  else messageData.raw = JSON.stringify(msg).slice(0, 1000);
-
-                  // Try to match phone to a user
-                  const userSnap = await db_firestore.collection("users")
-                    .where("whatsappPhone", "==", from).limit(1).get();
-                  if (!userSnap.empty) {
-                    messageData.userUid = userSnap.docs[0].id;
-                    messageData.userName = userSnap.docs[0].data().displayName || "";
-                  }
-
-                  // Capture contact name if provided
-                  const contact = (value.contacts || []).find(c => c.wa_id === msg.from);
-                  if (contact?.profile?.name) messageData.contactName = contact.profile.name;
-
-                  await db_firestore.collection("whatsapp_messages").add(messageData);
-                }
-              }
-            }
-          } catch (err) {
-            console.error("Webhook async processing error:", err);
-          }
-        })();
-        return;
+        const body = req.body || {};
+        try {
+          const data = Buffer.from(JSON.stringify(body));
+          await getPubSub().topic(WA_INCOMING_TOPIC).publishMessage({ data });
+        } catch (pubErr) {
+          console.error("Pub/Sub publish failed:", pubErr.message);
+          // Still ack 200 to prevent Meta retries — we'd rather drop than retry
+        }
+        return res.status(200).send("EVENT_RECEIVED");
       }
 
       return res.status(405).send("Method not allowed");
     } catch (err) {
       console.error("Erreur whatsappWebhook:", err);
-      // Still return 200 to prevent Meta retries
       if (!res.headersSent) res.status(200).send("ERROR_LOGGED");
+    }
+  });
+
+/**
+ * processWhatsappIncoming — Pub/Sub triggered processor for incoming Meta events.
+ *
+ * Decouples heavy work (Vision OCR, Firestore writes, Graph API sends) from the
+ * HTTP webhook ack path. Functions Gen 1 HTTP can't reliably do background work
+ * after res.send() — Pub/Sub triggers run for their full duration without freeze.
+ */
+exports.processWhatsappIncoming = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .pubsub.topic(WA_INCOMING_TOPIC)
+  .onPublish(async (message) => {
+    try {
+      const body = message.json || (message.data ? JSON.parse(Buffer.from(message.data, "base64").toString()) : {});
+      const { processIncomingEvent } = require("./whatsappProcessor");
+      await processIncomingEvent(body);
+    } catch (err) {
+      console.error("processWhatsappIncoming error:", err);
+      throw err; // Let Pub/Sub retry
+    }
+  });
+
+// =============================================
+// Netafim GrowSphere V3 — irrigation sync for ferme BAHIA
+// =============================================
+// Reads programmateur events (vannes, volumes, durées, EC/pH) and persists
+// them into the existing `irrigation_readings` collection with ferme="BAHIA"
+// so the irrigation UI surfaces BAHIA alongside F1/F5. Config lives in
+// Firestore doc `config/netafim`; daily quota and last-run cursor in
+// `config/netafim_sync`. See functions/lib/netafim/index.js for details.
+
+const netafim = require("./lib/netafim");
+
+// Daily sync — 04:00 Africa/Casablanca, well outside business hours.
+// Each run burns 1 token call + ~1-3 pages; quota cap is 25/day.
+exports.netafimSyncDaily = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
+  .pubsub.schedule("0 4 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(async () => {
+    const out = await netafim.syncBahia({ db: db_firestore, generatedBy: "cron" });
+    console.log("[netafimSyncDaily]", JSON.stringify(out));
+    return null;
+  });
+
+// Manual one-shot trigger for backfill / debugging.
+//   GET /netafimSyncOnce?from=2026-05-09&to=2026-05-16&dryRun=true
+// Protected by admin-secret header to avoid exposing the call to anyone with
+// the function URL. Set NETAFIM_ADMIN_SECRET in the runtime env (or Firebase
+// functions config) and pass it as `x-admin-secret`.
+exports.netafimSyncOnce = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    const expected = process.env.NETAFIM_ADMIN_SECRET;
+    const provided = req.get("x-admin-secret") || req.query.secret;
+    if (!expected || provided !== expected) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const dateFrom = req.query.from ? String(req.query.from) : undefined;
+    const dateTo = req.query.to ? String(req.query.to) : undefined;
+    const dryRun = req.query.dryRun === "true" || req.query.dryRun === "1";
+    try {
+      const out = await netafim.syncBahia({
+        db: db_firestore,
+        dateFrom,
+        dateTo,
+        dryRun,
+        generatedBy: "manual",
+      });
+      res.json(out);
+    } catch (err) {
+      console.error("[netafimSyncOnce]", err);
+      res.status(500).json({ error: err && err.message ? err.message : String(err) });
     }
   });

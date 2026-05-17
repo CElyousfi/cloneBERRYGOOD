@@ -8,8 +8,12 @@
 
 const { db } = require("../config/firebase");
 
+function safeCacheKey(cacheKey) {
+  return cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200);
+}
+
 async function withCache(cacheKey, ttlMs, fetchFn) {
-  const safeKey = cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200);
+  const safeKey = safeCacheKey(cacheKey);
   const docRef = db.collection("api_cache").doc(safeKey);
   try {
     const snap = await docRef.get();
@@ -27,4 +31,9 @@ async function withCache(cacheKey, ttlMs, fetchFn) {
   return result;
 }
 
-module.exports = { withCache };
+async function invalidateCache(cacheKey) {
+  const safeKey = safeCacheKey(cacheKey);
+  await db.collection("api_cache").doc(safeKey).delete().catch(() => {});
+}
+
+module.exports = { withCache, invalidateCache };

@@ -123,6 +123,285 @@ async function sendTemplateMessage(to, templateName, bodyParams = [], lang, toNa
 }
 
 /**
+ * Send interactive button message (max 3 buttons). Within 24h session only.
+ * buttons = [{ id, title }] — title max 20 chars, id max 256 chars.
+ */
+async function sendInteractiveButtons(to, bodyText, buttons) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.enabled) return { success: false, error: "WhatsApp désactivé" };
+  const phone = formatPhoneE164(to);
+  if (!phone) return { success: false, error: "Numéro invalide" };
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: phone,
+    type: "interactive",
+    interactive: {
+      type: "button",
+      body: { text: bodyText },
+      action: {
+        buttons: buttons.slice(0, 3).map(b => ({
+          type: "reply",
+          reply: { id: String(b.id).slice(0, 256), title: String(b.title).slice(0, 20) },
+        })),
+      },
+    },
+  };
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${config.phone_number_id}/messages`,
+      {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${config.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      const errMsg = data.error?.message || JSON.stringify(data);
+      console.error(`WhatsApp interactive send failed to ${phone}:`, errMsg);
+      return { success: false, error: errMsg };
+    }
+    return { success: true, waMessageId: data.messages?.[0]?.id };
+  } catch (err) {
+    console.error(`WhatsApp interactive send error to ${phone}:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Send an image message by public URL. Within 24h session only.
+ */
+async function sendImageMessage(to, imageLink, caption) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.enabled) return { success: false, error: "WhatsApp désactivé" };
+  const phone = formatPhoneE164(to);
+  if (!phone) return { success: false, error: "Numéro invalide" };
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: phone,
+    type: "image",
+    image: { link: imageLink, ...(caption ? { caption: String(caption).slice(0, 1024) } : {}) },
+  };
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${config.phone_number_id}/messages`,
+      {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${config.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) return { success: false, error: data.error?.message || "Erreur image" };
+    return { success: true, waMessageId: data.messages?.[0]?.id };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Send a document (PDF, etc.) message by public URL. Within 24h session only.
+ * @param {string} to - E.164 phone
+ * @param {string} documentLink - HTTPS URL fetchable by Meta
+ * @param {string} [filename] - Display filename (e.g. "BDC_2026-0142.pdf")
+ * @param {string} [caption] - Caption shown below the document (≤1024 chars)
+ */
+async function sendDocumentMessage(to, documentLink, filename, caption) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.enabled) return { success: false, error: "WhatsApp désactivé" };
+  const phone = formatPhoneE164(to);
+  if (!phone) return { success: false, error: "Numéro invalide" };
+
+  const document = { link: documentLink };
+  if (filename) document.filename = String(filename).slice(0, 240);
+  if (caption) document.caption = String(caption).slice(0, 1024);
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: phone,
+    type: "document",
+    document,
+  };
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${config.phone_number_id}/messages`,
+      {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${config.access_token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      const errMsg = data.error?.message || JSON.stringify(data);
+      console.error(`WhatsApp document send failed to ${phone}:`, errMsg);
+      return { success: false, error: errMsg };
+    }
+    return { success: true, waMessageId: data.messages?.[0]?.id };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Upload a media file (PDF, image, etc.) to Meta and return a media_id.
+ * The id is valid 30 days and can be used as header.document.id in a template send,
+ * which is the only way to attach a file to a business-initiated (non-session) message.
+ *
+ * @param {Buffer} buffer - File bytes
+ * @param {string} mimeType - e.g. "application/pdf"
+ * @param {string} filename - Display filename used by Meta
+ * @returns {{id: string} | {error: string}}
+ */
+async function uploadMedia(buffer, mimeType, filename) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.enabled) return { error: "WhatsApp désactivé" };
+  if (!buffer || !buffer.length) return { error: "Buffer vide" };
+
+  try {
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", mimeType);
+    form.append("file", new Blob([buffer], { type: mimeType }), filename || "file.bin");
+
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${config.phone_number_id}/media`,
+      {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${config.access_token}` },
+        body: form,
+      }
+    );
+    const data = await response.json();
+    if (!response.ok || !data.id) {
+      return { error: data.error?.message || `Upload HTTP ${response.status}` };
+    }
+    return { id: data.id };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Send a template message with a DOCUMENT header referencing either an uploaded
+ * media_id or a public link. Use this for business-initiated messages that need
+ * a PDF attachment (outside 24h window). The template must be registered with a
+ * header of format DOCUMENT.
+ *
+ * @param {string|object} mediaIdOrRef - Either a media_id string, or { mediaId } / { link }.
+ */
+async function sendTemplateMessageWithDocument(to, templateName, mediaIdOrRef, filename, bodyParams = [], lang, toName) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.enabled) {
+    return { success: false, error: "WhatsApp non configuré ou désactivé" };
+  }
+
+  const phone = formatPhoneE164(to);
+  if (!phone) return { success: false, error: "Numéro invalide: " + to };
+
+  // Normalize the document reference: accept legacy string media_id or { mediaId | link }.
+  let docRef;
+  if (typeof mediaIdOrRef === "string") {
+    docRef = { id: mediaIdOrRef };
+  } else if (mediaIdOrRef && mediaIdOrRef.mediaId) {
+    docRef = { id: mediaIdOrRef.mediaId };
+  } else if (mediaIdOrRef && mediaIdOrRef.link) {
+    docRef = { link: mediaIdOrRef.link };
+  } else {
+    return { success: false, error: "Référence document manquante (mediaId ou link)" };
+  }
+  if (filename) docRef.filename = String(filename).slice(0, 240);
+
+  const language = lang || config.default_language || "fr";
+  const components = [
+    {
+      type: "header",
+      parameters: [{ type: "document", document: docRef }],
+    },
+  ];
+  if (bodyParams.length > 0) {
+    const sanitized = bodyParams.map(text => {
+      const str = String(text ?? "").trim();
+      return { type: "text", text: str || "—" };
+    });
+    components.push({ type: "body", parameters: sanitized });
+  }
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: phone,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: language },
+      components,
+    },
+  };
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${config.phone_number_id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${config.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      const errMsg = data.error?.message || JSON.stringify(data);
+      console.error(`WhatsApp doc-template send failed [${templateName}] to ${phone}:`, errMsg);
+      await logMessage(phone, templateName, null, "failed", errMsg, null, bodyParams, toName);
+      return { success: false, error: errMsg };
+    }
+    const waMessageId = data.messages?.[0]?.id || null;
+    await logMessage(phone, templateName, null, "sent", null, waMessageId, bodyParams, toName);
+    return { success: true, waMessageId };
+  } catch (err) {
+    console.error(`WhatsApp doc-template send error [${templateName}] to ${phone}:`, err.message);
+    await logMessage(phone, templateName, null, "failed", err.message, null, null, toName);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Download media by mediaId via Graph API (2-step: resolve URL, then GET bytes).
+ * Returns { buffer, mimeType, sha256 } or { error }.
+ */
+async function downloadMedia(mediaId) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.access_token) return { error: "WhatsApp non configuré" };
+
+  try {
+    const metaRes = await fetch(`https://graph.facebook.com/v21.0/${mediaId}`, {
+      headers: { "Authorization": `Bearer ${config.access_token}` },
+    });
+    const meta = await metaRes.json();
+    if (!metaRes.ok || !meta.url) {
+      return { error: meta.error?.message || "Media lookup failed" };
+    }
+    const binRes = await fetch(meta.url, {
+      headers: { "Authorization": `Bearer ${config.access_token}` },
+    });
+    if (!binRes.ok) return { error: `Media download HTTP ${binRes.status}` };
+    const arrBuf = await binRes.arrayBuffer();
+    return {
+      buffer: Buffer.from(arrBuf),
+      mimeType: meta.mime_type || binRes.headers.get("content-type") || "application/octet-stream",
+      sha256: meta.sha256 || null,
+    };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
  * Send a free-form text message (only within 24h session window).
  */
 async function sendTextMessage(to, text) {
@@ -181,7 +460,13 @@ async function resolveRecipientsForProfile(profileId, ferme) {
     if (ferme && profileId === "chef" && d.ferme && d.ferme !== ferme) continue;
     const phone = formatPhoneE164(d.whatsappPhone);
     if (phone) {
-      recipients.push({ uid: doc.id, displayName: d.displayName || "", phone });
+      recipients.push({
+        uid: doc.id,
+        displayName: d.displayName || "",
+        phone,
+        profileId: d.profileId,
+        ferme: d.ferme || null,
+      });
     }
   }
   return recipients;
@@ -221,6 +506,12 @@ module.exports = {
   formatPhoneE164,
   sendTemplateMessage,
   sendTextMessage,
+  sendInteractiveButtons,
+  sendImageMessage,
+  sendDocumentMessage,
+  uploadMedia,
+  sendTemplateMessageWithDocument,
+  downloadMedia,
   resolveRecipientsForProfile,
   logMessage,
   clearConfigCache,
