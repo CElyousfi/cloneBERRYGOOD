@@ -7844,7 +7844,17 @@
                             });
                             return { salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, cout: tSalaire + tTransport + tPrime + tCharges, kg: tKg, nb: wList.length };
                         };
+                        const todayStrEarly = new Date().toISOString().slice(0, 10);
+                        const recolteDateEarly = selectedDate || todayStrEarly;
                         const trendData = allDates.map(date => {
+                            // Pour la date sélectionnée en Jour mode : reprendre EXACTEMENT les valeurs du KPI
+                            // (source recolte plus complète & dédupliquée). Évite divergence visuelle entre Coût Net KPI et barre du jour.
+                            if (!isQuinzaineMode && date === recolteDateEarly) {
+                                const dhKg = totalKg > 0 ? Math.round(totalCout / totalKg * 100) / 100 : null;
+                                const dhKgLog = totalKg > 0 ? Math.round(totalLogCout / totalKg * 100) / 100 : null;
+                                const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
+                                return { date, label, salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, cout: totalCout, kg: totalKg, dhKg, dhKgLog, nb: nbOuvriers };
+                            }
                             const dayRows = varieteFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
                             const logRows = varieteFilteredEq.filter(r => r.jour === date && logOps.test(r.operation || ''));
                             const agg = aggregateRows(dayRows);
