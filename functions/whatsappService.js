@@ -34,7 +34,11 @@ async function getWhatsAppConfig() {
  */
 function formatPhoneE164(phone) {
   if (!phone) return null;
-  let cleaned = phone.replace(/[\s\-\.\(\)]/g, "");
+  // Strip whitespace, separators, et caractères Unicode invisibles
+  // (zero-width U+200B-U+200D, BIDI marks U+200E-U+200F + U+202A-U+202E,
+  // Arabic letter mark U+061C, word joiner U+2060, BOM U+FEFF) qu'iOS/macOS
+  // ou claviers arabes injectent autour des numéros copiés-collés.
+  let cleaned = phone.replace(/[\s\-.()؜​-‏‪-‮⁠﻿]/g, "");
   // Remove leading 00
   if (cleaned.startsWith("00")) cleaned = "+" + cleaned.slice(2);
   // Add + if starts with 212
