@@ -1546,17 +1546,20 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           });
 
           // Enrich with production data (Tracabilite_recolte) — more accurate kg
-          try {
-            const prodDates = [...new Set(rows.map(r => r.jour))];
-            let enrichedCount = 0, addedCount = 0;
-            for (const date of prodDates) {
+          // Per-date try/catch : un date corrompu ne doit pas invalider les 16 autres.
+          const prodDates = [...new Set(rows.map(r => r.jour))].sort();
+          let enrichedCount = 0, addedCount = 0;
+          const perDateStats = [];
+          for (const date of prodDates) {
+            try {
               const prodDoc = await db_firestore.collection("prod_tracabilite_recolte").doc(date).get();
-              if (!prodDoc.exists) continue;
+              if (!prodDoc.exists) { perDateStats.push(`${date}:noDoc`); continue; }
               const prodRows = prodDoc.data().rows || [];
-              if (prodRows.length === 0) continue;
+              if (prodRows.length === 0) { perDateStats.push(`${date}:emptyRows`); continue; }
               const prodMap = {};
               prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
               // Override kg for existing worker-days
+              let perDateEnriched = 0;
               rows.forEach(r => {
                 if (r.jour !== date) return;
                 const prod = prodMap[(r.matricule || "").toUpperCase()];
@@ -1564,11 +1567,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
                   r.kg = prod.totalKg;
                   r.variete = prod.variete || r.variete;
                   enrichedCount++;
+                  perDateEnriched++;
                 }
               });
               // Add workers in prod but missing from pointage for this date
               const existingMats = new Set(rows.filter(r => r.jour === date).map(r => (r.matricule || "").toUpperCase()));
-              const periode = rows.find(r => r.jour === date)?.periode || targetPeriodes[0];
+              const periode = rows.find(r => r.jour === date)?.periode || (targetPeriodes && targetPeriodes[0]) || "";
+              let perDateAdded = 0;
               prodRows.forEach(pr => {
                 if (!existingMats.has((pr.matricule || "").toUpperCase()) && pr.totalKg > 0) {
                   rows.push({
@@ -1578,13 +1583,16 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
                     culture: "", parcelle: pr.refParcelle || "", operation: "Récolte (prod)",
                   });
                   addedCount++;
+                  perDateAdded++;
                 }
               });
+              perDateStats.push(`${date}:e${perDateEnriched}/a${perDateAdded}/prodRows${prodRows.length}`);
+            } catch (dateErr) {
+              perDateStats.push(`${date}:ERR(${dateErr.message})`);
+              console.warn(`[recolte-equipes] enrichment failed for ${date}:`, dateErr.message);
             }
-            console.log(`[recolte-equipes] Prod enrichment: ${enrichedCount} overridden, ${addedCount} added, ${prodDates.length} dates checked`);
-          } catch (prodErr) {
-            console.warn("[recolte-equipes] Prod data unavailable:", prodErr.message);
           }
+          console.log(`[recolte-equipes] Prod enrichment: ${enrichedCount} overridden, ${addedCount} added, ${prodDates.length} dates checked. Per-date: ${perDateStats.join(' | ')}`);
 
           return { success: true, periodes, rows };
         }
