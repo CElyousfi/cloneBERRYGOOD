@@ -842,11 +842,31 @@
             const cacheKey = ferme.lat + '_' + ferme.lon + '_' + ferme.altitude + '_basic';
             const cached = _meteoblueCache[cacheKey];
             if (cached && (Date.now() - cached.ts) < METEO_CACHE_TTL) return cached.data;
-            const url = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h_agro-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+            const base = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+            const agroHourly = 'https://my.meteoblue.com/packages/agro-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
             try {
-                const res = await fetch(url);
+                const res = await fetch(base);
                 if (!res.ok) throw new Error('API error ' + res.status);
                 const data = await res.json();
+                // Best-effort: enrich data_1h with shortwave_radiation + evapotranspiration if the agro-1h
+                // package is included in the subscription. Silently skip on failure — the rest of the
+                // tab keeps working with daily ETo / no hourly radiation.
+                try {
+                    const res2 = await fetch(agroHourly);
+                    if (res2.ok) {
+                        const extra = await res2.json();
+                        if (extra && extra.data_1h) {
+                            data.data_1h = Object.assign({}, data.data_1h || {}, {
+                                shortwave_radiation: extra.data_1h.shortwave_radiation || extra.data_1h.shortwaveradiation,
+                                evapotranspiration: extra.data_1h.evapotranspiration,
+                            });
+                        }
+                    } else {
+                        console.info('Meteoblue agro-1h not available (' + res2.status + ') — fallback sans radiation/ETo horaires.');
+                    }
+                } catch(e2) {
+                    console.info('Meteoblue agro-1h fetch failed, fallback:', e2);
+                }
                 _meteoblueCache[cacheKey] = { data, ts: Date.now() };
                 return data;
             } catch(e) {
@@ -23610,6 +23630,11 @@ ${rejetHtml}
             const vpdArr = MC ? MC.computeHourlyVPD(tempArr, rhArr) : tempArr.map(function(){ return 0; });
             const cumRadArr = MC ? MC.computeCumRadiation(swArr) : swArr.map(function(){ return 0; });
 
+            // Availability flags — if Meteoblue agro-1h is not included in the subscription,
+            // shortwave_radiation / evapotranspiration arrays will be missing → all-zero series.
+            const hasRadiation = swArr.some(function(v){ return v > 0; });
+            const hasEto = etoArr.some(function(v){ return v > 0; });
+
             // Synthese cards
             const tMax = tempArr.length ? Math.max.apply(null, tempArr) : 0;
             const tMin = tempArr.length ? Math.min.apply(null, tempArr) : 0;
@@ -23703,8 +23728,8 @@ ${rejetHtml}
                 },
                 {
                     color: '#E74C3C', label: 'Radiation accumulée',
-                    value: 'Accumulation quotidienne : ' + Math.round(cumRad) + ' J/cm²',
-                    delta: fmtDelta(cumRad, prevCumRad, ' J/cm²', 0),
+                    value: hasRadiation ? ('Accumulation quotidienne : ' + Math.round(cumRad) + ' J/cm²') : 'Non disponible (package agro-1h non inclus)',
+                    delta: hasRadiation ? fmtDelta(cumRad, prevCumRad, ' J/cm²', 0) : null,
                 },
                 {
                     color: '#8E44AD', label: 'Déficit de pression de vapeur (VPD)',
@@ -23715,8 +23740,10 @@ ${rejetHtml}
                 },
                 {
                     color: '#2E7D32', label: 'Évapotranspiration (ETo)',
-                    value: etoPeak.idx >= 0 ? ('Le plus élevé à ' + hours[etoPeak.idx].heure + ' — Total : ' + etoSum.toFixed(2) + ' mm') : '—',
-                    delta: fmtDelta(etoSum, prevEtoSum, 'mm', 2),
+                    value: hasEto
+                        ? (etoPeak.idx >= 0 ? ('Le plus élevé à ' + hours[etoPeak.idx].heure + ' — Total : ' + etoSum.toFixed(2) + ' mm') : '—')
+                        : ('Total journalier : ' + (targetDay.eto != null ? targetDay.eto.toFixed(2) : '—') + ' mm (horaire indispo)'),
+                    delta: hasEto ? fmtDelta(etoSum, prevEtoSum, 'mm', 2) : null,
                 },
             ];
 
@@ -23740,8 +23767,14 @@ ${rejetHtml}
                         </button>
                     </div>
                 }>
-                    <div style={{fontSize:12, color:'var(--gray-500)', marginBottom:8}}>
-                        Prévisions extérieures, {dayLabel} — {fermeInfo.nom}
+                    <div style={{fontSize:12, color:'var(--gray-500)', marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                        <span>Prévisions extérieures, {dayLabel} — {fermeInfo.nom}</span>
+                        {!(hasRadiation && hasEto) && (
+                            <span title="Radiation horaire et ETo horaire nécessitent le package Meteoblue agro-1h" style={{fontSize:10, padding:'3px 8px', borderRadius:8, background:'rgba(243,156,18,0.1)', color:'var(--orange)', fontWeight:600}}>
+                                <i className="fa-solid fa-circle-info" style={{marginRight:4}}></i>
+                                {!hasRadiation && !hasEto ? 'Radiation & ETo horaires indisponibles' : (!hasRadiation ? 'Radiation horaire indisponible' : 'ETo horaire indisponible')}
+                            </span>
+                        )}
                     </div>
                     <svg viewBox={'0 0 ' + W + ' ' + H} style={{width:'100%', height:'auto', display:'block'}}>
                         {/* Grid + left °C axis */}
@@ -23754,13 +23787,13 @@ ${rejetHtml}
                             </g>;
                         })}
                         {/* Right J/cm² axis */}
-                        {[0,1,2,3,4].map(function(i) {
+                        {hasRadiation && [0,1,2,3,4].map(function(i) {
                             const v = radMax * (1 - i/4);
                             const y = pad.t + innerH * (i/4);
                             return <text key={'r'+i} x={W - pad.r + 8} y={y + 4} textAnchor="start" fontSize="10" fill="var(--gray-400)">{Math.round(v)}</text>;
                         })}
                         <text x={pad.l - 36} y={pad.t + innerH/2} fontSize="10" fill="var(--gray-400)" transform={'rotate(-90 ' + (pad.l - 36) + ' ' + (pad.t + innerH/2) + ')'}>°C</text>
-                        <text x={W - pad.r + 30} y={pad.t + innerH/2} fontSize="10" fill="var(--gray-400)" transform={'rotate(-90 ' + (W - pad.r + 30) + ' ' + (pad.t + innerH/2) + ')'}>J/cm²</text>
+                        {hasRadiation && <text x={W - pad.r + 30} y={pad.t + innerH/2} fontSize="10" fill="var(--gray-400)" transform={'rotate(-90 ' + (W - pad.r + 30) + ' ' + (pad.t + innerH/2) + ')'}>J/cm²</text>}
 
                         {/* X axis ticks every 2h */}
                         {hours.map(function(h, i) {
@@ -23771,14 +23804,14 @@ ${rejetHtml}
                         })}
 
                         {/* ETo bars (anchored at bottom) */}
-                        {hours.map(function(h, i) {
+                        {hasEto && hours.map(function(h, i) {
                             const bH = etoBarH(etoArr[i]);
                             if (bH <= 0) return null;
                             return <rect key={'b'+i} x={xAt(i) - barW/2} y={pad.t + innerH - bH} width={barW} height={bH} fill="#2E7D32" opacity="0.85" rx="1"/>;
                         })}
 
                         {/* Cumulative radiation (red) */}
-                        <path d={radPath} fill="none" stroke="#E74C3C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        {hasRadiation && <path d={radPath} fill="none" stroke="#E74C3C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>}
                         {/* VPD (purple) */}
                         <path d={vpdPath} fill="none" stroke="#8E44AD" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         {/* Temperature (light blue) */}
