@@ -1501,6 +1501,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ RECOLTE-EQUIPES: harvest per worker per day for team tracking ------
       if (action === "recolte-equipes") {
+        // shouldCache : skip cache write si la réponse est dégradée (aucune ligne avec kg>0 alors qu'on a chargé des lignes).
+        // Évite de servir 5 min un cache vide quand prod_tracabilite_recolte était temporairement indisponible.
+        const shouldCacheRecolteEquipes = (r) => {
+          if (!r || !r.success || !Array.isArray(r.rows) || r.rows.length === 0) return true;
+          return r.rows.some(row => (row.kg || 0) > 0);
+        };
         const cached = await withCache("pointage_recolte_equipes", 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
@@ -1622,7 +1628,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
         });
         return { success: true, periodes, rows };
-        }); // end withCache
+        }, shouldCacheRecolteEquipes); // end withCache
         return res.json(cached);
       }
 

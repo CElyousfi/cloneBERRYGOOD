@@ -12,7 +12,7 @@ function safeCacheKey(cacheKey) {
   return cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200);
 }
 
-async function withCache(cacheKey, ttlMs, fetchFn) {
+async function withCache(cacheKey, ttlMs, fetchFn, shouldCache) {
   const safeKey = safeCacheKey(cacheKey);
   const docRef = db.collection("api_cache").doc(safeKey);
   try {
@@ -27,7 +27,10 @@ async function withCache(cacheKey, ttlMs, fetchFn) {
     }
   } catch (e) { /* cache miss, continue */ }
   const result = await fetchFn();
-  docRef.set({ _payload: JSON.stringify(result), _cachedAt: Date.now() }).catch(() => {});
+  // shouldCache(result) optionnel : skip cache write si la réponse est dégradée (ex: enrichissement échoué).
+  if (typeof shouldCache !== "function" || shouldCache(result)) {
+    docRef.set({ _payload: JSON.stringify(result), _cachedAt: Date.now() }).catch(() => {});
+  }
   return result;
 }
 

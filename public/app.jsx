@@ -7472,6 +7472,8 @@
             React.useEffect(() => {
                 loadData();
                 cachedFetch('/api/pointage-rh?action=dates').then(json => { if (json.success) setDates(json.dates || []); }).catch(() => {});
+                // Bypass localStorage cache pour recolte-equipes (données fréquemment mises à jour, évite chart vide sur stale cache)
+                invalidateCache('recolte-equipes');
                 cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json => {
                     if (json.success) { setEquipeRows(json.rows || []); setEquipePeriodes(json.periodes || []); }
                 }).catch(err => console.warn(err)).finally(() => setEquipeLoading(false));
