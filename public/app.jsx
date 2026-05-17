@@ -7416,6 +7416,8 @@
             const [viewMode, setViewMode] = useState('jour'); // 'jour' or 'quinzaine'
             const [selectedQuinz, setSelectedQuinz] = useState('');
             const [showTrend, setShowTrend] = useState(true);
+            const [histRange, setHistRange] = useState(10); // 10 ou 30 jours
+            const [histOffset, setHistOffset] = useState(0); // 0 = fenêtre la plus récente
             const [varieteFilter, setVarieteFilter] = useState('');
             const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
 
@@ -7839,7 +7841,12 @@
                         const allEqRows = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
                         const cultureFilteredEq = cultureFilter ? allEqRows.filter(r => /myrtille/i.test(r.culture || resolveCulture(r)) === (cultureFilter === 'Myrtille')) : allEqRows;
                         const varieteFilteredEq = varieteFilter ? cultureFilteredEq.filter(r => r.variete === varieteFilter) : cultureFilteredEq;
-                        const allDates = [...new Set(varieteFilteredEq.map(r => r.jour))].sort().reverse().slice(0, 10).reverse();
+                        // Pagination : fenêtre de histRange jours, décalée par histOffset
+                        const allDatesDesc = [...new Set(varieteFilteredEq.map(r => r.jour))].sort().reverse();
+                        const winStart = histOffset * histRange;
+                        const allDates = allDatesDesc.slice(winStart, winStart + histRange).reverse();
+                        const hasOlder = allDatesDesc.length > winStart + histRange;
+                        const hasNewer = histOffset > 0;
                         const logOps = /caporal|conditionnement|encadrement|chargement/i;
                         const aggregateRows = (rows) => {
                             const byW = {};
@@ -7897,11 +7904,24 @@
                         const LOG_HATCH = `repeating-linear-gradient(45deg, ${COLORS.logistique}, ${COLORS.logistique} 4px, rgba(71,85,105,0.45) 4px, rgba(71,85,105,0.45) 8px)`;
                         return (
                             <div className="fade-in" style={{background:'var(--gray-50)',borderRadius:12,padding:16,marginBottom:16,border:'1px solid var(--gray-200)'}}>
-                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
                                     <h4 style={{margin:0,fontSize:14,fontWeight:700,color:'var(--berry)'}}>
-                                        <i className="fa-solid fa-chart-bar" style={{marginRight:6}}></i>Historique DH/Kg — 10 derniers jours
+                                        <i className="fa-solid fa-chart-bar" style={{marginRight:6}}></i>
+                                        Historique DH/Kg — {histOffset === 0 ? `${histRange} derniers jours` : (allDates.length > 0 ? `du ${new Date(allDates[0]+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})} au ${new Date(allDates[allDates.length-1]+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}` : 'aucune donnée')}
                                     </h4>
-                                    <button onClick={() => setShowTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16}}><i className="fa-solid fa-xmark"></i></button>
+                                    <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                                        <button onClick={() => setHistOffset(o => o + 1)} disabled={!hasOlder} title="Fenêtre précédente" style={{background:hasOlder?'white':'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,color:hasOlder?'var(--gray-700)':'var(--gray-400)',cursor:hasOlder?'pointer':'not-allowed'}}>
+                                            <i className="fa-solid fa-chevron-left"></i>
+                                        </button>
+                                        <button onClick={() => setHistOffset(o => Math.max(0, o - 1))} disabled={!hasNewer} title="Fenêtre suivante" style={{background:hasNewer?'white':'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,color:hasNewer?'var(--gray-700)':'var(--gray-400)',cursor:hasNewer?'pointer':'not-allowed'}}>
+                                            <i className="fa-solid fa-chevron-right"></i>
+                                        </button>
+                                        <div style={{display:'flex',gap:0,marginLeft:6}}>
+                                            <button onClick={() => { setHistRange(10); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderRadius:'6px 0 0 6px',fontSize:11,fontWeight:600,background:histRange===10?'var(--berry)':'white',color:histRange===10?'white':'var(--gray-600)',cursor:'pointer'}}>10 j</button>
+                                            <button onClick={() => { setHistRange(30); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderLeft:'none',borderRadius:'0 6px 6px 0',fontSize:11,fontWeight:600,background:histRange===30?'var(--berry)':'white',color:histRange===30?'white':'var(--gray-600)',cursor:'pointer'}}>30 j</button>
+                                        </div>
+                                        <button onClick={() => setShowTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16,marginLeft:4}}><i className="fa-solid fa-xmark"></i></button>
+                                    </div>
                                 </div>
                                 {trendData.length === 0 ? (
                                     <div style={{textAlign:'center',padding:20,color:'var(--gray-400)',fontSize:12}}>Pas de données disponibles</div>
