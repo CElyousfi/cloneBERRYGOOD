@@ -1511,8 +1511,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
-          // Only load current + previous periode (not ALL dates)
-          const targetPeriodes = periodes.slice(0, 2);
+          // Load ~7 derniers mois (14 quinzaines) pour permettre la navigation historique 6 mois côté UI.
+          const targetPeriodes = periodes.slice(0, 14);
           const allRows = [];
           for (const p of targetPeriodes) {
             const pRows = await getPointageRowsForPeriode(p);
