@@ -23664,7 +23664,7 @@ ${rejetHtml}
             }
 
             // Chart geometry
-            const W = 900, H = 360, pad = { t: 24, b: 36, l: 50, r: 56 };
+            const W = 900, H = 360, pad = { t: 24, b: 36, l: 78, r: 56 };
             const innerW = W - pad.l - pad.r;
             const innerH = H - pad.t - pad.b;
             const N = hours.length || 24;
@@ -23777,13 +23777,15 @@ ${rejetHtml}
                         )}
                     </div>
                     <svg viewBox={'0 0 ' + W + ' ' + H} style={{width:'100%', height:'auto', display:'block'}}>
-                        {/* Grid + left °C axis */}
+                        {/* Grid + left axes: °C (blue, intérieur) + VPD kPa (violet, extérieur) */}
                         {[0,1,2,3,4].map(function(i) {
-                            const v = tLo + (tHi - tLo) * (1 - i/4);
+                            const tVal = tLo + (tHi - tLo) * (1 - i/4);
+                            const vpdVal = vpdMax * (1 - i/4);
                             const y = pad.t + innerH * (i/4);
                             return <g key={'g'+i}>
                                 <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="var(--gray-100)" strokeWidth="1"/>
-                                <text x={pad.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="var(--gray-400)">{Math.round(v)}</text>
+                                <text x={pad.l - 36} y={y + 4} textAnchor="end" fontSize="10" fill="#8E44AD" fontWeight="600">{vpdVal.toFixed(1)}</text>
+                                <text x={pad.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#5DADE2" fontWeight="600">{Math.round(tVal)}</text>
                             </g>;
                         })}
                         {/* Right J/cm² axis */}
@@ -23792,7 +23794,8 @@ ${rejetHtml}
                             const y = pad.t + innerH * (i/4);
                             return <text key={'r'+i} x={W - pad.r + 8} y={y + 4} textAnchor="start" fontSize="10" fill="var(--gray-400)">{Math.round(v)}</text>;
                         })}
-                        <text x={pad.l - 36} y={pad.t + innerH/2} fontSize="10" fill="var(--gray-400)" transform={'rotate(-90 ' + (pad.l - 36) + ' ' + (pad.t + innerH/2) + ')'}>°C</text>
+                        <text x={pad.l - 50} y={pad.t + innerH/2} fontSize="10" fill="#8E44AD" fontWeight="700" transform={'rotate(-90 ' + (pad.l - 50) + ' ' + (pad.t + innerH/2) + ')'}>kPa</text>
+                        <text x={pad.l - 22} y={pad.t + innerH/2} fontSize="10" fill="#5DADE2" fontWeight="700" transform={'rotate(-90 ' + (pad.l - 22) + ' ' + (pad.t + innerH/2) + ')'}>°C</text>
                         {hasRadiation && <text x={W - pad.r + 30} y={pad.t + innerH/2} fontSize="10" fill="var(--gray-400)" transform={'rotate(-90 ' + (W - pad.r + 30) + ' ' + (pad.t + innerH/2) + ')'}>J/cm²</text>}
 
                         {/* X axis ticks every 2h */}
@@ -23816,6 +23819,21 @@ ${rejetHtml}
                         <path d={vpdPath} fill="none" stroke="#8E44AD" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         {/* Temperature (light blue) */}
                         <path d={tempPath} fill="none" stroke="#5DADE2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        {/* T° max & T° min annotations directement sur la courbe */}
+                        {(function() {
+                            if (!tempArr.length) return null;
+                            var iMax = 0, iMin = 0;
+                            for (var k = 1; k < tempArr.length; k++) {
+                                if (tempArr[k] > tempArr[iMax]) iMax = k;
+                                if (tempArr[k] < tempArr[iMin]) iMin = k;
+                            }
+                            return <g>
+                                <circle cx={xAt(iMax)} cy={yT(tempArr[iMax])} r="4" fill="#5DADE2" stroke="white" strokeWidth="1.5"/>
+                                <text x={xAt(iMax)} y={yT(tempArr[iMax]) - 9} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1B7AB8" stroke="white" strokeWidth="3" paintOrder="stroke">{Math.round(tempArr[iMax])}°</text>
+                                <circle cx={xAt(iMin)} cy={yT(tempArr[iMin])} r="4" fill="#5DADE2" stroke="white" strokeWidth="1.5"/>
+                                <text x={xAt(iMin)} y={yT(tempArr[iMin]) + 16} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1B7AB8" stroke="white" strokeWidth="3" paintOrder="stroke">{Math.round(tempArr[iMin])}°</text>
+                            </g>;
+                        })()}
                     </svg>
 
                     {/* 4 synthesis cards */}
