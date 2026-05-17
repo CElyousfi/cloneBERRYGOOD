@@ -1501,11 +1501,22 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ RECOLTE-EQUIPES: harvest per worker per day for team tracking ------
       if (action === "recolte-equipes") {
-        // shouldCache : skip cache write si la réponse est dégradée (aucune ligne avec kg>0 alors qu'on a chargé des lignes).
-        // Évite de servir 5 min un cache vide quand prod_tracabilite_recolte était temporairement indisponible.
+        // shouldCache : refuse le cache si la majorité des dates n'ont aucun kg>0.
+        // some() était trop laxiste : 5 dates anciennes OK + 25 dates récentes à kg=0 passait → cache servi 5 min avec chart vide.
+        // Heuristique : >= 70% des dates doivent avoir au moins une ligne kg>0.
         const shouldCacheRecolteEquipes = (r) => {
           if (!r || !r.success || !Array.isArray(r.rows) || r.rows.length === 0) return true;
-          return r.rows.some(row => (row.kg || 0) > 0);
+          const byDate = {};
+          r.rows.forEach(row => {
+            const d = row.jour;
+            if (!byDate[d]) byDate[d] = { total: 0, withKg: 0 };
+            byDate[d].total++;
+            if ((row.kg || 0) > 0) byDate[d].withKg++;
+          });
+          const dates = Object.keys(byDate);
+          if (dates.length === 0) return true;
+          const goodDates = dates.filter(d => byDate[d].withKg > 0).length;
+          return (goodDates / dates.length) >= 0.7;
         };
         const cached = await withCache("pointage_recolte_equipes", 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
