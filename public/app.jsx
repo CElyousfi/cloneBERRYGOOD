@@ -7415,7 +7415,7 @@
             const [expandedEquipe, setExpandedEquipe] = useState(null);
             const [viewMode, setViewMode] = useState('jour'); // 'jour' or 'quinzaine'
             const [selectedQuinz, setSelectedQuinz] = useState('');
-            const [showTrend, setShowTrend] = useState(false);
+            const [showTrend, setShowTrend] = useState(true);
             const [varieteFilter, setVarieteFilter] = useState('');
             const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
 
@@ -7825,15 +7825,16 @@
                             const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
                             return { date, label, salaire: agg.salaire, transport: agg.transport, prime: agg.prime, charges: agg.charges, cout: agg.cout, kg: agg.kg, dhKg, dhKgLog, nb: agg.nb };
                         });
+                        // maxDhKg basé sur le Coût Net (brut + logistique) pour que les barres tiennent dans le graphique
                         const maxDhKg = Math.max(
-                            ...trendData.filter(d => d.dhKg !== null).map(d => d.dhKg),
-                            ...trendData.filter(d => d.dhKgLog !== null && d.dhKgLog > 0).map(d => d.dhKgLog),
+                            ...trendData.map(d => (d.dhKg || 0) + (d.dhKgLog || 0)),
                             1
                         );
                         const BAR_H = 200;
                         const todayStr = new Date().toISOString().slice(0, 10);
                         const recolteDate = selectedDate || todayStr;
-                        const COLORS = { salaire: '#7c3aed', transport: '#0ea5e9', prime: '#f59e0b', charges: '#f87171' };
+                        const COLORS = { salaire: '#7c3aed', transport: '#0ea5e9', prime: '#f59e0b', charges: '#f87171', logistique: '#475569' };
+                        const LOG_HATCH = `repeating-linear-gradient(45deg, ${COLORS.logistique}, ${COLORS.logistique} 4px, rgba(71,85,105,0.45) 4px, rgba(71,85,105,0.45) 8px)`;
                         return (
                             <div className="fade-in" style={{background:'var(--gray-50)',borderRadius:12,padding:16,marginBottom:16,border:'1px solid var(--gray-200)'}}>
                                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
@@ -7844,72 +7845,51 @@
                                 </div>
                                 {trendData.length === 0 ? (
                                     <div style={{textAlign:'center',padding:20,color:'var(--gray-400)',fontSize:12}}>Pas de données disponibles</div>
-                                ) : (() => {
-                                    // Overlay SVG : ligne pointillée logistique (DH/Kg logistique par jour)
-                                    const SVG_W = 1000;
-                                    // Hauteur réservée sous les barres pour les labels date/nb (~21 px) — sert de baseline.
-                                    const BASELINE_Y = BAR_H + 19;
-                                    const polylinePts = trendData
-                                        .map((d, i) => {
-                                            if (d.dhKgLog === null || d.dhKgLog === 0) return null;
-                                            const x = ((i + 0.5) / trendData.length) * SVG_W;
-                                            const logH = (d.dhKgLog / maxDhKg) * BAR_H;
-                                            return `${x.toFixed(2)},${(BASELINE_Y - logH).toFixed(2)}`;
-                                        })
-                                        .filter(Boolean)
-                                        .join(' ');
-                                    return (
+                                ) : (
                                     <div>
-                                        <div style={{position:'relative',padding:'0 4px'}}>
-                                            <div style={{display:'flex',alignItems:'flex-end',gap:6,height:BAR_H + 40}}>
-                                                {trendData.map((d, i) => {
-                                                    const isToday = d.date === recolteDate;
-                                                    const totalBarH = d.dhKg !== null ? (d.dhKg / maxDhKg) * BAR_H : 0;
-                                                    const pSal = d.cout > 0 ? d.salaire / d.cout : 0;
-                                                    const pTra = d.cout > 0 ? d.transport / d.cout : 0;
-                                                    const pPri = d.cout > 0 ? d.prime / d.cout : 0;
-                                                    const pCha = d.cout > 0 ? d.charges / d.cout : 0;
-                                                    const hSal = totalBarH * pSal;
-                                                    const hTra = totalBarH * pTra;
-                                                    const hPri = totalBarH * pPri;
-                                                    const hCha = totalBarH * pCha;
-                                                    return (
-                                                        <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                                                            <span style={{fontSize:11,fontWeight:700,color:dhColor(d.dhKg)}}>{d.dhKg !== null ? d.dhKg.toFixed(1) : '-'}</span>
-                                                            <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
-                                                            <div style={{width:'100%',maxWidth:48,display:'flex',flexDirection:'column',borderRadius:'6px 6px 0 0',overflow:'hidden',border:isToday?'2px solid var(--berry)':'none'}}>
-                                                                <div style={{height:hCha,background:COLORS.charges,transition:'height 0.3s'}} title={`Charges: ${fmt(d.charges)} DH`}></div>
-                                                                <div style={{height:hPri,background:COLORS.prime,transition:'height 0.3s'}} title={`Prime: ${fmt(d.prime)} DH`}></div>
-                                                                <div style={{height:hTra,background:COLORS.transport,transition:'height 0.3s'}} title={`Transport: ${fmt(d.transport)} DH`}></div>
-                                                                <div style={{height:hSal,background:COLORS.salaire,transition:'height 0.3s'}} title={`Salaire: ${fmt(d.salaire)} DH`}></div>
-                                                            </div>
-                                                            <span style={{fontSize:9,color:isToday?'var(--berry)':'var(--gray-500)',fontWeight:isToday?700:400}}>{d.label}</span>
-                                                            <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.nb} ouv.</span>
+                                        <div style={{display:'flex',alignItems:'flex-end',gap:6,height:BAR_H + 40,padding:'0 4px'}}>
+                                            {trendData.map((d, i) => {
+                                                const isToday = d.date === recolteDate;
+                                                const dhKgNet = (d.dhKg || 0) + (d.dhKgLog || 0);
+                                                const netBarH = dhKgNet > 0 ? (dhKgNet / maxDhKg) * BAR_H : 0;
+                                                const hLog = d.dhKgLog > 0 ? (d.dhKgLog / maxDhKg) * BAR_H : 0;
+                                                const totalBarH = d.dhKg !== null ? (d.dhKg / maxDhKg) * BAR_H : 0;
+                                                const pSal = d.cout > 0 ? d.salaire / d.cout : 0;
+                                                const pTra = d.cout > 0 ? d.transport / d.cout : 0;
+                                                const pPri = d.cout > 0 ? d.prime / d.cout : 0;
+                                                const pCha = d.cout > 0 ? d.charges / d.cout : 0;
+                                                const hSal = totalBarH * pSal;
+                                                const hTra = totalBarH * pTra;
+                                                const hPri = totalBarH * pPri;
+                                                const hCha = totalBarH * pCha;
+                                                return (
+                                                    <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(dhKgNet || null)}}>{dhKgNet > 0 ? dhKgNet.toFixed(1) : '-'}</span>
+                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
+                                                        <div style={{width:'100%',maxWidth:48,display:'flex',flexDirection:'column',borderRadius:'6px 6px 0 0',overflow:'hidden',border:isToday?'2px solid var(--berry)':'none'}}>
+                                                            <div style={{height:hCha,background:COLORS.charges,transition:'height 0.3s'}} title={`Charges: ${fmt(d.charges)} DH`}></div>
+                                                            <div style={{height:hPri,background:COLORS.prime,transition:'height 0.3s'}} title={`Prime: ${fmt(d.prime)} DH`}></div>
+                                                            <div style={{height:hTra,background:COLORS.transport,transition:'height 0.3s'}} title={`Transport: ${fmt(d.transport)} DH`}></div>
+                                                            <div style={{height:hSal,background:COLORS.salaire,transition:'height 0.3s'}} title={`Salaire: ${fmt(d.salaire)} DH`}></div>
+                                                            {hLog > 0 && (
+                                                                <div style={{height:hLog,background:LOG_HATCH,transition:'height 0.3s'}} title={`Logistique: ${d.dhKgLog.toFixed(2)} DH/Kg`}></div>
+                                                            )}
                                                         </div>
-                                                    );
-                                                })}
-                                            </div>
-                                            {polylinePts && (
-                                                <svg viewBox={`0 0 ${SVG_W} ${BAR_H + 40}`} preserveAspectRatio="none" style={{position:'absolute',top:0,left:4,right:4,width:'calc(100% - 8px)',height:'100%',pointerEvents:'none',overflow:'visible'}}>
-                                                    <polyline points={polylinePts} fill="none" stroke="var(--berry)" strokeWidth="2" strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
-                                                </svg>
-                                            )}
+                                                        <span style={{fontSize:9,color:isToday?'var(--berry)':'var(--gray-500)',fontWeight:isToday?700:400}}>{d.label}</span>
+                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.nb} ouv.</span>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
                                         <div style={{display:'flex',justifyContent:'center',gap:16,marginTop:14,fontSize:10,color:'var(--gray-600)',flexWrap:'wrap'}}>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.salaire,marginRight:4,verticalAlign:'middle'}}></span>Salaire de Base</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.transport,marginRight:4,verticalAlign:'middle'}}></span>Transport</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.prime,marginRight:4,verticalAlign:'middle'}}></span>Prime Récolte</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges Sociales (40 DH)</span>
-                                            <span>
-                                                <svg width="24" height="6" style={{verticalAlign:'middle',marginRight:4}}>
-                                                    <line x1="0" y1="3" x2="24" y2="3" stroke="var(--berry)" strokeWidth="2" strokeDasharray="6 4" />
-                                                </svg>
-                                                Part logistique (DH/Kg)
-                                            </span>
+                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:LOG_HATCH,marginRight:4,verticalAlign:'middle'}}></span>Part Logistique</span>
                                         </div>
                                     </div>
-                                    );
-                                })()}
+                                )}
                             </div>
                         );
                     })()}
@@ -8054,34 +8034,6 @@
                         </div>
                     </Panel>
 
-                    {/* ---- Par Ouvrier ---- */}
-                    <Panel title={`Détail par Ouvrier (${sorted.length})`} icon="fa-list" defaultOpen={false}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>#</th><th>Matricule</th><th>Nom</th><th>Équipe</th><th>Ferme</th><th>Culture</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {sorted.map(r => (
-                                    <tr key={r.matricule+r.rank}>
-                                        <td>{r.rank}</td>
-                                        <td style={{fontWeight:600,fontSize:10}}>{r.matricule}</td>
-                                        <td>{r.nom}</td>
-                                        <td>{r.equipe}</td>
-                                        <td>{r.ferme}</td>
-                                        <td>{r.culture}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.kg)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.salaire)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.transport)}</td>
-                                        <td style={{textAlign:'right'}}>{Math.round(r.prime)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.charges)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(r.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(r.dhParKg),fontSize:13}}>{fmt2(r.dhParKg)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td></td><td></td><td></td><td></td><td></td><td></td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td></tr></tfoot>
-                        </table>
-                        </div>
-                    </Panel>
                 </div>
             );
         }
