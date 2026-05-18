@@ -50808,6 +50808,10 @@ ${rejetHtml}
             const [toast, setToast] = useState(null); // { message, kind: 'success' | 'error' }
             const reassignDialogRef = React.useRef(null);
 
+            // Sprint 2 — Tri par colonne. Default: date desc (chronologique inverse).
+            // Cycle au clic header : null → asc → desc → null
+            const [sortConfig, setSortConfig] = useState({ key: 'date', dir: 'desc' });
+
             // Use prop if non-empty, else fall back to locally-fetched caisses
             const caisses = (caissesProp && caissesProp.length > 0) ? caissesProp : localCaisses;
 
@@ -50874,8 +50878,50 @@ ${rejetHtml}
                 }, 0);
             }, [filteredByType, anomaliesByTx]);
 
-            // For commit 6 — sorting comes in commit 8. Until then displayedTransactions = controlFiltered.
-            const displayedTransactions = controlFiltered;
+            // Sprint 2 — Tri stable par colonne via sortConfig.
+            // Stable sort via tiebreaker sur l'index original (Array.sort est stable depuis ES2019
+            // mais on garde le tiebreaker explicite pour la robustesse).
+            const sortedTransactions = useMemo(() => {
+                if (!sortConfig || !sortConfig.key || !sortConfig.dir) return controlFiltered;
+                const sign = sortConfig.dir === 'asc' ? 1 : -1;
+                const key = sortConfig.key;
+                // Build comparator value selector per column key
+                const getKey = (tx) => {
+                    if (key === 'date')            return tx.date || '';
+                    if (key === 'caisse_id')       return (caisses.find((c) => c.id === tx.caisse_id) || {}).nom || tx.caisse_id || '';
+                    if (key === 'type')            return (TXN_TYPE_LABELS[tx.type] || {}).label || tx.type || '';
+                    if (key === 'reference')       return tx.reference || '';
+                    if (key === 'description')     return (tx.description || '').toLowerCase();
+                    if (key === 'code_analytique') return (tx.code_analytique || '').toLowerCase();
+                    if (key === 'montant')         return Number(tx.montant) || 0;
+                    if (key === 'status')          return (STATUS_LABELS[tx.status] || {}).label || tx.status || '';
+                    return '';
+                };
+                const indexed = controlFiltered.map((tx, i) => ({ tx, i, k: getKey(tx) }));
+                indexed.sort((a, b) => {
+                    if (a.k < b.k) return -1 * sign;
+                    if (a.k > b.k) return  1 * sign;
+                    return a.i - b.i; // tiebreaker stable
+                });
+                return indexed.map((x) => x.tx);
+            }, [controlFiltered, sortConfig, caisses]);
+
+            const displayedTransactions = sortedTransactions;
+
+            // Helper : cycle on header click — null → asc → desc → null
+            const cycleSort = (key) => {
+                setSortConfig((cur) => {
+                    if (!cur || cur.key !== key) return { key, dir: 'asc' };
+                    if (cur.dir === 'asc')        return { key, dir: 'desc' };
+                    if (cur.dir === 'desc')       return { key: null, dir: null };
+                    return { key, dir: 'asc' };
+                });
+            };
+            // Helper : indicator glyph per column
+            const sortIndicator = (key) => {
+                if (!sortConfig || sortConfig.key !== key || !sortConfig.dir) return '⇅';
+                return sortConfig.dir === 'asc' ? '↑' : '↓';
+            };
 
             // Totaux footer (recalculés sur la liste affichée)
             const totals = useMemo(
@@ -51320,14 +51366,30 @@ ${rejetHtml}
                                                 aria-label="Sélectionner toutes les transactions visibles"
                                                 style={{cursor:'pointer'}} />
                                         </th>
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Date</th>
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Caisse</th>
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Type</th>
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Réf.</th>
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Description</th>
-                                        <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Analytique</th>
-                                        <th style={{padding:'10px 12px',textAlign:'right',fontWeight:600,color:'var(--gray-600)'}}>Montant</th>
-                                        <th style={{padding:'10px 12px',textAlign:'center',fontWeight:600,color:'var(--gray-600)'}}>Statut</th>
+                                        {(() => {
+                                            const baseTh = { padding:'10px 12px', fontWeight:600, color:'var(--gray-600)', cursor:'pointer', userSelect:'none' };
+                                            const cols = [
+                                                { key: 'date',            label: 'Date',        align: 'left'  },
+                                                { key: 'caisse_id',       label: 'Caisse',      align: 'left'  },
+                                                { key: 'type',            label: 'Type',        align: 'left'  },
+                                                { key: 'reference',       label: 'Réf.',        align: 'left'  },
+                                                { key: 'description',     label: 'Description', align: 'left'  },
+                                                { key: 'code_analytique', label: 'Analytique',  align: 'left'  },
+                                                { key: 'montant',         label: 'Montant',     align: 'right' },
+                                                { key: 'status',          label: 'Statut',      align: 'center'},
+                                            ];
+                                            return cols.map((c) => (
+                                                <th key={c.key} data-sort-key={c.key}
+                                                    onClick={() => cycleSort(c.key)}
+                                                    title={`Trier par ${c.label}`}
+                                                    style={{ ...baseTh, textAlign: c.align }}>
+                                                    {c.label}
+                                                    <span style={{marginLeft:6,fontSize:10,color: (sortConfig && sortConfig.key === c.key && sortConfig.dir) ? 'var(--berry)' : 'var(--gray-400)'}}>
+                                                        {sortIndicator(c.key)}
+                                                    </span>
+                                                </th>
+                                            ));
+                                        })()}
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Saisi par</th>
                                     </tr></thead>
                                     <tbody>
