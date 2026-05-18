@@ -333,7 +333,7 @@ function parseLiquidationXlsx(xlsxBuffer) {
     ETE: "Eterna", REG: "Regina", ROS: "Rosita",
   };
 
-  // Parse a single sheet and return { week, rows, summary }
+  // Parse a single sheet and return { sheetName, week, rows, summary }
   function parseSheet(sheetName) {
     const sheet = workbook.Sheets[sheetName];
     const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
@@ -341,6 +341,7 @@ function parseLiquidationXlsx(xlsxBuffer) {
     const weekMatch = sheetName.match(/W\s*(\d+)/i);
     const week = weekMatch ? parseInt(weekMatch[1]) : null;
     const rows = [];
+    const _sheetName = sheetName;
 
     let headerIdx = -1;
     for (let i = 0; i < allRows.length; i++) {
@@ -398,7 +399,7 @@ function parseLiquidationXlsx(xlsxBuffer) {
       base: Math.round(rows.reduce((s, r) => s + r.gsNet, 0) * 100) / 100,
     };
 
-    return { week, rows, summary };
+    return { sheetName: _sheetName, week, rows, summary };
   }
 
   // Parse ALL sheets (multi-week workbook support)
@@ -412,13 +413,13 @@ function parseLiquidationXlsx(xlsxBuffer) {
 
   // If only one sheet with data, return single result (backward compatible)
   if (sheets.length <= 1) {
-    const single = sheets[0] || { week: null, rows: [], summary: {} };
-    return { week: single.week, period: null, liquidationNumber: null, rows: single.rows, summary: single.summary, _multiSheets: null };
+    const single = sheets[0] || { sheetName: null, week: null, rows: [], summary: {} };
+    return { sheetName: single.sheetName, week: single.week, period: null, liquidationNumber: null, rows: single.rows, summary: single.summary, _multiSheets: null };
   }
 
   // Multiple sheets: return first sheet as main result + attach all sheets
   const first = sheets[0];
-  return { week: first.week, period: null, liquidationNumber: null, rows: first.rows, summary: first.summary, _multiSheets: sheets };
+  return { sheetName: first.sheetName, week: first.week, period: null, liquidationNumber: null, rows: first.rows, summary: first.summary, _multiSheets: sheets };
 }
 
 /**
@@ -1516,21 +1517,71 @@ exports.analyzeEmail = functions
                 console.error("Failed to write admin_alerts entry for unmapped ranch:", alertErr);
               }
             }
+            const rejectData = {
+              receiptId: receiptId || expDocId || "—",
+              dateTime,
+              variety: report.variety || report.berryType || "—",
+              ranch: ferme,
+              weightKg: report.batchWeight ? String(Math.round(report.batchWeight)) : "0",
+              reason: defects || (report.overallResult === "FAIL" ? "Qualité en dessous du seuil" : "Rejet"),
+              message: `Expédition ${receiptId || expDocId} rejetée (${report.overallResult})`,
+            };
+            const relatedDoc = `expeditions/${expDocId}`;
+
+            // Text-only template → chef de la ferme concernée + qualité.
+            // Driscoll's = F1 (R-BERRY) ou F5 (SARL 3) uniquement.
+            // Si ranch inconnu, fallback : prévenir les deux chefs.
+            const chefProfiles = fermeCode === "F1" ? ["chef_f1"]
+              : fermeCode === "F5" ? ["chef_f5"]
+              : ["chef_f1", "chef_f5"];
+            const textProfiles = [...chefProfiles, "qualite"];
+            console.log(`[expedition_rejected] dispatch profils=${JSON.stringify(textProfiles)} ferme=${fermeCode || "?"} receipt=${receiptId || expDocId}`);
             dispatchNotification({
               type: "expedition_rejected",
-              profiles: ["chef", "qualite", "dg"],
-              ferme: fermeCode || undefined, // undefined = no farm filter (all chefs as fallback)
-              data: {
-                receiptId: receiptId || expDocId || "—",
-                dateTime,
-                variety: report.variety || report.berryType || "—",
-                ranch: ferme,
-                weightKg: report.batchWeight ? String(Math.round(report.batchWeight)) : "0",
-                reason: defects || (report.overallResult === "FAIL" ? "Qualité en dessous du seuil" : "Rejet"),
-                message: `Expédition ${receiptId || expDocId} rejetée (${report.overallResult})`,
-              },
-              relatedDoc: `expeditions/${expDocId}`,
-            }).catch(err => console.error("WhatsApp expedition rejected dispatch error:", err));
+              profiles: textProfiles,
+              data: rejectData,
+              relatedDoc,
+            }).catch(err => console.error("WhatsApp expedition rejected (text) dispatch error:", err));
+
+            // DG: try to send the PDF d'inspection en pièce jointe via the doc-variant
+            // template. Fall back to the text template if no PDF / upload fails.
+            (async () => {
+              const whatsapp = require("./whatsappService");
+              let mediaId = null;
+              if (emailData.pdfBase64) {
+                try {
+                  const pdfBuffer = Buffer.from(emailData.pdfBase64, "base64");
+                  const filename = `PFQ-${receiptId || expDocId}.pdf`;
+                  const upload = await whatsapp.uploadMedia(pdfBuffer, "application/pdf", filename);
+                  if (upload.id) {
+                    mediaId = upload.id;
+                  } else {
+                    console.warn(`[expedition_rejected_doc] upload échoué (${upload.error}) — fallback texte pour DG`);
+                  }
+                } catch (e) {
+                  console.error("[expedition_rejected_doc] erreur upload PDF:", e.message);
+                }
+              } else {
+                console.log("[expedition_rejected_doc] pas de pdfBase64 sur l'email — fallback texte pour DG");
+              }
+
+              if (mediaId) {
+                await dispatchNotification({
+                  type: "expedition_rejected_doc",
+                  profiles: ["dg"],
+                  data: rejectData,
+                  relatedDoc,
+                  document: { mediaId, filename: `PFQ-${receiptId || expDocId}.pdf` },
+                });
+              } else {
+                await dispatchNotification({
+                  type: "expedition_rejected",
+                  profiles: ["dg"],
+                  data: rejectData,
+                  relatedDoc,
+                });
+              }
+            })().catch(err => console.error("WhatsApp expedition rejected (DG doc) dispatch error:", err));
           } catch (err) {
             console.error("Failed to dispatch expedition rejected notification:", err);
           }
@@ -1784,17 +1835,31 @@ exports.analyzeEmail = functions
         // Build list of liquidation sheets to process
         const sheetsToProcess = liquidation._multiSheets || [liquidation];
 
-        // Detect fruit type from subject: RASP = Framboise, BLUE = Myrtille
+        // Multi-signal fruit detection (subject + sheetName + variety codes in rows).
+        // Per-liq because a single email may contain mixed sheets.
+        // Myrtille variety codes: COR, CAS, BRE, ETE, REG, ROS (cf. varMap at line ~328).
+        const MYRTILLE_CODES = new Set(["COR", "CAS", "BRE", "ETE", "REG", "ROS"]);
+        const FRAMBOISE_CODES = new Set(["REY", "MAR", "YAZ", "ADE"]);
         const subjectUpper = (emailData.subject || "").toUpperCase();
-        let fruitType = "framboise"; // default
-        let fruitCode = "RASP";
-        if (/BLUE|MYRTILLE|BLUEBERR/i.test(subjectUpper)) {
-          fruitType = "myrtille";
-          fruitCode = "BLUE";
-        } else if (/RASP|FRAMBOISE|RASPBERRY/i.test(subjectUpper)) {
-          fruitType = "framboise";
-          fruitCode = "RASP";
-        }
+        const subjectIsMyrtille = /BLUE|MYRTILLE|BLUEBERR/i.test(subjectUpper);
+        const subjectIsFramboise = /RASP|FRAMBOISE|RASPBERRY/i.test(subjectUpper);
+        const detectFruit = (liq) => {
+          const sn = (liq.sheetName || "").toUpperCase();
+          if (/BLUE|MYRTILLE|BLUEBERR/i.test(sn)) return { fruitType: "myrtille", fruitCode: "BLUE" };
+          if (/RASP|FRAMBOISE|RASPBERRY/i.test(sn)) return { fruitType: "framboise", fruitCode: "RASP" };
+          let nMyr = 0, nFra = 0;
+          for (const r of (liq.rows || [])) {
+            const c = r.varietyCode;
+            if (!c) continue;
+            if (MYRTILLE_CODES.has(c)) nMyr++;
+            else if (FRAMBOISE_CODES.has(c)) nFra++;
+          }
+          if (nMyr > nFra) return { fruitType: "myrtille", fruitCode: "BLUE" };
+          if (nFra > nMyr) return { fruitType: "framboise", fruitCode: "RASP" };
+          if (subjectIsMyrtille) return { fruitType: "myrtille", fruitCode: "BLUE" };
+          if (subjectIsFramboise) return { fruitType: "framboise", fruitCode: "RASP" };
+          return { fruitType: "framboise", fruitCode: "RASP" };
+        };
 
         // Parse the LIQUIDATION summary PDF (contains Fruit Advance / Crop Advance / Net Payable / etc.)
         // The mail body is just a French cover note, no financial data — all totals live in the PDF.
@@ -1845,6 +1910,9 @@ exports.analyzeEmail = functions
             if (!liq.period && pdfSummary.period) liq.period = pdfSummary.period;
             Object.assign(liq.summary, pdfSummary.summary || {});
           }
+
+          // Per-liq fruit detection (sheet name + variety codes + subject) — emails may mix sheets.
+          const { fruitType, fruitCode } = detectFruit(liq);
 
           // Stable docId: LIQ-{RASP|BLUE}-W{NN}-{YYYY} — upserts cleanly on re-runs.
           // The APIV number lives in the doc body (liquidationNumber field).
@@ -2682,6 +2750,44 @@ exports.emailAnalysis = functions
         return res.json({ success: true, count: liquidations.length, liquidations });
       }
 
+      // --- LIQUIDATION FORECAST: extract from Driscoll's slide via Claude Vision ---
+      if (action === "liquidation-forecast-extract") {
+        if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST uniquement" });
+        const { fruitCode, imageBase64, mediaType } = req.body || {};
+        const forecastService = require("./forecastService");
+        const result = await forecastService.extractForecastFromImage(fruitCode, imageBase64, mediaType);
+        if (!result.success) {
+          const status = result.error === "LLM_UNAVAILABLE" || result.error === "Réponse Claude non parsable" ? 502
+                       : result.error === "Clé API Anthropic non configurée" ? 500 : 400;
+          return res.status(status).json(result);
+        }
+        return res.json(result);
+      }
+
+      if (action === "liquidation-forecast-save") {
+        if (req.method !== "POST") return res.status(405).json({ success: false, error: "POST uniquement" });
+        const { fruitCode, year, weeks, imageBase64, mediaType } = req.body || {};
+        const forecastService = require("./forecastService");
+        const result = await forecastService.saveForecast(fruitCode, year, weeks, {
+          updatedBy: authUser.email || authUser.uid || "unknown",
+          imageBase64,
+          mediaType,
+        });
+        if (!result.success) return res.status(400).json(result);
+        return res.json(result);
+      }
+
+      if (action === "liquidation-forecast-list") {
+        const yr = parseInt(req.query.year) || new Date().getFullYear();
+        const codes = ["RASP", "BLUE"];
+        const forecasts = [];
+        for (const code of codes) {
+          const snap = await db.collection("liquidation_forecasts").doc(`FORECAST-${code}-${yr}`).get();
+          if (snap.exists) forecasts.push({ id: snap.id, ...snap.data() });
+        }
+        return res.json({ success: true, year: yr, forecasts });
+      }
+
       // --- VARIETY-MAPPING: Get or update batch code → variety name mapping ---
       if (action === "variety-mapping") {
         const docRef = db.collection("email_config").doc("variety_mapping");
@@ -2952,6 +3058,71 @@ exports.emailAnalysis = functions
         }
 
         return res.json({ success: true, message: `${processed} Weekly Quality Report(s) re-fetched`, processed });
+      }
+
+      // ==================================================================
+      // PRODUCTIVITY REPORTS (Driscoll's "Grower productivity report")
+      // ==================================================================
+
+      // --- PRODUCTIVITY-LIST: list available weeks + per-week summary ---
+      if (action === "productivity-list") {
+        const limit = parseInt(req.query.limit || "52");
+        const snap = await db.collection("productivity_reports")
+          .orderBy("week", "desc").limit(limit).get();
+        const items = snap.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            campaign: data.campaign || null,
+            week: data.week || null,
+            receivedAt: data.receivedAt || null,
+            sourceSubject: data.sourceSubject || null,
+            treatmentsCount: Array.isArray(data.treatments) ? data.treatments.length : 0,
+            summary: data.summary || null,
+            parseWarnings: data.parseWarnings || [],
+          };
+        });
+        return res.json({ success: true, items });
+      }
+
+      // --- PRODUCTIVITY-DETAIL: full week document ---
+      if (action === "productivity-detail") {
+        const id = req.query.id || req.body?.id;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        const doc = await db.collection("productivity_reports").doc(id).get();
+        if (!doc.exists) return res.status(404).json({ success: false, error: "Not found" });
+        return res.json({ success: true, report: { id: doc.id, ...doc.data() } });
+      }
+
+      // --- REFETCH-PRODUCTIVITY: scan IMAP for Driscoll's productivity emails,
+      //     parse PDF via Claude, enrich with F1/F5 ranks, store in Firestore.
+      //     Idempotent on {campaign}_W{week}: overwrites if same key.
+      if (action === "refetch-productivity") {
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "ANTHROPIC_API_KEY manquante" });
+
+        const productivity = require("./lib/productivity");
+        const client = createImapClient();
+
+        try {
+          await client.connect();
+          let bucket = null;
+          try { bucket = admin.storage().bucket("berrygood-farms-photos"); } catch (_) { /* no bucket */ }
+
+          const result = await productivity.refetchProductivityReports({
+            imapClient: client,
+            simpleParser,
+            db,
+            bucket,
+            apiKey,
+            mailbox: process.env.IMAP_MAILBOX || "INBOX",
+            onlyNew: req.query.onlyNew === "1",
+            maxEmails: parseInt(req.query.maxEmails || "200"),
+          });
+          return res.json({ success: true, ...result });
+        } finally {
+          try { await client.logout(); } catch (_) { /* ignore */ }
+        }
       }
 
       // --- REFETCH-QUALITY: Re-fetch Quality Inspection Reports from BULK .eml emails ---

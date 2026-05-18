@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "productivity_reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "campaign", "order": "ASCENDING" },
+        { "fieldPath": "week", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "evolution_requests",
       "queryScope": "COLLECTION",
       "fields": [
@@ -112,6 +120,24 @@
       ]
     },
     {
+      "collectionGroup": "security_envois_registre",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ferme", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "security_incidents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ferme", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "security_tunnel_photos",
       "queryScope": "COLLECTION",
       "fields": [
@@ -151,6 +177,39 @@
       "fields": [
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "caisse_transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "caisse_id", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "caisse_transactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tresorerie_items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "actif", "order": "ASCENDING" },
+        { "fieldPath": "dateEcheance", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tresorerie_items",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "dateEcheance", "order": "ASCENDING" }
       ]
     }
   ],

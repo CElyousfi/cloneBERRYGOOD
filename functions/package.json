@@ -11,6 +11,7 @@
     "test:prod": "BASE_URL=https://berrygood-farms-dashboard.web.app node ../tests/test-workflows.js",
     "test:irrigation": "node --test 'lib/irrigation/__tests__/*.test.js'",
     "test:phenology": "node --test 'lib/phenology/__tests__/*.test.js'",
+    "test:netafim": "node --test 'lib/netafim/__tests__/*.test.js'",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
+    "@google-cloud/pubsub": "^5.3.0",
     "cheerio": "^1.0.0",
     "cors": "^2.8.5",
     "firebase-admin": "^11.11.0",

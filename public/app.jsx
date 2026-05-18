@@ -372,6 +372,7 @@
         const NAV_ITEMS_RH = [
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
+            { id: 'campagne', label: 'Campagne', icon: 'fa-chart-line' },
             { id: 'pointage', label: 'Pointage du jour', icon: 'fa-clock' },
             { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck' },
             { id: 'recolte', label: 'Récolte', icon: 'fa-basket-shopping' },
@@ -524,6 +525,7 @@
         const NAV_ITEMS_CHEF_AVO = [
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
+            { id: 'campagne', label: 'Campagne', icon: 'fa-chart-line' },
             { id: 'pointage', label: 'Pointage du jour', icon: 'fa-clock' },
             { id: 'hors_recolte', label: 'Hors Récolte', icon: 'fa-trowel' },
             { id: 'chef_agronomie', label: 'Agronomie', icon: 'fa-seedling' },
@@ -840,11 +842,31 @@
             const cacheKey = ferme.lat + '_' + ferme.lon + '_' + ferme.altitude + '_basic';
             const cached = _meteoblueCache[cacheKey];
             if (cached && (Date.now() - cached.ts) < METEO_CACHE_TTL) return cached.data;
-            const url = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+            const base = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+            const agroHourly = 'https://my.meteoblue.com/packages/agro-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
             try {
-                const res = await fetch(url);
+                const res = await fetch(base);
                 if (!res.ok) throw new Error('API error ' + res.status);
                 const data = await res.json();
+                // Best-effort: enrich data_1h with shortwave_radiation + evapotranspiration if the agro-1h
+                // package is included in the subscription. Silently skip on failure — the rest of the
+                // tab keeps working with daily ETo / no hourly radiation.
+                try {
+                    const res2 = await fetch(agroHourly);
+                    if (res2.ok) {
+                        const extra = await res2.json();
+                        if (extra && extra.data_1h) {
+                            data.data_1h = Object.assign({}, data.data_1h || {}, {
+                                shortwave_radiation: extra.data_1h.shortwave_radiation || extra.data_1h.shortwaveradiation,
+                                evapotranspiration: extra.data_1h.evapotranspiration,
+                            });
+                        }
+                    } else {
+                        console.info('Meteoblue agro-1h not available (' + res2.status + ') — fallback sans radiation/ETo horaires.');
+                    }
+                } catch(e2) {
+                    console.info('Meteoblue agro-1h fetch failed, fallback:', e2);
+                }
                 _meteoblueCache[cacheKey] = { data, ts: Date.now() };
                 return data;
             } catch(e) {
@@ -991,21 +1013,31 @@
 
             var horaire = [];
             var horaireParJour = {};
+            var horaire24ParJour = {};
             if (hourData.time) {
                 hourData.time.forEach(function(t, i) {
                     var parts = t.includes('T') ? t.split('T') : t.split(' ');
                     var dateKey = parts[0];
                     var h = parseInt(parts[1]);
                     var picto = hourData.pictocode ? parsePictocode(hourData.pictocode[i]) : { icon: 'fa-sun', condition: 'Ensoleillé' };
+                    var rawTemp = hourData.temperature ? hourData.temperature[i] : 0;
+                    var rawRH = hourData.relativehumidity ? hourData.relativehumidity[i] : 50;
+                    var rawSW = hourData.shortwave_radiation ? hourData.shortwave_radiation[i] : 0;
+                    var rawEto = hourData.evapotranspiration ? hourData.evapotranspiration[i] : 0;
                     var entry = {
                         heure: String(h).padStart(2,'0') + ':00',
-                        temp: Math.round(hourData.temperature ? hourData.temperature[i] : 0),
-                        humidity: Math.round(hourData.relativehumidity ? hourData.relativehumidity[i] : 50),
+                        hour: h,
+                        temp: Math.round(rawTemp),
+                        tempRaw: rawTemp,
+                        humidity: Math.round(rawRH),
+                        humidityRaw: rawRH,
                         vent: Math.round(hourData.windspeed ? hourData.windspeed[i] : 0),
                         precip: Math.round((hourData.precipitation ? hourData.precipitation[i] : 0) * 10) / 10,
+                        radiation: rawSW,
+                        eto: rawEto,
                         icon: h < 7 || h > 19 ? 'fa-moon' : picto.icon,
                         condition: picto.condition,
-                        feltTemp: Math.round(hourData.felttemperature ? hourData.felttemperature[i] : (hourData.temperature ? hourData.temperature[i] : 0)),
+                        feltTemp: Math.round(hourData.felttemperature ? hourData.felttemperature[i] : rawTemp),
                     };
                     // Horaire aujourd'hui (6h-20h) pour le graphique principal
                     if (dateKey === todayStr && h >= 6 && h <= 20) {
@@ -1016,6 +1048,9 @@
                         if (!horaireParJour[dateKey]) horaireParJour[dateKey] = [];
                         horaireParJour[dateKey].push(entry);
                     }
+                    // Horaire 24h par jour pour le bloc Prévision extérieure
+                    if (!horaire24ParJour[dateKey]) horaire24ParJour[dateKey] = [];
+                    horaire24ParJour[dateKey].push(entry);
                 });
             }
 
@@ -1027,7 +1062,7 @@
             if (previsions.some(function(p) { return p.uv >= 9; })) alertes.push({ type: 'uv', niveau: 'warning', icon: 'fa-sun', color: 'var(--red)', titre: 'Indice UV Élevé', message: 'Indice UV très élevé (' + Math.max.apply(null, previsions.map(function(p){return p.uv;})) + '). Protection ouvriers en plein champ.', jours: previsions.filter(function(p){return p.uv >= 9;}).map(function(p){return p.dateLong;}).join(', ') });
             if (previsions.some(function(p) { return p.precip >= 10; })) alertes.push({ type: 'pluie', niveau: 'warning', icon: 'fa-cloud-showers-heavy', color: 'var(--blue)', titre: 'Pluie Importante', message: 'Précipitations de ' + Math.max.apply(null, previsions.map(function(p){return p.precip;})) + ' mm prévues. Reporter traitements phyto.', jours: previsions.filter(function(p){return p.precip >= 10;}).map(function(p){return p.dateLong;}).join(', ') });
 
-            return { previsions: previsions, horaire: horaire, horaireParJour: horaireParJour, alertes: alertes };
+            return { previsions: previsions, horaire: horaire, horaireParJour: horaireParJour, horaire24ParJour: horaire24ParJour, alertes: alertes };
         }
 
         // ===================== MOCK DATA =====================
@@ -5334,6 +5369,24 @@
 
         // ===================== POINTAGE TAB =====================
         function PointageTab({ data, farmFilter, avoSubFilter, currentProfile }) {
+            // Pretty parcelle label via PARCELLES_CULTURALES.designations
+            const prettyParcelle = React.useCallback((raw, ferme) => {
+                if (!raw) return raw;
+                const lower = String(raw).toLowerCase().trim();
+                const pc = PARCELLES_CULTURALES.find(p =>
+                    (!ferme || p.ferme === ferme) &&
+                    (p.designations || []).some(d => {
+                        const dl = d.toLowerCase();
+                        return dl === lower || lower.includes(dl) || dl.includes(lower);
+                    })
+                );
+                if (pc) {
+                    const sect = (pc.secteurs || []).join('/');
+                    return [sect, pc.variete, pc.sousVariete].filter(Boolean).join(' ');
+                }
+                return String(raw).replace(/\s+F[1-9]\s*$/i, '').replace(/\s+/g, ' ').trim()
+                    .toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+            }, []);
             const [apiData, setApiData] = useState(null);
             const [detailRows, setDetailRows] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -5789,7 +5842,7 @@
                                         <tr key={eq}>
                                             <td style={{fontWeight:700}}>{eqChefs[eq] || eq}</td>
                                             <td style={{textAlign:'center',fontWeight:600}}>{d.ouvriers.size}</td>
-                                            <td style={{fontSize:11}}>{Object.keys(d.parcelles).join(', ')}</td>
+                                            <td style={{fontSize:11}} title={Object.keys(d.parcelles).join(', ')}>{Object.keys(d.parcelles).map(p => prettyParcelle(p, farmFilter)).join(', ')}</td>
                                             <td style={{fontSize:10,color:'var(--gray-500)'}}>{[...new Set(Object.values(d.parcelles).flatMap(s => [...s]))].map(op => op.replace(/^\d+\.\s*/, '')).join(', ')}</td>
                                         </tr>
                                     ))}
@@ -6276,6 +6329,25 @@
                     if (json && json.success) setPresenceData({ rows: json.rows || [], syncedAt: json.syncedAt || null });
                 }).catch(() => {});
             }, []);
+
+            // Live listener — same trigger as the DG WhatsApp recap:
+            // when prod_tracabilite_recolte/<today> is written, refetch the recolte API.
+            React.useEffect(() => {
+                if (typeof firebase === 'undefined' || !firebase.firestore) return;
+                const today = new Date().toISOString().slice(0, 10);
+                const listenDate = selectedDate || today;
+                if (listenDate !== today) return; // only live for today
+                let firstSnap = true;
+                let pending = null;
+                const unsub = firebase.firestore()
+                    .collection('prod_tracabilite_recolte').doc(today)
+                    .onSnapshot(() => {
+                        if (firstSnap) { firstSnap = false; return; }
+                        if (pending) clearTimeout(pending);
+                        pending = setTimeout(() => { loadData(selectedDate); }, 2000);
+                    }, err => console.warn('[recolte live] snapshot error:', err.message));
+                return () => { if (pending) clearTimeout(pending); unsub(); };
+            }, [selectedDate]);
 
             const handleDateChange = (d) => { setSelectedDate(d); setEquipeSelectedDay(d); setLoading(true); loadData(d); };
 
@@ -7363,7 +7435,9 @@
             const [expandedEquipe, setExpandedEquipe] = useState(null);
             const [viewMode, setViewMode] = useState('jour'); // 'jour' or 'quinzaine'
             const [selectedQuinz, setSelectedQuinz] = useState('');
-            const [showTrend, setShowTrend] = useState(false);
+            const [showTrend, setShowTrend] = useState(true);
+            const [histRange, setHistRange] = useState(10); // 10 ou 30 jours
+            const [histOffset, setHistOffset] = useState(0); // 0 = fenêtre la plus récente
             const [varieteFilter, setVarieteFilter] = useState('');
             const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
 
@@ -7418,6 +7492,8 @@
             React.useEffect(() => {
                 loadData();
                 cachedFetch('/api/pointage-rh?action=dates').then(json => { if (json.success) setDates(json.dates || []); }).catch(() => {});
+                // Bypass localStorage cache pour recolte-equipes (données fréquemment mises à jour, évite chart vide sur stale cache)
+                invalidateCache('recolte-equipes');
                 cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json => {
                     if (json.success) { setEquipeRows(json.rows || []); setEquipePeriodes(json.periodes || []); }
                 }).catch(err => console.warn(err)).finally(() => setEquipeLoading(false));
@@ -7497,6 +7573,59 @@
             // Apply variete filter
             const allFiltered = varieteFilter ? allFiltered2.filter(r => r.variete === varieteFilter) : allFiltered2;
 
+            // ---- Logistique (parallel pipeline) — conditionnement / chargement / encadrement / caporal ----
+            // Réutilise les mêmes filtres ferme/culture/variété sur les lignes logistique pour calculer le coût logistique/Kg récolté.
+            let logEnriched;
+            if (isQuinzaineMode && equipeRows.length > 0) {
+                const qFilterLog = selectedQuinz || (equipePeriodes.length > 0 ? equipePeriodes[0] : '');
+                const filteredLogRows = equipeRows.filter(r => r.periode === qFilterLog && logistiqueOps.test(r.operation || ''));
+                const logByWorkerDay = {};
+                filteredLogRows.forEach(r => {
+                    const key = `${r.matricule}|${r.jour}`;
+                    if (!logByWorkerDay[key]) logByWorkerDay[key] = { matricule: r.matricule, nom: r.nom, ferme: r.ferme, variete: r.variete, parcelle: r.parcelle, culture: r.culture, jour: r.jour, kg: 0, salaire: 0 };
+                    logByWorkerDay[key].kg += (r.kg || 0);
+                    logByWorkerDay[key].salaire += (r.cout || 0);
+                });
+                const logDaily = Object.values(logByWorkerDay).map(d => {
+                    const culture = d.culture || resolveCulture(d);
+                    const isMyrt = /myrtille/i.test(culture);
+                    const prefix = getEquipePrefix(d.matricule);
+                    const prime = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
+                    return { ...d, culture, prefix, transport: getTransport(prefix, qFilterLog), prime, charges: CHARGES_SOCIALES };
+                });
+                const logByWorker = {};
+                logDaily.forEach(d => {
+                    if (!logByWorker[d.matricule]) logByWorker[d.matricule] = { matricule: d.matricule, nom: d.nom, ferme: d.ferme, culture: d.culture, variete: d.variete, parcelle: d.parcelle, prefix: d.prefix, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0, jours: 0 };
+                    logByWorker[d.matricule].kg += d.kg;
+                    logByWorker[d.matricule].salaire += d.salaire;
+                    logByWorker[d.matricule].transport += d.transport;
+                    logByWorker[d.matricule].prime += d.prime;
+                    logByWorker[d.matricule].charges += d.charges;
+                    logByWorker[d.matricule].jours++;
+                });
+                logEnriched = Object.values(logByWorker);
+            } else {
+                logEnriched = workers.map(enrichWorker).filter(w => w.isLogistique);
+            }
+            const logFiltered0 = (fermeFilter ? logEnriched.filter(r => r.ferme === fermeFilter) : logEnriched).filter(matchSub);
+            const logFiltered1 = cultureFilter ? logFiltered0.filter(r => /myrtille/i.test(r.culture || '') === (cultureFilter === 'Myrtille')) : logFiltered0;
+            const logFiltered = varieteFilter ? logFiltered1.filter(r => r.variete === varieteFilter) : logFiltered1;
+
+            // Logistique agrégée par dimension : chaque ligne de tableau attribue SA part de logistique (pas un ratio global).
+            // Évite la divergence Net Framboise selon filtre Toutes vs Framboise.
+            const coutOfLog = (r) => (r.salaire || 0) + (r.transport || 0) + (r.prime || 0) + (r.charges || 0);
+            const logByCulture = {};
+            const logByEquipe = {};
+            const logByParcelle = {};
+            logFiltered.forEach(r => {
+                const c = r.culture || 'Autre';
+                logByCulture[c] = (logByCulture[c] || 0) + coutOfLog(r);
+                const ek = r.prefix;
+                if (ek) logByEquipe[ek] = (logByEquipe[ek] || 0) + coutOfLog(r);
+                const pk = r.parcelle || 'N/A';
+                logByParcelle[pk] = (logByParcelle[pk] || 0) + coutOfLog(r);
+            });
+
             // Sort by DH/Kg ascending (most efficient first), nulls last
             const sorted = [...allFiltered].sort((a, b) => {
                 if (a.dhParKg === null && b.dhParKg === null) return 0;
@@ -7517,6 +7646,15 @@
             const totalJoursOuvriers = allFiltered.reduce((s, r) => s + (r.jours || 1), 0);
             const coutMoyenOuvrierJour = totalJoursOuvriers > 0 ? Math.round(totalCout / totalJoursOuvriers) : 0;
             const pctSalaire = totalCout > 0 ? Math.round(totalSalaire / totalCout * 100) : 0;
+
+            // Logistique KPI : coût main d'oeuvre conditionnement/chargement/encadrement/caporal, divisé par kg récoltés filtrés
+            const logSalaire   = logFiltered.reduce((s, r) => s + (r.salaire || 0), 0);
+            const logTransport = logFiltered.reduce((s, r) => s + (r.transport || 0), 0);
+            const logPrime     = logFiltered.reduce((s, r) => s + (r.prime || 0), 0);
+            const logCharges   = logFiltered.reduce((s, r) => s + (r.charges || 0), 0);
+            const totalLogCout = logSalaire + logTransport + logPrime + logCharges;
+            const dhParKgLog = totalKg > 0 ? Math.round(totalLogCout / totalKg * 100) / 100 : null;
+            const dhParKgNet = totalKg > 0 ? Math.round((totalCout + totalLogCout) / totalKg * 100) / 100 : null;
 
             // Aggregation par équipe
             const equipeAgg = {};
@@ -7615,6 +7753,39 @@
             const cycleAvgDhKg = cycleTotalKg > 0 ? +(cycleTotalCout / cycleTotalKg).toFixed(2) : null;
             const cycleAvgDhJ = cycleTotalJours > 0 ? Math.round(cycleTotalCout / cycleTotalJours) : 0;
 
+            // ---- Logistique pour le Cycle Complet (mêmes filtres ferme/culture, cycle) ----
+            const cycleLogRecordsRaw = (equipeRows || []).filter(r => {
+                if (!r || !logistiqueOps.test(r.operation || '')) return false;
+                if (fermeFilter && r.ferme !== fermeFilter) return false;
+                if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return false;
+                if (cultureFilter) {
+                    const cult = r.culture || '';
+                    if (/myrtille/i.test(cult) !== (cultureFilter === 'Myrtille')) return false;
+                }
+                if (cycleSelected && getCycle(r.jour) !== cycleSelected) return false;
+                return true;
+            });
+            // Garde la variété par worker-day pour pouvoir attribuer la logistique par variété
+            const cycleLogByWD = {};
+            cycleLogRecordsRaw.forEach(r => {
+                const key = `${r.matricule}|${r.jour}`;
+                if (!cycleLogByWD[key]) cycleLogByWD[key] = { matricule: r.matricule, jour: r.jour, variete: r.variete, salaire: 0 };
+                cycleLogByWD[key].salaire += (r.cout || 0);
+            });
+            const cycleLogByVariete = {};
+            let cycleLogSalaire = 0, cycleLogTransport = 0, cycleLogCharges = 0;
+            Object.values(cycleLogByWD).forEach(d => {
+                const t = getTransport(getEquipePrefix(d.matricule));
+                cycleLogSalaire += d.salaire;
+                cycleLogTransport += t;
+                cycleLogCharges += CHARGES_SOCIALES;
+                const v = d.variete || 'N/A';
+                cycleLogByVariete[v] = (cycleLogByVariete[v] || 0) + d.salaire + t + CHARGES_SOCIALES;
+            });
+            const cycleLogCout = cycleLogSalaire + cycleLogTransport + cycleLogCharges;
+            const cycleDhParKgLog = cycleTotalKg > 0 ? +(cycleLogCout / cycleTotalKg).toFixed(2) : 0;
+            const cycleAvgDhKgNet = cycleTotalKg > 0 ? +((cycleTotalCout + cycleLogCout) / cycleTotalKg).toFixed(2) : null;
+
             const dhColor = (val) => {
                 if (val === null) return 'var(--gray-400)';
                 if (val <= 5) return '#059669';
@@ -7628,7 +7799,8 @@
 
             return (
                 <div className="fade-in">
-                    <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <div style={{position:'sticky',top:0,zIndex:5,background:'var(--berry-bg)',paddingTop:4,paddingBottom:8,marginBottom:8,boxShadow:'0 4px 6px -4px rgba(0,0,0,0.08)'}}>
+                    <div style={{marginBottom:8,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                         <span style={{background:'#fef3c7',color:'#92400e',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-calculator" style={{marginRight:4}}></i>Coût Récolte — DH/Kg
                         </span>
@@ -7675,9 +7847,11 @@
                         )}
                     </div>
                     )}
+                    </div>
 
                     <div className="kpi-grid">
-                        <KPICard icon="fa-divide" iconClass="berry" value={dhParKgGlobal !== null ? dhParKgGlobal.toFixed(2) + ' DH' : '-'} label="DH / Kg Global" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="purple" value={dhParKgNet !== null ? dhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: dhParKgGlobal !== null ? dhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: dhParKgLog !== null ? dhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-divide" iconClass="berry" value={dhParKgGlobal !== null ? dhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-coins" iconClass="orange" value={fmt(totalCout)} label="Coût Total (DH)" subItems={[{value: fmt(totalSalaire), label: 'Salaire'}, {value: fmt(totalTransport), label: 'Transport'}, {value: fmt(totalPrime), label: 'Prime'}, {value: fmt(totalCharges), label: 'Charges'}]} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(totalKg)} label="Total Kg" onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-user" iconClass="blue" value={fmt(coutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
@@ -7688,20 +7862,24 @@
                     {showTrend && (() => {
                         const allEqRows = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
                         const cultureFilteredEq = cultureFilter ? allEqRows.filter(r => /myrtille/i.test(r.culture || resolveCulture(r)) === (cultureFilter === 'Myrtille')) : allEqRows;
-                        const allDates = [...new Set(cultureFilteredEq.map(r => r.jour))].sort().reverse().slice(0, 10).reverse();
+                        const varieteFilteredEq = varieteFilter ? cultureFilteredEq.filter(r => r.variete === varieteFilter) : cultureFilteredEq;
+                        // Pagination : fenêtre de histRange jours, décalée par histOffset
+                        const allDatesDesc = [...new Set(varieteFilteredEq.map(r => r.jour))].sort().reverse();
+                        const winStart = histOffset * histRange;
+                        const allDates = allDatesDesc.slice(winStart, winStart + histRange).reverse();
+                        const hasOlder = allDatesDesc.length > winStart + histRange;
+                        const hasNewer = histOffset > 0;
                         const logOps = /caporal|conditionnement|encadrement|chargement/i;
-                        const trendData = allDates.map(date => {
-                            const dayRows = cultureFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
-                            // Group by worker to compute daily kg/prime per worker
+                        const aggregateRows = (rows) => {
                             const byW = {};
-                            dayRows.forEach(r => {
+                            rows.forEach(r => {
                                 const k = r.matricule;
                                 if (!byW[k]) byW[k] = { matricule: r.matricule, kg: 0, salaire: 0, variete: r.variete, parcelle: r.parcelle, culture: r.culture };
                                 byW[k].kg += (r.kg || 0);
                                 byW[k].salaire += (r.cout || 0);
                             });
                             const wList = Object.values(byW);
-                            const dayPeriode = (dayRows.find(r => r.periode) || {}).periode || '';
+                            const dayPeriode = (rows.find(r => r.periode) || {}).periode || '';
                             let tSalaire = 0, tTransport = 0, tPrime = 0, tCharges = 0, tKg = 0;
                             wList.forEach(w => {
                                 const culture = w.culture || resolveCulture(w);
@@ -7713,23 +7891,65 @@
                                 tCharges += CHARGES_SOCIALES;
                                 tKg += w.kg;
                             });
-                            const tCout = tSalaire + tTransport + tPrime + tCharges;
-                            const dhKg = tKg > 0 ? Math.round(tCout / tKg * 100) / 100 : null;
+                            return { salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, cout: tSalaire + tTransport + tPrime + tCharges, kg: tKg, nb: wList.length };
+                        };
+                        const todayStrEarly = new Date().toISOString().slice(0, 10);
+                        const recolteDateEarly = selectedDate || todayStrEarly;
+                        const trendData = allDates.map(date => {
+                            // Pour la date sélectionnée en Jour mode : reprendre EXACTEMENT les valeurs du KPI
+                            // (source recolte plus complète & dédupliquée). Évite divergence visuelle entre Coût Net KPI et barre du jour.
+                            if (!isQuinzaineMode && date === recolteDateEarly) {
+                                const dhKg = totalKg > 0 ? Math.round(totalCout / totalKg * 100) / 100 : null;
+                                const dhKgLog = totalKg > 0 ? Math.round(totalLogCout / totalKg * 100) / 100 : null;
+                                const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
+                                return { date, label, salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, cout: totalCout, kg: totalKg, dhKg, dhKgLog, nb: nbOuvriers };
+                            }
+                            const dayRows = varieteFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
+                            const logRows = varieteFilteredEq.filter(r => r.jour === date && logOps.test(r.operation || ''));
+                            const agg = aggregateRows(dayRows);
+                            const logAgg = aggregateRows(logRows);
+                            const dhKg = agg.kg > 0 ? Math.round(agg.cout / agg.kg * 100) / 100 : null;
+                            // Logistique DH/Kg : coût logistique du jour divisé par les kg RÉCOLTÉS du jour
+                            const dhKgLog = agg.kg > 0 ? Math.round(logAgg.cout / agg.kg * 100) / 100 : null;
                             const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
-                            return { date, label, salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, cout: tCout, kg: tKg, dhKg, nb: wList.length };
+                            return { date, label, salaire: agg.salaire, transport: agg.transport, prime: agg.prime, charges: agg.charges, cout: agg.cout, kg: agg.kg, dhKg, dhKgLog, nb: agg.nb };
                         });
-                        const maxDhKg = Math.max(...trendData.filter(d => d.dhKg !== null).map(d => d.dhKg), 1);
+                        // Échelle Y stable : calculée sur TOUTES les dates disponibles, pas seulement la fenêtre.
+                        // Évite que les barres "grandissent" ou "rétrécissent" en navigant entre fenêtres.
+                        const allDhKgNet = allDatesDesc.map(date => {
+                            const dRecRows = varieteFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
+                            const dLogRows = varieteFilteredEq.filter(r => r.jour === date && logOps.test(r.operation || ''));
+                            const a = aggregateRows(dRecRows);
+                            const lA = aggregateRows(dLogRows);
+                            if (a.kg <= 0) return 0;
+                            return (a.cout + lA.cout) / a.kg;
+                        });
+                        const maxDhKg = Math.max(...allDhKgNet, 1);
                         const BAR_H = 200;
                         const todayStr = new Date().toISOString().slice(0, 10);
                         const recolteDate = selectedDate || todayStr;
-                        const COLORS = { salaire: '#7c3aed', transport: '#0ea5e9', prime: '#f59e0b', charges: '#f87171' };
+                        const COLORS = { salaire: '#7c3aed', transport: '#0ea5e9', prime: '#f59e0b', charges: '#f87171', logistique: '#475569' };
+                        const LOG_HATCH = `repeating-linear-gradient(45deg, ${COLORS.logistique}, ${COLORS.logistique} 4px, rgba(71,85,105,0.45) 4px, rgba(71,85,105,0.45) 8px)`;
                         return (
                             <div className="fade-in" style={{background:'var(--gray-50)',borderRadius:12,padding:16,marginBottom:16,border:'1px solid var(--gray-200)'}}>
-                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
                                     <h4 style={{margin:0,fontSize:14,fontWeight:700,color:'var(--berry)'}}>
-                                        <i className="fa-solid fa-chart-bar" style={{marginRight:6}}></i>Historique DH/Kg — 10 derniers jours
+                                        <i className="fa-solid fa-chart-bar" style={{marginRight:6}}></i>
+                                        Historique DH/Kg — {histOffset === 0 ? `${histRange} derniers jours` : (allDates.length > 0 ? `du ${new Date(allDates[0]+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})} au ${new Date(allDates[allDates.length-1]+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})}` : 'aucune donnée')}
                                     </h4>
-                                    <button onClick={() => setShowTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16}}><i className="fa-solid fa-xmark"></i></button>
+                                    <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}>
+                                        <button onClick={() => setHistOffset(o => o + 1)} disabled={!hasOlder} title="Fenêtre précédente" style={{background:hasOlder?'white':'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,color:hasOlder?'var(--gray-700)':'var(--gray-400)',cursor:hasOlder?'pointer':'not-allowed'}}>
+                                            <i className="fa-solid fa-chevron-left"></i>
+                                        </button>
+                                        <button onClick={() => setHistOffset(o => Math.max(0, o - 1))} disabled={!hasNewer} title="Fenêtre suivante" style={{background:hasNewer?'white':'var(--gray-100)',border:'1px solid var(--gray-200)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,color:hasNewer?'var(--gray-700)':'var(--gray-400)',cursor:hasNewer?'pointer':'not-allowed'}}>
+                                            <i className="fa-solid fa-chevron-right"></i>
+                                        </button>
+                                        <div style={{display:'flex',gap:0,marginLeft:6}}>
+                                            <button onClick={() => { setHistRange(10); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderRadius:'6px 0 0 6px',fontSize:11,fontWeight:600,background:histRange===10?'var(--berry)':'white',color:histRange===10?'white':'var(--gray-600)',cursor:'pointer'}}>10 j</button>
+                                            <button onClick={() => { setHistRange(30); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderLeft:'none',borderRadius:'0 6px 6px 0',fontSize:11,fontWeight:600,background:histRange===30?'var(--berry)':'white',color:histRange===30?'white':'var(--gray-600)',cursor:'pointer'}}>30 j</button>
+                                        </div>
+                                        <button onClick={() => setShowTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16,marginLeft:4}}><i className="fa-solid fa-xmark"></i></button>
+                                    </div>
                                 </div>
                                 {trendData.length === 0 ? (
                                     <div style={{textAlign:'center',padding:20,color:'var(--gray-400)',fontSize:12}}>Pas de données disponibles</div>
@@ -7738,6 +7958,9 @@
                                         <div style={{display:'flex',alignItems:'flex-end',gap:6,height:BAR_H + 40,padding:'0 4px'}}>
                                             {trendData.map((d, i) => {
                                                 const isToday = d.date === recolteDate;
+                                                const dhKgNet = (d.dhKg || 0) + (d.dhKgLog || 0);
+                                                const netBarH = dhKgNet > 0 ? (dhKgNet / maxDhKg) * BAR_H : 0;
+                                                const hLog = d.dhKgLog > 0 ? (d.dhKgLog / maxDhKg) * BAR_H : 0;
                                                 const totalBarH = d.dhKg !== null ? (d.dhKg / maxDhKg) * BAR_H : 0;
                                                 const pSal = d.cout > 0 ? d.salaire / d.cout : 0;
                                                 const pTra = d.cout > 0 ? d.transport / d.cout : 0;
@@ -7749,13 +7972,16 @@
                                                 const hCha = totalBarH * pCha;
                                                 return (
                                                     <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(d.dhKg)}}>{d.dhKg !== null ? d.dhKg.toFixed(1) : '-'}</span>
+                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(dhKgNet || null)}}>{dhKgNet > 0 ? dhKgNet.toFixed(1) : '-'}</span>
                                                         <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
                                                         <div style={{width:'100%',maxWidth:48,display:'flex',flexDirection:'column',borderRadius:'6px 6px 0 0',overflow:'hidden',border:isToday?'2px solid var(--berry)':'none'}}>
                                                             <div style={{height:hCha,background:COLORS.charges,transition:'height 0.3s'}} title={`Charges: ${fmt(d.charges)} DH`}></div>
                                                             <div style={{height:hPri,background:COLORS.prime,transition:'height 0.3s'}} title={`Prime: ${fmt(d.prime)} DH`}></div>
                                                             <div style={{height:hTra,background:COLORS.transport,transition:'height 0.3s'}} title={`Transport: ${fmt(d.transport)} DH`}></div>
                                                             <div style={{height:hSal,background:COLORS.salaire,transition:'height 0.3s'}} title={`Salaire: ${fmt(d.salaire)} DH`}></div>
+                                                            {hLog > 0 && (
+                                                                <div style={{height:hLog,background:LOG_HATCH,transition:'height 0.3s'}} title={`Logistique: ${d.dhKgLog.toFixed(2)} DH/Kg`}></div>
+                                                            )}
                                                         </div>
                                                         <span style={{fontSize:9,color:isToday?'var(--berry)':'var(--gray-500)',fontWeight:isToday?700:400}}>{d.label}</span>
                                                         <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.nb} ouv.</span>
@@ -7768,6 +7994,7 @@
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.transport,marginRight:4,verticalAlign:'middle'}}></span>Transport</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.prime,marginRight:4,verticalAlign:'middle'}}></span>Prime Récolte</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges Sociales (40 DH)</span>
+                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:LOG_HATCH,marginRight:4,verticalAlign:'middle'}}></span>Part Logistique</span>
                                         </div>
                                     </div>
                                 )}
@@ -7775,7 +8002,114 @@
                         );
                     })()}
 
-                    {/* ---- Synthèse par Variété — Cycle Complet ---- */}
+                    {/* ---- Par Culture ---- */}
+                    <Panel title="Coût par Culture" icon="fa-seedling" defaultOpen={true}>
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr><th>Culture</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
+                            <tbody>
+                                {cultStats.map(c => {
+                                    const logShareC = logByCulture[c.culture] || 0;
+                                    const netVal = c.kg > 0 ? +((c.coutTotal + logShareC) / c.kg).toFixed(2) : null;
+                                    return (
+                                    <tr key={c.culture}>
+                                        <td><span style={{fontWeight:600}}>{c.culture}</span></td>
+                                        <td>{c.nbOuv}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.kg)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.salaire)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.transport)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.prime)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(c.charges)}</td>
+                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(c.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(c.dhParKg),fontSize:13}}>{fmt2(c.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netVal),fontSize:13,background:'#faf5ff'}}>{fmt2(netVal)}</td>
+                                    </tr>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td><td style={{textAlign:'right',color:dhColor(dhParKgNet),fontSize:13,background:'#faf5ff'}}>{fmt2(dhParKgNet)}</td></tr></tfoot>
+                        </table>
+                        </div>
+                    </Panel>
+
+                    {/* ---- Par Équipe ---- */}
+                    <Panel title="Coût par Équipe" icon="fa-users" defaultOpen={true}>
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr><th>Équipe</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
+                            <tbody>
+                                {equipeStats.map(e => {
+                                    const logShareE = logByEquipe[e.prefix] || 0;
+                                    const netE = e.kg > 0 ? +((e.coutTotal + logShareE) / e.kg).toFixed(2) : null;
+                                    const equipeLogPerKg = e.kg > 0 ? logShareE / e.kg : 0;
+                                    return (
+                                    <React.Fragment key={e.prefix}>
+                                    <tr style={{cursor:'pointer',background:expandedEquipe===e.prefix?'var(--gray-50)':'white'}} onClick={() => setExpandedEquipe(expandedEquipe===e.prefix?null:e.prefix)}>
+                                        <td><i className={`fa-solid ${expandedEquipe===e.prefix?'fa-chevron-down':'fa-chevron-right'}`} style={{fontSize:9,marginRight:6,color:'var(--gray-400)'}}></i><span style={{fontWeight:600}}>{e.equipe}</span></td>
+                                        <td>{e.effectif}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.kg)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.salaire)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.transport)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.prime)}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(e.charges)}</td>
+                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(e.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(e.dhParKg),fontSize:13}}>{fmt2(e.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netE),fontSize:13,background:'#faf5ff'}}>{fmt2(netE)}</td>
+                                    </tr>
+                                    {expandedEquipe===e.prefix && e.workers.sort((a,b) => { if(a.dhParKg===null) return 1; if(b.dhParKg===null) return -1; return a.dhParKg-b.dhParKg; }).map((w,i) => {
+                                        const netW = w.dhParKg !== null ? +(w.dhParKg + equipeLogPerKg).toFixed(2) : null;
+                                        return (
+                                        <tr key={w.matricule+i} style={{background:'var(--gray-25)',fontSize:10}}>
+                                            <td style={{paddingLeft:28}}>{w.matricule} — {w.nom}</td>
+                                            <td></td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.kg)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.salaire)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.transport)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.prime)}</td>
+                                            <td style={{textAlign:'right'}}>{fmt(w.charges)}</td>
+                                            <td style={{textAlign:'right',fontWeight:600}}>{fmt(w.coutTotal)}</td>
+                                            <td style={{textAlign:'right',fontWeight:700,color:dhColor(w.dhParKg)}}>{fmt2(w.dhParKg)}</td>
+                                            <td style={{textAlign:'right',fontWeight:700,color:dhColor(netW),background:'#faf5ff'}}>{fmt2(netW)}</td>
+                                        </tr>
+                                        );
+                                    })}
+                                    </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td><td style={{textAlign:'right',color:dhColor(dhParKgNet),fontSize:13,background:'#faf5ff'}}>{fmt2(dhParKgNet)}</td></tr></tfoot>
+                        </table>
+                        </div>
+                    </Panel>
+
+                    {/* ---- Par Parcelle ---- */}
+                    <Panel title="Coût par Parcelle" icon="fa-map" defaultOpen={false}>
+                        <div style={{overflowX:'auto'}}>
+                        <table className="data-table" style={{fontSize:11}}>
+                            <thead><tr><th>Parcelle</th><th>Ferme</th><th>Culture</th><th>Ouvriers</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th><th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th></tr></thead>
+                            <tbody>
+                                {parcStats.map(p => {
+                                    const logShareP = logByParcelle[p.parcelle] || 0;
+                                    const netP = p.kg > 0 ? +((p.coutTotal + logShareP) / p.kg).toFixed(2) : null;
+                                    return (
+                                    <tr key={p.parcelle}>
+                                        <td style={{fontWeight:600}}>{p.parcelle}</td>
+                                        <td>{p.ferme}</td>
+                                        <td>{p.culture}</td>
+                                        <td>{p.nbOuv}</td>
+                                        <td style={{textAlign:'right'}}>{fmt(p.kg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(p.coutTotal)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(p.dhParKg),fontSize:13}}>{fmt2(p.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netP),fontSize:13,background:'#faf5ff'}}>{fmt2(netP)}</td>
+                                    </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                        </div>
+                    </Panel>
+
+                    {/* ---- Synthèse par Variété — Cycle Complet (déplacée en bas) ---- */}
                     <Panel title="Synthèse par Variété — Cycle Complet" icon="fa-chart-line" defaultOpen={true}>
                         <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:10,flexWrap:'wrap'}}>
                             <span style={{fontSize:11,color:'var(--gray-600)',fontWeight:600}}>Cycle :</span>
@@ -7798,11 +8132,15 @@
                                 <th style={{textAlign:'right'}}>J-Ouvriers</th>
                                 <th style={{textAlign:'right',fontWeight:700,background:'#fef3c7'}}>Kg/ouv/j</th>
                                 <th style={{textAlign:'right'}}>Coût total (DH)</th>
-                                <th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th>
+                                <th style={{textAlign:'right',fontWeight:700}}>DH/Kg Brut</th>
+                                <th style={{textAlign:'right',fontWeight:700,background:'#f3e8ff'}}>DH/Kg Net</th>
                                 <th style={{textAlign:'right',fontWeight:700,background:'#fef3c7'}}>DH/ouv/j</th>
                             </tr></thead>
                             <tbody>
-                                {cycleVarStats.map(v => (
+                                {cycleVarStats.map(v => {
+                                    const logShareV = cycleLogByVariete[v.variete] || 0;
+                                    const netV = v.kg > 0 ? +((v.coutTotal + logShareV) / v.kg).toFixed(2) : null;
+                                    return (
                                     <tr key={v.variete}>
                                         <td><span style={{fontWeight:600}}>{v.variete}</span></td>
                                         <td style={{textAlign:'right'}}>{fmt(v.kg)}</td>
@@ -7810,9 +8148,11 @@
                                         <td style={{textAlign:'right',fontWeight:700,fontSize:13,background:'#fffbeb'}}>{v.kgParOuvJour}</td>
                                         <td style={{textAlign:'right'}}>{fmt(v.coutTotal)}</td>
                                         <td style={{textAlign:'right',fontWeight:700,color:dhColor(v.dhParKg),fontSize:13}}>{fmt2(v.dhParKg)}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(netV),fontSize:13,background:'#faf5ff'}}>{fmt2(netV)}</td>
                                         <td style={{textAlign:'right',fontWeight:700,fontSize:13,background:'#fffbeb'}}>{fmt(v.dhParOuvJour)}</td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                             <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}>
                                 <td>Total</td>
@@ -7821,6 +8161,7 @@
                                 <td style={{textAlign:'right',fontSize:13}}>{cycleAvgKgJ}</td>
                                 <td style={{textAlign:'right'}}>{fmt(cycleTotalCout)}</td>
                                 <td style={{textAlign:'right',color:dhColor(cycleAvgDhKg),fontSize:13}}>{fmt2(cycleAvgDhKg)}</td>
+                                <td style={{textAlign:'right',color:dhColor(cycleAvgDhKgNet),fontSize:13,background:'#faf5ff'}}>{fmt2(cycleAvgDhKgNet)}</td>
                                 <td style={{textAlign:'right',fontSize:13}}>{fmt(cycleAvgDhJ)}</td>
                             </tr></tfoot>
                         </table>
@@ -7828,121 +8169,6 @@
                         )}
                     </Panel>
 
-                    {/* ---- Par Culture ---- */}
-                    <Panel title="Coût par Culture" icon="fa-seedling" defaultOpen={true}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>Culture</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {cultStats.map(c => (
-                                    <tr key={c.culture}>
-                                        <td><span style={{fontWeight:600}}>{c.culture}</span></td>
-                                        <td>{c.nbOuv}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.kg)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.salaire)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.transport)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.prime)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(c.charges)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(c.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(c.dhParKg),fontSize:13}}>{fmt2(c.dhParKg)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td></tr></tfoot>
-                        </table>
-                        </div>
-                    </Panel>
-
-                    {/* ---- Par Équipe ---- */}
-                    <Panel title="Coût par Équipe" icon="fa-users" defaultOpen={true}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>Équipe</th><th>Effectif</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {equipeStats.map(e => (
-                                    <React.Fragment key={e.prefix}>
-                                    <tr style={{cursor:'pointer',background:expandedEquipe===e.prefix?'var(--gray-50)':'white'}} onClick={() => setExpandedEquipe(expandedEquipe===e.prefix?null:e.prefix)}>
-                                        <td><i className={`fa-solid ${expandedEquipe===e.prefix?'fa-chevron-down':'fa-chevron-right'}`} style={{fontSize:9,marginRight:6,color:'var(--gray-400)'}}></i><span style={{fontWeight:600}}>{e.equipe}</span></td>
-                                        <td>{e.effectif}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.kg)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.salaire)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.transport)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.prime)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(e.charges)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(e.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(e.dhParKg),fontSize:13}}>{fmt2(e.dhParKg)}</td>
-                                    </tr>
-                                    {expandedEquipe===e.prefix && e.workers.sort((a,b) => { if(a.dhParKg===null) return 1; if(b.dhParKg===null) return -1; return a.dhParKg-b.dhParKg; }).map((w,i) => (
-                                        <tr key={w.matricule+i} style={{background:'var(--gray-25)',fontSize:10}}>
-                                            <td style={{paddingLeft:28}}>{w.matricule} — {w.nom}</td>
-                                            <td></td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.kg)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.salaire)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.transport)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.prime)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(w.charges)}</td>
-                                            <td style={{textAlign:'right',fontWeight:600}}>{fmt(w.coutTotal)}</td>
-                                            <td style={{textAlign:'right',fontWeight:700,color:dhColor(w.dhParKg)}}>{fmt2(w.dhParKg)}</td>
-                                        </tr>
-                                    ))}
-                                    </React.Fragment>
-                                ))}
-                            </tbody>
-                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td>Total</td><td>{nbOuvriers}</td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td></tr></tfoot>
-                        </table>
-                        </div>
-                    </Panel>
-
-                    {/* ---- Par Parcelle ---- */}
-                    <Panel title="Coût par Parcelle" icon="fa-map" defaultOpen={false}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>Parcelle</th><th>Ferme</th><th>Culture</th><th>Ouvriers</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {parcStats.map(p => (
-                                    <tr key={p.parcelle}>
-                                        <td style={{fontWeight:600}}>{p.parcelle}</td>
-                                        <td>{p.ferme}</td>
-                                        <td>{p.culture}</td>
-                                        <td>{p.nbOuv}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(p.kg)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(p.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(p.dhParKg),fontSize:13}}>{fmt2(p.dhParKg)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        </div>
-                    </Panel>
-
-                    {/* ---- Par Ouvrier ---- */}
-                    <Panel title={`Détail par Ouvrier (${sorted.length})`} icon="fa-list" defaultOpen={false}>
-                        <div style={{overflowX:'auto'}}>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead><tr><th>#</th><th>Matricule</th><th>Nom</th><th>Équipe</th><th>Ferme</th><th>Culture</th><th style={{textAlign:'right'}}>Kg</th><th style={{textAlign:'right'}}>Salaire</th><th style={{textAlign:'right'}}>Transport</th><th style={{textAlign:'right'}}>Prime</th><th style={{textAlign:'right'}}>Charges</th><th style={{textAlign:'right'}}>Coût Total</th><th style={{textAlign:'right',fontWeight:700}}>DH/Kg</th></tr></thead>
-                            <tbody>
-                                {sorted.map(r => (
-                                    <tr key={r.matricule+r.rank}>
-                                        <td>{r.rank}</td>
-                                        <td style={{fontWeight:600,fontSize:10}}>{r.matricule}</td>
-                                        <td>{r.nom}</td>
-                                        <td>{r.equipe}</td>
-                                        <td>{r.ferme}</td>
-                                        <td>{r.culture}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.kg)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.salaire)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.transport)}</td>
-                                        <td style={{textAlign:'right'}}>{Math.round(r.prime)}</td>
-                                        <td style={{textAlign:'right'}}>{fmt(r.charges)}</td>
-                                        <td style={{textAlign:'right',fontWeight:600}}>{fmt(r.coutTotal)}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color:dhColor(r.dhParKg),fontSize:13}}>{fmt2(r.dhParKg)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                            <tfoot><tr style={{fontWeight:700,background:'var(--gray-50)'}}><td></td><td></td><td></td><td></td><td></td><td></td><td style={{textAlign:'right'}}>{fmt(totalKg)}</td><td style={{textAlign:'right'}}>{fmt(totalSalaire)}</td><td style={{textAlign:'right'}}>{fmt(totalTransport)}</td><td style={{textAlign:'right'}}>{fmt(totalPrime)}</td><td style={{textAlign:'right'}}>{fmt(totalCharges)}</td><td style={{textAlign:'right'}}>{fmt(totalCout)}</td><td style={{textAlign:'right',color:dhColor(dhParKgGlobal),fontSize:13}}>{fmt2(dhParKgGlobal)}</td></tr></tfoot>
-                        </table>
-                        </div>
-                    </Panel>
                 </div>
             );
         }
@@ -8795,6 +9021,242 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
             );
         }
 
+        // ===================== CAMPAGNE TAB =====================
+        // Configuration parcelle : Ha + kg exporté cumulés campagne (snapshot cpcVarietes).
+        // Une ligne du tableau Campagne = une parcelle (variete + sous-type + ferme).
+        // MD = Mow Down (Green Cane, mono) ; MT = Long Cane (bi cycle).
+        const CAMPAGNE_PARCELLE_MAP = (() => {
+            const entries = [
+                { v: 'Avocat',                f: 'Avocatier', ha: 30.7, kgExport: 0,     parcelle: 'Avocat' },
+                { v: 'Maravilla Mow Down',    f: 'F1',        ha: 4.2,  kgExport: 0,     parcelle: 'S1/S4 Maravilla MD' },
+                { v: 'Maravilla Long Cane',   f: 'F1',        ha: 5.2,  kgExport: 19006, parcelle: 'S3/S7 Maravilla MT' },
+                { v: 'Yazmin Mow Down',       f: 'F1',        ha: 2.0,  kgExport: 6602,  parcelle: 'S2/S5 Yazmin MD' },
+                { v: 'Yazmin Long Cane',      f: 'F5',        ha: 1.9,  kgExport: 19748, parcelle: 'S10 Yazmin MT' },
+                { v: 'Yazmin Mow Down',       f: 'F5',        ha: 2.8,  kgExport: 11666, parcelle: 'S13 Yazmin MD' },
+                { v: 'Reyna',                 f: 'F5',        ha: 3.0,  kgExport: 2430,  parcelle: 'S9 Reyna' },
+                { v: 'Corina',                f: 'F5',        ha: 2.5,  kgExport: 0,     parcelle: 'Corina S8' },
+                { v: 'Cascade',               f: 'F1',        ha: 1.5,  kgExport: 0,     parcelle: 'Cascade S8-1' },
+                { v: 'Breeze',                f: 'F1',        ha: 1.0,  kgExport: 0,     parcelle: 'Breeze S8-2' },
+            ];
+            const m = {};
+            for (const e of entries) {
+                const k = `${e.v}|${e.f}`;
+                if (!m[k]) m[k] = { ha: 0, kgExport: 0, parcelles: [] };
+                m[k].ha += e.ha;
+                m[k].kgExport += e.kgExport;
+                m[k].parcelles.push(e.parcelle);
+            }
+            return m;
+        })();
+        const getParcelleInfo = (v, f) => CAMPAGNE_PARCELLE_MAP[`${v}|${f}`] || { ha: 0, kgExport: 0, parcelles: [] };
+        const getHa = (v, f) => getParcelleInfo(v, f).ha;
+        const getKgExport = (v, f) => getParcelleInfo(v, f).kgExport;
+        const getParcelleLabel = (v, f) => getParcelleInfo(v, f).parcelles.join(' + ') || `${v}`;
+
+        // Configuration cycle par variété (framboises principalement).
+        // 'bi'   : variété bi-cycle (primocane + floricane) → affichée dans Cycle 1 et Cycle 2
+        // 'mono' : variété mono-cycle (un seul cycle de production) → affichée uniquement dans le cumul annuel
+        // Variétés non listées : default = 'bi'
+        const VARIETE_CYCLE_CONFIG = {
+            // Framboises — sous-types détectés par mots-clés dans le nom de parcelle (MD/MOTTE/Green Cane vs MT/Long Cane)
+            'Reyna':                'mono',
+            'Maravilla Mow Down':   'mono',  // = Green Cane
+            'Maravilla Long Cane':  'bi',
+            'Maravilla':            'bi',    // fallback si sous-type non détecté
+            'Yazmin Mow Down':      'mono',
+            'Yazmin Long Cane':     'bi',    // = Yazmin Bi Cycle
+            'Yazmin':               'bi',    // fallback
+            'Adelita':              'bi',
+            // Myrtilles — toujours mono-cycle
+            'Corina':               'mono',
+            'Cascade':               'mono',
+            'Breeze':                'mono',
+            // Avocat
+            'Avocat':                'bi',
+        };
+        const getCycleType = (variete) => VARIETE_CYCLE_CONFIG[variete] || 'bi';
+        const isMonoCycle = (variete) => getCycleType(variete) === 'mono';
+
+        function CampagneSegmentTable({ title, icon, segment, matchesFarm, showMonoCycleOnly }) {
+            if (!segment) return null;
+            const rows = (segment.parVariete || []).filter(v => matchesFarm(v) && (showMonoCycleOnly ? isMonoCycle(v.variete) : !isMonoCycle(v.variete)));
+            if (rows.length === 0) return null;
+            const tot = rows.reduce((a, v) => ({
+                recolte: a.recolte + v.recolte.cout,
+                horsRecolte: a.horsRecolte + v.horsRecolte.cout,
+                postesFixes: a.postesFixes + v.postesFixes.cout,
+                total: a.total + v.total.cout,
+                kgExport: a.kgExport + getKgExport(v.variete, v.ferme),
+                ha: a.ha + getHa(v.variete, v.ferme),
+            }), { recolte: 0, horsRecolte: 0, postesFixes: 0, total: 0, kgExport: 0, ha: 0 });
+            const COLORS_MO = ['#8B2252','#2D8B4E','#D4A847','#3498DB','#E67E22','#9B59B6','#E74C3C','#1ABC9C'];
+            const fmt0 = (n) => Math.round(n).toLocaleString('fr-FR');
+            const fmtRatio = (n) => n > 0 ? Math.round(n).toLocaleString('fr-FR') : '-';
+
+            return (
+                <Panel title={title} icon={icon || 'fa-users-gear'}>
+                    <div style={{display:'flex',gap:16,marginBottom:16,flexWrap:'wrap'}}>
+                        {[
+                            {label:'Récolte',val:tot.recolte,color:'#E74C3C'},
+                            {label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},
+                            {label:'Postes Fixes',val:tot.postesFixes,color:'#95A5A6'},
+                            {label:'Total M.O',val:tot.total,color:'#8B2252'},
+                        ].map((s,i) => (
+                            <div key={i} style={{flex:1,minWidth:120,background:'#f8f9fa',borderRadius:10,padding:'12px 16px',textAlign:'center'}}>
+                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:'0.5px',color:'#888',marginBottom:4}}>{s.label}</div>
+                                <div style={{fontSize:18,fontWeight:700,color:s.color}}>{(s.val/1000).toFixed(0)}k</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div style={{overflowX:'auto'}}>
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Parcelle</th>
+                                <th>Culture</th>
+                                <th>Ferme</th>
+                                <th style={{textAlign:'right'}}>Ha</th>
+                                <th style={{textAlign:'right'}}>Kg exporté</th>
+                                <th style={{textAlign:'right'}}>Récolte (DH)</th>
+                                <th style={{textAlign:'right'}}>Hors Récolte (DH)</th>
+                                <th style={{textAlign:'right',color:'#E74C3C'}} title="M.O Récolte / Kg exporté">M.O Réc / Kg exp.</th>
+                                <th style={{textAlign:'right',color:'#3498DB'}} title="M.O Hors Récolte / Ha">M.O HR / Ha</th>
+                                <th style={{textAlign:'right'}}>%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((v, i) => {
+                                const info = getParcelleInfo(v.variete, v.ferme);
+                                const ha = info.ha;
+                                const kgExp = info.kgExport;
+                                const parcelleLabel = info.parcelles.join(' + ') || v.variete;
+                                const hrParHa = ha > 0 ? v.horsRecolte.cout / ha : 0;
+                                const moRecParKgExp = kgExp > 0 ? v.recolte.cout / kgExp : 0;
+                                return (
+                                    <tr key={i}>
+                                        <td><strong>{parcelleLabel}</strong></td>
+                                        <td><span style={{fontSize:11,padding:'2px 8px',borderRadius:12,background: v.culture==='Framboise'?'rgba(139,34,82,0.1)':v.culture==='Myrtille'?'rgba(52,152,219,0.1)':'rgba(45,139,78,0.1)',color: v.culture==='Framboise'?'#8B2252':v.culture==='Myrtille'?'#3498DB':'#2D8B4E',fontWeight:600}}>{v.culture}</span></td>
+                                        <td>{v.ferme}</td>
+                                        <td style={{textAlign:'right',fontFamily:'monospace'}}>{ha > 0 ? ha.toFixed(1) : '-'}</td>
+                                        <td style={{textAlign:'right',fontFamily:'monospace'}}>{kgExp > 0 ? fmt0(kgExp) : '-'}</td>
+                                        <td style={{textAlign:'right',fontFamily:'monospace'}}>{fmt0(v.recolte.cout)}</td>
+                                        <td style={{textAlign:'right',fontFamily:'monospace'}}>{fmt0(v.horsRecolte.cout)}</td>
+                                        <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#E74C3C'}} title={kgExp > 0 ? `${fmt0(v.recolte.cout)} DH / ${fmt0(kgExp)} kg` : 'Aucun kg exporté'}>{kgExp > 0 ? fmtRatio(moRecParKgExp) : '-'}</td>
+                                        <td style={{textAlign:'right',fontFamily:'monospace',fontWeight:600,color:'#3498DB'}} title={ha > 0 ? `${fmt0(v.horsRecolte.cout)} DH / ${ha} Ha` : 'Surface inconnue'}>{ha > 0 ? fmtRatio(hrParHa) : '-'}</td>
+                                        <td style={{textAlign:'right',color:'#888'}}>{tot.total > 0 ? Math.round(v.total.cout / tot.total * 100) + '%' : '-'}</td>
+                                    </tr>
+                                );
+                            })}
+                            <tr style={{background:'var(--berry-pale)',fontWeight:700}}>
+                                <td colSpan={3}>TOTAL</td>
+                                <td style={{textAlign:'right',fontFamily:'monospace'}}>{tot.ha > 0 ? tot.ha.toFixed(1) : '-'}</td>
+                                <td style={{textAlign:'right',fontFamily:'monospace'}}>{tot.kgExport > 0 ? fmt0(tot.kgExport) : '-'}</td>
+                                <td style={{textAlign:'right',fontFamily:'monospace'}}>{fmt0(tot.recolte)}</td>
+                                <td style={{textAlign:'right',fontFamily:'monospace'}}>{fmt0(tot.horsRecolte)}</td>
+                                <td style={{textAlign:'right',fontFamily:'monospace',color:'#E74C3C'}}>{tot.kgExport > 0 ? fmtRatio(tot.recolte/tot.kgExport) : '-'}</td>
+                                <td style={{textAlign:'right',fontFamily:'monospace',color:'#3498DB'}}>{tot.ha > 0 ? fmtRatio(tot.horsRecolte/tot.ha) : '-'}</td>
+                                <td style={{textAlign:'right'}}>100%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    </div>
+                    <div style={{marginTop:16}}>
+                        {rows.map((v, i) => {
+                            const pct = tot.total > 0 ? (v.total.cout / tot.total * 100) : 0;
+                            return (
+                                <div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                                    <div style={{width:120,fontSize:11,fontWeight:600,textAlign:'right',color:'#555',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}} title={v.variete}>{getParcelleInfo(v.variete, v.ferme).parcelles.join(' + ') || v.variete}</div>
+                                    <div style={{flex:1,height:18,background:'#f0f0f0',borderRadius:4,overflow:'hidden'}}>
+                                        <div style={{width:pct+'%',height:'100%',background:COLORS_MO[i % COLORS_MO.length],borderRadius:4,transition:'width 0.5s',minWidth: pct > 0 ? 2 : 0}}></div>
+                                    </div>
+                                    <div style={{width:45,fontSize:11,color:'#888',textAlign:'right'}}>{Math.round(pct)}%</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </Panel>
+            );
+        }
+
+        function CampagneTab({ data, farmFilter, avoSubFilter }) {
+            const [moAnalytique, setMoAnalytique] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            React.useEffect(() => {
+                cachedFetch('/api/pointage-rh?action=campagne-mo-variete&v=2')
+                    .then(json => { if (json.success) setMoAnalytique(json); })
+                    .catch(() => {})
+                    .finally(() => setLoading(false));
+            }, []);
+
+            const campagne = moAnalytique?.campagne;
+            const subFermeFilter = avoSubFilter && avoSubFilter !== 'all' ? avoSubFilter : null;
+            const matchesFarm = (v) => {
+                if (!farmFilter) return true;
+                if (farmFilter === 'Avocatier') {
+                    if (v.ferme !== 'Avocatier') return false;
+                    if (subFermeFilter) {
+                        const sub = deriveSubFerme(v.refParcelle || '', v.parcelle || '');
+                        return sub === subFermeFilter;
+                    }
+                    return true;
+                }
+                return v.ferme === farmFilter;
+            };
+
+            return (
+                <div>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:12}}>
+                        <div>
+                            <h2 style={{margin:0,fontSize:20,fontWeight:700,color:'var(--berry)'}}>
+                                <i className="fa-solid fa-chart-line" style={{marginRight:10}}></i>Campagne — M.O par Variété & Cycle
+                            </h2>
+                            <div style={{fontSize:12,color:'var(--gray-400)',marginTop:4}}>
+                                Cycle 1 (Juil→Déc) et Cycle 2 (Jan→Juin). Reyna affiché en cumul annuel (cycle unique).
+                            </div>
+                        </div>
+                        {campagne && (
+                            <span style={{padding:'6px 14px',background:'var(--berry-pale)',color:'var(--berry)',borderRadius:20,fontSize:12,fontWeight:600}}>
+                                <i className="fa-solid fa-calendar" style={{marginRight:6}}></i>Campagne {campagne.label}
+                            </span>
+                        )}
+                    </div>
+
+                    {loading || !moAnalytique ? (
+                        <Panel title="Chargement..." icon="fa-spinner">
+                            <div style={{textAlign:'center',padding:30,color:'var(--gray-400)'}}>
+                                <i className="fa-solid fa-spinner fa-spin" style={{marginRight:8}}></i>Chargement données M.O cumulées...
+                            </div>
+                        </Panel>
+                    ) : (
+                        <React.Fragment>
+                            <CampagneSegmentTable
+                                title={`${moAnalytique.cycle1?.label || 'Cycle 1'} — M.O par Variété`}
+                                icon="fa-sun"
+                                segment={moAnalytique.cycle1}
+                                matchesFarm={matchesFarm}
+                                showMonoCycleOnly={false}
+                            />
+                            <CampagneSegmentTable
+                                title={`${moAnalytique.cycle2?.label || 'Cycle 2'} — M.O par Variété`}
+                                icon="fa-snowflake"
+                                segment={moAnalytique.cycle2}
+                                matchesFarm={matchesFarm}
+                                showMonoCycleOnly={false}
+                            />
+                            <CampagneSegmentTable
+                                title="Variétés Mono-Cycle — Cumul Annuel"
+                                icon="fa-infinity"
+                                segment={moAnalytique.annuel}
+                                matchesFarm={matchesFarm}
+                                showMonoCycleOnly={true}
+                            />
+                        </React.Fragment>
+                    )}
+                </div>
+            );
+        }
+
         // ===================== QUINZAINE TAB =====================
         function QuinzaineTab({ data, farmFilter, avoSubFilter }) {
             const [apiData, setApiData] = useState(null);
@@ -9221,6 +9683,27 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                     {/* Affectation Analytique */}
                     {analytiqueData.length > 0 && (() => {
                         const filtered = farmFilter ? analytiqueData.filter(r => r.ferme === farmFilter && matchSub(r)) : analytiqueData;
+                        // Pretty parcelle label via PARCELLES_CULTURALES.designations
+                        const prettyParcelle = (raw, ferme) => {
+                            if (!raw) return raw;
+                            const lower = raw.toLowerCase().trim();
+                            const pc = PARCELLES_CULTURALES.find(p =>
+                                (!ferme || p.ferme === ferme) &&
+                                (p.designations || []).some(d => {
+                                    const dl = d.toLowerCase();
+                                    return dl === lower || lower.includes(dl) || dl.includes(lower);
+                                })
+                            );
+                            if (pc) {
+                                const sect = (pc.secteurs || []).join('/');
+                                return [sect, pc.variete, pc.sousVariete].filter(Boolean).join(' ');
+                            }
+                            // Fallback : nettoyage léger (suffixe ferme, casse)
+                            return raw.replace(/\s+F[1-9]\s*$/i, '').replace(/\s+/g, ' ').trim()
+                                .toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                        };
+                        const parcLabel = {};
+                        filtered.forEach(r => { if (r.parcelle && !parcLabel[r.parcelle]) parcLabel[r.parcelle] = prettyParcelle(r.parcelle, r.ferme); });
                         // Get unique parcelles (exclude empty) and operation families
                         const parcelles = [...new Set(filtered.filter(r => r.parcelle && r.parcelle.trim()).map(r => r.parcelle))].sort();
                         const opFamilles = [...new Set(filtered.filter(r => r.parcelle && r.parcelle.trim()).map(r => r.operationFamille))].sort();
@@ -9259,7 +9742,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                                         <tr>
                                             <th style={{position:'sticky',left:0,top:0,zIndex:3,background:'#f8f9fa',padding:'12px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--gray-200)',boxShadow:stickyShadow,minWidth:FIRST_COL}}>Opération</th>
                                             {activeParcelles.map(p => (
-                                                <th key={p} style={{position:'sticky',top:0,zIndex:2,background:'#f8f9fa',padding:'12px 10px',textAlign:'center',fontSize:10,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.3,borderBottom:'2px solid var(--gray-200)',whiteSpace:'nowrap',minWidth:PARC_COL}}>{p}</th>
+                                                <th key={p} title={p} style={{position:'sticky',top:0,zIndex:2,background:'#f8f9fa',padding:'12px 10px',textAlign:'center',fontSize:10,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.3,borderBottom:'2px solid var(--gray-200)',whiteSpace:'nowrap',minWidth:PARC_COL}}>{parcLabel[p] || p}</th>
                                             ))}
                                             <th style={{position:'sticky',top:0,right:0,zIndex:3,background:'#f5e6ec',padding:'12px 14px',textAlign:'center',fontSize:11,fontWeight:700,color:'var(--berry)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--berry)',minWidth:TOT_COL}}>Total</th>
                                         </tr>
@@ -13301,6 +13784,7 @@ ${rejetHtml}
                         { name: 'SITUATION LOCAL 2025-2026 ', defaultTypeVente: null },
                     ];
                     const allParsed = [];
+                    const transportRows = []; // {date, matricule, voyage} captured from SITUATION EXPORT
                     for (const sheetCfg of SHEETS_CFG) {
                         let ws = wb.Sheets[sheetCfg.name];
                         if (!ws) ws = wb.Sheets[sheetCfg.name.trim()];
@@ -13331,6 +13815,14 @@ ${rejetHtml}
                             const poids = parseFloat(row[8]) || 0;
                             const prixDH = parseFloat(row[9]) || 0;
                             const totalDH = parseFloat(row[10]) || 0;
+                            // Capture transport fruit info (matricule + N-V) from SITUATION EXPORT only
+                            if (sheetCfg.name === 'SITUATION EXPORT 2025-2026') {
+                                const matricule = String(row[11] || '').trim().toUpperCase();
+                                const voyage = String(row[12] || '').trim().toUpperCase();
+                                if (matricule && voyage && dateISO) {
+                                    transportRows.push({ date: dateISO, matricule, voyage });
+                                }
+                            }
                             // Extract variety
                             const dUp = designation.toUpperCase();
                             // Skip non-fruit rows (déchets, emballages, etc.)
@@ -13420,6 +13912,111 @@ ${rejetHtml}
                             lastImportBy: profileData?.name || currentProfile || 'unknown',
                         });
                     } catch(e) { console.warn('Meta update skipped:', e); }
+                    // --- Transport Fruit : auto-incrémenter Pointage Divers depuis (date, matricule, N-V) ---
+                    let transportReport = null;
+                    try {
+                        if (transportRows.length > 0 && typeof firebase !== 'undefined' && firebase.firestore) {
+                            const db = firebase.firestore();
+                            // Agrégation : Map<date, Map<matricule, Set<voyage>>>
+                            const byDate = new Map();
+                            for (const r of transportRows) {
+                                if (!byDate.has(r.date)) byDate.set(r.date, new Map());
+                                const m = byDate.get(r.date);
+                                if (!m.has(r.matricule)) m.set(r.matricule, new Set());
+                                m.get(r.matricule).add(r.voyage);
+                            }
+                            // Charger configs TRANSPORT FRUIT existants → index par matricule (nouveau schéma)
+                            // Fallback : si pas de matricule, utiliser beneficiaire (compat configs legacy)
+                            const cfgSnap = await db.collection('pointage_divers_config').where('fonction', '==', 'TRANSPORT FRUIT').get();
+                            const cfgByMat = new Map();
+                            cfgSnap.docs.forEach(d => {
+                                const v = d.data();
+                                if (v.active === false) return;
+                                const key = String(v.matricule || v.beneficiaire || '').trim().toUpperCase();
+                                if (key) cfgByMat.set(key, { id: d.id, ...v });
+                            });
+                            // Auto-create configs pour matricules inconnus (nom vide, à compléter par RH)
+                            const allMatricules = new Set();
+                            for (const m of byDate.values()) for (const k of m.keys()) allMatricules.add(k);
+                            const missingPrices = [];
+                            for (const mat of allMatricules) {
+                                if (!cfgByMat.has(mat)) {
+                                    const docData = {
+                                        beneficiaire: '',
+                                        matricule: mat,
+                                        fonction: 'TRANSPORT FRUIT',
+                                        tache: 'Transport fruit',
+                                        prixUnitaire: 0,
+                                        unite: 'VOYAGES',
+                                        active: true,
+                                        createdAt: Date.now(),
+                                        updatedAt: Date.now(),
+                                    };
+                                    const ref = await db.collection('pointage_divers_config').add(docData);
+                                    cfgByMat.set(mat, { id: ref.id, ...docData });
+                                    missingPrices.push(mat);
+                                } else if (!Number(cfgByMat.get(mat).prixUnitaire)) {
+                                    missingPrices.push(mat);
+                                }
+                            }
+                            // Upsert pointage_divers/{date} pour chaque date
+                            const lockedDates = [];
+                            let totalVoyages = 0;
+                            const sortedDates = [...byDate.keys()].sort();
+                            for (const date of sortedDates) {
+                                // Check validation lock
+                                let isLocked = false;
+                                try {
+                                    const vDoc = await db.collection('pointage_validations').doc(date + '_DIVERS').get();
+                                    if (vDoc.exists && vDoc.data().locked === true) isLocked = true;
+                                } catch (_) {}
+                                if (isLocked) { lockedDates.push(date); continue; }
+                                // Charger entries existantes, filtrer out TRANSPORT FRUIT
+                                let existingEntries = [];
+                                try {
+                                    const dDoc = await db.collection('pointage_divers').doc(date).get();
+                                    if (dDoc.exists) existingEntries = (dDoc.data().entries || []).filter(e => e.fonction !== 'TRANSPORT FRUIT');
+                                } catch (_) {}
+                                // Push 1 entry par matricule
+                                const matMap = byDate.get(date);
+                                for (const [mat, voyageSet] of matMap.entries()) {
+                                    const cfg = cfgByMat.get(mat);
+                                    const nbVoyages = voyageSet.size;
+                                    const prixUnitaire = Number(cfg.prixUnitaire) || 0;
+                                    existingEntries.push({
+                                        configId: cfg.id,
+                                        beneficiaire: cfg.beneficiaire || '',
+                                        matricule: mat,
+                                        fonction: 'TRANSPORT FRUIT',
+                                        tache: 'Transport fruit',
+                                        quantite: nbVoyages,
+                                        prixUnitaire,
+                                        unite: 'VOYAGES',
+                                        montant: Math.round(nbVoyages * prixUnitaire * 100) / 100,
+                                        commentaire: 'Auto-import situation production',
+                                    });
+                                    totalVoyages += nbVoyages;
+                                }
+                                const totalMontant = Math.round(existingEntries.reduce((s, e) => s + ((Number(e.quantite) || 0) * (Number(e.prixUnitaire) || 0)), 0) * 100) / 100;
+                                await db.collection('pointage_divers').doc(date).set({
+                                    date,
+                                    entries: existingEntries,
+                                    totalMontant,
+                                    createdBy: 'Import Situation Production',
+                                    updatedAt: Date.now(),
+                                });
+                            }
+                            transportReport = {
+                                nbVoyages: totalVoyages,
+                                nbDates: sortedDates.length - lockedDates.length,
+                                nbMatricules: allMatricules.size,
+                                missingPrices,
+                                lockedDates,
+                            };
+                        }
+                    } catch (err) {
+                        console.error('Transport fruit auto-import:', err);
+                    }
                     // Utiliser directement les bons parsés + les bons manuels/scannés existants
                     _bonsCache = null; // Invalider le cache
                     // Recharger TOUS les bons (bulk_upload + manual_entry + scan_ocr) depuis Firestore
@@ -13436,6 +14033,15 @@ ${rejetHtml}
                     let importMsg = `${deduped.length} bons importés depuis "${file.name}".\n\n  - Export: ${countExport} bons\n  - Marché Local: ${countLocal} bons`;
                     if (countOther > 0) importMsg += `\n  - Autres: ${countOther} bons`;
                     if (countLocal === 0) importMsg += '\n\n⚠️ ATTENTION: Aucun bon Marché Local importé ! Vérifiez la feuille LOCAL dans le fichier Excel.';
+                    if (transportReport) {
+                        importMsg += `\n\n🚚 Transport Fruit: ${transportReport.nbVoyages} voyages sur ${transportReport.nbDates} date(s) pour ${transportReport.nbMatricules} matricule(s).`;
+                        if (transportReport.missingPrices.length > 0) {
+                            importMsg += `\n\n⚠️ Matricules à tarifer (prix=0 DH/voyage) :\n  - ${transportReport.missingPrices.join('\n  - ')}\n→ Renseigner le prix dans Pointage Divers › Config Sous-traitants.`;
+                        }
+                        if (transportReport.lockedDates.length > 0) {
+                            importMsg += `\n\n🔒 Dates ignorées (Pointage Divers verrouillé) :\n  - ${transportReport.lockedDates.join('\n  - ')}`;
+                        }
+                    }
                     alert(importMsg);
                 } catch(err) {
                     alert('Erreur de lecture du fichier: ' + err.message);
@@ -17261,6 +17867,7 @@ ${rejetHtml}
             const [kpiDetailPopup, setKpiDetailPopup] = useState(null); // 'gsnet' | 'qty' | null
             const [forecastsByFruit, setForecastsByFruit] = useState({ framboise: {}, myrtille: {} }); // { framboise: { week: {minMad,maxMad,avgMad,year,updatedAt} } }
             const [forecastModal, setForecastModal] = useState(null); // { fruitCode, year, step, file, imageB64, mediaType, weeks, loading, error }
+            const [privateMode, setPrivateMode] = useState(false); // Masque toutes les valeurs monétaires (CA, GS Net, commissions) pour démos partenaires
 
             // ISO week number helper
             const getISOWeek = (dateStr) => {
@@ -17434,8 +18041,38 @@ ${rejetHtml}
             //         .finally(() => setLoading(false));
             // }, []);
 
+            // Maravilla LC detection: bons d'apport tagués sur parcelle LAR-01 → receipt → liquidation row
+            const normalizeRidLiq = (rid) => {
+                if (!rid) return '';
+                const s = String(rid).trim().toUpperCase();
+                const m = s.match(/^RID-0*(\d+)$/);
+                return m ? m[1] : s;
+            };
+            const lcBatchNumbers = new Set();
+            bonsApport.forEach(b => {
+                const resolved = normalizeParcelle(b.designation || b.blocLabel || b.blocVariete);
+                if (resolved && resolved.variete === 'Maravilla' && resolved.sousVariete === 'Long Cane' && b.bonApport) {
+                    lcBatchNumbers.add(String(b.bonApport).trim());
+                }
+            });
+            const lcReceiptIds = new Set();
+            expeditions.forEach(e => {
+                if (e.batchNumber && lcBatchNumbers.has(String(e.batchNumber).trim()) && e.receiptId) {
+                    lcReceiptIds.add(normalizeRidLiq(e.receiptId));
+                }
+            });
+
             // Variety display mapping — uses normalizeParcelle for unified naming
-            const liqVarietyMap = (v) => { const r = normalizeParcelle(v); return r ? r.variete : v; };
+            // Maravilla split en GC (Grande Culture, défaut) et LC (Long Cane, parcelle ML-T-LAR-01)
+            const liqVarietyMap = (v, receiptId) => {
+                const r = normalizeParcelle(v);
+                if (!r) return v;
+                if (r.variete === 'Maravilla') {
+                    if (receiptId && lcReceiptIds.has(normalizeRidLiq(receiptId))) return 'Maravilla LC';
+                    return 'Maravilla GC';
+                }
+                return r.variete;
+            };
             const varietyToCulture = (v) => /myrtille|blue|corina|corrina|cascade|breeze/i.test(v) ? 'myrtille' : 'framboise';
 
             // Extract year from subject "WEEK XX-YYYY"
@@ -17470,7 +18107,7 @@ ${rejetHtml}
                 const year = extractYear(l.subject, l.date);
                 return (l.rows || []).map(r => ({
                     ...r,
-                    variety: liqVarietyMap(r.variety),
+                    variety: liqVarietyMap(r.variety, r.receiptId),
                     week: l.week,
                     year,
                     liqId: l.id,
@@ -17495,7 +18132,23 @@ ${rejetHtml}
             // Ferme from variety — uses normalizeParcelle
             const fermeOf = (v) => { const r = normalizeParcelle(v); return r ? r.ferme : ''; };
             const fermes = [...new Set(allRows.map(r => fermeOf(r.variety)).filter(Boolean))].sort();
-            const varietes = [...new Set(allRows.map(r => r.variety).filter(Boolean))].sort();
+            // Variétés depuis bonsApport (saisie interne) — pour faire apparaître chips même sans liquidation Driscoll's
+            const bonsVarieties = new Set();
+            bonsApport.forEach(b => {
+                if (b.status === 'rejete_qualite' || b.status === 'rejete_chef') return;
+                const resolved = normalizeParcelle(b.designation || b.blocLabel || b.blocVariete);
+                if (!resolved) return;
+                let v;
+                if (resolved.variete === 'Maravilla') {
+                    if (resolved.sousVariete === 'Long Cane') v = 'Maravilla LC';
+                    else if (resolved.sousVariete === 'Green Cane') v = 'Maravilla GC';
+                    else v = 'Maravilla GC';
+                } else {
+                    v = resolved.sousVariete ? `${resolved.variete} ${resolved.sousVariete}` : resolved.variete;
+                }
+                bonsVarieties.add(v);
+            });
+            const varietes = [...new Set([...allRows.map(r => r.variety).filter(Boolean), ...bonsVarieties])].sort();
 
             let filtered = allRows;
             if (selectedFruit) filtered = filtered.filter(r => r.fruit === selectedFruit);
@@ -17543,9 +18196,16 @@ ${rejetHtml}
                 const y = getWeekYear(dateStr);
                 if (!w || !y) return;
                 const resolved = normalizeParcelle(b.designation || b.blocLabel || b.blocVariete);
-                const variety = resolved
-                    ? (resolved.sousVariete ? `${resolved.variete} ${resolved.sousVariete}` : resolved.variete)
-                    : (b.blocVariete || '?');
+                let variety;
+                if (resolved && resolved.variete === 'Maravilla') {
+                    if (resolved.sousVariete === 'Long Cane') variety = 'Maravilla LC';
+                    else if (resolved.sousVariete === 'Green Cane') variety = 'Maravilla GC';
+                    else variety = 'Maravilla GC';
+                } else if (resolved) {
+                    variety = resolved.sousVariete ? `${resolved.variete} ${resolved.sousVariete}` : resolved.variete;
+                } else {
+                    variety = b.blocVariete || '?';
+                }
                 const culture = resolved ? resolved.culture.toLowerCase() : 'framboise';
                 const ferme = resolved ? resolved.ferme : '';
                 if (selectedFruit && culture !== selectedFruit) return;
@@ -17693,6 +18353,12 @@ ${rejetHtml}
                         </div>
                         <div style={{marginLeft:'auto', display:'flex', gap:8}}>
                             <button
+                                onClick={() => setPrivateMode(!privateMode)}
+                                title={privateMode ? "Mode privé actif — valeurs monétaires masquées. Cliquer pour réafficher." : "Activer le mode privé pour masquer CA / GS Net / Commission (démos partenaires)"}
+                                style={{fontSize:12, padding:'6px 12px', borderRadius:6, border:'1px solid ' + (privateMode ? 'var(--berry)' : 'var(--gray-200)'), background: privateMode ? 'var(--berry)' : '#fff', color: privateMode ? '#fff' : 'var(--gray-600)', cursor:'pointer', fontWeight:600}}>
+                                <i className={`fa-solid ${privateMode ? 'fa-eye-slash' : 'fa-eye'}`} style={{marginRight:6}}></i>Mode privé {privateMode ? 'ON' : 'OFF'}
+                            </button>
+                            <button
                                 className="btn-secondary"
                                 onClick={() => openForecastImport('RASP')}
                                 title="Importer un slide Driscoll's de prévision Framboise"
@@ -17709,25 +18375,70 @@ ${rejetHtml}
                         </div>
                     </div>
 
-                    {/* KPIs */}
-                    <div className="kpi-grid">
-                        {!compactView && <KPICard icon="fa-coins" iconClass="silver" value={nbLots} label="Lots Liquidés" />}
-                        {!compactView && (
-                            <div onClick={() => setKpiDetailPopup('qty')} style={{cursor:'pointer'}}>
-                                <KPICard icon="fa-weight-scale" iconClass="green" value={`${Math.round(totalKg).toLocaleString('fr-FR')} kg`} label="Total Quantité ⓘ" />
+                    {/* KPIs — 3 lignes (Qté / Prix / CA) × 3 colonnes (Liquidé / Prév / Campagne) + Commission */}
+                    <style>{`
+                        .kpi-grid-compact .kpi-card { padding: 10px 14px; }
+                        .kpi-grid-compact .kpi-card .kpi-header { margin-bottom: 4px; }
+                        .kpi-grid-compact .kpi-card .kpi-icon { width: 28px; height: 28px; font-size: 12px; border-radius: 8px; }
+                        .kpi-grid-compact .kpi-card .kpi-value { font-size: 18px; line-height: 1.2; }
+                        .kpi-grid-compact .kpi-card .kpi-label { font-size: 11px; }
+                        .kpi-col-prev .kpi-value { color: var(--blue); }
+                        .kpi-col-campagne .kpi-value { color: #757575; }
+                    `}</style>
+                    <div className="kpi-grid kpi-grid-compact" style={{gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10}}>
+                        {/* === COLONNE 1 : LIQUIDÉ (couleurs métriques) === */}
+                        {!compactView && !privateMode && (
+                            <div style={{gridColumn: 1, gridRow: 1, cursor:'pointer'}} onClick={() => setKpiDetailPopup('qty')}>
+                                <KPICard icon="fa-weight-scale" iconClass="green" value={`${(totalKg / 1000).toFixed(2)} T`} label="Qté Liquidée ⓘ" />
                             </div>
                         )}
-                        {!compactView && (
-                            <div onClick={() => setKpiDetailPopup('gsnet')} style={{cursor:'pointer'}}>
-                                <KPICard icon="fa-money-bill-wave" iconClass="blue" value={`${Math.round(totalGsNet).toLocaleString('fr-FR')}`} label="Total GS Net (DH) ⓘ" />
+                        <div style={{gridColumn: 1, gridRow: 2}}>
+                            <KPICard icon="fa-tags" iconClass="berry" value={avgPriceKg.toFixed(2)} label="Prix Moyen Liquidé (DH/kg)" />
+                        </div>
+                        {!compactView && !privateMode && (
+                            <div style={{gridColumn: 1, gridRow: 3, cursor:'pointer'}} onClick={() => setKpiDetailPopup('gsnet')}>
+                                <KPICard icon="fa-money-bill-wave" iconClass="blue" value={`${(totalGsNet / 1000000).toFixed(2)} m DH`} label="CA Liquidé ⓘ" />
                             </div>
                         )}
-                        <KPICard icon="fa-tags" iconClass="berry" value={avgPriceKg.toFixed(2)} label="Prix Moyen (DH/kg)" />
-                        <div onClick={() => setKpiDetailPopup('commission')} style={{cursor:'pointer'}}>
+
+                        {/* === COLONNE 2 : PRÉVISIONNEL (bleu) === */}
+                        {!compactView && !privateMode && totalNonLiqKg > 0 && (
+                            <div className="kpi-col-prev" style={{gridColumn: 2, gridRow: 1}}>
+                                <KPICard icon="fa-scale-balanced" iconClass="blue" value={`${(totalNonLiqKg / 1000).toFixed(2)} T`} label="Qté Prév" />
+                            </div>
+                        )}
+                        {!compactView && totalNonLiqKg > 0 && (
+                            <div className="kpi-col-prev" style={{gridColumn: 2, gridRow: 2}}>
+                                <KPICard icon="fa-tag" iconClass="blue" value={(totalEstCA / totalNonLiqKg).toFixed(2)} label="Prix Prév (DH/kg)" />
+                            </div>
+                        )}
+                        {!compactView && !privateMode && (
+                            <div className="kpi-col-prev" style={{gridColumn: 2, gridRow: 3}}>
+                                <KPICard icon="fa-hourglass-half" iconClass="blue" value={`${(totalEstCA / 1000000).toFixed(2)} m DH`} label="CA Prév" />
+                            </div>
+                        )}
+
+                        {/* === COLONNE 3 : CAMPAGNE (gris) === */}
+                        {!compactView && !privateMode && (totalKg + totalNonLiqKg) > 0 && (
+                            <div className="kpi-col-campagne" style={{gridColumn: 3, gridRow: 1}}>
+                                <KPICard icon="fa-boxes-stacked" iconClass="silver" value={`${((totalKg + totalNonLiqKg) / 1000).toFixed(2)} T`} label="Qté Campagne" />
+                            </div>
+                        )}
+                        {!compactView && (totalKg + totalNonLiqKg) > 0 && (
+                            <div className="kpi-col-campagne" style={{gridColumn: 3, gridRow: 2}}>
+                                <KPICard icon="fa-chart-line" iconClass="silver" value={((totalGsNet + totalEstCA) / (totalKg + totalNonLiqKg)).toFixed(2)} label="Prix Moyen Campagne (DH/kg)" />
+                            </div>
+                        )}
+                        {!compactView && !privateMode && (
+                            <div className="kpi-col-campagne" style={{gridColumn: 3, gridRow: 3}}>
+                                <KPICard icon="fa-calculator" iconClass="silver" value={`${((totalGsNet + totalEstCA) / 1000000).toFixed(2)} m DH`} label="CA Campagne" />
+                            </div>
+                        )}
+
+                        {/* === COLONNE 4 : COMMISSION === */}
+                        <div style={{gridColumn: 4, gridRow: 2, cursor:'pointer'}} onClick={() => setKpiDetailPopup('commission')}>
                             <KPICard icon="fa-percent" iconClass="orange" value={avgCommPct != null ? `${avgCommPct.toFixed(1)}%` : '-'} label="Commission Driscoll's ⓘ" />
                         </div>
-                        {!compactView && <KPICard icon="fa-hourglass-half" iconClass="orange" value={`${Math.round(totalEstCA).toLocaleString('fr-FR')}`} label="CA Prév (DH)" />}
-                        {!compactView && <KPICard icon="fa-calculator" iconClass="purple" value={`${Math.round(totalGsNet + totalEstCA).toLocaleString('fr-FR')}`} label="CA Total (DH)" />}
                     </div>
 
                     {/* KPI Detail Popup */}
@@ -17849,7 +18560,7 @@ ${rejetHtml}
                                                 <th>Semaine</th>
                                                 <th style={{textAlign:'right'}}>Lots</th>
                                                 <th style={{textAlign:'right'}}>Quantité (kg)</th>
-                                                <th style={{textAlign:'right'}}>GS Net (DH)</th>
+                                                {!privateMode && <th style={{textAlign:'right'}}>GS Net (DH)</th>}
                                                 <th style={{textAlign:'right'}}>Prix/kg</th>
                                             </tr>
                                         </thead>
@@ -17861,7 +18572,7 @@ ${rejetHtml}
                                                         <td style={{fontWeight:700}}>{k}</td>
                                                         <td style={{textAlign:'right'}}>{d.rids.size}</td>
                                                         <td style={{textAlign:'right'}}>{Math.round(d.kg).toLocaleString('fr-FR')}</td>
-                                                        <td style={{textAlign:'right', fontWeight:600}}>{Math.round(d.gsNet).toLocaleString('fr-FR')}</td>
+                                                        {!privateMode && <td style={{textAlign:'right', fontWeight:600}}>{Math.round(d.gsNet).toLocaleString('fr-FR')}</td>}
                                                         <td style={{textAlign:'right'}}>{d.kg > 0 ? (d.gsNet / d.kg).toFixed(2) : '-'}</td>
                                                     </tr>
                                                 );
@@ -17872,11 +18583,56 @@ ${rejetHtml}
                                                 <td>TOTAL</td>
                                                 <td style={{textAlign:'right'}}>{nbLots}</td>
                                                 <td style={{textAlign:'right'}}>{Math.round(totalKg).toLocaleString('fr-FR')}</td>
-                                                <td style={{textAlign:'right'}}>{Math.round(totalGsNet).toLocaleString('fr-FR')}</td>
+                                                {!privateMode && <td style={{textAlign:'right'}}>{Math.round(totalGsNet).toLocaleString('fr-FR')}</td>}
                                                 <td style={{textAlign:'right'}}>{avgPriceKg.toFixed(2)}</td>
                                             </tr>
                                         </tfoot>
                                     </table>
+                                    {!isGsNet && (() => {
+                                        const liquidatedKeysSet = new Set(detailKeys);
+                                        const pendingRows = [];
+                                        Object.values(prodByWeek).forEach(d => {
+                                            const k = `W${d.week}-${String(d.year).slice(-2)}`;
+                                            if (liquidatedKeysSet.has(k)) return;
+                                            const kg = selectedVariete ? (d.byVariety[selectedVariete] || 0) : d.totalKg;
+                                            if (kg <= 0) return;
+                                            pendingRows.push({ key: k, week: d.week, year: d.year, kg, lots: d.lots });
+                                        });
+                                        pendingRows.sort((a, b) => { if (b.year !== a.year) return b.year - a.year; return b.week - a.week; });
+                                        if (pendingRows.length === 0) return null;
+                                        const totPendKg = pendingRows.reduce((s, r) => s + r.kg, 0);
+                                        const totPendLots = pendingRows.reduce((s, r) => s + r.lots, 0);
+                                        return (
+                                            <div style={{marginTop:24}}>
+                                                <h4 style={{margin:'0 0 8px 0', fontSize:13, color:'var(--gray-600)'}}>En attente de liquidation Driscoll's</h4>
+                                                <table className="data-table" style={{fontSize:12}}>
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Semaine</th>
+                                                            <th style={{textAlign:'right'}}>Lots</th>
+                                                            <th style={{textAlign:'right'}}>Quantité (kg)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {pendingRows.map(r => (
+                                                            <tr key={r.key}>
+                                                                <td style={{fontWeight:700}}>{r.key}</td>
+                                                                <td style={{textAlign:'right'}}>{r.lots}</td>
+                                                                <td style={{textAlign:'right'}}>{Math.round(r.kg).toLocaleString('fr-FR')}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        <tr style={{fontWeight:700, borderTop:'2px solid var(--dark)'}}>
+                                                            <td>TOTAL EN ATTENTE</td>
+                                                            <td style={{textAlign:'right'}}>{totPendLots}</td>
+                                                            <td style={{textAlign:'right'}}>{Math.round(totPendKg).toLocaleString('fr-FR')}</td>
+                                                        </tr>
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         );
@@ -17890,7 +18646,7 @@ ${rejetHtml}
                     )}
 
                     {/* ===== CHART: Prix moyen par semaine ===== */}
-                    {filtered.length > 0 && (() => {
+                    {(filtered.length > 0 || Object.keys(prodByWeek).length > 0) && (() => {
                         const chartFiltered = chartVariete ? filtered.filter(r => r.variety === chartVariete) : filtered;
                         const priceByWeek = {};
                         chartFiltered.forEach(r => {
@@ -17902,35 +18658,25 @@ ${rejetHtml}
                             priceByWeek[key].gsNet += r.gsNet || 0;
                         });
                         const rawData = Object.values(priceByWeek)
-                            .map(d => ({ week: d.week, year: d.year, sortKey: d.year * 100 + d.week, label: `W${d.week}`, price: d.kg > 0 ? Math.round(d.gsNet / d.kg * 100) / 100 : 0, kg: Math.round(d.kg) }))
+                            .map(d => ({ week: d.week, year: d.year, sortKey: d.year * 100 + d.week, label: `${d.week}`, price: d.kg > 0 ? Math.round(d.gsNet / d.kg * 100) / 100 : 0, kg: Math.round(d.kg) }))
                             .filter(d => d.price > 0)
                             .sort((a, b) => a.sortKey - b.sortKey);
-                        // Build pending expedition volumes (non-liquidated weeks)
+                        // Pending = bonsApport (saisie interne, Sat-Fri week) sur semaines non encore liquidées.
+                        // Source plus fiable que expeditions Driscoll's qui peuvent manquer/arriver tard.
                         const pendingByWeek = {};
                         if (chartVariete || selectedFruit || selectedVariete) {
                             const liquidatedKeys = new Set(Object.keys(priceByWeek));
-                            expeditions.filter(e => e.overallResult !== 'REJECT').forEach(e => {
-                                const dateStr = e.date || '';
-                                const ew = getISOWeek(dateStr);
-                                const ey = getISOYear(dateStr);
-                                if (!ew || !ey) return;
-                                const eKey = `${ey}-${ew}`;
+                            Object.values(prodByWeek).forEach(d => {
+                                const eKey = `${d.year}-${d.week}`;
                                 if (liquidatedKeys.has(eKey)) return;
-                                const variety = applyVarietyMapping ? applyVarietyMapping(e.batchNumber, e.variety) : e.variety;
-                                // Apply same filters as chart
-                                if (chartVariete && variety !== chartVariete) return;
-                                if (selectedFruit) {
-                                    const resolved = normalizeParcelle(variety || e.variety);
-                                    const fruit = resolved ? resolved.culture.toLowerCase() : (e.fruit || '').toLowerCase();
-                                    if (fruit !== selectedFruit) return;
-                                }
-                                if (selectedVariete && variety !== selectedVariete) return;
-                                if (!pendingByWeek[eKey]) pendingByWeek[eKey] = { kg: 0, week: ew, year: ey };
-                                pendingByWeek[eKey].kg += e.batchWeight || 0;
+                                const kg = chartVariete ? (d.byVariety[chartVariete] || 0) : d.totalKg;
+                                if (kg <= 0) return;
+                                if (!pendingByWeek[eKey]) pendingByWeek[eKey] = { kg: 0, week: d.week, year: d.year };
+                                pendingByWeek[eKey].kg += kg;
                             });
                         }
                         const pendingData = Object.values(pendingByWeek)
-                            .map(d => ({ week: d.week, year: d.year, sortKey: d.year * 100 + d.week, label: `W${d.week}`, price: 0, kg: Math.round(d.kg), pending: true }))
+                            .map(d => ({ week: d.week, year: d.year, sortKey: d.year * 100 + d.week, label: `${d.week}`, price: 0, kg: Math.round(d.kg), pending: true }))
                             .sort((a, b) => a.sortKey - b.sortKey);
 
                         // Fill missing weeks between first and last (including pending)
@@ -17944,19 +18690,22 @@ ${rejetHtml}
                             allPoints.forEach(d => dataMap[d.sortKey] = d);
                             while (y * 100 + w <= lastKey) {
                                 const key = y * 100 + w;
-                                filled.push(dataMap[key] || { week: w, year: y, sortKey: key, label: `W${w}`, price: 0, kg: 0 });
+                                filled.push(dataMap[key] || { week: w, year: y, sortKey: key, label: `${w}`, price: 0, kg: 0 });
                                 w++;
                                 if (w > 52) { w = 1; y++; }
                             }
                             return filled;
                         })();
-                        // Forecast par fruit (visible uniquement quand une variété est sélectionnée)
-                        const chartFruit = chartVariete
-                            ? (() => {
-                                const resolved = normalizeParcelle(chartVariete);
-                                return resolved ? (resolved.culture || '').toLowerCase() : null;
-                              })()
-                            : null;
+                        // Forecast par fruit : visible si chart filtré par variété, variété globale, OU fruit global
+                        const chartFruit = (() => {
+                            const v = chartVariete || selectedVariete;
+                            if (v) {
+                                const resolved = normalizeParcelle(v);
+                                if (resolved && resolved.culture) return resolved.culture.toLowerCase();
+                            }
+                            if (selectedFruit) return selectedFruit.toLowerCase();
+                            return null;
+                        })();
                         const forecastByWeek = {};
                         if (chartFruit && (chartFruit === 'framboise' || chartFruit === 'myrtille')) {
                             Object.entries(forecastsByFruit[chartFruit] || {}).forEach(([w, v]) => {
@@ -17992,7 +18741,7 @@ ${rejetHtml}
                                 if (!w) return;
                                 const k = baseYear * 100 + w;
                                 if (!presentKeys.has(k)) {
-                                    chartData.push({ week: w, year: baseYear, sortKey: k, label: `W${w}`, price: 0, kg: 0, forecastOnly: true });
+                                    chartData.push({ week: w, year: baseYear, sortKey: k, label: `${w}`, price: 0, kg: 0, forecastOnly: true });
                                 }
                             });
                             chartData.sort((a, b) => a.sortKey - b.sortKey);
@@ -18004,7 +18753,10 @@ ${rejetHtml}
                         );
                         const showVolumeLine = !!(chartVariete || selectedFruit || selectedVariete);
                         const maxKg = showVolumeLine ? Math.max(...chartData.map(d => d.kg), 1) : 1;
-                        const chartW = 700, chartH = showVolumeLine ? 220 : 200, padL = 50, padR = showVolumeLine ? 55 : 20, padT = 20, padB = 30;
+                        const baseChartW = 700;
+                        const chartW = Math.max(baseChartW, 50 + (showVolumeLine ? 55 : 20) + chartData.length * 32);
+                        const chartH = showVolumeLine ? 220 : 200, padL = 50, padR = showVolumeLine ? 55 : 20, padT = 20, padB = 30;
+                        const needsScroll = chartW > baseChartW + 20;
                         const innerW = chartW - padL - padR, innerH = chartH - padT - padB;
                         const barW = chartData.length > 0 ? Math.min(innerW / chartData.length * 0.7, 30) : 20;
                         const gap = chartData.length > 0 ? innerW / chartData.length : 20;
@@ -18019,7 +18771,8 @@ ${rejetHtml}
                                     </select>
                                 </div>
                             }>
-                                <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{width:'100%', maxHeight: showVolumeLine ? 240 : 220}}>
+                                <div style={{overflowX: needsScroll ? 'auto' : 'visible', width:'100%'}}>
+                                <svg viewBox={`0 0 ${chartW} ${chartH}`} style={{width: needsScroll ? `${chartW}px` : '100%', maxHeight: showVolumeLine ? 240 : 220, display:'block'}}>
                                     {[0, 0.25, 0.5, 0.75, 1].map(p => {
                                         const y = padT + innerH * (1 - p);
                                         return <g key={p}><line x1={padL} y1={y} x2={chartW-padR} y2={y} stroke="#f0f0f0" /><text x={padL-4} y={y+4} textAnchor="end" fontSize={9} fill="#999">{Math.round(maxPrice * p)}</text></g>;
@@ -18050,29 +18803,51 @@ ${rejetHtml}
                                         </g>;
                                     })}
                                     {showVolumeLine && chartData.length > 1 && (() => {
-                                        // Split into solid (liquidated) and dashed (pending) segments
-                                        const coords = chartData.map((d, i) => ({
-                                            x: padL + i * gap + gap / 2,
-                                            y: padT + innerH - (d.kg / maxKg) * innerH,
-                                            pending: !!d.pending
-                                        }));
-                                        // Find last non-pending index
-                                        let lastLiq = -1;
-                                        coords.forEach((c, i) => { if (!c.pending) lastLiq = i; });
-                                        const solidPts = coords.filter((_, i) => i <= lastLiq).map(c => `${c.x},${c.y}`).join(' ');
-                                        // Dashed: from last liquidated point onward (include last liq as start)
-                                        const dashedPts = coords.filter((_, i) => i >= lastLiq && lastLiq >= 0).map(c => `${c.x},${c.y}`).join(' ');
+                                        // Solide jusqu'à la dernière semaine écoulée, pointillée pour la semaine en cours
+                                        const today = new Date();
+                                        const todayIso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                                        const currentWeek = getWeekNum(todayIso);
+                                        const currentYear = today.getFullYear();
+                                        const cmp = (y, w) => y * 100 + w;
+                                        const currentKey = cmp(currentYear, currentWeek);
+                                        const coords = chartData
+                                            .map((d, i) => ({
+                                                x: padL + i * gap + gap / 2,
+                                                y: padT + innerH - (d.kg / maxKg) * innerH,
+                                                key: cmp(d.year, d.week),
+                                            }))
+                                            .filter(c => c.key <= currentKey);
+                                        const past = coords.filter(c => c.key < currentKey);
+                                        const currentPt = coords.find(c => c.key === currentKey);
+                                        const solidPts = past.map(c => `${c.x},${c.y}`).join(' ');
+                                        // Dashed = jonction dernière semaine écoulée → semaine en cours
+                                        const dashedPts = currentPt
+                                            ? (past.length > 0
+                                                ? `${past[past.length-1].x},${past[past.length-1].y} ${currentPt.x},${currentPt.y}`
+                                                : `${currentPt.x},${currentPt.y}`)
+                                            : '';
                                         return <g>
                                             {solidPts && <polyline points={solidPts} fill="none" stroke="var(--blue)" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />}
-                                            {dashedPts && coords.some(c => c.pending) && <polyline points={dashedPts} fill="none" stroke="var(--blue)" strokeWidth={2} strokeDasharray="6,4" strokeLinecap="round" strokeLinejoin="round" opacity={0.6} />}
+                                            {dashedPts && <polyline points={dashedPts} fill="none" stroke="var(--blue)" strokeWidth={2} strokeDasharray="6,4" strokeLinecap="round" strokeLinejoin="round" opacity={0.6} />}
                                         </g>;
                                     })()}
-                                    {showVolumeLine && chartData.map((d, i) => {
-                                        if (d.kg === 0 && !d.pending) return null;
-                                        const x = padL + i * gap + gap / 2;
-                                        const y = padT + innerH - (d.kg / maxKg) * innerH;
-                                        return <circle key={'vol-'+i} cx={x} cy={y} r={3} fill="var(--blue)" opacity={d.pending ? 0.6 : 1} />;
-                                    })}
+                                    {showVolumeLine && (() => {
+                                        const today = new Date();
+                                        const todayIso = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+                                        const currentWeek = getWeekNum(todayIso);
+                                        const currentYear = today.getFullYear();
+                                        const cmp = (y, w) => y * 100 + w;
+                                        const currentKey = cmp(currentYear, currentWeek);
+                                        return chartData.map((d, i) => {
+                                            if (d.kg === 0 && !d.pending) return null;
+                                            const dKey = cmp(d.year, d.week);
+                                            if (dKey > currentKey) return null; // pas de point pour les semaines futures
+                                            const isCurrent = dKey === currentKey;
+                                            const x = padL + i * gap + gap / 2;
+                                            const y = padT + innerH - (d.kg / maxKg) * innerH;
+                                            return <circle key={'vol-'+i} cx={x} cy={y} r={3} fill="var(--blue)" opacity={isCurrent ? 0.6 : 1} />;
+                                        });
+                                    })()}
                                     {showVolumeLine && <g>
                                         <rect x={padL+8} y={2} width={10} height={10} fill="var(--berry)" rx={2} opacity={0.85} />
                                         <text x={padL+22} y={11} fontSize={9} fill="#666">Prix (DH/kg)</text>
@@ -18089,6 +18864,7 @@ ${rejetHtml}
                                         </g>}
                                     </g>}
                                 </svg>
+                                </div>
                             </Panel>
                         );
                     })()}
@@ -18321,6 +19097,7 @@ ${rejetHtml}
                         return (
                             <Panel title={`Semaines en Attente de Liquidation (${nonLiquidated.length})`} icon="fa-hourglass-half">
                                 {/* KPI Tonnages */}
+                                {!privateMode && (
                                 <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(140px, 1fr))', gap:12, marginBottom:16}}>
                                     <div style={{background:'var(--gray-100)', borderRadius:10, padding:'12px 16px', textAlign:'center'}}>
                                         <div style={{fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase'}}>Tonnage Campagne</div>
@@ -18341,6 +19118,8 @@ ${rejetHtml}
                                         <div style={{fontSize:10, color:'var(--gray-400)'}}>CA: {Math.round(totalLocalCA).toLocaleString('fr-FR')} DH</div>
                                     </div>
                                 </div>
+                                )}
+                                {!privateMode && (
                                 <div style={{marginBottom:12, display:'flex', gap:8, flexWrap:'wrap'}}>
                                     <span style={{fontSize:11, background:'rgba(76,175,80,0.1)', color:'#2e7d32', padding:'4px 10px', borderRadius:8, fontWeight:600}}>
                                         CA Export estimé: {Math.round(totalEstCA).toLocaleString('fr-FR')} DH
@@ -18351,6 +19130,7 @@ ${rejetHtml}
                                         </span>
                                     ))}
                                 </div>
+                                )}
                                 <div style={{overflowX:'auto'}}>
                                     <table className="data-table" style={{fontSize:12}}>
                                         <thead>
@@ -18360,7 +19140,7 @@ ${rejetHtml}
                                                 <th>Total Kg</th>
                                                 {allVarsInNonLiq.map(v => <th key={v} style={{textAlign:'right'}}>{v} (kg)</th>)}
                                                 <th style={{textAlign:'right'}}>Prév. Driscoll's<br/><span style={{fontSize:9, fontWeight:400, color:'var(--gray-400)'}}>(DH/kg)</span></th>
-                                                <th style={{textAlign:'right'}}>CA Estimé (DH)</th>
+                                                {!privateMode && <th style={{textAlign:'right'}}>CA Estimé (DH)</th>}
                                                 <th style={{fontSize:10, color:'var(--gray-400)'}}>Base prix</th>
                                             </tr>
                                         </thead>
@@ -18393,7 +19173,7 @@ ${rejetHtml}
                                                                 </div>
                                                             ))}
                                                         </td>
-                                                        <td style={{textAlign:'right', fontWeight:600, color:'var(--green)'}}>{Math.round(rowEstCA).toLocaleString('fr-FR')}</td>
+                                                        {!privateMode && <td style={{textAlign:'right', fontWeight:600, color:'var(--green)'}}>{Math.round(rowEstCA).toLocaleString('fr-FR')}</td>}
                                                         <td style={{fontSize:10, color:'var(--gray-400)'}}>{[...usedSources].join(', ')}</td>
                                                     </tr>
                                                 );
@@ -18407,7 +19187,7 @@ ${rejetHtml}
                                                     return <td key={v} style={{textAlign:'right'}}>{vTotal > 0 ? Math.round(vTotal).toLocaleString('fr-FR') : '-'}</td>;
                                                 })}
                                                 <td></td>
-                                                <td style={{textAlign:'right', color:'var(--green)'}}>{Math.round(totalEstCA).toLocaleString('fr-FR')}</td>
+                                                {!privateMode && <td style={{textAlign:'right', color:'var(--green)'}}>{Math.round(totalEstCA).toLocaleString('fr-FR')}</td>}
                                                 <td></td>
                                             </tr>
                                         </tbody>
@@ -20385,6 +21165,12 @@ ${rejetHtml}
         }
 
         // ===================== POINTAGE DIVERS (DVR) =====================
+        const FONCTIONS_ENUM = [
+            { key: 'TRANSPORT FRUIT',      label: '🚚 Transport Fruit',      defaultUnite: 'VOYAGES' },
+            { key: 'TRANSPORT EMBALLAGES', label: '📦 Transport Emballages', defaultUnite: 'VOYAGES' },
+            { key: 'TRAX / JCB',           label: '🚧 Trax / JCB',            defaultUnite: 'HEURE' },
+            { key: 'LOCATION TRACTEUR',    label: '🚜 Location Tracteur',     defaultUnite: 'JOUR' },
+        ];
         function PointageDiversTab({ currentProfile }) {
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0, 10));
             const [configItems, setConfigItems] = useState([]);
@@ -20426,9 +21212,18 @@ ${rejetHtml}
 
             // --- Config CRUD ---
             const saveConfigItem = () => {
-                if (!editingItem || !editingItem.beneficiaire || !editingItem.fonction || !editingItem.tache || !editingItem.prixUnitaire || !editingItem.unite) return;
-                fetch('/api/validation?action=divers-config-save', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(editingItem) })
-                    .then(r => r.json()).then(res => { if (res.success) { setEditingItem(null); loadData(selectedDate); } });
+                if (!editingItem || !editingItem.beneficiaire || !editingItem.matricule || !editingItem.fonction || !editingItem.tache || editingItem.prixUnitaire === '' || editingItem.prixUnitaire === undefined || !editingItem.unite) {
+                    alert('Tous les champs sont obligatoires (Nom, Matricule, Fonction, Tâche, Prix, Unité).');
+                    return;
+                }
+                const matNorm = String(editingItem.matricule).trim().toUpperCase();
+                if (!matNorm) { alert('Matricule obligatoire.'); return; }
+                // Uniqueness check
+                const dup = configItems.find(c => c.id !== editingItem.id && String(c.matricule || '').trim().toUpperCase() === matNorm);
+                if (dup) { alert(`Matricule ${matNorm} déjà utilisé par "${dup.beneficiaire}".`); return; }
+                const payload = { ...editingItem, matricule: matNorm, beneficiaire: String(editingItem.beneficiaire).trim() };
+                fetch('/api/validation?action=divers-config-save', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+                    .then(r => r.json()).then(res => { if (res.success) { setEditingItem(null); loadData(selectedDate); } else { alert(res.error || 'Erreur'); } });
             };
             const deleteConfigItem = (id) => {
                 if (!confirm('Supprimer ce sous-traitant ?')) return;
@@ -20444,14 +21239,14 @@ ${rejetHtml}
             const isRejected = !!visaStatus.rejected;
 
             const addEntry = () => {
-                setEntries([...entries, { configId: '', beneficiaire: '', fonction: '', tache: '', quantite: 1, prixUnitaire: 0, unite: '', montant: 0, commentaire: '' }]);
+                setEntries([...entries, { configId: '', beneficiaire: '', matricule: '', fonction: '', tache: '', quantite: 1, prixUnitaire: 0, unite: '', montant: 0, commentaire: '' }]);
             };
             const updateEntry = (idx, field, value) => {
                 const newEntries = [...entries];
                 if (field === 'configId') {
                     const cfg = configItems.find(c => c.id === value);
                     if (cfg) {
-                        newEntries[idx] = { ...newEntries[idx], configId: value, beneficiaire: cfg.beneficiaire, fonction: cfg.fonction, tache: cfg.tache, prixUnitaire: cfg.prixUnitaire, unite: cfg.unite, montant: (newEntries[idx].quantite || 1) * cfg.prixUnitaire };
+                        newEntries[idx] = { ...newEntries[idx], configId: value, beneficiaire: cfg.beneficiaire, matricule: cfg.matricule || '', fonction: cfg.fonction, tache: cfg.tache, prixUnitaire: cfg.prixUnitaire, unite: cfg.unite, montant: (newEntries[idx].quantite || 1) * cfg.prixUnitaire };
                     }
                 } else if (field === 'quantite') {
                     const q = Number(value) || 0;
@@ -20669,10 +21464,54 @@ ${rejetHtml}
                     )}
 
                     {/* Config panel (RH only, collapsible) */}
-                    {isRH && (
+                    {isRH && (() => {
+                        const renderEditorRow = (keySuffix) => (
+                            <tr key={'edit_' + keySuffix} style={{background:'#fffde7'}}>
+                                <td><input value={editingItem.beneficiaire} onChange={e => setEditingItem({...editingItem, beneficiaire: e.target.value})} placeholder="Nom transporteur" style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
+                                <td><input value={editingItem.matricule} onChange={e => setEditingItem({...editingItem, matricule: e.target.value.toUpperCase()})} placeholder="7071H1" style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11,fontWeight:600,fontFamily:'monospace'}} /></td>
+                                <td>
+                                    <select value={editingItem.fonction} onChange={e => {
+                                        const f = FONCTIONS_ENUM.find(x => x.key === e.target.value);
+                                        setEditingItem({...editingItem, fonction: e.target.value, unite: editingItem.unite || (f ? f.defaultUnite : 'JOUR')});
+                                    }} style={{padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}}>
+                                        <option value="">-- Choisir --</option>
+                                        {FONCTIONS_ENUM.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                                    </select>
+                                </td>
+                                <td><input value={editingItem.tache} onChange={e => setEditingItem({...editingItem, tache: e.target.value})} placeholder="Tâche" style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
+                                <td><input type="number" value={editingItem.prixUnitaire} onChange={e => setEditingItem({...editingItem, prixUnitaire: e.target.value})} placeholder="0" style={{width:70,padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11,textAlign:'right'}} /></td>
+                                <td>
+                                    <select value={editingItem.unite} onChange={e => setEditingItem({...editingItem, unite: e.target.value})} style={{padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}}>
+                                        <option value="JOUR">JOUR</option><option value="HEURE">HEURE</option><option value="VOYAGES">VOYAGES</option>
+                                    </select>
+                                </td>
+                                <td style={{textAlign:'center'}}>
+                                    <button onClick={saveConfigItem} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'var(--green)',color:'#fff',fontSize:10,cursor:'pointer',marginRight:4}}><i className="fa-solid fa-check"></i></button>
+                                    <button onClick={() => setEditingItem(null)} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'var(--gray-300)',color:'#fff',fontSize:10,cursor:'pointer'}}><i className="fa-solid fa-times"></i></button>
+                                </td>
+                            </tr>
+                        );
+                        const renderRow = (c) => (editingItem && editingItem.id === c.id ? renderEditorRow(c.id) : (
+                            <tr key={c.id}>
+                                <td><strong>{c.beneficiaire || <em style={{color:'var(--gray-400)'}}>(à compléter)</em>}</strong></td>
+                                <td style={{fontFamily:'monospace',fontWeight:600}}>{c.matricule || <em style={{color:'#e74c3c'}}>—</em>}</td>
+                                <td>{c.fonction}</td>
+                                <td>{c.tache}</td>
+                                <td style={{textAlign:'right',fontWeight:600}}>{Number(c.prixUnitaire).toLocaleString('fr-FR')} DH</td>
+                                <td>{c.unite}</td>
+                                <td style={{textAlign:'center'}}>
+                                    <button onClick={() => setEditingItem({ id: c.id, beneficiaire: c.beneficiaire || '', matricule: c.matricule || '', fonction: c.fonction, tache: c.tache, prixUnitaire: c.prixUnitaire, unite: c.unite })} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'#3498db',color:'#fff',fontSize:10,cursor:'pointer',marginRight:4}}><i className="fa-solid fa-pen"></i></button>
+                                    <button onClick={() => deleteConfigItem(c.id)} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'#e74c3c',color:'#fff',fontSize:10,cursor:'pointer'}}><i className="fa-solid fa-trash"></i></button>
+                                </td>
+                            </tr>
+                        ));
+                        const groups = FONCTIONS_ENUM.map(f => ({ ...f, items: configItems.filter(c => c.fonction === f.key) }));
+                        const legacyItems = configItems.filter(c => !FONCTIONS_ENUM.some(f => f.key === c.fonction));
+                        if (legacyItems.length > 0) groups.push({ key: '__LEGACY__', label: '⚠️ Anciens (à reclasser)', items: legacyItems });
+                        return (
                         <Panel title="Configuration Sous-traitants" icon="fa-cog" collapsible defaultOpen={showConfig}>
                             <div style={{marginBottom:10}}>
-                                <button onClick={() => setEditingItem({ beneficiaire: '', fonction: '', tache: '', prixUnitaire: '', unite: 'JOUR' })}
+                                <button onClick={() => setEditingItem({ beneficiaire: '', matricule: '', fonction: '', tache: '', prixUnitaire: '', unite: 'JOUR' })}
                                     style={{padding:'6px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                                     <i className="fa-solid fa-plus" style={{marginRight:4}}></i>Ajouter
                                 </button>
@@ -20680,68 +21519,34 @@ ${rejetHtml}
                             <table className="data-table" style={{fontSize:12}}>
                                 <thead>
                                     <tr>
-                                        <th>Bénéficiaire</th>
-                                        <th>Fonction</th>
+                                        <th>Bénéficiaire (Nom)</th>
+                                        <th style={{width:110}}>Matricule</th>
+                                        <th style={{width:170}}>Fonction</th>
                                         <th>Tâche</th>
-                                        <th style={{textAlign:'right'}}>Prix Unitaire</th>
-                                        <th>Unité</th>
-                                        <th style={{textAlign:'center'}}>Actions</th>
+                                        <th style={{textAlign:'right',width:110}}>Prix Unitaire</th>
+                                        <th style={{width:80}}>Unité</th>
+                                        <th style={{textAlign:'center',width:90}}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {editingItem && !editingItem.id && (
-                                        <tr style={{background:'#fffde7'}}>
-                                            <td><input value={editingItem.beneficiaire} onChange={e => setEditingItem({...editingItem, beneficiaire: e.target.value})} placeholder="Nom" style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
-                                            <td><input value={editingItem.fonction} onChange={e => setEditingItem({...editingItem, fonction: e.target.value})} placeholder="TRACTEUR" style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
-                                            <td><input value={editingItem.tache} onChange={e => setEditingItem({...editingItem, tache: e.target.value})} placeholder="Tâche" style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
-                                            <td><input type="number" value={editingItem.prixUnitaire} onChange={e => setEditingItem({...editingItem, prixUnitaire: e.target.value})} placeholder="0" style={{width:70,padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11,textAlign:'right'}} /></td>
-                                            <td>
-                                                <select value={editingItem.unite} onChange={e => setEditingItem({...editingItem, unite: e.target.value})} style={{padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}}>
-                                                    <option value="JOUR">JOUR</option><option value="HEURE">HEURE</option><option value="VOYAGES">VOYAGES</option>
-                                                </select>
-                                            </td>
-                                            <td style={{textAlign:'center'}}>
-                                                <button onClick={saveConfigItem} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'var(--green)',color:'#fff',fontSize:10,cursor:'pointer',marginRight:4}}><i className="fa-solid fa-check"></i></button>
-                                                <button onClick={() => setEditingItem(null)} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'var(--gray-300)',color:'#fff',fontSize:10,cursor:'pointer'}}><i className="fa-solid fa-times"></i></button>
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {configItems.map(c => (
-                                        editingItem && editingItem.id === c.id ? (
-                                            <tr key={c.id} style={{background:'#fffde7'}}>
-                                                <td><input value={editingItem.beneficiaire} onChange={e => setEditingItem({...editingItem, beneficiaire: e.target.value})} style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
-                                                <td><input value={editingItem.fonction} onChange={e => setEditingItem({...editingItem, fonction: e.target.value})} style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
-                                                <td><input value={editingItem.tache} onChange={e => setEditingItem({...editingItem, tache: e.target.value})} style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}} /></td>
-                                                <td><input type="number" value={editingItem.prixUnitaire} onChange={e => setEditingItem({...editingItem, prixUnitaire: e.target.value})} style={{width:70,padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11,textAlign:'right'}} /></td>
-                                                <td>
-                                                    <select value={editingItem.unite} onChange={e => setEditingItem({...editingItem, unite: e.target.value})} style={{padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}}>
-                                                        <option value="JOUR">JOUR</option><option value="HEURE">HEURE</option><option value="VOYAGES">VOYAGES</option>
-                                                    </select>
-                                                </td>
-                                                <td style={{textAlign:'center'}}>
-                                                    <button onClick={saveConfigItem} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'var(--green)',color:'#fff',fontSize:10,cursor:'pointer',marginRight:4}}><i className="fa-solid fa-check"></i></button>
-                                                    <button onClick={() => setEditingItem(null)} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'var(--gray-300)',color:'#fff',fontSize:10,cursor:'pointer'}}><i className="fa-solid fa-times"></i></button>
+                                    {editingItem && !editingItem.id && renderEditorRow('new')}
+                                    {groups.map(g => (
+                                        <React.Fragment key={g.key}>
+                                            <tr style={{background:'var(--gray-100)'}}>
+                                                <td colSpan="7" style={{fontWeight:700,fontSize:11,color:'var(--gray-600)',padding:'6px 8px'}}>
+                                                    {g.label} <span style={{color:'var(--gray-400)',fontWeight:400}}>({g.items.length})</span>
                                                 </td>
                                             </tr>
-                                        ) : (
-                                            <tr key={c.id}>
-                                                <td><strong>{c.beneficiaire}</strong></td>
-                                                <td>{c.fonction}</td>
-                                                <td>{c.tache}</td>
-                                                <td style={{textAlign:'right',fontWeight:600}}>{Number(c.prixUnitaire).toLocaleString('fr-FR')} DH</td>
-                                                <td>{c.unite}</td>
-                                                <td style={{textAlign:'center'}}>
-                                                    <button onClick={() => setEditingItem({ id: c.id, beneficiaire: c.beneficiaire, fonction: c.fonction, tache: c.tache, prixUnitaire: c.prixUnitaire, unite: c.unite })} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'#3498db',color:'#fff',fontSize:10,cursor:'pointer',marginRight:4}}><i className="fa-solid fa-pen"></i></button>
-                                                    <button onClick={() => deleteConfigItem(c.id)} style={{padding:'3px 8px',borderRadius:4,border:'none',background:'#e74c3c',color:'#fff',fontSize:10,cursor:'pointer'}}><i className="fa-solid fa-trash"></i></button>
-                                                </td>
-                                            </tr>
-                                        )
+                                            {g.items.length === 0 ? (
+                                                <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',fontStyle:'italic',padding:8,fontSize:11}}>— aucun —</td></tr>
+                                            ) : g.items.map(renderRow)}
+                                        </React.Fragment>
                                     ))}
-                                    {configItems.length === 0 && !editingItem && <tr><td colSpan="6" style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun sous-traitant configuré</td></tr>}
                                 </tbody>
                             </table>
                         </Panel>
-                    )}
+                        );
+                    })()}
 
                     {/* Daily entries */}
                     <Panel title={`Pointage du ${new Date(selectedDate + 'T00:00:00').toLocaleDateString('fr-FR', {weekday:'long',day:'numeric',month:'long',year:'numeric'})}`} icon="fa-clipboard-list">
@@ -20766,7 +21571,10 @@ ${rejetHtml}
                                         <td style={{color:'var(--gray-400)'}}>{idx + 1}</td>
                                         {isLocked || !isRH ? (
                                             <React.Fragment>
-                                                <td><strong>{e.beneficiaire}</strong></td>
+                                                <td>
+                                                    <strong>{e.beneficiaire || <em style={{color:'var(--gray-400)'}}>(à compléter)</em>}</strong>
+                                                    {e.matricule && <span style={{marginLeft:6,fontSize:10,fontFamily:'monospace',color:'var(--gray-500)'}}>[{e.matricule}]</span>}
+                                                </td>
                                                 <td>{e.fonction}</td>
                                                 <td>{e.tache}</td>
                                                 <td style={{textAlign:'center'}}>{e.quantite}</td>
@@ -20779,7 +21587,18 @@ ${rejetHtml}
                                                     <select value={e.configId} onChange={ev => updateEntry(idx, 'configId', ev.target.value)}
                                                         style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}}>
                                                         <option value="">-- Sélectionner --</option>
-                                                        {configItems.map(c => <option key={c.id} value={c.id}>{c.beneficiaire} — {c.fonction} — {c.tache} ({c.prixUnitaire} DH/{c.unite})</option>)}
+                                                        {FONCTIONS_ENUM.map(f => {
+                                                            const groupItems = configItems.filter(c => c.fonction === f.key);
+                                                            if (groupItems.length === 0) return null;
+                                                            return (
+                                                                <optgroup key={f.key} label={f.label}>
+                                                                    {groupItems.map(c => <option key={c.id} value={c.id}>{c.matricule ? `[${c.matricule}] ` : ''}{c.beneficiaire || '(sans nom)'} — {c.tache} ({c.prixUnitaire} DH/{c.unite})</option>)}
+                                                                </optgroup>
+                                                            );
+                                                        })}
+                                                        {configItems.filter(c => !FONCTIONS_ENUM.some(f => f.key === c.fonction)).map(c => (
+                                                            <option key={c.id} value={c.id}>{c.matricule ? `[${c.matricule}] ` : ''}{c.beneficiaire || '(sans nom)'} — {c.fonction} — {c.tache} ({c.prixUnitaire} DH/{c.unite})</option>
+                                                        ))}
                                                     </select>
                                                 </td>
                                                 <td style={{textAlign:'center'}}>
@@ -22593,6 +23412,459 @@ ${rejetHtml}
             );
         }
 
+        // ===================== METEO HISTORY 7D (Firestore meteo_outdoor) =====================
+        function MeteoHistory7d({ ferme, fermeInfo }) {
+            const [days, setDays] = useState(null); // array sorted asc by date
+            const [loading, setLoading] = useState(true);
+            const [showPopup, setShowPopup] = useState(false);
+
+            useEffect(() => {
+                let cancelled = false;
+                setLoading(true);
+                (async () => {
+                    try {
+                        if (typeof firebase === 'undefined' || !firebase.firestore) { setDays([]); setLoading(false); return; }
+                        const db = firebase.firestore();
+                        const today = new Date();
+                        const dates = [];
+                        for (let i = 6; i >= 0; i--) {
+                            const d = new Date(today); d.setDate(d.getDate() - i);
+                            dates.push(d.toISOString().slice(0, 10));
+                        }
+                        const ids = dates.map(d => `${d}_${ferme}`);
+                        const snaps = await Promise.all(ids.map(id => db.collection('meteo_outdoor').doc(id).get()));
+                        const result = snaps.map((s, i) => s.exists ? { date: dates[i], ...s.data() } : { date: dates[i], missing: true });
+                        if (!cancelled) { setDays(result); setLoading(false); }
+                    } catch (e) {
+                        console.warn('MeteoHistory7d fetch error:', e);
+                        if (!cancelled) { setDays([]); setLoading(false); }
+                    }
+                })();
+                return () => { cancelled = true; };
+            }, [ferme]);
+
+            if (loading) return null;
+            if (!days || days.length === 0) return null;
+            const valid = days.filter(d => !d.missing && d.tmax != null);
+            if (valid.length === 0) return (
+                <Panel title="Historique météo - 7 derniers jours" icon="fa-clock-rotate-left">
+                    <div style={{padding:20, textAlign:'center', color:'var(--gray-400)', fontSize:13}}>
+                        <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                        Aucun historique disponible pour {ferme}. Les données s'accumuleront à partir d'aujourd'hui.
+                    </div>
+                </Panel>
+            );
+
+            // Sparkline geometry
+            const W = 700, H = 90, pad = { t: 12, b: 18, l: 30, r: 10 };
+            const xStep = days.length > 1 ? (W - pad.l - pad.r) / (days.length - 1) : 0;
+            const tmaxArr = days.map(d => d.tmax).filter(v => v != null);
+            const tminArr = days.map(d => d.tmin).filter(v => v != null);
+            const allT = tmaxArr.concat(tminArr);
+            const tMin = allT.length ? Math.min(...allT) - 2 : 0;
+            const tMax = allT.length ? Math.max(...allT) + 2 : 40;
+            const tY = (v) => pad.t + (H - pad.t - pad.b) * (1 - (v - tMin) / (tMax - tMin || 1));
+            const buildLine = (key) => {
+                const pts = [];
+                days.forEach((d, i) => {
+                    if (d[key] == null) return;
+                    pts.push((pts.length === 0 ? 'M' : 'L') + (pad.l + i * xStep) + ',' + tY(d[key]));
+                });
+                return pts.join(' ');
+            };
+            const tmaxLine = buildLine('tmax');
+            const tminLine = buildLine('tmin');
+
+            // Precip bars geometry
+            const precipMax = Math.max(5, ...days.map(d => d.precip || 0));
+            const precipBarW = Math.max(8, xStep * 0.4);
+
+            const fmtDay = (dateStr) => {
+                const d = new Date(dateStr + 'T12:00:00');
+                return d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit' });
+            };
+
+            return (
+                <React.Fragment>
+                    <Panel title="Historique météo - 7 derniers jours" icon="fa-clock-rotate-left" actions={
+                        <button onClick={() => setShowPopup(true)} style={{padding:'6px 12px', fontSize:11, fontWeight:600, background:'var(--berry-pale)', color:'var(--berry)', border:'none', borderRadius:8, cursor:'pointer'}}>
+                            <i className="fa-solid fa-table" style={{marginRight:5}}></i>Voir détail
+                        </button>
+                    }>
+                        <div onClick={() => setShowPopup(true)} style={{cursor:'pointer'}} title="Cliquer pour voir le tableau détaillé">
+                            <div style={{fontSize:11, color:'var(--gray-500)', marginBottom:6, display:'flex', gap:14, alignItems:'center'}}>
+                                <span><i className="fa-solid fa-temperature-high" style={{color:'var(--red)', marginRight:4}}></i>T° Max</span>
+                                <span><i className="fa-solid fa-temperature-low" style={{color:'var(--blue)', marginRight:4}}></i>T° Min</span>
+                                <span><i className="fa-solid fa-cloud-rain" style={{color:'#4fc3f7', marginRight:4}}></i>Pluie (mm)</span>
+                            </div>
+                            <svg viewBox={'0 0 ' + W + ' ' + H} style={{width:'100%', height:120}}>
+                                {/* Grid */}
+                                {[0,1,2,3].map(i => {
+                                    const y = pad.t + i * (H - pad.t - pad.b) / 3;
+                                    const val = Math.round(tMax - i * (tMax - tMin) / 3);
+                                    return <g key={'g'+i}>
+                                        <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="var(--gray-100)" strokeWidth="1"/>
+                                        <text x={pad.l - 4} y={y + 3} textAnchor="end" fontSize="9" fill="var(--gray-400)">{val}°</text>
+                                    </g>;
+                                })}
+                                {/* Precip bars */}
+                                {days.map((d, i) => {
+                                    if (!d.precip || d.precip <= 0) return null;
+                                    const cx = pad.l + i * xStep;
+                                    const hBar = (H - pad.t - pad.b) * (d.precip / precipMax) * 0.5;
+                                    return <rect key={'p'+i} x={cx - precipBarW/2} y={H - pad.b - hBar} width={precipBarW} height={hBar} fill="#4fc3f7" opacity="0.5" rx="2"/>;
+                                })}
+                                {/* Tmin line */}
+                                {tminLine && <path d={tminLine} fill="none" stroke="var(--blue)" strokeWidth="2"/>}
+                                {/* Tmax line */}
+                                {tmaxLine && <path d={tmaxLine} fill="none" stroke="var(--red)" strokeWidth="2"/>}
+                                {/* Points */}
+                                {days.map((d, i) => {
+                                    const cx = pad.l + i * xStep;
+                                    return <g key={'pt'+i}>
+                                        {d.tmax != null && <circle cx={cx} cy={tY(d.tmax)} r="3" fill="var(--red)"/>}
+                                        {d.tmin != null && <circle cx={cx} cy={tY(d.tmin)} r="3" fill="var(--blue)"/>}
+                                        <text x={cx} y={H - 4} textAnchor="middle" fontSize="9" fill="var(--gray-500)" fontWeight={d.date === days[days.length-1].date ? 700 : 400}>{fmtDay(d.date)}</text>
+                                    </g>;
+                                })}
+                            </svg>
+                        </div>
+                    </Panel>
+
+                    {showPopup && (
+                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setShowPopup(false)}>
+                            <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
+                                <div style={{padding:'16px 24px',borderBottom:'2px solid var(--gray-100)',display:'flex',justifyContent:'space-between',alignItems:'center',background:'linear-gradient(135deg, #1a73e808, #4fc3f708)'}}>
+                                    <div style={{display:'flex',alignItems:'center',gap:14}}>
+                                        <i className="fa-solid fa-clock-rotate-left" style={{fontSize:24,color:'var(--berry)'}}></i>
+                                        <div>
+                                            <h3 style={{margin:0,fontSize:17,color:'var(--berry)'}}>Historique météo - 7 derniers jours</h3>
+                                            <div style={{fontSize:12,color:'var(--gray-500)',marginTop:2}}>{fermeInfo.nom} | Source: Open-Meteo (extérieur)</div>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setShowPopup(false)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'var(--gray-400)',padding:4}}>
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div style={{padding:'16px 24px', overflowX:'auto'}}>
+                                    <table style={{width:'100%', borderCollapse:'collapse', fontSize:13}}>
+                                        <thead>
+                                            <tr style={{background:'var(--gray-50)', borderBottom:'2px solid var(--gray-100)'}}>
+                                                <th style={{textAlign:'left', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>Jour</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>T° Max</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>T° Min</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>Humidité</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>Pluie</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>Vent max</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>ETo</th>
+                                                <th style={{textAlign:'right', padding:'10px 8px', fontWeight:700, color:'var(--gray-600)'}}>Radiation</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {days.slice().reverse().map((d, i) => {
+                                                const dt = new Date(d.date + 'T12:00:00');
+                                                const lbl = dt.toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'short' });
+                                                if (d.missing) return (
+                                                    <tr key={i} style={{borderBottom:'1px solid var(--gray-50)', color:'var(--gray-400)'}}>
+                                                        <td style={{padding:'10px 8px'}}>{lbl}</td>
+                                                        <td colSpan="7" style={{padding:'10px 8px', textAlign:'center', fontStyle:'italic'}}>Pas de données</td>
+                                                    </tr>
+                                                );
+                                                const fmt = (v, suf, dec) => v == null ? '—' : (dec ? v.toFixed(dec) : Math.round(v)) + (suf || '');
+                                                return (
+                                                    <tr key={i} style={{borderBottom:'1px solid var(--gray-50)'}}>
+                                                        <td style={{padding:'10px 8px', fontWeight:600, color:'var(--dark)'}}>{lbl}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right', color: d.tmax >= 32 ? 'var(--red)' : 'var(--dark)', fontWeight:600}}>{fmt(d.tmax, '°C', 1)}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right', color: d.tmin <= 8 ? 'var(--blue)' : 'var(--dark)', fontWeight:600}}>{fmt(d.tmin, '°C', 1)}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right'}}>{fmt(d.humidity, '%')}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right', color: (d.precip > 0 ? 'var(--blue)' : 'var(--gray-400)'), fontWeight: d.precip > 0 ? 600 : 400}}>{fmt(d.precip, ' mm', 1)}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right'}}>{fmt(d.wind, ' km/h')}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right'}}>{fmt(d.eto, ' mm/j', 1)}</td>
+                                                        <td style={{padding:'10px 8px', textAlign:'right'}}>{fmt(d.radiation, ' MJ/m²', 1)}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </React.Fragment>
+            );
+        }
+
+        // ===================== PREVISION EXTERIEURE (24h chart, J-1/J/J+1) =====================
+        function MeteoPrevisionExterieure({ ferme, fermeInfo, meteoResult }) {
+            const [day, setDay] = useState('today'); // 'yesterday' | 'today' | 'tomorrow'
+            const MC = (typeof window !== 'undefined' && window.MeteoCalc) ? window.MeteoCalc : null;
+
+            // Build dateISO list from meteoResult.previsions, find index of today.
+            const previsions = meteoResult.previsions || [];
+            const horaire24 = meteoResult.horaire24ParJour || {};
+            const todayIdx = previsions.findIndex(function(p){ return p.isToday; });
+            const idxOf = { yesterday: todayIdx - 1, today: todayIdx, tomorrow: todayIdx + 1 };
+            const targetIdx = idxOf[day];
+            const targetDay = (targetIdx >= 0 && targetIdx < previsions.length) ? previsions[targetIdx] : null;
+            const prevDay = (targetIdx - 1 >= 0 && targetIdx - 1 < previsions.length) ? previsions[targetIdx - 1] : null;
+
+            if (!targetDay) {
+                return (
+                    <Panel title="Prévision extérieure" icon="fa-chart-area">
+                        <div style={{textAlign:'center', padding:30, color:'var(--gray-400)', fontSize:12}}>
+                            <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                            Données indisponibles pour {day === 'yesterday' ? 'hier' : (day === 'tomorrow' ? 'demain' : 'aujourd\'hui')}.
+                        </div>
+                    </Panel>
+                );
+            }
+
+            const hours = (horaire24[targetDay.dateISO] || []).slice().sort(function(a,b){ return a.hour - b.hour; });
+            const prevHours = prevDay ? (horaire24[prevDay.dateISO] || []) : [];
+
+            // Compute series
+            const tempArr = hours.map(function(h){ return Number(h.tempRaw); });
+            const rhArr = hours.map(function(h){ return Number(h.humidityRaw); });
+            const swArr = hours.map(function(h){ return Number(h.radiation) || 0; });
+            const etoArr = hours.map(function(h){ return Number(h.eto) || 0; });
+            const vpdArr = MC ? MC.computeHourlyVPD(tempArr, rhArr) : tempArr.map(function(){ return 0; });
+            const cumRadArr = MC ? MC.computeCumRadiation(swArr) : swArr.map(function(){ return 0; });
+
+            // Availability flags — if Meteoblue agro-1h is not included in the subscription,
+            // shortwave_radiation / evapotranspiration arrays will be missing → all-zero series.
+            const hasRadiation = swArr.some(function(v){ return v > 0; });
+            const hasEto = etoArr.some(function(v){ return v > 0; });
+
+            // Synthese cards
+            const tMax = tempArr.length ? Math.max.apply(null, tempArr) : 0;
+            const tMin = tempArr.length ? Math.min.apply(null, tempArr) : 0;
+            const tMoy = tempArr.length ? tempArr.reduce(function(a,b){return a+b;},0) / tempArr.length : 0;
+            const cumRad = cumRadArr.length ? cumRadArr[cumRadArr.length - 1] : 0;
+            const etoSum = etoArr.reduce(function(a,b){return a+b;},0);
+            const vpdPeak = MC ? MC.peakIndex(vpdArr) : { idx: -1, val: null };
+            const etoPeak = MC ? MC.peakIndex(etoArr) : { idx: -1, val: null };
+
+            // Deltas vs previous day
+            const prevTempArr = prevHours.map(function(h){ return Number(h.tempRaw); });
+            const prevRhArr = prevHours.map(function(h){ return Number(h.humidityRaw); });
+            const prevSwArr = prevHours.map(function(h){ return Number(h.radiation) || 0; });
+            const prevEtoArr = prevHours.map(function(h){ return Number(h.eto) || 0; });
+            const prevVpdArr = MC ? MC.computeHourlyVPD(prevTempArr, prevRhArr) : [];
+            const prevCumRadArr = MC ? MC.computeCumRadiation(prevSwArr) : [];
+            const prevTMoy = prevTempArr.length ? prevTempArr.reduce(function(a,b){return a+b;},0)/prevTempArr.length : null;
+            const prevCumRad = prevCumRadArr.length ? prevCumRadArr[prevCumRadArr.length - 1] : null;
+            const prevEtoSum = prevEtoArr.reduce(function(a,b){return a+b;},0);
+            const prevVpdMax = prevVpdArr.length ? Math.max.apply(null, prevVpdArr) : null;
+
+            function fmtDelta(curr, prev, unit, decimals) {
+                if (prev == null || isNaN(prev)) return null;
+                const d = curr - prev;
+                const abs = Math.abs(d).toFixed(decimals == null ? 1 : decimals);
+                return { dir: d >= 0 ? 'up' : 'down', text: abs + unit + ' ' + (d >= 0 ? 'plus haut' : 'plus bas') + ' qu\'hier' };
+            }
+
+            // Chart geometry
+            const W = 900, H = 360, pad = { t: 24, b: 36, l: 78, r: 96 };
+            const innerW = W - pad.l - pad.r;
+            const innerH = H - pad.t - pad.b;
+            const N = hours.length || 24;
+            const xStep = innerW / Math.max(1, N - 1);
+            const xAt = function(i) { return pad.l + i * xStep; };
+
+            // Left axis (°C, also used for VPD via independent scaling — see VPD path)
+            const tHi = Math.max(20, Math.ceil(tMax + 2));
+            const tLo = Math.min(0, Math.floor(tMin - 2));
+            const yT = function(v) { return pad.t + innerH * (1 - (v - tLo) / (tHi - tLo || 1)); };
+
+            // Right axis (J/cm² cumulative)
+            const radMax = Math.max(360, Math.ceil((cumRadArr.length ? cumRadArr[cumRadArr.length - 1] : 0) / 90) * 90);
+            const yR = function(v) { return pad.t + innerH * (1 - v / (radMax || 1)); };
+
+            // VPD scaled to left axis range visually (0..max VPD ↦ tLo..tHi top half)
+            const vpdMax = Math.max(2, Math.ceil((vpdArr.length ? Math.max.apply(null, vpdArr) : 0) * 10) / 10);
+            const yV = function(v) { return pad.t + innerH * (1 - v / vpdMax); };
+
+            // ETo bars: scaled to a small fraction of inner height, anchored at bottom
+            const etoMax = Math.max(0.2, etoArr.length ? Math.max.apply(null, etoArr) : 0.2);
+            const etoBarMaxH = innerH * 0.45;
+            const etoBarH = function(v) { return Math.max(0, (v / etoMax) * etoBarMaxH); };
+            // y position of an ETo value on the right axis (0 at bottom, etoMax at top of bars zone)
+            const yE = function(v) { return pad.t + innerH - (v / etoMax) * etoBarMaxH; };
+            const barW = Math.max(6, xStep * 0.55);
+
+            const tempPath = hours.map(function(h, i) { return (i === 0 ? 'M' : 'L') + xAt(i) + ',' + yT(h.tempRaw); }).join(' ');
+            const radPath = cumRadArr.map(function(v, i) { return (i === 0 ? 'M' : 'L') + xAt(i) + ',' + yR(v); }).join(' ');
+            const vpdPath = vpdArr.map(function(v, i) { return (i === 0 ? 'M' : 'L') + xAt(i) + ',' + yV(v); }).join(' ');
+
+            // Day label fr
+            const jourNomsFull = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+            const moisNoms = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+            const dObj = new Date(targetDay.dateISO + 'T12:00:00');
+            const dayLabel = jourNomsFull[dObj.getDay()] + ' ' + dObj.getDate() + ' ' + moisNoms[dObj.getMonth()];
+
+            const segBtnStyle = function(active) { return {
+                padding: '6px 14px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+                background: active ? 'var(--green-pale, #dff5dd)' : 'transparent',
+                color: active ? 'var(--green, #2e7d32)' : 'var(--gray-500)',
+                borderRadius: 999,
+            }; };
+
+            function exportCSV() {
+                const rows = [['heure','temperature_C','humidite_pct','radiation_W_m2','radiation_cum_J_cm2','VPD_kPa','ETo_mm']];
+                hours.forEach(function(h, i) {
+                    rows.push([h.heure, h.tempRaw, h.humidityRaw, swArr[i], cumRadArr[i].toFixed(2), vpdArr[i].toFixed(3), (etoArr[i] || 0).toFixed(3)]);
+                });
+                const csv = rows.map(function(r){ return r.join(','); }).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'prevision_exterieure_' + ferme + '_' + targetDay.dateISO + '.csv';
+                document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+            }
+
+            const cards = [
+                {
+                    color: '#5DADE2', label: 'Température',
+                    value: 'H: ' + Math.round(tMax) + '°C  B: ' + Math.round(tMin) + '°C  Moy: ' + Math.round(tMoy) + '°C',
+                    delta: fmtDelta(tMoy, prevTMoy, '°C', 0),
+                },
+                {
+                    color: '#E74C3C', label: 'Radiation accumulée',
+                    value: hasRadiation ? ('Accumulation quotidienne : ' + Math.round(cumRad) + ' J/cm²') : 'Non disponible (package agro-1h non inclus)',
+                    delta: hasRadiation ? fmtDelta(cumRad, prevCumRad, ' J/cm²', 0) : null,
+                },
+                {
+                    color: '#8E44AD', label: 'Déficit de pression de vapeur (VPD)',
+                    value: vpdPeak.idx >= 0 ? ('Le plus élevé à ' + hours[vpdPeak.idx].heure + ' (' + vpdPeak.val.toFixed(2) + ' kPa)') : '—',
+                    delta: prevVpdMax != null && vpdPeak.val != null
+                        ? (function(){ var d = ((vpdPeak.val - prevVpdMax) / (prevVpdMax || 1)) * 100; return { dir: d >= 0 ? 'up' : 'down', text: Math.abs(Math.round(d)) + '% ' + (d >= 0 ? 'plus haut' : 'plus bas') + ' qu\'hier' }; })()
+                        : null,
+                },
+                {
+                    color: '#2E7D32', label: 'Évapotranspiration (ETo)',
+                    value: hasEto
+                        ? (etoPeak.idx >= 0 ? ('Le plus élevé à ' + hours[etoPeak.idx].heure + ' — Total : ' + etoSum.toFixed(2) + ' mm') : '—')
+                        : ('Total journalier : ' + (targetDay.eto != null ? targetDay.eto.toFixed(2) : '—') + ' mm (horaire indispo)'),
+                    delta: hasEto ? fmtDelta(etoSum, prevEtoSum, 'mm', 2) : null,
+                },
+            ];
+
+            return (
+                <Panel title="Prévision extérieure" icon="fa-chart-area" actions={
+                    <div style={{display:'flex', alignItems:'center', gap:8}}>
+                        <div style={{display:'inline-flex', background:'var(--gray-50)', borderRadius:999, padding:3}}>
+                            {[
+                                { k:'yesterday', label:'Hier' },
+                                { k:'today',     label:'Aujourd\'hui' },
+                                { k:'tomorrow',  label:'Demain' },
+                            ].map(function(opt) {
+                                return <button key={opt.k} onClick={function(){ setDay(opt.k); }} style={segBtnStyle(day === opt.k)}>
+                                    {day === opt.k && <i className="fa-solid fa-check" style={{marginRight:5, fontSize:10}}></i>}
+                                    {opt.label}
+                                </button>;
+                            })}
+                        </div>
+                        <button onClick={exportCSV} title="Exporter en CSV" style={{padding:'6px 12px', fontSize:11, fontWeight:600, color:'var(--gray-600)', background:'#fff', border:'1px solid var(--gray-200)', borderRadius:8, cursor:'pointer'}}>
+                            Exporter <i className="fa-solid fa-download" style={{marginLeft:4}}></i>
+                        </button>
+                    </div>
+                }>
+                    <div style={{fontSize:12, color:'var(--gray-500)', marginBottom:8, display:'flex', justifyContent:'space-between', alignItems:'center', gap:8, flexWrap:'wrap'}}>
+                        <span>Prévisions extérieures, {dayLabel} — {fermeInfo.nom}</span>
+                        {!(hasRadiation && hasEto) && (
+                            <span title="Radiation horaire et ETo horaire nécessitent le package Meteoblue agro-1h" style={{fontSize:10, padding:'3px 8px', borderRadius:8, background:'rgba(243,156,18,0.1)', color:'var(--orange)', fontWeight:600}}>
+                                <i className="fa-solid fa-circle-info" style={{marginRight:4}}></i>
+                                {!hasRadiation && !hasEto ? 'Radiation & ETo horaires indisponibles' : (!hasRadiation ? 'Radiation horaire indisponible' : 'ETo horaire indisponible')}
+                            </span>
+                        )}
+                    </div>
+                    <svg viewBox={'0 0 ' + W + ' ' + H} style={{width:'100%', height:'auto', display:'block'}}>
+                        {/* Grid + left axes: °C (blue, intérieur) + VPD kPa (violet, extérieur) */}
+                        {[0,1,2,3,4].map(function(i) {
+                            const tVal = tLo + (tHi - tLo) * (1 - i/4);
+                            const vpdVal = vpdMax * (1 - i/4);
+                            const y = pad.t + innerH * (i/4);
+                            return <g key={'g'+i}>
+                                <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="var(--gray-100)" strokeWidth="1"/>
+                                <text x={pad.l - 36} y={y + 4} textAnchor="end" fontSize="10" fill="#8E44AD" fontWeight="600">{vpdVal.toFixed(1)}</text>
+                                <text x={pad.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#5DADE2" fontWeight="600">{Math.round(tVal)}</text>
+                            </g>;
+                        })}
+                        {/* Right J/cm² axis (radiation cumulée) */}
+                        {hasRadiation && [0,1,2,3,4].map(function(i) {
+                            const v = radMax * (1 - i/4);
+                            const y = pad.t + innerH * (i/4);
+                            return <text key={'r'+i} x={W - pad.r + 8} y={y + 4} textAnchor="start" fontSize="10" fill="#E74C3C" fontWeight="600">{Math.round(v)}</text>;
+                        })}
+                        {/* Right ETo axis (mm), aligné sur la zone des barres (bas du chart) */}
+                        {hasEto && [0, 0.5, 1].map(function(frac, i) {
+                            const v = etoMax * frac;
+                            const y = yE(v);
+                            return <text key={'e'+i} x={W - pad.r + 42} y={y + 4} textAnchor="start" fontSize="10" fill="#2E7D32" fontWeight="600">{v.toFixed(1)}</text>;
+                        })}
+                        <text x={pad.l - 50} y={pad.t + innerH/2} fontSize="10" fill="#8E44AD" fontWeight="700" transform={'rotate(-90 ' + (pad.l - 50) + ' ' + (pad.t + innerH/2) + ')'}>kPa</text>
+                        <text x={pad.l - 22} y={pad.t + innerH/2} fontSize="10" fill="#5DADE2" fontWeight="700" transform={'rotate(-90 ' + (pad.l - 22) + ' ' + (pad.t + innerH/2) + ')'}>°C</text>
+                        {hasRadiation && <text x={W - pad.r + 30} y={pad.t + innerH/2} fontSize="10" fill="#E74C3C" fontWeight="700" transform={'rotate(-90 ' + (W - pad.r + 30) + ' ' + (pad.t + innerH/2) + ')'}>J/cm²</text>}
+                        {hasEto && <text x={W - pad.r + 70} y={pad.t + innerH - etoBarMaxH/2} fontSize="10" fill="#2E7D32" fontWeight="700" transform={'rotate(-90 ' + (W - pad.r + 70) + ' ' + (pad.t + innerH - etoBarMaxH/2) + ')'}>mm ETo</text>}
+
+                        {/* X axis ticks every 2h */}
+                        {hours.map(function(h, i) {
+                            if (h.hour % 2 !== 0) return null;
+                            const hh = h.hour;
+                            const ampm = hh === 0 ? '12:00 AM' : (hh < 12 ? hh + ':00 AM' : (hh === 12 ? '12:00 PM' : (hh - 12) + ':00 PM'));
+                            return <text key={'x'+i} x={xAt(i)} y={H - 12} textAnchor="middle" fontSize="9" fill="var(--gray-400)">{ampm}</text>;
+                        })}
+
+                        {/* ETo bars (anchored at bottom) */}
+                        {hasEto && hours.map(function(h, i) {
+                            const bH = etoBarH(etoArr[i]);
+                            if (bH <= 0) return null;
+                            return <rect key={'b'+i} x={xAt(i) - barW/2} y={pad.t + innerH - bH} width={barW} height={bH} fill="#2E7D32" opacity="0.85" rx="1"/>;
+                        })}
+
+                        {/* Cumulative radiation (red) */}
+                        {hasRadiation && <path d={radPath} fill="none" stroke="#E74C3C" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>}
+                        {/* VPD (purple) */}
+                        <path d={vpdPath} fill="none" stroke="#8E44AD" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        {/* Temperature (light blue) */}
+                        <path d={tempPath} fill="none" stroke="#5DADE2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        {/* T° max & T° min annotations directement sur la courbe */}
+                        {(function() {
+                            if (!tempArr.length) return null;
+                            var iMax = 0, iMin = 0;
+                            for (var k = 1; k < tempArr.length; k++) {
+                                if (tempArr[k] > tempArr[iMax]) iMax = k;
+                                if (tempArr[k] < tempArr[iMin]) iMin = k;
+                            }
+                            return <g>
+                                <circle cx={xAt(iMax)} cy={yT(tempArr[iMax])} r="4" fill="#5DADE2" stroke="white" strokeWidth="1.5"/>
+                                <text x={xAt(iMax)} y={yT(tempArr[iMax]) - 9} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1B7AB8" stroke="white" strokeWidth="3" paintOrder="stroke">{Math.round(tempArr[iMax])}°</text>
+                                <circle cx={xAt(iMin)} cy={yT(tempArr[iMin])} r="4" fill="#5DADE2" stroke="white" strokeWidth="1.5"/>
+                                <text x={xAt(iMin)} y={yT(tempArr[iMin]) + 16} textAnchor="middle" fontSize="11" fontWeight="700" fill="#1B7AB8" stroke="white" strokeWidth="3" paintOrder="stroke">{Math.round(tempArr[iMin])}°</text>
+                            </g>;
+                        })()}
+                    </svg>
+
+                    {/* 4 synthesis cards */}
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:12, marginTop:14}}>
+                        {cards.map(function(c, i) {
+                            return <div key={i} style={{padding:'12px 14px', background:'var(--gray-50)', borderRadius:12, border:'1px solid var(--gray-100)'}}>
+                                <div style={{display:'flex', alignItems:'center', gap:6, marginBottom:6}}>
+                                    <span style={{width:10, height:10, borderRadius:'50%', background:c.color, display:'inline-block'}}></span>
+                                    <span style={{fontSize:12, fontWeight:700, color:'var(--gray-700, #444)'}}>{c.label}</span>
+                                </div>
+                                <div style={{fontSize:12, color:'var(--gray-600)', minHeight:32}}>{c.value}</div>
+                                {c.delta && <div style={{marginTop:8, display:'inline-block', padding:'4px 10px', background:'#fff', border:'1px solid var(--gray-200)', borderRadius:8, fontSize:11, color:'var(--gray-500)'}}>
+                                    <i className={'fa-solid ' + (c.delta.dir === 'up' ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down')} style={{marginRight:5, color: c.delta.dir === 'up' ? 'var(--orange)' : 'var(--green)'}}></i>
+                                    {c.delta.text}
+                                </div>}
+                            </div>;
+                        })}
+                    </div>
+                </Panel>
+            );
+        }
+
         // ===================== METEO TAB (API Meteoblue) =====================
         function MeteoTab({ data, farmFilter }) {
             const [meteoResult, setMeteoResult] = useState(null);
@@ -22669,6 +23941,9 @@ ${rejetHtml}
                         </div>
                     )}
 
+                    {/* Prévision extérieure (24h, J-1/J/J+1) */}
+                    <MeteoPrevisionExterieure ferme={ferme} fermeInfo={fermeInfo} meteoResult={meteoResult} />
+
                     {/* Météo actuelle */}
                     <Panel title={'Météo Aujourd\'hui - ' + fermeInfo.nom} icon="fa-cloud-sun">
                         <div style={{display:'flex', gap:4, marginBottom:12, flexWrap:'wrap'}}>
@@ -22711,6 +23986,9 @@ ${rejetHtml}
                             </div>
                         </div>
                     </Panel>
+
+                    {/* Historique 7 derniers jours */}
+                    <MeteoHistory7d ferme={ferme} fermeInfo={fermeInfo} />
 
                     {/* Courbe horaire */}
                     {hasHoraire && (
@@ -24752,11 +26030,29 @@ ${rejetHtml}
             const todayStr = new Date().toISOString().slice(0, 10);
 
             const currentCycle = getCycle(new Date().toISOString());
+            // BAHIA n'a pas d'entrée dans PARCELLES_CULTURALES : ses parcelles
+            // sont découvertes dynamiquement par le cron Netafim et persistées
+            // dans netafim_parcelles_bahia. On les charge à la volée quand on
+            // bascule sur BAHIA.
+            const [bahiaParcelles, setBahiaParcelles] = useState([]);
+            useEffect(() => {
+                if (activeFarm !== 'BAHIA') return;
+                firebase.firestore().collection('netafim_parcelles_bahia')
+                    .get()
+                    .then(snap => setBahiaParcelles(snap.docs.map(d => d.data())))
+                    .catch(e => console.error('Erreur chargement parcelles BAHIA:', e));
+            }, [activeFarm]);
             const parcelleOptions = React.useMemo(() => {
+                if (activeFarm === 'BAHIA') {
+                    return bahiaParcelles
+                        .slice()
+                        .sort((a, b) => (a.label || a.id || '').localeCompare(b.label || b.id || ''))
+                        .map(p => ({ value: p.id, label: p.label || p.id }));
+                }
                 return PARCELLES_CULTURALES
                     .filter(pc => pc.ferme === activeFarm && pc.cycle === currentCycle && pc.enProduction !== false)
                     .map(pc => ({ value: pc.id, label: pc.secteurs.join('/') + ' ' + pc.variete + (pc.sousVariete ? ' ' + pc.sousVariete : '') }));
-            }, [activeFarm, currentCycle]);
+            }, [activeFarm, currentCycle, bahiaParcelles]);
 
             const loadReadings = React.useCallback(async () => {
                 setLoading(true);
@@ -24869,7 +26165,7 @@ ${rejetHtml}
                         'Historique Irrigation — ', activeFarm
                     ),
                     isDT && React.createElement('div', { style: { display: 'flex', gap: 6 } },
-                        ['F1', 'F5'].map(f => React.createElement('button', {
+                        ['F1', 'F5', 'BAHIA'].map(f => React.createElement('button', {
                             key: f,
                             onClick: () => { setSelectedFarm(f); setFilterParcelle(''); },
                             style: { padding: '6px 16px', borderRadius: 8, border: selectedFarm === f ? '2px solid var(--berry)' : '1px solid #ddd', background: selectedFarm === f ? 'var(--berry-pale)' : '#fff', color: selectedFarm === f ? 'var(--berry)' : 'var(--gray-600)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }
@@ -31369,6 +32665,7 @@ ${rejetHtml}
             const [deductionMontants, setDeductionMontants] = useState({ framboise: { cropAdvance: 0, fruitAdvance: 0 }, myrtille: { cropAdvance: 0, fruitAdvance: 0 } });
             const [editingMontant, setEditingMontant] = useState(null); // 'cropAdvance' | 'fruitAdvance' | null
             const [editMontantValue, setEditMontantValue] = useState('');
+            const [editMontantPerCulture, setEditMontantPerCulture] = useState({ framboise: '', myrtille: '' });
             const [invoiceDragOver, setInvoiceDragOver] = useState(false);
             const fileInputRef = React.useRef(null);
 
@@ -31466,13 +32763,22 @@ ${rejetHtml}
             };
 
             const saveDeductionMontant = async (type, value) => {
-                // Editing is only enabled when a culture is selected — guard anyway.
                 const culture = selectedFruit;
-                if (!culture) { setEditingMontant(null); return; }
-                const updated = {
-                    ...deductionMontants,
-                    [culture]: { ...(deductionMontants[culture] || {}), [type]: value },
-                };
+                let updated;
+                if (culture) {
+                    updated = {
+                        ...deductionMontants,
+                        [culture]: { ...(deductionMontants[culture] || {}), [type]: value },
+                    };
+                } else {
+                    // "Toutes" mode — value is { framboise, myrtille }
+                    const v = value || {};
+                    updated = {
+                        ...deductionMontants,
+                        framboise: { ...(deductionMontants.framboise || {}), [type]: parseFloat(v.framboise) || 0 },
+                        myrtille: { ...(deductionMontants.myrtille || {}), [type]: parseFloat(v.myrtille) || 0 },
+                    };
+                }
                 setDeductionMontants(updated);
                 setEditingMontant(null);
                 try {
@@ -31907,10 +33213,16 @@ ${rejetHtml}
                                         {value: `${pctPlants.toFixed(1)}%`, label: 'Avancement'}
                                     ]} />
                                 <div onClick={() => {
-                                        if (!selectedFruit) { alert("Sélectionnez une culture (Framboise ou Myrtille) pour éditer le montant."); return; }
                                         setEditingMontant('cropAdvance');
-                                        setEditMontantValue(String(getMontantsForCulture(selectedFruit).cropAdvance || ''));
-                                    }} style={{cursor: selectedFruit ? 'pointer' : 'not-allowed', opacity: selectedFruit ? 1 : 0.7}}>
+                                        if (selectedFruit) {
+                                            setEditMontantValue(String(getMontantsForCulture(selectedFruit).cropAdvance || ''));
+                                        } else {
+                                            setEditMontantPerCulture({
+                                                framboise: String((deductionMontants.framboise || {}).cropAdvance || ''),
+                                                myrtille: String((deductionMontants.myrtille || {}).cropAdvance || ''),
+                                            });
+                                        }
+                                    }} style={{cursor: 'pointer'}}>
                                 <KPICard icon="fa-handshake" iconClass="blue"
                                     value={`${Math.round(liq.deductions.cropAdvance.resteADeduire/1000).toLocaleString('fr-FR')}K`}
                                     label="Reste Crop Advance"
@@ -31921,10 +33233,16 @@ ${rejetHtml}
                                     ]} />
                                 </div>
                                 <div onClick={() => {
-                                        if (!selectedFruit) { alert("Sélectionnez une culture (Framboise ou Myrtille) pour éditer le montant."); return; }
                                         setEditingMontant('fruitAdvance');
-                                        setEditMontantValue(String(getMontantsForCulture(selectedFruit).fruitAdvance || ''));
-                                    }} style={{cursor: selectedFruit ? 'pointer' : 'not-allowed', opacity: selectedFruit ? 1 : 0.7}}>
+                                        if (selectedFruit) {
+                                            setEditMontantValue(String(getMontantsForCulture(selectedFruit).fruitAdvance || ''));
+                                        } else {
+                                            setEditMontantPerCulture({
+                                                framboise: String((deductionMontants.framboise || {}).fruitAdvance || ''),
+                                                myrtille: String((deductionMontants.myrtille || {}).fruitAdvance || ''),
+                                            });
+                                        }
+                                    }} style={{cursor: 'pointer'}}>
                                 <KPICard icon="fa-apple-whole" iconClass="orange"
                                     value={`${Math.round(liq.deductions.fruitAdvance.resteADeduire/1000).toLocaleString('fr-FR')}K`}
                                     label="Reste Fruit Advance"
@@ -32296,19 +33614,42 @@ ${rejetHtml}
                                         <p style={{fontSize:12, color:'var(--gray-500)', marginBottom:16}}>
                                             Saisissez le montant total convenu avec Driscoll's pour cette saison. Cette valeur sera utilisée pour calculer le reste à déduire et l'avancement.
                                         </p>
-                                        <div className="form-group">
-                                            <label>Montant total (DH)</label>
-                                            <input type="number" placeholder="Ex: 1200000" value={editMontantValue}
-                                                onChange={e => setEditMontantValue(e.target.value)}
-                                                onKeyDown={e => { if (e.key === 'Enter') saveDeductionMontant(editingMontant, parseFloat(editMontantValue) || 0); }}
-                                                autoFocus style={{fontSize:16, fontWeight:700}} />
-                                        </div>
-                                        <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:16}}>
-                                            Valeur actuelle : <strong>{((getMontantsForCulture(selectedFruit)[editingMontant]) || 0).toLocaleString('fr-FR')} DH</strong>
-                                        </div>
+                                        {selectedFruit ? (
+                                            <>
+                                                <div className="form-group">
+                                                    <label>Montant total (DH)</label>
+                                                    <input type="number" placeholder="Ex: 1200000" value={editMontantValue}
+                                                        onChange={e => setEditMontantValue(e.target.value)}
+                                                        onKeyDown={e => { if (e.key === 'Enter') saveDeductionMontant(editingMontant, parseFloat(editMontantValue) || 0); }}
+                                                        autoFocus style={{fontSize:16, fontWeight:700}} />
+                                                </div>
+                                                <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:16}}>
+                                                    Valeur actuelle : <strong>{((getMontantsForCulture(selectedFruit)[editingMontant]) || 0).toLocaleString('fr-FR')} DH</strong>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="form-group">
+                                                    <label>Framboise (DH)</label>
+                                                    <input type="number" placeholder="Ex: 1200000" value={editMontantPerCulture.framboise}
+                                                        onChange={e => setEditMontantPerCulture(v => ({ ...v, framboise: e.target.value }))}
+                                                        autoFocus style={{fontSize:16, fontWeight:700}} />
+                                                </div>
+                                                <div className="form-group">
+                                                    <label>Myrtille (DH)</label>
+                                                    <input type="number" placeholder="Ex: 1200000" value={editMontantPerCulture.myrtille}
+                                                        onChange={e => setEditMontantPerCulture(v => ({ ...v, myrtille: e.target.value }))}
+                                                        onKeyDown={e => { if (e.key === 'Enter') saveDeductionMontant(editingMontant, editMontantPerCulture); }}
+                                                        style={{fontSize:16, fontWeight:700}} />
+                                                </div>
+                                                <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:16}}>
+                                                    Valeurs actuelles : Framboise <strong>{((deductionMontants.framboise || {})[editingMontant] || 0).toLocaleString('fr-FR')} DH</strong> · Myrtille <strong>{((deductionMontants.myrtille || {})[editingMontant] || 0).toLocaleString('fr-FR')} DH</strong>
+                                                </div>
+                                            </>
+                                        )}
                                         <div className="form-actions">
                                             <button className="btn-secondary" onClick={() => setEditingMontant(null)}>Annuler</button>
-                                            <button className="btn-primary" onClick={() => saveDeductionMontant(editingMontant, parseFloat(editMontantValue) || 0)}>
+                                            <button className="btn-primary" onClick={() => saveDeductionMontant(editingMontant, selectedFruit ? (parseFloat(editMontantValue) || 0) : editMontantPerCulture)}>
                                                 <i className="fa-solid fa-check"></i> Enregistrer
                                             </button>
                                         </div>
@@ -56523,6 +57864,8 @@ ${rejetHtml}
                                 onSelectTreatment={setSelectedTreatmentTitle}
                                 selectedTitle={selectedTreatmentTitle} />
 
+                            <ProductivityBoxplotMultiSvg treatments={filteredTreatments} myFarm={myFarm} />
+
                             {selectedTreatmentTitle && (
                                 <ProductivityTreatmentDetail
                                     treatment={filteredTreatments.find(t => t.title === selectedTreatmentTitle) || report.treatments.find(t => t.title === selectedTreatmentTitle)}
@@ -56744,6 +58087,179 @@ ${rejetHtml}
                             </g>
                         )}
                     </svg>
+                </div>
+            );
+        }
+
+        function computeBoxStats(values) {
+            const v = values.filter(x => typeof x === 'number' && !isNaN(x)).slice().sort((a, b) => a - b);
+            const n = v.length;
+            if (n === 0) return null;
+            const quantile = (p) => {
+                if (n === 1) return v[0];
+                const idx = (n - 1) * p;
+                const lo = Math.floor(idx), hi = Math.ceil(idx);
+                if (lo === hi) return v[lo];
+                return v[lo] + (v[hi] - v[lo]) * (idx - lo);
+            };
+            const min = v[0], max = v[n - 1];
+            const mean = v.reduce((s, x) => s + x, 0) / n;
+            if (n < 4) {
+                const median = quantile(0.5);
+                return { min, q1: min, median, q3: max, max, mean, outliers: [], whiskerLow: min, whiskerHigh: max, n };
+            }
+            const q1 = quantile(0.25), median = quantile(0.5), q3 = quantile(0.75);
+            const iqr = q3 - q1;
+            const lowFence = q1 - 1.5 * iqr;
+            const highFence = q3 + 1.5 * iqr;
+            const whiskerLow = v.find(x => x >= lowFence);
+            let whiskerHigh = whiskerLow;
+            for (let i = n - 1; i >= 0; i--) { if (v[i] <= highFence) { whiskerHigh = v[i]; break; } }
+            const outliers = v.filter(x => x < whiskerLow || x > whiskerHigh);
+            return { min, q1, median, q3, max, mean, outliers, whiskerLow, whiskerHigh, n };
+        }
+
+        function ProductivityBoxplotMultiSvg({ treatments, myFarm }) {
+            if (!treatments || treatments.length === 0) return null;
+            const items = treatments.map(t => {
+                const yields = (t.growers || []).map(g => g.yield).filter(y => typeof y === 'number');
+                const stats = computeBoxStats(yields);
+                const f1 = (t.growers || []).find(g => g.code === '172') || null;
+                const f5 = (t.growers || []).find(g => g.code === '195') || null;
+                return { t, stats, f1, f5 };
+            }).filter(it => it.stats);
+            if (items.length === 0) return null;
+
+            const boxW = 90, gap = 50;
+            const padL = 70, padR = 30, padT = 30, padB = 130;
+            const innerW = items.length * (boxW + gap);
+            const W = Math.max(800, padL + padR + innerW);
+            const H = 460;
+
+            let maxY = 0;
+            items.forEach(({ stats, f1, f5 }) => {
+                maxY = Math.max(maxY, stats.max);
+                if (f1) maxY = Math.max(maxY, f1.yield);
+                if (f5) maxY = Math.max(maxY, f5.yield);
+            });
+            maxY = maxY * 1.05 || 1;
+
+            const yScale = (y) => H - padB - (y / maxY) * (H - padT - padB);
+            const xCenter = (i) => padL + i * (boxW + gap) + boxW / 2;
+
+            const ticks = [];
+            const tickStep = Math.pow(10, Math.floor(Math.log10(maxY))) / 2;
+            for (let t = 0; t <= maxY; t += tickStep) ticks.push(t);
+
+            const unit = (items[0] && items[0].t.unit) || '';
+
+            const showF1 = !myFarm || myFarm === 'F1';
+            const showF5 = !myFarm || myFarm === 'F5';
+
+            const truncate = (s, n) => (s && s.length > n) ? s.slice(0, n - 1) + '…' : (s || '');
+
+            return (
+                <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--gray-200)', padding: 16, marginBottom: 16 }}>
+                    <h3 style={{ margin: '0 0 4px 0' }}>Positionnement BGF — vue d'ensemble</h3>
+                    <div style={{ fontSize: 12, color: 'var(--gray-600)', marginBottom: 10 }}>
+                        Boxplot par traitement ({items.length}) · médiane, Q1/Q3, moustaches Tukey 1.5×IQR, outliers
+                    </div>
+                    <div style={{ display: 'flex', gap: 16, fontSize: 11, color: 'var(--gray-700)', marginBottom: 8, flexWrap: 'wrap' }}>
+                        {showF1 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#e74c3c', display: 'inline-block' }}></span>
+                                BGF F1 (172)
+                            </span>
+                        )}
+                        {showF5 && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#3498db', display: 'inline-block' }}></span>
+                                BGF F5 (195)
+                            </span>
+                        )}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#e67e22' }}>
+                            <span style={{ fontWeight: 700 }}>×</span> Moyenne
+                        </span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', border: '1px solid #333', display: 'inline-block' }}></span>
+                            Outliers
+                        </span>
+                    </div>
+                    <div style={{ width: '100%', overflowX: 'auto', background: '#fafbfc', borderRadius: 6, padding: 8 }}>
+                        <svg width={W} height={H} style={{ display: 'block' }}>
+                            {ticks.map((t, i) => (
+                                <g key={'tick' + i}>
+                                    <line x1={padL} y1={yScale(t)} x2={W - padR} y2={yScale(t)} stroke="#e9ecef" strokeWidth="1" />
+                                    <text x={padL - 6} y={yScale(t) + 4} textAnchor="end" fontSize="10" fill="#6c757d">{Math.round(t).toLocaleString('fr-FR')}</text>
+                                </g>
+                            ))}
+                            {items.map(({ t, stats, f1, f5 }, i) => {
+                                const cx = xCenter(i);
+                                const xL = cx - boxW / 2;
+                                const xR = cx + boxW / 2;
+                                const yQ1 = yScale(stats.q1);
+                                const yQ3 = yScale(stats.q3);
+                                const yMed = yScale(stats.median);
+                                const yWL = yScale(stats.whiskerLow);
+                                const yWH = yScale(stats.whiskerHigh);
+                                const yMean = yScale(stats.mean);
+                                const tooltip = (t.title || '') +
+                                    '\nn=' + stats.n +
+                                    '\nmin=' + Math.round(stats.min).toLocaleString('fr-FR') +
+                                    ' · Q1=' + Math.round(stats.q1).toLocaleString('fr-FR') +
+                                    ' · méd=' + Math.round(stats.median).toLocaleString('fr-FR') +
+                                    ' · Q3=' + Math.round(stats.q3).toLocaleString('fr-FR') +
+                                    ' · max=' + Math.round(stats.max).toLocaleString('fr-FR') +
+                                    '\nmoyenne=' + Math.round(stats.mean).toLocaleString('fr-FR');
+                                return (
+                                    <g key={'box' + i}>
+                                        <title>{tooltip}</title>
+                                        {/* Whiskers */}
+                                        <line x1={cx} y1={yWH} x2={cx} y2={yQ3} stroke="#333" strokeWidth="1" />
+                                        <line x1={cx} y1={yQ1} x2={cx} y2={yWL} stroke="#333" strokeWidth="1" />
+                                        <line x1={cx - boxW / 4} y1={yWH} x2={cx + boxW / 4} y2={yWH} stroke="#333" strokeWidth="1" />
+                                        <line x1={cx - boxW / 4} y1={yWL} x2={cx + boxW / 4} y2={yWL} stroke="#333" strokeWidth="1" />
+                                        {/* Box */}
+                                        <rect x={xL} y={yQ3} width={boxW} height={Math.max(1, yQ1 - yQ3)} fill="#fff" stroke="#333" strokeWidth="1" />
+                                        {/* Median */}
+                                        <line x1={xL} y1={yMed} x2={xR} y2={yMed} stroke="#e67e22" strokeWidth="2" />
+                                        {/* Mean as × */}
+                                        <text x={cx} y={yMean + 4} textAnchor="middle" fontSize="14" fontWeight="700" fill="#e67e22">×</text>
+                                        {/* Outliers */}
+                                        {stats.outliers.map((o, k) => (
+                                            <circle key={'o' + k} cx={cx} cy={yScale(o)} r="3" fill="none" stroke="#333" strokeWidth="1" />
+                                        ))}
+                                        {/* BGF points */}
+                                        {showF1 && f1 && (
+                                            <g>
+                                                <circle cx={cx} cy={yScale(f1.yield)} r="5" fill="#e74c3c" stroke="#fff" strokeWidth="1" />
+                                                <text x={xR + 4} y={yScale(f1.yield) - 2} fontSize="10" fill="#e74c3c" fontWeight="700">BGF 172</text>
+                                                <text x={xR + 4} y={yScale(f1.yield) + 10} fontSize="10" fill="#e74c3c">{Math.round(f1.yield).toLocaleString('fr-FR')}</text>
+                                            </g>
+                                        )}
+                                        {showF5 && f5 && (
+                                            <g>
+                                                <circle cx={cx} cy={yScale(f5.yield)} r="5" fill="#3498db" stroke="#fff" strokeWidth="1" />
+                                                <text x={xR + 4} y={yScale(f5.yield) - 2} fontSize="10" fill="#3498db" fontWeight="700">BGF 195</text>
+                                                <text x={xR + 4} y={yScale(f5.yield) + 10} fontSize="10" fill="#3498db">{Math.round(f5.yield).toLocaleString('fr-FR')}</text>
+                                            </g>
+                                        )}
+                                        {/* X-axis label */}
+                                        <text x={cx} y={H - padB + 16} textAnchor="end" fontSize="10" fill="#495057"
+                                            transform={'rotate(-35 ' + cx + ',' + (H - padB + 16) + ')'}>
+                                            {truncate(t.title, 38)}
+                                        </text>
+                                        <text x={cx} y={H - padB + 30} textAnchor="end" fontSize="9" fill="#868e96"
+                                            transform={'rotate(-35 ' + cx + ',' + (H - padB + 30) + ')'}>
+                                            n={stats.n}{t.category ? ' · ' + t.category : ''}
+                                        </text>
+                                    </g>
+                                );
+                            })}
+                            {/* Y-axis unit label */}
+                            <text x={12} y={padT + 4} fontSize="10" fill="#6c757d">{unit}</text>
+                        </svg>
+                    </div>
                 </div>
             );
         }
@@ -57903,6 +59419,7 @@ ${rejetHtml}
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
                                 {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter }, 'Quinzaine')}
+                                {renderTab('campagne', CampagneTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}

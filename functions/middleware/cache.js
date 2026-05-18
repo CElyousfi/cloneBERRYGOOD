@@ -8,8 +8,12 @@
 
 const { db } = require("../config/firebase");
 
-async function withCache(cacheKey, ttlMs, fetchFn) {
-  const safeKey = cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200);
+function safeCacheKey(cacheKey) {
+  return cacheKey.replace(/[\/\.\s#\[\]*]/g, "_").slice(0, 200);
+}
+
+async function withCache(cacheKey, ttlMs, fetchFn, shouldCache) {
+  const safeKey = safeCacheKey(cacheKey);
   const docRef = db.collection("api_cache").doc(safeKey);
   try {
     const snap = await docRef.get();
@@ -23,8 +27,16 @@ async function withCache(cacheKey, ttlMs, fetchFn) {
     }
   } catch (e) { /* cache miss, continue */ }
   const result = await fetchFn();
-  docRef.set({ _payload: JSON.stringify(result), _cachedAt: Date.now() }).catch(() => {});
+  // shouldCache(result) optionnel : skip cache write si la réponse est dégradée (ex: enrichissement échoué).
+  if (typeof shouldCache !== "function" || shouldCache(result)) {
+    docRef.set({ _payload: JSON.stringify(result), _cachedAt: Date.now() }).catch(() => {});
+  }
   return result;
 }
 
-module.exports = { withCache };
+async function invalidateCache(cacheKey) {
+  const safeKey = safeCacheKey(cacheKey);
+  await db.collection("api_cache").doc(safeKey).delete().catch(() => {});
+}
+
+module.exports = { withCache, invalidateCache };
