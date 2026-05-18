@@ -12296,40 +12296,56 @@ exports.caisseManagement = functions
       async function _computeRapprochementTotals(caisseId, mois, annee) {
         const b = _periodeBounds(mois, annee);
         if (!b) return null;
+        // Both queries wrapped in try/catch: when a required composite index
+        // is still building, return a "degraded" result with totals=0 +
+        // degraded flag so the UI can show a meaningful message instead of
+        // crashing with a 500.
+        let degraded = false;
         // Solde initial = somme des tx valide < from
-        const beforeSnap = await db_firestore.collection("caisse_transactions")
-          .where("caisse_id", "==", caisseId)
-          .where("status", "==", "valide")
-          .where("date", "<", b.from)
-          .get();
         let soldeInitial = 0;
-        beforeSnap.docs.forEach(d => {
-          const t = d.data();
-          const m = Number(t.montant) || 0;
-          if (t.type === "alimentation" || t.type === "transfer_in") soldeInitial += m;
-          else if (t.type === "depense" || t.type === "sortie" || t.type === "transfer_out") soldeInitial -= m;
-        });
+        try {
+          const beforeSnap = await db_firestore.collection("caisse_transactions")
+            .where("caisse_id", "==", caisseId)
+            .where("status", "==", "valide")
+            .where("date", "<", b.from)
+            .get();
+          beforeSnap.docs.forEach(d => {
+            const t = d.data();
+            const m = Number(t.montant) || 0;
+            if (t.type === "alimentation" || t.type === "transfer_in") soldeInitial += m;
+            else if (t.type === "depense" || t.type === "sortie" || t.type === "transfer_out") soldeInitial -= m;
+          });
+        } catch (e) {
+          console.warn("[rapprochement] solde-initial query failed (likely index building):", e.message);
+          degraded = true;
+        }
         // Période : valide ET en attente (pour pouvoir lister les bloquants)
-        const periodSnap = await db_firestore.collection("caisse_transactions")
-          .where("caisse_id", "==", caisseId)
-          .where("date", ">=", b.from)
-          .where("date", "<=", b.to)
-          .get();
         let totalRecettes = 0, totalDepenses = 0;
         const blocking = []; // tx avec status != valide
-        periodSnap.docs.forEach(d => {
-          const t = d.data();
-          const m = Number(t.montant) || 0;
-          if (t.status !== "valide") {
-            blocking.push({ id: d.id, reference: t.reference || "", description: t.description || "", date: t.date || "", status: t.status || "", montant: m, type: t.type });
-            return;
-          }
-          if (t.type === "alimentation" || t.type === "transfer_in") totalRecettes += m;
-          else if (t.type === "depense" || t.type === "sortie" || t.type === "transfer_out") totalDepenses += m;
-        });
+        try {
+          const periodSnap = await db_firestore.collection("caisse_transactions")
+            .where("caisse_id", "==", caisseId)
+            .where("date", ">=", b.from)
+            .where("date", "<=", b.to)
+            .get();
+          periodSnap.docs.forEach(d => {
+            const t = d.data();
+            const m = Number(t.montant) || 0;
+            if (t.status !== "valide") {
+              blocking.push({ id: d.id, reference: t.reference || "", description: t.description || "", date: t.date || "", status: t.status || "", montant: m, type: t.type });
+              return;
+            }
+            if (t.type === "alimentation" || t.type === "transfer_in") totalRecettes += m;
+            else if (t.type === "depense" || t.type === "sortie" || t.type === "transfer_out") totalDepenses += m;
+          });
+        } catch (e) {
+          console.warn("[rapprochement] period query failed (likely index building):", e.message);
+          degraded = true;
+        }
         const soldeTheorique = soldeInitial + totalRecettes - totalDepenses;
         return {
           periode: b,
+          degraded,
           solde_initial: Number(soldeInitial.toFixed(2)),
           total_recettes: Number(totalRecettes.toFixed(2)),
           total_depenses: Number(totalDepenses.toFixed(2)),
