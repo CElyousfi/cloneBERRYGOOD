@@ -11780,6 +11780,112 @@ exports.caisseManagement = functions
         return res.json({ success: true, message: "Caisses par défaut créées" });
       }
 
+      // =============================================================
+      // Sprint 2 — Batch actions for control workflow
+      // =============================================================
+      // Helper: chunk an array into pieces of <= 400 (Firestore batch limit = 500, margin 100)
+      function _chunkIds(ids) {
+        const out = [];
+        for (let i = 0; i < ids.length; i += 400) out.push(ids.slice(i, i + 400));
+        return out;
+      }
+
+      // Helper: build a history entry and persist a batch update on a list of tx ids.
+      // Skips tx that don't exist or fail the optional pre-check.
+      async function _applyBatchUpdate(ids, buildUpdate, opts) {
+        opts = opts || {};
+        let updated = 0, skipped = 0;
+        const errors = [];
+        const chunks = _chunkIds(ids);
+        for (const chunkIds of chunks) {
+          const refs = chunkIds.map(id => db_firestore.collection("caisse_transactions").doc(id));
+          const snaps = await Promise.all(refs.map(r => r.get()));
+          const wb = db_firestore.batch();
+          let writes = 0;
+          snaps.forEach((snap, i) => {
+            if (!snap.exists) { skipped++; errors.push({ id: chunkIds[i], reason: "not_found" }); return; }
+            const data = snap.data();
+            if (opts.preCheck && !opts.preCheck(data)) { skipped++; errors.push({ id: chunkIds[i], reason: opts.preCheckReason || "pre_check_failed" }); return; }
+            const updates = buildUpdate(data, chunkIds[i]);
+            if (!updates) { skipped++; return; }
+            wb.update(refs[i], updates);
+            writes++;
+            updated++;
+          });
+          if (writes > 0) await wb.commit();
+        }
+        return { updated, skipped, errors };
+      }
+
+      // ----- validate-transactions-batch -----
+      // status → 'valide', valide_par, valide_at, history. DG/Finance only.
+      if (action === "validate-transactions-batch" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut valider" });
+        const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
+        if (!ids || ids.length === 0) return res.status(400).json({ success: false, error: "ids[] requis" });
+        const now = Date.now();
+        const result = await _applyBatchUpdate(ids, (data) => ({
+          status: "valide",
+          valide_par: userInfo,
+          valide_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          history: [...(data.history || []), { action: "batch_validate", by: userInfo, at: now }],
+        }));
+        return res.json({ success: true, count: result.updated, ...result });
+      }
+
+      // ----- mark-revoir-batch -----
+      // status → 'a_revoir' (nouveau statut Sprint 2), history. DG/Finance only.
+      if (action === "mark-revoir-batch" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut marquer à revoir" });
+        const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
+        const motif = (req.body.motif || "").toString();
+        if (!ids || ids.length === 0) return res.status(400).json({ success: false, error: "ids[] requis" });
+        const now = Date.now();
+        const result = await _applyBatchUpdate(ids, (data) => ({
+          status: "a_revoir",
+          a_revoir_par: userInfo,
+          a_revoir_at: admin.firestore.FieldValue.serverTimestamp(),
+          a_revoir_motif: motif,
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          history: [...(data.history || []), { action: "batch_mark_revoir", by: userInfo, at: now, motif }],
+        }));
+        return res.json({ success: true, count: result.updated, ...result });
+      }
+
+      // ----- reassign-analytique-batch -----
+      // Set code_analytique on every targeted tx. DG/Finance only.
+      if (action === "reassign-analytique-batch" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut réaffecter l'analytique" });
+        const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
+        const code = (req.body.code_analytique || "").toString().trim();
+        if (!ids || ids.length === 0) return res.status(400).json({ success: false, error: "ids[] requis" });
+        if (!code) return res.status(400).json({ success: false, error: "code_analytique requis" });
+        const now = Date.now();
+        const result = await _applyBatchUpdate(ids, (data) => ({
+          code_analytique: code,
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          history: [...(data.history || []), { action: "batch_reassign_analytique", by: userInfo, at: now, from: data.code_analytique || "", to: code }],
+        }));
+        return res.json({ success: true, count: result.updated, ...result });
+      }
+
+      // ----- accept-anomalies-batch -----
+      // Mark anomalies as accepted (visible in UI as ℹ instead of 🚩). No status change.
+      // Accessible aussi à Achats (les saisies peuvent reconnaître leurs propres anomalies).
+      if (action === "accept-anomalies-batch" && req.method === "POST") {
+        const ids = Array.isArray(req.body.ids) ? req.body.ids : null;
+        if (!ids || ids.length === 0) return res.status(400).json({ success: false, error: "ids[] requis" });
+        const now = Date.now();
+        const result = await _applyBatchUpdate(ids, (data) => ({
+          anomalies_acceptees_par: userInfo,
+          anomalies_acceptees_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          history: [...(data.history || []), { action: "batch_accept_anomalies", by: userInfo, at: now }],
+        }));
+        return res.json({ success: true, count: result.updated, ...result });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur caisseManagement:", err);
