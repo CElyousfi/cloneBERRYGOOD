@@ -11550,23 +11550,36 @@ exports.caisseManagement = functions
         weekStart.setHours(0, 0, 0, 0);
         const weekStartStr = weekStart.toISOString().slice(0, 10);
 
-        const weekTxSnap = await db_firestore.collection("caisse_transactions")
-          .where("status", "==", "valide")
-          .where("date", ">=", weekStartStr)
-          .get();
-        let weekAlimentations = 0, weekDepenses = 0;
-        weekTxSnap.docs.forEach(d => {
-          const tx = d.data();
-          if (tx.type === "alimentation" || tx.type === "transfer_in") weekAlimentations += (tx.montant || 0);
-          if (tx.type === "depense" || tx.type === "sortie" || tx.type === "transfer_out") weekDepenses += (tx.montant || 0);
-        });
+        // Weekly totals — wrapped in try/catch so a missing composite index
+        // (status ASC, date ASC) doesn't bring down the whole dashboard.
+        // Degraded mode: returns 0/0 + an indicator instead of failing.
+        let weekAlimentations = 0, weekDepenses = 0, weeklyDegraded = false;
+        try {
+          const weekTxSnap = await db_firestore.collection("caisse_transactions")
+            .where("status", "==", "valide")
+            .where("date", ">=", weekStartStr)
+            .get();
+          weekTxSnap.docs.forEach(d => {
+            const tx = d.data();
+            if (tx.type === "alimentation" || tx.type === "transfer_in") weekAlimentations += (tx.montant || 0);
+            if (tx.type === "depense" || tx.type === "sortie" || tx.type === "transfer_out") weekDepenses += (tx.montant || 0);
+          });
+        } catch (e) {
+          console.warn("[dashboard] weekly query failed (likely index building):", e.message);
+          weeklyDegraded = true;
+        }
 
-        // Recent transactions (last 10)
-        const recentSnap = await db_firestore.collection("caisse_transactions")
-          .orderBy("created_at", "desc").limit(10).get();
-        const recentTx = recentSnap.docs.map(d => ({ id: d.id, ...d.data(), created_at: d.data().created_at?.toMillis?.() || d.data().created_at }));
+        // Recent transactions (last 10) — same defensive wrap
+        let recentTx = [];
+        try {
+          const recentSnap = await db_firestore.collection("caisse_transactions")
+            .orderBy("created_at", "desc").limit(10).get();
+          recentTx = recentSnap.docs.map(d => ({ id: d.id, ...d.data(), created_at: d.data().created_at?.toMillis?.() || d.data().created_at }));
+        } catch (e) {
+          console.warn("[dashboard] recent query failed:", e.message);
+        }
 
-        return res.json({ success: true, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx });
+        return res.json({ success: true, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx, weeklyDegraded });
       }
 
       // ========== LIST CAISSES ==========
