@@ -50798,7 +50798,15 @@ ${rejetHtml}
             const [searchQuery, setSearchQuery] = useState('');       // Debounced (200ms) — used by memo
             const searchInputRef = React.useRef(null);
             const [quickPeriod, setQuickPeriod] = useState('all');    // 'all' | 'today' | 'last7' | 'thisMonth' | 'lastMonth'
-            const [quickType, setQuickType] = useState('all');        // 'all' | 'depenses' | 'recettes' | 'transferts'
+            const [quickType, setQuickType] = useState('all');        // 'all' | 'depenses' | 'recettes' | 'transferts' | 'controle'
+
+            // Sprint 2 — multi-select + bulk actions
+            const [selectedIds, setSelectedIds] = useState(() => new Set());
+            const [bulkLoading, setBulkLoading] = useState(false);
+            const [reassignOpen, setReassignOpen] = useState(false);
+            const [reassignValue, setReassignValue] = useState('');
+            const [toast, setToast] = useState(null); // { message, kind: 'success' | 'error' }
+            const reassignDialogRef = React.useRef(null);
 
             // Use prop if non-empty, else fall back to locally-fetched caisses
             const caisses = (caissesProp && caissesProp.length > 0) ? caissesProp : localCaisses;
@@ -51004,6 +51012,135 @@ ${rejetHtml}
                 }
             };
 
+            // ---- Selection helpers ----
+            const toggleOne = (id, ev) => {
+                if (ev) ev.stopPropagation();
+                setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(id)) next.delete(id); else next.add(id);
+                    return next;
+                });
+            };
+            // visibleIds : ids actuellement affichés (post-recherche, post-filtres)
+            // (Sprint 8 ajoutera le tri — fonctionnera toujours, displayedTransactions sera la liste finale)
+            const visibleIds = useMemo(() => displayedTransactions.map((tx) => tx.id).filter(Boolean), [displayedTransactions]);
+            const allVisibleSelected = useMemo(() => {
+                if (visibleIds.length === 0) return false;
+                for (const id of visibleIds) if (!selectedIds.has(id)) return false;
+                return true;
+            }, [visibleIds, selectedIds]);
+            const toggleAllVisible = (checked) => {
+                setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    if (checked) { for (const id of visibleIds) next.add(id); }
+                    else         { for (const id of visibleIds) next.delete(id); }
+                    return next;
+                });
+            };
+            const clearSelection = () => setSelectedIds(new Set());
+
+            // Toast helper — auto-dismiss after 2s
+            const showToast = (message, kind) => {
+                setToast({ message, kind: kind || 'success' });
+                setTimeout(() => setToast((cur) => (cur && cur.message === message ? null : cur)), 2200);
+            };
+
+            // ---- Bulk action handlers ----
+            const _postBulk = async (action, body) => {
+                setBulkLoading(true);
+                try {
+                    const r = await fetch('/api/caisse?action=' + action, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
+                    });
+                    const json = await r.json();
+                    if (!json || !json.success) { showToast('Erreur : ' + ((json && json.error) || 'inconnue'), 'error'); return null; }
+                    return json;
+                } catch (err) {
+                    showToast('Erreur réseau : ' + err.message, 'error');
+                    return null;
+                } finally {
+                    setBulkLoading(false);
+                }
+            };
+            const bulkValidate = async () => {
+                const ids = Array.from(selectedIds);
+                if (ids.length === 0) return;
+                if (!window.confirm(`Valider ${ids.length} transaction(s) ?`)) return;
+                const json = await _postBulk('validate-transactions-batch', { ids });
+                if (json) {
+                    showToast(`${json.count || ids.length} transactions validées`);
+                    clearSelection();
+                    load();
+                }
+            };
+            const bulkMarkRevoir = async () => {
+                const ids = Array.from(selectedIds);
+                if (ids.length === 0) return;
+                const motif = window.prompt(`Marquer ${ids.length} transaction(s) "À revoir". Motif (optionnel) :`, '');
+                if (motif === null) return;
+                const json = await _postBulk('mark-revoir-batch', { ids, motif });
+                if (json) {
+                    showToast(`${json.count || ids.length} transactions marquées à revoir`);
+                    clearSelection();
+                    load();
+                }
+            };
+            const bulkReassign = async () => {
+                if (selectedIds.size === 0) return;
+                setReassignValue('');
+                setReassignOpen(true);
+                // Open native <dialog> via ref after state update
+                setTimeout(() => { if (reassignDialogRef.current && reassignDialogRef.current.showModal) reassignDialogRef.current.showModal(); }, 0);
+            };
+            const confirmReassign = async () => {
+                const ids = Array.from(selectedIds);
+                const code = (reassignValue || '').trim();
+                if (!code) { alert('Veuillez choisir un analytique'); return; }
+                const json = await _postBulk('reassign-analytique-batch', { ids, code_analytique: code });
+                if (json) {
+                    showToast(`Analytique réaffecté sur ${json.count || ids.length} transaction(s)`);
+                    if (reassignDialogRef.current && reassignDialogRef.current.close) reassignDialogRef.current.close();
+                    setReassignOpen(false);
+                    clearSelection();
+                    load();
+                }
+            };
+            const cancelReassign = () => {
+                if (reassignDialogRef.current && reassignDialogRef.current.close) reassignDialogRef.current.close();
+                setReassignOpen(false);
+            };
+            const bulkExport = () => {
+                if (!window.XLSX) return alert('XLSX non disponible');
+                const ids = selectedIds;
+                const subset = displayedTransactions.filter((tx) => ids.has(tx.id));
+                if (subset.length === 0) return;
+                const ws = XLSX.utils.json_to_sheet(subset.map((tx) => ({
+                    Date: tx.date,
+                    Caisse: caisses.find((c) => c.id === tx.caisse_id)?.nom || tx.caisse_id,
+                    Type: (TXN_TYPE_LABELS[tx.type] || {}).label || tx.type,
+                    Référence: tx.reference,
+                    Description: tx.description,
+                    Montant: tx.montant,
+                    'Code Analytique': tx.code_analytique,
+                    Statut: (STATUS_LABELS[tx.status] || {}).label || tx.status,
+                    'Saisi par': (tx.saisie_by && tx.saisie_by.name) || '',
+                })));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Sélection');
+                XLSX.writeFile(wb, `Caisse_Selection_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            };
+
+            // Distinct analytiques (sorted) for the reassign dialog
+            const distinctAnalytiques = useMemo(() => {
+                const set = new Set();
+                for (const tx of transactions) {
+                    const a = (tx && tx.code_analytique || '').toString().trim();
+                    if (a) set.add(a);
+                }
+                return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+            }, [transactions]);
+
             return (
                 <div>
                     {/* Quick filter chips — period */}
@@ -51066,6 +51203,77 @@ ${rejetHtml}
                         </button>
                     </div>
 
+                    {/* Sprint 2 — Sticky bulk actions bar (visible when selection > 0) */}
+                    {selectedIds.size > 0 && (
+                        <div data-testid="caisse-bulk-bar"
+                            style={{position:'sticky',top:0,zIndex:5,display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',padding:'10px 14px',marginBottom:12,background:'var(--berry)',color:'white',borderRadius:10,boxShadow:'0 2px 8px rgba(139,34,82,0.25)'}}>
+                            <span style={{fontWeight:600,fontSize:13,marginRight:8}}>
+                                <i className="fa-solid fa-square-check" style={{marginRight:6}}></i>
+                                {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
+                            </span>
+                            <button onClick={bulkValidate} disabled={bulkLoading}
+                                style={{padding:'6px 12px',borderRadius:6,border:'none',background:'var(--green)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
+                                <i className="fa-solid fa-check" style={{marginRight:4}}></i>Valider
+                            </button>
+                            <button onClick={bulkMarkRevoir} disabled={bulkLoading}
+                                style={{padding:'6px 12px',borderRadius:6,border:'none',background:'#F39C12',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
+                                <i className="fa-solid fa-rotate-right" style={{marginRight:4}}></i>Marquer à revoir
+                            </button>
+                            <button onClick={bulkReassign} disabled={bulkLoading}
+                                style={{padding:'6px 12px',borderRadius:6,border:'1px solid white',background:'transparent',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
+                                <i className="fa-solid fa-tags" style={{marginRight:4}}></i>Réaffecter analytique…
+                            </button>
+                            <button onClick={bulkExport} disabled={bulkLoading}
+                                style={{padding:'6px 12px',borderRadius:6,border:'1px solid white',background:'transparent',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
+                                <i className="fa-solid fa-file-excel" style={{marginRight:4}}></i>Exporter sélection
+                            </button>
+                            <button onClick={clearSelection} disabled={bulkLoading}
+                                aria-label="Désélectionner tout"
+                                style={{marginLeft:'auto',padding:'6px 10px',borderRadius:6,border:'none',background:'rgba(255,255,255,0.18)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                                <i className="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Reassign analytique dialog (HTML5 <dialog> natif) */}
+                    {reassignOpen && (
+                        <dialog ref={reassignDialogRef} onClose={() => setReassignOpen(false)}
+                            style={{border:'none',borderRadius:12,padding:0,maxWidth:480,width:'90%',boxShadow:'0 10px 30px rgba(0,0,0,0.2)'}}>
+                            <div style={{padding:'20px 22px'}}>
+                                <h3 style={{margin:'0 0 14px',fontSize:15,color:'var(--berry)'}}>
+                                    <i className="fa-solid fa-tags" style={{marginRight:6}}></i>
+                                    Réaffecter l'analytique
+                                </h3>
+                                <div style={{fontSize:12.5,color:'var(--gray-600)',marginBottom:14}}>
+                                    Appliquer un nouvel analytique aux {selectedIds.size} transaction(s) sélectionnée(s).
+                                </div>
+                                <label style={{fontSize:11.5,fontWeight:600,color:'var(--gray-800)',display:'block',marginBottom:6}}>Code analytique</label>
+                                <select value={reassignValue} onChange={(e) => setReassignValue(e.target.value)}
+                                    style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:13,marginBottom:14}}>
+                                    <option value="">— Choisir un analytique —</option>
+                                    {distinctAnalytiques.map((a) => (<option key={a} value={a}>{a}</option>))}
+                                </select>
+                                <div style={{display:'flex',gap:8,justifyContent:'flex-end'}}>
+                                    <button onClick={cancelReassign}
+                                        style={{padding:'8px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12}}>Annuler</button>
+                                    <button onClick={confirmReassign} disabled={bulkLoading || !reassignValue}
+                                        style={{padding:'8px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:(bulkLoading || !reassignValue)?0.5:1}}>
+                                        {bulkLoading ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:4}}></i>Application…</> : 'Appliquer'}
+                                    </button>
+                                </div>
+                            </div>
+                        </dialog>
+                    )}
+
+                    {/* Toast (bottom-right) */}
+                    {toast && (
+                        <div data-testid="caisse-toast"
+                            style={{position:'fixed',right:18,bottom:18,zIndex:1000,padding:'10px 16px',borderRadius:8,background:toast.kind==='error'?'#E74C3C':'#1A7A3F',color:'white',fontSize:12.5,fontWeight:600,boxShadow:'0 4px 14px rgba(0,0,0,0.18)'}}>
+                            <i className={`fa-solid ${toast.kind==='error'?'fa-triangle-exclamation':'fa-circle-check'}`} style={{marginRight:6}}></i>
+                            {toast.message}
+                        </div>
+                    )}
+
                     {loading ? (
                         <div style={{textAlign:'center',padding:40}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:20,color:'var(--berry)'}}></i></div>
                     ) : transactions.length === 0 ? (
@@ -51106,6 +51314,12 @@ ${rejetHtml}
                                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                                     <thead><tr style={{background:'var(--gray-100)'}}>
                                         <th style={{padding:'10px 6px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',width:32}} title="Anomalies détectées">⚠</th>
+                                        <th style={{padding:'10px 6px',textAlign:'center',width:32}}>
+                                            <input type="checkbox" data-testid="caisse-select-all"
+                                                checked={allVisibleSelected} onChange={(e) => toggleAllVisible(e.target.checked)}
+                                                aria-label="Sélectionner toutes les transactions visibles"
+                                                style={{cursor:'pointer'}} />
+                                        </th>
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Date</th>
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Caisse</th>
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Type</th>
@@ -51148,6 +51362,14 @@ ${rejetHtml}
                                                                 aria-label={`${txAnomalies.length} anomalie(s) acceptée(s)`}>ℹ️</span>
                                                         )}
                                                     </td>
+                                                    <td style={{padding:'10px 6px',textAlign:'center'}} onClick={(e) => e.stopPropagation()}>
+                                                        {tx.id && (
+                                                            <input type="checkbox" checked={selectedIds.has(tx.id)}
+                                                                onChange={(e) => toggleOne(tx.id, e)}
+                                                                aria-label={`Sélectionner ${tx.reference || tx.id}`}
+                                                                style={{cursor:'pointer'}} />
+                                                        )}
+                                                    </td>
                                                     <td style={{padding:'10px 12px',whiteSpace:'nowrap'}}>{tx.date}</td>
                                                     <td style={{padding:'10px 12px',fontSize:11}}>{caisses.find(c=>c.id===tx.caisse_id)?.nom||tx.caisse_id}</td>
                                                     <td style={{padding:'10px 12px'}}>
@@ -51172,7 +51394,7 @@ ${rejetHtml}
                                     {/* Sticky footer — totaux suivent les filtres */}
                                     <tfoot>
                                         <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
-                                            <td colSpan={10} style={{padding:'12px 14px',fontSize:12}}>
+                                            <td colSpan={11} style={{padding:'12px 14px',fontSize:12}}>
                                                 <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
                                                     <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
                                                     <span style={{color:'var(--gray-400)'}}>·</span>
