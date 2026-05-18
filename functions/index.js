@@ -10,6 +10,7 @@ const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
+const bdcWorkflow = require("./lib/bdc/workflow");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -5114,13 +5115,17 @@ exports.stockManagement = functions
         }
         const history = current.history || [];
         const now = Date.now();
-        history.push({ action: "soumission", by: submitted_by || {}, at: now, comment: "" });
-        // Avocatier: pas de Chef de Ferme → soumission directe au DG
-        const skipChef = current.ferme === "Avocatier";
-        const nextStatus = skipChef ? "en_attente_dg" : "en_attente_chef";
-        if (skipChef) {
-          history.push({ action: "validation_chef_skipped", by: { profileId: "system", name: "Système" }, at: now, comment: "Ferme Avocatier — sans Chef de Ferme, soumission directe au DG" });
-        }
+        // Fermes sans chef de ferme (Avocatier, F2, F3, F4, F6, BAHIA) → soumission directe au DG.
+        // Source de vérité : functions/lib/bdc/workflow.js (mirror public/lib/bdcWorkflow.js).
+        const skipChef = !bdcWorkflow.requiresChefValidation(current.ferme);
+        const nextStatus = bdcWorkflow.nextStatusOnSubmit(current.ferme);
+        history.push({
+          action: skipChef ? "soumission_directe_dg" : "soumission",
+          by: submitted_by || {},
+          at: now,
+          comment: skipChef ? `Ferme ${current.ferme} sans Chef de Ferme — soumission directe au DG` : "",
+          bypass_reason: bdcWorkflow.bypassReason(current.ferme) || undefined,
+        });
         const updatePatch = { status: nextStatus, history, updated_at: now };
         if (pdf_url) updatePatch.pdf_url = pdf_url;
         await db_firestore.collection("purchase_orders").doc(id).update(updatePatch);
