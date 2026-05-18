@@ -71,12 +71,12 @@ function bypassReason(ferme) {
 // UMD-style export (browser global + CommonJS for node:test / backend)
 // ============================================================================
 
-const __api = {
+const __bdcWorkflowApi = {
   DIRECT_DG_FARMS,
   requiresChefValidation,
   nextStatusOnSubmit,
   bypassReason,
 };
 
-if (typeof module !== 'undefined' && module.exports) module.exports = __api;
-if (typeof window !== 'undefined') window.BdcWorkflow = __api;
+if (typeof module !== 'undefined' && module.exports) module.exports = __bdcWorkflowApi;
+if (typeof window !== 'undefined') window.BdcWorkflow = __bdcWorkflowApi;
