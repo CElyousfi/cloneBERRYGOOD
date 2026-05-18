@@ -1363,7 +1363,9 @@
             </div>
         </div>
     </div>
-    <script defer src="lib/caisseUtils.js?v=mpb6qtnv"></script>
-    <script defer src="app.js?v=mpb6qtnv"></script>
+    <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
+    <script src="lib/local-test-bypass.js?v=mpbc5902"></script>
+    <script defer src="lib/caisseUtils.js?v=mpbc5902"></script>
+    <script defer src="app.js?v=mpbc5902"></script>
 </body>
 </html>
