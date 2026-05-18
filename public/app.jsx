@@ -50809,36 +50809,71 @@ ${rejetHtml}
                 return () => clearTimeout(t);
             }, [searchInput]);
 
-            // Apply search on the loaded transactions (client-side, post-API filters)
+            // -------- Sprint 2 — chaîne useMemo (anomaliesByTx calculé UNE seule fois) --------
+            // transactions → searchedTransactions → filteredByType → anomaliesByTx
+            //   → controlFiltered → (sortedTransactions Sprint 8) → totals
+            //
+            // Note : 'controle' est un quickType "synthétique" non géré par filterByQuickType.
+            // filterByQuickType retourne la liste inchangée pour les types inconnus, donc
+            // pour quickType='controle' on a filteredByType === searchedTransactions, puis
+            // controlFiltered applique la formule (hasAnomaly && !accepted) || status !== 'valide'.
+
             const searchedTransactions = useMemo(
                 () => (window.CaisseUtils ? window.CaisseUtils.searchTransactions(transactions, searchQuery) : transactions),
                 [transactions, searchQuery]
             );
 
-            // Apply quick-type chip filter on top of search
-            const displayedTransactions = useMemo(
+            const filteredByType = useMemo(
                 () => (window.CaisseUtils ? window.CaisseUtils.filterByQuickType(searchedTransactions, quickType) : searchedTransactions),
                 [searchedTransactions, quickType]
             );
 
-            // Totaux footer (recalculés sur la liste affichée — après recherche ET filtre type)
+            // detectAnomaliesBatch (Sprint 2) — combine Sprint 1 per-tx rules + 5 cross-dataset rules
+            const anomaliesByTx = useMemo(() => {
+                if (!window.CaisseUtils || !window.CaisseUtils.detectAnomaliesBatch) {
+                    // Fallback Sprint 1 si le batch n'est pas chargé
+                    const map = new Map();
+                    if (window.CaisseUtils) {
+                        const now = new Date();
+                        for (const tx of filteredByType) {
+                            const found = window.CaisseUtils.detectCaisseAnomalies(tx, now);
+                            if (found && found.length > 0) map.set(tx.id || tx.reference, found);
+                        }
+                    }
+                    return map;
+                }
+                return window.CaisseUtils.detectAnomaliesBatch(filteredByType, new Date());
+            }, [filteredByType]);
+
+            // Helper : tx a-t-elle des anomalies non acceptées ?
+            const _hasUnacceptedAnomaly = (tx) => {
+                const key = tx.id || tx.reference;
+                if (!anomaliesByTx.has(key)) return false;
+                return !tx.anomalies_acceptees_par; // tx avec acceptance → ne compte plus
+            };
+
+            // controlFiltered — appliquée seulement si quickType === 'controle'
+            const controlFiltered = useMemo(() => {
+                if (quickType !== 'controle') return filteredByType;
+                return filteredByType.filter((tx) => _hasUnacceptedAnomaly(tx) || tx.status !== 'valide');
+            }, [filteredByType, anomaliesByTx, quickType]);
+
+            // N badge "À contrôler" — comptage sur filteredByType (pas controlFiltered, sinon
+            // le compteur change avec lui-même quand la chip est active)
+            const controlCount = useMemo(() => {
+                return filteredByType.reduce((acc, tx) => {
+                    return acc + ((_hasUnacceptedAnomaly(tx) || tx.status !== 'valide') ? 1 : 0);
+                }, 0);
+            }, [filteredByType, anomaliesByTx]);
+
+            // For commit 6 — sorting comes in commit 8. Until then displayedTransactions = controlFiltered.
+            const displayedTransactions = controlFiltered;
+
+            // Totaux footer (recalculés sur la liste affichée)
             const totals = useMemo(
                 () => (window.CaisseUtils ? window.CaisseUtils.computeTotals(displayedTransactions) : { count: displayedTransactions.length, totalDepensesOp: 0, totalRecettes: 0, totalTransfers: 0, soldeNet: 0 }),
                 [displayedTransactions]
             );
-
-            // Pre-compute anomalies once per displayed list (Map<txId, Anomaly[]>)
-            // Avoid recomputing inside the render loop. Empty arrays are not stored — absence = no anomaly.
-            const anomaliesByTx = useMemo(() => {
-                const map = new Map();
-                if (!window.CaisseUtils) return map;
-                const now = new Date();
-                for (const tx of displayedTransactions) {
-                    const found = window.CaisseUtils.detectCaisseAnomalies(tx, now);
-                    if (found && found.length > 0) map.set(tx.id || tx.reference, found);
-                }
-                return map;
-            }, [displayedTransactions]);
 
             // Apply quick period chip → updates filterDateFrom/filterDateTo (which re-triggers API load)
             const applyQuickPeriod = (period) => {
@@ -50936,7 +50971,38 @@ ${rejetHtml}
                 { id: 'depenses',   label: 'Dépenses' },
                 { id: 'recettes',   label: 'Recettes' },
                 { id: 'transferts', label: 'Transferts' },
+                { id: 'controle',   label: 'À contrôler', badge: controlCount },
             ];
+
+            // Accepter toutes les anomalies des tx visibles (vue À contrôler uniquement)
+            const [acceptLoading, setAcceptLoading] = useState(false);
+            const acceptAllVisibleAnomalies = async () => {
+                if (acceptLoading) return;
+                const ids = displayedTransactions
+                    .filter((tx) => _hasUnacceptedAnomaly(tx))
+                    .map((tx) => tx.id)
+                    .filter(Boolean);
+                if (ids.length === 0) { alert('Aucune anomalie à accepter dans la vue actuelle.'); return; }
+                if (!window.confirm(`Accepter les anomalies de ${ids.length} transaction(s) ? Elles ne seront plus marquées 🚩 et ne compteront plus dans "À contrôler".`)) return;
+                setAcceptLoading(true);
+                try {
+                    const r = await fetch('/api/caisse?action=accept-anomalies-batch', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ ids }),
+                    });
+                    const json = await r.json();
+                    if (json && json.success) {
+                        load(); // re-fetch to pick up anomalies_acceptees_par from server
+                    } else {
+                        alert('Erreur acceptation : ' + ((json && json.error) || 'inconnue'));
+                    }
+                } catch (err) {
+                    alert('Erreur réseau : ' + err.message);
+                } finally {
+                    setAcceptLoading(false);
+                }
+            };
 
             return (
                 <div>
@@ -50951,7 +51017,12 @@ ${rejetHtml}
                     <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:16,alignItems:'center'}}>
                         <span style={{fontSize:10.5,color:'var(--gray-400)',textTransform:'uppercase',letterSpacing:0.5,marginRight:6,fontWeight:600}}>Type</span>
                         {typeChips.map(c => (
-                            <button key={c.id} data-chip-type={c.id} onClick={() => setQuickType(c.id)} style={chipStyle(quickType === c.id)}>{c.label}</button>
+                            <button key={c.id} data-chip-type={c.id} onClick={() => setQuickType(c.id)} style={chipStyle(quickType === c.id)}>
+                                {c.label}
+                                {c.id === 'controle' && c.badge > 0 && (
+                                    <span style={{marginLeft:6,padding:'1px 7px',borderRadius:10,background:'#E74C3C',color:'white',fontSize:10,fontWeight:700}}>{c.badge}</span>
+                                )}
+                            </button>
                         ))}
                     </div>
                     {/* Filters */}
@@ -51010,6 +51081,26 @@ ${rejetHtml}
                             </div>
                         </div>
                     ) : (
+                        <div>
+                            {/* "Accepter toutes les anomalies visibles" — visible uniquement en vue 'controle' */}
+                            {quickType === 'controle' && (() => {
+                                const nUnaccepted = displayedTransactions.filter(_hasUnacceptedAnomaly).length;
+                                if (nUnaccepted === 0) return null;
+                                return (
+                                    <div data-testid="caisse-accept-all-bar" style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,padding:'10px 14px',marginBottom:10,background:'rgba(212,168,71,0.08)',border:'1px solid rgba(212,168,71,0.3)',borderRadius:10}}>
+                                        <div style={{fontSize:12.5,color:'var(--gray-800)'}}>
+                                            <i className="fa-solid fa-flag" style={{color:'#E67E22',marginRight:6}}></i>
+                                            <strong>{nUnaccepted}</strong> transaction(s) visibles avec anomalies non acceptées.
+                                        </div>
+                                        <button onClick={acceptAllVisibleAnomalies} disabled={acceptLoading}
+                                            style={{padding:'7px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:acceptLoading?0.6:1}}>
+                                            {acceptLoading
+                                                ? <><i className="fa-solid fa-spinner fa-spin" style={{marginRight:5}}></i>Acceptation…</>
+                                                : <><i className="fa-solid fa-check-double" style={{marginRight:5}}></i>Accepter toutes les anomalies visibles</>}
+                                        </button>
+                                    </div>
+                                );
+                            })()}
                         <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden'}}>
                             <div style={{overflowX:'auto'}}>
                                 <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
@@ -51031,15 +51122,30 @@ ${rejetHtml}
                                             const ss = STATUS_LABELS[tx.status]||{};
                                             const txAnomalies = anomaliesByTx.get(tx.id || tx.reference) || null;
                                             const hasAnomaly = !!txAnomalies;
-                                            const baseBg = hasAnomaly ? '#FEF9E7' : '';
+                                            const anomaliesAccepted = hasAnomaly && !!tx.anomalies_acceptees_par;
+                                            // Fond ligne : jaune pâle si anomalies non acceptées, blanc sinon
+                                            const baseBg = (hasAnomaly && !anomaliesAccepted) ? '#FEF9E7' : '';
+                                            // Tooltip pour anomalies acceptées
+                                            const acceptedTooltip = (() => {
+                                                if (!anomaliesAccepted) return '';
+                                                const who = (tx.anomalies_acceptees_par && tx.anomalies_acceptees_par.name) || '—';
+                                                const when = tx.anomalies_acceptees_at ? new Date(tx.anomalies_acceptees_at.toMillis ? tx.anomalies_acceptees_at.toMillis() : tx.anomalies_acceptees_at).toLocaleDateString('fr-FR') : '—';
+                                                const list = txAnomalies.map(a => `• ${a.message}`).join('\n');
+                                                return `Anomalies acceptées par ${who} le ${when}\n\n${list}`;
+                                            })();
                                             return (
-                                                <tr key={tx.id||i} data-anomaly={hasAnomaly ? '1' : '0'} onClick={()=>setSelectedTx(tx)} style={{borderBottom:'1px solid var(--gray-100)',cursor:'pointer',transition:'background 0.15s',background:baseBg}}
+                                                <tr key={tx.id||i} data-anomaly={hasAnomaly ? '1' : '0'} data-anomaly-accepted={anomaliesAccepted ? '1' : '0'} onClick={()=>setSelectedTx(tx)} style={{borderBottom:'1px solid var(--gray-100)',cursor:'pointer',transition:'background 0.15s',background:baseBg}}
                                                     onMouseEnter={e=>e.currentTarget.style.background='var(--berry-pale)'} onMouseLeave={e=>e.currentTarget.style.background=baseBg}>
                                                     <td style={{padding:'10px 6px',textAlign:'center'}}>
-                                                        {hasAnomaly && (
+                                                        {hasAnomaly && !anomaliesAccepted && (
                                                             <span title={txAnomalies.map(a => `• ${a.message}`).join('\n')}
                                                                 style={{display:'inline-block',cursor:'help',fontSize:14,lineHeight:1}}
                                                                 aria-label={`${txAnomalies.length} anomalie(s)`}>🚩</span>
+                                                        )}
+                                                        {hasAnomaly && anomaliesAccepted && (
+                                                            <span title={acceptedTooltip}
+                                                                style={{display:'inline-block',cursor:'help',fontSize:14,lineHeight:1,opacity:0.7}}
+                                                                aria-label={`${txAnomalies.length} anomalie(s) acceptée(s)`}>ℹ️</span>
                                                         )}
                                                     </td>
                                                     <td style={{padding:'10px 12px',whiteSpace:'nowrap'}}>{tx.date}</td>
@@ -51083,6 +51189,7 @@ ${rejetHtml}
                                     </tfoot>
                                 </table>
                             </div>
+                        </div>
                         </div>
                     )}
 
