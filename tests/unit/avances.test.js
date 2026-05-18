@@ -217,7 +217,8 @@ test('aggregateAvances — ancienneté null quand toutes les avances sont soldé
     avTx({ id: 'b', description: 'AVANCE HAMZA', montant: 200,
       regularisations: [{ montant: 100 }, { montant: 100 }] }), // soldée en 2 fois
   ];
-  const r = U.aggregateAvances(list, NOW);
+  // showSoldees=true pour conserver l'entrée et inspecter l'ancienneté
+  const r = U.aggregateAvances(list, NOW, { showSoldees: true });
   const h = r.byBeneficiaire.get('HAMZA');
   assert.equal(h.soldeDu,         0);
   assert.equal(h.ancienneteJours, null);
