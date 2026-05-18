@@ -52,17 +52,48 @@
 
 ---
 
-## Sprint 3 — En réflexion ⏳
+## Sprint 3 — Rapprochement & Avances 🚧
+
+**Statut** : en cours, branche `feature/sprint-3-rapprochement-avances`.
+**Périmètre** : Gestion de Caisse — nouveaux onglets Rapprochement et Avances + helpers purs + actions Cloud Function.
+
+### À livrer
+1. **Rapprochement mensuel** (Finance/DG) : nouvelle collection `caisse_rapprochements`, 4 actions CF (`rapprochement-get/save/cloture/list`), sous-onglet **CaisseRapprochementSub** avec solde théorique calculé live, écart coloré (vert/orange/rouge), commentaire obligatoire si écart ≠ 0, bouton "Clôturer" bloqué si transactions non validées dans la période, historique des rapprochements.
+2. **Suivi des avances** (tous profils en lecture, Finance/DG en régularisation) : 2 helpers purs `extractBeneficiaire` + `aggregateAvances` dans `caisseUtils.js`, 2 actions CF (`avances-liste`, `avance-regulariser`), sous-onglet **CaisseAvancesSub** avec vue agrégée par bénéficiaire (Nb avances / Total avancé / Régularisé / Solde dû / Ancienneté), couleur ligne selon ancienneté (vert <30j / jaune 30-60j / orange 60-90j / rouge >90j), checkbox "Afficher les soldées" off par défaut, modal régularisation, append-only sur `regularisations[]`.
+
+### Décisions clé (D1-D9 validées)
+- **D1** : avances sans bénéficiaire identifiable → bucket `unidentifiedCount` séparé, banner UI
+- **D2** : régularisations append-only en Sprint 3, undo à voir Sprint 4+
+- **D5** : collection `caisse_rapprochements` (cohérence snake_case avec `caisse_transactions`)
+- **D6** : solde initial du mois calculé live, pas de stockage
+- **D9** : `extractBeneficiaire` retourne UPPERCASE pour stabilité de la clé d'agrégation
+
+### Critères d'acceptation
+- `extractBeneficiaire` couvre les 16 cas tests (4 spec + 12 réel/edge) → **OK** (174/174 tests verts)
+- `aggregateAvances` correct sur dataset mock 10 avances avec régularisations partielles → **OK**
+- Rapprochement : clôture bloquée si transactions non validées → **OK** (validation côté serveur, blocking_transactions retournées)
+- Rapprochement : commentaire obligatoire si écart ≠ 0 → **OK** (validé serveur + UI)
+- 0 régression : 174 / 174 tests verts (Sprint 1 + 2 + 3)
+- Smoke : 24 / 24 checks
+
+### Limitations documentées
+- `BENEFICIAIRE_IMPRECIS` heuristique laxiste (Sprint 2) reste non corrigée — Sprint 4+
+- `window.confirm()` pour clôture rapprochement (modale custom = Sprint 4)
+- Régularisations append-only (pas d'undo)
+
+---
+
+## Sprint 4 — En réflexion ⏳
 
 Pistes (à confirmer / prioriser) :
-- Modale custom pour confirmations (remplace `window.confirm()` Sprint 2)
-- Tooltip custom multi-lignes pour anomalies (remplace `title=` natif Sprint 1)
-- Affiner `BENEFICIAIRE_IMPRECIS` (heuristique trop laxiste sur "Avance Achat" — faux négatifs documentés Sprint 2)
-- Affichage des `a_revoir_motif` côté UI (champ stocké mais non visible)
-- Reporting / export PDF avancé (les rapports hebdo existent déjà mais à enrichir)
-- Workflow d'approbation des imports Excel (validation manuelle avant écriture)
-- Templates de bons d'achat récurrents (DA / paiements salaires)
-- Mocks bypass étendus à d'autres écrans (dashboard pointage, agronomie) pour testui complet
+- Modales custom (remplace `window.confirm()` Sprint 2/3)
+- Tooltip custom multi-lignes pour anomalies
+- Affiner `BENEFICIAIRE_IMPRECIS`
+- Affichage `a_revoir_motif` côté UI
+- Annulation de régularisation
+- Reporting / export PDF avancé
+- Workflow d'approbation imports Excel
+- Templates DA / paiements salaires récurrents
 
 ---
 
@@ -76,4 +107,4 @@ Pistes (à confirmer / prioriser) :
 
 ---
 
-*Dernière mise à jour : Sprint 2 mergé sur main (`6e00e4d`) et déployé en prod le 2026-05-18.*
+*Dernière mise à jour : Sprint 3 en cours sur `feature/sprint-3-rapprochement-avances` — PR draft à venir.*

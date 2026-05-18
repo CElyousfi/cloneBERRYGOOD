@@ -194,17 +194,53 @@ function startServer(port = 0) {
     const r = await fetch('app.js', { cache: 'no-store' });
     const src = await r.text();
     return {
-      bulkBar:      src.indexOf('caisse-bulk-bar') !== -1,
-      acceptAllBar: src.indexOf('caisse-accept-all-bar') !== -1,
-      selectAll:    src.indexOf('caisse-select-all') !== -1,
-      toast:        src.indexOf('caisse-toast') !== -1,
-      controleChip: src.indexOf("data-chip-type") !== -1 && src.indexOf("'controle'") !== -1,
+      bulkBar:        src.indexOf('caisse-bulk-bar') !== -1,
+      acceptAllBar:   src.indexOf('caisse-accept-all-bar') !== -1,
+      selectAll:      src.indexOf('caisse-select-all') !== -1,
+      toast:          src.indexOf('caisse-toast') !== -1,
+      controleChip:   src.indexOf("data-chip-type") !== -1 && src.indexOf("'controle'") !== -1,
+      // Sprint 3 markers
+      avancesSub:     src.indexOf('CaisseAvancesSub') !== -1,
+      avancesTab:     src.indexOf("'caisse_avances'") !== -1,
+      rapprochSub:    src.indexOf('CaisseRapprochementSub') !== -1,
+      rapprochTab:    src.indexOf("'caisse_rapprochement'") !== -1,
+      avancesToast:   src.indexOf('caisse-avances-toast') !== -1,
+      rapprochToast:  src.indexOf('caisse-rapprochement-toast') !== -1,
     };
   });
   assert(bundleHas.bulkBar && bundleHas.selectAll && bundleHas.toast,
     `Sprint 2 — bulk-actions markers in bundle (bulkBar=${bundleHas.bulkBar}, selectAll=${bundleHas.selectAll}, toast=${bundleHas.toast})`);
   assert(bundleHas.controleChip && bundleHas.acceptAllBar,
     `Sprint 2 — 'À contrôler' chip + accept-all bar markers in bundle`);
+
+  // ---- Sprint 3 — Rapprochement + Avances markers ----
+  assert(bundleHas.avancesSub && bundleHas.avancesTab && bundleHas.avancesToast,
+    `Sprint 3 — Avances component + tab + toast in bundle (sub=${bundleHas.avancesSub}, tab=${bundleHas.avancesTab}, toast=${bundleHas.avancesToast})`);
+  assert(bundleHas.rapprochSub && bundleHas.rapprochTab && bundleHas.rapprochToast,
+    `Sprint 3 — Rapprochement component + tab + toast in bundle (sub=${bundleHas.rapprochSub}, tab=${bundleHas.rapprochTab}, toast=${bundleHas.rapprochToast})`);
+
+  // ---- Sprint 3 — Lib API smoke (extractBeneficiaire + aggregateAvances in browser) ----
+  const benefSmoke = await page.evaluate(() => {
+    const U = window.CaisseUtils;
+    if (!U || !U.extractBeneficiaire || !U.aggregateAvances) return { hasFns: false };
+    return {
+      hasFns: true,
+      ayoub: U.extractBeneficiaire('AVANCE ACHAT AYOUB TITI'),
+      azzedine: U.extractBeneficiaire('Avance Mr AZZEDINE'),
+      mohamedH: U.extractBeneficiaire('Acompte Mohamed H.'),
+      nullCase: U.extractBeneficiaire('AVANCE POUR INSTALATION'),
+      aggSize: U.aggregateAvances([
+        { type: 'depense', status: 'valide', montant: 500, date: '2026-05-01', description: 'AVANCE HAMZA' },
+        { type: 'depense', status: 'valide', montant: 300, date: '2026-05-02', description: 'AVANCE POUR X' },
+      ]).byBeneficiaire.size,
+    };
+  });
+  assert(benefSmoke.hasFns, 'Sprint 3 — extractBeneficiaire + aggregateAvances exposed on window.CaisseUtils');
+  assert(benefSmoke.ayoub === 'AYOUB TITI', `Sprint 3 — extractBeneficiaire('AVANCE ACHAT AYOUB TITI') = ${benefSmoke.ayoub}`);
+  assert(benefSmoke.azzedine === 'AZZEDINE', `Sprint 3 — extractBeneficiaire('Avance Mr AZZEDINE') = ${benefSmoke.azzedine}`);
+  assert(benefSmoke.mohamedH === 'MOHAMED H.', `Sprint 3 — extractBeneficiaire('Acompte Mohamed H.') = ${benefSmoke.mohamedH}`);
+  assert(benefSmoke.nullCase === null, `Sprint 3 — extractBeneficiaire(purpose-only) = null`);
+  assert(benefSmoke.aggSize === 1, `Sprint 3 — aggregateAvances returns 1 identified beneficiary (HAMZA), unidentified count handled separately`);
 
   // Screenshot for the PR
   fs.mkdirSync(path.dirname(SCREENSHOT), { recursive: true });

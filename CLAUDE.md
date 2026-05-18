@@ -6,7 +6,7 @@
 
 ## Scope actif
 
-**Sprint 3 — À définir 🚧**. Sprint 2 (Contrôle & actions groupées) livré et déployé en prod le 2026-05-18 (PR #17, merge commit `6e00e4d`). Voir [ROADMAP.md](ROADMAP.md) pour l'historique et les pistes Sprint 3 candidates.
+**Sprint 3 — Rapprochement & Avances 🚧** sur l'écran Gestion de Caisse. Sprint 2 livré et déployé en prod le 2026-05-18 (PR #17, merge commit `6e00e4d`). Voir [ROADMAP.md](ROADMAP.md) pour l'historique et la suite.
 
 ---
 
