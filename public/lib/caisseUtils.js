@@ -591,6 +591,168 @@ function detectAnomaliesBatch(transactions, now) {
 
 
 // ============================================================================
+// Sprint 3 — Suivi des avances
+// ============================================================================
+
+/** Regex for detecting an "avance" transaction by description. */
+const AVANCE_KEYWORD_REGEX = /^(avances?|acomptes?)\b/i;
+
+/** Tokens we strip iteratively at the start of the residual (prepositions, civilities, contexts). */
+const _BENEF_NOISE_REGEX = /^(?:au?x?|à|en\s+faveur\s+de|vers[ée]+s?\s+(?:au?x?|à)|achat|sur\s+(?:salaire|location|loyer|le|la)|sur|pour\s+(?:les\s+)?|pour|de\s+la|de|du|le|la|mr\.?|mme\.?|mlle\.?|m\.|m\.o\.?|m\.o|mo|monsieur|madame)\b\s*/i;
+
+/** Tokens that mark the start of a "purpose" suffix (cuts off the name). */
+const _BENEF_PURPOSE_CUT_REGEX = /\b(?:pour|sur|installation|instalation|location|maison|gasoil|salaire|travaux|traveaux|nivellement|construction|toilette|paie|paiment|paiement|cordage|corde|transport|nitrate|loyer|terrain|réparation|reparation|cover\s+crop|engrais|pesticide|vente|d['’ ]agadir|d['’ ]\s*agadir)\b/i;
+
+/** Cut at the "demande par/demandé par/demanded by" pattern to drop the requester. */
+const _BENEF_REQUESTER_CUT_REGEX = /\b(?:demand[ée]?e?s?\s+par|demand[ée]?\s+par|demanded\s+by)\b/i;
+
+/**
+ * Extract a beneficiary name from an "avance" transaction description.
+ * Returns null if the description is not an avance, or no individual beneficiary
+ * can be identified (collective avances like "8 GARDIENNES", purpose-only like
+ * "POUR INSTALATION", or main-d'oeuvre collective "M.O").
+ *
+ * Output is always UPPERCASE (key normalized for aggregation, regardless of input casing).
+ *
+ * @param {string} description
+ * @returns {string|null}
+ */
+function extractBeneficiaire(description) {
+  if (!description || typeof description !== 'string') return null;
+  let s = description.trim();
+  if (!s) return null;
+
+  // 1. Must start with avance|acompte
+  if (!AVANCE_KEYWORD_REGEX.test(s)) return null;
+
+  // 2. Strip the keyword
+  s = s.replace(AVANCE_KEYWORD_REGEX, '').trim();
+  if (!s) return null;
+
+  // 3. Cut at "DEMANDE PAR" — keep what's before (the actual beneficiary)
+  const cutReq = s.search(_BENEF_REQUESTER_CUT_REGEX);
+  if (cutReq >= 0) s = s.slice(0, cutReq).trim();
+  if (!s) return null;
+
+  // 4. Strip leading noise tokens iteratively (prepositions, civilities, contexts)
+  let prev;
+  do { prev = s; s = s.replace(_BENEF_NOISE_REGEX, '').trim(); } while (s !== prev && s);
+  if (!s) return null;
+
+  // 5. Cut at purpose-marker (the words after are not part of the name)
+  // We only apply this AFTER stripping leading noise so the cut doesn't fire on the leading "SUR/POUR".
+  const cutPurp = s.search(_BENEF_PURPOSE_CUT_REGEX);
+  if (cutPurp >= 0) s = s.slice(0, cutPurp).trim();
+  if (!s) return null;
+
+  // 6. Normalize: strip trailing noise punctuation (quotes, commas, etc.) but KEEP
+  //    trailing dots so abbreviations like "Mohamed H." are preserved. Collapse spaces.
+  s = s.replace(/[\s"',;:!?\-–—()/\\]+$/g, '').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+
+  // 7. Reject collective numbered groups (e.g. "8 GARDIENNES D'AGADIR" — D1 adjusted)
+  if (/^\d/.test(s)) return null;
+
+  // 8. Must contain at least one letter, length >= 2
+  if (s.length < 2 || !/[A-Za-zÀ-ÿ]/.test(s)) return null;
+
+  return s.toUpperCase();
+}
+
+
+/**
+ * Aggregate "avance" transactions by beneficiary.
+ *
+ * Filters input to keep only depense + status=valide + description matching
+ * an avance keyword. Groups by extractBeneficiaire(description). Transactions
+ * whose beneficiary cannot be identified are counted in `unidentifiedCount`.
+ *
+ * For each beneficiary, computes:
+ *   - avances: Array<tx>
+ *   - totalAvance: sum of montant
+ *   - totalRegularise: sum of regularisations[].montant across all avances
+ *   - soldeDu: totalAvance - totalRegularise (≥ 0)
+ *   - ancienneteDate: date of the OLDEST tx with solde > 0 (or null)
+ *   - ancienneteJours: days between ancienneteDate and `now` (or null)
+ *
+ * By default avances that are fully soldées (soldeDu == 0) are filtered OUT
+ * from the byBeneficiaire Map. Pass options.showSoldees=true to include them.
+ *
+ * @param {Array<Object>} transactions
+ * @param {Date} [now=new Date()]
+ * @param {{showSoldees?: boolean}} [options]
+ * @returns {{byBeneficiaire: Map<string, Object>, unidentifiedCount: number}}
+ */
+function aggregateAvances(transactions, now, options) {
+  const out = { byBeneficiaire: new Map(), unidentifiedCount: 0 };
+  if (!Array.isArray(transactions)) return out;
+  const opts = options || {};
+  const showSoldees = !!opts.showSoldees;
+  const ref = now instanceof Date ? now : new Date();
+
+  for (const tx of transactions) {
+    if (!tx) continue;
+    if (tx.type !== 'depense') continue;
+    if (tx.status !== 'valide') continue;
+    const desc = typeof tx.description === 'string' ? tx.description : '';
+    if (!AVANCE_KEYWORD_REGEX.test(desc.trim())) continue;
+
+    const benef = extractBeneficiaire(desc);
+    if (!benef) { out.unidentifiedCount++; continue; }
+
+    const cur = out.byBeneficiaire.get(benef) || {
+      avances: [],
+      totalAvance: 0,
+      totalRegularise: 0,
+      soldeDu: 0,
+      ancienneteDate: null,
+      ancienneteJours: null,
+    };
+    cur.avances.push(tx);
+    const m = Number(tx.montant) || 0;
+    cur.totalAvance += m;
+    const regs = Array.isArray(tx.regularisations) ? tx.regularisations : [];
+    const regSum = regs.reduce(function (s, r) { return s + (Number(r && r.montant) || 0); }, 0);
+    cur.totalRegularise += regSum;
+    out.byBeneficiaire.set(benef, cur);
+  }
+
+  // Compute soldes + ancienneté per beneficiary, then filter soldées if needed
+  for (const [key, cur] of out.byBeneficiaire) {
+    cur.soldeDu = Math.max(0, cur.totalAvance - cur.totalRegularise);
+    // Find oldest avance with solde > 0 (per-avance solde)
+    let oldest = null;
+    for (const tx of cur.avances) {
+      const m = Number(tx.montant) || 0;
+      const regs = Array.isArray(tx.regularisations) ? tx.regularisations : [];
+      const regSum = regs.reduce(function (s, r) { return s + (Number(r && r.montant) || 0); }, 0);
+      const txSolde = m - regSum;
+      if (txSolde > 0) {
+        if (!oldest || (tx.date || '') < (oldest.date || '')) oldest = tx;
+      }
+    }
+    if (oldest) {
+      cur.ancienneteDate = oldest.date || null;
+      const od = new Date(oldest.date);
+      if (!isNaN(od.getTime())) {
+        cur.ancienneteJours = Math.max(0, Math.floor((ref.getTime() - od.getTime()) / 86400000));
+      } else {
+        cur.ancienneteJours = null;
+      }
+    } else {
+      cur.ancienneteDate = null;
+      cur.ancienneteJours = null;
+    }
+    if (!showSoldees && cur.soldeDu <= 0) {
+      out.byBeneficiaire.delete(key);
+    }
+  }
+
+  return out;
+}
+
+
+// ============================================================================
 // UMD-style export (browser global + CommonJS for node:test)
 // ============================================================================
 
@@ -603,11 +765,15 @@ const __api = {
   MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE,
   DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN,
   DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER,
+  // constants — Sprint 3
+  AVANCE_KEYWORD_REGEX,
   // functions — Sprint 1
   detectCaisseAnomalies, computeTotals, quickPeriodToDateRange,
   searchTransactions, filterByQuickType,
   // functions — Sprint 2
   detectAnomaliesBatch,
+  // functions — Sprint 3
+  extractBeneficiaire, aggregateAvances,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;

@@ -12260,6 +12260,253 @@ exports.caisseManagement = functions
         return res.json({ success: true, count: result.updated, ...result });
       }
 
+      // =============================================================
+      // Sprint 3 — Rapprochement mensuel + Avances
+      // =============================================================
+
+      // Helpers locaux
+      function _periodeBounds(mois, annee) {
+        // mois 1-12, annee 4 digits → bornes ISO YYYY-MM-DD inclusives
+        const m = parseInt(mois, 10);
+        const y = parseInt(annee, 10);
+        if (!Number.isFinite(m) || m < 1 || m > 12) return null;
+        if (!Number.isFinite(y) || y < 2000 || y > 2100) return null;
+        const mm = String(m).padStart(2, "0");
+        const lastDay = new Date(y, m, 0).getDate(); // day 0 of next month
+        return {
+          from: `${y}-${mm}-01`,
+          to:   `${y}-${mm}-${String(lastDay).padStart(2, "0")}`,
+          docId: `${y}-${mm}`,
+        };
+      }
+
+      async function _computeRapprochementTotals(caisseId, mois, annee) {
+        const b = _periodeBounds(mois, annee);
+        if (!b) return null;
+        // Solde initial = somme des tx valide < from
+        const beforeSnap = await db_firestore.collection("caisse_transactions")
+          .where("caisse_id", "==", caisseId)
+          .where("status", "==", "valide")
+          .where("date", "<", b.from)
+          .get();
+        let soldeInitial = 0;
+        beforeSnap.docs.forEach(d => {
+          const t = d.data();
+          const m = Number(t.montant) || 0;
+          if (t.type === "alimentation" || t.type === "transfer_in") soldeInitial += m;
+          else if (t.type === "depense" || t.type === "sortie" || t.type === "transfer_out") soldeInitial -= m;
+        });
+        // Période : valide ET en attente (pour pouvoir lister les bloquants)
+        const periodSnap = await db_firestore.collection("caisse_transactions")
+          .where("caisse_id", "==", caisseId)
+          .where("date", ">=", b.from)
+          .where("date", "<=", b.to)
+          .get();
+        let totalRecettes = 0, totalDepenses = 0;
+        const blocking = []; // tx avec status != valide
+        periodSnap.docs.forEach(d => {
+          const t = d.data();
+          const m = Number(t.montant) || 0;
+          if (t.status !== "valide") {
+            blocking.push({ id: d.id, reference: t.reference || "", description: t.description || "", date: t.date || "", status: t.status || "", montant: m, type: t.type });
+            return;
+          }
+          if (t.type === "alimentation" || t.type === "transfer_in") totalRecettes += m;
+          else if (t.type === "depense" || t.type === "sortie" || t.type === "transfer_out") totalDepenses += m;
+        });
+        const soldeTheorique = soldeInitial + totalRecettes - totalDepenses;
+        return {
+          periode: b,
+          solde_initial: Number(soldeInitial.toFixed(2)),
+          total_recettes: Number(totalRecettes.toFixed(2)),
+          total_depenses: Number(totalDepenses.toFixed(2)),
+          solde_theorique: Number(soldeTheorique.toFixed(2)),
+          blocking_count: blocking.length,
+          blocking_transactions: blocking,
+        };
+      }
+
+      // ---- rapprochement-get (GET) ----
+      if (action === "rapprochement-get") {
+        const caisseId = req.query.caisse_id;
+        const mois = req.query.mois;
+        const annee = req.query.annee;
+        if (!caisseId || !mois || !annee) return res.status(400).json({ success: false, error: "caisse_id + mois + annee requis" });
+        const totals = await _computeRapprochementTotals(caisseId, mois, annee);
+        if (!totals) return res.status(400).json({ success: false, error: "mois/annee invalides" });
+        // Lit le doc rapprochement existant si présent
+        const docId = `${caisseId}_${totals.periode.docId}`;
+        const doc = await db_firestore.collection("caisse_rapprochements").doc(docId).get();
+        const saved = doc.exists ? doc.data() : null;
+        return res.json({
+          success: true,
+          caisse_id: caisseId,
+          mois: parseInt(mois, 10),
+          annee: parseInt(annee, 10),
+          periode: totals.periode,
+          totals: {
+            solde_initial: totals.solde_initial,
+            total_recettes: totals.total_recettes,
+            total_depenses: totals.total_depenses,
+            solde_theorique: totals.solde_theorique,
+          },
+          blocking_count: totals.blocking_count,
+          blocking_transactions: totals.blocking_transactions,
+          rapprochement: saved, // null si pas encore saisi
+        });
+      }
+
+      // ---- rapprochement-save (POST) ----
+      // Sauvegarde solde_physique + commentaire, statut reste 'ouvert'.
+      if (action === "rapprochement-save" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut éditer un rapprochement" });
+        const { caisse_id, mois, annee, solde_physique, commentaire } = req.body;
+        if (!caisse_id || !mois || !annee || solde_physique === undefined) return res.status(400).json({ success: false, error: "caisse_id + mois + annee + solde_physique requis" });
+        const totals = await _computeRapprochementTotals(caisse_id, mois, annee);
+        if (!totals) return res.status(400).json({ success: false, error: "mois/annee invalides" });
+        const sp = Number(solde_physique);
+        if (!Number.isFinite(sp)) return res.status(400).json({ success: false, error: "solde_physique doit être un nombre" });
+        const ecart = Number((sp - totals.solde_theorique).toFixed(2));
+        if (Math.abs(ecart) > 0.005 && (!commentaire || !String(commentaire).trim())) {
+          return res.status(400).json({ success: false, error: "Commentaire obligatoire si écart != 0" });
+        }
+        const docId = `${caisse_id}_${totals.periode.docId}`;
+        const ref = db_firestore.collection("caisse_rapprochements").doc(docId);
+        const existing = await ref.get();
+        if (existing.exists && existing.data().statut === "cloture") {
+          return res.status(400).json({ success: false, error: "Rapprochement déjà clôturé" });
+        }
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const payload = {
+          caisse_id, periode: { mois: parseInt(mois, 10), annee: parseInt(annee, 10) },
+          solde_initial: totals.solde_initial,
+          total_recettes: totals.total_recettes,
+          total_depenses: totals.total_depenses,
+          solde_theorique: totals.solde_theorique,
+          solde_physique: sp,
+          ecart,
+          commentaire: String(commentaire || "").trim(),
+          statut: "ouvert",
+          updated_at: now,
+          updated_by: userInfo,
+          ...(existing.exists ? {} : { created_at: now, created_by: userInfo }),
+        };
+        await ref.set(payload, { merge: true });
+        return res.json({ success: true, id: docId, rapprochement: payload });
+      }
+
+      // ---- rapprochement-cloture (POST) ----
+      // Bloque si transactions non-validées dans la période.
+      if (action === "rapprochement-cloture" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut clôturer un rapprochement" });
+        const { caisse_id, mois, annee } = req.body;
+        if (!caisse_id || !mois || !annee) return res.status(400).json({ success: false, error: "caisse_id + mois + annee requis" });
+        const totals = await _computeRapprochementTotals(caisse_id, mois, annee);
+        if (!totals) return res.status(400).json({ success: false, error: "mois/annee invalides" });
+        if (totals.blocking_count > 0) {
+          return res.status(400).json({
+            success: false,
+            error: `Impossible de clôturer : ${totals.blocking_count} transaction(s) non validées dans la période.`,
+            blocking_count: totals.blocking_count,
+            blocking_transactions: totals.blocking_transactions,
+          });
+        }
+        const docId = `${caisse_id}_${totals.periode.docId}`;
+        const ref = db_firestore.collection("caisse_rapprochements").doc(docId);
+        const existing = await ref.get();
+        if (!existing.exists) return res.status(400).json({ success: false, error: "Rapprochement non saisi (solde physique manquant) — sauvegardez d'abord." });
+        const data = existing.data();
+        if (data.statut === "cloture") return res.status(400).json({ success: false, error: "Déjà clôturé" });
+        if (Math.abs(Number(data.ecart) || 0) > 0.005 && (!data.commentaire || !String(data.commentaire).trim())) {
+          return res.status(400).json({ success: false, error: "Commentaire obligatoire si écart != 0" });
+        }
+        await ref.update({
+          statut: "cloture",
+          cloture_par: userInfo,
+          cloture_at: admin.firestore.FieldValue.serverTimestamp(),
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return res.json({ success: true, id: docId });
+      }
+
+      // ---- rapprochement-list (GET, optional) ----
+      // Liste des rapprochements existants, triés DESC par période.
+      if (action === "rapprochement-list") {
+        const caisseId = req.query.caisse_id;
+        let q = db_firestore.collection("caisse_rapprochements");
+        if (caisseId) q = q.where("caisse_id", "==", caisseId);
+        const snap = await q.get();
+        const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        items.sort((a, b) => {
+          const ka = (a.periode && (a.periode.annee * 100 + a.periode.mois)) || 0;
+          const kb = (b.periode && (b.periode.annee * 100 + b.periode.mois)) || 0;
+          return kb - ka;
+        });
+        return res.json({ success: true, items });
+      }
+
+      // ---- avances-liste (GET) ----
+      // Retourne la liste des transactions d'avance pour aggregateAvances côté client.
+      // Filtres : caisse_id (optional), status=valide, type=depense, description match avance keyword.
+      if (action === "avances-liste") {
+        const caisseId = req.query.caisse_id;
+        let q = db_firestore.collection("caisse_transactions")
+          .where("status", "==", "valide")
+          .where("type", "==", "depense");
+        if (caisseId) q = q.where("caisse_id", "==", caisseId);
+        const snap = await q.get();
+        const transactions = snap.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id, ...data,
+            created_at: data.created_at && data.created_at.toMillis ? data.created_at.toMillis() : data.created_at,
+            updated_at: data.updated_at && data.updated_at.toMillis ? data.updated_at.toMillis() : data.updated_at,
+          };
+        }).filter(t => {
+          const d = (t.description || "").trim();
+          return /^(avances?|acomptes?)\b/i.test(d);
+        });
+        return res.json({ success: true, transactions });
+      }
+
+      // ---- avance-regulariser (POST) ----
+      // Ajoute une entrée dans regularisations[] sur la tx d'avance.
+      if (action === "avance-regulariser" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut régulariser une avance" });
+        const { tx_id, montant, ref: regRef, commentaire } = req.body;
+        if (!tx_id) return res.status(400).json({ success: false, error: "tx_id requis" });
+        const m = Number(montant);
+        if (!Number.isFinite(m) || m <= 0) return res.status(400).json({ success: false, error: "montant > 0 requis" });
+        const ref = db_firestore.collection("caisse_transactions").doc(tx_id);
+        const doc = await ref.get();
+        if (!doc.exists) return res.status(404).json({ success: false, error: "Transaction introuvable" });
+        const data = doc.data();
+        if (data.type !== "depense" || data.status !== "valide") {
+          return res.status(400).json({ success: false, error: "La transaction doit être une dépense validée." });
+        }
+        const regs = Array.isArray(data.regularisations) ? data.regularisations.slice() : [];
+        const sumExisting = regs.reduce((s, r) => s + (Number(r && r.montant) || 0), 0);
+        const restant = (Number(data.montant) || 0) - sumExisting;
+        if (m > restant + 0.005) {
+          return res.status(400).json({ success: false, error: `Montant dépasse le solde dû (${restant.toFixed(2)} DH restant).` });
+        }
+        const now = Date.now();
+        const newReg = {
+          montant: Number(m.toFixed(2)),
+          ref: String(regRef || "").trim(),
+          commentaire: String(commentaire || "").trim(),
+          regularise_par: userInfo,
+          regularise_at: now,
+        };
+        regs.push(newReg);
+        await ref.update({
+          regularisations: regs,
+          updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          history: [...(data.history || []), { action: "regularisation_avance", by: userInfo, at: now, montant: newReg.montant, ref: newReg.ref }],
+        });
+        return res.json({ success: true, regularisation: newReg, total_regularise: sumExisting + newReg.montant, solde_du: restant - newReg.montant });
+      }
+
       return res.status(400).json({ success: false, error: "Action inconnue: " + action });
     } catch (err) {
       console.error("Erreur caisseManagement:", err);
