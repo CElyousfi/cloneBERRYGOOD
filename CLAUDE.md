@@ -6,7 +6,7 @@
 
 ## Scope actif
 
-**Sprint 2 — Contrôle & actions groupées 🚧** sur l'écran Gestion de Caisse > Transactions. Suit le Sprint 1 (ergonomie) déjà mergé. Voir [ROADMAP.md](ROADMAP.md) pour l'historique et la suite.
+**Sprint 3 — À définir 🚧**. Sprint 2 (Contrôle & actions groupées) livré et déployé en prod le 2026-05-18 (PR #17, merge commit `6e00e4d`). Voir [ROADMAP.md](ROADMAP.md) pour l'historique et les pistes Sprint 3 candidates.
 
 ---
 

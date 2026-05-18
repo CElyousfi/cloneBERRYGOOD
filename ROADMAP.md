@@ -23,46 +23,46 @@
 
 ## Sprint 2 — Contrôle & actions groupées ✅
 
-**Statut** : livré, branche `feature/sprint-2-controle` (PR draft en attente de revue).
+**Statut** : mergé sur `main` (PR #17, merge commit `6e00e4d`) et déployé en prod le 2026-05-18.
 **Périmètre** : Gestion de Caisse > Transactions, et Cloud Function `caisseManagement`.
 
-### À livrer
-1. **Moteur d'anomalies étendu** — 5 nouvelles règles cross-dataset :
-   - `DOUBLON_PROBABLE` (Levenshtein + fenêtre date)
-   - `MONTANT_ATYPIQUE` (moyenne par analytique sur 90j)
-   - `DESCRIPTION_GENERIQUE` (regex sur mots vides)
-   - `BENEFICIAIRE_IMPRECIS` (heuristique sur capitalisation post mot-clé)
-   - `INCOHERENCE_CAISSE_ANALYTIQUE` (caisse Bahia ≠ analytique Bahia)
-   - Nouvelle fonction `detectAnomaliesBatch(transactions, now?)` qui combine Sprint 1 (per-tx) + Sprint 2 (cross-dataset)
-2. **Vue "À contrôler"** — chip de filtre avec badge N, action "Accepter toutes les anomalies visibles" (batch write côté serveur)
-3. **Sélection multiple** — checkbox par ligne + barre sticky d'actions groupées (valider, marquer à revoir, réaffecter analytique, exporter sélection)
-4. **Tri par colonne** — Date, Caisse, Type, Réf., Description, Analytique, Montant, Statut. Tri stable, indicateurs visuels ↑↓⇅.
-5. **Statuts enrichis** — ajout de `a_revoir`, libellés UI capitalisés/accentués. Script de migration Firestore avec `--dry-run` par défaut.
+### Livré
+- **Moteur d'anomalies étendu** : nouvelle fonction `detectAnomaliesBatch(transactions, now?)` qui combine les 4 règles Sprint 1 (per-tx) + 5 nouvelles règles cross-dataset :
+  - `DOUBLON_PROBABLE` (Levenshtein bornée + fenêtre date ±1j + pré-groupage par caisse+montant)
+  - `MONTANT_ATYPIQUE` (moyenne par analytique sur fenêtre 90j, échantillon ≥ 3)
+  - `DESCRIPTION_GENERIQUE` (regex sur 5 mots vides — avance/achat/paiement/divers/frais)
+  - `BENEFICIAIRE_IMPRECIS` (heuristique sur capitalisation post mot-clé — faux négatifs documentés)
+  - `INCOHERENCE_CAISSE_ANALYTIQUE` (caisse Bahia ≠ analytique Bahia)
+- **Vue "À contrôler"** : chip avec badge N + bouton "Accepter toutes les anomalies visibles" (batch write côté serveur). Badge ℹ️ remplace 🚩 sur les lignes acceptées.
+- **Sélection multiple** : checkbox par ligne + barre sticky bordeaux quand sélection > 0 → Valider / Marquer à revoir / Réaffecter analytique (HTML5 `<dialog>`) / Exporter sélection / ×. Toast feedback.
+- **Tri par colonne** : 8 colonnes triables, stable, indicateurs ↑↓⇅ (asc → desc → null).
+- **Statuts enrichis** : ajout de `a_revoir`, libellés UI capitalisés/accentués (`Saisi` alias de `soumis`).
+- **Migration script** `scripts/migrateStatuts.js` : `--dry-run` par défaut, `--force` pour appliquer, mock Firestore dans les tests.
+- **Backend** : 4 nouvelles actions Cloud Function `caisseManagement` (`validate-transactions-batch`, `mark-revoir-batch`, `reassign-analytique-batch`, `accept-anomalies-batch`) avec chunks de 400 (Firestore limit 500).
+- **Bonus dev** : `public/lib/local-test-bypass.js` — bypass auth+API local-only (`?testui=1`) pour tester l'UI sans backend, no-op en prod.
 
-### Côté backend (nouvelles actions Cloud Function `caisseManagement`)
-- `validate-transactions-batch`
-- `mark-revoir-batch`
-- `reassign-analytique-batch`
-- `accept-anomalies-batch`
+### Métriques mesurées
+- `detectAnomaliesBatch` : **7-12 ms sur 5 000 tx** (cible 500 ms — 40-70× sous le budget)
+- Tests : **83 / 83 verts** (70 caisseUtils + 13 migrateStatuts)
+- Smoke : **16 / 16 checks** (9 Sprint 1 + 5 Sprint 2 lib + 2 sanity bundle)
+- 0 régression Sprint 1
 
-### Critères d'acceptation
-- `detectAnomaliesBatch` < 500 ms sur 5 000 tx (test perf)
-- Batch validation 100 tx = 1 seul writeBatch (ou 2 chunks si > 500 côté serveur)
-- Tri instantané < 50 ms sur 5 000 lignes
-- N de "À contrôler" se met à jour sans reload
-- `migrateStatuts --dry-run` n'écrit jamais (mock Firestore dans le test)
-- 0 régression Sprint 1 (`npm run test:unit` reste vert)
+### Sortie produit
+- Front + Functions déployés sur https://berrygood-farms-dashboard.web.app
 
 ---
 
 ## Sprint 3 — En réflexion ⏳
 
-Pistes (à confirmer en fin de Sprint 2) :
+Pistes (à confirmer / prioriser) :
 - Modale custom pour confirmations (remplace `window.confirm()` Sprint 2)
 - Tooltip custom multi-lignes pour anomalies (remplace `title=` natif Sprint 1)
+- Affiner `BENEFICIAIRE_IMPRECIS` (heuristique trop laxiste sur "Avance Achat" — faux négatifs documentés Sprint 2)
+- Affichage des `a_revoir_motif` côté UI (champ stocké mais non visible)
 - Reporting / export PDF avancé (les rapports hebdo existent déjà mais à enrichir)
 - Workflow d'approbation des imports Excel (validation manuelle avant écriture)
 - Templates de bons d'achat récurrents (DA / paiements salaires)
+- Mocks bypass étendus à d'autres écrans (dashboard pointage, agronomie) pour testui complet
 
 ---
 
@@ -76,4 +76,4 @@ Pistes (à confirmer en fin de Sprint 2) :
 
 ---
 
-*Dernière mise à jour : Sprint 2 livré, PR draft ouverte.*
+*Dernière mise à jour : Sprint 2 mergé sur main (`6e00e4d`) et déployé en prod le 2026-05-18.*
