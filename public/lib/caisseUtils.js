@@ -38,12 +38,19 @@ const QUICK_PERIODS = ['all', 'today', 'last7', 'thisMonth', 'lastMonth'];
 /** Quick-filter type chips, in display order. 'all' = no type filter. */
 const QUICK_TYPES   = ['all', 'depenses', 'recettes', 'transferts'];
 
-/** Anomaly codes returned by detectCaisseAnomalies(). */
+/** Anomaly codes returned by detectCaisseAnomalies() and detectAnomaliesBatch(). */
 const ANOMALY_CODES = {
+  // Sprint 1 — per-tx rules
   DATE_ABERRANTE:      'DATE_ABERRANTE',
   MONTANT_INHABITUEL:  'MONTANT_INHABITUEL',
   DESCRIPTION_COURTE:  'DESCRIPTION_COURTE',
   ANALYTIQUE_VIDE:     'ANALYTIQUE_VIDE',
+  // Sprint 2 — cross-dataset rules
+  DOUBLON_PROBABLE:               'DOUBLON_PROBABLE',
+  MONTANT_ATYPIQUE:               'MONTANT_ATYPIQUE',
+  DESCRIPTION_GENERIQUE:          'DESCRIPTION_GENERIQUE',
+  BENEFICIAIRE_IMPRECIS:          'BENEFICIAIRE_IMPRECIS',
+  INCOHERENCE_CAISSE_ANALYTIQUE:  'INCOHERENCE_CAISSE_ANALYTIQUE',
 };
 
 /** Threshold above which a montant is flagged as unusual (in DH). */
@@ -54,6 +61,30 @@ const DESCRIPTION_MIN_LENGTH = 5;
 
 /** Code analytique value considered "non précisé". */
 const ANALYTIQUE_PLACEHOLDER = 'BGF - BGF';
+
+/** Sprint 2 — multiplier above the analytique-mean (90-day window) flagging MONTANT_ATYPIQUE. */
+const MONTANT_ATYPIQUE_FACTOR = 3;
+
+/** Sprint 2 — sliding window for MONTANT_ATYPIQUE mean computation, in days. */
+const MONTANT_ATYPIQUE_WINDOW_DAYS = 90;
+
+/** Sprint 2 — minimum sample size for MONTANT_ATYPIQUE mean to be considered significant. */
+const MONTANT_ATYPIQUE_MIN_SAMPLE = 3;
+
+/** Sprint 2 — max date delta (in days) for DOUBLON_PROBABLE candidate pairs. */
+const DOUBLON_MAX_DATE_DELTA_DAYS = 1;
+
+/** Sprint 2 — Levenshtein distance threshold below which two descriptions are considered duplicates. */
+const DOUBLON_LEVENSHTEIN_THRESHOLD = 3;
+
+/** Sprint 2 — length of description prefix used by the duplicate-detection Levenshtein. */
+const DOUBLON_DESC_PREFIX_LEN = 20;
+
+/** Sprint 2 — regex flagging a fully-generic description (case-insensitive, allows surrounding whitespace). */
+const DESCRIPTION_GENERIC_REGEX = /^\s*(avance|achat|paiement|divers|frais)\s*$/i;
+
+/** Sprint 2 — substring marker on caisse_id indicating Bahia perimeter (case-insensitive). */
+const BAHIA_MARKER = 'bahia';
 
 
 // ============================================================================
@@ -292,17 +323,291 @@ function filterByQuickType(transactions, quickType) {
 
 
 // ============================================================================
+// Sprint 2 — Private helpers (NOT exported)
+// ============================================================================
+
+/**
+ * Bounded Levenshtein edit distance with early exit.
+ *
+ * Standard DP with two rolling rows (O(min(m,n)) memory). The early exit
+ * kicks in when the minimum value of the current row exceeds maxDistance,
+ * which is critical for the DOUBLON_PROBABLE rule on large datasets.
+ *
+ * Returns `maxDistance + 1` as a sentinel when the actual distance exceeds
+ * the budget (so callers test with `<` not `===` against the threshold).
+ *
+ * @param {string} a
+ * @param {string} b
+ * @param {number} [maxDistance=Infinity]
+ * @returns {number}
+ */
+function levenshtein(a, b, maxDistance) {
+  const s = a == null ? '' : String(a);
+  const t = b == null ? '' : String(b);
+  const max = (typeof maxDistance === 'number' && Number.isFinite(maxDistance)) ? maxDistance : Infinity;
+  if (s === t) return 0;
+  // Quick early exit on length diff
+  if (Math.abs(s.length - t.length) > max) return max + 1;
+
+  const m = s.length;
+  const n = t.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  // Two rolling rows
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    const sc = s.charCodeAt(i - 1);
+    for (let j = 1; j <= n; j++) {
+      const cost = sc === t.charCodeAt(j - 1) ? 0 : 1;
+      const v = Math.min(
+        curr[j - 1] + 1,        // insertion
+        prev[j] + 1,            // deletion
+        prev[j - 1] + cost      // substitution
+      );
+      curr[j] = v;
+      if (v < rowMin) rowMin = v;
+    }
+    if (rowMin > max) return max + 1; // early exit — no chance to come back under budget
+    // swap rows
+    const tmp = prev; prev = curr; curr = tmp;
+  }
+  return prev[n];
+}
+
+/**
+ * Convert an ISO date string ('YYYY-MM-DD') to an integer day index (UTC).
+ * Returns NaN on failure.
+ * @param {string} iso
+ * @returns {number}
+ */
+function _dayIndex(iso) {
+  if (!iso) return NaN;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return NaN;
+  return Math.floor(d.getTime() / 86400000);
+}
+
+
+// ============================================================================
+// Sprint 2 — detectAnomaliesBatch
+// ============================================================================
+
+/**
+ * Detect anomalies on an entire list of transactions, combining:
+ *   - Sprint 1 per-tx rules (via detectCaisseAnomalies — unchanged contract)
+ *   - Sprint 2 cross-dataset rules: DOUBLON_PROBABLE, MONTANT_ATYPIQUE,
+ *     DESCRIPTION_GENERIQUE, BENEFICIAIRE_IMPRECIS, INCOHERENCE_CAISSE_ANALYTIQUE.
+ *
+ * Returns Map<string, Anomaly[]> keyed by `tx.id || tx.reference`.
+ * Transactions with zero anomalies are NOT in the map (absence = clean).
+ *
+ * For each tx with anomalies, the array is ordered:
+ *   Sprint 1 codes (DATE → MONTANT → DESC → ANA), then
+ *   Sprint 2 codes (DOUBLON → ATYPIQUE → GENERIQUE → IMPRECIS → INCOH).
+ *
+ * Performance: target < 500ms on 5000 tx. A naive O(N²) DOUBLON check
+ * would be ~25M pairs on 5000 tx (≥ 5s with Levenshtein). The optimizations
+ * are essential:
+ *   1) pre-group by (caisse_id, montant) → only intra-group pairs compared
+ *   2) within each group, sort by date and slide a ±1-day window
+ *   3) Levenshtein with early-exit at DOUBLON_LEVENSHTEIN_THRESHOLD
+ *
+ * @param {Array<Object>} transactions
+ * @param {Date} [now=new Date()]
+ * @returns {Map<string, Array<{code:string, message:string}>>}
+ */
+function detectAnomaliesBatch(transactions, now) {
+  const out = new Map();
+  if (!Array.isArray(transactions) || transactions.length === 0) return out;
+  const ref = now instanceof Date ? now : new Date();
+
+  // ---- Pre-pass: compute MONTANT_ATYPIQUE means per analytique (within 90-day window) ----
+  // maxDate = max of tx.date in the dataset (single computation)
+  let maxDayIdx = -Infinity;
+  for (const tx of transactions) {
+    const di = _dayIndex(tx && tx.date);
+    if (!isNaN(di) && di > maxDayIdx) maxDayIdx = di;
+  }
+  const windowStartDay = maxDayIdx - MONTANT_ATYPIQUE_WINDOW_DAYS;
+
+  // Map<analytique, {sum, count}>
+  const anaStats = new Map();
+  for (const tx of transactions) {
+    if (!tx) continue;
+    const ana = typeof tx.code_analytique === 'string' ? tx.code_analytique.trim() : '';
+    if (!ana) continue;
+    const di = _dayIndex(tx.date);
+    if (isNaN(di) || di < windowStartDay) continue;
+    const m = Number(tx.montant);
+    if (!Number.isFinite(m)) continue;
+    const cur = anaStats.get(ana) || { sum: 0, count: 0 };
+    cur.sum += Math.abs(m);
+    cur.count += 1;
+    anaStats.set(ana, cur);
+  }
+
+  // ---- DOUBLON_PROBABLE pre-grouping by (caisse_id, montant) ----
+  // groupKey = `${caisse_id}|${montant}` ; value = list of {id, ref, dayIdx, descPrefix, tx}
+  const doublonGroups = new Map();
+  for (const tx of transactions) {
+    if (!tx) continue;
+    const di = _dayIndex(tx.date);
+    if (isNaN(di)) continue;
+    const m = Number(tx.montant);
+    if (!Number.isFinite(m)) continue;
+    if (!tx.caisse_id) continue;
+    const key = tx.caisse_id + '|' + m;
+    const descRaw = typeof tx.description === 'string' ? tx.description.trim().toLowerCase() : '';
+    const entry = {
+      id: tx.id || tx.reference || null,
+      ref: tx.reference || tx.id || '?',
+      dayIdx: di,
+      descPrefix: descRaw.slice(0, DOUBLON_DESC_PREFIX_LEN),
+    };
+    if (!entry.id) continue;
+    const arr = doublonGroups.get(key);
+    if (arr) arr.push(entry); else doublonGroups.set(key, [entry]);
+  }
+
+  // For each group, compare pairs within ±1 day window (sorted by day)
+  // Result: Map<txId, Array<refOfOther>>  (multiple entries per tx allowed)
+  const doublonMatches = new Map();
+  for (const arr of doublonGroups.values()) {
+    if (arr.length < 2) continue;
+    arr.sort((a, b) => a.dayIdx - b.dayIdx);
+    for (let i = 0; i < arr.length; i++) {
+      const a = arr[i];
+      for (let j = i + 1; j < arr.length; j++) {
+        const b = arr[j];
+        if (b.dayIdx - a.dayIdx > DOUBLON_MAX_DATE_DELTA_DAYS) break; // sliding window cutoff
+        // Bounded Levenshtein on first 20 chars
+        const dist = levenshtein(a.descPrefix, b.descPrefix, DOUBLON_LEVENSHTEIN_THRESHOLD);
+        if (dist < DOUBLON_LEVENSHTEIN_THRESHOLD) {
+          const aArr = doublonMatches.get(a.id) || [];
+          aArr.push(b.ref);
+          doublonMatches.set(a.id, aArr);
+          const bArr = doublonMatches.get(b.id) || [];
+          bArr.push(a.ref);
+          doublonMatches.set(b.id, bArr);
+        }
+      }
+    }
+  }
+
+  // ---- Main pass: per-tx Sprint 1 rules + Sprint 2 rules ----
+  for (const tx of transactions) {
+    if (!tx) continue;
+    const key = tx.id || tx.reference;
+    if (!key) continue;
+
+    // Sprint 1 anomalies (existing function — unchanged)
+    const anomalies = detectCaisseAnomalies(tx, ref).slice();
+
+    // Sprint 2 — DOUBLON_PROBABLE
+    const dm = doublonMatches.get(key);
+    if (dm && dm.length > 0) {
+      for (const otherRef of dm) {
+        anomalies.push({
+          code: ANOMALY_CODES.DOUBLON_PROBABLE,
+          message: `Doublon probable avec réf. ${otherRef}`,
+        });
+      }
+    }
+
+    // Sprint 2 — MONTANT_ATYPIQUE
+    // Excludes the candidate tx itself from the mean to avoid self-biasing on small samples.
+    const ana = typeof tx.code_analytique === 'string' ? tx.code_analytique.trim() : '';
+    const m = Number(tx.montant);
+    if (ana && Number.isFinite(m)) {
+      const di = _dayIndex(tx.date);
+      const stats = anaStats.get(ana);
+      if (stats && !isNaN(di) && di >= windowStartDay) {
+        const sampleCount = stats.count - 1; // exclude self
+        if (sampleCount >= MONTANT_ATYPIQUE_MIN_SAMPLE) {
+          const sumOthers = stats.sum - Math.abs(m);
+          const mean = sumOthers / sampleCount;
+          if (mean > 0 && Math.abs(m) > mean * MONTANT_ATYPIQUE_FACTOR) {
+            anomalies.push({
+              code: ANOMALY_CODES.MONTANT_ATYPIQUE,
+              message: `Montant atypique pour cet analytique (moy : ${Math.round(mean)} DH)`,
+            });
+          }
+        }
+      }
+    }
+
+    // Sprint 2 — DESCRIPTION_GENERIQUE
+    const desc = typeof tx.description === 'string' ? tx.description : '';
+    if (DESCRIPTION_GENERIC_REGEX.test(desc)) {
+      anomalies.push({
+        code: ANOMALY_CODES.DESCRIPTION_GENERIQUE,
+        message: 'Description trop générique',
+      });
+    }
+
+    // Sprint 2 — BENEFICIAIRE_IMPRECIS
+    // Description commence par AVANCE ou PAIEMENT (mot entier), mais aucun token
+    // capitalisé (1ère lettre en majuscule unicode) ET de longueur > 3 après le mot-clé.
+    // Heuristique littérale du spec — faux négatifs possibles (e.g. "Avance Achat"),
+    // à affiner Sprint 3.
+    const beneficMatch = desc.match(/^\s*(avance|paiement)\b\s*(.*)$/i);
+    if (beneficMatch) {
+      const rest = beneficMatch[2] || '';
+      const tokens = rest.split(/\s+/).filter(Boolean);
+      const hasCapName = tokens.some((tok) => tok.length > 3 && /^[A-ZÀ-Ý]/.test(tok));
+      if (!hasCapName) {
+        anomalies.push({
+          code: ANOMALY_CODES.BENEFICIAIRE_IMPRECIS,
+          message: 'Bénéficiaire à préciser',
+        });
+      }
+    }
+
+    // Sprint 2 — INCOHERENCE_CAISSE_ANALYTIQUE
+    // Skip for transfer types (transfer_in/out) — transferts inter-caisses ont souvent
+    // un analytique vide ou inter-périmètre par design.
+    // Skip if analytique vide (déjà couvert par ANALYTIQUE_VIDE Sprint 1).
+    const caisseLower = typeof tx.caisse_id === 'string' ? tx.caisse_id.toLowerCase() : '';
+    const anaLower = ana.toLowerCase();
+    const isTransfer = tx.type === 'transfer_in' || tx.type === 'transfer_out';
+    if (!isTransfer && ana && caisseLower.indexOf(BAHIA_MARKER) !== -1 && anaLower.indexOf(BAHIA_MARKER) === -1) {
+      anomalies.push({
+        code: ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE,
+        message: 'Analytique incohérent avec la caisse',
+      });
+    }
+
+    if (anomalies.length > 0) out.set(key, anomalies);
+  }
+
+  return out;
+}
+
+
+// ============================================================================
 // UMD-style export (browser global + CommonJS for node:test)
 // ============================================================================
 
 const __api = {
-  // constants
+  // constants — Sprint 1
   EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES,
   QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES,
   MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER,
-  // functions
+  // constants — Sprint 2
+  MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE,
+  DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN,
+  DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER,
+  // functions — Sprint 1
   detectCaisseAnomalies, computeTotals, quickPeriodToDateRange,
   searchTransactions, filterByQuickType,
+  // functions — Sprint 2
+  detectAnomaliesBatch,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;

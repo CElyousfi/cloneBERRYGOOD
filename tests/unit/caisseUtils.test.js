@@ -376,3 +376,364 @@ test("filterByQuickType — type inconnu → tout retourné inchangé", () => {
   const r = U.filterByQuickType(list, 'blabla');
   assert.equal(r.length, 1);
 });
+
+
+// ============================================================================
+// Sprint 2 — detectAnomaliesBatch (5 nouvelles règles cross-dataset)
+// ============================================================================
+
+// Helper for batch tests — assign unique ids and references when not provided.
+function tx2(overrides) {
+  const base = tx(overrides);
+  if (!overrides || !overrides.id) base.id = `tx-batch-${Math.random().toString(36).slice(2, 8)}`;
+  if (!overrides || !overrides.reference) base.reference = `REF-${base.id}`;
+  return base;
+}
+
+// Reference date for Sprint 2 batch tests
+const BATCH_NOW = new Date('2026-05-15T12:00:00Z');
+
+// Helper — collect anomaly codes for a given tx id from a batch result Map.
+function codesFor(map, txId) {
+  const arr = map.get(txId);
+  return arr ? arr.map(a => a.code) : [];
+}
+
+test('detectAnomaliesBatch — existe et retourne une Map', () => {
+  assert.equal(typeof U.detectAnomaliesBatch, 'function');
+  const r = U.detectAnomaliesBatch([], BATCH_NOW);
+  assert.ok(r instanceof Map);
+  assert.equal(r.size, 0);
+});
+
+test('detectAnomaliesBatch — input non-array → Map vide', () => {
+  assert.equal(U.detectAnomaliesBatch(null, BATCH_NOW).size, 0);
+  assert.equal(U.detectAnomaliesBatch(undefined, BATCH_NOW).size, 0);
+});
+
+test('detectAnomaliesBatch — tx propre n\'apparaît PAS dans la Map (absence = clean)', () => {
+  const r = U.detectAnomaliesBatch([tx2()], BATCH_NOW);
+  assert.equal(r.size, 0);
+});
+
+test('detectAnomaliesBatch — clé Map = tx.id || tx.reference', () => {
+  // tx avec id explicite → clé = id
+  const txWithId = tx2({ id: 'my-id', reference: 'my-ref', description: 'X', code_analytique: '' });
+  const r1 = U.detectAnomaliesBatch([txWithId], BATCH_NOW);
+  assert.ok(r1.has('my-id'));
+
+  // tx sans id (id supprimé) → clé = reference
+  const noId = tx2({ reference: 'only-ref', description: 'X', code_analytique: '' });
+  delete noId.id;
+  const r2 = U.detectAnomaliesBatch([noId], BATCH_NOW);
+  assert.ok(r2.has('only-ref'));
+});
+
+test('detectAnomaliesBatch — combine Sprint 1 + Sprint 2 dans le bon ordre', () => {
+  // Tx qui déclenche :
+  //   S1: MONTANT_INHABITUEL (montant=99999), ANALYTIQUE_VIDE (code_analytique='')
+  //   S2: DESCRIPTION_GENERIQUE (description='avance')
+  // Note : aucun mot générique (avance, achat, paiement, divers, frais) ne fait
+  // < 5 chars, donc DESCRIPTION_COURTE et DESCRIPTION_GENERIQUE sont mutuellement
+  // exclusives dans le set de règles actuel.
+  const t = tx2({ id: 'multi', montant: 99999, description: 'avance', code_analytique: '' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  const codes = codesFor(r, 'multi');
+  // Sprint 1 attendues
+  assert.ok(codes.indexOf(U.ANOMALY_CODES.MONTANT_INHABITUEL) >= 0);
+  assert.ok(codes.indexOf(U.ANOMALY_CODES.ANALYTIQUE_VIDE) >= 0);
+  // Sprint 2 attendue
+  assert.ok(codes.indexOf(U.ANOMALY_CODES.DESCRIPTION_GENERIQUE) >= 0);
+  // Order: tous les codes Sprint 1 présents précèdent tous les codes Sprint 2 présents
+  const sprint1Codes = [U.ANOMALY_CODES.DATE_ABERRANTE, U.ANOMALY_CODES.MONTANT_INHABITUEL, U.ANOMALY_CODES.DESCRIPTION_COURTE, U.ANOMALY_CODES.ANALYTIQUE_VIDE];
+  const sprint2Codes = [U.ANOMALY_CODES.DOUBLON_PROBABLE, U.ANOMALY_CODES.MONTANT_ATYPIQUE, U.ANOMALY_CODES.DESCRIPTION_GENERIQUE, U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS, U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE];
+  const presentS1 = sprint1Codes.map(c => codes.indexOf(c)).filter(i => i >= 0);
+  const presentS2 = sprint2Codes.map(c => codes.indexOf(c)).filter(i => i >= 0);
+  const lastS1Idx = presentS1.length > 0 ? Math.max(...presentS1) : -1;
+  const firstS2Idx = presentS2.length > 0 ? Math.min(...presentS2) : Infinity;
+  assert.ok(lastS1Idx < firstS2Idx, `Sprint 1 codes (last @${lastS1Idx}) must precede Sprint 2 codes (first @${firstS2Idx})`);
+});
+
+
+// ---- Rule DOUBLON_PROBABLE ----
+
+test('DOUBLON_PROBABLE — 2 tx identiques même jour → les deux flaggées', () => {
+  const a = tx2({ id: 'a', reference: 'A', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', reference: 'B', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.ok(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE) >= 0);
+  assert.ok(codesFor(r, 'b').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE) >= 0);
+  // Message contient la référence de l'autre tx
+  const msgA = r.get('a').find(x => x.code === U.ANOMALY_CODES.DOUBLON_PROBABLE).message;
+  const msgB = r.get('b').find(x => x.code === U.ANOMALY_CODES.DOUBLON_PROBABLE).message;
+  assert.match(msgA, /B/);
+  assert.match(msgB, /A/);
+});
+
+test('DOUBLON_PROBABLE — descriptions similaires (Levenshtein < 3 sur premiers 20 chars)', () => {
+  // "Achat gasoil tracteur" vs "Achat gasoll tracteur" → 1 substitution sur les 20 premiers → match
+  const a = tx2({ id: 'a', reference: 'A', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', reference: 'B', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoll tracteur' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.ok(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE) >= 0);
+});
+
+test('DOUBLON_PROBABLE — descriptions trop différentes → pas flaggées', () => {
+  const a = tx2({ id: 'a', reference: 'A', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', reference: 'B', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Reparation voiture XYZ' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.equal(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE), -1);
+  assert.equal(codesFor(r, 'b').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE), -1);
+});
+
+test('DOUBLON_PROBABLE — caisses différentes → pas flaggées', () => {
+  const a = tx2({ id: 'a', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', caisse_id: 'c2', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.equal(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE), -1);
+});
+
+test('DOUBLON_PROBABLE — montants différents → pas flaggées', () => {
+  const a = tx2({ id: 'a', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', caisse_id: 'c1', montant: 501, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.equal(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE), -1);
+});
+
+test('DOUBLON_PROBABLE — écart date > 1 jour → pas flaggées', () => {
+  const a = tx2({ id: 'a', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', caisse_id: 'c1', montant: 500, date: '2026-05-12', description: 'Achat gasoil tracteur' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.equal(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE), -1);
+});
+
+test('DOUBLON_PROBABLE — écart date = 1 jour → flaggées (bornes inclusives)', () => {
+  const a = tx2({ id: 'a', reference: 'A', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', reference: 'B', caisse_id: 'c1', montant: 500, date: '2026-05-11', description: 'Achat gasoil tracteur' });
+  const r = U.detectAnomaliesBatch([a, b], BATCH_NOW);
+  assert.ok(codesFor(r, 'a').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE) >= 0);
+  assert.ok(codesFor(r, 'b').indexOf(U.ANOMALY_CODES.DOUBLON_PROBABLE) >= 0);
+});
+
+test('DOUBLON_PROBABLE — cluster de 3 doublons → chaque tx a 2 messages doublons', () => {
+  const a = tx2({ id: 'a', reference: 'A', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const b = tx2({ id: 'b', reference: 'B', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const c = tx2({ id: 'c', reference: 'C', caisse_id: 'c1', montant: 500, date: '2026-05-10', description: 'Achat gasoil tracteur' });
+  const r = U.detectAnomaliesBatch([a, b, c], BATCH_NOW);
+  const doublonsA = (r.get('a') || []).filter(x => x.code === U.ANOMALY_CODES.DOUBLON_PROBABLE);
+  const doublonsB = (r.get('b') || []).filter(x => x.code === U.ANOMALY_CODES.DOUBLON_PROBABLE);
+  const doublonsC = (r.get('c') || []).filter(x => x.code === U.ANOMALY_CODES.DOUBLON_PROBABLE);
+  assert.equal(doublonsA.length, 2, 'a should reference b and c');
+  assert.equal(doublonsB.length, 2, 'b should reference a and c');
+  assert.equal(doublonsC.length, 2, 'c should reference a and b');
+});
+
+
+// ---- Rule MONTANT_ATYPIQUE ----
+
+test('MONTANT_ATYPIQUE — moyenne 1000, tx 5000 → flaggée (> 3× moyenne)', () => {
+  const ana = 'Exploitation Ferme - Gasoil';
+  // Echantillon "normal" : 3 tx à 1000, 1500, 500 → moyenne ≈ 1000
+  const samples = [
+    tx2({ id: 's1', code_analytique: ana, montant: 1000, date: '2026-05-01' }),
+    tx2({ id: 's2', code_analytique: ana, montant: 1500, date: '2026-05-02' }),
+    tx2({ id: 's3', code_analytique: ana, montant: 500,  date: '2026-05-03' }),
+  ];
+  const outlier = tx2({ id: 'big', code_analytique: ana, montant: 5000, date: '2026-05-10' });
+  const r = U.detectAnomaliesBatch([...samples, outlier], BATCH_NOW);
+  assert.ok(codesFor(r, 'big').indexOf(U.ANOMALY_CODES.MONTANT_ATYPIQUE) >= 0);
+  // Les échantillons "normaux" ne sont pas flaggés
+  assert.equal(codesFor(r, 's1').indexOf(U.ANOMALY_CODES.MONTANT_ATYPIQUE), -1);
+});
+
+test('MONTANT_ATYPIQUE — tx à 2500 (< 3× moyenne 1000) → pas flaggée', () => {
+  const ana = 'Exploitation';
+  const list = [
+    tx2({ id: 's1', code_analytique: ana, montant: 1000, date: '2026-05-01' }),
+    tx2({ id: 's2', code_analytique: ana, montant: 1500, date: '2026-05-02' }),
+    tx2({ id: 's3', code_analytique: ana, montant: 500,  date: '2026-05-03' }),
+    tx2({ id: 'mid', code_analytique: ana, montant: 2500, date: '2026-05-10' }),
+  ];
+  const r = U.detectAnomaliesBatch(list, BATCH_NOW);
+  assert.equal(codesFor(r, 'mid').indexOf(U.ANOMALY_CODES.MONTANT_ATYPIQUE), -1);
+});
+
+test('MONTANT_ATYPIQUE — échantillon < 3 tx → skip (pas assez de données)', () => {
+  const ana = 'Rare';
+  const list = [
+    tx2({ id: 's1', code_analytique: ana, montant: 100, date: '2026-05-01' }),
+    tx2({ id: 'big', code_analytique: ana, montant: 99999, date: '2026-05-10' }),
+  ];
+  const r = U.detectAnomaliesBatch(list, BATCH_NOW);
+  // Pas de MONTANT_ATYPIQUE (échantillon trop petit). MONTANT_INHABITUEL S1
+  // peut tirer mais c'est une autre règle.
+  assert.equal(codesFor(r, 'big').indexOf(U.ANOMALY_CODES.MONTANT_ATYPIQUE), -1);
+});
+
+test('MONTANT_ATYPIQUE — analytiques différents → moyennes indépendantes', () => {
+  const list = [
+    tx2({ id: 'a1', code_analytique: 'A', montant: 100, date: '2026-05-01' }),
+    tx2({ id: 'a2', code_analytique: 'A', montant: 100, date: '2026-05-02' }),
+    tx2({ id: 'a3', code_analytique: 'A', montant: 100, date: '2026-05-03' }),
+    // Pour analytique B la moyenne sera élevée → tx B n'est pas atypique
+    tx2({ id: 'b1', code_analytique: 'B', montant: 10000, date: '2026-05-01' }),
+    tx2({ id: 'b2', code_analytique: 'B', montant: 12000, date: '2026-05-02' }),
+    tx2({ id: 'b3', code_analytique: 'B', montant: 11000, date: '2026-05-03' }),
+    tx2({ id: 'b4', code_analytique: 'B', montant: 13000, date: '2026-05-10' }), // ~moyenne
+  ];
+  const r = U.detectAnomaliesBatch(list, BATCH_NOW);
+  // b4 (13000) n'est PAS atypique (moy B ≈ 11000, < 3×)
+  assert.equal(codesFor(r, 'b4').indexOf(U.ANOMALY_CODES.MONTANT_ATYPIQUE), -1);
+});
+
+test('MONTANT_ATYPIQUE — fenêtre 90j basée sur maxDate du dataset', () => {
+  const ana = 'X';
+  // maxDate = 2026-05-10 → fenêtre = 2026-02-09 → 2026-05-10
+  const list = [
+    // OUT of window (avant maxDate-90j)
+    tx2({ id: 'old1', code_analytique: ana, montant: 99999, date: '2025-01-01' }),
+    tx2({ id: 'old2', code_analytique: ana, montant: 99999, date: '2025-01-02' }),
+    // IN window
+    tx2({ id: 's1', code_analytique: ana, montant: 100, date: '2026-05-01' }),
+    tx2({ id: 's2', code_analytique: ana, montant: 100, date: '2026-05-02' }),
+    tx2({ id: 's3', code_analytique: ana, montant: 100, date: '2026-05-03' }),
+    tx2({ id: 'big', code_analytique: ana, montant: 500, date: '2026-05-10' }),
+  ];
+  const r = U.detectAnomaliesBatch(list, BATCH_NOW);
+  // big (500) >> 3× moyenne in-window (100) → flaggée
+  // si la fenêtre n'était pas appliquée, la moyenne inclurait 99999 et big ne serait pas flaggée
+  assert.ok(codesFor(r, 'big').indexOf(U.ANOMALY_CODES.MONTANT_ATYPIQUE) >= 0);
+});
+
+
+// ---- Rule DESCRIPTION_GENERIQUE ----
+
+test('DESCRIPTION_GENERIQUE — mots seuls flaggés', () => {
+  const cases = ['avance', 'achat', 'paiement', 'divers', 'frais', 'AVANCE', 'Achat'];
+  for (const desc of cases) {
+    const t = tx2({ id: `g-${desc}`, description: desc });
+    const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+    assert.ok(codesFor(r, `g-${desc}`).indexOf(U.ANOMALY_CODES.DESCRIPTION_GENERIQUE) >= 0, `"${desc}" should be flagged`);
+  }
+});
+
+test('DESCRIPTION_GENERIQUE — mot suivi d\'autre chose → pas flaggé', () => {
+  const cases = ['Achat de gasoil', 'Paiement Mr Ayoub', 'Avance Ayoub', 'Frais bancaires'];
+  for (const desc of cases) {
+    const t = tx2({ id: `ng-${desc}`, description: desc });
+    const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+    assert.equal(codesFor(r, `ng-${desc}`).indexOf(U.ANOMALY_CODES.DESCRIPTION_GENERIQUE), -1, `"${desc}" should NOT be flagged`);
+  }
+});
+
+test('DESCRIPTION_GENERIQUE — espaces seuls autour du mot → flaggé (regex tolère \\s*)', () => {
+  const t = tx2({ id: 'g-spaces', description: '  Avance  ' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.ok(codesFor(r, 'g-spaces').indexOf(U.ANOMALY_CODES.DESCRIPTION_GENERIQUE) >= 0);
+});
+
+
+// ---- Rule BENEFICIAIRE_IMPRECIS ----
+
+test('BENEFICIAIRE_IMPRECIS — "AVANCE" + nom > 3 lettres capitalisé → pas flaggé', () => {
+  const t = tx2({ id: 'ok1', description: 'AVANCE AYOUB' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.equal(codesFor(r, 'ok1').indexOf(U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS), -1);
+});
+
+test('BENEFICIAIRE_IMPRECIS — "PAIEMENT" + nom > 3 lettres capitalisé → pas flaggé', () => {
+  const t = tx2({ id: 'ok2', description: 'PAIEMENT Mohamed Hamdouche' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.equal(codesFor(r, 'ok2').indexOf(U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS), -1);
+});
+
+test('BENEFICIAIRE_IMPRECIS — "AVANCE" + tout minuscule après → flaggé', () => {
+  const t = tx2({ id: 'ko1', description: 'AVANCE pour quelque chose' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.ok(codesFor(r, 'ko1').indexOf(U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS) >= 0);
+});
+
+test('BENEFICIAIRE_IMPRECIS — "AVANCE" + capitalisé mais ≤ 3 lettres → flaggé', () => {
+  const t = tx2({ id: 'ko2', description: 'AVANCE Sur Truc' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  // "Sur" = 3 chars (pas > 3), "Truc" → 4 chars capitalisé : pas flaggé
+  // Modifions pour cibler : "AVANCE Sur OK"
+  const t2 = tx2({ id: 'ko3', description: 'AVANCE Sur OK' });
+  const r2 = U.detectAnomaliesBatch([t2], BATCH_NOW);
+  assert.ok(codesFor(r2, 'ko3').indexOf(U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS) >= 0);
+});
+
+test('BENEFICIAIRE_IMPRECIS — description ne commence pas par avance/paiement → pas flaggé', () => {
+  const t = tx2({ id: 'np', description: 'Achat de gasoil' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.equal(codesFor(r, 'np').indexOf(U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS), -1);
+});
+
+
+// ---- Rule INCOHERENCE_CAISSE_ANALYTIQUE ----
+
+test('INCOHERENCE_CAISSE_ANALYTIQUE — caisse Bahia, analytique sans Bahia → flaggé', () => {
+  const t = tx2({ id: 'i1', caisse_id: 'caisse_depenses_bahia', code_analytique: 'Exploitation Ferme - Gasoil' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.ok(codesFor(r, 'i1').indexOf(U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE) >= 0);
+});
+
+test('INCOHERENCE_CAISSE_ANALYTIQUE — caisse Bahia, analytique BAHIA → pas flaggé', () => {
+  const t = tx2({ id: 'i2', caisse_id: 'caisse_depenses_bahia', code_analytique: 'BAHIA - B6' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.equal(codesFor(r, 'i2').indexOf(U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE), -1);
+});
+
+test('INCOHERENCE_CAISSE_ANALYTIQUE — caisse non-Bahia → pas flaggé (règle ne s\'applique pas)', () => {
+  const t = tx2({ id: 'i3', caisse_id: 'caisse_depenses', code_analytique: 'Exploitation Ferme - Gasoil' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  assert.equal(codesFor(r, 'i3').indexOf(U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE), -1);
+});
+
+test('INCOHERENCE_CAISSE_ANALYTIQUE — transferts skipés (transfer_in / transfer_out)', () => {
+  const tin  = tx2({ id: 'tin',  caisse_id: 'caisse_depenses_bahia', type: 'transfer_in',  code_analytique: 'X' });
+  const tout = tx2({ id: 'tout', caisse_id: 'caisse_depenses_bahia', type: 'transfer_out', code_analytique: 'X' });
+  const r = U.detectAnomaliesBatch([tin, tout], BATCH_NOW);
+  assert.equal(codesFor(r, 'tin').indexOf(U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE), -1);
+  assert.equal(codesFor(r, 'tout').indexOf(U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE), -1);
+});
+
+test('INCOHERENCE_CAISSE_ANALYTIQUE — analytique vide → skip (couvert par ANALYTIQUE_VIDE S1)', () => {
+  const t = tx2({ id: 'iv', caisse_id: 'caisse_depenses_bahia', code_analytique: '' });
+  const r = U.detectAnomaliesBatch([t], BATCH_NOW);
+  // ANALYTIQUE_VIDE (S1) attendu, INCOHERENCE_CAISSE_ANALYTIQUE non
+  assert.ok(codesFor(r, 'iv').indexOf(U.ANOMALY_CODES.ANALYTIQUE_VIDE) >= 0);
+  assert.equal(codesFor(r, 'iv').indexOf(U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE), -1);
+});
+
+
+// ---- Perf ----
+
+test('detectAnomaliesBatch — perf < 500ms sur 5000 tx', () => {
+  // Génère un dataset réaliste : 5000 tx réparties sur 6 caisses, 15 analytiques,
+  // dates étalées sur 180 jours, montants log-normaux.
+  const caisses = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'];
+  const analytiques = Array.from({ length: 15 }, (_, i) => `Ana-${i}`);
+  const descs = ['Achat gasoil tracteur', 'Paiement Mohamed', 'Reparation voiture', 'Avance Ayoub', 'Fournitures bureau'];
+  const list = [];
+  for (let i = 0; i < 5000; i++) {
+    const day = Math.floor(Math.random() * 180);
+    const d = new Date('2026-05-10'); d.setDate(d.getDate() - day);
+    list.push({
+      id: `perf-${i}`,
+      reference: `R-${i}`,
+      caisse_id: caisses[i % caisses.length],
+      type: i % 7 === 0 ? 'alimentation' : 'depense',
+      montant: Math.round(100 + Math.random() * 5000),
+      date: d.toISOString().slice(0, 10),
+      description: descs[i % descs.length] + ' ' + i,
+      code_analytique: analytiques[i % analytiques.length],
+      status: 'valide',
+    });
+  }
+  const t0 = Date.now();
+  const r = U.detectAnomaliesBatch(list, BATCH_NOW);
+  const elapsed = Date.now() - t0;
+  console.log(`    [perf] detectAnomaliesBatch on 5000 tx: ${elapsed}ms (Map size=${r.size})`);
+  assert.ok(elapsed < 500, `detectAnomaliesBatch took ${elapsed}ms (>500ms budget)`);
+});

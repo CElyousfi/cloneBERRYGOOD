@@ -21,9 +21,9 @@
 
 ---
 
-## Sprint 2 — Contrôle & actions groupées 🚧
+## Sprint 2 — Contrôle & actions groupées ✅
 
-**Statut** : en cours, branche `feature/sprint-2-controle`.
+**Statut** : livré, branche `feature/sprint-2-controle` (PR draft en attente de revue).
 **Périmètre** : Gestion de Caisse > Transactions, et Cloud Function `caisseManagement`.
 
 ### À livrer
@@ -76,4 +76,4 @@ Pistes (à confirmer en fin de Sprint 2) :
 
 ---
 
-*Dernière mise à jour : Sprint 2 démarré, CLAUDE.md/ROADMAP.md créés.*
+*Dernière mise à jour : Sprint 2 livré, PR draft ouverte.*

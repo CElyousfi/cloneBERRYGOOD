@@ -111,17 +111,20 @@ function startServer(port = 0) {
   assert(criticalConsoleErrors.length === 0, `0 critical console errors (got: ${criticalConsoleErrors.length})`);
   if (criticalConsoleErrors.length > 0) criticalConsoleErrors.forEach((e) => console.log('    console:', e));
 
-  // Assertion 2 — window.CaisseUtils exposed with expected shape
+  // Assertion 2 — window.CaisseUtils exposed with expected shape (Sprint 1 + 2)
   const apiShape = await page.evaluate(() => {
     if (!window.CaisseUtils) return { present: false };
     const u = window.CaisseUtils;
     return {
       present: true,
+      // Sprint 1
       hasDetect:     typeof u.detectCaisseAnomalies === 'function',
       hasTotals:     typeof u.computeTotals === 'function',
       hasPeriod:     typeof u.quickPeriodToDateRange === 'function',
       hasSearch:     typeof u.searchTransactions === 'function',
       hasFilterType: typeof u.filterByQuickType === 'function',
+      // Sprint 2
+      hasBatch:      typeof u.detectAnomaliesBatch === 'function',
       anomalyCodes:  u.ANOMALY_CODES,
       periods:       u.QUICK_PERIODS,
       types:         u.QUICK_TYPES,
@@ -129,9 +132,14 @@ function startServer(port = 0) {
   });
   assert(apiShape.present, 'window.CaisseUtils exposed');
   assert(apiShape.hasDetect && apiShape.hasTotals && apiShape.hasPeriod && apiShape.hasSearch && apiShape.hasFilterType,
-    'All 5 public functions present (detect, totals, period, search, filterType)');
+    'Sprint 1 — 5 public functions present (detect, totals, period, search, filterType)');
+  assert(apiShape.hasBatch, 'Sprint 2 — detectAnomaliesBatch function present');
   assert(apiShape.anomalyCodes && apiShape.anomalyCodes.DATE_ABERRANTE === 'DATE_ABERRANTE',
-    'ANOMALY_CODES constants exposed');
+    'Sprint 1 ANOMALY_CODES constants exposed');
+  assert(apiShape.anomalyCodes && apiShape.anomalyCodes.DOUBLON_PROBABLE === 'DOUBLON_PROBABLE',
+    'Sprint 2 ANOMALY_CODES constants exposed (DOUBLON_PROBABLE)');
+  assert(apiShape.anomalyCodes && apiShape.anomalyCodes.MONTANT_ATYPIQUE === 'MONTANT_ATYPIQUE',
+    'Sprint 2 ANOMALY_CODES constants exposed (MONTANT_ATYPIQUE)');
   assert(Array.isArray(apiShape.periods) && apiShape.periods.length === 5, 'QUICK_PERIODS = 5 entries');
   assert(Array.isArray(apiShape.types) && apiShape.types.length === 4, 'QUICK_TYPES = 4 entries');
 
@@ -153,6 +161,50 @@ function startServer(port = 0) {
     ).length;
   });
   assert(browserSearch === 1, 'searchTransactions matches "500,00" against montant=-500 in browser');
+
+  // ---- Sprint 2 specific assertions ----
+
+  // Assertion 5 (Sprint 2) — detectAnomaliesBatch + control formula compose
+  // in the real browser, and the controlCount is always a number >= 0.
+  const browserControl = await page.evaluate(() => {
+    const U = window.CaisseUtils;
+    const list = [
+      { id: 'a', caisse_id: 'c1', montant: 100, date: '2026-05-10', type: 'depense', description: 'Achat de gasoil', code_analytique: 'X', status: 'valide' },
+      { id: 'b', caisse_id: 'c1', montant: 99999, date: '2026-05-10', type: 'depense', description: 'avance', code_analytique: 'BGF - BGF', status: 'soumis' },
+    ];
+    const map = U.detectAnomaliesBatch(list, new Date('2026-05-15T12:00:00Z'));
+    // controlCount per formula: hasUnacceptedAnomaly OR status !== 'valide'
+    let n = 0;
+    for (const tx of list) {
+      const k = tx.id || tx.reference;
+      const hasUnaccepted = map.has(k) && !tx.anomalies_acceptees_par;
+      if (hasUnaccepted || tx.status !== 'valide') n++;
+    }
+    return { n, mapSize: map.size, hasB: map.has('b'), hasA: map.has('a') };
+  });
+  assert(typeof browserControl.n === 'number' && browserControl.n >= 0,
+    `Sprint 2 — controlCount is a number ≥ 0 (got: ${browserControl.n})`);
+  assert(browserControl.mapSize >= 1 && browserControl.hasB,
+    `Sprint 2 — detectAnomaliesBatch flags the bad tx in browser (mapSize=${browserControl.mapSize})`);
+
+  // Assertion 6 (Sprint 2) — bulk-actions and control-chip UI markers shipped
+  // in the built app.js bundle (cannot exercise the authenticated screen
+  // here, so we sanity-check the markup IS in the bundle).
+  const bundleHas = await page.evaluate(async () => {
+    const r = await fetch('app.js', { cache: 'no-store' });
+    const src = await r.text();
+    return {
+      bulkBar:      src.indexOf('caisse-bulk-bar') !== -1,
+      acceptAllBar: src.indexOf('caisse-accept-all-bar') !== -1,
+      selectAll:    src.indexOf('caisse-select-all') !== -1,
+      toast:        src.indexOf('caisse-toast') !== -1,
+      controleChip: src.indexOf("data-chip-type") !== -1 && src.indexOf("'controle'") !== -1,
+    };
+  });
+  assert(bundleHas.bulkBar && bundleHas.selectAll && bundleHas.toast,
+    `Sprint 2 — bulk-actions markers in bundle (bulkBar=${bundleHas.bulkBar}, selectAll=${bundleHas.selectAll}, toast=${bundleHas.toast})`);
+  assert(bundleHas.controleChip && bundleHas.acceptAllBar,
+    `Sprint 2 — 'À contrôler' chip + accept-all bar markers in bundle`);
 
   // Screenshot for the PR
   fs.mkdirSync(path.dirname(SCREENSHOT), { recursive: true });
