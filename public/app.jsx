@@ -50485,11 +50485,15 @@ ${rejetHtml}
             transfer_out: { label: 'Transfert sortant', icon: 'fa-arrow-right', color: 'var(--berry)', bg: 'rgba(139,34,82,0.08)' },
             transfer_in: { label: 'Transfert entrant', icon: 'fa-arrow-left', color: 'var(--blue)', bg: 'rgba(52,152,219,0.1)' },
         };
+        // Sprint 2 — statuts enrichis. Codes DB inchangés (rétro-compat avec le
+        // workflow submit-transaction / validate-transaction). 'soumis' affiché
+        // 'Saisi' (alias UI uniquement). Nouveau statut 'a_revoir'.
         const STATUS_LABELS = {
-            brouillon: { label: 'Brouillon', color: 'var(--gray-400)', bg: 'rgba(153,153,153,0.1)' },
-            soumis: { label: 'En attente', color: '#E67E22', bg: 'rgba(243,156,18,0.1)' },
-            valide: { label: 'Validé', color: 'var(--green)', bg: 'rgba(45,139,78,0.1)' },
-            rejete: { label: 'Rejeté', color: 'var(--red)', bg: 'rgba(231,76,60,0.1)' },
+            brouillon: { label: 'Brouillon', color: '#6B7280', bg: '#F3F4F6' },
+            soumis:    { label: 'Saisi',     color: '#1A56DB', bg: '#E8F0FE' },
+            a_revoir:  { label: 'À revoir',  color: '#92400E', bg: '#FEF3C7' },
+            valide:    { label: 'Validé',    color: '#1A7A3F', bg: '#DCF5E7' },
+            rejete:    { label: 'Rejeté',    color: '#991B1B', bg: '#FEE2E2' },
         };
 
         function formatMAD(n) { return (n || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH'; }
@@ -50979,7 +50983,8 @@ ${rejetHtml}
                         <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{padding:'8px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12}}>
                             <option value="">Tous statuts</option>
                             <option value="brouillon">Brouillon</option>
-                            <option value="soumis">En attente</option>
+                            <option value="soumis">Saisi</option>
+                            <option value="a_revoir">À revoir</option>
                             <option value="valide">Validé</option>
                             <option value="rejete">Rejeté</option>
                         </select>
