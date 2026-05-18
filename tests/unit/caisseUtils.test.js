@@ -430,22 +430,27 @@ test('detectAnomaliesBatch — clé Map = tx.id || tx.reference', () => {
 });
 
 test('detectAnomaliesBatch — combine Sprint 1 + Sprint 2 dans le bon ordre', () => {
-  // Une tx qui déclenche : MONTANT_INHABITUEL (S1), DESCRIPTION_COURTE (S1),
-  //                       ANALYTIQUE_VIDE (S1), DESCRIPTION_GENERIQUE (S2)
+  // Tx qui déclenche :
+  //   S1: MONTANT_INHABITUEL (montant=99999), ANALYTIQUE_VIDE (code_analytique='')
+  //   S2: DESCRIPTION_GENERIQUE (description='avance')
+  // Note : aucun mot générique (avance, achat, paiement, divers, frais) ne fait
+  // < 5 chars, donc DESCRIPTION_COURTE et DESCRIPTION_GENERIQUE sont mutuellement
+  // exclusives dans le set de règles actuel.
   const t = tx2({ id: 'multi', montant: 99999, description: 'avance', code_analytique: '' });
   const r = U.detectAnomaliesBatch([t], BATCH_NOW);
   const codes = codesFor(r, 'multi');
-  // Sprint 1 first
+  // Sprint 1 attendues
   assert.ok(codes.indexOf(U.ANOMALY_CODES.MONTANT_INHABITUEL) >= 0);
-  assert.ok(codes.indexOf(U.ANOMALY_CODES.DESCRIPTION_COURTE) >= 0);
   assert.ok(codes.indexOf(U.ANOMALY_CODES.ANALYTIQUE_VIDE) >= 0);
-  // Sprint 2 after
+  // Sprint 2 attendue
   assert.ok(codes.indexOf(U.ANOMALY_CODES.DESCRIPTION_GENERIQUE) >= 0);
-  // Order: Sprint 1 codes all appear before Sprint 2 codes
+  // Order: tous les codes Sprint 1 présents précèdent tous les codes Sprint 2 présents
   const sprint1Codes = [U.ANOMALY_CODES.DATE_ABERRANTE, U.ANOMALY_CODES.MONTANT_INHABITUEL, U.ANOMALY_CODES.DESCRIPTION_COURTE, U.ANOMALY_CODES.ANALYTIQUE_VIDE];
   const sprint2Codes = [U.ANOMALY_CODES.DOUBLON_PROBABLE, U.ANOMALY_CODES.MONTANT_ATYPIQUE, U.ANOMALY_CODES.DESCRIPTION_GENERIQUE, U.ANOMALY_CODES.BENEFICIAIRE_IMPRECIS, U.ANOMALY_CODES.INCOHERENCE_CAISSE_ANALYTIQUE];
-  const lastS1Idx = Math.max(...sprint1Codes.map(c => codes.indexOf(c)));
-  const firstS2Idx = Math.min(...sprint2Codes.map(c => codes.indexOf(c)).filter(i => i >= 0));
+  const presentS1 = sprint1Codes.map(c => codes.indexOf(c)).filter(i => i >= 0);
+  const presentS2 = sprint2Codes.map(c => codes.indexOf(c)).filter(i => i >= 0);
+  const lastS1Idx = presentS1.length > 0 ? Math.max(...presentS1) : -1;
+  const firstS2Idx = presentS2.length > 0 ? Math.min(...presentS2) : Infinity;
   assert.ok(lastS1Idx < firstS2Idx, `Sprint 1 codes (last @${lastS1Idx}) must precede Sprint 2 codes (first @${firstS2Idx})`);
 });
 
