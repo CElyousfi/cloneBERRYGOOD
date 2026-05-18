@@ -51861,8 +51861,10 @@ ${rejetHtml}
                 { id: 'caisse_paie', label: 'Paie', icon: 'fa-money-check-dollar' },
                 { id: 'caisse_transport', label: 'Transport', icon: 'fa-truck' },
                 { id: 'caisse_transferts', label: 'Transferts', icon: 'fa-right-left' },
+                { id: 'caisse_avances', label: 'Avances', icon: 'fa-hand-holding-dollar' },
                 isControle ? { id: 'caisse_validation', label: 'Validation', icon: 'fa-check-double' } : null,
                 { id: 'caisse_rapports', label: 'Rapports', icon: 'fa-file-pdf' },
+                isControle ? { id: 'caisse_rapprochement', label: 'Rapprochement', icon: 'fa-scale-balanced' } : null,
                 (isSaisie || isControle) ? { id: 'caisse_import', label: 'Import Excel', icon: 'fa-file-import' } : null,
                 isControle ? { id: 'caisse_config', label: 'Configuration', icon: 'fa-gear' } : null,
             ].filter(Boolean);
@@ -51918,7 +51920,9 @@ ${rejetHtml}
                     {subTab === 'caisse_transport' && <CaisseFilteredTypeSub caisses={caisses} typeFilter="transport" title="Transport" icon="fa-truck" isSaisie={isSaisie} onDone={refresh} hasEmployee />}
                     {subTab === 'caisse_transferts' && <CaisseTransfertsSub caisses={caisses} isSaisie={isSaisie} onDone={refresh} />}
                     {subTab === 'caisse_validation' && <CaisseValidationSub caisses={caisses} onDone={refresh} />}
+                    {subTab === 'caisse_avances' && <CaisseAvancesSub caisses={caisses} isControle={isControle} />}
                     {subTab === 'caisse_rapports' && <CaisseRapportsSub caisses={caisses} />}
+                    {subTab === 'caisse_rapprochement' && <CaisseRapprochementSub caisses={caisses} />}
                     {subTab === 'caisse_import' && <CaisseImportSub caisses={caisses} onDone={refresh} />}
                     {subTab === 'caisse_config' && <CaisseConfigSub caisses={caisses} onDone={refresh} />}
                 </div>
