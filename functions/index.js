@@ -1125,6 +1125,12 @@ function farmroadFetch(path) {
       let data = "";
       resp.on("data", (chunk) => { data += chunk; });
       resp.on("end", () => {
+        // Reject on HTTP error status to avoid silently swallowing 401/403/5xx
+        // (without this, an auth error body parses fine but missing pagination
+        // keys → farmroadFetchAllPages logs "0 items" and the job degrades silently)
+        if (resp.statusCode < 200 || resp.statusCode >= 400) {
+          return reject(new Error("FarmRoad HTTP " + resp.statusCode + " on " + path + ": " + data.slice(0, 200)));
+        }
         try { resolve(JSON.parse(data)); } catch (e) { reject(new Error("Invalid JSON from FarmRoad: " + data.slice(0, 200))); }
       });
     }).on("error", reject).end();
@@ -2573,6 +2579,78 @@ async function _saveGDD(dateStr, tmax, tmin, hr, dli, capteurId) {
 }
 
 // =============================================
+// FarmRoad health monitoring — alert on consecutive empty nights
+// =============================================
+// State lives at _health/farmroad_status:
+//   { consecutiveEmptyNights, lastEmptyDate, lastNonEmptyDate, lastNotifiedDate }
+// Alert fires on the 2nd consecutive empty night (and not again until data resumes).
+async function checkFarmroadHealthAndAlert(todayStr) {
+  try {
+    const cacheDoc = await db_firestore.collection("farmroad_cache").doc(todayStr).get();
+    const totalMeasurements = cacheDoc.exists ? (cacheDoc.data().totalMeasurements || 0) : 0;
+    const isEmpty = totalMeasurements === 0;
+
+    const healthRef = db_firestore.collection("_health").doc("farmroad_status");
+    const healthSnap = await healthRef.get();
+    const prev = healthSnap.exists ? healthSnap.data() : {};
+
+    if (!isEmpty) {
+      // Healthy night → reset counters and notification flag
+      await healthRef.set({
+        consecutiveEmptyNights: 0,
+        lastEmptyDate: prev.lastEmptyDate || null,
+        lastNonEmptyDate: todayStr,
+        lastNotifiedDate: null,
+        lastMeasurements: totalMeasurements,
+        updatedAt: Date.now(),
+      });
+      console.log("FarmRoad health: OK (" + totalMeasurements + " measurements " + todayStr + ")");
+      return;
+    }
+
+    // Empty night — increment counter (idempotent vs same-day re-run)
+    const prevCount = prev.consecutiveEmptyNights || 0;
+    const newCount = (prev.lastEmptyDate === todayStr) ? prevCount : prevCount + 1;
+    const lastNotifiedDate = prev.lastNotifiedDate || null;
+    const shouldAlert = newCount >= 2 && lastNotifiedDate !== todayStr;
+
+    await healthRef.set({
+      consecutiveEmptyNights: newCount,
+      lastEmptyDate: todayStr,
+      lastNonEmptyDate: prev.lastNonEmptyDate || null,
+      lastNotifiedDate: shouldAlert ? todayStr : lastNotifiedDate,
+      lastMeasurements: 0,
+      updatedAt: Date.now(),
+    });
+
+    console.log("FarmRoad health: EMPTY (consecutive=" + newCount + ", lastNonEmpty=" + (prev.lastNonEmptyDate || "n/a") + ", willAlert=" + shouldAlert + ")");
+
+    if (shouldAlert) {
+      const lastOk = prev.lastNonEmptyDate || "inconnue";
+      // Wrapping rappel : template general_alert encadre déjà par
+      // "SmartBerry — Notification : {{1}}. Consultez votre tableau de bord pour plus de détails."
+      // → on commence par un titre explicite pour que le push WhatsApp soit immédiatement reconnaissable.
+      const message =
+        "⚠️ CAPTEUR FARMROAD — Problème de connexion. " +
+        "Sondes Larache hors-ligne depuis le " + lastOk + " (" + newCount + " nuits consécutives sans données). " +
+        "Action : vérifier état physique et connectivité des 2 capteurs (canarienne 210506929 + tunnel 210506960)";
+      try {
+        await dispatchNotification({
+          type: "general_alert",
+          profiles: ["dg", "dt", "rh"],
+          data: { message, severity: "warning" },
+        });
+        console.log("FarmRoad health: WhatsApp alert dispatched to [dg,dt,rh] — " + message);
+      } catch (err) {
+        console.error("FarmRoad health alert dispatch failed:", err.message);
+      }
+    }
+  } catch (err) {
+    console.error("checkFarmroadHealthAndAlert error:", err.message);
+  }
+}
+
+// =============================================
 // GDD Nightly Job — runs at 23:00 Africa/Casablanca
 // =============================================
 exports.gddNightlyJob = functions
@@ -2602,6 +2680,9 @@ exports.gddNightlyJob = functions
     } catch (err) {
       console.error("Climat model update error:", err.message);
     }
+
+    // 4. FarmRoad health check — WhatsApp alert on 2nd consecutive empty night
+    await checkFarmroadHealthAndAlert(todayStr);
 
     return null;
   });
