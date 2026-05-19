@@ -25,13 +25,25 @@ if (babel.status !== 0) {
 
 // 2. Sentinel check — if the build is truncated or silently skipped, app.js will
 // not contain this identifier. Update the list as new screens are added.
-const SENTINELS = ["AgroAnalyseFoliairesTab", "generateIA", "CaisseTab"];
+const SENTINELS = ["AgroAnalyseFoliairesTab", "generateIA", "CaisseTab", "BdcWorkflow.requiresChefValidation"];
 const built = fs.readFileSync(OUT, "utf8");
 for (const s of SENTINELS) {
   if (!built.includes(s)) {
     console.error(`[build-frontend] sentinel missing in app.js: ${s}`);
     process.exit(2);
   }
+}
+
+// 2bis. Sibling lib check — bdcWorkflow.js is loaded as a separate <script>,
+// so verify the file exists and contains the canonical farm list.
+const BDC_WORKFLOW = path.join(ROOT, "public/lib/bdcWorkflow.js");
+if (!fs.existsSync(BDC_WORKFLOW)) {
+  console.error("[build-frontend] missing public/lib/bdcWorkflow.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(BDC_WORKFLOW, "utf8").includes("DIRECT_DG_FARMS")) {
+  console.error("[build-frontend] sentinel missing in public/lib/bdcWorkflow.js: DIRECT_DG_FARMS");
+  process.exit(2);
 }
 
 // 3. Cache-bust: rewrite <script src="app.js?v=..."> AND <script src="lib/*.js?v=...">

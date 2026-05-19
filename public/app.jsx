@@ -42851,7 +42851,7 @@ ${rejetHtml}
                 if (bdc.status === 'virement_signe') return 'virement_signe';
                 if (bdc.status === 'virement_lance') return 'virement_lance';
                 if (bdc.status === 'valide_dg') return 'validation_dg';
-                if (bdc.status === 'en_attente_dg') return bdc.ferme === 'Avocatier' ? 'soumission' : 'validation_chef';
+                if (bdc.status === 'en_attente_dg') return (window.BdcWorkflow && !window.BdcWorkflow.requiresChefValidation(bdc.ferme)) ? 'soumission' : 'validation_chef';
                 if (bdc.status === 'en_attente_chef') return 'soumission';
                 return 'creation';
             };
@@ -43752,7 +43752,14 @@ ${rejetHtml}
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Ferme *</label>
                                         <select value={form.ferme} onChange={e => setForm(f => ({...f, ferme: e.target.value, purchase_request_id: ''}))} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
                                             {FARMS.map(f => <option key={f} value={f}>{f}</option>)}
-                                        </select></div>
+                                        </select>
+                                        {form.ferme && window.BdcWorkflow && !window.BdcWorkflow.requiresChefValidation(form.ferme) && (
+                                            <div style={{marginTop:6,padding:'6px 10px',background:'var(--gold-pale)',border:'1px solid var(--gold)',borderRadius:6,fontSize:11,color:'var(--gray-800)',display:'flex',alignItems:'center',gap:6}}>
+                                                <i className="fa-solid fa-circle-info" style={{color:'var(--gold)'}}></i>
+                                                <span>BDC envoyé directement au DG (pas de chef de ferme pour {form.ferme})</span>
+                                            </div>
+                                        )}
+                                    </div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date livraison prévue</label>
                                         <input type="date" value={form.date_livraison_prevue} onChange={e => setForm({...form, date_livraison_prevue: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Code Analytique</label>

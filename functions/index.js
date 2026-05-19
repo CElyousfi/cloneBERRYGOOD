@@ -10,6 +10,7 @@ const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
+const bdcWorkflow = require("./lib/bdc/workflow");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -5195,13 +5196,17 @@ exports.stockManagement = functions
         }
         const history = current.history || [];
         const now = Date.now();
-        history.push({ action: "soumission", by: submitted_by || {}, at: now, comment: "" });
-        // Avocatier: pas de Chef de Ferme → soumission directe au DG
-        const skipChef = current.ferme === "Avocatier";
-        const nextStatus = skipChef ? "en_attente_dg" : "en_attente_chef";
-        if (skipChef) {
-          history.push({ action: "validation_chef_skipped", by: { profileId: "system", name: "Système" }, at: now, comment: "Ferme Avocatier — sans Chef de Ferme, soumission directe au DG" });
-        }
+        // Fermes sans chef de ferme (Avocatier, F2, F3, F4, F6, BAHIA) → soumission directe au DG.
+        // Source de vérité : functions/lib/bdc/workflow.js (mirror public/lib/bdcWorkflow.js).
+        const skipChef = !bdcWorkflow.requiresChefValidation(current.ferme);
+        const nextStatus = bdcWorkflow.nextStatusOnSubmit(current.ferme);
+        history.push({
+          action: skipChef ? "soumission_directe_dg" : "soumission",
+          by: submitted_by || {},
+          at: now,
+          comment: skipChef ? `Ferme ${current.ferme} sans Chef de Ferme — soumission directe au DG` : "",
+          bypass_reason: bdcWorkflow.bypassReason(current.ferme) || undefined,
+        });
         const updatePatch = { status: nextStatus, history, updated_at: now };
         if (pdf_url) updatePatch.pdf_url = pdf_url;
         await db_firestore.collection("purchase_orders").doc(id).update(updatePatch);
@@ -5227,6 +5232,50 @@ exports.stockManagement = functions
           ...(useDocTemplate ? { document: { link: bdcPdfUrl, filename: `BDC_${current.numero || id}.pdf` } } : {}),
         }).catch(err => console.error("WhatsApp dispatch error:", err));
         return res.json({ success: true });
+      }
+
+      // One-shot migration: redirige les BdC actuellement en `en_attente_chef` pour
+      // des fermes DIRECT_DG_FARMS (Avocatier/F2/F3/F4/F6/BAHIA) vers `en_attente_dg`.
+      // Protégé par admin-secret. À lancer une fois après déploiement de la nouvelle règle.
+      if (action === "migrate-bdc-direct-dg" && req.method === "POST") {
+        if (req.body.secret !== adminSecret) return res.status(403).json({ success: false, error: "forbidden" });
+        const snap = await db_firestore.collection("purchase_orders")
+          .where("status", "==", "en_attente_chef").get();
+        const targets = snap.docs.filter(d => !bdcWorkflow.requiresChefValidation(d.data().ferme));
+        const now = Date.now();
+        const migratedIds = [];
+        const unknownFermes = new Set();
+        // Firestore batch limit = 500 ; on chunke à 400 par convention CLAUDE.md.
+        for (let i = 0; i < targets.length; i += 400) {
+          const batch = db_firestore.batch();
+          const chunk = targets.slice(i, i + 400);
+          for (const d of chunk) {
+            const data = d.data();
+            const history = (data.history || []).concat([{
+              action: "migration_direct_dg",
+              by: { profileId: "system", name: "Migration script" },
+              at: now,
+              comment: `BDC redirigé vers DG (règle DIRECT_DG_FARMS, ferme=${data.ferme})`,
+              bypass_reason: "no_chef_de_ferme",
+              previous_status: "en_attente_chef",
+            }]);
+            batch.update(d.ref, { status: "en_attente_dg", history, updated_at: now });
+            migratedIds.push(d.id);
+          }
+          await batch.commit();
+        }
+        // Data-quality signal : log les fermes inconnues croisées (ni F1/F5 ni 6 fermes ciblées).
+        for (const d of snap.docs) {
+          const f = d.data().ferme;
+          if (!f || (bdcWorkflow.requiresChefValidation(f) && !["F1", "F5"].includes(f))) unknownFermes.add(f || "(empty)");
+        }
+        return res.json({
+          success: true,
+          scanned: snap.size,
+          migrated: targets.length,
+          migrated_ids: migratedIds,
+          unknown_fermes: Array.from(unknownFermes),
+        });
       }
 
       if (action === "delete-bdc" && req.method === "POST") {
