@@ -6255,6 +6255,7 @@
         // ===================== RECOLTE TAB =====================
         function RecolteTab({ data, farmFilter, avoSubFilter, currentProfile }) {
             const [fermeFilter, setFermeFilter] = useState(farmFilter || '');
+            const [cultureFilter, setCultureFilter] = useState('');
             const [workers, setWorkers] = useState([]);
             const [cueillette, setCueillette] = useState([]);
             const [totalKgCueillette, setTotalKgCueillette] = useState(0);
@@ -6271,6 +6272,8 @@
             const [showPrimeTrendRH, setShowPrimeTrendRH] = useState(false);
             const [primeDetailDay, setPrimeDetailDay] = useState(null);
             const [showLogTrendRH, setShowLogTrendRH] = useState(false);
+            const [showRendementTrend, setShowRendementTrend] = useState(false);
+            const [historyByDate, setHistoryByDate] = useState({});
             const [equipeSelectedDay, setEquipeSelectedDay] = useState('');
             const [equipeSelectedQuinz, setEquipeSelectedQuinz] = useState('');
             const [showTransportConfig, setShowTransportConfig] = useState(null);
@@ -6351,6 +6354,38 @@
 
             const handleDateChange = (d) => { setSelectedDate(d); setEquipeSelectedDay(d); setLoading(true); loadData(d); };
 
+            // Fallback historique : quand un trend popup s'ouvre, on fetch action=recolte par date
+            // pour les jours où equipeRows n'a pas de kg (BR_Pointage Quantite_unite=0 ET prod_tracabilite absent).
+            React.useEffect(() => {
+                if (!showRendementTrend && !showPrimeTrendRH) return;
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const selectedStr = selectedDate || todayStr;
+                const logOpsLocal = /caporal|conditionnement|encadrement|chargement/i;
+                const allDatesEq = [...new Set((equipeRows || []).map(r => r.jour))];
+                const candidates = allDatesEq.sort().reverse().slice(0, 10);
+                const datesNeeding = candidates.filter(d => {
+                    if (d === selectedStr) return false;
+                    if (historyByDate[d]) return false;
+                    const dayKg = (equipeRows || [])
+                        .filter(r => r.jour === d && !logOpsLocal.test(r.operation || ''))
+                        .reduce((s, r) => s + (r.kg || 0), 0);
+                    return dayKg === 0;
+                });
+                if (datesNeeding.length === 0) return;
+                Promise.all(datesNeeding.map(d =>
+                    fetch(`/api/pointage-rh?action=recolte&date=${d}`)
+                        .then(r => r.json())
+                        .then(j => ({ date: d, ok: !!j.success, workers: j.workers || [], cueillette: j.cueillette || [], totalKgCueillette: j.totalKgCueillette || 0 }))
+                        .catch(() => ({ date: d, ok: false }))
+                )).then(results => {
+                    setHistoryByDate(prev => {
+                        const next = { ...prev };
+                        results.forEach(r => { if (r.ok) next[r.date] = r; });
+                        return next;
+                    });
+                });
+            }, [showRendementTrend, showPrimeTrendRH, equipeRows.length, selectedDate]);
+
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🍇</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement récolte...</div></div>;
 
             // Filter: separate récolte ouvriers from logistique (caporal, conditionnement, chargement)
@@ -6381,12 +6416,14 @@
                 };
             });
             const matchSub = (r) => !avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter;
-            const allFiltered = (fermeFilter ? allMapped.filter(r => r.ferme === fermeFilter) : allMapped).filter(matchSub);
+            const matchCulture = (r) => !cultureFilter || /myrtille/i.test(r.culture) === (cultureFilter === 'Myrtille');
+            const matchCultureCueillette = (c) => !cultureFilter || /myrtille/i.test(resolveCulture({ parcelle: c.parcelle })) === (cultureFilter === 'Myrtille');
+            const allFiltered = (fermeFilter ? allMapped.filter(r => r.ferme === fermeFilter) : allMapped).filter(matchSub).filter(matchCulture);
             const logistiqueWorkers = allFiltered.filter(r => r.isLogistique);
             let recolte = allFiltered.filter(r => !r.isLogistique).sort((a, b) => b.kilos - a.kilos).map((r, i) => ({ ...r, rank: i + 1 }));
 
             const totalKgPointage = recolte.reduce((s, r) => s + r.kilos, 0);
-            const filteredCueillette = (fermeFilter ? cueillette.filter(c => c.ferme === fermeFilter) : cueillette).filter(matchSub);
+            const filteredCueillette = (fermeFilter ? cueillette.filter(c => c.ferme === fermeFilter) : cueillette).filter(matchSub).filter(matchCultureCueillette);
             const filteredCueilletteKg = filteredCueillette.reduce((s, c) => s + c.totalKg, 0);
             const totalKg = filteredCueilletteKg > 0 ? filteredCueilletteKg : totalKgPointage;
             const totalCout = recolte.reduce((s, r) => s + (r.cout || 0), 0);
@@ -6440,12 +6477,19 @@
                             <button className={`chip c-green ${fermeFilter === 'F5' ? 'active' : ''}`} onClick={() => setFermeFilter('F5')}>F5</button>
                             <button className={`chip c-green ${fermeFilter === 'Avocatier' ? 'active' : ''}`} onClick={() => setFermeFilter('Avocatier')}>Avocatier</button>
                         </div>
+                        <div className="chip-group" style={{marginLeft:8}}>
+                            <span className="chip-group-label">Culture:</span>
+                            <button className={`chip c-blue ${cultureFilter === '' ? 'active' : ''}`} onClick={() => setCultureFilter('')}>Toutes</button>
+                            <button className={`chip c-blue ${cultureFilter === 'Framboise' ? 'active' : ''}`} onClick={() => setCultureFilter('Framboise')}>Framboise</button>
+                            <button className={`chip c-blue ${cultureFilter === 'Myrtille' ? 'active' : ''}`} onClick={() => setCultureFilter('Myrtille')}>Myrtille</button>
+                        </div>
                     </div>
                     )}
 
                     <div className="kpi-grid">
                         <KPICard icon="fa-basket-shopping" iconClass="berry" value={Math.round(totalKg).toLocaleString('fr-FR')} label="Total Kg (Récolte)" onClick={() => setShowKgDetail(!showKgDetail)} />
                         <KPICard icon="fa-users" iconClass="green" value={recolte.length} label="Ouvriers Récolte" />
+                        <KPICard icon="fa-gauge-high" iconClass="purple" value={recolte.length > 0 ? Math.round(totalKg / recolte.length) + ' kg' : '-'} label="Rendement moyen / Ouvrier / Jour" onClick={() => setShowRendementTrend(!showRendementTrend)} />
                         <KPICard icon="fa-truck-loading" iconClass="blue" value={logistiqueWorkers.length + ' (' + (recolte.length > 0 ? Math.round(logistiqueWorkers.length / (recolte.length + logistiqueWorkers.length) * 100) : 0) + '%)'} label="Logistique Récolte" onClick={() => setShowLogTrendRH(!showLogTrendRH)} subItems={(() => {
                             const byOp = {};
                             logistiqueWorkers.forEach(w => { const op = (w.operation || 'Autre').trim(); byOp[op] = (byOp[op] || 0) + 1; });
@@ -6458,36 +6502,56 @@
 
                     {showPrimeTrendRH && (() => {
                         const allEqRows = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
-                        const allDates = [...new Set(allEqRows.map(r => r.jour))].sort().reverse().slice(0, 7).reverse();
+                        const cultureFilteredEq = cultureFilter
+                            ? allEqRows.filter(r => /myrtille/i.test(r.culture || resolveCulture({ parcelle: r.parcelle, variete: r.variete })) === (cultureFilter === 'Myrtille'))
+                            : allEqRows;
                         const todayStr = new Date().toISOString().slice(0, 10);
                         const recolteDate = selectedDate || todayStr;
-                        // Use consistent source (equipeRows) for all days in chart
+                        // Inclure recolteDate (live) même si l'historique ne l'a pas encore
+                        const datesSetP = new Set(cultureFilteredEq.map(r => r.jour));
+                        datesSetP.add(recolteDate);
+                        const allDates = Array.from(datesSetP).sort().reverse().slice(0, 7).reverse();
                         const logOpsPopup = /caporal|conditionnement|encadrement|chargement/i;
+                        // Données live pour la date affichée (alignées avec le KPI haut)
+                        const liveTotal = recolte.length;
+                        const liveWithPrime = recolte.filter(r => r.prime > 0).length;
+                        const computePrimeFromBuckets = (workersBucket) => workersBucket.filter(w => {
+                            if (w.kg <= 0) return false;
+                            const isMyrt = /myrtille/i.test(w.culture || resolveCulture({ parcelle: w.parcelle, variete: w.variete }));
+                            return calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour) > 0;
+                        }).length;
                         const trendData = allDates.map(date => {
-                            const dayRows = allEqRows.filter(r => r.jour === date && !logOpsPopup.test(r.operation || ''));
-                            const byW = {};
-                            dayRows.forEach(r => {
-                                const k = r.matricule || r.nom;
-                                if (!byW[k]) byW[k] = { kg: 0, parcelle: r.parcelle, variete: r.variete };
-                                byW[k].kg += r.kg || 0;
-                            });
-                            const allWorkers = Object.values(byW);
-                            const total = allWorkers.length;
-                            const withPrime = allWorkers.filter(w => {
-                                if (w.kg <= 0) return false;
-                                const parcelle = (w.parcelle || '').toLowerCase();
-                                const pc = data.parcelleConfig || {};
-                                let culture = null;
-                                for (const farm of Object.keys(pc)) {
-                                    for (const p of pc[farm]) {
-                                        if (parcelle && (parcelle.includes(p.nom.toLowerCase()) || parcelle.includes(p.variete.toLowerCase()))) { culture = p.culture; break; }
-                                    }
-                                    if (culture) break;
+                            let total, withPrime;
+                            if (date === recolteDate) {
+                                total = liveTotal;
+                                withPrime = liveWithPrime;
+                            } else {
+                                // 1) equipeRows
+                                const dayRows = cultureFilteredEq.filter(r => r.jour === date && !logOpsPopup.test(r.operation || ''));
+                                const byW = {};
+                                dayRows.forEach(r => {
+                                    const k = r.matricule || r.nom;
+                                    if (!byW[k]) byW[k] = { kg: 0, parcelle: r.parcelle, variete: r.variete };
+                                    byW[k].kg += r.kg || 0;
+                                });
+                                const allWorkers = Object.values(byW);
+                                total = allWorkers.length;
+                                const sumKgEq = allWorkers.reduce((s, w) => s + (w.kg || 0), 0);
+                                if (sumKgEq === 0 && historyByDate[date]) {
+                                    // 2) fallback action=recolte
+                                    const h = historyByDate[date];
+                                    const wf = (h.workers || [])
+                                        .filter(w => !fermeFilter || w.ferme === fermeFilter)
+                                        .filter(w => !avoSubFilter || deriveSubFerme(w.refParcelle, w.parcelle) === avoSubFilter)
+                                        .filter(w => !logOpsPopup.test(w.operation || ''))
+                                        .filter(w => !cultureFilter || /myrtille/i.test(resolveCulture({ parcelle: w.parcelle, variete: w.variete })) === (cultureFilter === 'Myrtille'))
+                                        .map(w => ({ kg: w.quantite || 0, parcelle: w.parcelle, variete: w.variete, jour: date }));
+                                    total = wf.length || total;
+                                    withPrime = computePrimeFromBuckets(wf);
+                                } else {
+                                    withPrime = computePrimeFromBuckets(allWorkers.map(w => ({ ...w, jour: date })));
                                 }
-                                if (!culture) culture = data.getCultureForVariete(w.variete);
-                                const isMyrt = /myrtille/i.test(culture);
-                                return calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour) > 0;
-                            }).length;
+                            }
                             const pct = total > 0 ? Math.round(withPrime / total * 100) : 0;
                             const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
                             return { date, label, pct, withPrime, total };
@@ -6526,15 +6590,23 @@
                                             <span style={{marginLeft:8}}>Seuil: 🍓 20 kg | 🫐 30 kg</span>
                                         </div>
                                         {primeDetailDay && (() => {
-                                            // Build worker list for selected day — always from equipeRows for consistency
-                                            const dayRows = allEqRows.filter(r => r.jour === primeDetailDay && !logOpsPopup.test(r.operation || ''));
+                                            // Si on clique la barre du jour affiché → utiliser la donnée live (recolte), sinon historique
+                                            const useLiveDetail = primeDetailDay === recolteDate;
                                             const byW = {};
-                                            dayRows.forEach(r => {
-                                                const k = r.matricule || r.nom;
-                                                if (!byW[k]) byW[k] = { nom: r.nom, matricule: r.matricule, kg: 0, parcelle: r.parcelle, variete: r.variete };
-                                                byW[k].kg += r.kg || 0;
-                                                if (r.parcelle) byW[k].parcelle = r.parcelle;
-                                            });
+                                            if (useLiveDetail) {
+                                                recolte.forEach(r => {
+                                                    const k = r.matricule || r.nom;
+                                                    byW[k] = { nom: r.nom, matricule: r.matricule, kg: r.kilos || 0, parcelle: r.parcelle, variete: r.variete };
+                                                });
+                                            } else {
+                                                const dayRows = cultureFilteredEq.filter(r => r.jour === primeDetailDay && !logOpsPopup.test(r.operation || ''));
+                                                dayRows.forEach(r => {
+                                                    const k = r.matricule || r.nom;
+                                                    if (!byW[k]) byW[k] = { nom: r.nom, matricule: r.matricule, kg: 0, parcelle: r.parcelle, variete: r.variete };
+                                                    byW[k].kg += r.kg || 0;
+                                                    if (r.parcelle) byW[k].parcelle = r.parcelle;
+                                                });
+                                            }
                                             const dayWorkers = Object.values(byW).filter(w => {
                                                 if (w.kg <= 0) return false;
                                                 const parcelle = (w.parcelle || '').toLowerCase();
@@ -6646,6 +6718,102 @@
                                             <span><span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'var(--green)',marginRight:4}}></span>≤ 20%</span>
                                             <span><span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'var(--orange)',marginRight:4}}></span>21-35%</span>
                                             <span><span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'var(--red)',marginRight:4}}></span>&gt; 35%</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {showRendementTrend && (() => {
+                        const allEqRowsR = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
+                        const cultureFilteredR = cultureFilter
+                            ? allEqRowsR.filter(r => /myrtille/i.test(r.culture || resolveCulture({ parcelle: r.parcelle, variete: r.variete })) === (cultureFilter === 'Myrtille'))
+                            : allEqRowsR;
+                        const logOpsR = /caporal|conditionnement|encadrement|chargement/i;
+                        const todayStrR = new Date().toISOString().slice(0, 10);
+                        const selectedDateStrR = selectedDate || todayStrR;
+                        // Pour la date affichée, utiliser la donnée live (alignée avec les KPI haut)
+                        const liveBucket = { kg: totalKg, nb: recolte.length };
+                        // Construire la liste de dates : historique + date affichée (au cas où equipeRows ne contient pas encore today)
+                        const datesSet = new Set(cultureFilteredR.map(r => r.jour));
+                        datesSet.add(selectedDateStrR);
+                        const allDatesR = Array.from(datesSet).sort().reverse().slice(0, 10).reverse();
+                        const trendDataR = allDatesR.map(date => {
+                            let totalKgDay, nb;
+                            if (date === selectedDateStrR) {
+                                totalKgDay = liveBucket.kg;
+                                nb = liveBucket.nb;
+                            } else {
+                                // 1) Tenter equipeRows
+                                const dayRows = cultureFilteredR.filter(r => r.jour === date && !logOpsR.test(r.operation || ''));
+                                const byW = {};
+                                dayRows.forEach(r => {
+                                    const k = r.matricule || r.nom;
+                                    if (!byW[k]) byW[k] = { kg: 0 };
+                                    byW[k].kg += r.kg || 0;
+                                });
+                                const workersDay = Object.values(byW);
+                                totalKgDay = workersDay.reduce((s, w) => s + w.kg, 0);
+                                nb = workersDay.length;
+                                // 2) Si kg=0, fallback sur historyByDate (action=recolte) si disponible
+                                if (totalKgDay === 0 && historyByDate[date]) {
+                                    const h = historyByDate[date];
+                                    const wf = (h.workers || [])
+                                        .filter(w => !fermeFilter || w.ferme === fermeFilter)
+                                        .filter(w => !avoSubFilter || deriveSubFerme(w.refParcelle, w.parcelle) === avoSubFilter)
+                                        .filter(w => !logOpsR.test(w.operation || ''))
+                                        .filter(w => !cultureFilter || /myrtille/i.test(resolveCulture({ parcelle: w.parcelle, variete: w.variete })) === (cultureFilter === 'Myrtille'));
+                                    const cf = (fermeFilter ? (h.cueillette || []).filter(c => c.ferme === fermeFilter) : (h.cueillette || []))
+                                        .filter(c => !cultureFilter || /myrtille/i.test(resolveCulture({ parcelle: c.parcelle })) === (cultureFilter === 'Myrtille'));
+                                    const cKg = cf.reduce((s, c) => s + (c.totalKg || 0), 0);
+                                    const wKg = wf.reduce((s, w) => s + (w.quantite || 0), 0);
+                                    totalKgDay = cKg > 0 ? cKg : wKg;
+                                    nb = wf.length || nb;
+                                }
+                            }
+                            const rend = nb > 0 ? totalKgDay / nb : 0;
+                            const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
+                            return { date, label, rend, totalKgDay, nb };
+                        });
+                        const nonZeroDays = trendDataR.filter(d => d.rend > 0);
+                        const maxRend = Math.max(1, ...trendDataR.map(d => d.rend));
+                        const avgRend = nonZeroDays.length > 0 ? nonZeroDays.reduce((s, d) => s + d.rend, 0) / nonZeroDays.length : 0;
+                        return (
+                            <div className="fade-in" style={{background:'var(--gray-50)',borderRadius:12,padding:16,marginBottom:16,border:'1px solid var(--gray-200)'}}>
+                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+                                    <h4 style={{margin:0,fontSize:14,fontWeight:700,color:'var(--purple, #7c3aed)'}}>
+                                        <i className="fa-solid fa-gauge-high" style={{marginRight:6}}></i>Rendement Kg / Ouvrier / Jour — 10 derniers jours
+                                        {cultureFilter && <span style={{marginLeft:8,fontSize:11,fontWeight:500,color:'var(--gray-500)'}}>· {cultureFilter}</span>}
+                                        {fermeFilter && <span style={{marginLeft:6,fontSize:11,fontWeight:500,color:'var(--gray-500)'}}>· {fermeFilter}</span>}
+                                    </h4>
+                                    <button onClick={() => setShowRendementTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16}}><i className="fa-solid fa-xmark"></i></button>
+                                </div>
+                                {trendDataR.length === 0 ? (
+                                    <div style={{textAlign:'center',padding:20,color:'var(--gray-400)',fontSize:12}}>Pas de données disponibles</div>
+                                ) : (
+                                    <div>
+                                        <div style={{display:'flex',alignItems:'flex-end',gap:8,height:180,padding:'0 10px'}}>
+                                            {trendDataR.map((d, i) => {
+                                                const isToday = d.date === todayStrR;
+                                                const isSelectedDate = d.date === (selectedDate || todayStrR);
+                                                const ratio = d.rend / maxRend;
+                                                const barColor = d.rend >= avgRend ? 'var(--green)' : d.rend >= avgRend * 0.7 ? 'var(--orange)' : 'var(--red)';
+                                                return (
+                                                    <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4}}>
+                                                        <span style={{fontSize:11,fontWeight:700,color: isSelectedDate ? 'var(--berry)' : 'var(--gray-600)'}}>{Math.round(d.rend)} kg</span>
+                                                        <div style={{width:'100%',maxWidth:50,background:barColor,borderRadius:'6px 6px 0 0',height: Math.max(8, ratio * 140),transition:'height 0.3s',opacity: isSelectedDate ? 1 : isToday ? 0.9 : 0.7,border: isSelectedDate ? '2px solid var(--berry)' : 'none'}}></div>
+                                                        <span style={{fontSize:9,color: isSelectedDate ? 'var(--berry)' : isToday ? 'var(--gray-600)' : 'var(--gray-400)',fontWeight: isSelectedDate ? 700 : 400}}>{d.label}</span>
+                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{Math.round(d.totalKgDay)}kg / {d.nb}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div style={{display:'flex',justifyContent:'center',gap:16,marginTop:12,fontSize:10,color:'var(--gray-500)'}}>
+                                            <span><span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'var(--green)',marginRight:4}}></span>≥ moyenne</span>
+                                            <span><span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'var(--orange)',marginRight:4}}></span>70-99%</span>
+                                            <span><span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'var(--red)',marginRight:4}}></span>&lt; 70%</span>
+                                            <span style={{marginLeft:8}}>Moyenne 10j : <b>{Math.round(avgRend)} kg</b></span>
                                         </div>
                                     </div>
                                 )}
