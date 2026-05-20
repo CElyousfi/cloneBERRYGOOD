@@ -33,12 +33,16 @@
  */
 
 /**
- * @typedef {"good"|"partial"|"interpolated"|"fallback"} DataQuality
- * Qualité d'une mesure agrégée sur 24h :
- *   - good         : >= 240 samples (>83 % couverture sur pas 5 min)
- *   - partial      : 120-240 samples
- *   - interpolated : < 120 samples (interpolation ou journée précédente)
- *   - fallback     : source secondaire utilisée (ex: Meteoblue au lieu de FarmRoad)
+ * @typedef {"good"|"partial"|"interpolated"|"fallback"|"unavailable"} DataQuality
+ *
+ * Used in two scopes :
+ *  - Sprint 1 radsumCalculator (sample-count based, cf. radsumCalculator.js)
+ *      good : >= 240 samples, partial : 120-240, interpolated : < 120
+ *  - Sprint 2 radiationFetcher (source/coverage based)
+ *      good : FarmRoad with >= 87/96 slots (≥ 90 %)
+ *      partial : FarmRoad with 48-86/96 slots (50-89 %)
+ *      fallback : Open-Meteo used (FarmRoad failed or < 50 % slots)
+ *      unavailable : both FarmRoad and Open-Meteo failed
  */
 
 /**

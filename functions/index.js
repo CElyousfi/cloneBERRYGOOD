@@ -13050,3 +13050,126 @@ exports.netafimSyncOnce = functions
       res.status(500).json({ error: err && err.message ? err.message : String(err) });
     }
   });
+
+// =============================================
+// Sprint 2 — Phenology daily cron + HTTP trigger (T7)
+// =============================================
+// New phenology engine running in PARALLEL to the legacy gddNightlyJob.
+// Pure modules + DI live in lib/phenology/. This block only WIRES the
+// 2 exports to firebase-functions + production deps; no business logic
+// is duplicated here.
+//
+// Coexistence: legacy gddNightlyJob writes gdd_tracking/{date}, new
+// dailyPhenologyJob writes plots/{plotId}/phenology_daily/{date}.
+// Independent, no race, same 23:00 schedule. Cf. project memory
+// project_phenology_sprint2_design.md.
+
+const phenology = require("./lib/phenology");
+const phenologyJob = require("./lib/phenology/dailyPhenologyJob");
+const phenologyRefLoader = require("./lib/phenology/referenceLoader");
+const phenologyStation = require("./lib/phenology/farmroadStationResolver");
+const phenologyOutdoor = require("./lib/phenology/outdoorWeatherFallback");
+const phenologyFetcher = require("./lib/phenology/radiationFetcher");
+const phenologyWriter = require("./lib/phenology/phenologyDailyWriter");
+
+// Production deps wiring — done lazily inside handlers so module load stays cheap.
+function buildPhenologyProdDeps() {
+  const httpsGet = (url) => new Promise((resolve) => {
+    const https = require("https");
+    https.get(url, (resp) => {
+      let data = "";
+      resp.on("data", (c) => { data += c; });
+      resp.on("end", () => {
+        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+          try { resolve(JSON.parse(data)); } catch (_) { resolve(null); }
+        } else resolve(null);
+      });
+    }).on("error", () => resolve(null));
+  });
+
+  const refDeps = {
+    readReferenceDoc: async (docId) => {
+      const snap = await db_firestore.collection("phenology_references").doc(docId).get();
+      return snap.exists ? snap.data() : null;
+    },
+  };
+  const stationDeps = {
+    readStationById: async (stationId) => {
+      const snap = await db_firestore.collection("farmroad_stations").doc(stationId).get();
+      return snap.exists ? snap.data() : null;
+    },
+    listStationsByType: async (type) => {
+      const snap = await db_firestore.collection("farmroad_stations").where("type", "==", type).get();
+      return snap.docs.map((d) => d.data());
+    },
+    logWarn: (msg, ctx) => console.warn(msg, ctx || ""),
+  };
+  const outdoorWrapped = (params) => phenologyOutdoor.fetchOutdoorDaily(params, { fetchJson: httpsGet });
+  const fetcherDeps = {
+    readFarmroadCache: async (date) => {
+      const snap = await db_firestore.collection("farmroad_cache").doc(date).get();
+      return snap.exists ? snap.data() : null;
+    },
+    fetchOutdoorDaily: outdoorWrapped,
+  };
+  const writerDeps = {
+    writeDoc: async (plotId, date, doc) => {
+      await db_firestore.collection("plots").doc(plotId).collection("phenology_daily").doc(date).set(doc);
+    },
+    updatePlotPhenologyState: async (plotId, partial) => {
+      await db_firestore.collection("plots").doc(plotId).update(partial);
+    },
+  };
+
+  return {
+    listEnabledPlots: async () => {
+      const snap = await db_firestore.collection("plots").where("phenology.enabled", "==", true).get();
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    },
+    resolveStation: (plot) => phenologyStation.resolveStation(plot, stationDeps),
+    fetchRadiationDaily: (params) => phenologyFetcher.fetchRadiationDaily(params, fetcherDeps),
+    loadReference: (variety, cycleType) => phenologyRefLoader.loadReference(variety, cycleType, refDeps),
+    readPhenologyDaily: async (plotId, date) => {
+      const snap = await db_firestore.collection("plots").doc(plotId).collection("phenology_daily").doc(date).get();
+      return snap.exists ? snap.data() : null;
+    },
+    writePhenologyDaily: (plotId, date, computed) => phenologyWriter.writePhenologyDaily(plotId, date, computed, writerDeps),
+    logger: (msg, ctx) => console.log(msg, ctx || ""),
+  };
+}
+
+// Cron — 23:00 Africa/Casablanca (cohabitation with legacy gddNightlyJob)
+exports.dailyPhenologyJob = functions
+  .region(phenologyJob.CRON_CONFIG.region)
+  .runWith({
+    timeoutSeconds: phenologyJob.CRON_CONFIG.timeoutSeconds,
+    memory: phenologyJob.CRON_CONFIG.memorySize,
+  })
+  .pubsub.schedule(phenologyJob.CRON_CONFIG.schedule)
+  .timeZone(phenologyJob.CRON_CONFIG.timeZone)
+  .onRun(async () => {
+    const date = localDateStr();
+    console.log("[dailyPhenologyJob] cron start date=" + date);
+    try {
+      const summary = await phenologyJob.runDailyPhenologyJob(date, buildPhenologyProdDeps());
+      console.log("[dailyPhenologyJob] cron done", JSON.stringify(summary));
+    } catch (err) {
+      console.error("[dailyPhenologyJob] cron error:", err.message);
+    }
+    return null;
+  });
+
+// HTTP trigger — manual one-shot (auth-required, optional ?date= for replay)
+exports.runDailyPhenologyJobNow = functions
+  .region(phenologyJob.HTTP_CONFIG.region)
+  .runWith({
+    timeoutSeconds: phenologyJob.HTTP_CONFIG.timeoutSeconds,
+    memory: phenologyJob.HTTP_CONFIG.memorySize,
+  })
+  .https.onRequest(phenologyJob.buildHttpHandler({
+    requireAuth,
+    runJob: (date) => phenologyJob.runDailyPhenologyJob(date, buildPhenologyProdDeps()),
+    todayISO: () => localDateStr(),
+    setCors,
+    logger: (msg, ctx) => console.error(msg, ctx || ""),
+  }));
