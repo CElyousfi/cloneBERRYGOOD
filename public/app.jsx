@@ -44985,8 +44985,11 @@ ${rejetHtml}
             const [query, setQuery] = useState('');
             const [filterFerme, setFilterFerme] = useState('');
             const [filterStatus, setFilterStatus] = useState('');
+            const [filterSource, setFilterSource] = useState('');
             const [dateFrom, setDateFrom] = useState('');
             const [dateTo, setDateTo] = useState('');
+            const [sortField, setSortField] = useState('date');
+            const [sortDir, setSortDir] = useState('desc');
             const MAGASINS_BR = ['F1', 'F2', 'F5', 'F6'];
             const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
             const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
@@ -45090,6 +45093,8 @@ ${rejetHtml}
             const matches = (r) => {
                 if (dateFrom && r.date && r.date < dateFrom) return false;
                 if (dateTo && r.date && r.date > dateTo) return false;
+                if (filterSource === 'import' && !isImport(r)) return false;
+                if (filterSource === 'saisie' && isImport(r)) return false;
                 if (!query) return true;
                 const q = query.toLowerCase();
                 if ((r.numero || '').toLowerCase().includes(q)) return true;
@@ -45099,7 +45104,28 @@ ${rejetHtml}
                 if ((r.reception_libre_motif || '').toLowerCase().includes(q)) return true;
                 return (r.items || []).some(i => ((i.article_nom || i.article_ref || '').toLowerCase().includes(q)));
             };
-            const filtered = receptions.filter(matches);
+            const sortValue = (r, field) => {
+                if (field === 'numero') return r.numero || '';
+                if (field === 'date') return r.date || '';
+                if (field === 'magasin') return r.lieu_destination?.id || r.ferme || '';
+                if (field === 'ref_bl') return r.ref_bl_fournisseur || '';
+                if (field === 'type') return isImport(r) ? 'Import' : (r.reception_libre ? 'Libre' : 'BDC');
+                if (field === 'statut') return r.status || '';
+                if (field === 'cree_par') return r.created_by?.name || '';
+                return '';
+            };
+            const filtered = receptions.filter(matches).slice().sort((a, b) => {
+                const va = sortValue(a, sortField), vb = sortValue(b, sortField);
+                if (va < vb) return sortDir === 'asc' ? -1 : 1;
+                if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            const toggleSort = (field) => {
+                if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortField(field); setSortDir('asc'); }
+            };
+            const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+            const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
 
             const typeLabel = (r) => {
                 if (isImport(r)) return 'Import';
@@ -45130,6 +45156,11 @@ ${rejetHtml}
                                 <option value="valide_chef">Validé</option>
                                 <option value="rejete">Rejeté</option>
                             </select>
+                            <select value={filterSource} onChange={e => setFilterSource(e.target.value)} title="Source" style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Toutes sources</option>
+                                <option value="saisie">Saisie</option>
+                                <option value="import">Import</option>
+                            </select>
                             {currentProfile === 'magasinier' && (
                                 <button onClick={() => { setForm({ ...emptyForm, date: new Date().toISOString().split('T')[0] }); setShowForm(true); }}
                                     style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
@@ -45139,7 +45170,16 @@ ${rejetHtml}
                         </div>
                     </div>
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                        <thead><tr><th>N° BR</th><th>Date</th><th>Magasin</th><th>Réf BL</th><th>Type</th><th>Articles</th><th>Statut</th><th>Créé par</th></tr></thead>
+                        <thead><tr>
+                            <th style={sortThStyle} onClick={() => toggleSort('numero')}>N° BR{sortArrow('numero')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('magasin')}>Magasin{sortArrow('magasin')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('ref_bl')}>Réf BL{sortArrow('ref_bl')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th>
+                            <th>Articles</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Créé par{sortArrow('cree_par')}</th>
+                        </tr></thead>
                         <tbody>
                             {filtered.map((r) => (
                                 <tr key={r.id}>
@@ -50395,6 +50435,12 @@ ${rejetHtml}
             const [scanPreviewBC, setScanPreviewBC] = useState(null);
 
             const [query, setQuery] = useState('');
+            const [filterSource, setFilterSource] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+            const [sortField, setSortField] = useState('date');
+            const [sortDir, setSortDir] = useState('desc');
+            const isImportBC = (bc) => bc._isImport || (bc.numero || '').startsWith('IMP-') || bc.created_by?.userId === 'import_caneva';
             const loadBcs = () => {
                 Promise.all([
                     fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({ success: false })),
@@ -50463,12 +50509,52 @@ ${rejetHtml}
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
+            const matchesBC = (bc) => {
+                if (dateFrom && bc.date && bc.date < dateFrom) return false;
+                if (dateTo && bc.date && bc.date > dateTo) return false;
+                if (filterSource === 'import' && !isImportBC(bc)) return false;
+                if (filterSource === 'saisie' && isImportBC(bc)) return false;
+                if (!query) return true;
+                const q = query.toLowerCase();
+                return (bc.numero||'').toLowerCase().includes(q)
+                    || (bc.items||[]).some(i => (i.article||'').toLowerCase().includes(q) || (i.parcelle||'').toLowerCase().includes(q))
+                    || (bc.ferme||'').toLowerCase().includes(q);
+            };
+            const sortValueBC = (bc, field) => {
+                if (field === 'numero') return bc.numero || '';
+                if (field === 'date') return bc.date || '';
+                if (field === 'parcelles') return [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))].join(',');
+                if (field === 'fermes') return [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))].join(',') || (bc.ferme || '');
+                if (field === 'cree_par') return bc.created_by?.name || '';
+                return '';
+            };
+            const filteredBcs = bcs.filter(matchesBC).slice().sort((a, b) => {
+                const va = sortValueBC(a, sortField), vb = sortValueBC(b, sortField);
+                if (va < vb) return sortDir === 'asc' ? -1 : 1;
+                if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            const toggleSort = (field) => {
+                if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortField(field); setSortDir('asc'); }
+            };
+            const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+            const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
+
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bons de Consommation {label} ({bcs.filter(bc => { if (!query) return true; const q = query.toLowerCase(); return (bc.numero||'').toLowerCase().includes(q) || (bc.items||[]).some(i => (i.article||'').toLowerCase().includes(q) || (i.parcelle||'').toLowerCase().includes(q)) || (bc.ferme||'').toLowerCase().includes(q); }).length})</h3>
-                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <h3 style={{margin:0}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bons de Consommation {label} ({filteredBcs.length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, parcelle…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <span style={{fontSize:11,color:'var(--gray-400)'}}>→</span>
+                            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Date fin" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <select value={filterSource} onChange={e => setFilterSource(e.target.value)} title="Source" style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Toutes sources</option>
+                                <option value="saisie">Saisie</option>
+                                <option value="import">Import</option>
+                            </select>
                             {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setShowForm(true); }}
                                 style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon
@@ -50476,9 +50562,16 @@ ${rejetHtml}
                         </div>
                     </div>
                     <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>N°</th><th>Date</th><th>Parcelles</th><th>Fermes</th><th>Articles</th><th>Cree par</th></tr></thead>
+                        <thead><tr>
+                            <th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('parcelles')}>Parcelles{sortArrow('parcelles')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('fermes')}>Fermes{sortArrow('fermes')}</th>
+                            <th>Articles</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Cree par{sortArrow('cree_par')}</th>
+                        </tr></thead>
                         <tbody>
-                            {bcs.filter(bc => { if (!query) return true; const q = query.toLowerCase(); return (bc.numero||'').toLowerCase().includes(q) || (bc.items||[]).some(i => (i.article||'').toLowerCase().includes(q) || (i.parcelle||'').toLowerCase().includes(q)) || (bc.ferme||'').toLowerCase().includes(q); }).map((bc) => { const parcelles_list = [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))]; const fermes_list = [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))]; return (
+                            {filteredBcs.map((bc) => { const parcelles_list = [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))]; const fermes_list = [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))]; return (
                                 <tr key={bc.id}>
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{bc.numero}</td>
                                     <td style={{fontSize:12}}>{bc.date || '—'}</td>
@@ -50488,7 +50581,7 @@ ${rejetHtml}
                                     <td style={{fontSize:11}}>{bc.created_by?.name || '—'}</td>
                                 </tr>
                             ); })}
-                            {bcs.length === 0 && <tr><td colSpan="6" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de consommation {label.toLowerCase()}.</td></tr>}
+                            {filteredBcs.length === 0 && <tr><td colSpan="6" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de consommation {label.toLowerCase()}.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -50559,6 +50652,12 @@ ${rejetHtml}
             const [showForm, setShowForm] = useState(false);
             const [articles, setArticles] = useState([]);
             const [query, setQuery] = useState('');
+            const [filterSource, setFilterSource] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+            const [sortField, setSortField] = useState('date');
+            const [sortDir, setSortDir] = useState('desc');
+            const isImportBT = (t) => (t.numero || '').startsWith('IMP-') || t.created_by?.userId === 'import_caneva';
             const emptyItem = { article: '', quantite: '', unite: 'kg' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], ref_bon_physique: '', magasin_depart: 'F1', magasin_arrivee: 'F5', items: [{ ...emptyItem }] });
             const [scanFile, setScanFile] = useState(null);
@@ -50611,12 +50710,54 @@ ${rejetHtml}
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
+            const matchesBT = (t) => {
+                if (dateFrom && t.date && t.date < dateFrom) return false;
+                if (dateTo && t.date && t.date > dateTo) return false;
+                if (filterSource === 'import' && !isImportBT(t)) return false;
+                if (filterSource === 'saisie' && isImportBT(t)) return false;
+                if (!query) return true;
+                const q = query.toLowerCase();
+                return (t.numero||'').toLowerCase().includes(q)
+                    || (t.lieu_source?.id||'').toLowerCase().includes(q)
+                    || (t.lieu_destination?.id||'').toLowerCase().includes(q)
+                    || (t.ref_bon_physique||'').toLowerCase().includes(q)
+                    || (t.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q));
+            };
+            const sortValueBT = (t, field) => {
+                if (field === 'numero') return t.numero || '';
+                if (field === 'date') return t.date || '';
+                if (field === 'depart') return t.lieu_source?.id || '';
+                if (field === 'arrivee') return t.lieu_destination?.id || '';
+                if (field === 'ref_bon') return t.ref_bon_physique || '';
+                return '';
+            };
+            const filteredTransferts = transferts.filter(matchesBT).slice().sort((a, b) => {
+                const va = sortValueBT(a, sortField), vb = sortValueBT(b, sortField);
+                if (va < vb) return sortDir === 'asc' ? -1 : 1;
+                if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            const toggleSort = (field) => {
+                if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortField(field); setSortDir('asc'); }
+            };
+            const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+            const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
+
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-right-left" style={{marginRight:8,color:'var(--blue)'}}></i>Transferts Inter-Fermes ({transferts.filter(t => { if (!query) return true; const q = query.toLowerCase(); return (t.numero||'').toLowerCase().includes(q) || (t.lieu_source?.id||'').toLowerCase().includes(q) || (t.lieu_destination?.id||'').toLowerCase().includes(q) || (t.ref_bon_physique||'').toLowerCase().includes(q) || (t.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).length})</h3>
-                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-right-left" style={{marginRight:8,color:'var(--blue)'}}></i>Transferts Inter-Fermes ({filteredTransferts.length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <span style={{fontSize:11,color:'var(--gray-400)'}}>→</span>
+                            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Date fin" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <select value={filterSource} onChange={e => setFilterSource(e.target.value)} title="Source" style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Toutes sources</option>
+                                <option value="saisie">Saisie</option>
+                                <option value="import">Import</option>
+                            </select>
                             {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], ref_bon_physique: '', magasin_depart: 'F1', magasin_arrivee: 'F5', items: [{ ...emptyItem }] }); setShowForm(true); }}
                                 style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau transfert
@@ -50624,9 +50765,17 @@ ${rejetHtml}
                         </div>
                     </div>
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                        <thead><tr><th>N°</th><th>Date</th><th>Départ</th><th>Arrivée</th><th>Réf bon</th><th>Articles</th><th>Statut</th></tr></thead>
+                        <thead><tr>
+                            <th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('depart')}>Départ{sortArrow('depart')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('arrivee')}>Arrivée{sortArrow('arrivee')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('ref_bon')}>Réf bon{sortArrow('ref_bon')}</th>
+                            <th>Articles</th>
+                            <th>Statut</th>
+                        </tr></thead>
                         <tbody>
-                            {transferts.filter(t => { if (!query) return true; const q = query.toLowerCase(); return (t.numero||'').toLowerCase().includes(q) || (t.lieu_source?.id||'').toLowerCase().includes(q) || (t.lieu_destination?.id||'').toLowerCase().includes(q) || (t.ref_bon_physique||'').toLowerCase().includes(q) || (t.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((t) => (
+                            {filteredTransferts.map((t) => (
                                 <tr key={t.id}>
                                     <td style={{fontWeight:700,color:'var(--blue)'}}>{t.numero}</td>
                                     <td>{t.date}</td>
@@ -50637,7 +50786,7 @@ ${rejetHtml}
                                     <td><span className="status-badge valide">Validé</span></td>
                                 </tr>
                             ))}
-                            {transferts.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun transfert enregistré.</td></tr>}
+                            {filteredTransferts.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun transfert enregistré.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -50704,6 +50853,12 @@ ${rejetHtml}
             const [articles, setArticles] = useState([]);
             const [suppliers, setSuppliers] = useState([]);
             const [query, setQuery] = useState('');
+            const [filterSource, setFilterSource] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+            const [sortField, setSortField] = useState('date');
+            const [sortDir, setSortDir] = useState('desc');
+            const isImportBS = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
             const emptyItem = { article: '', quantite: '', unite: 'kg' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_depart_type: 'magasin', lieu_depart_id: 'F1', lieu_destination: '', sortie_type: 'retour_fournisseur', beneficiaire: '', motif_rebut: '', items: [{ ...emptyItem }] });
             const [scanFileBS, setScanFileBS] = useState(null);
@@ -50771,12 +50926,54 @@ ${rejetHtml}
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
+            const matchesBS = (s) => {
+                if (dateFrom && s.date && s.date < dateFrom) return false;
+                if (dateTo && s.date && s.date > dateTo) return false;
+                if (filterSource === 'import' && !isImportBS(s)) return false;
+                if (filterSource === 'saisie' && isImportBS(s)) return false;
+                if (!query) return true;
+                const q = query.toLowerCase();
+                return (s.numero||'').toLowerCase().includes(q)
+                    || (s.lieu_source?.id||'').toLowerCase().includes(q)
+                    || (typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id||'')).toLowerCase().includes(q)
+                    || (s.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q));
+            };
+            const sortValueBS = (s, field) => {
+                if (field === 'numero') return s.numero || '';
+                if (field === 'date') return s.date || '';
+                if (field === 'depart') return s.lieu_source?.id || s.ferme || '';
+                if (field === 'destination') return typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id || '');
+                if (field === 'type') return s.sortie_type || '';
+                if (field === 'statut') return s.status || '';
+                return '';
+            };
+            const filteredSorties = sorties.filter(matchesBS).slice().sort((a, b) => {
+                const va = sortValueBS(a, sortField), vb = sortValueBS(b, sortField);
+                if (va < vb) return sortDir === 'asc' ? -1 : 1;
+                if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                return 0;
+            });
+            const toggleSort = (field) => {
+                if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortField(field); setSortDir('asc'); }
+            };
+            const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+            const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
+
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8,color:'var(--red)'}}></i>Sorties de Stock ({sorties.filter(s => { if (!query) return true; const q = query.toLowerCase(); return (s.numero||'').toLowerCase().includes(q) || (s.lieu_source?.id||'').toLowerCase().includes(q) || (typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id||'')).toLowerCase().includes(q) || (s.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).length})</h3>
-                        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8,color:'var(--red)'}}></i>Sorties de Stock ({filteredSorties.length})</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
+                            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <span style={{fontSize:11,color:'var(--gray-400)'}}>→</span>
+                            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} title="Date fin" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
+                            <select value={filterSource} onChange={e => setFilterSource(e.target.value)} title="Source" style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Toutes sources</option>
+                                <option value="saisie">Saisie</option>
+                                <option value="import">Import</option>
+                            </select>
                             {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_depart_type: 'magasin', lieu_depart_id: 'F1', lieu_destination: '', sortie_type: 'retour_fournisseur', beneficiaire: '', motif_rebut: '', items: [{ ...emptyItem }] }); setJustificatifFile(null); setJustificatifPreview(null); setShowForm(true); }}
                                 style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouvelle sortie
@@ -50784,9 +50981,17 @@ ${rejetHtml}
                         </div>
                     </div>
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                        <thead><tr><th>N°</th><th>Date</th><th>Départ</th><th>Destination</th><th>Type</th><th>Articles</th><th>Statut</th></tr></thead>
+                        <thead><tr>
+                            <th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('depart')}>Départ{sortArrow('depart')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('destination')}>Destination{sortArrow('destination')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th>
+                            <th>Articles</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th>
+                        </tr></thead>
                         <tbody>
-                            {sorties.filter(s => { if (!query) return true; const q = query.toLowerCase(); return (s.numero||'').toLowerCase().includes(q) || (s.lieu_source?.id||'').toLowerCase().includes(q) || (typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id||'')).toLowerCase().includes(q) || (s.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((s) => (
+                            {filteredSorties.map((s) => (
                                 <tr key={s.id}>
                                     <td style={{fontWeight:700,color:'var(--red)'}}>{s.numero}</td>
                                     <td>{s.date}</td>
@@ -50797,7 +51002,7 @@ ${rejetHtml}
                                     <td><span className={'status-badge ' + statusClass(s.status)}>{statusLabel(s.status)}</span></td>
                                 </tr>
                             ))}
-                            {sorties.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune sortie enregistrée.</td></tr>}
+                            {filteredSorties.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune sortie enregistrée.</td></tr>}
                         </tbody>
                     </table></div>
 
