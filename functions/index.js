@@ -11,6 +11,7 @@ const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const bdcWorkflow = require("./lib/bdc/workflow");
+const caisseImport = require("./lib/caisseImport");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -12047,7 +12048,7 @@ exports.caisseManagement = functions
       // Authenticated users (Achats/DG/Finance) can upload an Excel and have it parsed + imported.
       // Format is determined by caisse_id (each caisse has its own template).
       if (action === "import-excel-file" && req.method === "POST") {
-        const { caisse_id, file_base64, format: requestedFormat, force_overwrite } = req.body;
+        const { caisse_id, file_base64, format: requestedFormat, force_overwrite, dry_run } = req.body;
         if (!caisse_id) return res.status(400).json({ success: false, error: "caisse_id requis" });
         if (!file_base64) return res.status(400).json({ success: false, error: "file_base64 requis" });
 
@@ -12070,142 +12071,14 @@ exports.caisseManagement = functions
 
         const wb = XLSX.read(buffer, { type: "buffer" });
 
-        const excelToISO = (serial) => {
-          if (!serial && serial !== 0) return null;
-          if (typeof serial === "string") { const d = new Date(serial); return isNaN(d) ? null : d.toISOString().slice(0, 10); }
-          const p = XLSX.SSF.parse_date_code(serial);
-          if (!p) return null;
-          return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
-        };
-
-        const detectCols = (h) => {
-          const c = { date: 2, desc: 4, debit: 5, credit: 6, fournisseur: 8, numPiece: 9, numFacture: 11, ana1: 11, ana2: 12 };
-          for (let j = 0; j < h.length; j++) {
-            const cell = String(h[j] || "").toLowerCase().replace(/\s|\r|\n/g, "");
-            if (cell.includes("désignation") || cell.includes("designation")) c.desc = j;
-            else if (cell.includes("débit") || cell === "montantdebit" || cell.includes("debit")) c.debit = j;
-            else if (cell.includes("crédit") || cell.includes("credit")) c.credit = j;
-            else if (cell.includes("fournisseur") || cell.includes("beneficiaire")) c.fournisseur = j;
-            else if (cell.includes("piéce") || cell.includes("piece")) c.numPiece = j;
-            else if (cell.includes("facture")) c.numFacture = j;
-            else if (cell.includes("analytique1") || cell.includes("codeanalytique1")) c.ana1 = j;
-            else if (cell.includes("analytique2") || cell.includes("codeanalytique2")) c.ana2 = j;
-          }
-          return c;
-        };
-
-        let transactions = [];
-        let resetSoldeInitial = null;
-
+        let parsed;
         try {
-          if (format === "depenses_monthly") {
-            const HEADER_ROW = 6;
-            for (const sheetName of wb.SheetNames) {
-              const ws = wb.Sheets[sheetName];
-              const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-              if (data.length < HEADER_ROW + 2) continue;
-              const header = data[HEADER_ROW] || [];
-              const hasDesignation = header.some(c => { const s = String(c || "").toLowerCase(); return s.includes("désignation") || s.includes("designation"); });
-              const hasDebit = header.some(c => { const s = String(c || "").toLowerCase().replace(/\s|\r|\n/g, ""); return s.includes("débit") || s.includes("debit"); });
-              if (!hasDesignation || !hasDebit) continue;
-              const cols = detectCols(header);
-              const sheetKey = sheetName.trim().replace(/\s+/g, "_").replace(/[^A-Za-z0-9_]/g, "");
-              for (let i = HEADER_ROW + 1; i < data.length; i++) {
-                const row = data[i];
-                const date = row[cols.date];
-                const debit = parseFloat(row[cols.debit]) || 0;
-                const credit = parseFloat(row[cols.credit]) || 0;
-                if (!date || (debit === 0 && credit === 0)) continue;
-                const dateISO = excelToISO(date);
-                if (!dateISO) continue;
-                const isAlim = debit > 0;
-                const montant = isAlim ? debit : credit;
-                if (montant <= 0) continue;
-                const variete = String(row[0] || "").trim();
-                const ferme = String(row[1] || "").trim();
-                transactions.push({
-                  external_id: `import_${caisse_id}_${sheetKey}_r${i}`,
-                  caisse_id, type: isAlim ? "alimentation" : "depense", montant, date: dateISO,
-                  description: String(row[cols.desc] || "").trim(),
-                  reference: String(row[cols.numPiece] || row[cols.numFacture] || `IMPORT-${sheetKey}-${i}`).trim(),
-                  code_analytique: [variete, ferme].filter(Boolean).join(" - "),
-                  fournisseur: String(row[cols.fournisseur] || "").trim(),
-                  _meta: { sheet: sheetName, row: i, debit, credit },
-                });
-              }
-            }
-          } else if (format === "paie_recap") {
-            const ws = wb.Sheets["Récap"] || wb.Sheets[wb.SheetNames[0]];
-            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-            const qzToISO = (label) => {
-              const s = String(label).trim();
-              let m = s.match(/^([12])\s*Q\s*(\d{1,2})\s*\/\s*(\d{4})$/i);
-              if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1] === "1" ? "15" : "28"}`;
-              m = s.match(/^(\d{1,2})\s*\/\s*(\d{1,2})\s*\/\s*(\d{4})$/);
-              if (m) {
-                const lastDay = new Date(m[3], parseInt(m[2]), 0).getDate();
-                return `${m[3]}-${String(parseInt(m[2])).padStart(2, "0")}-${String(Math.min(parseInt(m[1]), lastDay)).padStart(2, "0")}`;
-              }
-              return null;
-            };
-            for (let i = 6; i < data.length; i++) {
-              const row = data[i];
-              const label = String(row[0] || "").trim();
-              if (!label) continue;
-              if (label.toLowerCase().startsWith("total")) break;
-              if (label.toLowerCase().includes("liste") || label.toLowerCase().includes("somme")) break;
-              const dateISO = qzToISO(label);
-              if (!dateISO) continue;
-              const alimVir = parseFloat(row[2]) || 0;
-              const alimOmar = parseFloat(row[3]) || 0;
-              const alimRec = parseFloat(row[4]) || 0;
-              const paye = parseFloat(row[5]) || 0;
-              if (alimVir === 0 && alimOmar === 0 && alimRec === 0 && paye === 0) continue;
-              const qzKey = label.replace(/\s+/g, "").replace(/\//g, "_").replace(/[^A-Za-z0-9_]/g, "");
-              const ca = "Salaires - Paie";
-              if (alimVir > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_alim_vir`, caisse_id, type: "alimentation", montant: alimVir, date: dateISO, description: `Alimentation par virement — Quinzaine ${label}`, reference: `PAIE-VIR-${qzKey}`, code_analytique: ca, fournisseur: "Virement bancaire", _meta: { quinzaine: label, source: "alim_virement" } });
-              if (alimOmar > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_alim_omar`, caisse_id, type: "alimentation", montant: alimOmar, date: dateISO, description: `Alimentation Mr Omar — Quinzaine ${label}`, reference: `PAIE-OMR-${qzKey}`, code_analytique: ca, fournisseur: "Mr Omar", _meta: { quinzaine: label, source: "alim_omar" } });
-              if (alimRec > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_alim_rec`, caisse_id, type: "alimentation", montant: alimRec, date: dateISO, description: `Alimentation depuis caisse recettes — Quinzaine ${label}`, reference: `PAIE-REC-${qzKey}`, code_analytique: ca, fournisseur: "Caisse Recettes", _meta: { quinzaine: label, source: "alim_recettes" } });
-              if (paye > 0) transactions.push({ external_id: `import_${caisse_id}_${qzKey}_paye`, caisse_id, type: "depense", montant: paye, date: dateISO, description: `Paiement salaires ouvriers — Quinzaine ${label}`, reference: `PAIE-OUT-${qzKey}`, code_analytique: ca, fournisseur: "Ouvriers (paie quinzaine)", _meta: { quinzaine: label, source: "paye" } });
-            }
-            resetSoldeInitial = 0;
-          } else if (format === "bahia_single") {
-            const ws = wb.Sheets["Les dépenses"] || wb.Sheets[wb.SheetNames[0]];
-            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
-            const HEADER_ROW = 5;
-            const cols = detectCols(data[HEADER_ROW] || []);
-            for (let i = HEADER_ROW + 1; i < data.length; i++) {
-              const row = data[i];
-              const date = row[cols.date];
-              const debit = parseFloat(row[cols.debit]) || 0;
-              const credit = parseFloat(row[cols.credit]) || 0;
-              if (!date || (debit === 0 && credit === 0)) continue;
-              const dateISO = excelToISO(date);
-              if (!dateISO) continue;
-              const isAlim = debit > 0;
-              const montant = isAlim ? debit : credit;
-              if (montant <= 0) continue;
-              const variete = String(row[0] || "").trim();
-              const ferme = String(row[1] || "").trim();
-              const ana1 = String(row[cols.ana1] || "").trim();
-              const ana2 = String(row[cols.ana2] || "").trim();
-              transactions.push({
-                external_id: `import_${caisse_id}_les_depenses_r${i}`,
-                caisse_id, type: isAlim ? "alimentation" : "depense", montant, date: dateISO,
-                description: String(row[cols.desc] || "").trim(),
-                reference: String(row[cols.numPiece] || row[cols.numFacture] || `IMPORT-BAHIA-${i}`).trim(),
-                code_analytique: [ana1, ana2].filter(Boolean).join(" - ") || [variete, ferme].filter(Boolean).join(" - "),
-                fournisseur: String(row[cols.fournisseur] || "").trim(),
-                _meta: { row: i, debit, credit, ana1, ana2 },
-              });
-            }
-          } else {
-            return res.status(400).json({ success: false, error: `Format inconnu: ${format}` });
-          }
+          parsed = caisseImport.parseWorkbook(wb, { caisse_id, format, XLSX });
         } catch (parseErr) {
           console.error("Erreur parsing Excel:", parseErr);
           return res.status(400).json({ success: false, error: "Erreur parsing Excel: " + parseErr.message });
         }
+        const { transactions, resetSoldeInitial, perSheet, warnings, ignoredSheets } = parsed;
 
         if (transactions.length === 0) {
           return res.json({ success: false, error: "Aucune transaction trouvée dans le fichier" });
@@ -12214,6 +12087,34 @@ exports.caisseManagement = functions
         const caisseRef = db_firestore.collection("caisse_definitions").doc(caisse_id);
         const caisseDoc = await caisseRef.get();
         if (!caisseDoc.exists) return res.status(404).json({ success: false, error: "Caisse introuvable: " + caisse_id });
+
+        // --- Mode DRY-RUN : prévisualisation sans écriture ---
+        // Réutilise STRICTEMENT le même parsing que l'import réel. Aucune écriture Firestore.
+        if (dry_run) {
+          const soldeInitialActuel = caisseDoc.data().solde_initial || 0;
+          // totaux actuels (tx validées existantes)
+          const curSnap = await db_firestore.collection("caisse_transactions")
+            .where("caisse_id", "==", caisse_id).where("status", "==", "valide").get();
+          let totalInActuel = 0, totalOutActuel = 0;
+          curSnap.docs.forEach(d => {
+            const tx = d.data();
+            if (tx.type === "alimentation" || tx.type === "transfer_in") totalInActuel += (tx.montant || 0);
+            else if (tx.type === "depense" || tx.type === "sortie" || tx.type === "transfer_out") totalOutActuel += (tx.montant || 0);
+          });
+          // détecter les external_id déjà présents (lecture seule, par lots de 400)
+          const existingIds = new Set();
+          for (let i = 0; i < transactions.length; i += 400) {
+            const slice = transactions.slice(i, i + 400);
+            const refs = slice.map(tx => db_firestore.collection("caisse_transactions").doc(tx.external_id));
+            const docs = await Promise.all(refs.map(r => r.get()));
+            docs.forEach((d, idx) => { if (d.exists) existingIds.add(slice[idx].external_id); });
+          }
+          const summary = caisseImport.buildDrySummary(
+            { transactions, perSheet, warnings, ignoredSheets, resetSoldeInitial, format },
+            { caisse_id, soldeInitialActuel, totalInActuel, totalOutActuel, existingIds, force_overwrite: !!force_overwrite }
+          );
+          return res.json(summary);
+        }
 
         if (typeof resetSoldeInitial === "number") {
           await caisseRef.update({ solde_initial: resetSoldeInitial, updated_at: admin.firestore.FieldValue.serverTimestamp() });
@@ -12268,6 +12169,12 @@ exports.caisseManagement = functions
           total_transactions: allTxSnap.size,
           solde_initial: soldeInitial, solde_actuel: soldeActuel,
           total_in: totalIn, total_out: totalOut, format,
+          per_sheet: perSheet.map(s => ({
+            key: s.key, label: s.label, rows_parsed: s.rows_parsed,
+            alimentations: s.alimentations, depenses: s.depenses,
+            montant_in: s.montant_in, montant_out: s.montant_out, warnings: s.warnings.length,
+          })),
+          warnings, ignored_sheets: ignoredSheets,
         });
       }
 
