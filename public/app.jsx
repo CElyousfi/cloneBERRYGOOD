@@ -50398,7 +50398,7 @@ ${rejetHtml}
             const loadBcs = () => {
                 Promise.all([
                     fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({ success: false })),
-                    fetch('/api/stock?action=list-movements&type=consommation&limit=500').then(r => r.json()).catch(() => ({ success: false })),
+                    fetch('/api/stock?action=list-movements&type=consommation&limit=3000').then(r => r.json()).catch(() => ({ success: false })),
                 ]).then(([bcJson, movJson]) => {
                     const list = bcJson.success ? (bcJson.bcs || []) : [];
                     const movs = movJson.success ? (movJson.movements || []) : [];
@@ -50566,7 +50566,7 @@ ${rejetHtml}
 
             useEffect(() => {
                 Promise.all([
-                    fetch('/api/stock?action=list-movements&type=transfert&limit=100').then(r => r.json()),
+                    fetch('/api/stock?action=list-movements&type=transfert&limit=1000').then(r => r.json()),
                     cachedFetch('/api/stock?action=list-articles').then(json => json.success ? (json.articles || []) : []).catch(() => []),
                 ]).then(([movJson, arts]) => {
                     if (movJson.success) setTransferts(movJson.movements || []);
@@ -50713,7 +50713,7 @@ ${rejetHtml}
 
             useEffect(() => {
                 Promise.all([
-                    fetch('/api/stock?action=list-movements&type=sortie&limit=100').then(r => r.json()),
+                    fetch('/api/stock?action=list-movements&type=sortie&limit=500').then(r => r.json()),
                     cachedFetch('/api/stock?action=list-articles').then(json => json.success ? (json.articles || []) : []).catch(() => []),
                     cachedFetch('/api/stock?action=list-suppliers&status=valide').then(json => json.success ? (json.suppliers || []) : []).catch(() => []),
                 ]).then(([movJson, arts, supps]) => {
