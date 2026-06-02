@@ -10,21 +10,33 @@ const { admin, db } = require("./config/firebase");
 const FRUIT_LABEL = { RASP: "Raspberries (framboise)", BLUE: "Blueberries (myrtille)" };
 const FRUIT_NAME = { RASP: "framboise", BLUE: "myrtille" };
 
+// Shared rules block for both single-fruit and auto prompts — explicit about
+// the "1 or 2 values per cell" structure that the slide uses, and forbids
+// fabricating 0 when a value is missing.
+const EXTRACTION_RULES = `Cible UNIQUEMENT la ligne intitulée "2026 Grower return prices" (valeurs en MAD).
+Ignore TOUTES les autres lignes : "2026 Price" (EUR €), "Previous meeting prices" (EUR €), "2025 Price", "2025 Grower return prices", "Volume", "Vs 2025", etc.
+
+Pour chaque colonne de semaine de cette ligne UNIQUEMENT :
+- Lis le numéro de semaine dans l'en-tête de colonne (format "NN 2026 FC", ex "18 2026 FC" → week=18).
+- Lis la cellule de la ligne "2026 Grower return prices" pour cette colonne. Elle contient 0, 1 ou 2 nombres (souvent suivis de "MAD") :
+  • 2 nombres (ex "39.11MAD 40.42MAD") → minMad = premier, maxMad = second
+  • 1 seul nombre (ex "45.63MAD") → minMad = maxMad = ce nombre
+  • Cellule vide / noire / illisible / sans nombre lisible → OMETS complètement la semaine
+
+RÈGLES STRICTES :
+- N'invente JAMAIS de valeur. Si tu hésites, omets la semaine.
+- NE METS JAMAIS 0 par défaut. La valeur 0 ne doit apparaître que si tu lis explicitement "0" (ou "0.00") dans la cellule de la ligne 2026 Grower return prices.
+- NE confonds PAS avec les colonnes EUR (€) ni avec la ligne "2025 Grower return prices" (souvent vide).
+- year = 2026 (lis-le dans les en-têtes "Week NN 2026 FC").`;
+
 function buildPrompt(fruitCode) {
   const fruitLabel = FRUIT_LABEL[fruitCode];
-  return `Tu reçois un slide Driscoll's de prévision hebdomadaire (${fruitLabel}).
-Repère la ligne intitulée "2026 Grower return prices" (valeurs en MAD).
-Pour chaque colonne de semaine en en-tête (format "Week NN 2026 FC" ou similaire), extrais :
-- week (entier, ex 17)
-- year (entier, normalement 2026 — lis-le dans l'en-tête)
-- minMad (float, première valeur de la cellule, sans "MAD")
-- maxMad (float, deuxième valeur, ou identique à min si une seule)
+  return `Tu reçois un slide Driscoll's de prévision hebdomadaire de prix (${fruitLabel}).
 
-Ignore les autres lignes (2026 Price, 2025 Price, Volume, Vs 2025, etc.).
-Si une cellule de cette ligne est vide ou noire, omets simplement cette semaine.
+${EXTRACTION_RULES}
 
 Réponds STRICTEMENT en JSON, sans prose, sans bloc markdown :
-{"weeks":[{"week":17,"year":2026,"minMad":36.76,"maxMad":44.49}, ...]}`;
+{"weeks":[{"week":18,"year":2026,"minMad":45.63,"maxMad":45.63},{"week":19,"year":2026,"minMad":39.11,"maxMad":40.42}]}`;
 }
 
 // Prompt for when the fruit is unknown — Claude detects it from the slide title.
@@ -35,22 +47,16 @@ function buildAutoPrompt() {
 - "Blueberries" → fruitCode "BLUE"
 - "Raspberries" → fruitCode "RASP"
 
-ÉTAPE 2 — Repère la ligne intitulée "2026 Grower return prices" (valeurs en MAD).
-Pour chaque colonne de semaine en en-tête (format "Week NN 2026 FC" ou similaire), extrais :
-- week (entier, ex 17)
-- year (entier, normalement 2026 — lis-le dans l'en-tête)
-- minMad (float, première valeur de la cellule, sans "MAD")
-- maxMad (float, deuxième valeur, ou identique à min si une seule)
-
-Ignore les autres lignes (2026 Price, 2025 Price, Volume, Vs 2025, etc.).
-Si une cellule de cette ligne est vide ou noire, omets simplement cette semaine.
+ÉTAPE 2 — Extraction des prix hebdomadaires.
+${EXTRACTION_RULES}
 
 Réponds STRICTEMENT en JSON, sans prose, sans bloc markdown :
-{"fruitCode":"BLUE","weeks":[{"week":17,"year":2026,"minMad":36.76,"maxMad":44.49}, ...]}`;
+{"fruitCode":"BLUE","weeks":[{"week":18,"year":2026,"minMad":45.63,"maxMad":45.63},{"week":19,"year":2026,"minMad":39.11,"maxMad":40.42}]}`;
 }
 
-// Haiku 4.5 first — 3-5x faster on simple table OCR. Falls back to Sonnet/Opus if Haiku fails.
-const MODEL_CANDIDATES = ["claude-haiku-4-5-20251001", "claude-sonnet-4-6", "claude-opus-4-7", "claude-sonnet-4-5", "claude-opus-4-6"];
+// Sonnet 4.6 first — Haiku misreads this dense table (paires min/max manquées,
+// 0 fabriqués). Opus en backup, Haiku/anciens Sonnets en dernier recours.
+const MODEL_CANDIDATES = ["claude-sonnet-4-6", "claude-opus-4-7", "claude-sonnet-4-5", "claude-opus-4-6", "claude-haiku-4-5-20251001"];
 
 /**
  * Run a Claude Vision call with model fallback.
@@ -106,10 +112,16 @@ function parseClaudeJson(response) {
 }
 
 // Normalize a raw weeks array from Claude into clean {week,year,minMad,maxMad} entries.
+// Drops entries where either bound is missing or where min+max are both 0 —
+// (0,0) is almost always a fabricated value for an empty cell, not real data.
+// Also drops entries where exactly one bound is 0 (the other half of a missed pair).
 function normalizeWeeks(rawWeeks) {
-  return (rawWeeks || []).filter(w =>
-    Number.isFinite(w.week) && Number.isFinite(w.minMad) && Number.isFinite(w.maxMad)
-  ).map(w => ({
+  return (rawWeeks || []).filter(w => {
+    if (!Number.isFinite(w.week) || !Number.isFinite(w.minMad) || !Number.isFinite(w.maxMad)) return false;
+    // Fabricated zero filler: either a fully empty cell (0,0) or a half-read pair (X,0)/(0,X).
+    if (w.minMad <= 0 || w.maxMad <= 0) return false;
+    return true;
+  }).map(w => ({
     week: parseInt(w.week),
     year: parseInt(w.year) || new Date().getFullYear(),
     minMad: Math.round(w.minMad * 100) / 100,
