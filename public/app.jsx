@@ -351,6 +351,28 @@
         const FARMS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'];
         const AVO_SUB_FARMS = ['Toutes', 'F2', 'F3', 'F4', 'F6', 'BAHIA'];
 
+        // Sociétés émettrices des Bons de Commande, indexées par ferme.
+        // BAHIA est une entité juridique distincte de BERRY GOOD FARMS — son entête PDF est spécifique.
+        // Toute ferme non listée → BDC_SOCIETE_DEFAULT (BERRY GOOD FARMS).
+        // TODO: compléter les infos légales BAHIA (raison sociale exacte, capital, adresse, RC, ICE).
+        const BDC_SOCIETE_DEFAULT = {
+            nom: 'BERRY GOOD FARMS',
+            forme: 'SARL au Capital de 100.000 DH',
+            adresse: 'RES AL BOUSTANE 44 IMMEUBLE A — 80000 AGADIR',
+            immat: 'RC 38125 — ICE 002106859000069',
+            footer: 'Berry Good Farms SARL',
+        };
+        const BDC_SOCIETES = {
+            BAHIA: {
+                nom: 'BAHIA AGRICOLE',
+                forme: 'SARL au Capital de 100.000 DH',
+                adresse: 'LOT EL KÉBIR, DOUAR LAOUAMRAA — KSAR EL KBIR',
+                immat: 'RC 449 KSAR EL KBIR — IF 4967185 — ICE 001454414000011',
+                footer: 'BAHIA AGRICOLE SARL',
+            },
+        };
+        const getBdcSociete = (ferme) => BDC_SOCIETES[ferme] || BDC_SOCIETE_DEFAULT;
+
         const FARM_NAMES = {
             'F1': 'Framboise Larache',
             'F2': 'Ferme 2',
@@ -43709,12 +43731,13 @@ ${rejetHtml}
                 const doc = new jsPDF('p', 'mm', 'a4');
                 const W = 210, M = 15;
                 let y = 15;
+                const societe = getBdcSociete(bdc.ferme);
                 doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.setTextColor(139, 34, 82);
-                doc.text('BERRY GOOD FARMS', M, y); y += 6;
+                doc.text(societe.nom, M, y); y += 6;
                 doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100);
-                doc.text('SARL au Capital de 100.000 DH', M, y); y += 3.5;
-                doc.text('RES AL BOUSTANE 44 IMMEUBLE A \u2014 80000 AGADIR', M, y); y += 3.5;
-                doc.text('RC 38125 \u2014 ICE 002106859000069', M, y); y += 8;
+                doc.text(societe.forme, M, y); y += 3.5;
+                doc.text(societe.adresse, M, y); y += 3.5;
+                doc.text(societe.immat, M, y); y += 8;
                 doc.setDrawColor(139, 34, 82); doc.setLineWidth(0.5); doc.line(M, y, W - M, y); y += 8;
                 doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(139, 34, 82);
                 doc.text('BON DE COMMANDE', M, y);
@@ -43805,7 +43828,7 @@ ${rejetHtml}
                     }
                 }
                 doc.setFontSize(7); doc.setTextColor(150); doc.setFont('helvetica', 'normal');
-                doc.text('Document g\u00e9n\u00e9r\u00e9 le ' + new Date().toLocaleString('fr-FR') + ' \u2014 Berry Good Farms SARL', W / 2, 290, { align: 'center' });
+                doc.text('Document g\u00e9n\u00e9r\u00e9 le ' + new Date().toLocaleString('fr-FR') + ' \u2014 ' + societe.footer, W / 2, 290, { align: 'center' });
                 return doc;
             };
 
@@ -43924,7 +43947,7 @@ ${rejetHtml}
                                         {form.ferme && window.BdcWorkflow && !window.BdcWorkflow.requiresChefValidation(form.ferme) && (
                                             <div style={{marginTop:6,padding:'6px 10px',background:'var(--gold-pale)',border:'1px solid var(--gold)',borderRadius:6,fontSize:11,color:'var(--gray-800)',display:'flex',alignItems:'center',gap:6}}>
                                                 <i className="fa-solid fa-circle-info" style={{color:'var(--gold)'}}></i>
-                                                <span>BDC envoyé directement au DG (pas de chef de ferme pour {form.ferme})</span>
+                                                <span>{form.ferme === 'Toutes' ? 'BDC mutualisé multi-fermes — envoyé directement au DG (pas de chef de ferme désigné)' : 'BDC envoyé directement au DG (pas de chef de ferme pour ' + form.ferme + ')'}</span>
                                             </div>
                                         )}
                                     </div>

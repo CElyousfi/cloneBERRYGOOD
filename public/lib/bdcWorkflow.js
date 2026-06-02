@@ -9,8 +9,14 @@
  * If you edit one, edit the other. Build sentinel in scripts/build-frontend.js
  * checks the public copy contains DIRECT_DG_FARMS.
  *
- * Business rule (2026-05): for fermes without a chef de ferme, BdC submission
- * skips the chef validation step and goes directly to DG.
+ * Business rules:
+ *   - 2026-05: for fermes without a chef de ferme, BdC submission skips the
+ *     chef validation step and goes directly to DG.
+ *   - 2026-05-28: BdC mutualisés multi-fermes (ferme === 'Toutes') routent
+ *     également directement au DG — aucun chef ne peut être désigné comme
+ *     valideur unique pour une commande couvrant toutes les fermes. La
+ *     ventilation par ferme + validation séquentielle multi-chef sont prévues
+ *     pour un sprint ultérieur (cf. ROADMAP).
  */
 // @ts-check
 'use strict';
@@ -20,11 +26,15 @@
 // ============================================================================
 
 /**
- * Fermes that have no chef de ferme — BdC for these fermes go directly to DG.
- * chef_avo is rattaché à Avocatier + F2 + F3 + F4 + F6 + BAHIA mais
- * n'est pas un point de passage pour les BdC (décision business 2026-05).
+ * Fermes / cibles dont les BdC sautent l'étape Chef de Ferme :
+ *   - 6 fermes historiques sans chef (Avocatier, F2, F3, F4, F6, BAHIA) →
+ *     bypass_reason = 'no_chef_de_ferme'.
+ *   - 'Toutes' = BdC mutualisé multi-fermes (aucun chef unique compétent) →
+ *     bypass_reason = 'multi_ferme_dg_only'.
+ * chef_avo est rattaché à Avocatier + F2 + F3 + F4 + F6 + BAHIA mais n'est
+ * pas un point de passage pour les BdC (décision business 2026-05).
  */
-const DIRECT_DG_FARMS = ['Avocatier', 'F2', 'F3', 'F4', 'F6', 'BAHIA'];
+const DIRECT_DG_FARMS = ['Avocatier', 'F2', 'F3', 'F4', 'F6', 'BAHIA', 'Toutes'];
 
 const DIRECT_DG_FARMS_NORMALIZED = new Set(
   DIRECT_DG_FARMS.map(function (s) { return s.toUpperCase(); })
@@ -59,12 +69,16 @@ function nextStatusOnSubmit(ferme) {
 
 /**
  * Reason code stored in history when the chef step is skipped.
+ * Distingue les BdC mutualisés (Toutes) des fermes mono-sans-chef pour
+ * faciliter l'audit et la migration future vers le workflow multi-chef.
  *
  * @param {string} ferme
  * @returns {string | null}
  */
 function bypassReason(ferme) {
-  return requiresChefValidation(ferme) ? null : 'no_chef_de_ferme';
+  if (requiresChefValidation(ferme)) return null;
+  const norm = ferme.trim().toUpperCase();
+  return norm === 'TOUTES' ? 'multi_ferme_dg_only' : 'no_chef_de_ferme';
 }
 
 // ============================================================================

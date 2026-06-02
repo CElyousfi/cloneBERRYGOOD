@@ -5201,13 +5201,15 @@ exports.stockManagement = functions
         // Source de vérité : functions/lib/bdc/workflow.js (mirror public/lib/bdcWorkflow.js).
         const skipChef = !bdcWorkflow.requiresChefValidation(current.ferme);
         const nextStatus = bdcWorkflow.nextStatusOnSubmit(current.ferme);
-        history.push({
+        const historyEntry = {
           action: skipChef ? "soumission_directe_dg" : "soumission",
           by: submitted_by || {},
           at: now,
           comment: skipChef ? `Ferme ${current.ferme} sans Chef de Ferme — soumission directe au DG` : "",
-          bypass_reason: bdcWorkflow.bypassReason(current.ferme) || undefined,
-        });
+        };
+        const bypassReason = bdcWorkflow.bypassReason(current.ferme);
+        if (bypassReason) historyEntry.bypass_reason = bypassReason;
+        history.push(historyEntry);
         const updatePatch = { status: nextStatus, history, updated_at: now };
         if (pdf_url) updatePatch.pdf_url = pdf_url;
         await db_firestore.collection("purchase_orders").doc(id).update(updatePatch);
