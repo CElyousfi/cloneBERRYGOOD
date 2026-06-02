@@ -340,6 +340,7 @@
             { id: 'magasinier', label: 'Magasinier', name: 'Resp. Magasin', icon: 'fa-warehouse', fullName: 'Resp. Magasin' },
             { id: 'finance', label: 'Finance', name: 'Resp. Finance', icon: 'fa-chart-pie', fullName: 'Resp. Finance' },
             { id: 'dg', label: 'DG', name: 'Direction Générale', icon: 'fa-building', fullName: 'Direction Générale' },
+            { id: 'audit_interne', label: 'Audit Interne', name: 'Audit Interne', icon: 'fa-magnifying-glass-chart', fullName: 'Audit Interne' },
             { id: 'agronomie', label: 'Agronomie', name: 'Resp. Agronomie', icon: 'fa-seedling', fullName: 'Resp. Technique Agronomie' },
             { id: 'dt', label: 'Dir. Technique', name: 'Directeur Technique', icon: 'fa-helmet-safety', farm: 'F1', fullName: 'Directeur Technique', switchableFarms: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'] },
             { id: 'stationnaire_f1', label: 'Station. F1', name: 'Stationnaire F1', icon: 'fa-faucet-drip', farm: 'F1', fullName: 'Stationnaire Irrigation F1' },
@@ -347,6 +348,22 @@
             { id: 'stationnaire_avo', label: 'Station. Avo.', name: 'Stationnaire Avocatier', icon: 'fa-faucet-drip', farm: 'F2', fullName: 'Stationnaire Irrigation Avocatier', switchableFarms: ['F2', 'F3', 'F4', 'F6', 'BAHIA'] },
             { id: 'securite', label: 'Sécurité', name: 'BSNL Sécurité', icon: 'fa-shield-halved', farm: 'F1', fullName: 'BSNL Sécurité', switchableFarms: ['F1', 'F5'] },
         ];
+
+        // Profils accessibles dans le sélecteur de profil, selon le profil RÉEL de l'utilisateur.
+        // - Audit Interne : accès à tous les profils SAUF le DG.
+        // - Le chip "Audit Interne" n'est visible que pour l'admin et l'Audit Interne lui-même
+        //   (le profil Finance n'a pas accès au tableau de bord Audit Interne).
+        function getVisibleProfiles(userProfile) {
+            return PROFILES.filter(p => {
+                if (p.id === 'audit_interne') {
+                    return userProfile.role === 'admin' || userProfile.profileId === 'audit_interne';
+                }
+                if (p.id === 'dg') {
+                    return userProfile.profileId !== 'audit_interne';
+                }
+                return true;
+            });
+        }
 
         const FARMS = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'];
         const AVO_SUB_FARMS = ['Toutes', 'F2', 'F3', 'F4', 'F6', 'BAHIA'];
@@ -59850,10 +59867,13 @@ ${rejetHtml}
 
         // Main authenticated app — all hooks are safe here since this only mounts when auth is confirmed
         function AuthenticatedApp({ authUser, userProfile }) {
-            const isFullAccess = userProfile.role === 'admin' || userProfile.role === 'finance';
+            const isFullAccess = userProfile.role === 'admin' || userProfile.role === 'finance' || userProfile.profileId === 'audit_interne';
+            const visibleProfiles = getVisibleProfiles(userProfile);
 
             const [currentProfile, setCurrentProfile] = useState(() => {
-                if (isFullAccess) return localStorage.getItem('lastProfile') || userProfile.profileId;
+                if (!isFullAccess) return userProfile.profileId;
+                const saved = localStorage.getItem('lastProfile');
+                if (saved && visibleProfiles.some(p => p.id === saved)) return saved;
                 return userProfile.profileId;
             });
             const [currentTab, setCurrentTab] = useState(__savedTab);
@@ -60288,7 +60308,7 @@ ${rejetHtml}
                 : (currentProfile === 'achats' ? NAV_ITEMS_ACHATS
                 : (currentProfile === 'magasinier' ? NAV_ITEMS_MAGASINIER
                 : (currentProfile === 'dg' ? (isDGUser ? NAV_ITEMS_FINANCE : NAV_ITEMS_FINANCE.filter(dgOnlyFilter))
-                : (currentProfile === 'finance' ? NAV_ITEMS_FINANCE.filter(n => dgOnlyFilter(n) || n.id === 'dg_tasks')
+                : (currentProfile === 'finance' || currentProfile === 'audit_interne' ? NAV_ITEMS_FINANCE.filter(n => dgOnlyFilter(n) || n.id === 'dg_tasks')
                 : (currentProfile === 'agronomie' ? NAV_ITEMS_AGRO
                 : (currentProfile.startsWith('stationnaire_') ? NAV_ITEMS_STATIONNAIRE
                 : (currentProfile === 'securite' ? NAV_ITEMS_SECURITE.filter(n => !n.f5Only || farmFilter === 'F5')
@@ -60333,7 +60353,7 @@ ${rejetHtml}
                         </button>
                         <div className="chips-track">
                             <span className="label">Profil:</span>
-                            {PROFILES.map(p => (
+                            {visibleProfiles.map(p => (
                                 <button
                                     key={p.id}
                                     className={`profile-chip ${currentProfile === p.id ? 'active' : ''}`}
@@ -60343,7 +60363,7 @@ ${rejetHtml}
                                         const tab = p.id === 'qualite' ? 'qualite_dashboard'
                                             : p.id === 'magasinier' ? 'mag_dashboard'
                                             : p.id.startsWith('caporal_') ? 'caporal_suivi'
-                                            : p.id === 'finance' || p.id === 'dg' ? 'fin_dashboard'
+                                            : p.id === 'finance' || p.id === 'dg' || p.id === 'audit_interne' ? 'fin_dashboard'
                                             : p.id === 'agronomie' ? 'agro_dashboard'
                                             : p.id === 'achats' ? 'achats_dashboard'
                                             : 'dashboard';
@@ -60486,14 +60506,14 @@ ${rejetHtml}
                                                 <>
                                                 <div onClick={() => setShowMobileProfileMenu(false)} style={{position:'fixed', inset:0, zIndex:999}}></div>
                                                 <div style={{position:'absolute', top:'calc(100% + 6px)', right:0, background:'white', borderRadius:12, boxShadow:'0 8px 30px rgba(0,0,0,0.18)', border:'1px solid var(--gray-200)', zIndex:1000, minWidth:220, maxHeight:'70vh', overflowY:'auto', padding:6}}>
-                                                    {PROFILES.map(p => (
+                                                    {visibleProfiles.map(p => (
                                                         <button key={p.id} onClick={() => {
                                                             setCurrentProfile(p.id);
                                                             localStorage.setItem('lastProfile', p.id);
                                                             const tab = p.id === 'qualite' ? 'qualite_dashboard'
                                                                 : p.id === 'magasinier' ? 'mag_dashboard'
                                                                 : p.id.startsWith('caporal_') ? 'caporal_suivi'
-                                                                : p.id === 'finance' || p.id === 'dg' ? 'fin_dashboard'
+                                                                : p.id === 'finance' || p.id === 'dg' || p.id === 'audit_interne' ? 'fin_dashboard'
                                                                 : p.id === 'agronomie' ? 'agro_dashboard'
                                                                 : p.id === 'achats' ? 'achats_dashboard'
                                                                 : p.id.startsWith('stationnaire_') ? 'station_saisie'
