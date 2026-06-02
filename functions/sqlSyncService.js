@@ -262,12 +262,16 @@ async function syncPointage(db) {
 
   // Resilience guard: a transient empty SQL read (replication gap on the farm
   // server, reporting DB refresh, or rolling 45-day window with no rows) must NOT
-  // wipe the mirror. The meta `.set()` below overwrites availableDates, and an
-  // empty array empties the history dropdown across the whole pointage/récolte UI.
-  // Bail before any write so the last good mirror persists; the next successful
-  // sync repopulates it. An outright SQL connection error already throws upstream.
+  // wipe the mirror. The meta `.set()` below would overwrite periodes/periodeMap/
+  // availableDates with empty values, blanking the history dropdown AND the
+  // Quinzaine tab across the whole pointage/récolte UI. Instead of writing empty
+  // index data, rebuild the index from the daily docs that still exist (they are
+  // never deleted, only overwritten) so the UI keeps working — and so a prior bad
+  // sync that already blanked the meta self-heals on the next run. An outright SQL
+  // connection error already throws upstream before reaching here.
   if (rows.length === 0) {
-    console.warn("[Sync] BR_Pointage returned 0 rows for the last 45 days — skipping mirror overwrite to preserve existing history.");
+    console.warn("[Sync] BR_Pointage returned 0 rows for the last 45 days — rebuilding the mirror index from existing daily docs instead of wiping it.");
+    await rebuildPointageMetaFromMirror();
     return 0;
   }
 
@@ -392,6 +396,76 @@ async function syncPointage(db) {
 
   console.log(`[Sync] BR_Pointage: ${rows.length} rows → ${dateEntries.length} daily docs, ${workerEntries.length} worker docs, ${periodes.length} periodes, ${archivedPeriodes.length} archived`);
   return rows.length;
+}
+
+/**
+ * Rebuild the pointage meta index (periodes, periodeMap, availableDates,
+ * allPeriodes) from the daily docs that already exist in Firestore.
+ *
+ * Self-heal used when BR_Pointage returns 0 rows: instead of overwriting the
+ * index with empty values, reconstruct it from the mirrored daily docs so the
+ * récolte history dropdown, the Quinzaine tab and every meta-driven action keep
+ * working — including periodes that exist only in the daily docs and are absent
+ * from the quinzaine_archive (e.g. the in-progress quinzaine). Daily docs are
+ * never deleted, only overwritten, so they are the durable source of truth.
+ */
+async function rebuildPointageMetaFromMirror() {
+  const byQuinzaineNumDesc = (a, b) => {
+    const na = parseInt((a.match(/\d+/) || [0])[0], 10);
+    const nb = parseInt((b.match(/\d+/) || [0])[0], 10);
+    return nb - na;
+  };
+
+  const docRefs = await db_firestore.collection("sql_mirror_pointage").listDocuments();
+  const dateIds = docRefs
+    .map(ref => ref.id)
+    .filter(id => /^\d{4}-\d{2}-\d{2}$/.test(id))
+    .sort()
+    .reverse();
+  if (dateIds.length === 0) {
+    console.warn("[Sync] rebuildPointageMetaFromMirror: no daily docs to rebuild from — leaving meta untouched.");
+    return;
+  }
+
+  // periode -> set of dates, read from each daily doc's rows (Periode_paie field)
+  const periodeDates = {};
+  for (let i = 0; i < dateIds.length; i += 10) {
+    const batch = dateIds.slice(i, i + 10);
+    const snaps = await Promise.all(
+      batch.map(d => db_firestore.collection("sql_mirror_pointage").doc(d).get())
+    );
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      const docRows = snap.data().rows || [];
+      for (const r of docRows) {
+        const p = (r.Periode_paie || "").trim();
+        if (!p) continue;
+        if (!periodeDates[p]) periodeDates[p] = new Set();
+        periodeDates[p].add(r.DateStr || snap.id);
+      }
+    }
+  }
+  const periodeMap = {};
+  for (const p of Object.keys(periodeDates)) periodeMap[p] = [...periodeDates[p]].sort();
+  const periodes = Object.keys(periodeMap).sort(byQuinzaineNumDesc);
+
+  // allPeriodes = mirrored periodes ∪ archived quinzaines, newest first
+  const archiveSnaps = await db_firestore.collection("quinzaine_archive").listDocuments();
+  const archivedPeriodes = archiveSnaps.map(d => d.id);
+  const allPeriodes = [...new Set([...periodes, ...archivedPeriodes])].sort(byQuinzaineNumDesc);
+
+  // Full set (not merge) to clear any stale periodeMap keys from a prior bad sync,
+  // matching the canonical meta shape written by the normal sync path.
+  await db_firestore.collection("sql_mirror_pointage_meta").doc("config").set({
+    periodes,
+    allPeriodes,
+    periodeMap,
+    availableDates: dateIds,
+    syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+    rebuiltFromMirror: true,
+  });
+
+  console.log(`[Sync] rebuildPointageMetaFromMirror: ${dateIds.length} dates, ${periodes.length} periodes (latest ${periodes[0] || "—"}), ${allPeriodes.length} allPeriodes`);
 }
 
 // =============================================
