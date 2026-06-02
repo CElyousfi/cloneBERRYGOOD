@@ -128,8 +128,19 @@ async function getPointageMeta() {
  */
 async function getAvailableDates(limit) {
   const meta = await getPointageMeta();
-  if (!meta || !meta.availableDates) return [];
-  const dates = meta.availableDates; // already sorted desc
+  let dates = (meta && meta.availableDates) || []; // already sorted desc
+  // Fallback: if the meta index is empty/missing (e.g. a sync published an empty
+  // availableDates after an SQL gap), rebuild it from the daily docs that still
+  // exist in Firestore so the history dropdown stays usable without waiting for
+  // the next successful SQL sync. Daily docs are never deleted, only overwritten.
+  if (dates.length === 0) {
+    const docs = await db_firestore.collection("sql_mirror_pointage").listDocuments();
+    dates = docs
+      .map(ref => ref.id)
+      .filter(id => /^\d{4}-\d{2}-\d{2}$/.test(id))
+      .sort()
+      .reverse();
+  }
   return limit ? dates.slice(0, limit) : dates;
 }
 

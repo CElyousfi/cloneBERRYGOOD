@@ -260,6 +260,17 @@ async function syncPointage(db) {
     HS_NM: r.HS_NM || 0,
   }));
 
+  // Resilience guard: a transient empty SQL read (replication gap on the farm
+  // server, reporting DB refresh, or rolling 45-day window with no rows) must NOT
+  // wipe the mirror. The meta `.set()` below overwrites availableDates, and an
+  // empty array empties the history dropdown across the whole pointage/récolte UI.
+  // Bail before any write so the last good mirror persists; the next successful
+  // sync repopulates it. An outright SQL connection error already throws upstream.
+  if (rows.length === 0) {
+    console.warn("[Sync] BR_Pointage returned 0 rows for the last 45 days — skipping mirror overwrite to preserve existing history.");
+    return 0;
+  }
+
   // Group by date
   const byDate = groupBy(rows, r => r.DateStr);
   const availableDates = Object.keys(byDate).sort().reverse();
