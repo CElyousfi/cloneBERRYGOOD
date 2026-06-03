@@ -1,0 +1,22 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Backups d'imports (Excel + JSON parsé) — RH/Achats uniquement via app authentifiée
+    match /data/{file=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Scans WhatsApp / bons d'apport (lecture authentifiée)
+    match /scans/{path=**} {
+      allow read: if request.auth != null;
+    }
+    // PDF des bons de commande (générés à la soumission, joints à la notif
+    // WhatsApp de validation). Lecture+écriture authentifiée.
+    match /bdc_pdfs/{path=**} {
+      allow read, write: if request.auth != null;
+    }
+    // PDF des avis de virement BDC (uploadés par Finance).
+    match /bdc_avis_virement/{path=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

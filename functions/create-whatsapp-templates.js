@@ -24,14 +24,14 @@ if (!token) {
 
 const TEMPLATES = [
   {
-    name: "bdc_validation_needed",
-    body: "Bonjour, le BDC {{1}} ({{2}}) d'un montant de {{3}} est en attente de votre validation.",
-    examples: ["BDC-2026-0042", "Engrais NPK", "45000 MAD"],
+    name: "bdc_validation_needed_v2",
+    body: "Bonjour, BDC {{1}} en attente de votre validation.\nFournisseur : {{2}}\nMontant : {{3}}\nArticles : {{4}}\n\nRépondez *OK* pour valider, *NON* pour rejeter.",
+    examples: ["BDC-2026-0042", "AGRIDATA", "45000 MAD", "Engrais NPK ×100 kg, Topas ×20 L"],
   },
   {
     name: "bdc_validation_needed_doc",
-    body: "Bonjour, le BDC {{1}} ({{2}}) d'un montant de {{3}} est en attente de votre validation. PDF en pièce jointe.",
-    examples: ["BDC-2026-0042", "Engrais NPK", "45000 MAD"],
+    body: "Bonjour, BDC {{1}} en attente de votre validation.\nFournisseur : {{2}}\nMontant : {{3}}\nArticles : {{4}}\nPDF en pièce jointe.\n\nRépondez *OK* pour valider, *NON* pour rejeter.",
+    examples: ["BDC-2026-0042", "AGRIDATA", "45000 MAD", "Engrais NPK ×100 kg, Topas ×20 L"],
     headerType: "DOCUMENT",
   },
   {

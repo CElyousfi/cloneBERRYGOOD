@@ -25,12 +25,14 @@
     <script crossorigin src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
     <script crossorigin src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
     <script crossorigin src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+    <script crossorigin src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
     <script>
       try {
         firebase.initializeApp({
           apiKey: "AIzaSyDfKWZN-BiRb9q5S3SI4JxwJzd4nKdWApk",
           authDomain: "berrygood-farms-dashboard.firebaseapp.com",
           projectId: "berrygood-farms-dashboard",
+          storageBucket: "berrygood-farms-photos",
         });
         var firebaseAuth = firebase.auth();
       } catch(e) { console.error("Firebase init error:", e); var firebaseAuth = null; }

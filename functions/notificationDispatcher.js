@@ -21,13 +21,15 @@ const whatsapp = require("./whatsappService");
  */
 const TEMPLATE_MAP = {
   bdc_submit: {
-    template: "bdc_validation_needed",
-    params: (d) => [d.numero || "—", d.description || "Aucune description", d.montant || "Non précisé"],
+    // v2 : ancien "bdc_validation_needed" supprimé (limite Meta 1 edit/24h),
+    // recréé sous nouveau nom avec body 4 champs (fournisseur/montant/articles).
+    template: "bdc_validation_needed_v2",
+    params: (d) => [d.numero || "—", d.fournisseur || "—", d.montant || "Non précisé", d.articles || "—"],
   },
   bdc_submit_doc: {
     template: "bdc_validation_needed_doc",
     supportsDocument: true,
-    params: (d) => [d.numero || "—", d.description || "Aucune description", d.montant || "Non précisé"],
+    params: (d) => [d.numero || "—", d.fournisseur || "—", d.montant || "Non précisé", d.articles || "—"],
   },
   bdc_chef_approved: {
     template: "bdc_chef_approved",
@@ -266,18 +268,20 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    // BDC submission: after the template (which opens the 24h session), send
-    // the PDF document + interactive buttons and persist an approval session
-    // so chefBdcBot can route the reply.
+    // BDC submission: persist an approval session so chefBdcBot can route the
+    // chef/DG reply. The decision is taken by replying *OK* / *NON* to the
+    // template, whose body now carries that instruction.
+    //
+    // We deliberately do NOT send free-form interactive buttons or a separate
+    // PDF document here: those are "session" messages that Meta rejects outside
+    // the 24h customer-service window — and a business-initiated template does
+    // NOT open that window (only an inbound message from the chef does). That
+    // is exactly why buttons used to appear only after the chef first wrote to
+    // the bot. The PDF, when present, is attached to the bdc_submit_doc
+    // template itself, so it still reaches the recipient.
     // ─────────────────────────────────────────────────────────────────────
     if ((type === "bdc_submit" || type === "bdc_submit_doc") && data.bdc_id) {
       const chefBdcBot = require("./chefBdcBot");
-      const caption = data.summary || `📋 BDC #${data.numero || data.bdc_id}\nRépondez *OK* pour valider ou *NON* pour rejeter.`;
-      const filename = `BDC_${data.numero || data.bdc_id}.pdf`;
-      // If we used the doc-template variant, the PDF was already attached to the
-      // template message — skip the separate document send to avoid duplication.
-      const pdfAlreadySent = useDocument;
-
       await Promise.allSettled(unique.map(async (recipient) => {
         try {
           // Determine the role for validation based on which profile this recipient matches
@@ -287,39 +291,13 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
                      : null;
           if (!role) return; // we only set up session for chef/dg
 
-          // 1) Send PDF document if available (skipped when already attached via template)
-          if (!pdfAlreadySent) {
-            if (data.pdf_url) {
-              await whatsapp.sendDocumentMessage(recipient.phone, data.pdf_url, filename, caption);
-            } else {
-              // Fallback: just send the summary as a text
-              await whatsapp.sendTextMessage(recipient.phone, caption);
-            }
-          }
-
-          // 2) Send interactive buttons (within the 24h session opened by the template).
-          // When the doc-template was used, the body params don't carry the full
-          // summary — include it as the buttons body so chefs still see the detail.
-          const buttonsBody = pdfAlreadySent
-            ? caption
-            : `Décision pour BDC #${data.numero || data.bdc_id} ?`;
-          await whatsapp.sendInteractiveButtons(
-            recipient.phone,
-            buttonsBody,
-            [
-              { id: chefBdcBot.BTN.APPROVE, title: "✅ Valider" },
-              { id: chefBdcBot.BTN.REJECT, title: "❌ Rejeter" },
-            ]
-          );
-
-          // 3) Persist approval session keyed by phone
           await chefBdcBot.startBdcApprovalSession(recipient.phone, {
             bdc_id: data.bdc_id,
             role,
             ferme: role === "chef" ? (recipient.ferme || ferme) : null,
           });
         } catch (err) {
-          console.error(`BDC approval setup failed for ${recipient.phone}:`, err.message);
+          console.error(`BDC approval session setup failed for ${recipient.phone}:`, err.message);
         }
       }));
     }

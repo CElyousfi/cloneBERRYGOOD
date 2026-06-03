@@ -5218,13 +5218,27 @@ exports.stockManagement = functions
         const bdcForSummary = { ...current, id };
         const bdcPdfUrl = pdf_url || current.pdf_url || null;
         const useDocTemplate = !!bdcPdfUrl;
+        // Résumé articles sur une ligne (params Meta : pas de saut de ligne ni 4+ espaces).
+        const _items = Array.isArray(current.items) ? current.items : [];
+        const _clean = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+        const _itemLabel = (it) => {
+          const lib = _clean(it.article || it.designation || "Article");
+          const qte = it.quantite != null && it.quantite !== "" ? it.quantite : "?";
+          const unite = it.unite ? ` ${_clean(it.unite)}` : "";
+          return `${lib} ×${qte}${unite}`;
+        };
+        const articlesSummary = _items.length
+          ? _items.slice(0, 3).map(_itemLabel).join(", ") + (_items.length > 3 ? ` (+${_items.length - 3} autres)` : "")
+          : "—";
+        const fournisseurNom = _clean((current.fournisseur && current.fournisseur.nom) || "") || "—";
         dispatchNotification({
           type: useDocTemplate ? "bdc_submit_doc" : "bdc_submit",
           profiles: skipChef ? ["dg"] : ["chef"],
           ferme: skipChef ? null : current.ferme,
           data: {
             numero: current.numero || id,
-            description: current.description || current.items?.[0]?.designation || "Aucune description",
+            fournisseur: fournisseurNom,
+            articles: articlesSummary,
             montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
             message: `BDC ${current.numero || id} en attente de validation ${skipChef ? "DG" : "Chef"}`,
             bdc_id: id,
