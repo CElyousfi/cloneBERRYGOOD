@@ -2164,13 +2164,19 @@
                 { prefix: 'NV', equipe: 'NV', caporal: 'El Aydi Ayoub', coutParOuvrier: 30 },
             ];
 
-            // Helper : transforme "DD/MM/YYYY - DD/MM/YYYY" en timestamp de la date de début
-            // pour ordonner les quinzaines (paie). Tolère "DD/MM/YYYY" simple.
+            // Helper : ordonne les libellés de quinzaine. Gère plusieurs formats :
+            //   1) "DD/MM/YYYY - DD/MM/YYYY" ou "DD/MM/YYYY" → timestamp date début
+            //   2) "Quinzaine NN" ou "QNN" / "QzN" → numéro de quinzaine (ordinal, pas date absolue)
+            //   3) Fallback : premier nombre trouvé, sinon 0
+            // L'unité de retour n'est PAS comparable entre formats — mais en pratique
+            // toutes les quinzaines d'une même session viennent du même format API.
             const quinzaineOrder = (periodeStr) => {
                 if (!periodeStr) return 0;
-                const m = String(periodeStr).match(/(\d{2})\/(\d{2})\/(\d{4})/);
-                if (!m) return 0;
-                return new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`).getTime();
+                const s = String(periodeStr);
+                const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+                if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`).getTime();
+                const n = s.match(/\d+/);
+                return n ? parseInt(n[0], 10) : 0;
             };
 
             // Helper : récupère le coût transport effectif pour une équipe à une quinzaine donnée
@@ -21913,11 +21919,50 @@ ${rejetHtml}
             const [saving, setSaving] = useState(false);
             const [saveMsg, setSaveMsg] = useState(null);
             const [filterFerme, setFilterFerme] = useState('');
+            const [apiPeriodes, setApiPeriodes] = useState([]);
+
+            // Re-sync teams quand data.transportConfig change (= override Firestore appliqué)
+            // Évite que teams reste figé sur le seed alors que data a été enrichi de l'historique
+            React.useEffect(() => {
+                if (saving || editingTeam) return; // ne pas écraser une édition en cours
+                setTeams(buildAllTeams());
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [data.transportConfig]);
+
+            // Charge la liste réelle des quinzaines depuis l'API pointage
+            React.useEffect(() => {
+                if (typeof cachedFetch !== 'function') return;
+                cachedFetch('/api/pointage-rh?action=recolte-equipes')
+                    .then(json => { if (json && json.success && Array.isArray(json.periodes)) setApiPeriodes(json.periodes); })
+                    .catch(() => {});
+            }, []);
 
             const knownPeriodes = (() => {
                 const set = new Set();
+                apiPeriodes.forEach(p => { if (p) set.add(p); });
                 (data.recolteData || []).forEach(r => { if (r.periode) set.add(r.periode); });
                 (data.pointageJour || []).forEach(r => { if (r.periode) set.add(r.periode); });
+                // Fallback : si rien (mode démo ou API indispo), générer 12 dernières quinzaines (1-15 / 16-fin)
+                if (set.size === 0) {
+                    const fmt = (d) => String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+                    const now = new Date();
+                    let y = now.getFullYear(), m = now.getMonth(); // m = 0..11
+                    let isSecond = now.getDate() >= 16;
+                    for (let i = 0; i < 12; i++) {
+                        let start, end;
+                        if (isSecond) {
+                            start = new Date(y, m, 16);
+                            end = new Date(y, m + 1, 0); // dernier jour du mois
+                        } else {
+                            start = new Date(y, m, 1);
+                            end = new Date(y, m, 15);
+                        }
+                        set.add(`${fmt(start)} - ${fmt(end)}`);
+                        // recule d'une quinzaine
+                        if (isSecond) { isSecond = false; }
+                        else { isSecond = true; m -= 1; if (m < 0) { m = 11; y -= 1; } }
+                    }
+                }
                 return [...set].sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b) - data.quinzaineOrder(a) : 0));
             })();
             const currentPeriode = knownPeriodes[0] || '';
@@ -22001,10 +22046,13 @@ ${rejetHtml}
             const fermes = ['F1', 'F5', 'Avocatier'];
             const filteredTeams = filterFerme ? teams.filter(t => t.ferme === filterFerme) : teams;
             const fmtCout = (t) => {
-                if (!t.history || t.history.length === 0) return null;
+                // Pas d'historique → fallback sur le seed coutParOuvrier (équipes hardcodées)
+                if (!t.history || t.history.length === 0) {
+                    return (t.coutParOuvrier && t.coutParOuvrier > 0) ? t.coutParOuvrier : null;
+                }
                 const target = currentPeriode ? (data.quinzaineOrder ? data.quinzaineOrder(currentPeriode) : 0) : Number.MAX_SAFE_INTEGER;
                 const applicable = [...t.history].filter(h => (data.quinzaineOrder ? data.quinzaineOrder(h.effectiveFrom) : 0) <= target).sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b.effectiveFrom) - data.quinzaineOrder(a.effectiveFrom) : 0))[0];
-                return applicable ? applicable.coutParOuvrier : (t.history[t.history.length - 1].coutParOuvrier);
+                return applicable ? applicable.coutParOuvrier : (t.coutParOuvrier || t.history[t.history.length - 1].coutParOuvrier);
             };
 
             return (
