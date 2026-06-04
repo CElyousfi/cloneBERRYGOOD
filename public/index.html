@@ -557,6 +557,8 @@
         }
         .panel-title i { color: var(--berry); font-size: 14px; }
         .panel-body { padding: 20px; }
+        /* Scroll horizontal des tableaux larges (desktop) — la règle mobile ne suffisait pas */
+        .table-wrapper, .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 
         /* Tables */
         .data-table {
@@ -1368,10 +1370,10 @@
         </div>
     </div>
     <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
-    <script src="lib/local-test-bypass.js?v=mpzd8g5i"></script>
-    <script defer src="lib/caisseUtils.js?v=mpzd8g5i"></script>
-    <script defer src="lib/meteoCalc.js?v=mpzd8g5i"></script>
-    <script defer src="lib/bdcWorkflow.js?v=mpzd8g5i"></script>
-    <script defer src="app.js?v=mpzd8g5i"></script>
+    <script src="lib/local-test-bypass.js?v=mpzfe050"></script>
+    <script defer src="lib/caisseUtils.js?v=mpzfe050"></script>
+    <script defer src="lib/meteoCalc.js?v=mpzfe050"></script>
+    <script defer src="lib/bdcWorkflow.js?v=mpzfe050"></script>
+    <script defer src="app.js?v=mpzfe050"></script>
 </body>
 </html>

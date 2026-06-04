@@ -22724,9 +22724,12 @@ ${rejetHtml}
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const [onlyOvertime, setOnlyOvertime] = useState(false);
             const [loading, setLoading] = useState(true);
+            const [backfilling, setBackfilling] = useState(false);
+            const [backfillMsg, setBackfillMsg] = useState('');
 
-            React.useEffect(() => {
-                cachedFetch('/api/pointage-rh?action=heures-sup').then(json => {
+            const loadHS = (keepPeriode) => {
+                invalidateCache('heures-sup');
+                return cachedFetch('/api/pointage-rh?action=heures-sup').then(json => {
                     if (json && json.success) {
                         setRows(json.rows || []);
                         setPeriodes(json.periodes || []);
@@ -22734,10 +22737,42 @@ ${rejetHtml}
                         if (typeof json.seuilMinutes === 'number') setSeuilMinutes(json.seuilMinutes);
                         setExcludedFonctions(json.excludedFonctions || []);
                         const ps = json.periodes || [];
-                        if (ps.length > 0) setSelectedPeriode(initialPeriode && ps.includes(initialPeriode) ? initialPeriode : ps[0]);
+                        if (ps.length > 0) setSelectedPeriode(prev => (keepPeriode && prev) ? prev : (initialPeriode && ps.includes(initialPeriode) ? initialPeriode : ps[0]));
                     }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
-            }, []);
+            };
+
+            React.useEffect(() => { loadHS(false); }, []);
+
+            // Backfill des heures de sortie depuis BEE ONE Production pour la quinzaine
+            // sélectionnée (rattrape les sorties saisies tardivement). Ne touche pas au pointage.
+            const handleBackfill = async () => {
+                const cur = selectedPeriode || (periodes[0] || '');
+                const dts = (periodeDates[cur] && periodeDates[cur].length > 0) ? [...periodeDates[cur]].sort() : [...new Set((rows || []).filter(r => r.periode === cur).map(r => r.jour))].sort();
+                if (dts.length === 0) { alert('Aucune date pour cette quinzaine.'); return; }
+                const startDate = dts[0], endDate = dts[dts.length - 1];
+                if (!confirm(`Mettre à jour les heures d'entrée/sortie depuis BEE ONE pour ${cur} (${startDate} → ${endDate}) ?\n\nLe pointage analytique n'est pas modifié.`)) return;
+                setBackfilling(true); setBackfillMsg('');
+                try {
+                    const token = (firebaseAuth && firebaseAuth.currentUser) ? await firebaseAuth.currentUser.getIdToken() : null;
+                    const resp = await fetch('/api/backfill-presence', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+                        body: JSON.stringify({ startDate, endDate }),
+                    });
+                    const json = await resp.json();
+                    if (json && json.success) {
+                        setBackfillMsg(`✓ ${json.daysWritten} jour(s) · ${json.totalRows} ouvriers · ${json.withSortie} avec sortie`);
+                        await loadHS(true);
+                    } else {
+                        setBackfillMsg('Erreur : ' + ((json && json.error) || 'inconnue'));
+                    }
+                } catch (e) {
+                    setBackfillMsg('Erreur : ' + e.message);
+                } finally {
+                    setBackfilling(false);
+                }
+            };
 
             const formatDuration = (min) => {
                 if (min == null || !isFinite(min)) return '—';
@@ -22810,7 +22845,13 @@ ${rejetHtml}
                             <input type="checkbox" checked={onlyOvertime} onChange={e => setOnlyOvertime(e.target.checked)} />
                             Seulement les dépassements
                         </label>
+                        <button onClick={handleBackfill} disabled={backfilling} title="Recharge les heures d'entrée/sortie depuis BEE ONE pour cette quinzaine (rattrape les sorties saisies tardivement). Ne modifie pas le pointage."
+                            style={{marginLeft:'auto',padding:'5px 12px',background:backfilling?'var(--gray-200)':'var(--berry)',color:backfilling?'var(--gray-500)':'#fff',border:'none',borderRadius:8,fontSize:11,fontWeight:600,cursor:backfilling?'default':'pointer',display:'flex',alignItems:'center',gap:6}}>
+                            <i className={`fa-solid ${backfilling?'fa-spinner fa-spin':'fa-rotate'}`}></i>
+                            {backfilling ? 'Mise à jour…' : 'Mettre à jour les heures de sortie'}
+                        </button>
                     </div>
+                    {backfillMsg && <div style={{marginBottom:12,fontSize:11,color:backfillMsg.startsWith('✓')?'var(--green)':'var(--red)',fontWeight:600}}>{backfillMsg}</div>}
 
                     <div className="kpi-grid" style={{marginBottom:16}}>
                         <KPICard icon="fa-users" iconClass="berry" value={workerList.length} label="Ouvriers éligibles" />

@@ -224,4 +224,89 @@ async function syncPresence(mode) {
   }
 }
 
-module.exports = { syncTracabiliteRecolte, syncPresence };
+/**
+ * Backfill prod_presence sur une plage de dates depuis BEE ONE Production.
+ * Re-lit la table Presence (TOUTES fermes) et réécrit prod_presence/{jour} avec
+ * entrée mini + sortie maxi par ouvrier. Sert à rattraper les heures de sortie
+ * saisies tardivement dans BEE ONE (le sync quotidien ne voit que le jour même).
+ * Ne touche PAS au pointage analytique (sql_mirror_pointage).
+ * @param {string} startDate - YYYY-MM-DD
+ * @param {string} endDate - YYYY-MM-DD
+ */
+async function syncPresenceRange(startDate, endDate) {
+  console.log(`[ProdSync] Backfill Presence ${startDate} → ${endDate}...`);
+  const startTime = Date.now();
+  try {
+    const db = await getPoolProd();
+    const result = await db.request().query(`
+      SELECT
+        per.Mat AS Matricule,
+        per.Nom,
+        per.Prenom,
+        p.Heure_entree,
+        p.Heure_sortie,
+        p.Date_entree,
+        p.Caporale
+      FROM Presence p
+      LEFT JOIN Personnel per ON p.ID_personnel = per.ID
+      WHERE CONVERT(date, p.Date_entree) BETWEEN '${startDate}' AND '${endDate}'
+      ORDER BY p.Heure_entree
+    `);
+
+    const fmtH = (h) => {
+      if (!h || h === "0000") return null;
+      const s = h.toString().padStart(4, "0");
+      return s.substring(0, 2) + ":" + s.substring(2, 4);
+    };
+
+    // Group by date → matricule (entrée mini, sortie maxi).
+    const byDate = {};
+    for (const r of result.recordset) {
+      const mat = (r.Matricule || "").trim();
+      if (!mat) continue;
+      const date = new Date(r.Date_entree).toISOString().slice(0, 10);
+      const key = mat.toUpperCase();
+      if (!byDate[date]) byDate[date] = {};
+      const w = byDate[date][key];
+      if (!w) {
+        byDate[date][key] = {
+          matricule: mat,
+          nom: ((r.Nom || "") + " " + (r.Prenom || "")).trim(),
+          heureEntree: r.Heure_entree && r.Heure_entree !== "0000" ? r.Heure_entree : "",
+          heureSortie: r.Heure_sortie && r.Heure_sortie !== "0000" ? r.Heure_sortie : "",
+          caporal: r.Caporale || 0,
+        };
+      } else {
+        if (r.Heure_entree && r.Heure_entree !== "0000" && (!w.heureEntree || r.Heure_entree < w.heureEntree)) w.heureEntree = r.Heure_entree;
+        if (r.Heure_sortie && r.Heure_sortie !== "0000" && (!w.heureSortie || r.Heure_sortie > w.heureSortie)) w.heureSortie = r.Heure_sortie;
+      }
+    }
+
+    let daysWritten = 0, totalRows = 0, withSortie = 0;
+    for (const date of Object.keys(byDate)) {
+      const rows = Object.values(byDate[date]).map((w) => ({
+        ...w,
+        heureEntree: fmtH(w.heureEntree),
+        heureSortie: fmtH(w.heureSortie),
+      }));
+      withSortie += rows.filter((r) => r.heureSortie).length;
+      totalRows += rows.length;
+      await db_firestore.collection("prod_presence").doc(date).set({
+        rows,
+        rowCount: rows.length,
+        mode: "backfill",
+        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      daysWritten++;
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[ProdSync] Backfill done: ${daysWritten} jours, ${totalRows} lignes, ${withSortie} avec sortie en ${duration}ms`);
+    return { success: true, startDate, endDate, daysWritten, totalRows, withSortie, durationMs: duration };
+  } catch (err) {
+    console.error("[ProdSync] Backfill Presence error:", err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+module.exports = { syncTracabiliteRecolte, syncPresence, syncPresenceRange };

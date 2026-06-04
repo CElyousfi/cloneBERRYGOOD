@@ -243,6 +243,26 @@ exports.syncProdTrigger = functions.region("europe-west1")
   res.json(result);
 });
 
+// Backfill prod_presence sur une plage (heures entrée/sortie BEE ONE Production)
+// — déclenché manuellement (bouton RH dans Heures Supp.) en fin de quinzaine pour
+// rattraper les sorties saisies tardivement. Ne touche pas au pointage analytique.
+exports.backfillPresence = functions.region("europe-west1")
+  .runWith({ timeoutSeconds: 300, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    const src = req.method === "POST" ? (req.body || {}) : req.query;
+    const startDate = src.startDate, endDate = src.endDate;
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRe.test(startDate || "") || !dateRe.test(endDate || "")) {
+      return res.status(400).json({ success: false, error: "startDate et endDate (YYYY-MM-DD) requis" });
+    }
+    const result = await prodSync.syncPresenceRange(startDate, endDate);
+    return res.json(result);
+  });
+
 // Import & re-export backup functions
 const backupService = require("./backupService");
 exports.scheduledBackup = backupService.scheduledBackup;
