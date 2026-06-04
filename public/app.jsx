@@ -22726,6 +22726,7 @@ ${rejetHtml}
             const [loading, setLoading] = useState(true);
             const [backfilling, setBackfilling] = useState(false);
             const [backfillMsg, setBackfillMsg] = useState('');
+            const [selectedWorkerMat, setSelectedWorkerMat] = useState(null);
 
             const loadHS = (keepPeriode) => {
                 invalidateCache('heures-sup');
@@ -22836,6 +22837,9 @@ ${rejetHtml}
             }));
 
             const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+            const fmtDateLong = (d) => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+            const selWorkerIdx = selectedWorkerMat ? displayWorkers.findIndex(w => w.matricule === selectedWorkerMat) : -1;
+            const selWorker = selWorkerIdx >= 0 ? displayWorkers[selWorkerIdx] : null;
 
             return (
                 <div className="fade-in">
@@ -22889,9 +22893,9 @@ ${rejetHtml}
                             </thead>
                             <tbody>
                                 {displayWorkers.map(w => (
-                                    <tr key={w.matricule} style={w.fonctionMissing ? {background:'rgba(243,156,18,0.06)'} : null}>
-                                        <td style={{fontFamily:'monospace',fontWeight:600}}>{w.matricule}</td>
-                                        <td><WorkerLink matricule={w.matricule} nom={w.nom} /></td>
+                                    <tr key={w.matricule} onClick={() => setSelectedWorkerMat(w.matricule)} style={{cursor:'pointer', ...(w.fonctionMissing ? {background:'rgba(243,156,18,0.06)'} : {})}} title="Voir le détail entrée/sortie">
+                                        <td style={{fontFamily:'monospace',fontWeight:600,color:'var(--berry)'}}>{w.matricule}</td>
+                                        <td>{w.nom || '—'}</td>
                                         <td style={{fontSize:10}}>
                                             {w.fonctionMissing
                                                 ? <span style={{color:'#b9770e'}} title="Présent au pointage entrée/sortie mais absent du pointage analytique — fonction inconnue"><i className="fa-solid fa-triangle-exclamation" style={{marginRight:3}}></i>—</span>
@@ -22899,16 +22903,10 @@ ${rejetHtml}
                                         </td>
                                         {allDates.map(d => {
                                             const c = w.byDay[d];
-                                            if (!c) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
-                                            if (c.clockedIn) return <td key={d} style={{textAlign:'center',fontSize:9}}><span style={{color:'#e67e22'}} title={`Entré ${c.heureEntree}, pas encore sorti`}><i className="fa-solid fa-hourglass-half"></i> en cours</span></td>;
-                                            if (c.durationMin == null) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
-                                            const hasOT = c.overtimeMin > 0;
-                                            return (
-                                                <td key={d} style={{textAlign:'center',fontSize:10,background:hasOT?'rgba(46,204,113,0.10)':'transparent'}}>
-                                                    <div style={{fontWeight:hasOT?700:500,color:hasOT?'var(--gray-700)':'var(--gray-500)'}} title={`${c.heureEntree || '?'} → ${c.heureSortie || '?'}`}>{formatDuration(c.durationMin)}</div>
-                                                    {hasOT && <div style={{fontSize:9,color:'#27ae60',fontWeight:700}}>+{formatDuration(c.overtimeMin)}</div>}
-                                                </td>
-                                            );
+                                            if (!c || (c.durationMin == null && !c.clockedIn)) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                            if (c.overtimeMin > 0) return <td key={d} style={{textAlign:'center',fontSize:11,fontWeight:700,color:'#27ae60',background:'rgba(46,204,113,0.10)'}} title={`${c.heureEntree || '?'} → ${c.heureSortie || '?'}`}>{formatDuration(c.overtimeMin)}</td>;
+                                            if (c.clockedIn) return <td key={d} style={{textAlign:'center',color:'#e67e22'}} title="Entré, pas encore sorti"><i className="fa-solid fa-hourglass-half" style={{fontSize:9}}></i></td>;
+                                            return <td key={d} style={{textAlign:'center',color:'var(--gray-300)'}} title={`${c.heureEntree || '?'} → ${c.heureSortie || '?'} · pas de dépassement`}>-</td>;
                                         })}
                                         <td style={{textAlign:'center',fontWeight:700,color:w.totalOvertime>0?'var(--berry)':'var(--gray-300)'}}>
                                             {w.totalOvertime > 0 ? formatDuration(w.totalOvertime) : '—'}
@@ -22939,6 +22937,69 @@ ${rejetHtml}
                             {nbSansSortie > 0 && <span style={{color:'#b9770e',marginLeft:6}}><i className="fa-solid fa-user-slash" style={{marginRight:3}}></i>{nbSansSortie} ouvrier(s) sans heure de sortie exclu(s) — à régulariser via « Mettre à jour les heures de sortie ».</span>}
                         </div>
                     </Panel>
+
+                    {selWorker && (
+                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setSelectedWorkerMat(null)}>
+                            <div style={{background:'#fff',borderRadius:12,maxWidth:560,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
+                                <div style={{padding:'14px 18px',borderBottom:'2px solid var(--gray-100)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:12}}>
+                                    <div>
+                                        <h3 style={{margin:0,fontSize:15,color:'var(--berry)'}}><i className="fa-solid fa-user-clock" style={{marginRight:8}}></i>{selWorker.nom || selWorker.matricule}</h3>
+                                        <div style={{fontSize:12,color:'var(--gray-500)',marginTop:2,fontFamily:'monospace'}}>{selWorker.matricule} · {selWorker.fonctionFamille || '—'}{selWorker.fonctionOp ? ' · ' + selWorker.fonctionOp : ''}</div>
+                                    </div>
+                                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                                        <button onClick={() => selWorkerIdx > 0 && setSelectedWorkerMat(displayWorkers[selWorkerIdx - 1].matricule)} disabled={selWorkerIdx <= 0}
+                                            style={{background:'none',border:'1px solid '+(selWorkerIdx>0?'var(--berry)':'#ddd'),borderRadius:8,width:32,height:32,cursor:selWorkerIdx>0?'pointer':'default',color:selWorkerIdx>0?'var(--berry)':'#ccc',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-chevron-left"></i>
+                                        </button>
+                                        <span style={{fontSize:12,fontWeight:600,color:'var(--gray-500)',whiteSpace:'nowrap'}}>{selWorkerIdx + 1} / {displayWorkers.length}</span>
+                                        <button onClick={() => selWorkerIdx < displayWorkers.length - 1 && setSelectedWorkerMat(displayWorkers[selWorkerIdx + 1].matricule)} disabled={selWorkerIdx >= displayWorkers.length - 1}
+                                            style={{background:'none',border:'1px solid '+(selWorkerIdx<displayWorkers.length-1?'var(--berry)':'#ddd'),borderRadius:8,width:32,height:32,cursor:selWorkerIdx<displayWorkers.length-1?'pointer':'default',color:selWorkerIdx<displayWorkers.length-1?'var(--berry)':'#ccc',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-chevron-right"></i>
+                                        </button>
+                                        <button onClick={() => setSelectedWorkerMat(null)} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--gray-400)'}}>&times;</button>
+                                    </div>
+                                </div>
+                                <div style={{padding:'8px 18px 16px'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',margin:'8px 0 12px',fontSize:12}}>
+                                        <span style={{color:'var(--gray-500)'}}>Quinzaine : <strong>{currentPeriode}</strong></span>
+                                        <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'3px 10px',borderRadius:8,fontWeight:700}}>Total HS : {selWorker.totalOvertime > 0 ? formatDuration(selWorker.totalOvertime) : '—'}</span>
+                                    </div>
+                                    <table className="data-table" style={{fontSize:12,width:'100%'}}>
+                                        <thead>
+                                            <tr>
+                                                <th>Jour</th>
+                                                <th style={{textAlign:'center'}}>Entrée</th>
+                                                <th style={{textAlign:'center'}}>Sortie</th>
+                                                <th style={{textAlign:'center'}}>Durée</th>
+                                                <th style={{textAlign:'center'}}>Heures supp.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {allDates.map(d => {
+                                                const c = selWorker.byDay[d];
+                                                if (!c) return (
+                                                    <tr key={d} style={{color:'var(--gray-300)'}}>
+                                                        <td>{fmtDateLong(d)}</td>
+                                                        <td colSpan={4} style={{textAlign:'center'}}>absent</td>
+                                                    </tr>
+                                                );
+                                                const hasOT = c.overtimeMin > 0;
+                                                return (
+                                                    <tr key={d} style={hasOT ? {background:'rgba(46,204,113,0.08)'} : null}>
+                                                        <td style={{fontWeight:500}}>{fmtDateLong(d)}</td>
+                                                        <td style={{textAlign:'center',fontFamily:'monospace'}}>{c.heureEntree || '—'}</td>
+                                                        <td style={{textAlign:'center',fontFamily:'monospace',color:c.heureSortie?'inherit':'#e67e22'}}>{c.heureSortie || (c.clockedIn ? 'en cours' : '—')}</td>
+                                                        <td style={{textAlign:'center'}}>{c.durationMin != null ? formatDuration(c.durationMin) : '—'}</td>
+                                                        <td style={{textAlign:'center',fontWeight:hasOT?700:400,color:hasOT?'#27ae60':'var(--gray-300)'}}>{hasOT ? formatDuration(c.overtimeMin) : '—'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
