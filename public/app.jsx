@@ -21522,10 +21522,21 @@ ${rejetHtml}
                     {/* Header + date picker */}
                     <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                         <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                            <i className="fa-solid fa-truck" style={{marginRight:4}}></i>Pointage Divers — {selectedDate}
+                            <i className="fa-solid fa-truck" style={{marginRight:4}}></i>Pointage Divers
                         </span>
-                        <input type="date" value={selectedDate} onChange={e => handleDateChange(e.target.value)}
-                            style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}} />
+                        <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Jour pointé :</span>
+                        <div style={{display:'flex',alignItems:'center',gap:4,background:'#fff',border:'1px solid var(--gray-200)',borderRadius:8,padding:'2px 4px'}}>
+                            <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); handleDateChange(d.toISOString().slice(0,10)); }}
+                                title="Jour précédent" style={{border:'none',background:'none',cursor:'pointer',color:'var(--berry)',padding:'4px 8px',fontSize:13}}><i className="fa-solid fa-chevron-left"></i></button>
+                            <input type="date" value={selectedDate} onChange={e => handleDateChange(e.target.value)}
+                                style={{padding:'4px 6px',borderRadius:6,border:'none',fontSize:12,fontWeight:600,color:'var(--berry)'}} />
+                            <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() + 1); handleDateChange(d.toISOString().slice(0,10)); }}
+                                title="Jour suivant" style={{border:'none',background:'none',cursor:'pointer',color:'var(--berry)',padding:'4px 8px',fontSize:13}}><i className="fa-solid fa-chevron-right"></i></button>
+                        </div>
+                        <button onClick={() => handleDateChange(new Date().toISOString().slice(0,10))}
+                            style={{padding:'5px 12px',borderRadius:8,border:'1px solid var(--gray-200)',background:'#fff',cursor:'pointer',fontSize:11,fontWeight:600,color:'var(--gray-600)'}}>
+                            <i className="fa-solid fa-calendar-day" style={{marginRight:4}}></i>Aujourd'hui
+                        </button>
                     </div>
 
                     {/* Validation bar */}
@@ -21774,11 +21785,12 @@ ${rejetHtml}
                                 {entries.map((e, idx) => (
                                     <tr key={idx}>
                                         <td style={{color:'var(--gray-400)'}}>{idx + 1}</td>
-                                        {isLocked || !isRH ? (
+                                        {isLocked || !isRH || e.fonction === 'TRANSPORT FRUIT' ? (
                                             <React.Fragment>
                                                 <td>
                                                     <strong>{e.beneficiaire || <em style={{color:'var(--gray-400)'}}>(à compléter)</em>}</strong>
                                                     {e.matricule && <span style={{marginLeft:6,fontSize:10,fontFamily:'monospace',color:'var(--gray-500)'}}>[{e.matricule}]</span>}
+                                                    {e.fonction === 'TRANSPORT FRUIT' && <span style={{marginLeft:6,fontSize:9,fontWeight:700,color:'#2D8B4E',background:'rgba(45,139,78,0.1)',padding:'1px 6px',borderRadius:8}} title="Alimenté automatiquement depuis les bons d'apport"><i className="fa-solid fa-bolt" style={{marginRight:2}}></i>auto</span>}
                                                 </td>
                                                 <td>{e.fonction}</td>
                                                 <td>{e.tache}</td>
@@ -21792,7 +21804,8 @@ ${rejetHtml}
                                                     <select value={e.configId} onChange={ev => updateEntry(idx, 'configId', ev.target.value)}
                                                         style={{width:'100%',padding:4,borderRadius:4,border:'1px solid var(--gray-300)',fontSize:11}}>
                                                         <option value="">-- Sélectionner --</option>
-                                                        {FONCTIONS_ENUM.map(f => {
+                                                        {/* Transport Fruit exclu : alimenté automatiquement par les bons d'apport */}
+                                                        {FONCTIONS_ENUM.filter(f => f.key !== 'TRANSPORT FRUIT').map(f => {
                                                             const groupItems = configItems.filter(c => c.fonction === f.key);
                                                             if (groupItems.length === 0) return null;
                                                             return (
@@ -21816,7 +21829,7 @@ ${rejetHtml}
                                         )}
                                         <td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{(Math.round((Number(e.quantite)||0)*(Number(e.prixUnitaire)||0)*100)/100).toLocaleString('fr-FR')} DH</td>
                                         <td>
-                                            {isLocked || !isRH ? (
+                                            {isLocked || !isRH || e.fonction === 'TRANSPORT FRUIT' ? (
                                                 <span style={{fontSize:11,color:'var(--gray-500)'}}>{e.commentaire}</span>
                                             ) : (
                                                 <input value={e.commentaire || ''} onChange={ev => updateEntry(idx, 'commentaire', ev.target.value)} placeholder="..."
@@ -21825,9 +21838,11 @@ ${rejetHtml}
                                         </td>
                                         {!isLocked && isRH && (
                                             <td style={{textAlign:'center'}}>
-                                                <button onClick={() => removeEntry(idx)} style={{padding:'3px 6px',borderRadius:4,border:'none',background:'#e74c3c',color:'#fff',fontSize:10,cursor:'pointer'}}>
-                                                    <i className="fa-solid fa-trash"></i>
-                                                </button>
+                                                {e.fonction !== 'TRANSPORT FRUIT' && (
+                                                    <button onClick={() => removeEntry(idx)} style={{padding:'3px 6px',borderRadius:4,border:'none',background:'#e74c3c',color:'#fff',fontSize:10,cursor:'pointer'}}>
+                                                        <i className="fa-solid fa-trash"></i>
+                                                    </button>
+                                                )}
                                             </td>
                                         )}
                                     </tr>
