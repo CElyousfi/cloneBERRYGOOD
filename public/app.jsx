@@ -22799,12 +22799,13 @@ ${rejetHtml}
                 if (!w) {
                     w = { matricule: r.matricule, nom: r.nom || r.matricule, ferme: r.ferme,
                           fonctionCounts: {}, fonctionInfo: {}, fonctionMissing: true,
-                          byDay: {}, totalOvertime: 0, joursPresents: 0 };
+                          byDay: {}, totalOvertime: 0, joursPresents: 0, joursAvecSortie: 0 };
                     byWorker[r.matricule] = w;
                 }
                 w.byDay[r.jour] = { durationMin: r.durationMin, overtimeMin: r.overtimeMin || 0, clockedIn: r.clockedIn, heureEntree: r.heureEntree, heureSortie: r.heureSortie };
                 w.totalOvertime += r.overtimeMin || 0;
                 if (r.durationMin != null || r.clockedIn) w.joursPresents += 1;
+                if (r.durationMin != null) w.joursAvecSortie += 1;
                 if (!r.fonctionMissing) {
                     w.fonctionMissing = false;
                     const key = `${r.operationFamille || ''}|${r.operation || ''}`;
@@ -22813,11 +22814,15 @@ ${rejetHtml}
                 }
             });
 
-            let workerList = Object.values(byWorker).map(w => {
+            let allWorkers = Object.values(byWorker).map(w => {
                 const bestKey = Object.entries(w.fonctionCounts).sort((a, b) => b[1] - a[1])[0];
                 const info = bestKey ? w.fonctionInfo[bestKey[0]] : null;
                 return { ...w, fonctionFamille: info ? info.operationFamille : null, fonctionOp: info ? info.operation : null };
             });
+            // Exclure les ouvriers sans aucune heure de sortie sur la quinzaine
+            // (HS non calculable). Compteur conservé pour transparence.
+            const nbSansSortie = allWorkers.filter(w => w.joursAvecSortie === 0).length;
+            let workerList = allWorkers.filter(w => w.joursAvecSortie > 0);
             workerList.sort((a, b) => b.totalOvertime - a.totalOvertime || a.matricule.localeCompare(b.matricule));
             const displayWorkers = onlyOvertime ? workerList.filter(w => w.totalOvertime > 0) : workerList;
 
@@ -22931,6 +22936,7 @@ ${rejetHtml}
                         </div>
                         <div style={{marginTop:10,fontSize:10,color:'var(--gray-400)'}}>
                             {workerList.length} ouvrier(s) éligible(s) · {totalWorkerDays} jour(s)-ouvrier pointé(s) · source : pointage entrée/sortie BEE ONE.
+                            {nbSansSortie > 0 && <span style={{color:'#b9770e',marginLeft:6}}><i className="fa-solid fa-user-slash" style={{marginRight:3}}></i>{nbSansSortie} ouvrier(s) sans heure de sortie exclu(s) — à régulariser via « Mettre à jour les heures de sortie ».</span>}
                         </div>
                     </Panel>
                 </div>
