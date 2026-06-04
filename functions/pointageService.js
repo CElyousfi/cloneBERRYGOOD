@@ -21,6 +21,13 @@ const {
 } = require("./firestoreDataService");
 const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 
+// Heures supplémentaires — helpers purs (calcul durée/dépassement + exclusions)
+const {
+  SEUIL_MINUTES: HS_SEUIL_MINUTES,
+  computeDurationOvertime,
+  shouldExcludeWorkerDay,
+} = require("./lib/heuresSup/heuresSup");
+
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
 let sql = null;
 let pool = null;
@@ -291,6 +298,145 @@ function classifyType(operationFamille) {
   if (operationFamille === "8. Récolte") return "recolte";
   if (operationFamille === "11. Postes fixes") return "postesFixes";
   return "horsRecolte";
+}
+
+// =============================================
+// Heures supplémentaires
+// =============================================
+
+/**
+ * Lit la liste des fonctions exclues (gardiens, etc.) depuis app_settings.
+ * @returns {Promise<Array<string>>}
+ */
+async function getExcludedFonctionsHS() {
+  try {
+    const doc = await db_firestore.collection("app_settings").doc("heures_sup").get();
+    if (!doc.exists) return [];
+    const data = doc.data() || {};
+    return Array.isArray(data.excludedFonctions) ? data.excludedFonctions : [];
+  } catch (e) {
+    console.error("getExcludedFonctionsHS error:", e.message);
+    return [];
+  }
+}
+
+/**
+ * Construit les lignes heures supplémentaires pour les quinzaines récentes
+ * (courante + précédente). Jointure prod_presence (entrée/sortie) ⨯
+ * sql_mirror_pointage (fonction pointée) par matricule + jour.
+ * Exclut récolte (payée au rendement) et fonctions configurées (gardiens).
+ * Un ouvrier présent mais absent du mirror est conservé avec `fonctionMissing`.
+ *
+ * @param {Object|null} meta - sql_mirror_pointage_meta/config
+ * @param {Array<string>} excludedFonctions
+ * @returns {Promise<Object>} { success, periodes, excludedFonctions, seuilMinutes, periodeDates, rows }
+ */
+async function buildHeuresSup(meta, excludedFonctions) {
+  const periodes = (meta && meta.periodes) || [];
+  const periodeMap = (meta && meta.periodeMap) || {};
+  const targetPeriodes = periodes.slice(0, 2);
+
+  // Jours cibles + map jour→periode + map periode→jours (colonnes complètes,
+  // même les jours sans sync, pour rendre les trous visibles côté UI).
+  const periodeDates = {};
+  const dayToPeriode = {};
+  const allDays = [];
+  for (const p of targetPeriodes) {
+    const days = (periodeMap[p] || []).slice().sort();
+    periodeDates[p] = days;
+    for (const d of days) {
+      if (!(d in dayToPeriode)) { dayToPeriode[d] = p; allDays.push(d); }
+    }
+  }
+
+  // 1. Présence entrée/sortie par jour → Map(MATUPPER → {matricule,nom,heureEntree,heureSortie,caporal})
+  const presenceByDay = {};
+  for (let i = 0; i < allDays.length; i += 10) {
+    const batch = allDays.slice(i, i + 10);
+    const snaps = await Promise.all(batch.map(d => db_firestore.collection("prod_presence").doc(d).get()));
+    snaps.forEach((snap, idx) => {
+      const d = batch[idx];
+      const map = new Map();
+      if (snap.exists) {
+        const rows = (snap.data().rows) || [];
+        for (const r of rows) {
+          const mat = String(r.matricule || "").trim();
+          if (!mat) continue;
+          map.set(mat.toUpperCase(), {
+            matricule: mat,
+            nom: (r.nom || "").trim(),
+            heureEntree: r.heureEntree || null,
+            heureSortie: r.heureSortie || null,
+            caporal: r.caporal || 0,
+          });
+        }
+      }
+      presenceByDay[d] = map;
+    });
+  }
+
+  // 2. Fonction pointée par jour (mirror) → Map(MATUPPER → fonction représentative)
+  //    Représentant = couple (famille|opération) le plus fréquent ce jour-là.
+  const fonctionByDay = {};
+  for (let i = 0; i < allDays.length; i += 10) {
+    const batch = allDays.slice(i, i + 10);
+    const results = await Promise.all(batch.map(d => getPointageRowsForDate(d)));
+    results.forEach((rows, idx) => {
+      const d = batch[idx];
+      const acc = new Map();
+      for (const r of rows) {
+        const mat = String(r.Personnel_Matricule || "").trim().toUpperCase();
+        if (!mat) continue;
+        const fam = (r.Operation_Famille || "").trim();
+        const op = (r.Operation || "").trim();
+        const key = `${fam}|${op}`;
+        let e = acc.get(mat);
+        if (!e) { e = { counts: {}, infos: {}, nom: (r.Personnel_Nom || "").trim() }; acc.set(mat, e); }
+        e.counts[key] = (e.counts[key] || 0) + 1;
+        if (!e.infos[key]) e.infos[key] = { operationFamille: fam, operation: op, ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) };
+        if (!e.nom && r.Personnel_Nom) e.nom = (r.Personnel_Nom || "").trim();
+      }
+      const map = new Map();
+      for (const [mat, e] of acc) {
+        const bestKey = Object.entries(e.counts).sort((a, b) => b[1] - a[1])[0][0];
+        const info = e.infos[bestKey];
+        map.set(mat, { operationFamille: info.operationFamille, operation: info.operation, ferme: info.ferme, nom: e.nom });
+      }
+      fonctionByDay[d] = map;
+    });
+  }
+
+  // 3. Jointure + calcul durée/dépassement + exclusions
+  const rows = [];
+  for (const d of allDays) {
+    const presence = presenceByDay[d] || new Map();
+    const fonctions = fonctionByDay[d] || new Map();
+    for (const [matUpper, p] of presence) {
+      const f = fonctions.get(matUpper) || null;
+      const fonctionMissing = !f;
+      // Récolte + fonctions configurées exclues. Fonction inconnue → conservée + flag.
+      if (f && shouldExcludeWorkerDay(f, excludedFonctions)) continue;
+      const { durationMin, overtimeMin, clockedIn } = computeDurationOvertime(p.heureEntree, p.heureSortie);
+      rows.push({
+        matricule: p.matricule,
+        nom: p.nom || (f && f.nom) || "",
+        jour: d,
+        periode: dayToPeriode[d] || null,
+        ferme: (f && f.ferme) || "Autre",
+        operationFamille: f ? f.operationFamille : null,
+        operation: f ? f.operation : null,
+        fonctionMissing,
+        caporal: p.caporal || 0,
+        heureEntree: p.heureEntree || null,
+        heureSortie: p.heureSortie || null,
+        durationMin,
+        overtimeMin,
+        clockedIn,
+      });
+    }
+  }
+
+  return { success: true, periodes, excludedFonctions, seuilMinutes: HS_SEUIL_MINUTES, periodeDates, rows };
 }
 
 // =============================================
@@ -767,6 +913,15 @@ async function warmAllPointageCaches() {
     });
     results.push("transport:ok");
   } catch (e) { results.push(`transport:${e.message}`); }
+
+  // 6b. Heures supplémentaires
+  try {
+    await withCache("pointage_heures_sup", 0, async () => {
+      const excludedFonctions = await getExcludedFonctionsHS();
+      return await buildHeuresSup(meta, excludedFonctions);
+    });
+    results.push("heures-sup:ok");
+  } catch (e) { results.push(`heures-sup:${e.message}`); }
 
   // 7. Nouveaux ouvriers
   try {
@@ -1674,6 +1829,16 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const rows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
         return { success: true, periodes, rows };
         }); // end withCache
+        return res.json(cached);
+      }
+
+      // ------ HEURES-SUP: durée travaillée + dépassement 8h30 par quinzaine ------
+      if (action === "heures-sup") {
+        const cached = await withCache("pointage_heures_sup", 0, async () => {
+          const metaHS = await getPointageMeta();
+          const excludedFonctions = await getExcludedFonctionsHS();
+          return await buildHeuresSup(metaHS, excludedFonctions);
+        });
         return res.json(cached);
       }
 

@@ -12,6 +12,7 @@
     "test:irrigation": "node --test 'lib/irrigation/__tests__/*.test.js'",
     "test:phenology": "node --test 'lib/phenology/__tests__/*.test.js'",
     "test:netafim": "node --test 'lib/netafim/__tests__/*.test.js'",
+    "test:heuresSup": "node --test 'lib/heuresSup/__tests__/*.test.js'",
     "serve": "firebase emulators:start --only functions",
     "shell": "firebase functions:shell",
     "start": "npm run shell",

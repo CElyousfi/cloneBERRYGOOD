@@ -136,7 +136,11 @@ async function syncTracabiliteRecolte(startDateParam) {
 
 /**
  * Sync Presence → Firestore prod_presence/{YYYY-MM-DD}
- * Fetches entry/exit times for Berry Good Farms workers (IDFermes=1).
+ * Fetches entry/exit times for ALL Berry Good Farms workers (toutes fermes :
+ * F1, F5, Avocatier). La ferme n'est pas portée par prod_presence ; elle est
+ * résolue en aval via le mirror BR_Pointage (deriveFerme) pour le module HS.
+ * NB: si la table Presence contenait des entités non-BGF, re-scoper ici avec
+ * `AND p.IDFermes IN (<ids BGF>)`.
  * @param {string} mode - 'entree' (sync entry times) or 'sortie' (sync exit times)
  */
 async function syncPresence(mode) {
@@ -161,7 +165,6 @@ async function syncPresence(mode) {
       FROM Presence p
       LEFT JOIN Personnel per ON p.ID_personnel = per.ID
       WHERE CONVERT(date, p.Date_entree) = '${today}'
-        AND p.IDFermes = 1
       ORDER BY p.Heure_entree
     `);
 

@@ -20484,15 +20484,7 @@ ${rejetHtml}
                     {primeSub === 'conditionnement' && <ConditionnementSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'chargement' && <ChargementSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'jour_ferie' && <JourFerieSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
-                    {primeSub === 'heures_sup' && (
-                        <Panel title="Heures Supplémentaires" icon="fa-clock">
-                            <div style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}>
-                                <i className="fa-solid fa-clock fa-3x" style={{marginBottom:12,opacity:0.3}}></i>
-                                <div style={{fontSize:14,fontWeight:600}}>Module en cours de développement</div>
-                                <div style={{fontSize:12,marginTop:4}}>La gestion des heures supplémentaires sera disponible prochainement.</div>
-                            </div>
-                        </Panel>
-                    )}
+                    {primeSub === 'heures_sup' && <HeuresSupSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                 </div>
             );
         }
@@ -22714,6 +22706,190 @@ ${rejetHtml}
                             <strong>Déclarés</strong> : Brut = SMAG brut × jours + prime ancienneté ; Net à virer = Brut − cotisations salariales ; Coût employeur = Brut + charges patronales.
                             <br />
                             Les barèmes (SMAG, taux, paliers) sont éditables dans <em>Paramètres</em> et appliqués en temps réel.
+                        </div>
+                    </Panel>
+                </div>
+            );
+        }
+
+        // ===================== HEURES SUPPLÉMENTAIRES TAB =====================
+        // Durée travaillée (entrée/sortie BEE ONE via prod_presence) + dépassement
+        // au-delà de 8h30, par quinzaine. Récolte (rendement) et gardiens exclus.
+        function HeuresSupSub({ data, farmFilter, initialPeriode }) {
+            const [rows, setRows] = useState([]);
+            const [periodes, setPeriodes] = useState([]);
+            const [periodeDates, setPeriodeDates] = useState({});
+            const [excludedFonctions, setExcludedFonctions] = useState([]);
+            const [seuilMinutes, setSeuilMinutes] = useState(510);
+            const [selectedPeriode, setSelectedPeriode] = useState('');
+            const [onlyOvertime, setOnlyOvertime] = useState(false);
+            const [loading, setLoading] = useState(true);
+
+            React.useEffect(() => {
+                cachedFetch('/api/pointage-rh?action=heures-sup').then(json => {
+                    if (json && json.success) {
+                        setRows(json.rows || []);
+                        setPeriodes(json.periodes || []);
+                        setPeriodeDates(json.periodeDates || {});
+                        if (typeof json.seuilMinutes === 'number') setSeuilMinutes(json.seuilMinutes);
+                        setExcludedFonctions(json.excludedFonctions || []);
+                        const ps = json.periodes || [];
+                        if (ps.length > 0) setSelectedPeriode(initialPeriode && ps.includes(initialPeriode) ? initialPeriode : ps[0]);
+                    }
+                }).catch(err => console.warn(err)).finally(() => setLoading(false));
+            }, []);
+
+            const formatDuration = (min) => {
+                if (min == null || !isFinite(min)) return '—';
+                const abs = Math.abs(Math.round(min));
+                const h = Math.floor(abs / 60), m = abs % 60;
+                return `${min < 0 ? '-' : ''}${h}h ${String(m).padStart(2, '0')}`;
+            };
+            const seuilLabel = formatDuration(seuilMinutes);
+
+            if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🍇</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement heures supp...</div></div>;
+
+            const currentPeriode = selectedPeriode || (periodes[0] || '');
+            const periodeRows = rows.filter(r => r.periode === currentPeriode && (!farmFilter || r.ferme === farmFilter));
+
+            // Colonnes = tous les jours de la quinzaine (même sans sync, pour voir les trous)
+            const allDates = (periodeDates[currentPeriode] && periodeDates[currentPeriode].length > 0)
+                ? [...periodeDates[currentPeriode]].sort()
+                : [...new Set(periodeRows.map(r => r.jour))].sort();
+
+            // Regroupement par ouvrier
+            const byWorker = {};
+            periodeRows.forEach(r => {
+                let w = byWorker[r.matricule];
+                if (!w) {
+                    w = { matricule: r.matricule, nom: r.nom || r.matricule, ferme: r.ferme,
+                          fonctionCounts: {}, fonctionInfo: {}, fonctionMissing: true,
+                          byDay: {}, totalOvertime: 0, joursPresents: 0 };
+                    byWorker[r.matricule] = w;
+                }
+                w.byDay[r.jour] = { durationMin: r.durationMin, overtimeMin: r.overtimeMin || 0, clockedIn: r.clockedIn, heureEntree: r.heureEntree, heureSortie: r.heureSortie };
+                w.totalOvertime += r.overtimeMin || 0;
+                if (r.durationMin != null || r.clockedIn) w.joursPresents += 1;
+                if (!r.fonctionMissing) {
+                    w.fonctionMissing = false;
+                    const key = `${r.operationFamille || ''}|${r.operation || ''}`;
+                    w.fonctionCounts[key] = (w.fonctionCounts[key] || 0) + 1;
+                    if (!w.fonctionInfo[key]) w.fonctionInfo[key] = { operationFamille: r.operationFamille, operation: r.operation };
+                }
+            });
+
+            let workerList = Object.values(byWorker).map(w => {
+                const bestKey = Object.entries(w.fonctionCounts).sort((a, b) => b[1] - a[1])[0];
+                const info = bestKey ? w.fonctionInfo[bestKey[0]] : null;
+                return { ...w, fonctionFamille: info ? info.operationFamille : null, fonctionOp: info ? info.operation : null };
+            });
+            workerList.sort((a, b) => b.totalOvertime - a.totalOvertime || a.matricule.localeCompare(b.matricule));
+            const displayWorkers = onlyOvertime ? workerList.filter(w => w.totalOvertime > 0) : workerList;
+
+            // Totaux
+            const totalOvertimeMin = workerList.reduce((s, w) => s + w.totalOvertime, 0);
+            const nbEnDepassement = workerList.filter(w => w.totalOvertime > 0).length;
+            const totalWorkerDays = workerList.reduce((s, w) => s + w.joursPresents, 0);
+            const dailyOvertime = allDates.map(d => ({
+                date: d,
+                overtimeMin: workerList.reduce((s, w) => s + ((w.byDay[d] && w.byDay[d].overtimeMin) || 0), 0),
+            }));
+
+            const fmtDate = (d) => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+
+            return (
+                <div className="fade-in">
+                    <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                        <span style={{background:'#e8d5e8',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
+                            <i className="fa-solid fa-clock" style={{marginRight:4}}></i>Heures Supp. — {currentPeriode}
+                        </span>
+                        <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
+                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                        <label style={{fontSize:11,display:'flex',alignItems:'center',gap:5,cursor:'pointer',color:'var(--gray-600)'}}>
+                            <input type="checkbox" checked={onlyOvertime} onChange={e => setOnlyOvertime(e.target.checked)} />
+                            Seulement les dépassements
+                        </label>
+                    </div>
+
+                    <div className="kpi-grid" style={{marginBottom:16}}>
+                        <KPICard icon="fa-users" iconClass="berry" value={workerList.length} label="Ouvriers éligibles" />
+                        <KPICard icon="fa-user-clock" iconClass="orange" value={nbEnDepassement} label="Ouvriers en dépassement" />
+                        <KPICard icon="fa-clock" iconClass="green" value={formatDuration(totalOvertimeMin)} label="Total Heures Supp. Quinzaine" />
+                        <KPICard icon="fa-calculator" iconClass="blue" value={nbEnDepassement > 0 ? formatDuration(totalOvertimeMin / nbEnDepassement) : '-'} label="Dépassement moyen / ouvrier" />
+                    </div>
+
+                    <div style={{fontSize:10,color:'var(--gray-500)',marginBottom:10,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                        <span style={{background:'rgba(139,34,82,0.08)',padding:'3px 8px',borderRadius:8}}>
+                            <i className="fa-solid fa-circle-info" style={{marginRight:4}}></i>
+                            Dépassement compté au-delà de {seuilLabel} (durée brute entrée→sortie). Récolte exclue automatiquement (payée au rendement).
+                        </span>
+                        {excludedFonctions.length > 0
+                            ? <span style={{background:'rgba(231,76,60,0.08)',color:'#c0392b',padding:'3px 8px',borderRadius:8}}><i className="fa-solid fa-ban" style={{marginRight:4}}></i>Fonctions exclues : {excludedFonctions.join(', ')}</span>
+                            : <span style={{background:'rgba(243,156,18,0.1)',color:'#b9770e',padding:'3px 8px',borderRadius:8}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>Aucune fonction exclue configurée (gardiens non filtrés)</span>}
+                    </div>
+
+                    <Panel title="Heures supplémentaires par ouvrier et par jour" icon="fa-calendar-day">
+                        <div className="table-responsive">
+                        <table className="data-table" style={{fontSize:11,whiteSpace:'nowrap'}}>
+                            <thead>
+                                <tr>
+                                    <th>Matricule</th>
+                                    <th>Nom Prénom</th>
+                                    <th>Fonction pointée</th>
+                                    {allDates.map(d => <th key={d} style={{textAlign:'center',fontSize:9,whiteSpace:'nowrap'}}>{fmtDate(d)}</th>)}
+                                    <th style={{textAlign:'center',fontWeight:700}}>Total HS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {displayWorkers.map(w => (
+                                    <tr key={w.matricule} style={w.fonctionMissing ? {background:'rgba(243,156,18,0.06)'} : null}>
+                                        <td style={{fontFamily:'monospace',fontWeight:600}}>{w.matricule}</td>
+                                        <td><WorkerLink matricule={w.matricule} nom={w.nom} /></td>
+                                        <td style={{fontSize:10}}>
+                                            {w.fonctionMissing
+                                                ? <span style={{color:'#b9770e'}} title="Présent au pointage entrée/sortie mais absent du pointage analytique — fonction inconnue"><i className="fa-solid fa-triangle-exclamation" style={{marginRight:3}}></i>—</span>
+                                                : <span>{w.fonctionFamille || '—'}{w.fonctionOp ? <span style={{color:'var(--gray-400)',marginLeft:4}}>· {w.fonctionOp}</span> : null}</span>}
+                                        </td>
+                                        {allDates.map(d => {
+                                            const c = w.byDay[d];
+                                            if (!c) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                            if (c.clockedIn) return <td key={d} style={{textAlign:'center',fontSize:9}}><span style={{color:'#e67e22'}} title={`Entré ${c.heureEntree}, pas encore sorti`}><i className="fa-solid fa-hourglass-half"></i> en cours</span></td>;
+                                            if (c.durationMin == null) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                            const hasOT = c.overtimeMin > 0;
+                                            return (
+                                                <td key={d} style={{textAlign:'center',fontSize:10,background:hasOT?'rgba(46,204,113,0.10)':'transparent'}}>
+                                                    <div style={{fontWeight:hasOT?700:500,color:hasOT?'var(--gray-700)':'var(--gray-500)'}} title={`${c.heureEntree || '?'} → ${c.heureSortie || '?'}`}>{formatDuration(c.durationMin)}</div>
+                                                    {hasOT && <div style={{fontSize:9,color:'#27ae60',fontWeight:700}}>+{formatDuration(c.overtimeMin)}</div>}
+                                                </td>
+                                            );
+                                        })}
+                                        <td style={{textAlign:'center',fontWeight:700,color:w.totalOvertime>0?'var(--berry)':'var(--gray-300)'}}>
+                                            {w.totalOvertime > 0 ? formatDuration(w.totalOvertime) : '—'}
+                                        </td>
+                                    </tr>
+                                ))}
+                                {displayWorkers.length === 0 && (
+                                    <tr><td colSpan={allDates.length + 4} style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun ouvrier {onlyOvertime ? 'en dépassement ' : ''}pour cette quinzaine / ce filtre.</td></tr>
+                                )}
+                            </tbody>
+                            {displayWorkers.length > 0 && (
+                                <tfoot>
+                                    <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                        <td colSpan={3} style={{textAlign:'right'}}>Total dépassement / jour</td>
+                                        {dailyOvertime.map(dt => (
+                                            <td key={dt.date} style={{textAlign:'center',fontSize:10,color:dt.overtimeMin>0?'var(--berry)':'var(--gray-300)'}}>
+                                                {dt.overtimeMin > 0 ? formatDuration(dt.overtimeMin) : '-'}
+                                            </td>
+                                        ))}
+                                        <td style={{textAlign:'center',color:'var(--berry)',fontSize:12}}>{formatDuration(totalOvertimeMin)}</td>
+                                    </tr>
+                                </tfoot>
+                            )}
+                        </table>
+                        </div>
+                        <div style={{marginTop:10,fontSize:10,color:'var(--gray-400)'}}>
+                            {workerList.length} ouvrier(s) éligible(s) · {totalWorkerDays} jour(s)-ouvrier pointé(s) · source : pointage entrée/sortie BEE ONE.
                         </div>
                     </Panel>
                 </div>
@@ -32916,8 +33092,11 @@ ${rejetHtml}
             const [uploadingInvoice, setUploadingInvoice] = useState(false);
             const [uploadResult, setUploadResult] = useState(null);
             const [uploadProgress, setUploadProgress] = useState(null); // { current, total, currentName }
-            // Per-culture deduction montants. Shape: { framboise: { cropAdvance, fruitAdvance }, myrtille: { cropAdvance, fruitAdvance } }.
-            const [deductionMontants, setDeductionMontants] = useState({ framboise: { cropAdvance: 0, fruitAdvance: 0 }, myrtille: { cropAdvance: 0, fruitAdvance: 0 } });
+            // Deduction montants:
+            //  - cropAdvance = pot UNIQUE ferme (prêt Driscoll's global, partagé Framboise+Myrtille).
+            //  - fruitAdvance = par culture (chaque fruit a son propre montant convenu).
+            // Shape: { cropAdvance: number, fruitAdvance: { framboise: number, myrtille: number } }
+            const [deductionMontants, setDeductionMontants] = useState({ cropAdvance: 0, fruitAdvance: { framboise: 0, myrtille: 0 } });
             const [editingMontant, setEditingMontant] = useState(null); // 'cropAdvance' | 'fruitAdvance' | null
             const [editMontantValue, setEditMontantValue] = useState('');
             const [editMontantPerCulture, setEditMontantPerCulture] = useState({ framboise: '', myrtille: '' });
@@ -32987,57 +33166,72 @@ ${rejetHtml}
                     if (plantJson && plantJson.success) setPlantInvoices(plantJson.invoices || []);
                     else setPlantInvoices([]);
                 }).catch(() => { setFetchedDocs([]); setFetchedExpeditions([]); setPlantInvoices([]); });
-                // Load deduction montants from Firestore — migrate legacy flat shape to per-culture.
+                // Load deduction montants from Firestore — migrate older shapes:
+                //  - v1 (flat): { cropAdvance, fruitAdvance } → cropAdvance global, fruitAdvance.framboise = old value.
+                //  - v2 (per-culture): { framboise:{cA,fA}, myrtille:{cA,fA} } → cropAdvance = max(both), fruitAdvance per-culture.
+                //  - v3 (current): { cropAdvance, fruitAdvance:{framboise,myrtille} } → as-is.
                 firebase.firestore().collection('app_settings').doc('deduction_montants').get()
                     .then(doc => {
                         if (!doc.exists) return;
                         const data = doc.data() || {};
-                        const isLegacy = !data.framboise && !data.myrtille && (data.cropAdvance != null || data.fruitAdvance != null);
-                        if (isLegacy) {
+                        const isV3 = typeof data.fruitAdvance === 'object' && data.fruitAdvance !== null;
+                        const isV2 = !isV3 && (data.framboise != null || data.myrtille != null);
+                        const isV1 = !isV2 && !isV3 && (data.cropAdvance != null || data.fruitAdvance != null);
+                        if (isV3) {
                             setDeductionMontants({
-                                framboise: { cropAdvance: data.cropAdvance || 0, fruitAdvance: data.fruitAdvance || 0 },
-                                myrtille: { cropAdvance: 0, fruitAdvance: 0 },
+                                cropAdvance: data.cropAdvance || 0,
+                                fruitAdvance: { framboise: data.fruitAdvance.framboise || 0, myrtille: data.fruitAdvance.myrtille || 0 },
                             });
-                        } else {
+                        } else if (isV2) {
+                            const f = data.framboise || {}, m = data.myrtille || {};
                             setDeductionMontants({
-                                framboise: { cropAdvance: 0, fruitAdvance: 0, ...(data.framboise || {}) },
-                                myrtille: { cropAdvance: 0, fruitAdvance: 0, ...(data.myrtille || {}) },
+                                cropAdvance: Math.max(f.cropAdvance || 0, m.cropAdvance || 0),
+                                fruitAdvance: { framboise: f.fruitAdvance || 0, myrtille: m.fruitAdvance || 0 },
+                            });
+                        } else if (isV1) {
+                            setDeductionMontants({
+                                cropAdvance: data.cropAdvance || 0,
+                                fruitAdvance: { framboise: data.fruitAdvance || 0, myrtille: 0 },
                             });
                         }
                     })
                     .catch(() => {});
             }, []);
 
-            // Resolve montants for the current culture filter. "Toutes" => sum both.
+            // Resolve montants for the current culture filter.
+            //  - cropAdvance is GLOBAL → returned as-is regardless of culture.
+            //  - fruitAdvance is per-culture; "Toutes" returns the sum.
             const getMontantsForCulture = (culture) => {
-                if (culture === 'framboise') return deductionMontants.framboise || { cropAdvance: 0, fruitAdvance: 0 };
-                if (culture === 'myrtille') return deductionMontants.myrtille || { cropAdvance: 0, fruitAdvance: 0 };
-                const f = deductionMontants.framboise || {};
-                const m = deductionMontants.myrtille || {};
-                return { cropAdvance: (f.cropAdvance || 0) + (m.cropAdvance || 0), fruitAdvance: (f.fruitAdvance || 0) + (m.fruitAdvance || 0) };
+                const fA = deductionMontants.fruitAdvance || {};
+                const cropAdvance = deductionMontants.cropAdvance || 0;
+                if (culture === 'framboise') return { cropAdvance, fruitAdvance: fA.framboise || 0 };
+                if (culture === 'myrtille') return { cropAdvance, fruitAdvance: fA.myrtille || 0 };
+                return { cropAdvance, fruitAdvance: (fA.framboise || 0) + (fA.myrtille || 0) };
             };
 
             const saveDeductionMontant = async (type, value) => {
-                const culture = selectedFruit;
                 let updated;
-                if (culture) {
-                    updated = {
-                        ...deductionMontants,
-                        [culture]: { ...(deductionMontants[culture] || {}), [type]: value },
-                    };
+                if (type === 'cropAdvance') {
+                    // Always a single global value, no culture distinction.
+                    updated = { ...deductionMontants, cropAdvance: parseFloat(value) || 0 };
+                } else if (type === 'fruitAdvance') {
+                    const fA = { ...(deductionMontants.fruitAdvance || {}) };
+                    if (selectedFruit) {
+                        fA[selectedFruit] = parseFloat(value) || 0;
+                    } else {
+                        // "Toutes" mode — value is { framboise, myrtille }
+                        const v = value || {};
+                        fA.framboise = parseFloat(v.framboise) || 0;
+                        fA.myrtille = parseFloat(v.myrtille) || 0;
+                    }
+                    updated = { ...deductionMontants, fruitAdvance: fA };
                 } else {
-                    // "Toutes" mode — value is { framboise, myrtille }
-                    const v = value || {};
-                    updated = {
-                        ...deductionMontants,
-                        framboise: { ...(deductionMontants.framboise || {}), [type]: parseFloat(v.framboise) || 0 },
-                        myrtille: { ...(deductionMontants.myrtille || {}), [type]: parseFloat(v.myrtille) || 0 },
-                    };
+                    return;
                 }
                 setDeductionMontants(updated);
                 setEditingMontant(null);
                 try {
-                    await firebase.firestore().collection('app_settings').doc('deduction_montants').set(updated, { merge: true });
+                    await firebase.firestore().collection('app_settings').doc('deduction_montants').set(updated);
                 } catch(e) { console.error('Save deduction montant error:', e); }
             };
 
@@ -33248,10 +33442,14 @@ ${rejetHtml}
                 };
             }
 
-            // Inject configured montants for Crop Advance and Fruit Advance (per culture).
+            // Inject configured montants:
+            //  - Crop Advance: pot UNIQUE — totalMontant + totalPreleve calculés sur TOUTES cultures,
+            //    indépendants du filtre. C'est le solde restant du prêt Driscoll's pour la ferme.
+            //  - Fruit Advance: par culture (suit le filtre, ou somme en "Toutes").
             const _curMontants = getMontantsForCulture(selectedFruit);
             const cropMontant = _curMontants.cropAdvance || 0;
             const fruitMontant = _curMontants.fruitAdvance || 0;
+            const globalCropPreleve = (fetchedDocs || []).reduce((s, d) => s + (d.cropAdvance || 0), 0);
             liq = {
                 ...liq,
                 deductions: {
@@ -33262,8 +33460,10 @@ ${rejetHtml}
                     },
                     cropAdvance: {
                         ...liq.deductions.cropAdvance,
+                        designation: "Prêt Driscoll's (Crop Advance) — global ferme",
                         totalMontant: cropMontant,
-                        resteADeduire: Math.max(cropMontant - liq.deductions.cropAdvance.totalPreleve, 0),
+                        totalPreleve: globalCropPreleve,
+                        resteADeduire: Math.max(cropMontant - globalCropPreleve, 0),
                     },
                     fruitAdvance: {
                         ...liq.deductions.fruitAdvance,
@@ -33468,15 +33668,9 @@ ${rejetHtml}
                                         {value: `${pctPlants.toFixed(1)}%`, label: 'Avancement'}
                                     ]} />
                                 <div onClick={() => {
+                                        // Crop Advance is a GLOBAL pot — always single value, no per-culture editor.
                                         setEditingMontant('cropAdvance');
-                                        if (selectedFruit) {
-                                            setEditMontantValue(String(getMontantsForCulture(selectedFruit).cropAdvance || ''));
-                                        } else {
-                                            setEditMontantPerCulture({
-                                                framboise: String((deductionMontants.framboise || {}).cropAdvance || ''),
-                                                myrtille: String((deductionMontants.myrtille || {}).cropAdvance || ''),
-                                            });
-                                        }
+                                        setEditMontantValue(String(deductionMontants.cropAdvance || ''));
                                     }} style={{cursor: 'pointer'}}>
                                 <KPICard icon="fa-handshake" iconClass="blue"
                                     value={`${Math.round(liq.deductions.cropAdvance.resteADeduire/1000).toLocaleString('fr-FR')}K`}
@@ -33492,9 +33686,10 @@ ${rejetHtml}
                                         if (selectedFruit) {
                                             setEditMontantValue(String(getMontantsForCulture(selectedFruit).fruitAdvance || ''));
                                         } else {
+                                            const fA = deductionMontants.fruitAdvance || {};
                                             setEditMontantPerCulture({
-                                                framboise: String((deductionMontants.framboise || {}).fruitAdvance || ''),
-                                                myrtille: String((deductionMontants.myrtille || {}).fruitAdvance || ''),
+                                                framboise: String(fA.framboise || ''),
+                                                myrtille: String(fA.myrtille || ''),
                                             });
                                         }
                                     }} style={{cursor: 'pointer'}}>
@@ -33865,11 +34060,15 @@ ${rejetHtml}
                             {editingMontant && (
                                 <div className="modal-overlay" onClick={() => setEditingMontant(null)}>
                                     <div className="modal-content" onClick={e => e.stopPropagation()} style={{maxWidth:400}}>
-                                        <h2><i className="fa-solid fa-pen"></i> {editingMontant === 'cropAdvance' ? 'Montant Crop Advance' : 'Montant Fruit Advance'}{selectedFruit ? ` — ${selectedFruit === 'myrtille' ? 'Myrtille' : 'Framboise'}` : ''}</h2>
+                                        <h2><i className="fa-solid fa-pen"></i> {editingMontant === 'cropAdvance'
+                                            ? "Montant Crop Advance (prêt — global ferme)"
+                                            : `Montant Fruit Advance${selectedFruit ? ` — ${selectedFruit === 'myrtille' ? 'Myrtille' : 'Framboise'}` : ''}`}</h2>
                                         <p style={{fontSize:12, color:'var(--gray-500)', marginBottom:16}}>
-                                            Saisissez le montant total convenu avec Driscoll's pour cette saison. Cette valeur sera utilisée pour calculer le reste à déduire et l'avancement.
+                                            {editingMontant === 'cropAdvance'
+                                                ? "Le Crop Advance est un prêt unique convenu avec Driscoll's pour l'ensemble de la ferme. Les prélèvements Framboise + Myrtille viennent décompter ce même montant."
+                                                : "Saisissez le montant total convenu avec Driscoll's pour cette saison. Cette valeur sera utilisée pour calculer le reste à déduire et l'avancement."}
                                         </p>
-                                        {selectedFruit ? (
+                                        {(editingMontant === 'cropAdvance' || selectedFruit) ? (
                                             <>
                                                 <div className="form-group">
                                                     <label>Montant total (DH)</label>
@@ -33879,7 +34078,10 @@ ${rejetHtml}
                                                         autoFocus style={{fontSize:16, fontWeight:700}} />
                                                 </div>
                                                 <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:16}}>
-                                                    Valeur actuelle : <strong>{((getMontantsForCulture(selectedFruit)[editingMontant]) || 0).toLocaleString('fr-FR')} DH</strong>
+                                                    Valeur actuelle : <strong>{(editingMontant === 'cropAdvance'
+                                                        ? (deductionMontants.cropAdvance || 0)
+                                                        : (getMontantsForCulture(selectedFruit).fruitAdvance || 0)
+                                                    ).toLocaleString('fr-FR')} DH</strong>
                                                 </div>
                                             </>
                                         ) : (
@@ -33898,13 +34100,13 @@ ${rejetHtml}
                                                         style={{fontSize:16, fontWeight:700}} />
                                                 </div>
                                                 <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:16}}>
-                                                    Valeurs actuelles : Framboise <strong>{((deductionMontants.framboise || {})[editingMontant] || 0).toLocaleString('fr-FR')} DH</strong> · Myrtille <strong>{((deductionMontants.myrtille || {})[editingMontant] || 0).toLocaleString('fr-FR')} DH</strong>
+                                                    Valeurs actuelles : Framboise <strong>{((deductionMontants.fruitAdvance || {}).framboise || 0).toLocaleString('fr-FR')} DH</strong> · Myrtille <strong>{((deductionMontants.fruitAdvance || {}).myrtille || 0).toLocaleString('fr-FR')} DH</strong>
                                                 </div>
                                             </>
                                         )}
                                         <div className="form-actions">
                                             <button className="btn-secondary" onClick={() => setEditingMontant(null)}>Annuler</button>
-                                            <button className="btn-primary" onClick={() => saveDeductionMontant(editingMontant, selectedFruit ? (parseFloat(editMontantValue) || 0) : editMontantPerCulture)}>
+                                            <button className="btn-primary" onClick={() => saveDeductionMontant(editingMontant, (editingMontant === 'cropAdvance' || selectedFruit) ? (parseFloat(editMontantValue) || 0) : editMontantPerCulture)}>
                                                 <i className="fa-solid fa-check"></i> Enregistrer
                                             </button>
                                         </div>
@@ -59616,8 +59818,12 @@ ${rejetHtml}
                 return () => unsub();
             }, []);
 
-            // Fullscreen auto : paysage mobile + desktop
+            // Fullscreen auto : paysage mobile + desktop — armé UNIQUEMENT après
+            // authentification. Sur l'écran de login on reste fenêtré : passer en
+            // plein écran pendant la saisie du mot de passe déclenche sur macOS le
+            // glissement de Space pour afficher l'autofill système (Trousseau / carte).
             useEffect(() => {
+                if (!authUser || !userProfile) return;
                 let wantFullscreen = false;
 
                 const tryFullscreen = () => {
@@ -59663,7 +59869,7 @@ ${rejetHtml}
                     document.removeEventListener('click', onInteraction, true);
                     document.removeEventListener('touchstart', onInteraction, true);
                 };
-            }, []);
+            }, [authUser, userProfile]);
 
             if (authLoading) return (
                 <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#fff',position:'relative',overflow:'hidden',fontFamily:"'Inter',sans-serif"}}>
