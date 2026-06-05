@@ -20642,7 +20642,7 @@ ${rejetHtml}
                 { id: 'conditionnement', label: 'Conditionnement', icon: 'fa-box-open', color: '#e67e22', montant: totalConditionnementCout, jh: totalConditionnementJH, active: true },
                 { id: 'chargement', label: 'Chargement', icon: 'fa-truck-loading', color: '#8e44ad', montant: totalChargementCout, jh: totalChargementJH, active: true },
                 { id: 'jour_ferie', label: 'Jour Férié', icon: 'fa-star', color: '#c0392b', montant: totalFerieCout, jh: totalFerieJH, jhLabel: totalFerieOuvriers + ' ouvriers / ' + totalFerieJH + ' jours sup.', active: true },
-                { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck', color: '#16a085', montant: diversInfo.total, jh: diversInfo.count, jhLabel: 'ligne(s)', active: true, noNav: true },
+                { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck', color: '#16a085', montant: diversInfo.total, jh: diversInfo.count, jhLabel: 'ligne(s)', active: true, mainNav: 'pointage_divers' },
                 { id: 'heures_sup', label: 'Heures Supp.', icon: 'fa-clock', color: 'var(--berry)', noDH: true, valueText: fmtDuree(hsTotalOvertime), jh: hsNbDep, jhLabel: 'ouvriers en dépassement', active: true },
             ];
 
@@ -20659,9 +20659,9 @@ ${rejetHtml}
 
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:16,marginBottom:24}}>
                         {primeCards.map(pc => (
-                            <div key={pc.id} onClick={() => pc.active && !pc.noNav && onNavigate(pc.id, currentPeriode)}
+                            <div key={pc.id} onClick={() => { if (!pc.active) return; if (pc.mainNav) { (window._navigateMainTab && window._navigateMainTab(pc.mainNav)); } else if (!pc.noNav) { onNavigate(pc.id, currentPeriode); } }}
                                 style={{background:'#fff',borderRadius:12,padding:20,border: pc.active ? `2px solid ${pc.color}` : '1px solid var(--gray-200)',
-                                    cursor: (pc.active && !pc.noNav) ? 'pointer' : 'default',opacity: pc.active ? 1 : 0.6,
+                                    cursor: (pc.active && (!pc.noNav || pc.mainNav)) ? 'pointer' : 'default',opacity: pc.active ? 1 : 0.6,
                                     boxShadow: pc.active ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',transition:'all 0.2s'}}>
                                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
                                     <div style={{width:40,height:40,borderRadius:10,background: pc.active ? pc.color : 'var(--gray-200)',
@@ -20674,9 +20674,9 @@ ${rejetHtml}
                                     <div>
                                         <div style={{fontSize:22,fontWeight:800,color:pc.color}}>{pc.noDH ? pc.valueText : (pc.montant?.toLocaleString('fr-FR') + ' DH')}</div>
                                         <div style={{fontSize:11,color:'var(--gray-500)',marginTop:4}}>{pc.jh?.toLocaleString('fr-FR')} {pc.jhLabel || 'ouvriers-jours'}</div>
-                                        {!pc.noNav && (
+                                        {(!pc.noNav || pc.mainNav) && (
                                             <div style={{fontSize:10,color:pc.color,marginTop:8,fontWeight:600}}>
-                                                Voir le détail <i className="fa-solid fa-arrow-right" style={{marginLeft:4}}></i>
+                                                {pc.mainNav ? 'Ouvrir Pointage Divers' : 'Voir le détail'} <i className="fa-solid fa-arrow-right" style={{marginLeft:4}}></i>
                                             </div>
                                         )}
                                     </div>
@@ -60734,6 +60734,8 @@ ${rejetHtml}
                 return userProfile.profileId;
             });
             const [currentTab, setCurrentTab] = useState(__savedTab);
+            // Helper global de navigation vers un onglet du menu principal (ex. carte Récap → écran Pointage Divers)
+            React.useEffect(() => { window._navigateMainTab = (t) => setCurrentTab(t); return () => { try { delete window._navigateMainTab; } catch (e) { window._navigateMainTab = null; } }; }, []);
             const [sidebarOpen, setSidebarOpen] = useState(false);
             const [showMoreMenu, setShowMoreMenu] = useState(false);
             const [showMobileProfileMenu, setShowMobileProfileMenu] = useState(false);
