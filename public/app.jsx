@@ -20494,10 +20494,13 @@ ${rejetHtml}
             const [detailRows, setDetailRows] = useState([]);
             const [transportData, setTransportData] = useState({});
             const [recolteRows, setRecolteRows] = useState([]);
+            const [hsRows, setHsRows] = useState([]);
+            const [diversByPeriode, setDiversByPeriode] = useState({}); // { periode: {total, count} }
             const [loading, setLoading] = useState(true);
             const [periodes, setPeriodes] = useState([]);
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const transportEquipes = data.transportConfig || [];
+            const fmtDuree = (min) => { if (min == null || !isFinite(min)) return '—'; const a = Math.abs(Math.round(min)); return `${Math.floor(a/60)}h ${String(a%60).padStart(2,'0')}`; };
 
             const getEqPrefix = (mat) => {
                 if (!mat) return null;
@@ -20527,7 +20530,7 @@ ${rejetHtml}
             React.useEffect(() => {
                 // Invalidate stale transport cache (operation field was added)
                 invalidateCache('transport');
-                let pending = 2;
+                let pending = 3;
                 const done = () => { pending--; if (pending <= 0) setLoading(false); };
                 cachedFetch('/api/pointage-rh?action=transport').then(json => {
                     if (json.success) {
@@ -20540,7 +20543,24 @@ ${rejetHtml}
                 cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json => {
                     if (json.success) setRecolteRows(json.rows || []);
                 }).catch(err => console.warn(err)).finally(done);
+                cachedFetch('/api/pointage-rh?action=heures-sup').then(json => {
+                    if (json.success) setHsRows(json.rows || []);
+                }).catch(err => console.warn(err)).finally(done);
             }, []);
+
+            // Pointage Divers : total montant + nb lignes pour la quinzaine courante (par quinzaine, mis en cache).
+            React.useEffect(() => {
+                const p = selectedPeriode || periodes[0];
+                if (!p || diversByPeriode[p]) return;
+                fetch('/api/validation?action=divers-entries-range&periode=' + encodeURIComponent(p)).then(r => r.json()).then(j => {
+                    if (j && j.success) {
+                        let total = 0, count = 0;
+                        (j.dates || []).forEach(d => { const x = j.byDate[d]; if (x) { total += x.totalMontant || 0; count += (x.entries || []).length; } });
+                        setDiversByPeriode(prev => ({ ...prev, [p]: { total: Math.round(total), count } }));
+                    }
+                }).catch(() => {});
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [selectedPeriode, periodes]);
 
             if (loading) return <div style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🫐</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement...</div></div>;
 
@@ -20607,6 +20627,14 @@ ${rejetHtml}
             const nbRecolteurs = new Set(recolteEntries.filter(e => e.prime > 0).map(e => e.matricule)).size;
             const totalRecolteJH = new Set(recolteEntries.map(e => e.matricule + '|' + e.jour)).size;
 
+            // Heures Supp. : total dépassement (heures, pas de DH) + nb ouvriers en dépassement, pour la quinzaine.
+            const hsFiltered = hsRows.filter(r => r.periode === currentPeriode);
+            const hsTotalOvertime = hsFiltered.reduce((s, r) => s + (r.overtimeMin || 0), 0);
+            const hsNbDep = new Set(hsFiltered.filter(r => (r.overtimeMin || 0) > 0).map(r => r.matricule)).size;
+
+            // Pointage Divers : montant + nb lignes (depuis le cache par quinzaine)
+            const diversInfo = diversByPeriode[currentPeriode] || { total: 0, count: 0 };
+
             const primeCards = [
                 { id: 'recolte', label: 'Récolte', icon: 'fa-coins', color: 'var(--orange)', montant: Math.round(totalRecoltePrime), jh: totalRecolteJH, jhLabel: 'ouvriers-jours / ' + nbRecolteurs + ' primés', active: true },
                 { id: 'transport', label: 'Transport', icon: 'fa-bus', color: 'var(--green)', montant: Math.round(totalTransportCout), jh: totalTransportJH, active: true },
@@ -20614,7 +20642,8 @@ ${rejetHtml}
                 { id: 'conditionnement', label: 'Conditionnement', icon: 'fa-box-open', color: '#e67e22', montant: totalConditionnementCout, jh: totalConditionnementJH, active: true },
                 { id: 'chargement', label: 'Chargement', icon: 'fa-truck-loading', color: '#8e44ad', montant: totalChargementCout, jh: totalChargementJH, active: true },
                 { id: 'jour_ferie', label: 'Jour Férié', icon: 'fa-star', color: '#c0392b', montant: totalFerieCout, jh: totalFerieJH, jhLabel: totalFerieOuvriers + ' ouvriers / ' + totalFerieJH + ' jours sup.', active: true },
-                { id: 'heures_sup', label: 'Heures Supp.', icon: 'fa-clock', color: 'var(--berry)', montant: null, jh: null, active: false },
+                { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck', color: '#16a085', montant: diversInfo.total, jh: diversInfo.count, jhLabel: 'ligne(s)', active: true, noNav: true },
+                { id: 'heures_sup', label: 'Heures Supp.', icon: 'fa-clock', color: 'var(--berry)', noDH: true, valueText: fmtDuree(hsTotalOvertime), jh: hsNbDep, jhLabel: 'ouvriers en dépassement', active: true },
             ];
 
             return (
@@ -20630,9 +20659,9 @@ ${rejetHtml}
 
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:16,marginBottom:24}}>
                         {primeCards.map(pc => (
-                            <div key={pc.id} onClick={() => pc.active && onNavigate(pc.id, currentPeriode)}
+                            <div key={pc.id} onClick={() => pc.active && !pc.noNav && onNavigate(pc.id, currentPeriode)}
                                 style={{background:'#fff',borderRadius:12,padding:20,border: pc.active ? `2px solid ${pc.color}` : '1px solid var(--gray-200)',
-                                    cursor: pc.active ? 'pointer' : 'default',opacity: pc.active ? 1 : 0.6,
+                                    cursor: (pc.active && !pc.noNav) ? 'pointer' : 'default',opacity: pc.active ? 1 : 0.6,
                                     boxShadow: pc.active ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',transition:'all 0.2s'}}>
                                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
                                     <div style={{width:40,height:40,borderRadius:10,background: pc.active ? pc.color : 'var(--gray-200)',
@@ -20643,11 +20672,13 @@ ${rejetHtml}
                                 </div>
                                 {pc.active ? (
                                     <div>
-                                        <div style={{fontSize:22,fontWeight:800,color:pc.color}}>{pc.montant?.toLocaleString('fr-FR')} DH</div>
+                                        <div style={{fontSize:22,fontWeight:800,color:pc.color}}>{pc.noDH ? pc.valueText : (pc.montant?.toLocaleString('fr-FR') + ' DH')}</div>
                                         <div style={{fontSize:11,color:'var(--gray-500)',marginTop:4}}>{pc.jh?.toLocaleString('fr-FR')} {pc.jhLabel || 'ouvriers-jours'}</div>
-                                        <div style={{fontSize:10,color:pc.color,marginTop:8,fontWeight:600}}>
-                                            Voir le détail <i className="fa-solid fa-arrow-right" style={{marginLeft:4}}></i>
-                                        </div>
+                                        {!pc.noNav && (
+                                            <div style={{fontSize:10,color:pc.color,marginTop:8,fontWeight:600}}>
+                                                Voir le détail <i className="fa-solid fa-arrow-right" style={{marginLeft:4}}></i>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div style={{fontSize:12,color:'var(--gray-400)',fontStyle:'italic'}}>Bientôt disponible</div>
@@ -20672,7 +20703,7 @@ ${rejetHtml}
                                     <tr key={pc.id} style={{opacity: pc.active ? 1 : 0.5}}>
                                         <td><i className={`fa-solid ${pc.icon}`} style={{marginRight:8,color: pc.active ? pc.color : 'var(--gray-300)'}}></i><strong>{pc.label}</strong></td>
                                         <td style={{textAlign:'center',fontWeight:600}}>{pc.active ? pc.jh?.toLocaleString('fr-FR') : '-'}</td>
-                                        <td style={{textAlign:'right',fontWeight:700,color: pc.active ? pc.color : 'var(--gray-400)'}}>{pc.active ? pc.montant?.toLocaleString('fr-FR') + ' DH' : '-'}</td>
+                                        <td style={{textAlign:'right',fontWeight:700,color: pc.active ? pc.color : 'var(--gray-400)'}}>{pc.active ? (pc.noDH ? pc.valueText : pc.montant?.toLocaleString('fr-FR') + ' DH') : '-'}</td>
                                         <td style={{textAlign:'center'}}>
                                             {pc.active ? (
                                                 <span className="status-badge" style={{background:'rgba(40,167,69,0.1)',color:'#28a745',fontSize:10}}>
@@ -20689,7 +20720,7 @@ ${rejetHtml}
                                 <tr style={{background:'var(--berry-pale)',fontWeight:700}}>
                                     <td>TOTAL</td>
                                     <td style={{textAlign:'center'}}>{(totalRecolteJH + totalTransportJH + totalTraitementJH).toLocaleString('fr-FR')}</td>
-                                    <td style={{textAlign:'right',color:'var(--berry)'}}>{Math.round(totalRecoltePrime + totalTransportCout + totalTraitementCout).toLocaleString('fr-FR')} DH</td>
+                                    <td style={{textAlign:'right',color:'var(--berry)'}}>{Math.round(totalRecoltePrime + totalTransportCout + totalTraitementCout + diversInfo.total).toLocaleString('fr-FR')} DH</td>
                                     <td></td>
                                 </tr>
                             </tbody>
@@ -21392,6 +21423,12 @@ ${rejetHtml}
             const [rejectComment, setRejectComment] = useState('');
             const [showCaporalModal, setShowCaporalModal] = useState(false);
             const [caporalFile, setCaporalFile] = useState(null);
+            const [savedMsg, setSavedMsg] = useState('');
+            const [viewMode, setViewMode] = useState('jour'); // 'jour' | 'quinzaine'
+            const [qzPeriodes, setQzPeriodes] = useState([]);
+            const [qzSelected, setQzSelected] = useState('');
+            const [qzData, setQzData] = useState({ dates: [], byDate: {} });
+            const [qzLoading, setQzLoading] = useState(false);
 
             const isRH = currentProfile === 'rh';
             const isDG = currentProfile === 'dg';
@@ -21436,7 +21473,7 @@ ${rejetHtml}
 
             // Changement de date : bascule instantanée si en cache (préchargé), sinon spinner localisé.
             const handleDateChange = (d) => {
-                setSelectedDate(d);
+                setSelectedDate(d); setSavedMsg('');
                 const cached = entriesByDate[d];
                 if (cached) {
                     setEntries(cached.entries); setVisaStatus(cached.visa); setLoadingDate(false);
@@ -21447,6 +21484,20 @@ ${rejetHtml}
                 preloadNeighbors(d);
             };
 
+            // Vue quinzaine : récap lecture seule de tout le pointage divers d'une quinzaine.
+            const loadQuinzaine = (periode) => {
+                setQzLoading(true);
+                const url = '/api/validation?action=divers-entries-range' + (periode ? '&periode=' + encodeURIComponent(periode) : '&date=' + selectedDate);
+                fetch(url).then(r => r.json()).then(json => {
+                    if (json && json.success) {
+                        setQzPeriodes(json.periodes || []);
+                        setQzSelected(json.periode || '');
+                        setQzData({ dates: json.dates || [], byDate: json.byDate || {} });
+                    }
+                }).catch(err => console.warn('Divers quinzaine load error:', err)).finally(() => setQzLoading(false));
+            };
+            const enterQuinzaineView = () => { setViewMode('quinzaine'); if (qzData.dates.length === 0) loadQuinzaine(qzSelected || null); };
+
 
             // --- Entries ---
             const isLocked = !!visaStatus.locked;
@@ -21456,9 +21507,11 @@ ${rejetHtml}
             const isRejected = !!visaStatus.rejected;
 
             const addEntry = () => {
+                setSavedMsg('');
                 setEntries([...entries, { configId: '', beneficiaire: '', matricule: '', fonction: '', tache: '', quantite: 1, prixUnitaire: 0, unite: '', montant: 0, commentaire: '' }]);
             };
             const updateEntry = (idx, field, value) => {
+                setSavedMsg('');
                 const newEntries = [...entries];
                 if (field === 'configId') {
                     const cfg = configItems.find(c => c.id === value);
@@ -21473,12 +21526,12 @@ ${rejetHtml}
                 }
                 setEntries(newEntries);
             };
-            const removeEntry = (idx) => { setEntries(entries.filter((_, i) => i !== idx)); };
+            const removeEntry = (idx) => { setSavedMsg(''); setEntries(entries.filter((_, i) => i !== idx)); };
 
             const saveEntries = () => {
-                setSaving(true);
+                setSaving(true); setSavedMsg('');
                 fetch('/api/validation?action=divers-entries-save', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ date: selectedDate, entries, profileId: currentProfile }) })
-                    .then(r => r.json()).then(res => { if (!res.success) alert(res.error || 'Erreur'); else refreshActiveDate(); })
+                    .then(r => r.json()).then(res => { if (!res.success) alert(res.error || 'Erreur'); else { setSavedMsg('✓ Pointage enregistré'); refreshActiveDate(); } })
                     .catch(err => alert('Erreur: ' + err.message))
                     .finally(() => setSaving(false));
             };
@@ -21536,6 +21589,17 @@ ${rejetHtml}
                         <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-truck" style={{marginRight:4}}></i>Pointage Divers
                         </span>
+                        {/* Toggle Vue jour / Vue quinzaine */}
+                        <div style={{display:'flex',border:'1px solid var(--gray-200)',borderRadius:8,overflow:'hidden'}}>
+                            <button onClick={() => setViewMode('jour')} style={{border:'none',padding:'5px 12px',fontSize:11,fontWeight:600,cursor:'pointer',background:viewMode==='jour'?'var(--berry)':'#fff',color:viewMode==='jour'?'#fff':'var(--gray-600)'}}>
+                                <i className="fa-solid fa-calendar-day" style={{marginRight:4}}></i>Vue jour
+                            </button>
+                            <button onClick={enterQuinzaineView} style={{border:'none',padding:'5px 12px',fontSize:11,fontWeight:600,cursor:'pointer',background:viewMode==='quinzaine'?'var(--berry)':'#fff',color:viewMode==='quinzaine'?'#fff':'var(--gray-600)'}}>
+                                <i className="fa-solid fa-table-cells" style={{marginRight:4}}></i>Vue quinzaine
+                            </button>
+                        </div>
+                        {viewMode === 'jour' && (
+                        <React.Fragment>
                         <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Jour pointé :</span>
                         <div style={{display:'flex',alignItems:'center',gap:4,background:'#fff',border:'1px solid var(--gray-200)',borderRadius:8,padding:'2px 4px'}}>
                             <button onClick={() => { const d = new Date(selectedDate + 'T12:00:00'); d.setDate(d.getDate() - 1); handleDateChange(d.toISOString().slice(0,10)); }}
@@ -21549,8 +21613,79 @@ ${rejetHtml}
                             style={{padding:'5px 12px',borderRadius:8,border:'1px solid var(--gray-200)',background:'#fff',cursor:'pointer',fontSize:11,fontWeight:600,color:'var(--gray-600)'}}>
                             <i className="fa-solid fa-calendar-day" style={{marginRight:4}}></i>Aujourd'hui
                         </button>
+                        </React.Fragment>
+                        )}
                     </div>
 
+                    {/* Vue quinzaine (récap lecture seule) */}
+                    {viewMode === 'quinzaine' && (() => {
+                        const dates = qzData.dates || [];
+                        const bySt = {};
+                        dates.forEach(d => {
+                            ((qzData.byDate[d] || {}).entries || []).forEach(e => {
+                                const key = (e.matricule || e.beneficiaire || '?') + '|' + (e.fonction || '');
+                                if (!bySt[key]) bySt[key] = { matricule: e.matricule || '', beneficiaire: e.beneficiaire || '', fonction: e.fonction || '', unite: e.unite || '', byDay: {}, totQ: 0, totM: 0 };
+                                const cur = bySt[key].byDay[d] || { q: 0, m: 0 };
+                                cur.q += Number(e.quantite) || 0; cur.m += Number(e.montant) || 0;
+                                bySt[key].byDay[d] = cur;
+                                bySt[key].totQ += Number(e.quantite) || 0; bySt[key].totM += Number(e.montant) || 0;
+                            });
+                        });
+                        const rows = Object.values(bySt).sort((a, b) => b.totM - a.totM);
+                        const dailyTot = dates.map(d => rows.reduce((s, r) => s + ((r.byDay[d] && r.byDay[d].m) || 0), 0));
+                        const grandTot = rows.reduce((s, r) => s + r.totM, 0);
+                        const fmtD = d => new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+                        return (
+                            <Panel title="Récapitulatif quinzaine — Pointage Divers" icon="fa-table-cells">
+                                <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                                    <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Quinzaine :</span>
+                                    <select value={qzSelected} onChange={e => loadQuinzaine(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
+                                        {qzPeriodes.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                    {qzLoading && <span style={{fontSize:11,color:'var(--berry)'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:4}}></i>Chargement…</span>}
+                                </div>
+                                <div className="table-responsive">
+                                <table className="data-table" style={{fontSize:11,whiteSpace:'nowrap'}}>
+                                    <thead>
+                                        <tr>
+                                            <th>Sous-traitant</th>
+                                            <th>Fonction</th>
+                                            {dates.map(d => <th key={d} style={{textAlign:'center',fontSize:9}}>{fmtD(d)}</th>)}
+                                            <th style={{textAlign:'center',fontWeight:700}}>Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {rows.map((r, i) => (
+                                            <tr key={i}>
+                                                <td><strong>{r.beneficiaire || r.matricule || '—'}</strong>{r.matricule && <span style={{marginLeft:6,fontSize:9,fontFamily:'monospace',color:'var(--gray-400)'}}>[{r.matricule}]</span>}</td>
+                                                <td style={{fontSize:10}}>{r.fonction || '—'}</td>
+                                                {dates.map(d => {
+                                                    const c = r.byDay[d];
+                                                    if (!c || (!c.q && !c.m)) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                                    return <td key={d} style={{textAlign:'center',fontSize:10}}><div style={{fontWeight:600}}>{c.q}</div><div style={{fontSize:9,color:'var(--gray-400)'}}>{Math.round(c.m).toLocaleString('fr-FR')} DH</div></td>;
+                                                })}
+                                                <td style={{textAlign:'center',fontWeight:700,color:'var(--berry)'}}><div>{Math.round(r.totQ*100)/100}</div><div style={{fontSize:10}}>{Math.round(r.totM).toLocaleString('fr-FR')} DH</div></td>
+                                            </tr>
+                                        ))}
+                                        {rows.length === 0 && <tr><td colSpan={dates.length + 3} style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun pointage divers sur cette quinzaine.</td></tr>}
+                                    </tbody>
+                                    {rows.length > 0 && (
+                                        <tfoot>
+                                            <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                                <td colSpan={2} style={{textAlign:'right'}}>Total / jour</td>
+                                                {dailyTot.map((m, i) => <td key={i} style={{textAlign:'center',fontSize:10,color:m>0?'var(--berry)':'var(--gray-300)'}}>{m > 0 ? Math.round(m).toLocaleString('fr-FR') + ' DH' : '-'}</td>)}
+                                                <td style={{textAlign:'center',color:'var(--berry)',fontSize:13}}>{Math.round(grandTot).toLocaleString('fr-FR')} DH</td>
+                                            </tr>
+                                        </tfoot>
+                                    )}
+                                </table>
+                                </div>
+                            </Panel>
+                        );
+                    })()}
+
+                    {viewMode === 'jour' && (
+                    <React.Fragment>
                     {/* Validation bar */}
                     <div style={{marginBottom:14,padding:'10px 14px',background:'#f8f9fa',borderRadius:10,border:'1px solid var(--gray-200)'}}>
                         <div style={{fontSize:12,fontWeight:700,marginBottom:8,color:'var(--gray-600)'}}>
@@ -21797,7 +21932,7 @@ ${rejetHtml}
                             </tbody>
                         </table>
                         {!isLocked && isRH && (
-                            <div style={{marginTop:12,display:'flex',gap:8}}>
+                            <div style={{marginTop:12,display:'flex',gap:8,alignItems:'center'}}>
                                 <button onClick={addEntry} style={{padding:'8px 16px',borderRadius:8,border:'2px dashed var(--gray-300)',background:'#fff',color:'var(--gray-600)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                                     <i className="fa-solid fa-plus" style={{marginRight:4}}></i>Ajouter une ligne
                                 </button>
@@ -21805,12 +21940,15 @@ ${rejetHtml}
                                     <button onClick={saveEntries} disabled={saving}
                                         style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--green)',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer'}}>
                                         <i className={`fa-solid ${saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'}`} style={{marginRight:4}}></i>
-                                        {saving ? 'Enregistrement...' : 'Enregistrer'}
+                                        {saving ? 'Enregistrement...' : ((entriesByDate[selectedDate] && (entriesByDate[selectedDate].entries || []).length > 0) ? 'Modifier le pointage' : 'Enregistrer')}
                                     </button>
                                 )}
+                                {savedMsg && <span style={{color:'var(--green)',fontWeight:600,fontSize:12}}>{savedMsg}</span>}
                             </div>
                         )}
                     </Panel>
+                    </React.Fragment>
+                    )}
                 </div>
             );
         }

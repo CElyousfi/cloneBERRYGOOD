@@ -18,7 +18,7 @@ const whatsappService = require("./whatsappService");
 // =============================================
 // Firestore Mirror — reads from synced collections
 // =============================================
-const { getConsommationRows, getCueilletteRows, getPointageRowsForDate, getPointageRowsForDateRange, getSyncStatus } = require("./firestoreDataService");
+const { getConsommationRows, getCueilletteRows, getPointageRowsForDate, getPointageRowsForDateRange, getSyncStatus, getPointageMeta } = require("./firestoreDataService");
 const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 
 // Import & re-export sync functions
@@ -4532,6 +4532,30 @@ exports.validation = functions
         return res.json({ success: true, data: doc.exists ? doc.data() : { date, entries: [], totalMontant: 0 } });
       }
 
+      // GET: divers entries for a whole quinzaine (vue quinzaine + carte récap)
+      if (action === "divers-entries-range") {
+        const meta = await getPointageMeta();
+        const periodes = (meta && meta.periodes) || [];
+        const periodeMap = (meta && meta.periodeMap) || {};
+        let periode = req.query.periode;
+        if (!periode || !periodeMap[periode]) {
+          const d = req.query.date;
+          periode = (d && periodes.find(p => (periodeMap[p] || []).includes(d))) || periodes[0] || null;
+        }
+        const dates = periode ? (periodeMap[periode] || []).slice().sort() : [];
+        const byDate = {};
+        for (let i = 0; i < dates.length; i += 10) {
+          const batch = dates.slice(i, i + 10);
+          const snaps = await Promise.all(batch.map(dd => db_firestore.collection("pointage_divers").doc(dd).get()));
+          snaps.forEach((s, idx) => {
+            const dd = batch[idx];
+            const data = s.exists ? s.data() : null;
+            byDate[dd] = { entries: (data && data.entries) || [], totalMontant: (data && data.totalMontant) || 0 };
+          });
+        }
+        return res.json({ success: true, periodes, periode, dates, byDate });
+      }
+
       // POST: save divers entries for a date (blocked if locked)
       if (action === "divers-entries-save" && req.method === "POST") {
         const { date, entries, profileId } = req.body || {};
@@ -4546,6 +4570,7 @@ exports.validation = functions
         const cleanEntries = entries.map(e => ({
           configId: e.configId || "",
           beneficiaire: (e.beneficiaire || "").trim(),
+          matricule: (e.matricule || "").trim(),
           fonction: (e.fonction || "").trim(),
           tache: (e.tache || "").trim(),
           quantite: Number(e.quantite) || 0,
