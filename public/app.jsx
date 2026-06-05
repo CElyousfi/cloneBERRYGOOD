@@ -496,6 +496,7 @@
             { id: 'fin_ojra', label: 'OJRA (Paie)', icon: 'fa-file-invoice-dollar' },
             { id: 'fin_stock', label: 'Gestion de Stock', icon: 'fa-boxes-stacked' },
             { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
+            { id: 'mag_reception', label: 'Bons de Réception', icon: 'fa-truck-ramp-box' },
             { id: 'mag_inventaire', label: 'Inventaire', icon: 'fa-clipboard-list' },
             { id: 'fin_liquidations', label: 'Suivi Liquidations', icon: 'fa-file-invoice-dollar' },
             { id: 'productivity_report', label: 'Productivity Driscoll\'s', icon: 'fa-chart-line' },
@@ -45464,6 +45465,8 @@ ${rejetHtml}
             const [dateTo, setDateTo] = useState('');
             const [sortField, setSortField] = useState('date');
             const [sortDir, setSortDir] = useState('desc');
+            const [subTab, setSubTab] = useState('liste');
+            const [canevaPending, setCanevaPending] = useState(0);
             const MAGASINS_BR = ['F1', 'F2', 'F5', 'F6'];
             const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
             const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
@@ -45608,10 +45611,33 @@ ${rejetHtml}
                 return 'BDC';
             };
 
+            const canImportCaneva = ['achats', 'finance', 'dg'].includes(currentProfile);
+            useEffect(() => {
+                if (!canImportCaneva) return;
+                fetch('/api/stock?action=import-caneva-stock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'list' }) })
+                    .then(r => r.json()).then(j => { if (j.success) setCanevaPending(j.pending || 0); }).catch(() => {});
+            }, [canImportCaneva, subTab]);
+            const tabBar = canImportCaneva ? (
+                <div style={{display:'flex',gap:8,marginBottom:16}}>
+                    {[{id:'liste',label:'Bons de Réception',icon:'fa-truck-ramp-box'},{id:'import',label:'Import canevas',icon:'fa-file-import'}].map(t => (
+                        <button key={t.id} onClick={() => setSubTab(t.id)}
+                            style={{padding:'7px 14px',borderRadius:20,border: subTab===t.id?'2px solid var(--berry)':'1px solid #ddd',background: subTab===t.id?'rgba(139,34,82,0.08)':'#fff',color: subTab===t.id?'var(--berry)':'#666',fontWeight: subTab===t.id?700:500,fontSize:12,cursor:'pointer'}}>
+                            <i className={'fa-solid '+t.icon} style={{marginRight:6}}></i>{t.label}
+                            {t.id==='import' && canevaPending>0 && <span style={{marginLeft:6,background:'var(--red)',color:'#fff',borderRadius:10,padding:'1px 7px',fontSize:10}}>{canevaPending}</span>}
+                        </button>
+                    ))}
+                </div>
+            ) : null;
+
+            if (subTab === 'import' && canImportCaneva) {
+                return (<div className="fade-in">{tabBar}<CanevaImportSub currentProfile={currentProfile} profileData={profileData} onDone={() => loadReceptions()} /></div>);
+            }
+
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
             return (
                 <div className="fade-in">
+                    {tabBar}
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
                         <h3 style={{margin:0}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8,color:'var(--berry)'}}></i>Bons de Réception ({filtered.length})</h3>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
@@ -54432,6 +54458,261 @@ ${rejetHtml}
                 reader.onerror = reject;
                 reader.readAsDataURL(file);
             });
+        }
+
+        // ===== Import canevas Stock (Achats → validation Finance) =====
+        function callCanevaStock(body) {
+            return fetch('/api/stock?action=import-caneva-stock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json());
+        }
+        function canevaActor(currentProfile, profileData) {
+            return { profileId: currentProfile, name: (profileData && profileData.name) || currentProfile, userId: (profileData && profileData.userId) || '' };
+        }
+
+        // Résumé d'un dry-run canevas : compteurs, jours nouveaux/modifiés, écarts, warnings.
+        function CanevaSummaryView({ s }) {
+            if (!s) return null;
+            const c = s.counts || {};
+            const chip = (label, val, color) => (
+                <span style={{padding:'3px 9px',borderRadius:20,background: color ? color+'14' : 'var(--gray-100)',color: color || 'var(--gray-700)',fontSize:11}}>{label} <strong>{val}</strong></span>
+            );
+            return (
+                <div style={{marginTop:10}}>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
+                        {chip('Réceptions', c.receptions || 0)}
+                        {chip('Transferts', c.transferts || 0)}
+                        {chip('Consommations', c.consommations || 0)}
+                        {chip('Sorties', c.sorties || 0)}
+                        {chip('Lignes', c.lineItems || 0)}
+                    </div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
+                        {chip('Jours nouveaux', (s.jours_nouveaux || []).length, 'var(--green)')}
+                        {chip('Jours inchangés', (s.jours_identiques || []).length, 'var(--gray-400)')}
+                        {chip('Jours à remplacer', (s.jours_modifies || []).length, 'var(--red)')}
+                    </div>
+                    {s.guard && s.guard.shrink && s.guard.shrink.flagged && (
+                        <div style={{padding:8,background:'rgba(212,168,71,0.12)',border:'1px solid rgba(212,168,71,0.35)',borderRadius:6,fontSize:11,marginBottom:8}}>
+                            <i className="fa-solid fa-triangle-exclamation" style={{color:'var(--gold)',marginRight:5}}></i>
+                            Baisse importante du volume : {s.guard.shrink.new} mouvements vs {s.guard.shrink.current} actuels ({s.guard.shrink.pct}%).
+                        </div>
+                    )}
+                    {(s.jours_modifies || []).length > 0 && (
+                        <div style={{padding:8,background:'rgba(231,76,60,0.07)',border:'1px solid rgba(231,76,60,0.25)',borderRadius:6,fontSize:11,marginBottom:8}}>
+                            <strong style={{color:'var(--red)'}}><i className="fa-solid fa-clock-rotate-left" style={{marginRight:5}}></i>Données historiques qui seront effacées :</strong>
+                            <ul style={{margin:'4px 0 0 0',paddingLeft:16}}>
+                                {s.jours_modifies.slice(0, 12).map((j, i) => <li key={i}>{j.date} — {j.nb_bons_existants} bon(s) existant(s) remplacé(s)</li>)}
+                                {s.jours_modifies.length > 12 && <li>… +{s.jours_modifies.length - 12} autre(s) jour(s)</li>}
+                            </ul>
+                        </div>
+                    )}
+                    <div style={{fontSize:11,color:'var(--gray-600)',marginBottom:6}}>
+                        Validation vs Stock réel : <strong style={{color:'var(--green)'}}>{(s.validation||{}).matches || 0} OK</strong>
+                        {(s.validation||{}).mismatch_count > 0 && <span> · <strong style={{color:'var(--gold)'}}>{s.validation.mismatch_count} écart(s)</strong></span>}
+                    </div>
+                    {(s.validation||{}).mismatches && s.validation.mismatches.length > 0 && (
+                        <details style={{marginBottom:6}}>
+                            <summary style={{fontSize:11,cursor:'pointer',color:'var(--gray-500)'}}>Voir les écarts</summary>
+                            <div style={{maxHeight:150,overflowY:'auto',marginTop:6}}>
+                                <table style={{width:'100%',borderCollapse:'collapse',fontSize:10}}>
+                                    <thead><tr style={{background:'var(--gray-100)'}}>
+                                        <th style={{textAlign:'left',padding:'3px 5px'}}>Ferme</th><th style={{textAlign:'left',padding:'3px 5px'}}>Article</th>
+                                        <th style={{textAlign:'right',padding:'3px 5px'}}>Calculé</th><th style={{textAlign:'right',padding:'3px 5px'}}>Réel</th><th style={{textAlign:'right',padding:'3px 5px'}}>Δ</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {s.validation.mismatches.map((m, i) => (
+                                            <tr key={i} style={{borderTop:'1px solid var(--gray-100)'}}>
+                                                <td style={{padding:'3px 5px'}}>{m.farm}</td><td style={{padding:'3px 5px'}}>{m.article}</td>
+                                                <td style={{textAlign:'right',padding:'3px 5px'}}>{m.computed}</td><td style={{textAlign:'right',padding:'3px 5px'}}>{m.reel}</td>
+                                                <td style={{textAlign:'right',padding:'3px 5px',color: Math.abs(m.delta) > 0 ? 'var(--red)' : 'inherit'}}>{m.delta}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    )}
+                    {(s.warnings || []).length > 0 && (
+                        <div style={{padding:8,background:'rgba(212,168,71,0.1)',borderRadius:6,fontSize:10.5,marginBottom:6}}>
+                            {s.warnings.slice(0, 5).map((w, i) => <div key={i}><i className="fa-solid fa-circle-info" style={{marginRight:5,color:'var(--gold)'}}></i>{w}</div>)}
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Carte d'upload Achats : dropzone → aperçu obligatoire → import direct OU demande Finance.
+        function CanevaUploadCard({ currentProfile, profileData, onDone }) {
+            const [file, setFile] = useState(null);
+            const [phase, setPhase] = useState('idle'); // idle | previewing | preview_ready | submitting | done | error
+            const [summary, setSummary] = useState(null);
+            const [error, setError] = useState('');
+            const [result, setResult] = useState(null);
+
+            const reset = () => { setFile(null); setPhase('idle'); setSummary(null); setError(''); setResult(null); };
+            const onFiles = (fs) => { setFile(fs[0]); setPhase('idle'); setSummary(null); setError(''); setResult(null); };
+
+            const doPreview = async () => {
+                setPhase('previewing'); setError('');
+                try {
+                    const b64 = await caisseFileToB64(file);
+                    const j = await callCanevaStock({ mode: 'preview', file_base64: b64, filename: file.name, requested_by: canevaActor(currentProfile, profileData) });
+                    if (!j.success) { setSummary(j.summary || null); setError((j.reasons && j.reasons.join(' · ')) || j.error || 'Classeur invalide'); setPhase('error'); return; }
+                    setSummary(j.summary); setPhase('preview_ready');
+                } catch (e) { setError(e.message); setPhase('error'); }
+            };
+
+            const submit = async (mode) => {
+                setPhase('submitting'); setError('');
+                try {
+                    const b64 = await caisseFileToB64(file);
+                    const j = await callCanevaStock({ mode, file_base64: b64, filename: file.name, requested_by: canevaActor(currentProfile, profileData) });
+                    if (!j.success) { setError(j.error || 'Échec'); setPhase('preview_ready'); return; }
+                    setResult({ mode, ...j }); setPhase('done');
+                    if (typeof onDone === 'function') onDone();
+                } catch (e) { setError(e.message); setPhase('error'); }
+            };
+
+            const requiresFinance = summary && summary.requires_finance;
+            const hardBlock = summary && summary.guard && summary.guard.hardBlock;
+
+            return (
+                <div style={{background:'white',borderRadius:12,border:'1px solid var(--gray-200)',padding:16,maxWidth:680}}>
+                    <div style={{fontWeight:700,fontSize:14,marginBottom:4}}><i className="fa-solid fa-file-import" style={{marginRight:8,color:'var(--berry)'}}></i>Importer le canevas Stock</div>
+                    <div style={{fontSize:11.5,color:'var(--gray-500)',marginBottom:12}}>Déposez le classeur Excel « CANEVA STOCK BGF ». Un aperçu obligatoire s'affiche avant tout import. Les jours déjà importés ne peuvent être remplacés qu'avec l'accord de Finance.</div>
+
+                    {(phase === 'idle' || phase === 'error') && <CaisseDropzone onFiles={onFiles} cc={{ color: 'var(--berry)', bg: 'rgba(139,34,82,0.08)' }} />}
+                    {file && phase !== 'done' && <div style={{fontSize:11,color:'var(--berry)',marginBottom:8}}><i className="fa-solid fa-file-excel" style={{marginRight:5}}></i>{file.name}</div>}
+                    {error && <div style={{padding:8,background:'rgba(231,76,60,0.08)',color:'var(--red)',borderRadius:6,fontSize:11,marginBottom:8}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:5}}></i>{error}</div>}
+
+                    {(phase === 'idle' || phase === 'error') && file && (
+                        <button onClick={doPreview} style={{width:'100%',padding:'10px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                            <i className="fa-solid fa-magnifying-glass" style={{marginRight:6}}></i>Prévisualiser
+                        </button>
+                    )}
+                    {phase === 'previewing' && <button disabled style={{width:'100%',padding:'10px',borderRadius:8,border:'none',background:'var(--gray-200)',color:'white',fontSize:12,cursor:'wait'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Analyse…</button>}
+
+                    {summary && (phase === 'preview_ready' || phase === 'submitting' || phase === 'error') && <CanevaSummaryView s={summary} />}
+
+                    {phase === 'preview_ready' && !hardBlock && (
+                        <div style={{display:'flex',gap:8,marginTop:12}}>
+                            <button onClick={reset} style={{padding:'10px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',color:'var(--gray-600)',fontSize:12,cursor:'pointer'}}>Annuler</button>
+                            {requiresFinance ? (
+                                <button onClick={() => submit('request')} style={{flex:1,padding:'10px',borderRadius:8,border:'none',background:'var(--gold)',color:'white',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                                    <i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>Demander l'import à Finance
+                                </button>
+                            ) : (
+                                <button onClick={() => submit('apply')} style={{flex:1,padding:'10px',borderRadius:8,border:'none',background:'var(--green)',color:'white',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                                    <i className="fa-solid fa-upload" style={{marginRight:6}}></i>Importer
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    {phase === 'preview_ready' && hardBlock && (
+                        <button onClick={reset} style={{width:'100%',marginTop:12,padding:'9px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',color:'var(--gray-600)',fontSize:12,cursor:'pointer'}}>Choisir un autre fichier</button>
+                    )}
+                    {phase === 'submitting' && <button disabled style={{width:'100%',marginTop:12,padding:'10px',borderRadius:8,border:'none',background:'var(--gray-200)',color:'white',fontSize:12,cursor:'wait'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:6}}></i>Traitement…</button>}
+
+                    {phase === 'done' && result && (
+                        <div style={{marginTop:12}}>
+                            <div style={{padding:12,background:'rgba(45,139,78,0.06)',border:'1px solid rgba(45,139,78,0.3)',borderRadius:8,fontSize:12}}>
+                                {result.status === 'importe'
+                                    ? <span style={{color:'var(--green)',fontWeight:600}}><i className="fa-solid fa-check" style={{marginRight:6}}></i>Import effectué{result.impacted_dates ? ` — ${result.impacted_dates.length} jour(s) traité(s)` : ''}.</span>
+                                    : <span style={{color:'var(--gold)',fontWeight:600}}><i className="fa-solid fa-paper-plane" style={{marginRight:6}}></i>Demande envoyée à Finance. L'import s'appliquera après validation.</span>}
+                            </div>
+                            <button onClick={reset} style={{width:'100%',marginTop:10,padding:'9px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',color:'var(--gray-600)',fontSize:12,cursor:'pointer'}}><i className="fa-solid fa-rotate-left" style={{marginRight:6}}></i>Nouvel import</button>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // File d'attente Finance/DG : demandes à valider + archive (restauration).
+        function CanevaFinanceQueue({ currentProfile, profileData, onDone }) {
+            const [requests, setRequests] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [busyId, setBusyId] = useState('');
+            const [openId, setOpenId] = useState('');
+
+            const load = () => {
+                setLoading(true);
+                callCanevaStock({ mode: 'list' }).then(j => { if (j.success) setRequests(j.requests || []); }).catch(() => {}).finally(() => setLoading(false));
+            };
+            useEffect(() => { load(); }, []);
+
+            const act = async (mode, reqId, motif) => {
+                setBusyId(reqId);
+                try {
+                    const j = await callCanevaStock({ mode, request_id: reqId, motif, reviewed_by: canevaActor(currentProfile, profileData) });
+                    if (!j.success) { alert('Erreur : ' + (j.error || 'échec')); }
+                    else { load(); if (typeof onDone === 'function') onDone(); }
+                } catch (e) { alert(e.message); } finally { setBusyId(''); }
+            };
+
+            if (loading) return <div style={{textAlign:'center',padding:40}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:24,color:'var(--berry)'}}></i></div>;
+
+            const pending = requests.filter(r => r.status === 'en_attente_finance');
+            const archive = requests.filter(r => !r.file_pruned);
+            const STATUS = { en_attente_finance: { label: 'En attente', color: 'var(--gold)' }, importe: { label: 'Importé', color: 'var(--green)' }, rejete: { label: 'Rejeté', color: 'var(--red)' } };
+
+            return (
+                <div style={{maxWidth:720}}>
+                    <h4 style={{margin:'0 0 10px'}}><i className="fa-solid fa-list-check" style={{marginRight:8,color:'var(--berry)'}}></i>Demandes d'import à valider ({pending.length})</h4>
+                    {pending.length === 0 && <div style={{padding:14,background:'var(--gray-100)',borderRadius:8,fontSize:12,color:'var(--gray-500)'}}>Aucune demande en attente.</div>}
+                    {pending.map(r => (
+                        <div key={r.id} style={{background:'white',border:'1px solid var(--gray-200)',borderRadius:10,padding:14,marginBottom:10}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                <div>
+                                    <div style={{fontWeight:600,fontSize:12.5}}><i className="fa-solid fa-file-excel" style={{marginRight:6,color:'var(--green)'}}></i>{r.filename}</div>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',marginTop:2}}>Par {(r.requested_by||{}).name || '—'} · {(r.jours_modifies||[]).length} jour(s) à remplacer · {(r.jours_nouveaux||[]).length} nouveau(x)</div>
+                                </div>
+                                <button onClick={() => setOpenId(openId === r.id ? '' : r.id)} style={{padding:'6px 10px',borderRadius:6,border:'1px solid var(--gray-200)',background:'white',fontSize:11,cursor:'pointer'}}>{openId === r.id ? 'Masquer' : 'Détails'}</button>
+                            </div>
+                            {openId === r.id && <CanevaSummaryView s={r.summary} />}
+                            <div style={{display:'flex',gap:8,marginTop:10}}>
+                                <button disabled={busyId === r.id} onClick={() => { const m = prompt('Motif du rejet :'); if (m !== null) act('reject', r.id, m); }} style={{padding:'8px 14px',borderRadius:8,border:'1px solid var(--red)',background:'white',color:'var(--red)',fontSize:12,cursor:'pointer'}}>Rejeter</button>
+                                <button disabled={busyId === r.id} onClick={() => { if (confirm('Approuver et appliquer l\'import ? Les jours concernés seront remplacés.')) act('approve', r.id); }} style={{flex:1,padding:'8px',borderRadius:8,border:'none',background:'var(--green)',color:'white',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                                    {busyId === r.id ? <i className="fa-solid fa-spinner fa-spin"></i> : <span><i className="fa-solid fa-check" style={{marginRight:6}}></i>Approuver & importer</span>}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+
+                    <h4 style={{margin:'18px 0 10px'}}><i className="fa-solid fa-box-archive" style={{marginRight:8,color:'var(--berry)'}}></i>Archive (7 derniers fichiers)</h4>
+                    <div style={{border:'1px solid var(--gray-200)',borderRadius:10,overflow:'hidden'}}>
+                        <table style={{width:'100%',borderCollapse:'collapse',fontSize:11.5}}>
+                            <thead><tr style={{background:'var(--gray-100)'}}>
+                                <th style={{textAlign:'left',padding:'7px 10px'}}>Fichier</th><th style={{textAlign:'left',padding:'7px 10px'}}>Statut</th>
+                                <th style={{textAlign:'left',padding:'7px 10px'}}>Par</th><th style={{padding:'7px 10px'}}></th>
+                            </tr></thead>
+                            <tbody>
+                                {archive.length === 0 && <tr><td colSpan={4} style={{padding:12,color:'var(--gray-400)',textAlign:'center'}}>Aucun fichier archivé.</td></tr>}
+                                {archive.map(r => {
+                                    const st = STATUS[r.status] || { label: r.status, color: 'var(--gray-500)' };
+                                    return (
+                                        <tr key={r.id} style={{borderTop:'1px solid var(--gray-100)'}}>
+                                            <td style={{padding:'7px 10px'}}><i className="fa-solid fa-file-excel" style={{marginRight:5,color:'var(--green)'}}></i>{r.filename}</td>
+                                            <td style={{padding:'7px 10px'}}><span style={{color:st.color,fontWeight:600}}>{st.label}</span></td>
+                                            <td style={{padding:'7px 10px',color:'var(--gray-600)'}}>{(r.requested_by||{}).name || '—'}</td>
+                                            <td style={{padding:'7px 10px',textAlign:'right'}}>
+                                                <button disabled={busyId === r.id} onClick={() => { if (confirm('Restaurer cet import ? Les jours du fichier seront ré-appliqués.')) act('restore', r.id); }} style={{padding:'5px 10px',borderRadius:6,border:'1px solid var(--berry)',background:'white',color:'var(--berry)',fontSize:11,cursor:'pointer'}}>
+                                                    {busyId === r.id ? <i className="fa-solid fa-spinner fa-spin"></i> : <span><i className="fa-solid fa-rotate-left" style={{marginRight:4}}></i>Restaurer</span>}
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+        }
+
+        // Aiguillage de l'onglet Import canevas selon le rôle.
+        function CanevaImportSub({ currentProfile, profileData, onDone }) {
+            if (currentProfile === 'finance' || currentProfile === 'dg') {
+                return <CanevaFinanceQueue currentProfile={currentProfile} profileData={profileData} onDone={onDone} />;
+            }
+            return <CanevaUploadCard currentProfile={currentProfile} profileData={profileData} onDone={onDone} />;
         }
 
         function CaisseDropzone({ onFiles, cc }) {

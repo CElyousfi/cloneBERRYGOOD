@@ -12,6 +12,7 @@ const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const bdcWorkflow = require("./lib/bdc/workflow");
 const caisseImport = require("./lib/caisseImport");
+const stockCaneva = require("./lib/stockCaneva");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -7928,6 +7929,279 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         await file.save(buffer, { metadata: { contentType: contentType || `image/${ext}` } });
         const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
         return res.json({ success: true, url: publicUrl });
+      }
+
+      // --- IMPORT CANEVA STOCK (workflow Achats → validation Finance) ---
+      if (action === "import-caneva-stock" && req.method === "POST") {
+        const XLSX = require("xlsx");
+        const { mode, file_base64, request_id, motif, requested_by, reviewed_by } = req.body || {};
+        const IMPORT_SOURCE = stockCaneva.IMPORT_SOURCE;
+        const COL = "stock_caneva_imports";
+        const ROLE_CONTROLE = ["finance", "dg"];
+        const BATCH = 450;
+
+        const actor = mode === "approve" || mode === "reject" || mode === "restore"
+          ? (reviewed_by || {})
+          : (requested_by || {});
+
+        // ---- helpers ----
+        async function commitOps(ops) {
+          for (let i = 0; i < ops.length; i += BATCH) {
+            const batch = db_firestore.batch();
+            for (const op of ops.slice(i, i + BATCH)) {
+              if (op.type === "set") batch.set(op.ref, op.data, op.options || {});
+              else if (op.type === "delete") batch.delete(op.ref);
+            }
+            await batch.commit();
+          }
+        }
+        function decodeB64(b64) {
+          return Buffer.from(String(b64 || "").replace(/^data:[^;]+;base64,/, ""), "base64");
+        }
+        // Load all CANEVA movements once (for shrink count + per-day diff)
+        async function loadCaneva() {
+          const snap = await db_firestore.collection("stock_movements").where("import_source", "==", IMPORT_SOURCE).get();
+          return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        }
+        // Parse + guard + per-day diff against existing CANEVA ledger
+        async function analyze(buffer) {
+          const plan = stockCaneva.parseWorkbook(buffer, XLSX);
+          const allCaneva = await loadCaneva();
+          const dates = new Set(plan.movements.map((m) => m.date).filter(Boolean));
+          const existing = allCaneva.filter((m) => dates.has(m.date));
+          const guard = stockCaneva.evaluateGuard(plan, { currentMovementCount: allCaneva.length });
+          const diff = stockCaneva.computeDayDiff(plan, existing);
+          const summary = stockCaneva.buildDrySummary(plan, guard, diff);
+          return { plan, guard, diff, summary, allCaneva };
+        }
+        // Build a stored stock_movement doc from a parsed plan movement
+        function buildMovementDoc(m) {
+          const needsMulti = m.type === "reception" || m.type === "sortie";
+          const validations = { magasinier: { by: "import_caneva", name: "Import CANEVA", at: Date.now() } };
+          if (needsMulti) {
+            validations.achats = { by: "import_caneva", name: "Import CANEVA", at: Date.now() };
+            validations.chef = { by: "import_caneva", name: "Import CANEVA", at: Date.now() };
+          }
+          return {
+            numero: m.numero, type: m.type, date: m.date,
+            lieu_source: m.lieu_source || null, lieu_destination: m.lieu_destination || null,
+            ferme: m.ferme || "", items: m.items || [],
+            ref_bl_fournisseur: m.ref_bl_fournisseur || "", fournisseur_nom: m.fournisseur_nom || null,
+            reception_libre: !!m.reception_libre, reception_libre_motif: m.reception_libre_motif || "",
+            ref_bon_physique: m.ref_bon_physique || "", sortie_type: m.sortie_type || null,
+            numero_source: m.numero_source || "", bdc_id: null, bl_id: null, scan_url: null,
+            status: needsMulti ? "valide_chef" : "valide_mag",
+            validations, rejection: null,
+            import_source: IMPORT_SOURCE,
+            created_by: { userId: "import_caneva", name: "Import CANEVA" },
+            imported_by: { userId: actor.userId || "", name: actor.name || "", profileId: actor.profileId || "" },
+            created_at: Date.now(), updated_at: Date.now(),
+          };
+        }
+        // Rebuild ALL stock_balances from inventory baseline + full movement ledger
+        async function rebuildBalances(balancesInit) {
+          const bal = new Map(); // balanceId -> {fields, balance}
+          const keyOf = (lt, li, ref) => `${lt}_${li}_${ref}`.replace(/\s+/g, "_");
+          const add = (lt, li, ref, nom, unite, delta) => {
+            const k = keyOf(lt, li, ref);
+            const cur = bal.get(k) || { lieu_type: lt, lieu_id: li, article_ref: ref, article_nom: nom, unite: unite || "kg", balance: 0 };
+            cur.balance = Math.round((cur.balance + delta) * 100) / 100;
+            if (nom) cur.article_nom = nom;
+            bal.set(k, cur);
+          };
+          for (const b of balancesInit) add(b.lieu_type, b.lieu_id, b.article_ref, b.article_nom, b.unite, b.balance);
+          const allMovSnap = await db_firestore.collection("stock_movements").get();
+          for (const doc of allMovSnap.docs) {
+            for (const d of stockCaneva.movementDelta(doc.data())) add(d.lieu_type, d.lieu_id, d.article_ref, d.article_nom, d.unite, d.delta);
+          }
+          // Write computed balances; delete stale ones absent from the rebuild
+          const existingBalSnap = await db_firestore.collection("stock_balances").get();
+          const ops = [];
+          const seen = new Set();
+          for (const [k, v] of bal) {
+            seen.add(k);
+            ops.push({ type: "set", ref: db_firestore.collection("stock_balances").doc(k), data: { ...v, updated_at: Date.now() } });
+          }
+          for (const doc of existingBalSnap.docs) {
+            if (!seen.has(doc.id)) ops.push({ type: "delete", ref: doc.ref });
+          }
+          await commitOps(ops);
+        }
+        // Execute the per-day import for the impacted dates
+        async function executeImport(plan, diff, allCaneva) {
+          const impacted = stockCaneva.impactedDates(diff);
+          const ops = [];
+          // 1. delete impacted-day CANEVA movements (strictly import_source + date)
+          for (const m of allCaneva) {
+            if (impacted.has(m.date)) ops.push({ type: "delete", ref: db_firestore.collection("stock_movements").doc(m.id) });
+          }
+          // 2. upsert articles from the workbook
+          for (const art of plan.articlesToCreate) {
+            ops.push({
+              type: "set",
+              ref: db_firestore.collection("articles_catalog").doc(art.reference),
+              data: {
+                reference: art.reference, nom: art.nom, unite: art.unite,
+                categorie: art.categorie, type: "Stockable", active: true,
+                import_source: IMPORT_SOURCE, updated_at: Date.now(),
+              },
+              options: { merge: true },
+            });
+          }
+          // 3. create movements for impacted dates
+          for (const m of plan.movements) {
+            if (impacted.has(m.date)) ops.push({ type: "set", ref: db_firestore.collection("stock_movements").doc(), data: buildMovementDoc(m) });
+          }
+          await commitOps(ops);
+          // 4. replace CANEVA cost docs (derived wholesale from the workbook)
+          const costSnap = await db_firestore.collection("consumption_costs_by_variety").where("import_source", "==", IMPORT_SOURCE).get();
+          const costOps = costSnap.docs.map((d) => ({ type: "delete", ref: d.ref }));
+          for (const [code, agg] of Object.entries(plan.costsByVariety)) {
+            costOps.push({ type: "set", ref: db_firestore.collection("consumption_costs_by_variety").doc(code), data: { ...agg, import_source: IMPORT_SOURCE, updated_at: Date.now() } });
+          }
+          await commitOps(costOps);
+          // 5. rebuild balances from full ledger
+          await rebuildBalances(plan.balancesInit);
+          return { impacted_dates: [...impacted].sort() };
+        }
+        // Archive uploaded workbook to Storage, keep only the last 7 files
+        async function storeFile(buffer) {
+          const path = `stock_caneva_imports/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.xlsx`;
+          await bucket.file(path).save(buffer, { metadata: { contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" } });
+          return path;
+        }
+        async function pruneArchive() {
+          const snap = await db_firestore.collection(COL).where("file_pruned", "==", false).get();
+          const withFile = snap.docs
+            .map((d) => ({ id: d.id, ref: d.ref, ...d.data() }))
+            .filter((d) => d.file_path)
+            .sort((a, b) => (b.requested_at || 0) - (a.requested_at || 0));
+          for (const d of withFile.slice(7)) {
+            try { await bucket.file(d.file_path).delete(); } catch (_) {}
+            await d.ref.update({ file_pruned: true });
+          }
+        }
+
+        try {
+          // ===== PREVIEW (achats) — aucune écriture =====
+          if (mode === "preview") {
+            if (!file_base64) return res.status(400).json({ success: false, error: "file_base64 requis" });
+            const { summary } = await analyze(decodeB64(file_base64));
+            if (summary.guard.hardBlock) return res.json({ success: false, error: "Classeur invalide", reasons: summary.guard.reasons, summary });
+            return res.json({ success: true, summary });
+          }
+
+          // ===== APPLY (achats) — uniquement si aucun jour modifié =====
+          if (mode === "apply") {
+            if (actor.profileId !== "achats") return res.status(403).json({ success: false, error: "Réservé au rôle Achats" });
+            if (!file_base64) return res.status(400).json({ success: false, error: "file_base64 requis" });
+            const buffer = decodeB64(file_base64);
+            const { plan, guard, diff, summary, allCaneva } = await analyze(buffer);
+            if (guard.hardBlock) return res.json({ success: false, error: "Classeur invalide", reasons: guard.reasons, summary });
+            if (diff.jours_modifies.length > 0) return res.json({ success: false, error: "Validation Finance requise (jours déjà importés)", summary });
+            const exec = await executeImport(plan, diff, allCaneva);
+            const file_path = await storeFile(buffer);
+            const docRef = await db_firestore.collection(COL).add({
+              status: "importe", file_path, file_pruned: false, filename: req.body.filename || "canevas.xlsx",
+              summary, jours_nouveaux: diff.jours_nouveaux, jours_modifies: diff.jours_modifies,
+              prior_import_existed: allCaneva.length > 0, requested_by: actor, requested_at: Date.now(),
+              reviewed_by: null, reviewed_at: null, motif_rejet: null,
+              history: [{ action: "apply", by: actor, at: Date.now() }],
+            });
+            await pruneArchive();
+            return res.json({ success: true, request_id: docRef.id, status: "importe", summary, ...exec });
+          }
+
+          // ===== REQUEST (achats) — jours modifiés → file d'attente Finance =====
+          if (mode === "request") {
+            if (actor.profileId !== "achats") return res.status(403).json({ success: false, error: "Réservé au rôle Achats" });
+            if (!file_base64) return res.status(400).json({ success: false, error: "file_base64 requis" });
+            const buffer = decodeB64(file_base64);
+            const { diff, summary, allCaneva } = await analyze(buffer);
+            if (summary.guard.hardBlock) return res.json({ success: false, error: "Classeur invalide", reasons: summary.guard.reasons, summary });
+            if (diff.jours_modifies.length === 0) return res.json({ success: false, error: "Aucun jour modifié — utilisez l'import direct", summary });
+            const file_path = await storeFile(buffer);
+            const docRef = await db_firestore.collection(COL).add({
+              status: "en_attente_finance", file_path, file_pruned: false, filename: req.body.filename || "canevas.xlsx",
+              summary, jours_nouveaux: diff.jours_nouveaux, jours_modifies: diff.jours_modifies,
+              prior_import_existed: allCaneva.length > 0, requested_by: actor, requested_at: Date.now(),
+              reviewed_by: null, reviewed_at: null, motif_rejet: null,
+              history: [{ action: "request", by: actor, at: Date.now() }],
+            });
+            await pruneArchive();
+            await dispatchNotification({
+              type: "caneva_import_request", profiles: ["finance"], channels: ["in_app"],
+              data: { message: `Import canevas Stock à valider — ${diff.jours_modifies.length} jour(s) seront remplacés (demandé par ${actor.name || "Achats"})`, severity: "warning" },
+              relatedDoc: `${COL}/${docRef.id}`,
+            });
+            return res.json({ success: true, request_id: docRef.id, status: "en_attente_finance", summary });
+          }
+
+          // ===== APPROVE / RESTORE (finance/dg) =====
+          if (mode === "approve" || mode === "restore") {
+            if (!ROLE_CONTROLE.includes(actor.profileId)) return res.status(403).json({ success: false, error: "Réservé à Finance/DG" });
+            if (!request_id) return res.status(400).json({ success: false, error: "request_id requis" });
+            const docRef = db_firestore.collection(COL).doc(request_id);
+            const docSnap = await docRef.get();
+            if (!docSnap.exists) return res.status(404).json({ success: false, error: "Demande introuvable" });
+            const reqDoc = docSnap.data();
+            if (mode === "approve" && reqDoc.status !== "en_attente_finance") return res.status(400).json({ success: false, error: `Statut ${reqDoc.status} non approuvable` });
+            if (reqDoc.file_pruned || !reqDoc.file_path) return res.status(400).json({ success: false, error: "Fichier archivé indisponible (élagué)" });
+            const [buffer] = await bucket.file(reqDoc.file_path).download();
+            const { plan, guard, diff, summary, allCaneva } = await analyze(buffer);
+            if (guard.hardBlock) return res.json({ success: false, error: "Classeur invalide", reasons: guard.reasons, summary });
+            const exec = await executeImport(plan, diff, allCaneva);
+            const history = (reqDoc.history || []).concat([{ action: mode, by: actor, at: Date.now() }]);
+            await docRef.update({ status: "importe", reviewed_by: actor, reviewed_at: Date.now(), summary, history });
+            await dispatchNotification({
+              type: "caneva_import_approved", profiles: ["achats"], channels: ["in_app"],
+              data: { message: `Import canevas Stock ${mode === "restore" ? "restauré" : "approuvé"} par ${actor.name || "Finance"}`, severity: "info" },
+              relatedDoc: `${COL}/${request_id}`,
+            });
+            return res.json({ success: true, status: "importe", summary, ...exec });
+          }
+
+          // ===== REJECT (finance/dg) =====
+          if (mode === "reject") {
+            if (!ROLE_CONTROLE.includes(actor.profileId)) return res.status(403).json({ success: false, error: "Réservé à Finance/DG" });
+            if (!request_id) return res.status(400).json({ success: false, error: "request_id requis" });
+            const docRef = db_firestore.collection(COL).doc(request_id);
+            const docSnap = await docRef.get();
+            if (!docSnap.exists) return res.status(404).json({ success: false, error: "Demande introuvable" });
+            const reqDoc = docSnap.data();
+            if (reqDoc.status !== "en_attente_finance") return res.status(400).json({ success: false, error: `Statut ${reqDoc.status} non rejetable` });
+            const history = (reqDoc.history || []).concat([{ action: "reject", by: actor, at: Date.now(), motif: motif || "" }]);
+            await docRef.update({ status: "rejete", reviewed_by: actor, reviewed_at: Date.now(), motif_rejet: motif || "", history });
+            await dispatchNotification({
+              type: "caneva_import_rejected", profiles: ["achats"], channels: ["in_app"],
+              data: { message: `Import canevas Stock rejeté par ${actor.name || "Finance"}${motif ? " : " + motif : ""}`, severity: "warning" },
+              relatedDoc: `${COL}/${request_id}`,
+            });
+            return res.json({ success: true, status: "rejete" });
+          }
+
+          // ===== LIST (achats/finance) =====
+          if (mode === "list") {
+            const snap = await db_firestore.collection(COL).orderBy("requested_at", "desc").limit(50).get();
+            const requests = snap.docs.map((d) => {
+              const x = d.data();
+              return {
+                id: d.id, status: x.status, filename: x.filename, file_pruned: !!x.file_pruned,
+                requested_by: x.requested_by, requested_at: x.requested_at,
+                reviewed_by: x.reviewed_by, reviewed_at: x.reviewed_at, motif_rejet: x.motif_rejet,
+                jours_nouveaux: x.jours_nouveaux || [], jours_modifies: x.jours_modifies || [],
+                summary: x.summary || null,
+              };
+            });
+            const pending = requests.filter((r) => r.status === "en_attente_finance").length;
+            return res.json({ success: true, requests, pending });
+          }
+
+          return res.status(400).json({ success: false, error: "mode invalide" });
+        } catch (e) {
+          console.error("import-caneva-stock error:", e);
+          return res.status(500).json({ success: false, error: e.message });
+        }
       }
 
       // --- CREATE MOVEMENT ---
