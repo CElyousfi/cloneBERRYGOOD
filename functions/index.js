@@ -4542,7 +4542,18 @@ exports.validation = functions
           const d = req.query.date;
           periode = (d && periodes.find(p => (periodeMap[p] || []).includes(d))) || periodes[0] || null;
         }
-        const dates = periode ? (periodeMap[periode] || []).slice().sort() : [];
+        // Plage CALENDAIRE complète de la quinzaine (pas seulement les jours de production),
+        // pour capter les saisies divers manuelles sur des jours sans pointage production.
+        const shiftD = (ds, n) => { const x = new Date(ds + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+        const pDays = (periode && periodeMap[periode] ? periodeMap[periode] : []).slice().sort();
+        const dates = [];
+        if (pDays.length) {
+          const start = pDays[0];
+          const idxP = periodes.indexOf(periode);
+          const newerDays = (idxP > 0 ? (periodeMap[periodes[idxP - 1]] || []) : []).slice().sort(); // periodes triés DESC → idx-1 = quinzaine plus récente
+          const end = newerDays.length ? shiftD(newerDays[0], -1) : shiftD(start, 15);
+          for (let d = start; d <= end; d = shiftD(d, 1)) dates.push(d);
+        }
         const byDate = {};
         for (let i = 0; i < dates.length; i += 10) {
           const batch = dates.slice(i, i + 10);
