@@ -20471,12 +20471,17 @@ ${rejetHtml}
             ];
             return (
                 <div className="fade-in">
-                    <div className="chip-group" style={{marginBottom:20}}>
+                    <div className="chip-group" style={{marginBottom:20,alignItems:'center'}}>
                         {subTabs.map(st => (
                             <button key={st.id} className={`chip c-berry ${primeSub === st.id ? 'active' : ''}`} onClick={() => setPrimeSub(st.id)} style={{padding:'7px 14px',fontSize:12}}>
                                 <i className={`fa-solid ${st.icon}`} style={{marginRight:6}}></i>{st.label}
                             </button>
                         ))}
+                        <button onClick={() => { window._diversInitialQuinzaine = window._recapPeriode || ''; (window._navigateMainTab && window._navigateMainTab('pointage_divers')); }}
+                            title="Ouvrir la vue quinzaine de Pointage Divers pour la quinzaine affichée"
+                            style={{marginLeft:'auto',padding:'7px 14px',fontSize:12,fontWeight:600,borderRadius:20,border:'1px solid #16a085',background:'#fff',color:'#16a085',cursor:'pointer',whiteSpace:'nowrap'}}>
+                            <i className="fa-solid fa-truck" style={{marginRight:6}}></i>Vue quinzaine Divers <i className="fa-solid fa-arrow-right" style={{marginLeft:4,fontSize:10}}></i>
+                        </button>
                     </div>
                     {primeSub === 'recap' && <PrimesRecapSub data={data} onNavigate={navigateToDetail} farmFilter={farmFilter} />}
                     {primeSub === 'recolte' && <PrimesRecolteTab data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
@@ -20565,6 +20570,7 @@ ${rejetHtml}
             if (loading) return <div style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🫐</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement...</div></div>;
 
             const currentPeriode = selectedPeriode || (periodes[0] || '');
+            window._recapPeriode = currentPeriode; // partagé avec le bouton "Vue quinzaine Divers"
             const periodeRows = detailRows.filter(r => r.periode === currentPeriode);
 
             // Transport summary
@@ -21468,6 +21474,13 @@ ${rejetHtml}
                 setLoadingDate(true);
                 loadDate(selectedDate, { activate: true }).finally(() => setLoadingDate(false));
                 preloadNeighbors(selectedDate);
+                // Ouverture directe en Vue quinzaine depuis le Récap Primes (bouton).
+                if (typeof window !== 'undefined' && window._diversInitialQuinzaine !== undefined) {
+                    const p = window._diversInitialQuinzaine || null;
+                    try { delete window._diversInitialQuinzaine; } catch (e) { window._diversInitialQuinzaine = undefined; }
+                    setViewMode('quinzaine');
+                    loadQuinzaine(p);
+                }
             // eslint-disable-next-line react-hooks/exhaustive-deps
             }, []);
 
