@@ -20843,6 +20843,15 @@ ${rejetHtml}
             const ferieByDate = {};
             joursFeries.forEach(jf => { ferieByDate[jf.date] = jf; });
 
+            // Date d'un férié → quinzaine (toutes périodes chargées, pas seulement la courante)
+            const ferieDateToPeriode = {};
+            (serverData?.jourFerieDetail || []).forEach(w => { (w.details || []).forEach(d => { if (d.date && !ferieDateToPeriode[d.date]) ferieDateToPeriode[d.date] = w.periode; }); });
+            // Clic sur un férié → sélectionne sa quinzaine (si chargée) et remonte en haut
+            const selectFerie = (dateStr) => {
+                const p = ferieDateToPeriode[dateStr];
+                if (p) { setSelectedPeriode(p); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {} }
+            };
+
             const renderCalendar = () => {
                 const year = 2026;
                 const months = [];
@@ -20859,8 +20868,9 @@ ${rejetHtml}
                         const estime = jf && jf.type === 'islamique' && jf.status !== 'confirme';
                         const bg = jf ? (estime ? '#fff3cd' : '#d4edda') : 'transparent';
                         const suffix = !jf ? '' : (jf.status === 'confirme' ? ' (confirmé)' : (estime ? ' (à confirmer)' : ''));
-                        const title = jf ? `${jf.label}${suffix}` : '';
-                        cells.push(<td key={d} title={title} style={{textAlign:'center',padding:2,fontSize:10,background:bg,borderRadius:4,fontWeight:jf?700:400,color:jf?'#000':'var(--gray-500)',cursor:jf?'help':'default'}}>{d}</td>);
+                        const clickable = jf && ferieDateToPeriode[dateStr];
+                        const title = jf ? `${jf.label}${suffix}${clickable ? ' — cliquer pour voir la quinzaine' : ''}` : '';
+                        cells.push(<td key={d} title={title} onClick={jf ? () => selectFerie(dateStr) : undefined} style={{textAlign:'center',padding:2,fontSize:10,background:bg,borderRadius:4,fontWeight:jf?700:400,color:jf?'#000':'var(--gray-500)',cursor:clickable?'pointer':(jf?'help':'default')}}>{d}</td>);
                     }
                     const rows = [];
                     for (let i = 0; i < cells.length; i += 7) rows.push(<tr key={i}>{cells.slice(i, i + 7)}</tr>);
@@ -20920,6 +20930,32 @@ ${rejetHtml}
                     </div>
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(155px, 1fr))',gap:12}}>
                         {renderCalendar()}
+                    </div>
+
+                    <div style={{marginTop:18}}>
+                        <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}>Liste des jours fériés 2026</div>
+                        <table className="data-table" style={{fontSize:12}}>
+                            <thead><tr><th style={{width:160}}>Date</th><th>Fête</th><th style={{width:130}}>Type</th><th style={{width:120}}>Statut</th><th style={{width:150}}>Quinzaine</th></tr></thead>
+                            <tbody>
+                                {joursFeries.slice().filter(jf => (jf.date || '').slice(0,4) === '2026').sort((a,b) => a.date.localeCompare(b.date)).map(jf => {
+                                    const st = jf.status || (jf.type === 'islamique' ? 'estime' : 'fixe');
+                                    const badge = st === 'confirme' ? { t:'Confirmé', bg:'#d4edda', c:'#155724' } : (st === 'estime' ? { t:'Estimé', bg:'#fff3cd', c:'#856404' } : { t:'Fixe', bg:'#e2e3e5', c:'#41464b' });
+                                    const periode = ferieDateToPeriode[jf.date];
+                                    const isCurrent = periode && periode === currentPeriode;
+                                    return (
+                                        <tr key={jf.date} onClick={() => selectFerie(jf.date)}
+                                            title={periode ? 'Voir la quinzaine ' + periode : 'Quinzaine non chargée'}
+                                            style={{cursor: periode ? 'pointer' : 'default', background: isCurrent ? 'rgba(192,57,43,0.06)' : 'transparent'}}>
+                                            <td style={{fontWeight:600}}>{new Date(jf.date+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'long'})}</td>
+                                            <td>{jf.label}{periode ? <i className="fa-solid fa-arrow-right" style={{marginLeft:8,fontSize:9,color:'var(--berry)'}}></i> : null}</td>
+                                            <td>{jf.type === 'islamique' ? '🌙 Islamique' : '📅 Fixe'}</td>
+                                            <td><span style={{background:badge.bg,color:badge.c,padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:600}}>{badge.t}</span></td>
+                                            <td style={{color: periode ? 'var(--berry)' : 'var(--gray-300)', fontWeight: periode ? 600 : 400}}>{periode || '—'}</td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </Panel>
             </div>);
