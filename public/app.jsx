@@ -20468,20 +20468,16 @@ ${rejetHtml}
                 { id: 'chargement', label: 'Chargement', icon: 'fa-truck-loading' },
                 { id: 'jour_ferie', label: 'Jour Férié', icon: 'fa-star' },
                 { id: 'heures_sup', label: 'Heures Supp.', icon: 'fa-clock' },
+                { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck' },
             ];
             return (
                 <div className="fade-in">
-                    <div className="chip-group" style={{marginBottom:20,alignItems:'center'}}>
+                    <div className="chip-group" style={{marginBottom:20}}>
                         {subTabs.map(st => (
                             <button key={st.id} className={`chip c-berry ${primeSub === st.id ? 'active' : ''}`} onClick={() => setPrimeSub(st.id)} style={{padding:'7px 14px',fontSize:12}}>
                                 <i className={`fa-solid ${st.icon}`} style={{marginRight:6}}></i>{st.label}
                             </button>
                         ))}
-                        <button onClick={() => { window._diversInitialQuinzaine = window._recapPeriode || ''; (window._navigateMainTab && window._navigateMainTab('pointage_divers')); }}
-                            title="Ouvrir la vue quinzaine de Pointage Divers pour la quinzaine affichée"
-                            style={{marginLeft:'auto',padding:'7px 14px',fontSize:12,fontWeight:600,borderRadius:20,border:'1px solid #16a085',background:'#fff',color:'#16a085',cursor:'pointer',whiteSpace:'nowrap'}}>
-                            <i className="fa-solid fa-truck" style={{marginRight:6}}></i>Vue quinzaine Divers <i className="fa-solid fa-arrow-right" style={{marginLeft:4,fontSize:10}}></i>
-                        </button>
                     </div>
                     {primeSub === 'recap' && <PrimesRecapSub data={data} onNavigate={navigateToDetail} farmFilter={farmFilter} />}
                     {primeSub === 'recolte' && <PrimesRecolteTab data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
@@ -20491,7 +20487,101 @@ ${rejetHtml}
                     {primeSub === 'chargement' && <ChargementSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'jour_ferie' && <JourFerieSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'heures_sup' && <HeuresSupSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
+                    {primeSub === 'pointage_divers' && <DiversQuinzaineSub farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                 </div>
+            );
+        }
+
+        // Sous-onglet Primes : vue quinzaine (récap lecture seule) du Pointage Divers, transposée (jours × sous-traitants).
+        function DiversQuinzaineSub({ farmFilter, initialPeriode }) {
+            const [periodes, setPeriodes] = useState([]);
+            const [selectedPeriode, setSelectedPeriode] = useState('');
+            const [dates, setDates] = useState([]);
+            const [byDate, setByDate] = useState({});
+            const [loading, setLoading] = useState(true);
+
+            const load = (periode) => {
+                setLoading(true);
+                const url = '/api/validation?action=divers-entries-range' + (periode ? '&periode=' + encodeURIComponent(periode) : '');
+                fetch(url).then(r => r.json()).then(json => {
+                    if (json && json.success) {
+                        setPeriodes(json.periodes || []);
+                        setSelectedPeriode(json.periode || '');
+                        setDates(json.dates || []);
+                        setByDate(json.byDate || {});
+                    }
+                }).catch(err => console.warn('Divers quinzaine load error:', err)).finally(() => setLoading(false));
+            };
+            React.useEffect(() => { load(initialPeriode || null); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+            if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement…</div></div>;
+
+            // Agrégation par sous-traitant
+            const bySt = {};
+            dates.forEach(d => {
+                ((byDate[d] || {}).entries || []).forEach(e => {
+                    const key = (e.matricule || e.beneficiaire || '?') + '|' + (e.fonction || '');
+                    if (!bySt[key]) bySt[key] = { matricule: e.matricule || '', beneficiaire: e.beneficiaire || '', fonction: e.fonction || '', byDay: {}, totQ: 0, totM: 0 };
+                    const cur = bySt[key].byDay[d] || { q: 0, m: 0 };
+                    cur.q += Number(e.quantite) || 0; cur.m += Number(e.montant) || 0;
+                    bySt[key].byDay[d] = cur;
+                    bySt[key].totQ += Number(e.quantite) || 0; bySt[key].totM += Number(e.montant) || 0;
+                });
+            });
+            const rows = Object.values(bySt).sort((a, b) => b.totM - a.totM);
+            const dailyTot = dates.map(d => rows.reduce((s, r) => s + ((r.byDay[d] && r.byDay[d].m) || 0), 0));
+            const grandTot = rows.reduce((s, r) => s + r.totM, 0);
+
+            return (
+                <Panel title="Pointage Divers — Récapitulatif quinzaine" icon="fa-table-cells">
+                    <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                        <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Quinzaine :</span>
+                        <select value={selectedPeriode} onChange={e => load(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
+                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
+                        </select>
+                    </div>
+                    <div className="table-responsive">
+                    <table className="data-table" style={{fontSize:11}}>
+                        <thead>
+                            <tr>
+                                <th>Jour</th>
+                                {rows.map((r, i) => (
+                                    <th key={i} style={{textAlign:'center'}}>
+                                        {r.beneficiaire || r.matricule || '—'}
+                                        <div style={{fontSize:9,fontWeight:400,color:'var(--gray-400)'}}>{r.fonction || '—'}{r.matricule ? ' · ' + r.matricule : ''}</div>
+                                    </th>
+                                ))}
+                                <th style={{textAlign:'center',fontWeight:700}}>Total jour</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {dates.map((d, di) => (
+                                <tr key={d}>
+                                    <td style={{fontWeight:600,whiteSpace:'nowrap'}}>{new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</td>
+                                    {rows.map((r, i) => {
+                                        const c = r.byDay[d];
+                                        if (!c || (!c.q && !c.m)) return <td key={i} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                        return <td key={i} style={{textAlign:'center',fontSize:10}}><div style={{fontWeight:600}}>{c.q}</div><div style={{fontSize:9,color:'var(--gray-400)'}}>{Math.round(c.m).toLocaleString('fr-FR')} DH</div></td>;
+                                    })}
+                                    <td style={{textAlign:'center',fontWeight:700,color:dailyTot[di]>0?'var(--berry)':'var(--gray-300)'}}>{dailyTot[di] > 0 ? Math.round(dailyTot[di]).toLocaleString('fr-FR') + ' DH' : '-'}</td>
+                                </tr>
+                            ))}
+                            {rows.length === 0 && <tr><td colSpan={2} style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun pointage divers sur cette quinzaine.</td></tr>}
+                        </tbody>
+                        {rows.length > 0 && (
+                            <tfoot>
+                                <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                    <td style={{textAlign:'right'}}>Total</td>
+                                    {rows.map((r, i) => (
+                                        <td key={i} style={{textAlign:'center',fontSize:10,color:'var(--berry)'}}><div>{Math.round(r.totQ*100)/100}</div><div>{Math.round(r.totM).toLocaleString('fr-FR')} DH</div></td>
+                                    ))}
+                                    <td style={{textAlign:'center',color:'var(--berry)',fontSize:13}}>{Math.round(grandTot).toLocaleString('fr-FR')} DH</td>
+                                </tr>
+                            </tfoot>
+                        )}
+                    </table>
+                    </div>
+                </Panel>
             );
         }
 
@@ -20570,7 +20660,6 @@ ${rejetHtml}
             if (loading) return <div style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🫐</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement...</div></div>;
 
             const currentPeriode = selectedPeriode || (periodes[0] || '');
-            window._recapPeriode = currentPeriode; // partagé avec le bouton "Vue quinzaine Divers"
             const periodeRows = detailRows.filter(r => r.periode === currentPeriode);
 
             // Transport summary
@@ -20648,7 +20737,7 @@ ${rejetHtml}
                 { id: 'conditionnement', label: 'Conditionnement', icon: 'fa-box-open', color: '#e67e22', montant: totalConditionnementCout, jh: totalConditionnementJH, active: true },
                 { id: 'chargement', label: 'Chargement', icon: 'fa-truck-loading', color: '#8e44ad', montant: totalChargementCout, jh: totalChargementJH, active: true },
                 { id: 'jour_ferie', label: 'Jour Férié', icon: 'fa-star', color: '#c0392b', montant: totalFerieCout, jh: totalFerieJH, jhLabel: totalFerieOuvriers + ' ouvriers / ' + totalFerieJH + ' jours sup.', active: true },
-                { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck', color: '#16a085', montant: diversInfo.total, jh: diversInfo.count, jhLabel: 'ligne(s)', active: true, mainNav: 'pointage_divers' },
+                { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck', color: '#16a085', montant: diversInfo.total, jh: diversInfo.count, jhLabel: 'ligne(s)', active: true },
                 { id: 'heures_sup', label: 'Heures Supp.', icon: 'fa-clock', color: 'var(--berry)', noDH: true, valueText: fmtDuree(hsTotalOvertime), jh: hsNbDep, jhLabel: 'ouvriers en dépassement', active: true },
             ];
 
@@ -20665,9 +20754,9 @@ ${rejetHtml}
 
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:16,marginBottom:24}}>
                         {primeCards.map(pc => (
-                            <div key={pc.id} onClick={() => { if (!pc.active) return; if (pc.mainNav) { (window._navigateMainTab && window._navigateMainTab(pc.mainNav)); } else if (!pc.noNav) { onNavigate(pc.id, currentPeriode); } }}
+                            <div key={pc.id} onClick={() => pc.active && onNavigate(pc.id, currentPeriode)}
                                 style={{background:'#fff',borderRadius:12,padding:20,border: pc.active ? `2px solid ${pc.color}` : '1px solid var(--gray-200)',
-                                    cursor: (pc.active && (!pc.noNav || pc.mainNav)) ? 'pointer' : 'default',opacity: pc.active ? 1 : 0.6,
+                                    cursor: pc.active ? 'pointer' : 'default',opacity: pc.active ? 1 : 0.6,
                                     boxShadow: pc.active ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',transition:'all 0.2s'}}>
                                 <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
                                     <div style={{width:40,height:40,borderRadius:10,background: pc.active ? pc.color : 'var(--gray-200)',
@@ -20680,11 +20769,9 @@ ${rejetHtml}
                                     <div>
                                         <div style={{fontSize:22,fontWeight:800,color:pc.color}}>{pc.noDH ? pc.valueText : (pc.montant?.toLocaleString('fr-FR') + ' DH')}</div>
                                         <div style={{fontSize:11,color:'var(--gray-500)',marginTop:4}}>{pc.jh?.toLocaleString('fr-FR')} {pc.jhLabel || 'ouvriers-jours'}</div>
-                                        {(!pc.noNav || pc.mainNav) && (
-                                            <div style={{fontSize:10,color:pc.color,marginTop:8,fontWeight:600}}>
-                                                {pc.mainNav ? 'Ouvrir Pointage Divers' : 'Voir le détail'} <i className="fa-solid fa-arrow-right" style={{marginLeft:4}}></i>
-                                            </div>
-                                        )}
+                                        <div style={{fontSize:10,color:pc.color,marginTop:8,fontWeight:600}}>
+                                            Voir le détail <i className="fa-solid fa-arrow-right" style={{marginLeft:4}}></i>
+                                        </div>
                                     </div>
                                 ) : (
                                     <div style={{fontSize:12,color:'var(--gray-400)',fontStyle:'italic'}}>Bientôt disponible</div>
@@ -21474,13 +21561,6 @@ ${rejetHtml}
                 setLoadingDate(true);
                 loadDate(selectedDate, { activate: true }).finally(() => setLoadingDate(false));
                 preloadNeighbors(selectedDate);
-                // Ouverture directe en Vue quinzaine depuis le Récap Primes (bouton).
-                if (typeof window !== 'undefined' && window._diversInitialQuinzaine !== undefined) {
-                    const p = window._diversInitialQuinzaine || null;
-                    try { delete window._diversInitialQuinzaine; } catch (e) { window._diversInitialQuinzaine = undefined; }
-                    setViewMode('quinzaine');
-                    loadQuinzaine(p);
-                }
             // eslint-disable-next-line react-hooks/exhaustive-deps
             }, []);
 
@@ -60752,8 +60832,6 @@ ${rejetHtml}
                 return userProfile.profileId;
             });
             const [currentTab, setCurrentTab] = useState(__savedTab);
-            // Helper global de navigation vers un onglet du menu principal (ex. carte Récap → écran Pointage Divers)
-            React.useEffect(() => { window._navigateMainTab = (t) => setCurrentTab(t); return () => { try { delete window._navigateMainTab; } catch (e) { window._navigateMainTab = null; } }; }, []);
             const [sidebarOpen, setSidebarOpen] = useState(false);
             const [showMoreMenu, setShowMoreMenu] = useState(false);
             const [showMobileProfileMenu, setShowMobileProfileMenu] = useState(false);
