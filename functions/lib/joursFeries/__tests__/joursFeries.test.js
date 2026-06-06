@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const {
   classifyNager, mergeHolidays, runSyncJoursFeries,
   addDaysIso, daysBetween, baseLabel, isSecondDay,
+  computeLunarHolidays,
 } = require('../joursFeries');
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -147,6 +148,37 @@ test('runSyncJoursFeries n\'écrit pas si API vide (pas d\'écrasement)', async 
   const r = await runSyncJoursFeries('2026-06-05', deps);
   assert.equal(r.changed, false);
   assert.equal(saved, null);
+});
+
+// ── computeLunarHolidays (DI converter) ─────────────────────────────────────
+test('computeLunarHolidays ne garde que les dates de l\'année visée', async () => {
+  // Fake converter : mappe (jour, mois, annéeHijri) → grégorien connu.
+  const table = {
+    '1-10-1447': '2026-03-20',  // Aïd Al Fitr
+    '10-12-1447': '2026-05-27', // Aïd Al Adha
+    '1-1-1448': '2026-06-16',   // 1er Moharram
+    '12-3-1448': '2026-08-25',  // Mawlid
+    '1-1-1447': '2025-06-26',   // Moharram année précédente (hors 2026 → exclu)
+  };
+  const hToG = async (d, m, y) => table[`${d}-${m}-${y}`] || null;
+  const out = await computeLunarHolidays(2026, hToG);
+  const byDate = Object.fromEntries(out.map(h => [h.date, h.name]));
+  assert.equal(out.length, 4);
+  assert.equal(byDate['2026-03-20'], 'Eid al-Fitr');
+  assert.equal(byDate['2026-05-27'], 'Eid al-Adha');
+  assert.equal(byDate['2026-06-16'], 'Islamic New Year');
+  assert.equal(byDate['2026-08-25'], "Prophet's Birthday");
+  assert.ok(!out.some(h => h.date === '2025-06-26')); // année hors cible exclue
+});
+
+test('computeLunarHolidays + classifyNager + mergeHolidays réaligne une estimation périmée', async () => {
+  const hToG = async (d, m, y) => (d === 10 && m === 12 && y === 1447 ? '2026-05-27' : null);
+  const lunar = await computeLunarHolidays(2026, hToG); // [{date:'2026-05-27', name:'Eid al-Adha'}]
+  const existing = [{ date: '2026-06-06', label: 'Aïd Al Adha', type: 'islamique', status: 'estime', source: 'seed', manualOverride: false }];
+  const { holidays, changed } = mergeHolidays(existing, lunar, { todayIso: '2026-01-01', nowIso: '2026-01-01T00:00:00Z' });
+  const adha = holidays.find(h => baseLabel(h.label) === 'Aïd Al Adha');
+  assert.equal(adha.date, '2026-05-27'); // date corrigée depuis le calcul
+  assert.equal(changed, true);
 });
 
 test('runSyncJoursFeries n\'écrit pas quand aucun changement', async () => {

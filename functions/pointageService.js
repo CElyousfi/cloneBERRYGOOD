@@ -197,11 +197,11 @@ const JOURS_FERIES_FALLBACK = [
   { date: '2026-08-21', label: 'Fête de la Jeunesse', type: 'fixe', status: 'fixe' },
   { date: '2026-11-06', label: 'Marche Verte', type: 'fixe', status: 'fixe' },
   { date: '2026-11-18', label: "Fête de l'Indépendance", type: 'fixe', status: 'fixe' },
-  // Islamiques 2026 (estimées — à confirmer la veille)
-  { date: '2026-03-30', label: 'Aïd Al Fitr', type: 'islamique', status: 'estime' },
-  { date: '2026-06-06', label: 'Aïd Al Adha', type: 'islamique', status: 'estime' },
-  { date: '2026-06-26', label: '1er Moharram', type: 'islamique', status: 'estime' },
-  { date: '2026-09-04', label: 'Aïd Al Mawlid', type: 'islamique', status: 'estime' },
+  // Islamiques 2026 (estimées via conversion Hijri Umm-al-Qura — à confirmer la veille)
+  { date: '2026-03-20', label: 'Aïd Al Fitr', type: 'islamique', status: 'estime' },
+  { date: '2026-05-27', label: 'Aïd Al Adha', type: 'islamique', status: 'estime' },
+  { date: '2026-06-16', label: '1er Moharram', type: 'islamique', status: 'estime' },
+  { date: '2026-08-25', label: 'Aïd Al Mawlid', type: 'islamique', status: 'estime' },
 ];
 
 /**

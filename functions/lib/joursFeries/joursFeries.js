@@ -205,9 +205,21 @@ async function runSyncJoursFeries(todayIso, deps) {
 }
 
 const NAGER_BASE = 'https://date.nager.at/api/v3/PublicHolidays';
+const ALADHAN_HTOG = 'https://api.aladhan.com/v1/hToG';
+
+// Fêtes islamiques par position dans le calendrier Hijri (nom anglais reconnu
+// par classifyNager → libellé fr). C'est la date GRÉGORIENNE calculée qui sert
+// d'ESTIMATION ; le Maroc (vision du croissant) peut décaler de ±1-2 j → RH confirme.
+const LUNAR_EVENTS = [
+  { hMonth: 10, hDay: 1, name: 'Eid al-Fitr' },        // 1 Shawwal
+  { hMonth: 12, hDay: 10, name: 'Eid al-Adha' },       // 10 Dhul-Hijjah
+  { hMonth: 1, hDay: 1, name: 'Islamic New Year' },    // 1 Muharram
+  { hMonth: 3, hDay: 12, name: "Prophet's Birthday" }, // 12 Rabi al-Awwal
+];
 
 /**
  * Fetch production des fériés Maroc pour une année (date.nager.at, sans clé).
+ * NB : ne renvoie que les fêtes CIVILES fixes (pas les islamiques) pour le Maroc.
  * @param {string} year
  * @returns {Promise<Array>}
  */
@@ -217,8 +229,74 @@ async function fetchNagerHolidays(year) {
   return res.json();
 }
 
+/**
+ * Convertit une date Hijri (jour, mois, année) en grégorien 'YYYY-MM-DD' via Aladhan.
+ * @returns {Promise<string|null>}
+ */
+async function fetchHijriToGreg(hDay, hMonth, hYear) {
+  const dd = String(hDay).padStart(2, '0');
+  const mm = String(hMonth).padStart(2, '0');
+  const res = await fetch(`${ALADHAN_HTOG}/${dd}-${mm}-${hYear}`);
+  if (!res.ok) throw new Error(`aladhan HTTP ${res.status}`);
+  const j = await res.json();
+  const g = j && j.data && j.data.gregorian && j.data.gregorian.date; // 'DD-MM-YYYY'
+  if (!g || !/^\d{2}-\d{2}-\d{4}$/.test(g)) return null;
+  const [d, m, y] = g.split('-');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Calcule les fêtes islamiques tombant dans une année grégorienne (pure, DI).
+ * Essaie les années Hijri candidates (Hijri ≈ Grégorien − 579) et ne garde
+ * que les dates de l'année visée.
+ * @param {string|number} gregYear
+ * @param {(hDay:number, hMonth:number, hYear:number)=>Promise<string|null>} hToG
+ * @returns {Promise<Array<{date:string, name:string}>>}
+ */
+async function computeLunarHolidays(gregYear, hToG) {
+  const y = Number(gregYear);
+  const hYears = [y - 580, y - 579, y - 578];
+  const out = [];
+  const seen = new Set();
+  for (const hy of hYears) {
+    for (const ev of LUNAR_EVENTS) {
+      let greg = null;
+      try { greg = await hToG(ev.hDay, ev.hMonth, hy); } catch (_) { greg = null; }
+      if (!greg || greg.slice(0, 4) !== String(y)) continue;
+      const k = ev.name + '|' + greg;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ date: greg, name: ev.name });
+    }
+  }
+  return out;
+}
+
+/**
+ * Fetch production des fêtes islamiques estimées pour une année (Aladhan).
+ * @param {string|number} year
+ * @returns {Promise<Array<{date:string, name:string}>>}
+ */
+function fetchLunarHolidays(year) {
+  return computeLunarHolidays(year, fetchHijriToGreg);
+}
+
+/**
+ * Fetch combiné : fêtes civiles (date.nager.at) + islamiques estimées (Aladhan).
+ * Chaque source est isolée — l'échec de l'une n'empêche pas l'autre.
+ * @param {string|number} year
+ * @returns {Promise<Array>}
+ */
+async function fetchAllHolidays(year) {
+  const [civic, lunar] = await Promise.all([
+    fetchNagerHolidays(year).catch(() => []),
+    fetchLunarHolidays(year).catch(() => []),
+  ]);
+  return [...(civic || []), ...(lunar || [])];
+}
+
 const CRON_CONFIG = Object.freeze({
-  schedule: '0 5 * * *',          // 05:00 chaque jour
+  schedule: '0 5 * * 1',          // 05:00 chaque lundi (hebdomadaire)
   timeZone: 'Africa/Casablanca',
   region: 'europe-west1',
   timeoutSeconds: 120,
@@ -237,6 +315,10 @@ module.exports = {
   mergeHolidays,
   runSyncJoursFeries,
   fetchNagerHolidays,
+  fetchHijriToGreg,
+  computeLunarHolidays,
+  fetchLunarHolidays,
+  fetchAllHolidays,
   addDaysIso,
   daysBetween,
   baseLabel,

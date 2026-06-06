@@ -13484,16 +13484,17 @@ exports.runDailyPhenologyJobNow = functions
   }));
 
 // =============================================
-// Jours fériés Maroc — job quotidien (API date.nager.at) + trigger test
-// Source unique : app_settings/jours_feries. Confirme les dates lunaires à
-// l'approche de l'événement et notifie RH/DG ; respecte les overrides RH.
+// Jours fériés Maroc — job hebdomadaire (lundi) + trigger test
+// Source unique : app_settings/jours_feries. Fêtes civiles via date.nager.at,
+// fêtes islamiques estimées par conversion Hijri (Aladhan). Réaligne les dates,
+// confirme à l'approche, notifie RH/DG ; respecte TOUJOURS les overrides RH.
 // =============================================
 const joursFeriesJob = require("./lib/joursFeries/joursFeries");
 
 function buildJoursFeriesProdDeps() {
   const docRef = db_firestore.collection("app_settings").doc("jours_feries");
   return {
-    fetchHolidays: (year) => joursFeriesJob.fetchNagerHolidays(year),
+    fetchHolidays: (year) => joursFeriesJob.fetchAllHolidays(year),
     getExisting: async () => {
       const snap = await docRef.get();
       return snap.exists ? snap.data() : null;
