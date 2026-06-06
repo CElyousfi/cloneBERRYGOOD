@@ -21986,6 +21986,10 @@ ${rejetHtml}
                                                         {configItems.filter(c => !FONCTIONS_ENUM.some(f => f.key === c.fonction)).map(c => (
                                                             <option key={c.id} value={c.id}>{c.matricule ? `[${c.matricule}] ` : ''}{c.beneficiaire || '(sans nom)'} — {c.fonction} — {c.tache} ({c.prixUnitaire} DH/{c.unite})</option>
                                                         ))}
+                                                        {/* Fallback : garde la sélection visible si la config n'est pas (encore) chargée ou a été supprimée */}
+                                                        {e.configId && !configItems.some(c => c.id === e.configId) && (
+                                                            <option value={e.configId}>{e.matricule ? `[${e.matricule}] ` : ''}{e.beneficiaire || '(sous-traitant)'}{e.fonction ? ' — ' + e.fonction : ''}{e.tache ? ' — ' + e.tache : ''}</option>
+                                                        )}
                                                     </select>
                                                 </td>
                                                 <td style={{textAlign:'center'}}>
