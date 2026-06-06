@@ -21645,35 +21645,40 @@ ${rejetHtml}
                                     {qzLoading && <span style={{fontSize:11,color:'var(--berry)'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:4}}></i>Chargement…</span>}
                                 </div>
                                 <div className="table-responsive">
-                                <table className="data-table" style={{fontSize:11,whiteSpace:'nowrap'}}>
+                                <table className="data-table" style={{fontSize:11}}>
                                     <thead>
                                         <tr>
-                                            <th>Sous-traitant</th>
-                                            <th>Fonction</th>
-                                            {dates.map(d => <th key={d} style={{textAlign:'center',fontSize:9}}>{fmtD(d)}</th>)}
-                                            <th style={{textAlign:'center',fontWeight:700}}>Total</th>
+                                            <th>Jour</th>
+                                            {rows.map((r, i) => (
+                                                <th key={i} style={{textAlign:'center'}}>
+                                                    {r.beneficiaire || r.matricule || '—'}
+                                                    <div style={{fontSize:9,fontWeight:400,color:'var(--gray-400)'}}>{r.fonction || '—'}{r.matricule ? ' · ' + r.matricule : ''}</div>
+                                                </th>
+                                            ))}
+                                            <th style={{textAlign:'center',fontWeight:700}}>Total jour</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {rows.map((r, i) => (
-                                            <tr key={i}>
-                                                <td><strong>{r.beneficiaire || r.matricule || '—'}</strong>{r.matricule && <span style={{marginLeft:6,fontSize:9,fontFamily:'monospace',color:'var(--gray-400)'}}>[{r.matricule}]</span>}</td>
-                                                <td style={{fontSize:10}}>{r.fonction || '—'}</td>
-                                                {dates.map(d => {
+                                        {dates.map((d, di) => (
+                                            <tr key={d}>
+                                                <td style={{fontWeight:600,whiteSpace:'nowrap'}}>{new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</td>
+                                                {rows.map((r, i) => {
                                                     const c = r.byDay[d];
-                                                    if (!c || (!c.q && !c.m)) return <td key={d} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
-                                                    return <td key={d} style={{textAlign:'center',fontSize:10}}><div style={{fontWeight:600}}>{c.q}</div><div style={{fontSize:9,color:'var(--gray-400)'}}>{Math.round(c.m).toLocaleString('fr-FR')} DH</div></td>;
+                                                    if (!c || (!c.q && !c.m)) return <td key={i} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                                    return <td key={i} style={{textAlign:'center',fontSize:10}}><div style={{fontWeight:600}}>{c.q}</div><div style={{fontSize:9,color:'var(--gray-400)'}}>{Math.round(c.m).toLocaleString('fr-FR')} DH</div></td>;
                                                 })}
-                                                <td style={{textAlign:'center',fontWeight:700,color:'var(--berry)'}}><div>{Math.round(r.totQ*100)/100}</div><div style={{fontSize:10}}>{Math.round(r.totM).toLocaleString('fr-FR')} DH</div></td>
+                                                <td style={{textAlign:'center',fontWeight:700,color:dailyTot[di]>0?'var(--berry)':'var(--gray-300)'}}>{dailyTot[di] > 0 ? Math.round(dailyTot[di]).toLocaleString('fr-FR') + ' DH' : '-'}</td>
                                             </tr>
                                         ))}
-                                        {rows.length === 0 && <tr><td colSpan={dates.length + 3} style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun pointage divers sur cette quinzaine.</td></tr>}
+                                        {rows.length === 0 && <tr><td colSpan={2} style={{textAlign:'center',color:'var(--gray-400)',padding:20}}>Aucun pointage divers sur cette quinzaine.</td></tr>}
                                     </tbody>
                                     {rows.length > 0 && (
                                         <tfoot>
                                             <tr style={{background:'var(--gray-50)',fontWeight:700}}>
-                                                <td colSpan={2} style={{textAlign:'right'}}>Total / jour</td>
-                                                {dailyTot.map((m, i) => <td key={i} style={{textAlign:'center',fontSize:10,color:m>0?'var(--berry)':'var(--gray-300)'}}>{m > 0 ? Math.round(m).toLocaleString('fr-FR') + ' DH' : '-'}</td>)}
+                                                <td style={{textAlign:'right'}}>Total</td>
+                                                {rows.map((r, i) => (
+                                                    <td key={i} style={{textAlign:'center',fontSize:10,color:'var(--berry)'}}><div>{Math.round(r.totQ*100)/100}</div><div>{Math.round(r.totM).toLocaleString('fr-FR')} DH</div></td>
+                                                ))}
                                                 <td style={{textAlign:'center',color:'var(--berry)',fontSize:13}}>{Math.round(grandTot).toLocaleString('fr-FR')} DH</td>
                                             </tr>
                                         </tfoot>
