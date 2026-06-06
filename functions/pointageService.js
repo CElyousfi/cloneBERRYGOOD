@@ -164,11 +164,72 @@ function quantiteToKg(quantiteUnite, operation) {
   return Math.round(q * parseFloat(match[1]) * 10) / 10;
 }
 
+// =============================================
+// Jours fériés Maroc — source unique
+// Vérité = Firestore app_settings/jours_feries (seedé depuis ce fallback).
+// Statut: 'fixe' (grégorien sûr) | 'estime' (lunaire, à confirmer) | 'confirme' (RH/API).
+// =============================================
+const JOURS_FERIES_FALLBACK = [
+  { date: '2025-01-01', label: 'Nouvel An', type: 'fixe', status: 'fixe' },
+  { date: '2025-01-11', label: "Manifeste de l'Indépendance", type: 'fixe', status: 'fixe' },
+  { date: '2025-01-14', label: 'Nouvel An Amazigh', type: 'fixe', status: 'fixe' },
+  { date: '2025-05-01', label: 'Fête du Travail', type: 'fixe', status: 'fixe' },
+  { date: '2025-07-30', label: 'Fête du Trône', type: 'fixe', status: 'fixe' },
+  { date: '2025-08-14', label: 'Oued Ed-Dahab', type: 'fixe', status: 'fixe' },
+  { date: '2025-08-20', label: 'Révolution du Roi et du Peuple', type: 'fixe', status: 'fixe' },
+  { date: '2025-08-21', label: 'Fête de la Jeunesse', type: 'fixe', status: 'fixe' },
+  { date: '2025-11-06', label: 'Marche Verte', type: 'fixe', status: 'fixe' },
+  { date: '2025-11-18', label: "Fête de l'Indépendance", type: 'fixe', status: 'fixe' },
+  // Islamiques 2025
+  { date: '2025-03-30', label: 'Aïd Al Fitr', type: 'islamique', status: 'fixe' },
+  { date: '2025-03-31', label: 'Aïd Al Fitr (2e jour)', type: 'islamique', status: 'fixe' },
+  { date: '2025-06-06', label: 'Aïd Al Adha', type: 'islamique', status: 'fixe' },
+  { date: '2025-06-07', label: 'Aïd Al Adha (2e jour)', type: 'islamique', status: 'fixe' },
+  { date: '2025-06-27', label: '1er Moharram', type: 'islamique', status: 'fixe' },
+  { date: '2025-09-05', label: 'Aïd Al Mawlid', type: 'islamique', status: 'fixe' },
+  { date: '2026-01-01', label: 'Nouvel An', type: 'fixe', status: 'fixe' },
+  { date: '2026-01-11', label: "Manifeste de l'Indépendance", type: 'fixe', status: 'fixe' },
+  { date: '2026-01-14', label: 'Nouvel An Amazigh', type: 'fixe', status: 'fixe' },
+  { date: '2026-05-01', label: 'Fête du Travail', type: 'fixe', status: 'fixe' },
+  { date: '2026-07-30', label: 'Fête du Trône', type: 'fixe', status: 'fixe' },
+  { date: '2026-08-14', label: 'Oued Ed-Dahab', type: 'fixe', status: 'fixe' },
+  { date: '2026-08-20', label: 'Révolution du Roi et du Peuple', type: 'fixe', status: 'fixe' },
+  { date: '2026-08-21', label: 'Fête de la Jeunesse', type: 'fixe', status: 'fixe' },
+  { date: '2026-11-06', label: 'Marche Verte', type: 'fixe', status: 'fixe' },
+  { date: '2026-11-18', label: "Fête de l'Indépendance", type: 'fixe', status: 'fixe' },
+  // Islamiques 2026 (estimées — à confirmer la veille)
+  { date: '2026-03-30', label: 'Aïd Al Fitr', type: 'islamique', status: 'estime' },
+  { date: '2026-06-06', label: 'Aïd Al Adha', type: 'islamique', status: 'estime' },
+  { date: '2026-06-26', label: '1er Moharram', type: 'islamique', status: 'estime' },
+  { date: '2026-09-04', label: 'Aïd Al Mawlid', type: 'islamique', status: 'estime' },
+];
+
+/**
+ * Charge les jours fériés depuis Firestore (app_settings/jours_feries).
+ * Fallback sur la constante JOURS_FERIES_FALLBACK si lecture vide/échoue.
+ * @returns {Promise<Array<{date,label,type,status}>>}
+ */
+async function getJoursFeries() {
+  try {
+    const snap = await db_firestore.collection("app_settings").doc("jours_feries").get();
+    if (snap.exists) {
+      const holidays = snap.data().holidays;
+      if (Array.isArray(holidays) && holidays.length) return holidays;
+    }
+  } catch (e) {
+    console.error("getJoursFeries: lecture Firestore échouée, fallback constante:", e.message);
+  }
+  return JOURS_FERIES_FALLBACK;
+}
+
 /**
  * Compute chargement/conditionnement worker-day details from raw pointage rows.
  * Returns pre-calculated data so frontend doesn't need to filter on Operation.
+ * @param {Array} allRows
+ * @param {Array} [holidays] - liste fériés (Firestore) ; fallback constante si vide.
  */
-function computeChargCond(allRows) {
+function computeChargCond(allRows, holidays) {
+  const JOURS_FERIES = (Array.isArray(holidays) && holidays.length) ? holidays : JOURS_FERIES_FALLBACK;
   const chargWorkers = {}; // { "periode|mat" -> { matricule, nom, periode, ferme, jours: Set } }
   const condWorkers = {};
   for (const r of allRows) {
@@ -191,41 +252,6 @@ function computeChargCond(allRows) {
     }
   }
   const toList = (map) => Object.values(map).map(w => ({ matricule: w.matricule, nom: w.nom, periode: w.periode, ferme: w.ferme, jh: w.jours.size, jours: [...w.jours].sort() }));
-
-  // Jours fériés Maroc
-  const JOURS_FERIES = [
-    { date: '2025-01-01', label: 'Nouvel An', type: 'fixe' },
-    { date: '2025-01-11', label: "Manifeste de l'Indépendance", type: 'fixe' },
-    { date: '2025-01-14', label: 'Nouvel An Amazigh', type: 'fixe' },
-    { date: '2025-05-01', label: 'Fête du Travail', type: 'fixe' },
-    { date: '2025-07-30', label: 'Fête du Trône', type: 'fixe' },
-    { date: '2025-08-14', label: 'Oued Ed-Dahab', type: 'fixe' },
-    { date: '2025-08-20', label: 'Révolution du Roi et du Peuple', type: 'fixe' },
-    { date: '2025-08-21', label: 'Fête de la Jeunesse', type: 'fixe' },
-    { date: '2025-11-06', label: 'Marche Verte', type: 'fixe' },
-    { date: '2025-11-18', label: "Fête de l'Indépendance", type: 'fixe' },
-    // Islamiques 2025
-    { date: '2025-03-30', label: 'Aïd Al Fitr', type: 'islamique' },
-    { date: '2025-03-31', label: 'Aïd Al Fitr (2e jour)', type: 'islamique' },
-    { date: '2025-06-06', label: 'Aïd Al Adha', type: 'islamique' },
-    { date: '2025-06-07', label: 'Aïd Al Adha (2e jour)', type: 'islamique' },
-    { date: '2025-06-27', label: '1er Moharram', type: 'islamique' },
-    { date: '2025-09-05', label: 'Aïd Al Mawlid', type: 'islamique' },
-    { date: '2026-01-01', label: 'Nouvel An', type: 'fixe' },
-    { date: '2026-01-11', label: "Manifeste de l'Indépendance", type: 'fixe' },
-    { date: '2026-01-14', label: 'Nouvel An Amazigh', type: 'fixe' },
-    { date: '2026-05-01', label: 'Fête du Travail', type: 'fixe' },
-    { date: '2026-07-30', label: 'Fête du Trône', type: 'fixe' },
-    { date: '2026-08-14', label: 'Oued Ed-Dahab', type: 'fixe' },
-    { date: '2026-08-20', label: 'Révolution du Roi et du Peuple', type: 'fixe' },
-    { date: '2026-08-21', label: 'Fête de la Jeunesse', type: 'fixe' },
-    { date: '2026-11-06', label: 'Marche Verte', type: 'fixe' },
-    { date: '2026-11-18', label: "Fête de l'Indépendance", type: 'fixe' },
-    { date: '2026-03-30', label: 'Aïd Al Fitr', type: 'islamique' },
-    { date: '2026-06-06', label: 'Aïd Al Adha', type: 'islamique' },
-    { date: '2026-06-26', label: '1er Moharram', type: 'islamique' },
-    { date: '2026-09-04', label: 'Aïd Al Mawlid', type: 'islamique' },
-  ];
 
   // Build date → periode mapping
   const dateToPeriode = {};
@@ -255,6 +281,9 @@ function computeChargCond(allRows) {
   // For each jour férié, find its quinzaine and credit all active workers
   const ferieWorkers = {}; // "periode|mat" -> { matricule, nom, periode, details: [] }
   for (const jf of JOURS_FERIES) {
+    // Aïd = 2 jours fériés légaux, mais la prime ne compte QUE le 1er jour.
+    // On ignore donc les entrées « (2e jour) » (et tout flag compteurPrime:false).
+    if (/\(2e\s*jour\)/i.test(jf.label || '') || jf.compteurPrime === false) continue;
     // Determine which periode this holiday belongs to
     let holidayPeriode = dateToPeriode[jf.date];
     if (!holidayPeriode) {
@@ -639,6 +668,9 @@ exports.createSnapshot = createSnapshot;
 exports.getSubmittedFermes = getSubmittedFermes;
 exports.getSnapshotData = getSnapshotData;
 exports.deriveFerme = deriveFerme;
+exports.getJoursFeries = getJoursFeries;
+exports.JOURS_FERIES_FALLBACK = JOURS_FERIES_FALLBACK;
+exports.computeChargCond = computeChargCond;
 
 // =============================================
 // Cache Warmer — pre-populates api_cache for pointage endpoints
@@ -908,7 +940,8 @@ async function warmAllPointageCaches() {
         if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
       }
       const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
-      const extras = computeChargCond(allRows);
+      const holidays = await getJoursFeries();
+      const extras = computeChargCond(allRows, holidays);
       return { success: true, periodes, rows, ...extras };
     });
     results.push("transport:ok");
@@ -1819,7 +1852,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
           }
           const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
-          const extras = computeChargCond(allRows);
+          const holidays = await getJoursFeries();
+          const extras = computeChargCond(allRows, holidays);
           return { success: true, periodes, rows, ...extras };
         }
         // SQL fallback

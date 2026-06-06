@@ -4524,6 +4524,62 @@ exports.validation = functions
         return res.json({ success: true, message: "Supprimé" });
       }
 
+      // ── Jours fériés Maroc — source unique app_settings/jours_feries ──
+      // GET: liste des fériés (calendrier RH + éditeur)
+      if (action === "jours-feries") {
+        const snap = await db_firestore.collection("app_settings").doc("jours_feries").get();
+        const data = snap.exists ? snap.data() : {};
+        return res.json({
+          success: true,
+          holidays: Array.isArray(data.holidays) ? data.holidays : [],
+          lastSyncAt: data.lastSyncAt || null,
+          syncSource: data.syncSource || null,
+        });
+      }
+
+      // POST: upsert RH d'un férié (override = vérité finale, jamais écrasé par le job)
+      if (action === "jours-feries-save" && req.method === "POST") {
+        const { originalDate, date, label, type, status } = req.body || {};
+        if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !label) {
+          return res.status(400).json({ success: false, error: "date (YYYY-MM-DD) et label requis" });
+        }
+        const t = (type === "islamique") ? "islamique" : "fixe";
+        const st = ["fixe", "estime", "confirme"].includes(status) ? status : (t === "fixe" ? "fixe" : "confirme");
+        const nowIso = new Date().toISOString();
+        const ref = db_firestore.collection("app_settings").doc("jours_feries");
+        await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          const cur = snap.exists ? snap.data() : {};
+          const holidays = Array.isArray(cur.holidays) ? cur.holidays.slice() : [];
+          const matchDate = originalDate || date;
+          const idx = holidays.findIndex(h => h.date === matchDate);
+          const entry = {
+            date, label: label.trim(), type: t, status: st,
+            source: "rh", manualOverride: true, updatedAt: nowIso,
+          };
+          if (idx >= 0) holidays[idx] = Object.assign({}, holidays[idx], entry);
+          else holidays.push(entry);
+          holidays.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+          tx.set(ref, { holidays, updatedAt: nowIso }, { merge: true });
+        });
+        return res.json({ success: true, message: originalDate ? "Mis à jour" : "Créé" });
+      }
+
+      // POST: suppression RH d'un férié par date
+      if (action === "jours-feries-delete" && req.method === "POST") {
+        const { date } = req.body || {};
+        if (!date) return res.status(400).json({ success: false, error: "date requise" });
+        const nowIso = new Date().toISOString();
+        const ref = db_firestore.collection("app_settings").doc("jours_feries");
+        await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(ref);
+          const cur = snap.exists ? snap.data() : {};
+          const holidays = (Array.isArray(cur.holidays) ? cur.holidays : []).filter(h => h.date !== date);
+          tx.set(ref, { holidays, updatedAt: nowIso }, { merge: true });
+        });
+        return res.json({ success: true, message: "Supprimé" });
+      }
+
       // GET: get divers entries for a specific date
       if (action === "divers-entries") {
         const date = req.query.date;
@@ -13426,3 +13482,86 @@ exports.runDailyPhenologyJobNow = functions
     setCors,
     logger: (msg, ctx) => console.error(msg, ctx || ""),
   }));
+
+// =============================================
+// Jours fériés Maroc — job quotidien (API date.nager.at) + trigger test
+// Source unique : app_settings/jours_feries. Confirme les dates lunaires à
+// l'approche de l'événement et notifie RH/DG ; respecte les overrides RH.
+// =============================================
+const joursFeriesJob = require("./lib/joursFeries/joursFeries");
+
+function buildJoursFeriesProdDeps() {
+  const docRef = db_firestore.collection("app_settings").doc("jours_feries");
+  return {
+    fetchHolidays: (year) => joursFeriesJob.fetchNagerHolidays(year),
+    getExisting: async () => {
+      const snap = await docRef.get();
+      return snap.exists ? snap.data() : null;
+    },
+    saveDoc: (doc) => docRef.set(doc, { merge: true }),
+    notify: async (n) => {
+      const dateFr = (() => {
+        try { return new Date(n.date + "T12:00:00Z").toLocaleDateString("fr-FR", { day: "2-digit", month: "long" }); }
+        catch (_) { return n.date; }
+      })();
+      const msg = n.dateChanged
+        ? `📅 Jour férié « ${n.label} » : date mise à jour au ${dateFr} (était ${n.oldDate}).`
+        : `📅 Jour férié « ${n.label} » confirmé pour le ${dateFr}.`;
+      await dispatchNotification({
+        type: "jour_ferie_update",
+        profiles: ["rh", "dg"],
+        channels: ["in_app"],
+        data: { message: msg, severity: "info" },
+        relatedDoc: "app_settings/jours_feries",
+      });
+    },
+    nowIso: () => new Date().toISOString(),
+    logger: (msg) => console.log(msg),
+  };
+}
+
+exports.syncJoursFeries = functions
+  .region(joursFeriesJob.CRON_CONFIG.region)
+  .runWith({
+    timeoutSeconds: joursFeriesJob.CRON_CONFIG.timeoutSeconds,
+    memory: joursFeriesJob.CRON_CONFIG.memorySize,
+  })
+  .pubsub.schedule(joursFeriesJob.CRON_CONFIG.schedule)
+  .timeZone(joursFeriesJob.CRON_CONFIG.timeZone)
+  .onRun(async () => {
+    const today = localDateStr();
+    console.log("[syncJoursFeries] cron start date=" + today);
+    try {
+      const summary = await joursFeriesJob.runSyncJoursFeries(today, buildJoursFeriesProdDeps());
+      console.log("[syncJoursFeries] cron done", JSON.stringify(summary));
+    } catch (err) {
+      console.error("[syncJoursFeries] cron error:", err.message);
+    }
+    return null;
+  });
+
+// HTTP trigger — one-shot manuel (auth requise, ?date=YYYY-MM-DD pour rejouer)
+exports.runSyncJoursFeriesNow = functions
+  .region(joursFeriesJob.HTTP_CONFIG.region)
+  .runWith({
+    timeoutSeconds: joursFeriesJob.HTTP_CONFIG.timeoutSeconds,
+    memory: joursFeriesJob.HTTP_CONFIG.memorySize,
+  })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    const today = localDateStr();
+    const date = (req.query && req.query.date) || today;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, error: "date must be YYYY-MM-DD" });
+    }
+    try {
+      const summary = await joursFeriesJob.runSyncJoursFeries(date, buildJoursFeriesProdDeps());
+      return res.json({ success: true, ...summary });
+    } catch (err) {
+      console.error("[runSyncJoursFeriesNow] error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
