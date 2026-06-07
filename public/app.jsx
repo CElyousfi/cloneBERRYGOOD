@@ -503,7 +503,6 @@
             { id: 'qualite_liquidations', label: 'Liquidations Qualité', icon: 'fa-coins' },
             { id: 'qualite_reconciliation', label: 'Réconciliation', icon: 'fa-scale-balanced' },
             { id: 'fin_bdc', label: 'Suivi BDC', icon: 'fa-file-contract' },
-            { id: 'fin_fournisseurs', label: 'Valid. Fournisseurs', icon: 'fa-building-circle-check' },
             { id: 'fin_factures', label: 'Factures Fournisseurs', icon: 'fa-file-invoice' },
             { id: 'fin_paiements', label: 'Valid. Paiements', icon: 'fa-check-double' },
             { id: 'fin_virements', label: 'Virements', icon: 'fa-money-bill-transfer' },
@@ -43528,28 +43527,25 @@ ${rejetHtml}
             const [loading, setLoading] = useState(true);
             const [showForm, setShowForm] = useState(false);
             const [editingId, setEditingId] = useState(null);
-            const [editingStatus, setEditingStatus] = useState(null);
-            const [filterStatus, setFilterStatus] = useState('');
-            const [form, setForm] = useState({ nom: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', categorie: 'autre' });
+            const [errors, setErrors] = useState({});
+            const [form, setForm] = useState({ nom: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', identifiant_fiscal: '', categorie: 'autre' });
             const [importing, setImporting] = useState(false);
             const [importResult, setImportResult] = useState(null);
             const [importXlsState, setImportXlsState] = useState(null); // null | { phase: 'preview' | 'importing' | 'done', data: ... }
             const fileInputRef = React.useRef(null);
             const categories = ['engrais', 'phyto', 'emballage', 'materiel', 'autre'];
-            const statusLabels = { en_attente: 'En attente Finance', valide: 'Validé', rejete: 'Rejeté' };
-            const statusClass = (s) => s === 'en_attente' ? 'en-attente' : s === 'valide' ? 'valide' : s === 'rejete' ? 'rejete' : 'brouillon';
 
             const loadSuppliers = () => {
-                const url = '/api/stock?action=list-suppliers' + (filterStatus ? '&status=' + filterStatus : '');
-                fetch(url).then(r => r.json())
+                fetch('/api/stock?action=list-suppliers').then(r => r.json())
                     .then(json => { if (json.success) setSuppliers(json.suppliers || []); })
                     .catch(err => console.warn('Suppliers error:', err))
                     .finally(() => setLoading(false));
             };
-            useEffect(() => { loadSuppliers(); }, [filterStatus]);
+            useEffect(() => { loadSuppliers(); }, []);
 
             const handleSave = () => {
-                if (!form.nom.trim()) { alert('Le nom du fournisseur est requis'); return; }
+                if (!form.nom.trim()) { setErrors({ nom: 'Le nom du fournisseur est requis' }); return; }
+                const wasEditing = !!editingId;
                 const action = editingId ? 'update-supplier' : 'create-supplier';
                 const profileInfo = { profileId: currentProfile, name: profileData?.name || currentProfile };
                 const body = editingId
@@ -43559,18 +43555,21 @@ ${rejetHtml}
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
                 }).then(r => r.json()).then(json => {
                     if (json.success) {
-                        setShowForm(false); setEditingId(null); setEditingStatus(null);
-                        setForm({ nom: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', categorie: 'autre' });
+                        setErrors({});
+                        setShowForm(false); setEditingId(null);
+                        setForm({ nom: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', identifiant_fiscal: '', categorie: 'autre' });
                         loadSuppliers();
-                        if (!editingId) alert('Fournisseur créé. En attente de validation par Finance.');
+                        if (!wasEditing) alert('Fournisseur créé et validé.');
+                    } else if (json.errors) {
+                        setErrors(json.errors);
                     } else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
             };
 
             const startEdit = (s) => {
-                if (s.status === 'valide') { alert('Ce fournisseur est déjà validé. Modification non autorisée.'); return; }
-                setForm({ nom: s.nom || '', ice: s.ice || '', adresse: s.adresse || '', ville: s.ville || '', tel: s.tel || '', email: s.email || '', contact_nom: s.contact_nom || '', categorie: s.categorie || 'autre' });
-                setEditingId(s.id); setEditingStatus(s.status); setShowForm(true);
+                setErrors({});
+                setForm({ nom: s.nom || '', ice: s.ice || '', adresse: s.adresse || '', ville: s.ville || '', tel: s.tel || '', email: s.email || '', contact_nom: s.contact_nom || '', identifiant_fiscal: s.identifiant_fiscal || '', categorie: s.categorie || 'autre' });
+                setEditingId(s.id); setShowForm(true);
             };
 
             const handleImportSQL = () => {
@@ -43625,17 +43624,11 @@ ${rejetHtml}
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}},
                 React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
-            const counts = { all: suppliers.length, en_attente: suppliers.filter(s => s.status === 'en_attente').length, valide: suppliers.filter(s => s.status === 'valide').length, rejete: suppliers.filter(s => s.status === 'rejete').length };
-
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                            {[{v:'',l:'Tous ('+counts.all+')'},{v:'en_attente',l:'En attente ('+counts.en_attente+')'},{v:'valide',l:'Validés ('+counts.valide+')'},{v:'rejete',l:'Rejetés ('+counts.rejete+')'}].map(f => (
-                                <button key={f.v} onClick={() => setFilterStatus(f.v)} className={`chip c-berry ${filterStatus === f.v ? 'active' : ''}`}>
-                                    {f.l}
-                                </button>
-                            ))}
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                            <span style={{fontSize:13,fontWeight:600,color:'#2c3e50'}}>{suppliers.length} fournisseur(s)</span>
                         </div>
                         <div style={{display:'flex',gap:8,alignItems:'center'}}>
                             <input type="file" accept=".xls,.xlsx" ref={fileInputRef} onChange={handleFileSelect} style={{display:'none'}} />
@@ -43653,7 +43646,7 @@ ${rejetHtml}
                                 <i className={importing ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-database'}></i>
                                 {importing ? 'Import en cours...' : 'Importer depuis BEE ONE'}
                             </button>
-                            <button onClick={() => { setEditingId(null); setEditingStatus(null); setForm({ nom: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', categorie: 'autre' }); setShowForm(true); }}
+                            <button onClick={() => { setEditingId(null); setErrors({}); setForm({ nom: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', identifiant_fiscal: '', categorie: 'autre' }); setShowForm(true); }}
                                 style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau fournisseur
                             </button>
@@ -43662,7 +43655,7 @@ ${rejetHtml}
 
                     <div style={{background:'rgba(52,152,219,0.08)',border:'1px solid rgba(52,152,219,0.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,color:'#2c3e50'}}>
                         <i className="fa-solid fa-circle-info" style={{marginRight:6,color:'var(--blue)'}}></i>
-                        Les fournisseurs créés doivent être <strong>validés par Finance</strong> avant de pouvoir être utilisés dans les Bons de Commande.
+                        Un fournisseur est <strong>validé automatiquement à la création</strong> si les 6 champs obligatoires (Nom, Adresse, IF, ICE, Contact, Téléphone) sont valides.
                     </div>
 
                     {importResult && (
@@ -43691,23 +43684,24 @@ ${rejetHtml}
                     )}
 
                     <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>Nom</th><th>ICE</th><th>Ville</th><th>Catégorie</th><th>Tél</th><th>Contact</th><th>Statut</th><th></th></tr></thead>
+                        <thead><tr><th>Nom</th><th>IF</th><th>ICE</th><th>Ville</th><th>Catégorie</th><th>Tél</th><th>Contact</th><th>Statut</th><th></th></tr></thead>
                         <tbody>
                             {suppliers.map((s) => (
                                 <tr key={s.id}>
                                     <td style={{fontWeight:600}}>{s.nom}</td>
+                                    <td style={{fontSize:11,fontFamily:'monospace'}}>{s.identifiant_fiscal || '—'}</td>
                                     <td style={{fontSize:11,fontFamily:'monospace'}}>{s.ice || '—'}</td>
                                     <td>{s.ville || '—'}</td>
                                     <td><span className="status-badge" style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',textTransform:'capitalize'}}>{s.categorie}</span></td>
                                     <td style={{fontSize:12}}>{s.tel || '—'}</td>
                                     <td>{s.contact_nom || '—'}</td>
-                                    <td><span className={'status-badge ' + statusClass(s.status || 'en_attente')}>{statusLabels[s.status] || s.status || 'En attente'}</span></td>
+                                    <td><span className="status-badge valide">Validé</span></td>
                                     <td>
-                                        {(s.status === 'en_attente' || s.status === 'rejete') && <button onClick={() => startEdit(s)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13}} title="Modifier"><i className="fa-solid fa-pen-to-square"></i></button>}
+                                        <button onClick={() => startEdit(s)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13}} title="Modifier"><i className="fa-solid fa-pen-to-square"></i></button>
                                     </td>
                                 </tr>
                             ))}
-                            {suppliers.length === 0 && <tr><td colSpan="8" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun fournisseur{filterStatus ? ' avec ce statut' : ''}.</td></tr>}
+                            {suppliers.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun fournisseur.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -43774,9 +43768,9 @@ ${rejetHtml}
                                         <div style={{fontSize:14,marginBottom:16}}>
                                             <strong>{d.stats.imported}</strong> fournisseur(s) importé(s), <strong>{d.stats.doublons}</strong> doublon(s) ignoré(s)
                                         </div>
-                                        <div style={{background:'rgba(52,152,219,0.08)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#2c3e50',marginBottom:16}}>
-                                            <i className="fa-solid fa-circle-info" style={{marginRight:6,color:'var(--blue)'}}></i>
-                                            Les fournisseurs importés sont en statut <strong>"En attente"</strong> et doivent être validés par Finance.
+                                        <div style={{background:'rgba(39,174,96,0.08)',borderRadius:8,padding:'8px 12px',fontSize:12,color:'#2c3e50',marginBottom:16}}>
+                                            <i className="fa-solid fa-circle-check" style={{marginRight:6,color:'#27ae60'}}></i>
+                                            Les fournisseurs importés sont en statut <strong>"Validé"</strong>.
                                         </div>
                                         <button onClick={() => setImportXlsState(null)} style={{padding:'8px 20px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>Fermer</button>
                                     </div>);
@@ -43789,20 +43783,26 @@ ${rejetHtml}
                         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
                             <div className="modal-content" style={{maxWidth:560}}>
                                 <h3 style={{marginTop:0}}><i className="fa-solid fa-building" style={{marginRight:8}}></i>{editingId ? 'Modifier' : 'Nouveau'} fournisseur</h3>
-                                {editingStatus === 'rejete' && <div style={{background:'rgba(231,76,60,0.08)',border:'1px solid rgba(231,76,60,0.2)',borderRadius:8,padding:'8px 12px',marginBottom:12,fontSize:12,color:'#c0392b'}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>Ce fournisseur a été rejeté. Corrigez les informations et sauvegardez pour resoumettre.</div>}
+                                {(() => {
+                                    const inStyle = (field) => ({width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid ' + (errors[field] ? '#e74c3c' : '#ddd'),fontSize:13});
+                                    const errMsg = (field) => errors[field] ? <div style={{fontSize:11,color:'#e74c3c',marginTop:3}}>{errors[field]}</div> : null;
+                                    return (
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Nom *</label><input value={form.nom} onChange={e => setForm({...form, nom: e.target.value})} placeholder="Nom du fournisseur" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>ICE</label><input value={form.ice} onChange={e => setForm({...form, ice: e.target.value})} placeholder="N° ICE" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Nom *</label><input value={form.nom} onChange={e => setForm({...form, nom: e.target.value})} placeholder="Nom du fournisseur" style={inStyle('nom')} />{errMsg('nom')}</div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>IF (Identifiant Fiscal) *</label><input value={form.identifiant_fiscal} onChange={e => setForm({...form, identifiant_fiscal: e.target.value})} placeholder="7-8 chiffres" style={inStyle('identifiant_fiscal')} />{errMsg('identifiant_fiscal')}</div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>ICE *</label><input value={form.ice} onChange={e => setForm({...form, ice: e.target.value})} placeholder="15 chiffres" style={inStyle('ice')} />{errMsg('ice')}</div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Catégorie</label><select value={form.categorie} onChange={e => setForm({...form, categorie: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>{categories.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}</select></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Adresse</label><input value={form.adresse} onChange={e => setForm({...form, adresse: e.target.value})} placeholder="Adresse" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Ville</label><input value={form.ville} onChange={e => setForm({...form, ville: e.target.value})} placeholder="Ville" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Téléphone</label><input value={form.tel} onChange={e => setForm({...form, tel: e.target.value})} placeholder="Tél" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Email</label><input value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="Email" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Personne de contact</label><input value={form.contact_nom} onChange={e => setForm({...form, contact_nom: e.target.value})} placeholder="Nom du contact" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Adresse *</label><input value={form.adresse} onChange={e => setForm({...form, adresse: e.target.value})} placeholder="Adresse" style={inStyle('adresse')} />{errMsg('adresse')}</div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Ville</label><input value={form.ville} onChange={e => setForm({...form, ville: e.target.value})} placeholder="Ville" style={inStyle('ville')} />{errMsg('ville')}</div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Téléphone *</label><input value={form.tel} onChange={e => setForm({...form, tel: e.target.value})} placeholder="0XXXXXXXXX" style={inStyle('tel')} />{errMsg('tel')}</div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Email</label><input value={form.email} onChange={e => setForm({...form, email: e.target.value})} placeholder="Email" style={inStyle('email')} />{errMsg('email')}</div>
+                                    <div style={{gridColumn:'span 2'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Personne de contact *</label><input value={form.contact_nom} onChange={e => setForm({...form, contact_nom: e.target.value})} placeholder="Nom du contact" style={inStyle('contact_nom')} />{errMsg('contact_nom')}</div>
                                 </div>
+                                    );
+                                })()}
                                 <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
                                     <button onClick={() => setShowForm(false)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
-                                    <button onClick={handleSave} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>{editingId ? (editingStatus === 'rejete' ? 'Resoumettre' : 'Enregistrer') : 'Créer & Soumettre'}</button>
+                                    <button onClick={handleSave} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>{editingId ? 'Enregistrer' : 'Créer'}</button>
                                 </div>
                             </div>
                         </div>
@@ -44120,131 +44120,6 @@ ${rejetHtml}
             );
         }
 
-        // ===================== FINANCE: VALIDATION FOURNISSEURS TAB =====================
-        function FinFournisseursTab({ currentProfile, profileData }) {
-            const [suppliers, setSuppliers] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [selectedSupplier, setSelectedSupplier] = useState(null);
-            const [rejectComment, setRejectComment] = useState('');
-            const [showRejectModal, setShowRejectModal] = useState(false);
-            const [rejectingId, setRejectingId] = useState(null);
-            const [filterStatus, setFilterStatus] = useState('en_attente');
-
-            const loadSuppliers = () => {
-                const url = '/api/stock?action=list-suppliers' + (filterStatus ? '&status=' + filterStatus : '');
-                fetch(url).then(r => r.json())
-                    .then(json => { if (json.success) setSuppliers(json.suppliers || []); })
-                    .catch(err => console.warn('Suppliers error:', err))
-                    .finally(() => setLoading(false));
-            };
-            useEffect(() => { loadSuppliers(); }, [filterStatus]);
-
-            const handleValidate = (id) => {
-                if (!confirm('Valider ce fournisseur ?')) return;
-                fetch('/api/stock?action=validate-supplier', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, decision: 'valide', validated_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { alert('Fournisseur validé avec succès'); loadSuppliers(); setSelectedSupplier(null); window._refreshNotifications?.(); }
-                    else alert('Erreur: ' + (json.error || 'Echec'));
-                }).catch(() => alert('Erreur réseau'));
-            };
-
-            const handleValidateAll = () => {
-                const pending = suppliers.filter(s => s.status === 'en_attente');
-                if (pending.length === 0) { alert('Aucun fournisseur en attente.'); return; }
-                if (!confirm(`Valider les ${pending.length} fournisseur(s) en attente ?`)) return;
-                fetch('/api/stock?action=validate-all-suppliers', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ validated_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { alert(`${json.count} fournisseur(s) validé(s) avec succès`); loadSuppliers(); window._refreshNotifications?.(); }
-                    else alert('Erreur: ' + (json.error || 'Echec'));
-                }).catch(() => alert('Erreur réseau'));
-            };
-
-            const openReject = (id) => { setRejectingId(id); setRejectComment(''); setShowRejectModal(true); };
-            const handleReject = () => {
-                fetch('/api/stock?action=validate-supplier', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: rejectingId, decision: 'rejete', comment: rejectComment, validated_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { setShowRejectModal(false); alert('Fournisseur rejeté'); loadSuppliers(); setSelectedSupplier(null); window._refreshNotifications?.(); }
-                    else alert('Erreur: ' + (json.error || 'Echec'));
-                }).catch(() => alert('Erreur réseau'));
-            };
-
-            const statusLabels = { en_attente: 'En attente', valide: 'Validé', rejete: 'Rejeté' };
-            const statusClass = (s) => s === 'en_attente' ? 'en-attente' : s === 'valide' ? 'valide' : s === 'rejete' ? 'rejete' : '';
-
-            if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}},
-                React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
-
-            return (
-                <div className="fade-in">
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <div style={{display:'flex',alignItems:'center',gap:12}}>
-                            <h3 style={{margin:0}}><i className="fa-solid fa-building-circle-check" style={{marginRight:8}}></i>Validation Fournisseurs</h3>
-                            {filterStatus === 'en_attente' && suppliers.length > 0 && (
-                                <button onClick={handleValidateAll} className="btn-berry" style={{padding:'6px 16px',fontSize:13,borderRadius:8}}>
-                                    <i className="fa-solid fa-check-double" style={{marginRight:6}}></i>Valider tout ({suppliers.length})
-                                </button>
-                            )}
-                        </div>
-                        <div style={{display:'flex',gap:6}}>
-                            {['en_attente','valide','rejete',''].map(s => (
-                                <button key={s} className={`chip c-berry ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
-                                    {s ? statusLabels[s] : 'Tous'}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>Nom</th><th>ICE</th><th>Ville</th><th>Catégorie</th><th>Tél</th><th>Email</th><th>Contact</th><th>Créé par</th><th>Statut</th><th>Actions</th></tr></thead>
-                        <tbody>
-                            {suppliers.map((s) => (
-                                <tr key={s.id}>
-                                    <td style={{fontWeight:600}}>{s.nom}</td>
-                                    <td style={{fontSize:11,fontFamily:'monospace'}}>{s.ice || '—'}</td>
-                                    <td>{s.ville || '—'}</td>
-                                    <td><span className="status-badge" style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',textTransform:'capitalize'}}>{s.categorie}</span></td>
-                                    <td style={{fontSize:12}}>{s.tel || '—'}</td>
-                                    <td style={{fontSize:12}}>{s.email || '—'}</td>
-                                    <td>{s.contact_nom || '—'}</td>
-                                    <td style={{fontSize:11}}>{s.created_by?.name || '—'}</td>
-                                    <td><span className={'status-badge ' + statusClass(s.status || 'en_attente')}>{statusLabels[s.status] || s.status || 'En attente'}</span></td>
-                                    <td style={{whiteSpace:'nowrap'}}>
-                                        {s.status === 'en_attente' && (<>
-                                            <button onClick={() => handleValidate(s.id)} title="Valider" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:14,marginRight:8}}><i className="fa-solid fa-circle-check"></i></button>
-                                            <button onClick={() => openReject(s.id)} title="Rejeter" style={{background:'none',border:'none',cursor:'pointer',color:'var(--red, #e74c3c)',fontSize:14}}><i className="fa-solid fa-circle-xmark"></i></button>
-                                        </>)}
-                                        {s.status === 'valide' && <span style={{fontSize:11,color:'var(--green)'}}><i className="fa-solid fa-check"></i> Validé</span>}
-                                        {s.status === 'rejete' && <span style={{fontSize:11,color:'#e74c3c'}}><i className="fa-solid fa-xmark"></i> Rejeté</span>}
-                                    </td>
-                                </tr>
-                            ))}
-                            {suppliers.length === 0 && <tr><td colSpan="10" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>{filterStatus === 'en_attente' ? 'Aucun fournisseur en attente de validation.' : 'Aucun fournisseur.'}</td></tr>}
-                        </tbody>
-                    </table></div>
-
-                    {showRejectModal && (
-                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowRejectModal(false); }}>
-                            <div className="modal-content" style={{maxWidth:450}}>
-                                <h3 style={{marginTop:0,color:'#e74c3c'}}><i className="fa-solid fa-circle-xmark" style={{marginRight:8}}></i>Rejeter le fournisseur</h3>
-                                <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif du rejet</label>
-                                    <textarea value={rejectComment} onChange={e => setRejectComment(e.target.value)} placeholder="Indiquez la raison du rejet..." rows={3} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13,resize:'vertical'}} /></div>
-                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
-                                    <button onClick={() => setShowRejectModal(false)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
-                                    <button onClick={handleReject} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'#e74c3c',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>Confirmer le rejet</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
         // Helper: format mode_paiement (handles legacy values)
         function formatModePaiement(mode) {
             if (mode === 'comptant_virement' || mode === 'virement_bancaire') return 'Comptant – Virement';
@@ -44276,7 +44151,7 @@ ${rejetHtml}
             const [cachetBase64, setCachetBase64] = useState(null);
             const [signatureDgBase64, setSignatureDgBase64] = useState(null);
             const [showCreateSupplier, setShowCreateSupplier] = useState(false);
-            const [newSupplier, setNewSupplier] = useState({ nom: '', ice: '', ville: '', tel: '', email: '', categorie: 'autre' });
+            const [newSupplier, setNewSupplier] = useState({ nom: '', identifiant_fiscal: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', categorie: 'autre' });
             const [creatingSup, setCreatingSup] = useState(false);
             const [showCreateArticle, setShowCreateArticle] = useState(false);
             const [newArticle, setNewArticle] = useState({ reference: '', nom: '', unite: 'kg', categorie: 'autre', taux_tva: 20 });
@@ -44289,19 +44164,19 @@ ${rejetHtml}
                     const r = await fetch('/api/stock?action=create-supplier', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newSupplier, created_by: { profileId: currentProfile, name: profileData?.fullName || currentProfile } }) });
                     const j = await r.json();
                     if (j.success) {
+                        // Le fournisseur est validé immédiatement : la liste status=valide le contient déjà
                         const listR = await fetch('/api/stock?action=list-suppliers&status=valide');
                         const listJ = await listR.json();
-                        if (listJ.success) setSuppliers(listJ.suppliers || []);
-                        // Also fetch all suppliers to find the new one (it's en_attente)
-                        const allR = await fetch('/api/stock?action=list-suppliers');
-                        const allJ = await allR.json();
-                        if (allJ.success) {
-                            setSuppliers(allJ.suppliers || []);
-                            const created = allJ.suppliers.find(s => s.id === j.id);
-                            if (created) selectSupplier(j.id);
+                        if (listJ.success) {
+                            const list = listJ.suppliers || [];
+                            setSuppliers(list);
+                            const created = list.find(s => s.id === j.id);
+                            if (created) setForm(f => ({ ...f, supplier_id: created.id, fournisseur: { nom: created.nom, ice: created.ice || '', adresse: created.adresse || '', ville: created.ville || '', tel: created.tel || '', email: created.email || '' } }));
                         }
                         setShowCreateSupplier(false);
-                        setNewSupplier({ nom: '', ice: '', ville: '', tel: '', email: '', categorie: 'autre' });
+                        setNewSupplier({ nom: '', identifiant_fiscal: '', ice: '', adresse: '', ville: '', tel: '', email: '', contact_nom: '', categorie: 'autre' });
+                    } else if (j.errors) {
+                        alert(Object.values(j.errors).join('\n'));
                     } else { alert(j.error || 'Erreur lors de la création'); }
                 } catch (e) { alert('Erreur réseau'); }
                 setCreatingSup(false);
@@ -45279,17 +45154,23 @@ ${rejetHtml}
                             <div className="modal-content" style={{maxWidth:500,width:'90vw'}}>
                                 <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-truck-field" style={{marginRight:8}}></i>Nouveau Fournisseur</h3>
                                 <div style={{background:'#eff6ff',border:'1px solid #bfdbfe',borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:11,color:'#1e40af'}}>
-                                    <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>Le fournisseur sera créé avec le statut "En attente" — validation Finance requise avant utilisation.
+                                    <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>Le fournisseur est validé automatiquement si les 6 champs obligatoires sont valides (Nom, Adresse, IF, ICE, Contact, Téléphone).
                                 </div>
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
                                     <div style={{gridColumn:'1 / -1'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Nom *</label>
                                         <input value={newSupplier.nom} onChange={e => setNewSupplier({...newSupplier, nom: e.target.value})} placeholder="Nom du fournisseur" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>ICE</label>
-                                        <input value={newSupplier.ice} onChange={e => setNewSupplier({...newSupplier, ice: e.target.value})} placeholder="Identifiant fiscal" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>IF (Identifiant Fiscal) *</label>
+                                        <input value={newSupplier.identifiant_fiscal} onChange={e => setNewSupplier({...newSupplier, identifiant_fiscal: e.target.value})} placeholder="7-8 chiffres" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>ICE *</label>
+                                        <input value={newSupplier.ice} onChange={e => setNewSupplier({...newSupplier, ice: e.target.value})} placeholder="15 chiffres" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div style={{gridColumn:'1 / -1'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Adresse *</label>
+                                        <input value={newSupplier.adresse} onChange={e => setNewSupplier({...newSupplier, adresse: e.target.value})} placeholder="Adresse" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Ville</label>
                                         <input value={newSupplier.ville} onChange={e => setNewSupplier({...newSupplier, ville: e.target.value})} placeholder="Ville" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Téléphone</label>
-                                        <input value={newSupplier.tel} onChange={e => setNewSupplier({...newSupplier, tel: e.target.value})} placeholder="Téléphone" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Téléphone *</label>
+                                        <input value={newSupplier.tel} onChange={e => setNewSupplier({...newSupplier, tel: e.target.value})} placeholder="0XXXXXXXXX" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    <div style={{gridColumn:'1 / -1'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Personne de contact *</label>
+                                        <input value={newSupplier.contact_nom} onChange={e => setNewSupplier({...newSupplier, contact_nom: e.target.value})} placeholder="Nom du contact" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Email</label>
                                         <input type="email" value={newSupplier.email} onChange={e => setNewSupplier({...newSupplier, email: e.target.value})} placeholder="Email" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                                     <div style={{gridColumn:'1 / -1'}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Catégorie</label>
@@ -61678,7 +61559,7 @@ ${rejetHtml}
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'recolte', 'hors_recolte', 'quinzaine', 'primes', 'evolution'];
                                         const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_suivi_calibre', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
                                         const webScrapeTabs = ['fin_telecom'];
-                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_fournisseurs', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
+                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
@@ -61827,7 +61708,6 @@ ${rejetHtml}
                                 {renderTab('fin_delete_articles', FinDeleteArticlesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Suppression Articles')}
                                 {renderTab('fin_virements', FinVirementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Virements')}
                                 {renderTab('fin_bdc', FinBDCTab, { currentProfile }, 'BDC Finance')}
-                                {renderTab('fin_fournisseurs', FinFournisseursTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Fournisseurs Finance')}
                                 {renderTab('achats_factures', AchatsFacturesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Factures Achats')}
                                 {renderTab('achats_paiements', AchatsPaiementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Paiements Achats')}
                                 {renderTab('achats_scan_factures', AchatsScanFacturesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Scan Factures')}

@@ -12,6 +12,7 @@ const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const bdcWorkflow = require("./lib/bdc/workflow");
 const caisseImport = require("./lib/caisseImport");
+const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const whatsappService = require("./whatsappService");
 
@@ -5101,16 +5102,24 @@ exports.stockManagement = functions
       }
 
       if (action === "create-supplier" && req.method === "POST") {
-        const { nom, ice, adresse, ville, tel, email, contact_nom, categorie, created_by } = req.body;
-        if (!nom) return res.status(400).json({ success: false, error: "Nom du fournisseur requis" });
+        const { nom, ice, identifiant_fiscal, adresse, ville, tel, email, contact_nom, categorie, created_by } = req.body;
+        const validation = validateSupplier({ nom, adresse, identifiant_fiscal, ice, contact_nom, tel });
+        if (!validation.valid) {
+          return res.status(400).json({ success: false, error: "Champs invalides", errors: validation.errors });
+        }
         const now = Date.now();
         const docRef = await db_firestore.collection("suppliers").add({
-          nom, ice: ice || "", adresse: adresse || "", ville: ville || "",
+          nom, ice: ice || "", identifiant_fiscal: identifiant_fiscal || "",
+          adresse: adresse || "", ville: ville || "",
           tel: tel || "", email: email || "", contact_nom: contact_nom || "",
           categorie: categorie || "autre",
-          status: "en_attente", // Requires Finance validation
+          status: "valide", // Validation automatique à la création
+          validated_at: now, validated_by: created_by || {},
           active: true, created_by: created_by || {},
-          history: [{ action: "creation", by: created_by || {}, at: now, comment: "Fournisseur créé, en attente de validation Finance" }],
+          history: [
+            { action: "creation", by: created_by || {}, at: now, comment: "Fournisseur créé" },
+            { action: "validation_auto", by: created_by || {}, at: now, comment: "Validation automatique (champs conformes)" },
+          ],
           created_at: now, updated_at: now,
         });
         return res.json({ success: true, id: docRef.id });
@@ -5122,65 +5131,21 @@ exports.stockManagement = functions
         const doc = await db_firestore.collection("suppliers").doc(id).get();
         if (!doc.exists) return res.status(404).json({ success: false, error: "Fournisseur non trouvé" });
         const current = doc.data();
-        // If supplier was rejected, resubmit for validation
-        const newStatus = current.status === "rejete" ? "en_attente" : current.status;
-        const historyEntry = current.status === "rejete"
-          ? { action: "resoumission", by: updated_by || {}, at: Date.now(), comment: "Fournisseur modifié et resoumis pour validation" }
-          : { action: "modification", by: updated_by || {}, at: Date.now(), comment: "Fournisseur modifié" };
+        // Valider l'état résultant (merge current + updates)
+        const merged = { ...current, ...updates };
+        const validation = validateSupplier({
+          nom: merged.nom, adresse: merged.adresse, identifiant_fiscal: merged.identifiant_fiscal,
+          ice: merged.ice, contact_nom: merged.contact_nom, tel: merged.tel,
+        });
+        if (!validation.valid) {
+          return res.status(400).json({ success: false, error: "Champs invalides", errors: validation.errors });
+        }
+        const now = Date.now();
         await db_firestore.collection("suppliers").doc(id).update({
-          ...updates, status: newStatus, updated_at: Date.now(),
-          history: [...(current.history || []), historyEntry],
+          ...updates, status: "valide", updated_at: now,
+          history: [...(current.history || []), { action: "modification", by: updated_by || {}, at: now, comment: "Fournisseur modifié" }],
         });
         return res.json({ success: true });
-      }
-
-      if (action === "validate-supplier" && req.method === "POST") {
-        const { id, decision, comment, validated_by } = req.body;
-        if (!id || !decision) return res.status(400).json({ success: false, error: "ID et décision requis" });
-        if (!["valide", "rejete"].includes(decision)) return res.status(400).json({ success: false, error: "Décision invalide (valide|rejete)" });
-        const doc = await db_firestore.collection("suppliers").doc(id).get();
-        if (!doc.exists) return res.status(404).json({ success: false, error: "Fournisseur non trouvé" });
-        const current = doc.data();
-        if (current.status !== "en_attente") return res.status(400).json({ success: false, error: "Ce fournisseur n'est pas en attente de validation" });
-        const now = Date.now();
-        await db_firestore.collection("suppliers").doc(id).update({
-          status: decision,
-          validated_by: validated_by || {},
-          validated_at: now,
-          updated_at: now,
-          history: [...(current.history || []), {
-            action: decision === "valide" ? "validation" : "rejet",
-            by: validated_by || {}, at: now,
-            comment: comment || (decision === "valide" ? "Fournisseur validé par Finance" : "Fournisseur rejeté par Finance"),
-          }],
-        });
-        return res.json({ success: true, status: decision });
-      }
-
-      // Validate ALL pending suppliers at once
-      if (action === "validate-all-suppliers" && req.method === "POST") {
-        const { validated_by } = req.body;
-        const snap = await db_firestore.collection("suppliers").where("status", "==", "en_attente").where("active", "==", true).get();
-        if (snap.empty) return res.json({ success: true, count: 0 });
-        const now = Date.now();
-        const batch = db_firestore.batch();
-        snap.docs.forEach(doc => {
-          const current = doc.data();
-          batch.update(doc.ref, {
-            status: "valide",
-            validated_by: validated_by || {},
-            validated_at: now,
-            updated_at: now,
-            history: [...(current.history || []), {
-              action: "validation",
-              by: validated_by || {},
-              at: now,
-              comment: "Validation groupée par Finance",
-            }],
-          });
-        });
-        await batch.commit();
-        return res.json({ success: true, count: snap.size });
       }
 
       // ========== PURCHASE ORDERS (BDC) ==========
@@ -6267,8 +6232,6 @@ exports.stockManagement = functions
         if (role === "finance") {
           const facSnap = await db_firestore.collection("invoices").where("payment_status", "==", "validee_achats").get();
           results.factures = facSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          const suppSnap = await db_firestore.collection("suppliers").where("status", "==", "en_attente").get();
-          results.fournisseurs = suppSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
         }
         if (role === "achats") {
           const facSnap = await db_firestore.collection("invoices").where("payment_status", "==", "en_validation").get();
@@ -6554,7 +6517,7 @@ exports.stockManagement = functions
             code_fournisseur: row.code,
             identifiant_fiscal: row.identifiant_fiscal,
             categorie: "autre",
-            status: "en_attente",
+            status: "valide",
             active: true,
             created_by: importedBy,
             source: "xls_import",
@@ -11693,13 +11656,6 @@ exports.notifications = functions
             })
         );
         promises.push(
-          db_firestore.collection("suppliers")
-            .where("status", "==", "en_attente").get()
-            .then(snap => {
-              if (snap.size > 0) categories.validations.push({ key: "fournisseurs_finance", label: "Fournisseurs en attente de validation", count: snap.size, icon: "fa-building-circle-check", color: "#27ae60", tab: "fin_fournisseurs" });
-            })
-        );
-        promises.push(
           db_firestore.collection("purchase_orders")
             .where("status", "==", "envoye").get()
             .then(snap => {
@@ -11754,13 +11710,6 @@ exports.notifications = functions
             .where("payment_status", "==", "en_validation").get()
             .then(snap => {
               if (snap.size > 0) categories.validations.push({ key: "factures_achats", label: "Factures à valider", count: snap.size, icon: "fa-file-invoice-dollar", color: "#e74c3c", tab: "achats_paiements" });
-            })
-        );
-        promises.push(
-          db_firestore.collection("suppliers")
-            .where("status", "==", "en_attente").get()
-            .then(snap => {
-              if (snap.size > 0) categories.validations.push({ key: "fournisseurs", label: "Fournisseurs à valider", count: snap.size, icon: "fa-building", color: "#27ae60", tab: "achats_fournisseurs" });
             })
         );
       }
