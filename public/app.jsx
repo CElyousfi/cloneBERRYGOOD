@@ -332,6 +332,7 @@
             { id: 'chef_f1', label: 'Chef F1', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', fullName: 'Hamid AGOURAM' },
             { id: 'chef_f5', label: 'Chef F5', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', fullName: 'Bouchra HABCHANE' },
             { id: 'chef_avo', label: 'Chef Avocatier', name: 'Azzeddine', icon: 'fa-tree', farm: 'Avocatier', fullName: 'Azzeddine' },
+            { id: 'chef_bahia', label: 'Chef BAHIA', name: 'Chef BAHIA', icon: 'fa-tree', farm: 'BAHIA', fullName: 'Chef de ferme BAHIA' },
             { id: 'caporal_f1', label: 'Caporal F1', name: 'Caporal F1', icon: 'fa-hard-hat', farm: 'F1', fullName: 'Caporal F1' },
             { id: 'caporal_f5', label: 'Caporal F5', name: 'Caporal F5', icon: 'fa-hard-hat', farm: 'F5', fullName: 'Caporal F5' },
             { id: 'caporal_avo', label: 'Caporal Avo.', name: 'Caporal Avocatier', icon: 'fa-hard-hat', farm: 'Avocatier', fullName: 'Caporal Avocatier' },
@@ -574,6 +575,15 @@
             { id: 'mag_mouvements', label: 'Validations Stock', icon: 'fa-warehouse' },
             { id: 'chef_validation_bons', label: 'Valid. Bons Apport', icon: 'fa-clipboard-check' },
             { id: 'fin_budget', label: 'Budget vs Réel', icon: 'fa-chart-gantt' },
+        ];
+
+        // Chef de ferme BAHIA — accès restreint : DA + suivi, météo, pointage & quinzaine BAHIA (consultation).
+        const NAV_ITEMS_CHEF_BAHIA = [
+            { id: 'pointage', label: 'Pointage du jour', icon: 'fa-clock' },
+            { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
+            { id: 'station_meteo', label: 'Météo', icon: 'fa-cloud-sun' },
+            { id: 'chef_da', label: 'Demande d\'Achat', icon: 'fa-file-lines' },
+            { id: 'chef_tracking', label: 'Suivi Commandes', icon: 'fa-route' },
         ];
 
         const NAV_ITEMS_STATIONNAIRE = [
@@ -9562,7 +9572,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
             const totalJournees = farmFilter ? displayData.reduce((s, d) => s + d.journees, 0) : apiData.totalJournees;
             const totalCout = farmFilter ? displayData.reduce((s, d) => s + d.cout, 0) : apiData.totalCout;
             const COLORS = ['#8B2252', '#2D8B4E', '#D4A847'];
-            const trendData = parJour.map(d => ({ jour: d.jourLabel || d.jour, F1: d.F1 || 0, F5: d.F5 || 0, Avocatier: d.Avocatier || 0 }));
+            const trendData = parJour.map(d => ({ jour: d.jourLabel || d.jour, F1: d.F1 || 0, F5: d.F5 || 0, Avocatier: d.Avocatier || 0, BAHIA: d.BAHIA || 0 }));
 
             // Transport cost for quinzaine
             const currentPeriode = selectedPeriode || (apiData.periodes || [])[0] || '';
@@ -61303,7 +61313,9 @@ ${rejetHtml}
             const isDGUser = userProfile.profileId === 'dg';
             const dgOnlyFilter = n => !n.dgOnly && n.id !== 'dg_adoption' && n.id !== 'dg_validations' && n.id !== 'dg_tasks' && n.id !== 'dg_cr_reunions' && n.id !== 'dg_parametres' && n.id !== 'dg_signature';
 
-            const baseNavItems = currentProfile === 'chef_avo'
+            const baseNavItems = currentProfile === 'chef_bahia'
+                ? NAV_ITEMS_CHEF_BAHIA
+                : (currentProfile === 'chef_avo'
                 ? NAV_ITEMS_CHEF_AVO
                 : (isChef
                 ? NAV_ITEMS_RH.filter(n => !n.rhOnly && !n.chefOnly).concat(NAV_ITEMS_RH.filter(n => n.chefOnly))
@@ -61319,7 +61331,7 @@ ${rejetHtml}
                 : (currentProfile.startsWith('stationnaire_') ? NAV_ITEMS_STATIONNAIRE
                 : (currentProfile === 'securite' ? NAV_ITEMS_SECURITE.filter(n => !n.f5Only || farmFilter === 'F5')
                 : (currentProfile === 'associe_lazrak' ? NAV_ITEMS_ASSOCIE
-                : NAV_ITEMS_OTHER)))))))))))));
+                : NAV_ITEMS_OTHER))))))))))))));
 
             // Add Historique Irrigation for Chef de Ferme and DT
             if (isChef && (currentProfile === 'chef_f1' || currentProfile === 'chef_f5') || currentProfile === 'dt') {
@@ -61372,6 +61384,7 @@ ${rejetHtml}
                                             : p.id === 'finance' || p.id === 'dg' || p.id === 'audit_interne' ? 'fin_dashboard'
                                             : p.id === 'agronomie' ? 'agro_dashboard'
                                             : p.id === 'achats' ? 'achats_dashboard'
+                                            : p.id === 'chef_bahia' ? 'pointage'
                                             : 'dashboard';
                                         setCurrentTab(tab);
                                         localStorage.setItem('lastTab', tab);
@@ -61523,6 +61536,7 @@ ${rejetHtml}
                                                                 : p.id === 'agronomie' ? 'agro_dashboard'
                                                                 : p.id === 'achats' ? 'achats_dashboard'
                                                                 : p.id.startsWith('stationnaire_') ? 'station_saisie'
+                                                                : p.id === 'chef_bahia' ? 'pointage'
                                                                 : 'dashboard';
                                                             setCurrentTab(tab);
                                                             localStorage.setItem('lastTab', tab);

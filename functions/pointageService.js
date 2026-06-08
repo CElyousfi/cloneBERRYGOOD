@@ -42,6 +42,9 @@ async function getPool() {
 // =============================================
 function deriveFerme(refParcelle, parcelleCulturale) {
   const ref = (refParcelle || "").trim();
+  // BAHIA = entité juridique distincte (cf. deriveSubFerme côté frontend). Prioritaire
+  // sur la détection Avocatier afin que les ouvriers BAHIA aient leur propre bucket.
+  if (/bahia/i.test(ref) || /bahia/i.test(parcelleCulturale || "")) return "BAHIA";
   if (ref) {
   if (ref.startsWith("F1") || ref === "0032" || ref === "0035" || ref === "0036") return "F1";
   if (ref.startsWith("F5") || ref === "0037" || ref === "0038" || ref === "0039") return "F5";
@@ -498,7 +501,7 @@ async function fetchDetailFromMirror(dateParam) {
 async function fetchSummaryFromMirror(dateParam) {
   const dateStr = dateParam || new Date().toISOString().slice(0, 10);
   const rows = await getPointageRowsForDate(dateStr);
-  const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
+  const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
   // Group by ref_parcelle+operation_famille to count distinct workers
   const groups = {};
   for (const r of rows) {
@@ -575,7 +578,7 @@ async function fetchSummaryFromSQL(dateParam) {
     WHERE CONVERT(date, Periode_Date) = ${dateSQL}
     GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille
   `);
-  const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
+  const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
   for (const row of todayRes.recordset) {
     const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
     const type = classifyType(row.Operation_Famille);
@@ -698,7 +701,7 @@ async function warmAllPointageCaches() {
         getPointageRowsForDate(yesterdayStr),
         getPointageRowsForDateRange(weekStartStr, today),
       ]);
-      const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
+      const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
       const todayGroups = {};
       for (const r of todayRows) {
         const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
@@ -711,7 +714,7 @@ async function warmAllPointageCaches() {
         const type = classifyType(g.Operation_Famille);
         if (fermes[ferme]) { fermes[ferme][type] += g.workers.size; fermes[ferme].cout += g.totalCout; }
       }
-      const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 } };
+      const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 }, BAHIA: { total: 0 } };
       const yGroups = {};
       for (const r of yesterdayRows) {
         const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
@@ -734,11 +737,11 @@ async function warmAllPointageCaches() {
       const trendMap = {};
       for (const r of weekRows) {
         const key = r.DateStr;
-        if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short" }), F1: new Set(), F5: new Set(), Avocatier: new Set() };
+        if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short" }), F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
         const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
         if (trendMap[key][ferme]) trendMap[key][ferme].add(r.Personnel_Matricule);
       }
-      const weeklyTrend = Object.values(trendMap).map(t => ({ jour: t.jour, jourLabel: t.jourLabel, F1: t.F1.size, F5: t.F5.size, Avocatier: t.Avocatier.size })).sort((a, b) => a.jour.localeCompare(b.jour));
+      const weeklyTrend = Object.values(trendMap).map(t => ({ jour: t.jour, jourLabel: t.jourLabel, F1: t.F1.size, F5: t.F5.size, Avocatier: t.Avocatier.size, BAHIA: t.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
       const recolteRows = todayRows.filter(r => r.Operation_Famille === "8. Récolte");
       const recolteWorkers = new Set(recolteRows.map(r => r.Personnel_Matricule));
       const recolteQty = recolteRows.reduce((s, r) => s + (r.Quantite_unite || 0), 0);
@@ -792,17 +795,17 @@ async function warmAllPointageCaches() {
       const selectedPeriode = periodes[0];
       if (!selectedPeriode) return { success: true, periode: null, periodes, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
       const rows = await getPointageRowsForPeriode(selectedPeriode);
-      const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
+      const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
       for (const r of rows) { const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale); const type = classifyType(r.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += r.Nombre_Jr || 0; qFermes[ferme].cout += r.Cout || 0; qFermes[ferme][type] += r.Nombre_Jr || 0; } }
       const dayMap = {};
       for (const r of rows) {
         const key = r.DateStr;
-        if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: new Set(), journees: 0, cout: 0, F1: new Set(), F5: new Set(), Avocatier: new Set() };
+        if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: new Set(), journees: 0, cout: 0, F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
         dayMap[key].nbOuv.add(r.Personnel_Matricule); dayMap[key].journees += r.Nombre_Jr || 0; dayMap[key].cout += r.Cout || 0;
         const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
         if (dayMap[key][ferme]) dayMap[key][ferme].add(r.Personnel_Matricule);
       }
-      const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size })).sort((a, b) => a.jour.localeCompare(b.jour));
+      const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size, BAHIA: d.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
       const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
       const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
       return { success: true, periode: selectedPeriode, periodes, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
@@ -1147,7 +1150,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             getPointageRowsForDateRange(weekStartStr, dateForCheck),
           ]);
           // Build fermes effectif from today rows
-          const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
+          const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
           const todayGroups = {};
           for (const r of todayRows) {
             const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
@@ -1161,7 +1164,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             if (fermes[ferme]) { fermes[ferme][type] += g.workers.size; fermes[ferme].cout += g.totalCout; }
           }
           // Yesterday
-          const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 } };
+          const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 }, BAHIA: { total: 0 } };
           const yGroups = {};
           for (const r of yesterdayRows) {
             const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
@@ -1186,11 +1189,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const trendMap = {};
           for (const r of weekRows) {
             const key = r.DateStr;
-            if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short" }), F1: new Set(), F5: new Set(), Avocatier: new Set() };
+            if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short" }), F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
             const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
             if (trendMap[key][ferme]) trendMap[key][ferme].add(r.Personnel_Matricule);
           }
-          const weeklyTrend = Object.values(trendMap).map(t => ({ jour: t.jour, jourLabel: t.jourLabel, F1: t.F1.size, F5: t.F5.size, Avocatier: t.Avocatier.size })).sort((a, b) => a.jour.localeCompare(b.jour));
+          const weeklyTrend = Object.values(trendMap).map(t => ({ jour: t.jour, jourLabel: t.jourLabel, F1: t.F1.size, F5: t.F5.size, Avocatier: t.Avocatier.size, BAHIA: t.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
           // Top ops
           const opsGroups = {};
           for (const r of todayRows) {
@@ -1222,8 +1225,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           db.request().query(`SELECT TOP 1 Periode_Date FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} ORDER BY Periode_Date DESC`),
         ]);
 
-        const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
-        const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 } };
+        const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
+        const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 }, BAHIA: { total: 0 } };
 
         for (const row of todayRes.recordset) {
           const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
@@ -1259,7 +1262,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         for (const row of trendRes.recordset) {
           const d = new Date(row.jour);
           const key = d.toISOString().slice(0, 10);
-          if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }), F1: 0, F5: 0, Avocatier: 0 };
+          if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }), F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 };
           const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
           if (trendMap[key][ferme] !== undefined) trendMap[key][ferme] += row.nbOuv;
         }
@@ -1507,7 +1510,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             }));
           }
           // Summary per ferme
-          const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
+          const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
           for (const r of rows) {
             const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
             const type = classifyType(r.Operation_Famille);
@@ -1517,14 +1520,14 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const dayMap = {};
           for (const r of rows) {
             const key = r.DateStr;
-            if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: new Set(), journees: 0, cout: 0, F1: new Set(), F5: new Set(), Avocatier: new Set() };
+            if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: new Set(), journees: 0, cout: 0, F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
             dayMap[key].nbOuv.add(r.Personnel_Matricule);
             dayMap[key].journees += r.Nombre_Jr || 0;
             dayMap[key].cout += r.Cout || 0;
             const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
             if (dayMap[key][ferme]) dayMap[key][ferme].add(r.Personnel_Matricule);
           }
-          const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size })).sort((a, b) => a.jour.localeCompare(b.jour));
+          const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size, BAHIA: d.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
           const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
           const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
           return { success: true, periode: selectedPeriode, periodes, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
@@ -1539,10 +1542,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           db.request().query(`SELECT CONVERT(date, Periode_Date) AS jour, Ref_parcelle, Parcelle_Culturale, Operation_Famille, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE 1=1 ${periodeFilter} GROUP BY CONVERT(date, Periode_Date), Ref_parcelle, Parcelle_Culturale, Operation_Famille ORDER BY jour`),
           db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`),
         ]);
-        const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
+        const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
         for (const row of summaryRes.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); const type = classifyType(row.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += row.totalJr || 0; qFermes[ferme].cout += row.totalCout || 0; qFermes[ferme][type] += row.totalJr || 0; } }
         const dayMap = {};
-        for (const row of perDayRes.recordset) { const d = new Date(row.jour); const key = d.toISOString().slice(0, 10); if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0 }; const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); dayMap[key].nbOuv += row.nbOuv; dayMap[key].journees += row.totalJr || 0; dayMap[key].cout += row.totalCout || 0; if (dayMap[key][ferme] !== undefined) dayMap[key][ferme] += row.nbOuv; }
+        for (const row of perDayRes.recordset) { const d = new Date(row.jour); const key = d.toISOString().slice(0, 10); if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 }; const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); dayMap[key].nbOuv += row.nbOuv; dayMap[key].journees += row.totalJr || 0; dayMap[key].cout += row.totalCout || 0; if (dayMap[key][ferme] !== undefined) dayMap[key][ferme] += row.nbOuv; }
         const perDay = Object.values(dayMap).sort((a, b) => a.jour.localeCompare(b.jour));
         const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
         const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
@@ -2394,7 +2397,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
         if (USE_MIRROR) {
           const [rows, syncStatus] = await Promise.all([getPointageRowsForDate(dateForCheck), getSyncStatus()]);
-          const farmData = { F1: new Set(), F5: new Set(), Avocatier: new Set() };
+          const farmData = { F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
           for (const r of rows) { const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].add(r.Personnel_Matricule); }
           const uploads = Object.entries(farmData).map(([ferme, workers]) => ({ ferme, nbOuv: workers.size }));
           const lastSync = syncStatus?.lastSuccessAt;
@@ -2405,7 +2408,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const statsRes = await db.request().query(`SELECT MAX(last_user_update) AS lastWrite FROM sys.dm_db_index_usage_stats WHERE database_id = DB_ID() AND object_id = OBJECT_ID('BR_Pointage')`);
         const lastTableWrite = statsRes.recordset[0]?.lastWrite || null;
         const result = await db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} GROUP BY Ref_parcelle, Parcelle_Culturale`);
-        const farmData = { F1: { nbOuv: 0 }, F5: { nbOuv: 0 }, Avocatier: { nbOuv: 0 } };
+        const farmData = { F1: { nbOuv: 0 }, F5: { nbOuv: 0 }, Avocatier: { nbOuv: 0 }, BAHIA: { nbOuv: 0 } };
         for (const row of result.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].nbOuv += row.nbOuv; }
         const uploads = Object.entries(farmData).map(([ferme, d]) => ({ ferme, nbOuv: d.nbOuv }));
         return res.json({ success: true, date: dateForCheck, lastTableWrite: lastTableWrite ? new Date(lastTableWrite).toISOString() : null, uploads });
