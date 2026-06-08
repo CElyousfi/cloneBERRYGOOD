@@ -6731,8 +6731,8 @@ exports.stockManagement = functions
 
       // --- SUGGEST DUPLICATES (groupes par nom normalisé, active=true, >=2) ---
       if (action === "suggest-article-duplicates") {
-        const profileId = req.query.profileId;
-        if (profileId && profileId !== "achats") {
+        const callerRole = await resolveCallerRole(authUser);
+        if (callerRole !== "achats") {
           return res.status(403).json({ success: false, error: "Réservé au responsable achats" });
         }
         const snap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
@@ -6747,8 +6747,9 @@ exports.stockManagement = functions
       // --- MERGE ARTICLES (preview | execute) ---
       if (action === "merge-articles" && req.method === "POST") {
         const { master_ref, doublon_refs, mode, by } = req.body || {};
-        // Rôle : responsable achats seulement
-        if (!by || by.profileId !== "achats") {
+        // Rôle : responsable achats seulement — résolu depuis le token Firebase (anti-spoof body)
+        const callerRole = await resolveCallerRole(authUser);
+        if (callerRole !== "achats") {
           return res.status(403).json({ success: false, error: "Seul le responsable achats peut fusionner des articles" });
         }
         if (!master_ref || !Array.isArray(doublon_refs) || doublon_refs.length === 0) {
@@ -7008,8 +7009,8 @@ exports.stockManagement = functions
             master_ref, master_nom: masterNom,
             doublon_refs: doublonRefs,
             by: {
-              uid: by.uid || "", profileId: by.profileId || "",
-              name: by.name || "", email: by.email || "",
+              uid: authUser.uid || "", profileId: callerRole || "",
+              name: (by && by.name) || "", email: authUser.email || "",
             },
             at: admin.firestore.FieldValue.serverTimestamp(),
             counts,
