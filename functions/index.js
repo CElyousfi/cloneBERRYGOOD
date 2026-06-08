@@ -17,6 +17,7 @@ const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
 const { resolveCallerRole } = require("./lib/auth/resolveRole");
 const stockMovementGuard = require("./lib/stock/movementGuard");
+const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const whatsappService = require("./whatsappService");
 
@@ -8551,7 +8552,11 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           const allMovSnap = await db_firestore.collection("stock_movements").get();
           for (const doc of allMovSnap.docs) {
             const mData = doc.data();
-            if (stockMovementGuard.isDeletedMovement(mData)) continue; // exclure les bons soft-deleted
+            // Ne sommer que les mouvements dont l'impact stock est posé en live
+            // (status 'valide_chef', ni soft-deleted ni rejete). Exclut les
+            // réceptions non encore validées Achats (en_attente_achats / valide_mag)
+            // qui sinon gonfleraient les soldes reconstruits. Cf. lib/stock/movementImpact.
+            if (!isImpactApplied(mData)) continue;
             for (const d of stockCaneva.movementDelta(mData)) add(d.lieu_type, d.lieu_id, d.article_ref, d.article_nom, d.unite, d.delta);
           }
           // Write computed balances; delete stale ones absent from the rebuild
