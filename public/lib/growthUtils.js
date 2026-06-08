@@ -220,7 +220,7 @@ function validateMeasurement(m) {
 // UMD-style export (browser global + CommonJS for node:test)
 // ============================================================================
 
-const __api = {
+const __growthUtilsApi = {
   // constants
   FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM,
   // functions
@@ -228,5 +228,5 @@ const __api = {
   validateMeasurement, normalizeCheckpoints,
 };
 
-if (typeof module !== 'undefined' && module.exports) module.exports = __api
-if (typeof window !== 'undefined') window.GrowthUtils = __api
+if (typeof module !== 'undefined' && module.exports) module.exports = __growthUtilsApi
+if (typeof window !== 'undefined') window.GrowthUtils = __growthUtilsApi
