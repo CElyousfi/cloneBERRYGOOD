@@ -52348,7 +52348,7 @@ ${rejetHtml}
                                     <td style={{fontWeight:700,color:'var(--red)'}}>{s.numero}</td>
                                     <td>{s.date}</td>
                                     <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{s.lieu_source?.id || s.ferme}</span></td>
-                                    <td style={{fontSize:11}}>{s.lieu_destination || '—'}</td>
+                                    <td style={{fontSize:11}}>{(typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination && s.lieu_destination.id)) || '—'}</td>
                                     <td style={{fontSize:11,fontWeight:600}}>{sortieTypeLabel(s.sortie_type)}</td>
                                     <td style={{fontSize:11}}>{(s.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
                                     <td><span className={'status-badge ' + statusClass(s.status)}>{statusLabel(s.status)}</span></td>
