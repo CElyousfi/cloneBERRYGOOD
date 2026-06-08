@@ -52245,6 +52245,8 @@ ${rejetHtml}
                 const validItems = form.items.filter(i => i.article && i.quantite);
                 if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
                 if (form.sortie_type === 'rebut' && !form.motif_rebut) { alert('Motif requis pour le rebut'); return; }
+                if (form.sortie_type === 'retour_fournisseur' && !form.lieu_destination) { alert('Sélectionnez un fournisseur'); return; }
+                if (form.sortie_type === 'pret' && !form.lieu_destination) { alert('Sélectionnez un lieu de destination'); return; }
                 let scanUrl = null;
                 if (scanFileBS) { scanUrl = await uploadScanBS(scanFileBS); }
                 let justificatifUrl = null;
@@ -52374,20 +52376,29 @@ ${rejetHtml}
                                                 {(form.lieu_depart_type === 'magasin' ? MAGASINS : STATIONS).map(l => <option key={l} value={l}>{l}</option>)}
                                             </select>
                                         </div></div>
-                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Lieu de destination</label>
-                                        <input value={form.lieu_destination} onChange={e => setForm({...form, lieu_destination: e.target.value})} placeholder="Ex: Fournisseur X, Décharge..." style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Type de sortie *</label>
-                                        <select value={form.sortie_type} onChange={e => setForm({...form, sortie_type: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                        <select value={form.sortie_type} onChange={e => setForm({...form, sortie_type: e.target.value, lieu_destination: '', beneficiaire: ''})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
                                             {SORTIE_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                                         </select></div>
-                                    {form.sortie_type !== 'rebut' ? (
-                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Fournisseur / Bénéficiaire</label>
-                                            <select value={form.beneficiaire} onChange={e => setForm({...form, beneficiaire: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                                <option value="">-- Sélectionner --</option>
+                                    {form.sortie_type === 'retour_fournisseur' && (
+                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Lieu de destination *</label>
+                                            <select value={form.lieu_destination} onChange={e => setForm({...form, lieu_destination: e.target.value, beneficiaire: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                                <option value="">-- Sélectionner un fournisseur --</option>
                                                 {suppliers.map(s => <option key={s.id} value={s.nom}>{s.nom}{s.ville ? ' ('+s.ville+')' : ''}</option>)}
                                             </select></div>
-                                    ) : (
+                                    )}
+                                    {form.sortie_type === 'pret' && (
+                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Lieu de destination *</label>
+                                            <select value={form.lieu_destination} onChange={e => setForm({...form, lieu_destination: e.target.value, beneficiaire: ''})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                                <option value="">-- Sélectionner un lieu --</option>
+                                                <optgroup label="Magasins">{MAGASINS.map(m => <option key={m} value={m}>{m}</option>)}</optgroup>
+                                                <optgroup label="Stations">{STATIONS.map(st => <option key={st} value={st}>{st}</option>)}</optgroup>
+                                            </select></div>
+                                    )}
+                                    {form.sortie_type === 'rebut' && (
                                         <div style={{gridColumn:'1 / -1'}}>
+                                            <div style={{marginBottom:8}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Lieu de destination (optionnel)</label>
+                                                <input value={form.lieu_destination} onChange={e => setForm({...form, lieu_destination: e.target.value})} placeholder="Ex: Décharge publique..." style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                                             <div style={{marginBottom:8}}><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif *</label>
                                                 <textarea value={form.motif_rebut} onChange={e => setForm({...form, motif_rebut: e.target.value})} placeholder="Saisir le motif du rebut..." rows={2} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13,resize:'vertical'}} /></div>
                                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Justificatif</label>
