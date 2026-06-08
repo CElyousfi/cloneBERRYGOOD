@@ -254,5 +254,15 @@ service cloud.firestore {
     match /tresorerie_items/{docId} {
       allow read, write: if request.auth != null;
     }
+
+    // Suivi Croissance Framboise — lecture toute auth, écriture via Cloud Function (rôle agronomie)
+    match /growth_measurements/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /growth_plot_config/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
