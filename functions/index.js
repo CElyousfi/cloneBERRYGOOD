@@ -14,6 +14,7 @@ const bdcWorkflow = require("./lib/bdc/workflow");
 const caisseImport = require("./lib/caisseImport");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
+const articleMerge = require("./lib/stockMerge/articleMerge");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -6723,6 +6724,317 @@ exports.stockManagement = functions
         const requests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
         requests.sort((a, b) => (b.requested_at || 0) - (a.requested_at || 0));
         return res.json({ success: true, requests });
+      }
+
+      // ========== FUSION D'ARTICLES EN DOUBLON ==========
+
+      // --- SUGGEST DUPLICATES (groupes par nom normalisé, active=true, >=2) ---
+      if (action === "suggest-article-duplicates") {
+        const profileId = req.query.profileId;
+        if (profileId && profileId !== "achats") {
+          return res.status(403).json({ success: false, error: "Réservé au responsable achats" });
+        }
+        const snap = await db_firestore.collection("articles_catalog").where("active", "==", true).get();
+        const articles = snap.docs.map(d => {
+          const data = d.data();
+          return { reference: data.reference || d.id, nom: data.nom || "", categorie: data.categorie || "", unite: data.unite || "" };
+        });
+        const groups = articleMerge.groupDuplicates(articles);
+        return res.json({ success: true, groups });
+      }
+
+      // --- MERGE ARTICLES (preview | execute) ---
+      if (action === "merge-articles" && req.method === "POST") {
+        const { master_ref, doublon_refs, mode, by } = req.body || {};
+        // Rôle : responsable achats seulement
+        if (!by || by.profileId !== "achats") {
+          return res.status(403).json({ success: false, error: "Seul le responsable achats peut fusionner des articles" });
+        }
+        if (!master_ref || !Array.isArray(doublon_refs) || doublon_refs.length === 0) {
+          return res.status(400).json({ success: false, error: "master_ref et doublon_refs[] requis" });
+        }
+        const mergeMode = mode === "execute" ? "execute" : "preview";
+        const doublonSet = new Set(doublon_refs);
+        if (doublonSet.has(master_ref)) {
+          return res.status(400).json({ success: false, error: "Le master ne peut pas être dans les doublons" });
+        }
+
+        // Validation existence + active du master
+        const masterSnap = await db_firestore.collection("articles_catalog").doc(master_ref).get();
+        if (!masterSnap.exists) {
+          return res.status(404).json({ success: false, error: "Article master introuvable: " + master_ref });
+        }
+        if (masterSnap.data().active === false) {
+          return res.status(400).json({ success: false, error: "L'article master est inactif" });
+        }
+        const masterData = masterSnap.data();
+        const masterNom = masterData.nom || "";
+        const masterUnite = masterData.unite || "kg";
+
+        // Validation existence des doublons + map ref->nom (pour matcher movements/bdc par nom OU ref)
+        const doublonRefs = Array.from(doublonSet);
+        const doublonDocs = await Promise.all(doublonRefs.map(r => db_firestore.collection("articles_catalog").doc(r).get()));
+        const doublonNoms = {}; // ref -> nom
+        for (let i = 0; i < doublonDocs.length; i++) {
+          if (!doublonDocs[i].exists) {
+            return res.status(404).json({ success: false, error: "Article doublon introuvable: " + doublonRefs[i] });
+          }
+          doublonNoms[doublonRefs[i]] = doublonDocs[i].data().nom || "";
+        }
+        // Ensembles de valeurs identifiant un doublon dans les docs opérationnels :
+        // - stock_movements.items[].article_ref peut contenir la référence OU le nom (legacy)
+        // - purchase_orders.items[].article contient le NOM
+        // Normalisation IDENTIQUE à la détection (normalizeArticleName : NFD + diacritiques
+        // + espaces réduits) pour que les accents/doubles-espaces matchent malgré legacy.
+        const doublonKeysNorm = new Set();
+        for (const r of doublonRefs) {
+          doublonKeysNorm.add(articleMerge.normalizeArticleName(r));
+          const nm = doublonNoms[r];
+          if (nm) doublonKeysNorm.add(articleMerge.normalizeArticleName(nm));
+        }
+        doublonKeysNorm.delete("");
+        const itemMatchesDoublon = (refOrName) => doublonKeysNorm.has(articleMerge.normalizeArticleName(refOrName));
+
+        // ---------- Collecte des mouvements OUVERTS contenant un doublon ----------
+        const movSnap = await db_firestore.collection("stock_movements").get();
+        const openMovements = []; // { id, items, ... }
+        for (const d of movSnap.docs) {
+          const mov = d.data();
+          if (!articleMerge.isMovementOpen(mov)) continue;
+          const hit = (mov.items || []).some(it => itemMatchesDoublon(it.article_ref) || itemMatchesDoublon(it.article));
+          if (hit) openMovements.push({ id: d.id, ref: d.ref, data: mov });
+        }
+
+        // ---------- Collecte des BDC OUVERTS contenant un doublon ----------
+        const bdcSnap = await db_firestore.collection("purchase_orders").get();
+        const openBdc = [];
+        for (const d of bdcSnap.docs) {
+          const bdc = d.data();
+          if (!articleMerge.isBdcOpen(bdc)) continue;
+          const hit = (bdc.items || []).some(it => itemMatchesDoublon(it.article) || itemMatchesDoublon(it.article_ref));
+          if (hit) openBdc.push({ id: d.id, ref: d.ref, data: bdc });
+        }
+
+        // ---------- Agrégation des stock_balances DOUBLON -> MASTER ----------
+        // On somme les soldes des doublons par (lieu_type, lieu_id) sur le master.
+        const balSnap = await db_firestore.collection("stock_balances").get();
+        const doublonBalances = []; // balances appartenant à un doublon
+        for (const d of balSnap.docs) {
+          const b = d.data();
+          if (itemMatchesDoublon(b.article_ref)) {
+            doublonBalances.push({ id: d.id, ref: d.ref, data: b });
+          }
+        }
+        // Solde courant du master par lieu (pour l'affichage preview du solde résultant)
+        const masterRefNorm = articleMerge.normalizeArticleName(master_ref);
+        const masterBalByLieu = {}; // `${lieu_type}|${lieu_id}` -> { docId, balance }
+        for (const d of balSnap.docs) {
+          const b = d.data();
+          if (articleMerge.normalizeArticleName(b.article_ref) === masterRefNorm) {
+            masterBalByLieu[`${b.lieu_type}|${b.lieu_id}`] = { docId: d.id, balance: b.balance || 0 };
+          }
+        }
+        // Calcul des soldes agrégés résultants sur le master
+        const aggByLieu = {}; // key -> { lieu_type, lieu_id, unite, doublon_sum, master_current, resulting }
+        for (const db of doublonBalances) {
+          const b = db.data;
+          const key = `${b.lieu_type}|${b.lieu_id}`;
+          if (!aggByLieu[key]) {
+            aggByLieu[key] = {
+              lieu_type: b.lieu_type, lieu_id: b.lieu_id,
+              unite: b.unite || masterUnite,
+              doublon_sum: 0,
+              master_current: masterBalByLieu[key] ? masterBalByLieu[key].balance : 0,
+              resulting: 0,
+            };
+          }
+          aggByLieu[key].doublon_sum = Math.round((aggByLieu[key].doublon_sum + (b.balance || 0)) * 100) / 100;
+        }
+        for (const key of Object.keys(aggByLieu)) {
+          const a = aggByLieu[key];
+          a.resulting = Math.round((a.master_current + a.doublon_sum) * 100) / 100;
+        }
+        const aggregatedBalances = Object.values(aggByLieu);
+
+        // ---------- Counts des docs historiques laissés INTACTS ----------
+        let historicalMovements = 0, validatedMovements = 0, closedBdc = 0;
+        for (const d of movSnap.docs) {
+          const mov = d.data();
+          if (articleMerge.isMovementOpen(mov)) continue;
+          const hit = (mov.items || []).some(it => itemMatchesDoublon(it.article_ref) || itemMatchesDoublon(it.article));
+          if (hit) { historicalMovements++; if (mov.status === "valide_chef") validatedMovements++; }
+        }
+        for (const d of bdcSnap.docs) {
+          const bdc = d.data();
+          if (articleMerge.isBdcOpen(bdc)) continue;
+          const hit = (bdc.items || []).some(it => itemMatchesDoublon(it.article) || itemMatchesDoublon(it.article_ref));
+          if (hit) closedBdc++;
+        }
+        // delivery_notes + invoices : toujours laissés intacts (historiques/financiers)
+        const blSnap = await db_firestore.collection("delivery_notes").get();
+        let untouchedBl = 0;
+        for (const d of blSnap.docs) {
+          const bl = d.data();
+          const hit = (bl.items || []).some(it => itemMatchesDoublon(it.article) || itemMatchesDoublon(it.article_ref));
+          if (hit) untouchedBl++;
+        }
+        const invSnap = await db_firestore.collection("invoices").get();
+        let untouchedInvoices = 0;
+        for (const d of invSnap.docs) {
+          const inv = d.data();
+          const hit = (inv.items || []).some(it => itemMatchesDoublon(it.article) || itemMatchesDoublon(it.article_ref));
+          if (hit) untouchedInvoices++;
+        }
+
+        const counts = {
+          movements: openMovements.length,
+          balances: doublonBalances.length,
+          bdc: openBdc.length,
+        };
+
+        if (mergeMode === "preview") {
+          return res.json({
+            success: true,
+            preview: {
+              master: { reference: master_ref, nom: masterNom },
+              doublons: doublonRefs.map(r => ({ reference: r, nom: doublonNoms[r] })),
+              open_movements: openMovements.length,
+              open_bdc: openBdc.length,
+              aggregated_balances: aggregatedBalances,
+              doublon_balances_count: doublonBalances.length,
+              untouched: {
+                historical_movements: historicalMovements,
+                validated_movements: validatedMovements,
+                closed_bdc: closedBdc,
+                delivery_notes: untouchedBl,
+                invoices: untouchedInvoices,
+              },
+            },
+          });
+        }
+
+        // ---------- EXECUTE : fusion atomique (batchs de 400, marge 100) ----------
+        const now = Date.now();
+        const ops = []; // { type:'set'|'update'|'delete', ref, data, options }
+
+        // 1) Réassigner les items des mouvements ouverts (ref + nom -> master)
+        for (const m of openMovements) {
+          const newItems = (m.data.items || []).map(it => {
+            if (itemMatchesDoublon(it.article_ref) || itemMatchesDoublon(it.article)) {
+              return { ...it, article_ref: master_ref, article_nom: masterNom };
+            }
+            return it;
+          });
+          ops.push({ type: "update", ref: m.ref, data: { items: newItems, updated_at: now } });
+        }
+
+        // 2) Réassigner les items des BDC ouverts (article = nom du master)
+        for (const b of openBdc) {
+          const newItems = (b.data.items || []).map(it => {
+            if (itemMatchesDoublon(it.article) || itemMatchesDoublon(it.article_ref)) {
+              const ni = { ...it, article: masterNom };
+              if (it.article_ref !== undefined) ni.article_ref = master_ref;
+              return ni;
+            }
+            return it;
+          });
+          ops.push({ type: "update", ref: b.ref, data: { items: newItems, updated_at: now } });
+        }
+
+        // 3) Agréger les balances : INCRÉMENT RELATIF du master par lieu (anti-TOCTOU),
+        //    puis neutraliser les doublons (delete). On écrit FieldValue.increment(doublon_sum)
+        //    et NON une valeur absolue : une validation de mouvement concurrente qui modifie
+        //    la balance master n'est plus écrasée. set(..., {merge:true}) crée le doc (incr depuis 0)
+        //    ou l'incrémente s'il existe.
+        for (const key of Object.keys(aggByLieu)) {
+          const a = aggByLieu[key];
+          const balanceId = `${a.lieu_type}_${a.lieu_id}_${master_ref}`.replace(/\s+/g, "_");
+          const masterBalRef = db_firestore.collection("stock_balances").doc(balanceId);
+          ops.push({
+            type: "set",
+            ref: masterBalRef,
+            data: {
+              lieu_type: a.lieu_type, lieu_id: a.lieu_id,
+              article_ref: master_ref, article_nom: masterNom,
+              unite: a.unite || masterUnite,
+              balance: admin.firestore.FieldValue.increment(a.doublon_sum),
+              updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            options: { merge: true },
+          });
+        }
+        // Supprimer les balances du doublon APRÈS calcul de doublon_sum (déjà agrégées)
+        for (const db of doublonBalances) {
+          ops.push({ type: "delete", ref: db.ref });
+        }
+
+        // 4) Désactiver les doublons + tracer merged_into
+        for (const r of doublonRefs) {
+          ops.push({
+            type: "update",
+            ref: db_firestore.collection("articles_catalog").doc(r),
+            data: { active: false, merged_into: master_ref, updated_at: now },
+          });
+        }
+
+        // 5) Doc d'audit — snapshot pour rollback manuel.
+        //    On capture les balances doublon AVANT suppression + les ids réassignés.
+        //    Plafond 1000 entrées par liste (flag truncated) pour borner la taille du doc.
+        const SNAP_CAP = 1000;
+        const capList = (arr) => ({
+          list: arr.slice(0, SNAP_CAP),
+          truncated: arr.length > SNAP_CAP,
+        });
+        const doublonBalancesSnapshotFull = doublonBalances.map((db) => ({
+          docId: db.id,
+          lieu_type: db.data.lieu_type || "",
+          lieu_id: db.data.lieu_id || "",
+          article_ref: db.data.article_ref || "",
+          balance: db.data.balance || 0,
+          unite: db.data.unite || "",
+        }));
+        const reassignedMovementIdsFull = openMovements.map((m) => m.id);
+        const reassignedBdcIdsFull = openBdc.map((b) => b.id);
+        const snapBalances = capList(doublonBalancesSnapshotFull);
+        const snapMovIds = capList(reassignedMovementIdsFull);
+        const snapBdcIds = capList(reassignedBdcIdsFull);
+
+        const auditRef = db_firestore.collection("article_merges").doc();
+        ops.push({
+          type: "set",
+          ref: auditRef,
+          data: {
+            master_ref, master_nom: masterNom,
+            doublon_refs: doublonRefs,
+            by: {
+              uid: by.uid || "", profileId: by.profileId || "",
+              name: by.name || "", email: by.email || "",
+            },
+            at: admin.firestore.FieldValue.serverTimestamp(),
+            counts,
+            mode: "execute",
+            doublon_balances_snapshot: snapBalances.list,
+            doublon_balances_snapshot_truncated: snapBalances.truncated,
+            reassigned_movement_ids: snapMovIds.list,
+            reassigned_movement_ids_truncated: snapMovIds.truncated,
+            reassigned_bdc_ids: snapBdcIds.list,
+            reassigned_bdc_ids_truncated: snapBdcIds.truncated,
+          },
+          options: {},
+        });
+
+        // Commit par batchs de 400
+        for (let i = 0; i < ops.length; i += 400) {
+          const batch = db_firestore.batch();
+          for (const op of ops.slice(i, i + 400)) {
+            if (op.type === "set") batch.set(op.ref, op.data, op.options || {});
+            else if (op.type === "update") batch.update(op.ref, op.data);
+            else if (op.type === "delete") batch.delete(op.ref);
+          }
+          await batch.commit();
+        }
+
+        return res.json({ success: true, counts, audit_id: auditRef.id });
       }
 
       // ========== CODES ANALYTIQUES ==========

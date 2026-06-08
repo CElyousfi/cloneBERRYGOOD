@@ -42660,6 +42660,43 @@ ${rejetHtml}
             const [saving, setSaving] = useState(false);
             const [showCreate, setShowCreate] = useState(false);
             const [createForm, setCreateForm] = useState({ reference:'', nom:'', unite:'U', prix_ht:0, taux_tva:20, prix_ttc:0, categorie:'', sous_categorie:'', type:'', reference_technique:'', multi_ferme:false });
+            // --- Fusion de doublons ---
+            const isAchats = currentProfile === 'achats';
+            const [showMerge, setShowMerge] = useState(false);
+            const [mergeGroups, setMergeGroups] = useState(null); // null = pas chargé
+            const [mergeLoading, setMergeLoading] = useState(false);
+            const [mergeMasters, setMergeMasters] = useState({}); // normalized -> master_ref
+            const [mergePreview, setMergePreview] = useState(null); // { normalized, data }
+            const [mergeBusy, setMergeBusy] = useState(false);
+
+            const actor = () => ({ uid: currentProfile, profileId: currentProfile, name: profileData?.name||currentProfile, email: profileData?.email||'' });
+
+            const loadDuplicates = () => {
+                setShowMerge(true); setMergeLoading(true); setMergeGroups(null); setMergeMasters({}); setMergePreview(null);
+                fetch('/api/stock?action=suggest-article-duplicates&profileId='+encodeURIComponent(currentProfile))
+                .then(r=>r.json()).then(j=>{
+                    if(j.success){ setMergeGroups(j.groups||[]); const m={}; (j.groups||[]).forEach(g=>{ if(g.articles[0]) m[g.normalized]=g.articles[0].reference; }); setMergeMasters(m); }
+                    else alert('Erreur: '+j.error);
+                }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeLoading(false));
+            };
+
+            const previewMerge = (group) => {
+                const masterRef = mergeMasters[group.normalized];
+                const doublonRefs = group.articles.map(a=>a.reference).filter(r=>r!==masterRef);
+                if(!masterRef || doublonRefs.length===0){ alert('Sélectionnez un master et au moins un doublon'); return; }
+                setMergeBusy(true); setMergePreview(null);
+                fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'preview', by: actor() }) })
+                .then(r=>r.json()).then(j=>{ if(j.success) setMergePreview({ normalized: group.normalized, data: j.preview }); else alert('Erreur: '+j.error); }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeBusy(false));
+            };
+
+            const executeMerge = (group) => {
+                const masterRef = mergeMasters[group.normalized];
+                const doublonRefs = group.articles.map(a=>a.reference).filter(r=>r!==masterRef);
+                if(!confirm('Confirmer la fusion de '+doublonRefs.length+' doublon(s) dans « '+masterRef+' » ?\nLes doublons seront désactivés (réversible).')) return;
+                setMergeBusy(true);
+                fetch('/api/stock?action=merge-articles', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ master_ref: masterRef, doublon_refs: doublonRefs, mode:'execute', by: actor() }) })
+                .then(r=>r.json()).then(j=>{ if(j.success){ alert('Fusion effectuée : '+(j.counts?.movements||0)+' mouvement(s), '+(j.counts?.balances||0)+' solde(s), '+(j.counts?.bdc||0)+' BDC réassignés.'); setMergePreview(null); load(); loadDuplicates(); } else alert('Erreur: '+j.error); }).catch(()=>alert('Erreur réseau')).finally(()=>setMergeBusy(false));
+            };
 
             const load = () => { setLoading(true); fetch('/api/stock?action=list-articles'+(filterCat?'&categorie='+encodeURIComponent(filterCat):'')).then(r=>r.json()).then(j=>{ if(j.success) setArticles(j.articles||[]); }).finally(()=>setLoading(false)); };
             useEffect(()=>{ load(); }, [filterCat]);
@@ -42754,6 +42791,11 @@ ${rejetHtml}
                             <button onClick={()=>setShowCreate(true)} style={{background:'#2980b9',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-plus"></i>Ajouter un produit
                             </button>
+                            {isAchats && (
+                            <button onClick={loadDuplicates} style={{background:'#e67e22',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
+                                <i className="fa-solid fa-code-merge"></i>Fusionner doublons
+                            </button>
+                            )}
                             <button onClick={handleImportExcel} disabled={importing} style={{background: importing?'#95a5a6':'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor: importing?'not-allowed':'pointer',fontWeight:600,fontSize:12,display:'flex',alignItems:'center',gap:6}}>
                                 <i className={importing?'fa-solid fa-spinner fa-spin':'fa-solid fa-file-excel'}></i>{importing?'Import...':'Importer Excel BEE ONE'}
                             </button>
@@ -42875,6 +42917,78 @@ ${rejetHtml}
                                             {saving?'Création...':'Créer l\'article'}
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Fusion de doublons Popup */}
+                    {showMerge && (
+                        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={e=>{ if(e.target===e.currentTarget){ setShowMerge(false); setMergePreview(null); } }}>
+                            <div style={{background:'#fff',borderRadius:14,padding:0,width:'100%',maxWidth:760,maxHeight:'90vh',overflowY:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+                                <div style={{background:'linear-gradient(135deg,#e67e22,#d35400)',padding:'20px 24px',borderRadius:'14px 14px 0 0',color:'#fff',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                    <div style={{fontSize:16,fontWeight:700}}><i className="fa-solid fa-code-merge" style={{marginRight:8}}></i>Fusionner des articles en doublon</div>
+                                    <button onClick={()=>{ setShowMerge(false); setMergePreview(null); }} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'#fff',width:32,height:32,borderRadius:'50%',cursor:'pointer',fontSize:16}}>×</button>
+                                </div>
+                                <div style={{padding:24}}>
+                                    {mergeLoading && <div style={{textAlign:'center',padding:40}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:28,color:'#e67e22'}}></i></div>}
+                                    {!mergeLoading && mergeGroups && mergeGroups.length===0 && (
+                                        <div style={{textAlign:'center',padding:30,color:'#27ae60'}}><i className="fa-solid fa-circle-check" style={{fontSize:28,marginBottom:8}}></i><div>Aucun doublon détecté (par nom normalisé).</div></div>
+                                    )}
+                                    {!mergeLoading && mergeGroups && mergeGroups.length>0 && (
+                                        <div style={{display:'flex',flexDirection:'column',gap:16}}>
+                                            <div style={{background:'rgba(230,126,34,0.08)',border:'1px solid rgba(230,126,34,0.2)',borderRadius:8,padding:'8px 14px',fontSize:12,color:'#2c3e50'}}>
+                                                <i className="fa-solid fa-circle-info" style={{marginRight:6,color:'#e67e22'}}></i>
+                                                {mergeGroups.length} groupe(s) de doublons. Choisissez l'article MASTER (à conserver) ; les autres seront fusionnés et désactivés.
+                                            </div>
+                                            {mergeGroups.map(group => {
+                                                const masterRef = mergeMasters[group.normalized];
+                                                const isPreviewing = mergePreview && mergePreview.normalized===group.normalized;
+                                                const pv = isPreviewing ? mergePreview.data : null;
+                                                return (
+                                                <div key={group.normalized} style={{border:'1px solid #eee',borderRadius:10,padding:14}}>
+                                                    <div style={{fontSize:11,color:'#999',marginBottom:8,fontStyle:'italic'}}>« {group.normalized} »</div>
+                                                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                                                        {group.articles.map(a => (
+                                                            <label key={a.reference} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:6,background: masterRef===a.reference?'rgba(39,174,96,0.08)':'#fafafa',cursor:'pointer'}}>
+                                                                <input type="radio" name={'master-'+group.normalized} checked={masterRef===a.reference} onChange={()=>{ setMergeMasters(m=>({...m,[group.normalized]:a.reference})); setMergePreview(null); }} />
+                                                                <span style={{fontFamily:'monospace',fontSize:11,color:'var(--berry)',fontWeight:600,minWidth:90}}>{a.reference}</span>
+                                                                <span style={{fontSize:13,fontWeight:600}}>{a.nom}</span>
+                                                                <span style={{fontSize:10,color:'#888'}}>{a.categorie||''} {a.unite?'· '+a.unite:''}</span>
+                                                                {masterRef===a.reference ? <span style={{marginLeft:'auto',fontSize:10,color:'#27ae60',fontWeight:700}}>MASTER</span> : <span style={{marginLeft:'auto',fontSize:10,color:'#e67e22',fontWeight:600}}>doublon</span>}
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    {pv && (
+                                                        <div style={{marginTop:10,background:'#f8f9fa',borderRadius:8,padding:12,fontSize:12,color:'#2c3e50'}}>
+                                                            <div style={{fontWeight:700,marginBottom:6}}>Prévisualisation</div>
+                                                            <div>• {pv.open_movements} mouvement(s) ouvert(s) à réassigner</div>
+                                                            <div>• {pv.open_bdc} BDC ouvert(s) à réassigner</div>
+                                                            <div>• {pv.doublon_balances_count} solde(s) doublon agrégés vers le master :</div>
+                                                            {pv.aggregated_balances && pv.aggregated_balances.length>0 ? (
+                                                                <ul style={{margin:'4px 0 4px 16px',padding:0}}>
+                                                                    {pv.aggregated_balances.map((b,i)=>(
+                                                                        <li key={i} style={{fontFamily:'monospace',fontSize:11}}>{b.lieu_type} {b.lieu_id} : {b.master_current} + {b.doublon_sum} = <strong>{b.resulting}</strong> {b.unite}</li>
+                                                                    ))}
+                                                                </ul>
+                                                            ) : <div style={{marginLeft:16,color:'#888'}}>(aucun solde à agréger)</div>}
+                                                            <div style={{marginTop:6,paddingTop:6,borderTop:'1px solid #eee',color:'#888'}}>
+                                                                Laissés intacts (historique) : {pv.untouched.historical_movements} mouvement(s) clôturé(s), {pv.untouched.closed_bdc} BDC clôturé(s), {pv.untouched.delivery_notes} BL, {pv.untouched.invoices} facture(s).
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:10}}>
+                                                        <button onClick={()=>previewMerge(group)} disabled={mergeBusy} style={{padding:'7px 14px',borderRadius:8,border:'1px solid #e67e22',background:'#fff',color:'#e67e22',cursor: mergeBusy?'not-allowed':'pointer',fontSize:12,fontWeight:600}}>
+                                                            {mergeBusy?'...':'Prévisualiser'}
+                                                        </button>
+                                                        <button onClick={()=>executeMerge(group)} disabled={mergeBusy || !pv} title={!pv?'Prévisualisez d\'abord':''} style={{padding:'7px 16px',borderRadius:8,border:'none',background: (mergeBusy||!pv)?'#bbb':'#27ae60',color:'#fff',cursor: (mergeBusy||!pv)?'not-allowed':'pointer',fontSize:12,fontWeight:600}}>
+                                                            <i className="fa-solid fa-code-merge" style={{marginRight:6}}></i>Confirmer la fusion
+                                                        </button>
+                                                    </div>
+                                                </div>);
+                                            })}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
