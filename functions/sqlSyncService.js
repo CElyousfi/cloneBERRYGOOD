@@ -11,6 +11,7 @@ const sql = require("mssql");
 // Shared config modules
 const { admin, db: db_firestore } = require("./config/firebase");
 const baseSqlConfig = require("./config/sqlConfig");
+const whatsappService = require("./whatsappService");
 
 // Sync queries are heavier — use longer request timeout
 const sqlConfig = {
@@ -64,6 +65,28 @@ exports.replicationProbe = functions
 
       await db_firestore.collection("replication_probe").doc(timestampKey).set(probeData);
       console.log(`[ReplicationProbe] Stored: pointage_today=${probeData.pointage_today_count}, consommation_recent=${probeData.consommation_recent_count}, cueillette_today=${probeData.cueillette_today_count}`);
+
+      // Alerte si BR_Pointage est vide (alimentation reporting BEE ONE cassée).
+      // Débounce via replication_probe_state/pointage : 1 alerte par incident + 1 récupération.
+      try {
+        const stateRef = db_firestore.collection("replication_probe_state").doc("pointage");
+        const stateSnap = await stateRef.get();
+        const alreadyAlerted = stateSnap.exists && stateSnap.data().zeroAlerted === true;
+        const isZero = Number(probeData.pointage_total_rows) === 0;
+        if (isZero && !alreadyAlerted) {
+          const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+          const msg = "🔴 ALERTE Smart Berry — la table reporting BR_Pointage est VIDE (0 ligne). L'actualisation du pointage depuis BEE ONE semble arrêtée : plus aucune nouvelle donnée de pointage ne remonte dans l'app. À vérifier côté BEE ONE.";
+          for (const r of recipients) { try { await whatsappService.sendTextMessage(r.phone, msg); } catch (e) { console.error("[ReplicationProbe] alerte WhatsApp échec:", e.message); } }
+          await stateRef.set({ zeroAlerted: true, since: probeData.localTime, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+          console.warn("[ReplicationProbe] ALERTE 0-ligne BR_Pointage envoyée au DG");
+        } else if (!isZero && alreadyAlerted) {
+          const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+          const msg = "✅ Smart Berry — BR_Pointage est de nouveau alimentée (" + probeData.pointage_total_rows + " lignes). Le pointage remonte à nouveau dans l'app.";
+          for (const r of recipients) { try { await whatsappService.sendTextMessage(r.phone, msg); } catch (e) {} }
+          await stateRef.set({ zeroAlerted: false, recoveredAt: probeData.localTime, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+          console.log("[ReplicationProbe] BR_Pointage rétabli — message de récupération envoyé");
+        }
+      } catch (e) { console.error("[ReplicationProbe] logique d'alerte 0-ligne en erreur:", e.message); }
     } catch (err) {
       console.error("[ReplicationProbe] Error:", err.message);
       await db_firestore.collection("replication_probe").doc(timestampKey).set({
