@@ -38,7 +38,18 @@ async function updateBdcVirementCore({ id, decision, by, via }) {
 
   const history = current.history || [];
   const now = Date.now();
-  const actor = { ...(by || {}), via: via || "dashboard" };
+  // Firestore rejette les valeurs `undefined` (ignoreUndefinedProperties non activé).
+  // Les acteurs WhatsApp peuvent fournir un `by` avec des champs absents (ex. profileId
+  // ou email undefined) ; on défaute explicitement avant le spread pour éviter qu'un
+  // `undefined` ne se retrouve dans history[].by ou virement_*_by.
+  const byClean = by && typeof by === "object" ? by : {};
+  const actor = {
+    profileId: byClean.profileId || "",
+    name: byClean.name || "",
+    email: byClean.email || "",
+    uid: byClean.uid || "",
+    via: via || "dashboard",
+  };
 
   if (decision === "lancer") {
     if (current.status !== "valide_dg") {

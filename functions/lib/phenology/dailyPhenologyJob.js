@@ -84,11 +84,22 @@ async function _processPlot(plot, date, deps, logger) {
   // 1. Station
   const station = await deps.resolveStation(plot);
 
+  // 1b. Localisation défensive : plot.location peut manquer (plots seedés avant
+  // l'ajout du champ). On retombe sur station.location, puis on skippe proprement
+  // si rien n'est résolvable (jamais de crash sur plot.location.latitude).
+  const loc = (plot.location && typeof plot.location === "object" && plot.location)
+    || (station && station.location)
+    || null;
+  if (!loc || typeof loc.latitude !== "number" || typeof loc.longitude !== "number") {
+    logger(`[plot=${plot.id}] step=SKIP reason=no_location WARN: ni plot.location ni station.location exploitables`);
+    return { plotId: plot.id, status: "skipped", reason: "no_location" };
+  }
+
   // 2. Radiation + temperature
   const ratio = (plot.phenology && plot.phenology.parToRadiationRatio) || 0.46;
   const env = await deps.fetchRadiationDaily({
     station,
-    plotLocation: { latitude: plot.location.latitude, longitude: plot.location.longitude },
+    plotLocation: { latitude: loc.latitude, longitude: loc.longitude },
     date,
     parToRadiationRatio: ratio,
   });
@@ -222,9 +233,10 @@ async function runDailyPhenologyJob(date, deps) {
 
   const processed = results.filter((r) => r.status === "ok").length;
   const failed = results.filter((r) => r.status === "error").length;
-  logger(`[job] done date=${date} processed=${processed} failed=${failed}`);
+  const skipped = results.filter((r) => r.status === "skipped").length;
+  logger(`[job] done date=${date} processed=${processed} failed=${failed} skipped=${skipped}`);
 
-  return { date, processed, failed, skipped: 0, plots: results };
+  return { date, processed, failed, skipped, plots: results };
 }
 
 // =====================================================================

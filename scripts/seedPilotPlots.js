@@ -82,6 +82,15 @@ const FIXTURES = [
       displayName: 'Maravilla Tunnel Larache 01',
       farm: 'larache',
 
+      // Coordonnées du plot — dérivées de la station FarmRoad associée
+      // (farmroad_tunnel_main / deviceId 210506960, cf. seedFarmroadStations.js).
+      // Consommé par dailyPhenologyJob (_processPlot → plotLocation) pour le
+      // fallback radiation/température hors serre.
+      location: {
+        latitude: 35.08,
+        longitude: -6.14,
+      },
+
       shelter: {
         type: 'tunnel',
         structure: {
@@ -217,6 +226,7 @@ async function seedOne(db, fixture, opts, seededAtIso) {
       const verb = action === 'create' ? 'create' : 'UPDATE';
       const seededAtNote = action === 'update' ? ` (existing seededAt=${existingMeta.seededAt || '?'})` : '';
       console.log(`[DRY-RUN] Would ${verb}: ${COLLECTION}/${id}${seededAtNote}`);
+      console.log(`          - location: lat=${body.location.latitude}, lng=${body.location.longitude}`);
       console.log(`          - shelter.type: ${body.shelter.type}`);
       console.log(`          - sensors.farmroad: deviceId=${body.sensors.farmroad.deviceId}, stationId=${body.sensors.farmroad.stationId}`);
       console.log(`          - phenology: variety=${body.phenology.variety}, cycleType=${body.phenology.cycleType}, currentStage=${body.phenology.currentStage}`);

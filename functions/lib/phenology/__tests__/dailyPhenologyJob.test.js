@@ -242,3 +242,39 @@ test('job: full E2E smoke — pilot plot floricane, no previous, sunny day → c
   // No transition (first run)
   assert.equal(r.plots[0].transitionDetected, false);
 });
+
+// ─── Fix Sprint 2 : plot.location défensif ────────────────────────────────
+
+test('job: plot sans location → fallback sur station.location (processed)', async () => {
+  const plotNoLoc = { ...PLOT_PILOT };
+  delete plotNoLoc.location;
+  const stationWithLoc = { ...STATION_TUNNEL, location: { latitude: 35.08, longitude: -6.14 } };
+  let capturedPlotLocation = null;
+  const { deps, writes } = makeJobDeps({ plots: [plotNoLoc], station: stationWithLoc });
+  // intercepter le plotLocation passé à fetchRadiationDaily
+  const origFetch = deps.fetchRadiationDaily;
+  deps.fetchRadiationDaily = async (args) => {
+    capturedPlotLocation = args.plotLocation;
+    return origFetch(args);
+  };
+  const r = await runDailyPhenologyJob(DATE, deps);
+  assert.equal(r.processed, 1);
+  assert.equal(r.skipped, 0);
+  assert.equal(r.plots[0].status, 'ok');
+  assert.deepEqual(capturedPlotLocation, { latitude: 35.08, longitude: -6.14 });
+  assert.equal(writes.length, 1);
+});
+
+test('job: ni plot.location ni station.location → skipped proprement (pas de crash)', async () => {
+  const plotNoLoc = { ...PLOT_PILOT };
+  delete plotNoLoc.location;
+  // STATION_TUNNEL n'a pas de location
+  const { deps, writes } = makeJobDeps({ plots: [plotNoLoc], station: STATION_TUNNEL });
+  const r = await runDailyPhenologyJob(DATE, deps);
+  assert.equal(r.processed, 0);
+  assert.equal(r.failed, 0);
+  assert.equal(r.skipped, 1);
+  assert.equal(r.plots[0].status, 'skipped');
+  assert.equal(r.plots[0].reason, 'no_location');
+  assert.equal(writes.length, 0, 'aucune écriture phenology_daily quand skip');
+});
