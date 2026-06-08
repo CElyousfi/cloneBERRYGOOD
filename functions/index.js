@@ -17,6 +17,7 @@ const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
 const { resolveCallerRole } = require("./lib/auth/resolveRole");
 const stockMovementGuard = require("./lib/stock/movementGuard");
+const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -8620,6 +8621,34 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           quantite: parseFloat(it.quantite) || 0,
           unite: it.unite || "kg",
         }));
+
+        // --- Contrôle stock avant sortie/transfert ---
+        // Bloque la création si le stock disponible au lieu de départ est
+        // insuffisant. Réception/consommation hors périmètre (helper exempté).
+        // Note: lecture des soldes puis applyStockImpact dans des transactions
+        // distinctes → fenêtre de course théorique sous forte concurrence,
+        // acceptable ici (peu de magasiniers simultanés).
+        // Le helper ne garde que sortie/transfert ; on ne lit les soldes que
+        // pour ces types ET quand un lieu de départ est défini.
+        const STOCK_GUARDED_TYPES = ["sortie", "transfert"];
+        if (STOCK_GUARDED_TYPES.includes(type) && lieu_source && lieu_source.id) {
+          const refs = [...new Set(movItems.map((it) => it.article_ref).filter(Boolean))];
+          const availableByRef = {};
+          const balSnaps = await Promise.all(
+            refs.map((ref) => {
+              const balanceId = `${lieu_source.type}_${lieu_source.id}_${ref}`.replace(/\s+/g, "_");
+              return db_firestore.collection("stock_balances").doc(balanceId).get();
+            })
+          );
+          refs.forEach((ref, idx) => {
+            const snap = balSnaps[idx];
+            availableByRef[ref] = snap.exists ? (snap.data().balance || 0) : 0;
+          });
+          const guardResult = checkStockAvailability({ type, items: movItems }, availableByRef);
+          if (!guardResult.allowed) {
+            return res.status(400).json({ success: false, error: guardResult.error, code: "insufficient_stock" });
+          }
+        }
 
         const singleValidation = !!req.body.single_validation;
         // Réception : TOUJOURS en attente de valorisation + validation Achats (aucun impact à la création),

@@ -51923,6 +51923,7 @@ ${rejetHtml}
                     }),
                 }).then(r => r.json()).then(json => {
                     if (json.success) { alert('Transfert ' + json.numero + ' créé et validé.'); setShowForm(false); window.location.reload(); }
+                    else if (json.code === 'insufficient_stock') alert('⛔ ' + (json.error || 'Stock insuffisant'));
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
             };
@@ -52268,6 +52269,7 @@ ${rejetHtml}
                     body: JSON.stringify(payload),
                 }).then(r => r.json()).then(json => {
                     if (json.success) { alert('Bon de sortie ' + json.numero + ' créé et validé.'); setShowForm(false); window.location.reload(); }
+                    else if (json.code === 'insufficient_stock') alert('⛔ ' + (json.error || 'Stock insuffisant'));
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
             };
