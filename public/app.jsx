@@ -8141,6 +8141,12 @@
                         // Échelle Y stable : calculée sur TOUTES les dates disponibles, pas seulement la fenêtre.
                         // Évite que les barres "grandissent" ou "rétrécissent" en navigant entre fenêtres.
                         const allDhKgNet = allDatesDesc.map(date => {
+                            // Date sélectionnée en mode Jour : aligner l'échelle sur la valeur KPI
+                            // (même source que trendData), sinon maxDhKg ignore ce jour (lignes kg=0)
+                            // et la barre logistique déborde le graphe.
+                            if (!isQuinzaineMode && date === recolteDateEarly) {
+                                return totalKg > 0 ? (totalCout + totalLogCout) / totalKg : 0;
+                            }
                             const dRecRows = varieteFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
                             const dLogRows = varieteFilteredEq.filter(r => r.jour === date && logOps.test(r.operation || ''));
                             const a = aggregateRows(dRecRows);
@@ -8184,8 +8190,12 @@
                                                 const isToday = d.date === recolteDate;
                                                 const dhKgNet = (d.dhKg || 0) + (d.dhKgLog || 0);
                                                 const netBarH = dhKgNet > 0 ? (dhKgNet / maxDhKg) * BAR_H : 0;
-                                                const hLog = d.dhKgLog > 0 ? (d.dhKgLog / maxDhKg) * BAR_H : 0;
-                                                const totalBarH = d.dhKg !== null ? (d.dhKg / maxDhKg) * BAR_H : 0;
+                                                // Clamp défensif : aucune barre (récolte ou logistique) ne doit dépasser BAR_H,
+                                                // et leur somme empilée non plus — garde-fou contre toute désync d'échelle.
+                                                const rawTotalBarH = d.dhKg !== null ? (d.dhKg / maxDhKg) * BAR_H : 0;
+                                                const totalBarH = Math.min(rawTotalBarH, BAR_H);
+                                                const rawHLog = d.dhKgLog > 0 ? (d.dhKgLog / maxDhKg) * BAR_H : 0;
+                                                const hLog = Math.min(rawHLog, Math.max(0, BAR_H - totalBarH));
                                                 const pSal = d.cout > 0 ? d.salaire / d.cout : 0;
                                                 const pTra = d.cout > 0 ? d.transport / d.cout : 0;
                                                 const pPri = d.cout > 0 ? d.prime / d.cout : 0;
