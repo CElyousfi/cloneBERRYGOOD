@@ -5937,12 +5937,17 @@
 
                     {/* Affectation Ouvriers - Vue Chef de Ferme */}
                     {currentProfile && (currentProfile.startsWith('chef_') || currentProfile.startsWith('caporal_')) && filteredDetail.length > 0 && (() => {
-                        const eqChefs = {'MM':'Boucharen','AY':'Chelihat','HT':'El Bachir','HA':'El Hafi','KR':'Farid','NA':'Larache','JA':'Ksr Femme','AZ':'Chahdi','CC':'Sektoui','CA':'Regragi','RE':'Dechira','NV':'NV'};
-                        const getEq = (mat) => { if (!mat) return 'NV'; const m = mat.toUpperCase().trim(); const p2 = m.substring(0,2); if (eqChefs[p2]) return p2; if (m.startsWith('HAFI')||m.startsWith('HA')) return 'HA'; if (m.startsWith('DD')) return 'NV'; return null; };
+                        // Classement par équipe : MÊME source/logique que l'onglet « Équipes — Primes de transport »
+                        // (référentiel data.transportConfig). Code équipe = 2 LETTRES, HAFI→HA, catch-all « BGF ».
+                        const transportConfig = data.transportConfig || [];
+                        const prefixToName = {};
+                        transportConfig.forEach(t => { prefixToName[t.prefix] = t.equipe; });
+                        const eqName = (eq) => eq === 'BGF' ? 'BGF' : (prefixToName[eq] || `Équipe ${eq}`);
+                        const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
                         // Group by equipe → parcelles
                         const byEquipe = {};
                         filteredDetail.forEach(r => {
-                            const eq = getEq(r.matricule) || 'AUTRE';
+                            const eq = getEq(r.matricule);
                             if (!byEquipe[eq]) byEquipe[eq] = { parcelles: {}, ouvriers: new Set() };
                             byEquipe[eq].ouvriers.add(r.matricule);
                             const parc = r.parcelle || 'N/A';
@@ -5955,9 +5960,9 @@
                             <table className="data-table" style={{fontSize:12}}>
                                 <thead><tr><th>Équipe</th><th>Nb Ouvriers</th><th>Parcelle(s)</th><th>Opération(s)</th></tr></thead>
                                 <tbody>
-                                    {Object.entries(byEquipe).sort((a,b) => b[1].ouvriers.size - a[1].ouvriers.size).map(([eq, d]) => (
+                                    {Object.entries(byEquipe).sort((a,b) => (a[0] === 'BGF' ? 1 : b[0] === 'BGF' ? -1 : b[1].ouvriers.size - a[1].ouvriers.size)).map(([eq, d]) => (
                                         <tr key={eq}>
-                                            <td style={{fontWeight:700}}>{eqChefs[eq] || eq}</td>
+                                            <td style={{fontWeight:700}}>{eqName(eq)}</td>
                                             <td style={{textAlign:'center',fontWeight:600}}>{d.ouvriers.size}</td>
                                             <td style={{fontSize:11}} title={Object.keys(d.parcelles).join(', ')}>{Object.keys(d.parcelles).map(p => prettyParcelle(p, farmFilter)).join(', ')}</td>
                                             <td style={{fontSize:10,color:'var(--gray-500)'}}>{[...new Set(Object.values(d.parcelles).flatMap(s => [...s]))].map(op => op.replace(/^\d+\.\s*/, '')).join(', ')}</td>
@@ -5991,14 +5996,17 @@
                             <tbody>
                                 {pointage.map(p => {
                                     const isOpen = !!expandedFermes[p.ferme];
-                                    const eqChefs = {'MM':'Boucharen','AY':'Chelihat','HT':'El Bachir','HA':'El Hafi','KR':'Farid','NA':'Larache','JA':'Ksr Femme','AZ':'Chahdi','CC':'Sektoui','CA':'Regragi','RE':'Dechira','NV':'NV'};
-                                    const eqColors = {'NA':'#8B2252','RE':'#c0392b','CA':'#8B4513','NV':'#6c3483','MM':'#2c3e50','AY':'#d35400','HT':'#16a085','HA':'#2980b9','KR':'#27ae60','JA':'#e74c3c','AZ':'#f39c12','CC':'#7f8c8d','AUTRE':'#95a5a6'};
-                                    const getEq = (mat) => { if (!mat) return 'NV'; const m = mat.toUpperCase().trim(); const p2 = m.substring(0,2); if (eqChefs[p2]) return p2; if (m.startsWith('HAFI')||m.startsWith('HA')) return 'HA'; if (m.startsWith('DD')) return 'NV'; return 'AUTRE'; };
+                                    // Classement par équipe : MÊME source/logique que l'onglet « Équipes » (référentiel data.transportConfig).
+                                    const eqColors = {'NA':'#8B2252','RE':'#c0392b','CA':'#8B4513','NV':'#6c3483','MM':'#2c3e50','AY':'#d35400','HT':'#16a085','HA':'#2980b9','KR':'#27ae60','JA':'#e74c3c','AZ':'#f39c12','CC':'#7f8c8d','BGF':'#95a5a6'};
+                                    const prefixToName = {};
+                                    (data.transportConfig || []).forEach(t => { prefixToName[t.prefix] = t.equipe; });
+                                    const eqName = (eq) => eq === 'BGF' ? 'BGF' : (prefixToName[eq] || `Équipe ${eq}`);
+                                    const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
                                     const fermeRows = isOpen ? detailRows.filter(r => r.ferme === p.ferme && matchSub(r)) : [];
                                     const byEquipe = {};
                                     fermeRows.forEach(r => {
                                         const eq = getEq(r.matricule);
-                                        if (!byEquipe[eq]) byEquipe[eq] = { prefix: eq, nom: eqChefs[eq] || eq, ouvriers: [] };
+                                        if (!byEquipe[eq]) byEquipe[eq] = { prefix: eq, nom: eqName(eq), ouvriers: [] };
                                         byEquipe[eq].ouvriers.push(r);
                                     });
                                     const colSpan = isCaporal ? 8 : 9;
@@ -6091,26 +6099,21 @@
 
                     {/* Pointage par Parcelle → Tâche → Équipe */}
                     {(() => {
-                        // Equipe mapping
-                        const eqChefs = {
-                            'MM': 'Boucharen', 'AY': 'Chelihat', 'HT': 'El Bachir', 'HA': 'El Hafi',
-                            'KR': 'Farid', 'NA': 'Larache', 'JA': 'Ksr Femme', 'AZ': 'Chahdi',
-                            'CC': 'Sektoui', 'CA': 'Regragi', 'RE': 'Dechira', 'NV': 'NV'
-                        };
+                        // Classement par équipe : MÊME source/logique que l'onglet « Équipes » (référentiel data.transportConfig).
                         const eqColors = {
                             'NA': '#8B2252', 'RE': '#c0392b', 'CA': '#8B4513', 'NV': '#6c3483',
                             'MM': '#2c3e50', 'AY': '#d35400', 'HT': '#16a085', 'HA': '#2980b9',
                             'KR': '#27ae60', 'JA': '#e74c3c', 'AZ': '#f39c12', 'CC': '#7f8c8d',
-                            'AUTRE': '#95a5a6'
+                            'BGF': '#95a5a6'
                         };
+                        const prefixToName = {};
+                        (data.transportConfig || []).forEach(t => { prefixToName[t.prefix] = t.equipe; });
+                        const eqName = (eq) => eq === 'BGF' ? 'BGF' : (prefixToName[eq] || `Équipe ${eq}`);
                         const getEqPrefix = (mat) => {
-                            if (!mat) return 'NV';
-                            const m = mat.toUpperCase().trim();
+                            const m = String(mat || '').toUpperCase().trim();
+                            if (m.startsWith('HAFI')) return 'HA';
                             const p2 = m.substring(0, 2);
-                            if (eqChefs[p2]) return p2;
-                            if (m.startsWith('HAFI') || m.startsWith('HA')) return 'HA';
-                            if (m.startsWith('DD')) return 'NV';
-                            return null;
+                            return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
                         };
 
                         // Build hierarchy: parcelle → tâche (operationFamille) → équipe → ouvriers
@@ -6118,10 +6121,10 @@
                         filteredDetail.forEach(r => {
                             const parc = r.parcelle || 'N/A';
                             const tache = r.operationFamille || r.operation || 'Autre';
-                            const eq = getEqPrefix(r.matricule) || 'AUTRE';
+                            const eq = getEqPrefix(r.matricule);
                             if (!hierarchy[parc]) hierarchy[parc] = { parcelle: parc, displayName: displayParcelle(parc), ferme: r.ferme, culture: (normalizeParcelle(parc) || {}).culture || '', taches: {}, nbOuv: 0, totalCout: 0 };
                             if (!hierarchy[parc].taches[tache]) hierarchy[parc].taches[tache] = { tache, equipes: {}, nbOuv: 0 };
-                            if (!hierarchy[parc].taches[tache].equipes[eq]) hierarchy[parc].taches[tache].equipes[eq] = { prefix: eq, nom: eqChefs[eq] || eq, ouvriers: [] };
+                            if (!hierarchy[parc].taches[tache].equipes[eq]) hierarchy[parc].taches[tache].equipes[eq] = { prefix: eq, nom: eqName(eq), ouvriers: [] };
                             hierarchy[parc].taches[tache].equipes[eq].ouvriers.push(r);
                             hierarchy[parc].taches[tache].nbOuv++;
                             hierarchy[parc].nbOuv++;
