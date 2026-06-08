@@ -19,6 +19,7 @@
       { "source": "/api/agro-summary", "function": { "functionId": "agroSummary", "region": "europe-west1" } },
       { "source": "/api/health", "function": { "functionId": "health", "region": "europe-west1" } },
       { "source": "/api/avancement", "function": { "functionId": "avancementCulture", "region": "europe-west1" } },
+      { "source": "/api/growth", "function": { "functionId": "growthTracking", "region": "europe-west1" } },
       { "source": "/api/upload-photo", "function": { "functionId": "uploadPhoto", "region": "europe-west1" } },
       { "source": "/api/recommandation", "function": { "functionId": "recommandation", "region": "europe-west1" } },
       { "source": "/api/backfill-presence", "function": { "functionId": "backfillPresence", "region": "europe-west1" } },

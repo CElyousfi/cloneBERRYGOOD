@@ -915,6 +915,165 @@ exports.avancementCulture = functions
   });
 
 // =============================================
+// API: Suivi Croissance Framboise (points de contrôle)
+// Lecture toute auth ; écriture réservée au profil "agronomie".
+// Collections : growth_measurements, growth_plot_config
+// =============================================
+const GROWTH_MEASUREMENTS = "growth_measurements";
+const GROWTH_PLOT_CONFIG = "growth_plot_config";
+const GROWTH_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Trim + dedupe + drop empties, keep order. */
+function normalizeGrowthCheckpoints(arr) {
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  const out = [];
+  arr.forEach(raw => {
+    const name = typeof raw === "string" ? raw.trim() : "";
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    out.push(name);
+  });
+  return out;
+}
+
+/** Inline mirror of growthUtils.validateMeasurement (no cross-import from public/). */
+function validateGrowthMeasurement(m) {
+  const obj = m || {};
+  if (!obj.parcelle_id || !String(obj.parcelle_id).trim()) {
+    return { valid: false, error: "Parcelle manquante." };
+  }
+  if (!obj.checkpoint || !String(obj.checkpoint).trim()) {
+    return { valid: false, error: "Point de contrôle manquant." };
+  }
+  if (typeof obj.date !== "string" || !GROWTH_DATE_REGEX.test(obj.date)) {
+    return { valid: false, error: "Date invalide (format attendu AAAA-MM-JJ)." };
+  }
+  const n = typeof obj.length_cm === "number" ? obj.length_cm : parseFloat(obj.length_cm);
+  if (!Number.isFinite(n) || n <= 0) {
+    return { valid: false, error: "Longueur invalide (doit être un nombre supérieur à 0)." };
+  }
+  if (n >= 1000) {
+    return { valid: false, error: "Longueur trop grande (doit être inférieure à 1000 cm)." };
+  }
+  return { valid: true };
+}
+
+exports.growthTracking = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    try {
+      const action = req.query.action;
+
+      // ---- Writes require role "agronomie" ----
+      const requireAgro = async () => {
+        const role = await resolveCallerRole(authUser);
+        if (role !== "agronomie") {
+          res.status(403).json({ success: false, error: "Réservé au profil Agronomie" });
+          return null;
+        }
+        return role;
+      };
+      const actor = (role) => ({ uid: authUser.uid, name: authUser.name || "", profileId: role });
+
+      // ---- GET list-measurements (toute auth) ----
+      if (action === "list-measurements" && req.method === "GET") {
+        const { parcelle_id, variete, from, to } = req.query;
+        let q = db_firestore.collection(GROWTH_MEASUREMENTS);
+        if (parcelle_id) q = q.where("parcelle_id", "==", parcelle_id);
+        if (variete) q = q.where("variete", "==", variete);
+        const snap = await q.get();
+        let measurements = snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+        if (from) measurements = measurements.filter(m => typeof m.date === "string" && m.date >= from);
+        if (to) measurements = measurements.filter(m => typeof m.date === "string" && m.date <= to);
+        measurements.sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+        return res.json({ success: true, measurements, count: measurements.length });
+      }
+
+      // ---- GET list-config (toute auth) ----
+      if (action === "list-config" && req.method === "GET") {
+        const snap = await db_firestore.collection(GROWTH_PLOT_CONFIG).get();
+        const configs = snap.docs.map(d => {
+          const data = d.data();
+          return {
+            parcelle_id: data.parcelle_id || d.id,
+            parcelle_nom: data.parcelle_nom || "",
+            checkpoints: Array.isArray(data.checkpoints) ? data.checkpoints : [],
+          };
+        });
+        return res.json({ success: true, configs });
+      }
+
+      // ---- POST set-checkpoints (agronomie) ----
+      if (action === "set-checkpoints" && req.method === "POST") {
+        const role = await requireAgro();
+        if (!role) return;
+        const { parcelle_id, parcelle_nom } = req.body || {};
+        if (!parcelle_id || !String(parcelle_id).trim()) {
+          return res.status(400).json({ success: false, error: "parcelle_id requis" });
+        }
+        const checkpoints = normalizeGrowthCheckpoints((req.body || {}).checkpoints);
+        await db_firestore.collection(GROWTH_PLOT_CONFIG).doc(parcelle_id).set({
+          parcelle_id,
+          parcelle_nom: parcelle_nom || "",
+          checkpoints,
+          updated_by: actor(role),
+          updated_at: Date.now(),
+        }, { merge: true });
+        return res.json({ success: true, checkpoints });
+      }
+
+      // ---- POST create-measurement (agronomie) ----
+      if (action === "create-measurement" && req.method === "POST") {
+        const role = await requireAgro();
+        if (!role) return;
+        const b = req.body || {};
+        const check = validateGrowthMeasurement({
+          parcelle_id: b.parcelle_id,
+          checkpoint: b.checkpoint,
+          date: b.date,
+          length_cm: b.length_cm,
+        });
+        if (!check.valid) return res.status(400).json({ success: false, error: check.error });
+        const length_cm = parseFloat(b.length_cm);
+        const ref = await db_firestore.collection(GROWTH_MEASUREMENTS).add({
+          parcelle_id: String(b.parcelle_id).trim(),
+          parcelle_nom: b.parcelle_nom || "",
+          variete: b.variete || "",
+          sous_variete: b.sous_variete || "",
+          ferme: b.ferme || "",
+          checkpoint: String(b.checkpoint).trim(),
+          date: b.date,
+          length_cm,
+          created_by: actor(role),
+          created_at: Date.now(),
+        });
+        return res.json({ success: true, id: ref.id });
+      }
+
+      // ---- POST delete-measurement (agronomie) ----
+      if (action === "delete-measurement" && req.method === "POST") {
+        const role = await requireAgro();
+        if (!role) return;
+        const { id } = req.body || {};
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        await db_firestore.collection(GROWTH_MEASUREMENTS).doc(String(id)).delete();
+        return res.json({ success: true });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue ou méthode invalide" });
+    } catch (err) {
+      console.error("Erreur growthTracking:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // API: Upload photo parcelle — Firebase Storage
 // =============================================
 exports.uploadPhoto = functions
