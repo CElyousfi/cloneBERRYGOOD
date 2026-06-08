@@ -61966,7 +61966,8 @@ ${rejetHtml}
             const isDGUser = userProfile.profileId === 'dg';
             const dgOnlyFilter = n => !n.dgOnly && n.id !== 'dg_adoption' && n.id !== 'dg_validations' && n.id !== 'dg_tasks' && n.id !== 'dg_cr_reunions' && n.id !== 'dg_parametres' && n.id !== 'dg_signature';
 
-            const baseNavItems = currentProfile === 'chef_bahia'
+            const baseNavItems = [ ...(
+                currentProfile === 'chef_bahia'
                 ? NAV_ITEMS_CHEF_BAHIA
                 : (currentProfile === 'chef_avo'
                 ? NAV_ITEMS_CHEF_AVO
@@ -61984,7 +61985,8 @@ ${rejetHtml}
                 : (currentProfile.startsWith('stationnaire_') ? NAV_ITEMS_STATIONNAIRE
                 : (currentProfile === 'securite' ? NAV_ITEMS_SECURITE.filter(n => !n.f5Only || farmFilter === 'F5')
                 : (currentProfile === 'associe_lazrak' ? NAV_ITEMS_ASSOCIE
-                : NAV_ITEMS_OTHER))))))))))))));
+                : NAV_ITEMS_OTHER))))))))))))))
+            ) ];
 
             // Add Historique Irrigation for Chef de Ferme and DT
             if (isChef && (currentProfile === 'chef_f1' || currentProfile === 'chef_f5') || currentProfile === 'dt') {
