@@ -925,6 +925,66 @@
             }
         }
 
+        // ===================== OPEN-METEO (fallback "Hier") =====================
+        // Meteoblue's packages only expose today+forward, so yesterday's hourly series
+        // is unavailable. Open-Meteo is free, key-less and CORS-open: with past_days=1
+        // it returns yesterday's hourly data. We map it to the SAME entry schema as
+        // transformMeteoblueData's horaire24ParJour[dateISO] so MeteoPrevisionExterieure
+        // can consume it unchanged (computeHourlyVPD / computeCumRadiation read tempRaw,
+        // humidityRaw, radiation, eto, hour).
+        const _openMeteoCache = new Map();
+        const OPEN_METEO_CACHE_TTL = 30 * 60 * 1000; // 30 min
+
+        async function fetchOpenMeteoHourly(fermeKey, dateISO) {
+            const ferme = meteoFermes[fermeKey];
+            if (!ferme) return null;
+            const cacheKey = fermeKey + '_' + dateISO;
+            const cached = _openMeteoCache.get(cacheKey);
+            if (cached && (Date.now() - cached.ts) < OPEN_METEO_CACHE_TTL) return cached.data;
+            const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + ferme.lat + '&longitude=' + ferme.lon +
+                '&hourly=temperature_2m,relative_humidity_2m,shortwave_radiation,et0_fao_evapotranspiration' +
+                '&past_days=1&forecast_days=1&timezone=Africa%2FCasablanca';
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('API error ' + res.status);
+                const data = await res.json();
+                const h = data && data.hourly;
+                if (!h || !h.time) return null;
+                const out = [];
+                h.time.forEach(function(t, i) {
+                    // t looks like "2026-06-07T00:00"
+                    var parts = t.split('T');
+                    if (parts[0] !== dateISO) return;
+                    var hour = parseInt(parts[1], 10);
+                    var rawTemp = h.temperature_2m ? Number(h.temperature_2m[i]) : 0;
+                    var rawRH = h.relative_humidity_2m ? Number(h.relative_humidity_2m[i]) : 50;
+                    var rawSW = h.shortwave_radiation ? Number(h.shortwave_radiation[i]) : 0;
+                    var rawEto = h.et0_fao_evapotranspiration ? Number(h.et0_fao_evapotranspiration[i]) : 0;
+                    out.push({
+                        heure: String(hour).padStart(2, '0') + ':00',
+                        hour: hour,
+                        temp: Math.round(rawTemp),
+                        tempRaw: rawTemp,
+                        humidity: Math.round(rawRH),
+                        humidityRaw: rawRH,
+                        vent: 0,
+                        precip: 0,
+                        radiation: rawSW,
+                        eto: rawEto,
+                        icon: hour < 7 || hour > 19 ? 'fa-moon' : 'fa-sun',
+                        condition: '',
+                        feltTemp: Math.round(rawTemp),
+                    });
+                });
+                if (!out.length) return null;
+                _openMeteoCache.set(cacheKey, { data: out, ts: Date.now() });
+                return out;
+            } catch(e) {
+                console.warn('Open-Meteo API error for ' + fermeKey + ' ' + dateISO + ':', e);
+                return null;
+            }
+        }
+
         async function fetchSprayData(fermeKey) {
             const ferme = meteoFermes[fermeKey];
             if (!ferme) return null;
@@ -24639,6 +24699,8 @@ ${rejetHtml}
         // ===================== PREVISION EXTERIEURE (24h chart, J-1/J/J+1) =====================
         function MeteoPrevisionExterieure({ ferme, fermeInfo, meteoResult }) {
             const [day, setDay] = useState('today'); // 'yesterday' | 'today' | 'tomorrow'
+            const [yesterdayHours, setYesterdayHours] = useState(null);
+            const [yesterdayLoading, setYesterdayLoading] = useState(false);
             const MC = (typeof window !== 'undefined' && window.MeteoCalc) ? window.MeteoCalc : null;
 
             // Build dateISO list from meteoResult.previsions, find index of today.
@@ -24647,8 +24709,52 @@ ${rejetHtml}
             const todayIdx = previsions.findIndex(function(p){ return p.isToday; });
             const idxOf = { yesterday: todayIdx - 1, today: todayIdx, tomorrow: todayIdx + 1 };
             const targetIdx = idxOf[day];
-            const targetDay = (targetIdx >= 0 && targetIdx < previsions.length) ? previsions[targetIdx] : null;
-            const prevDay = (targetIdx - 1 >= 0 && targetIdx - 1 < previsions.length) ? previsions[targetIdx - 1] : null;
+
+            // Yesterday's dateISO = today's dateISO - 1 day. Computed even when targetIdx === -1
+            // (Meteoblue does not expose yesterday → previsions[todayIdx - 1] is missing).
+            const todayISO = (todayIdx >= 0 && previsions[todayIdx]) ? previsions[todayIdx].dateISO : null;
+            const yesterdayISO = (function() {
+                if (!todayISO) return null;
+                var d = new Date(todayISO + 'T12:00:00');
+                d.setDate(d.getDate() - 1);
+                return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            })();
+
+            // On-demand Open-Meteo fetch for "Hier" (Meteoblue has no past data).
+            useEffect(function() {
+                if (day !== 'yesterday' || yesterdayHours != null || !yesterdayISO) return;
+                var cancelled = false;
+                setYesterdayLoading(true);
+                fetchOpenMeteoHourly(ferme, yesterdayISO).then(function(rows) {
+                    if (cancelled) return;
+                    setYesterdayHours(rows || []);
+                    setYesterdayLoading(false);
+                }).catch(function() {
+                    if (cancelled) return;
+                    setYesterdayHours([]);
+                    setYesterdayLoading(false);
+                });
+                return function() { cancelled = true; };
+            }, [day, yesterdayISO, ferme, yesterdayHours]);
+
+            const isYesterday = day === 'yesterday';
+            // Synthetic targetDay for "Hier": Meteoblue has no previsions entry for it.
+            const targetDay = isYesterday
+                ? (yesterdayISO ? { dateISO: yesterdayISO, eto: null, isToday: false } : null)
+                : ((targetIdx >= 0 && targetIdx < previsions.length) ? previsions[targetIdx] : null);
+            // No "day before yesterday" data → no deltas for "Hier" (out of scope).
+            const prevDay = isYesterday ? null : ((targetIdx - 1 >= 0 && targetIdx - 1 < previsions.length) ? previsions[targetIdx - 1] : null);
+
+            if (isYesterday && yesterdayLoading) {
+                return (
+                    <Panel title="Prévision extérieure" icon="fa-chart-area">
+                        <div style={{textAlign:'center', padding:60}}>
+                            <i className="fa-solid fa-spinner fa-spin" style={{fontSize:32, color:'var(--berry)'}}></i>
+                            <div style={{marginTop:12, color:'var(--gray-400)'}}>Chargement données d'hier (Open-Meteo)...</div>
+                        </div>
+                    </Panel>
+                );
+            }
 
             if (!targetDay) {
                 return (
@@ -24661,8 +24767,21 @@ ${rejetHtml}
                 );
             }
 
-            const hours = (horaire24[targetDay.dateISO] || []).slice().sort(function(a,b){ return a.hour - b.hour; });
+            const sourceHours = isYesterday ? (yesterdayHours || []) : (horaire24[targetDay.dateISO] || []);
+            const hours = sourceHours.slice().sort(function(a,b){ return a.hour - b.hour; });
             const prevHours = prevDay ? (horaire24[prevDay.dateISO] || []) : [];
+
+            // Open-Meteo returned nothing for "Hier" (network/CORS error) → explicit message.
+            if (isYesterday && !hours.length) {
+                return (
+                    <Panel title="Prévision extérieure" icon="fa-chart-area">
+                        <div style={{textAlign:'center', padding:30, color:'var(--gray-400)', fontSize:12}}>
+                            <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                            Données d'hier indisponibles (source Open-Meteo).
+                        </div>
+                    </Panel>
+                );
+            }
 
             // Compute series
             const tempArr = hours.map(function(h){ return Number(h.tempRaw); });
@@ -24768,17 +24887,17 @@ ${rejetHtml}
                 {
                     color: '#5DADE2', label: 'Température',
                     value: 'H: ' + Math.round(tMax) + '°C  B: ' + Math.round(tMin) + '°C  Moy: ' + Math.round(tMoy) + '°C',
-                    delta: fmtDelta(tMoy, prevTMoy, '°C', 0),
+                    delta: isYesterday ? null : fmtDelta(tMoy, prevTMoy, '°C', 0),
                 },
                 {
                     color: '#E74C3C', label: 'Radiation accumulée',
                     value: hasRadiation ? ('Accumulation quotidienne : ' + Math.round(cumRad) + ' J/cm²') : 'Non disponible (package agro-1h non inclus)',
-                    delta: hasRadiation ? fmtDelta(cumRad, prevCumRad, ' J/cm²', 0) : null,
+                    delta: (isYesterday || !hasRadiation) ? null : fmtDelta(cumRad, prevCumRad, ' J/cm²', 0),
                 },
                 {
                     color: '#8E44AD', label: 'Déficit de pression de vapeur (VPD)',
                     value: vpdPeak.idx >= 0 ? ('Le plus élevé à ' + hours[vpdPeak.idx].heure + ' (' + vpdPeak.val.toFixed(2) + ' kPa)') : '—',
-                    delta: prevVpdMax != null && vpdPeak.val != null
+                    delta: (!isYesterday && prevVpdMax != null && vpdPeak.val != null)
                         ? (function(){ var d = ((vpdPeak.val - prevVpdMax) / (prevVpdMax || 1)) * 100; return { dir: d >= 0 ? 'up' : 'down', text: Math.abs(Math.round(d)) + '% ' + (d >= 0 ? 'plus haut' : 'plus bas') + ' qu\'hier' }; })()
                         : null,
                 },
@@ -24787,7 +24906,7 @@ ${rejetHtml}
                     value: hasEto
                         ? (etoPeak.idx >= 0 ? ('Le plus élevé à ' + hours[etoPeak.idx].heure + ' — Total : ' + etoSum.toFixed(2) + ' mm') : '—')
                         : ('Total journalier : ' + (targetDay.eto != null ? targetDay.eto.toFixed(2) : '—') + ' mm (horaire indispo)'),
-                    delta: hasEto ? fmtDelta(etoSum, prevEtoSum, 'mm', 2) : null,
+                    delta: (isYesterday || !hasEto) ? null : fmtDelta(etoSum, prevEtoSum, 'mm', 2),
                 },
             ];
 
