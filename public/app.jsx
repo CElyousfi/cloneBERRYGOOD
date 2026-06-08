@@ -541,6 +541,7 @@
             { id: 'achats_da', label: 'Demandes d\'Achat', icon: 'fa-file-pen' },
             { id: 'achats_consultation', label: 'Consultations', icon: 'fa-scale-balanced' },
             { id: 'achats_bdc', label: 'Bons de Commande', icon: 'fa-file-contract' },
+            { id: 'achats_receptions_valoriser', label: 'Réceptions à valoriser', icon: 'fa-tags' },
             { id: 'achats_factures', label: 'Factures', icon: 'fa-file-invoice-dollar' },
             { id: 'achats_paiements', label: 'Paiements', icon: 'fa-credit-card' },
             { id: 'achats_fournisseurs', label: 'Fournisseurs', icon: 'fa-building' },
@@ -45942,7 +45943,6 @@ ${rejetHtml}
                             ferme: form.magasin,
                             ref_bl_fournisseur: form.ref_bl_fournisseur,
                             reception_libre: true, reception_libre_motif: motifFinal,
-                            single_validation: true,
                             fournisseur_nom: form.fournisseur_nom || null,
                             scan_url: scanUrl,
                             items: validItems.map(i => ({ article_ref: i.article, article_nom: i.article, quantite: parseFloat(i.quantite), unite: i.unite })),
@@ -45951,7 +45951,7 @@ ${rejetHtml}
                     });
                     const json = await res.json();
                     if (json.success) {
-                        alert('Bon d\'entrée ' + json.numero + ' créé et validé.');
+                        alert('Réception ' + json.numero + ' créée. En attente de valorisation Achats.');
                         setShowForm(false); setForm(emptyForm); loadReceptions();
                     } else {
                         alert('Erreur: ' + (json.error || 'Echec'));
@@ -45968,6 +45968,7 @@ ${rejetHtml}
                 if (m && isImport(m)) return 'Importé';
                 if (s === 'valide_chef') return 'Validé';
                 if (s === 'rejete') return 'Rejeté';
+                if (s === 'en_attente_achats') return 'À valoriser par Achats';
                 if (s === 'valide_mag') return 'À valider par Achats';
                 if (s === 'valide_achats') return 'À valider par Chef';
                 return s || '—';
@@ -46252,7 +46253,7 @@ ${rejetHtml}
                         created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
                     }),
                 }).then(r => r.json()).then(json => {
-                    if (json.success) { alert('Bon de réception créé. En attente de validation Achats.'); setShowForm(false); setSelectedBdc(null); loadData(); }
+                    if (json.success) { alert('Bon de réception créé. En attente de valorisation Achats.'); setShowForm(false); setSelectedBdc(null); loadData(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
             };
@@ -46286,12 +46287,12 @@ ${rejetHtml}
                         created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
                     }),
                 }).then(r => r.json()).then(json => {
-                    if (json.success) { alert('Réception libre ' + json.numero + ' créée. En attente de validation.'); setShowFreeForm(false); loadData(); }
+                    if (json.success) { alert('Réception libre ' + json.numero + ' créée. En attente de valorisation Achats.'); setShowFreeForm(false); loadData(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
             };
 
-            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'À valider par Achats' : s === 'valide_achats' ? 'À valider par Chef' : s === 'rejete' ? 'Rejeté' : s;
+            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'en_attente_achats' ? 'À valoriser par Achats' : s === 'valide_mag' ? 'À valider par Achats' : s === 'valide_achats' ? 'À valider par Chef' : s === 'rejete' ? 'Rejeté' : s;
             const statusClass = (s) => s === 'valide_chef' ? 'valide' : s === 'rejete' ? 'rejete' : 'en-attente';
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
@@ -51753,6 +51754,139 @@ ${rejetHtml}
             );
         }
 
+        // ===================== ACHATS: RÉCEPTIONS À VALORISER =====================
+        function AchatsReceptionsValoriserTab({ currentProfile, profileData }) {
+            const { useState, useEffect } = React;
+            const [receptions, setReceptions] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [prices, setPrices] = useState({}); // { movId: { itemIdx: prixString } }
+            const [submitting, setSubmitting] = useState(null); // movId en cours
+
+            const loadData = () => {
+                setLoading(true);
+                fetch('/api/stock?action=list-movements&status=en_attente_achats&limit=300')
+                    .then(r => r.json())
+                    .then(json => {
+                        const list = (json.success ? json.movements : []).filter(m => m.type === 'reception');
+                        setReceptions(list);
+                        // Pré-remplir les prix depuis les items (BDC) si présents
+                        const init = {};
+                        list.forEach(m => {
+                            init[m.id] = {};
+                            (m.items || []).forEach((it, idx) => {
+                                const p = it.prix_unitaire;
+                                init[m.id][idx] = (p !== undefined && p !== null && p !== '') ? String(p) : '';
+                            });
+                        });
+                        setPrices(init);
+                    })
+                    .catch(() => setReceptions([]))
+                    .finally(() => setLoading(false));
+            };
+            useEffect(() => { loadData(); }, []);
+
+            const setPrice = (movId, idx, value) => {
+                setPrices(prev => ({ ...prev, [movId]: { ...(prev[movId] || {}), [idx]: value } }));
+            };
+
+            const handleValidate = (mov) => {
+                const movPrices = prices[mov.id] || {};
+                const items = (mov.items || []).map((it, idx) => ({
+                    article_ref: it.article_ref || '',
+                    article_nom: it.article_nom || '',
+                    prix_unitaire: movPrices[idx],
+                }));
+                // Validation client : chaque prix numérique >= 0
+                for (let i = 0; i < items.length; i++) {
+                    const raw = items[i].prix_unitaire;
+                    const n = parseFloat(raw);
+                    if (raw === '' || raw === undefined || raw === null || !Number.isFinite(n) || n < 0) {
+                        alert('Saisissez un prix unitaire valide (>= 0) pour : ' + (items[i].article_nom || items[i].article_ref || ('article #' + (i + 1))));
+                        return;
+                    }
+                }
+                if (!window.confirm('Valider et valoriser la réception ' + (mov.numero || '') + ' ? L\'impact stock sera appliqué.')) return;
+                setSubmitting(mov.id);
+                fetch('/api/stock?action=validate-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        id: mov.id,
+                        role: 'achats',
+                        validated_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
+                        items,
+                    }),
+                }).then(r => r.json()).then(json => {
+                    if (json.success) { alert('Réception ' + (mov.numero || '') + ' validée et valorisée.'); loadData(); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                }).catch(() => alert('Erreur réseau')).finally(() => setSubmitting(null));
+            };
+
+            if (loading) return React.createElement('div', { className: 'fade-in', style: { textAlign: 'center', padding: 60 } }, React.createElement('i', { className: 'fa-solid fa-spinner fa-spin', style: { fontSize: 32, color: 'var(--berry)' } }));
+
+            return (
+                <div className="fade-in">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+                        <h3 style={{ margin: 0 }}><i className="fa-solid fa-tags" style={{ marginRight: 8, color: 'var(--berry)' }}></i>Réceptions à valoriser ({receptions.length})</h3>
+                        <button onClick={loadData} style={{ padding: '8px 14px', background: '#f0f0f0', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#555' }}><i className="fa-solid fa-rotate" style={{ marginRight: 6 }}></i>Actualiser</button>
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: '0 0 16px' }}>Saisissez/ajustez les prix unitaires puis validez. La validation applique l'impact stock. Les réceptions par BDC sont pré-remplies avec le prix du bon de commande.</p>
+                    {receptions.length === 0 && (
+                        <div style={{ textAlign: 'center', padding: 60, color: 'var(--gray-400)' }}>
+                            <i className="fa-solid fa-check-double" style={{ fontSize: 48, marginBottom: 16, display: 'block' }}></i>
+                            <p style={{ fontSize: 16, fontWeight: 600 }}>Aucune réception en attente de valorisation</p>
+                        </div>
+                    )}
+                    {receptions.map(mov => (
+                        <div key={mov.id} style={{ background: '#fff', border: '1px solid #eee', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                                <div>
+                                    <strong style={{ fontSize: 15 }}>{mov.numero || '—'}</strong>
+                                    <span style={{ marginLeft: 10, fontSize: 12, color: '#888' }}>{mov.date || ''}</span>
+                                    {mov.reception_libre && <span style={{ marginLeft: 10, fontSize: 11, background: '#fff3cd', color: '#856404', padding: '2px 8px', borderRadius: 6 }}>Réception libre</span>}
+                                    {mov.bdc_id && <span style={{ marginLeft: 10, fontSize: 11, background: '#e8f4fd', color: '#2471a3', padding: '2px 8px', borderRadius: 6 }}>BDC</span>}
+                                </div>
+                                <div style={{ fontSize: 12, color: '#555' }}>
+                                    {mov.ferme && <span><i className="fa-solid fa-warehouse" style={{ marginRight: 4 }}></i>{mov.ferme}</span>}
+                                    {mov.fournisseur_nom && <span style={{ marginLeft: 12 }}><i className="fa-solid fa-truck" style={{ marginRight: 4 }}></i>{mov.fournisseur_nom}</span>}
+                                </div>
+                            </div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                                <thead>
+                                    <tr style={{ textAlign: 'left', color: '#888', fontSize: 11 }}>
+                                        <th style={{ padding: '4px 6px' }}>Article</th>
+                                        <th style={{ padding: '4px 6px', textAlign: 'right' }}>Quantité</th>
+                                        <th style={{ padding: '4px 6px' }}>Unité</th>
+                                        <th style={{ padding: '4px 6px', width: 140 }}>Prix unitaire</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(mov.items || []).map((it, idx) => (
+                                        <tr key={idx} style={{ borderTop: '1px solid #f3f3f3' }}>
+                                            <td style={{ padding: '6px' }}>{it.article_nom || it.article_ref || '—'}</td>
+                                            <td style={{ padding: '6px', textAlign: 'right' }}>{it.quantite}</td>
+                                            <td style={{ padding: '6px' }}>{it.unite || 'kg'}</td>
+                                            <td style={{ padding: '6px' }}>
+                                                <input type="number" min="0" step="0.01"
+                                                    value={(prices[mov.id] && prices[mov.id][idx] !== undefined) ? prices[mov.id][idx] : ''}
+                                                    onChange={e => setPrice(mov.id, idx, e.target.value)}
+                                                    placeholder="0.00"
+                                                    style={{ width: '100%', padding: '6px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 }} />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            <div style={{ textAlign: 'right', marginTop: 12 }}>
+                                <button onClick={() => handleValidate(mov)} disabled={submitting === mov.id}
+                                    style={{ padding: '8px 18px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 8, cursor: submitting === mov.id ? 'wait' : 'pointer', fontSize: 13, fontWeight: 700, opacity: submitting === mov.id ? 0.6 : 1 }}>
+                                    <i className="fa-solid fa-check" style={{ marginRight: 6 }}></i>{submitting === mov.id ? 'Validation…' : 'Valider + valoriser'}
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            );
+        }
+
         // ===================== MAGASINIER: SORTIE TAB =====================
         function MagSortieTab({ currentProfile, profileData }) {
             const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
@@ -51826,12 +51960,12 @@ ${rejetHtml}
                 fetch('/api/stock?action=create-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
                 }).then(r => r.json()).then(json => {
-                    if (json.success) { alert('Bon de sortie ' + json.numero + ' créé. En attente de validation Achats.'); setShowForm(false); window.location.reload(); }
+                    if (json.success) { alert('Bon de sortie ' + json.numero + ' créé et validé.'); setShowForm(false); window.location.reload(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
             };
 
-            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'valide_mag' ? 'À valider par Achats' : s === 'valide_achats' ? 'À valider par Chef' : s === 'rejete' ? 'Rejeté' : s;
+            const statusLabel = (s) => s === 'valide_chef' ? 'Validé' : s === 'en_attente_achats' ? 'À valoriser par Achats' : s === 'valide_mag' ? 'À valider par Achats' : s === 'valide_achats' ? 'À valider par Chef' : s === 'rejete' ? 'Rejeté' : s;
             const statusClass = (s) => s === 'valide_chef' ? 'valide' : s === 'rejete' ? 'rejete' : 'en-attente';
             const sortieTypeLabel = (t) => SORTIE_TYPES.find(s => s.id === t)?.label || t;
 
@@ -61687,7 +61821,7 @@ ${rejetHtml}
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'recolte', 'hors_recolte', 'quinzaine', 'primes', 'evolution'];
                                         const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_suivi_calibre', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
                                         const webScrapeTabs = ['fin_telecom'];
-                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
+                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_receptions_valoriser', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
@@ -61828,6 +61962,7 @@ ${rejetHtml}
                                 {renderTab('achats_dashboard', AchatsDashboardTab, { currentProfile, onNavigate: (tab, filter) => { if (filter) localStorage.setItem('achats_' + tab.replace('achats_','') + '_filter', filter); setCurrentTab(tab); localStorage.setItem('lastTab', tab); } }, 'Achats Dashboard')}
                                 {renderTab('achats_da', AchatsDATab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), onNavigate: (tab, bdcId) => { if (bdcId) sessionStorage.setItem('openBdcId', bdcId); setCurrentTab(tab); localStorage.setItem('lastTab', tab); } }, 'Demandes Achat')}
                                 {renderTab('achats_bdc', AchatsBDCTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Commande')}
+                                {renderTab('achats_receptions_valoriser', AchatsReceptionsValoriserTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Réceptions à valoriser')}
                                 {renderTab('achats_fournisseurs', AchatsFournisseursTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Fournisseurs')}
                                 {renderTab('achats_catalogue', AchatsCatalogueTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Catalogue')}
                                 {renderTab('achats_analyses_foliaires', AchatsAnalysesFoliairesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Analyses Foliaires')}

@@ -15,6 +15,7 @@ const caisseImport = require("./lib/caisseImport");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
+const { resolveCallerRole } = require("./lib/auth/resolveRole");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -5885,7 +5886,7 @@ exports.stockManagement = functions
             bdc_id: bdc_id, bl_id: docRef.id,
             reception_libre: false, reception_libre_motif: "",
             ref_bon_physique: "", sortie_type: null, scan_url: scan_url || null,
-            status: "valide_mag",
+            status: "en_attente_achats",
             validations: { magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() } },
             rejection: null,
             created_by: created_by || {}, created_at: Date.now(), updated_at: Date.now(),
@@ -8281,8 +8282,10 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       }
 
       // --- Helper: check if movement needs multi-level validation ---
+      // Seules les réceptions restent en attente (valorisation + validation Achats avant impact).
+      // Sorties, transferts et consommations sont auto-validés (impact stock immédiat à la création).
       function movementNeedsMultiValidation(type) {
-        return type === "reception" || type === "sortie";
+        return type === "reception";
       }
 
       // --- UPLOAD SCAN for stock movements ---
@@ -8604,11 +8607,12 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         }));
 
         const singleValidation = !!req.body.single_validation;
-        const needsMulti = movementNeedsMultiValidation(type) && !singleValidation;
-        // Reception/sortie need chef validation (valide_mag = en attente)
-        // Transfert/consommation are auto-validated (stock impact applied immediately)
-        // single_validation=true bypasses multi-step approval (used for bon d'entrée libre simple)
-        const initialStatus = needsMulti ? "valide_mag" : "valide_chef";
+        // Réception : TOUJOURS en attente de valorisation + validation Achats (aucun impact à la création),
+        //   y compris la réception libre (le raccourci single_validation ne s'applique plus aux réceptions).
+        // Sortie / transfert / consommation : auto-validés, impact stock immédiat à la création.
+        const isReception = type === "reception";
+        const needsMulti = isReception;
+        const initialStatus = isReception ? "en_attente_achats" : "valide_chef";
 
         const movData = {
           numero, type,
@@ -8674,8 +8678,12 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
 
       // --- VALIDATE MOVEMENT ---
       if (action === "validate-movement" && req.method === "POST") {
-        const { id, role, validated_by } = req.body;
-        if (!id || !role) return res.status(400).json({ success: false, error: "id et role requis" });
+        const { id, validated_by, items: pricedItems } = req.body;
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+
+        // Rôle RÉEL dérivé du token Firebase (anti-spoof body). Jamais req.body.role.
+        const callerRole = await resolveCallerRole(authUser);
+        if (!callerRole) return res.status(403).json({ success: false, error: "Rôle introuvable pour l'utilisateur authentifié" });
 
         const docRef = db_firestore.collection("stock_movements").doc(id);
         const snap = await docRef.get();
@@ -8686,17 +8694,67 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           return res.status(400).json({ success: false, error: "Mouvement rejeté, impossible de valider" });
         }
 
+        // --- Réception en attente : validation + valorisation par Achats (1 étape) ---
+        if (mov.status === "en_attente_achats") {
+          if (mov.type !== "reception") {
+            return res.status(400).json({ success: false, error: "Statut en_attente_achats réservé aux réceptions" });
+          }
+          if (callerRole !== "achats") {
+            return res.status(403).json({ success: false, error: "Seul le profil Achats peut valider une réception" });
+          }
+          // Valorisation obligatoire : prix_unitaire numérique >= 0 pour chaque item.
+          const provided = Array.isArray(pricedItems) ? pricedItems : [];
+          const existingItems = mov.items || [];
+          const valuedItems = [];
+          for (let i = 0; i < existingItems.length; i++) {
+            const orig = existingItems[i];
+            // Match par index, sinon par ref/nom, sinon fallback au prix porté par l'item existant.
+            let priced = provided[i];
+            if (!priced) {
+              priced = provided.find((p) =>
+                (p.article_ref && p.article_ref === orig.article_ref) ||
+                (p.article_nom && p.article_nom === orig.article_nom));
+            }
+            const rawPrice = priced && priced.prix_unitaire !== undefined && priced.prix_unitaire !== null && priced.prix_unitaire !== ""
+              ? priced.prix_unitaire
+              : orig.prix_unitaire;
+            const prix = parseFloat(rawPrice);
+            if (!Number.isFinite(prix) || prix < 0) {
+              return res.status(400).json({ success: false, error: `Prix unitaire requis (>= 0) pour l'article ${orig.article_nom || orig.article_ref || "#" + (i + 1)}` });
+            }
+            valuedItems.push({ ...orig, prix_unitaire: prix });
+          }
+
+          await docRef.update({
+            status: "valide_chef",
+            items: valuedItems,
+            "validations.achats": {
+              by: (validated_by || {}).userId || "",
+              name: (validated_by || {}).name || "",
+              at: Date.now()
+            },
+            rejection: null,
+            updated_at: Date.now()
+          });
+
+          const updatedSnap = await docRef.get();
+          await applyStockImpact(updatedSnap.data());
+
+          return res.json({ success: true, status: "valide_chef" });
+        }
+
         // Determine expected validation sequence (chef valide directement depuis valide_mag)
+        // Chemin legacy conservé : réceptions/mouvements déjà en valide_mag/valide_achats validés par le chef.
         let nextStatus = null;
-        if ((role === "chef_f1" || role === "chef_f5" || role === "chef_avo") && (mov.status === "valide_mag" || mov.status === "valide_achats")) {
+        if ((callerRole === "chef_f1" || callerRole === "chef_f5" || callerRole === "chef_avo") && (mov.status === "valide_mag" || mov.status === "valide_achats")) {
           // Verify the chef matches the ferme
           const expectedChef = getChefProfileForFerme(mov.ferme);
-          if (expectedChef && role !== expectedChef) {
+          if (expectedChef && callerRole !== expectedChef) {
             return res.status(403).json({ success: false, error: `Seul ${expectedChef} peut valider pour ${mov.ferme}` });
           }
           nextStatus = "valide_chef";
         } else {
-          return res.status(400).json({ success: false, error: `Validation ${role} non applicable au statut ${mov.status}` });
+          return res.status(400).json({ success: false, error: `Validation ${callerRole} non applicable au statut ${mov.status}` });
         }
 
         const validationKey = "chef";
@@ -8930,7 +8988,8 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
       if (action === "pending-validations") {
         const { role: pendingRole } = req.query;
         let targetStatus = null;
-        if (["chef_f1", "chef_f5", "chef_avo"].includes(pendingRole)) targetStatus = "valide_mag";
+        if (pendingRole === "achats") targetStatus = "en_attente_achats";
+        else if (["chef_f1", "chef_f5", "chef_avo"].includes(pendingRole)) targetStatus = "valide_mag";
         else return res.status(400).json({ success: false, error: "Role invalide" });
 
         let q = db_firestore.collection("stock_movements").where("status", "==", targetStatus);
