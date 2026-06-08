@@ -16,6 +16,7 @@ const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
 const { resolveCallerRole } = require("./lib/auth/resolveRole");
+const stockMovementGuard = require("./lib/stock/movementGuard");
 const whatsappService = require("./whatsappService");
 
 // =============================================
@@ -5876,6 +5877,9 @@ exports.stockManagement = functions
         }).filter((it) => it.quantite > 0);
         if (brItems.length > 0) {
           const magasin = req.body.magasin || bdc.ferme || "";
+          // Identité créateur du mouvement de réception : userId = uid du TOKEN
+          // (anti-spoof), profileId/name conservés. Cf. stockMovementGuard.
+          const brCreatedBy = { ...(created_by || {}), userId: authUser.uid };
           await db_firestore.collection("stock_movements").add({
             numero: brNumero, type: "reception",
             date: date_reception || new Date().toISOString().split("T")[0],
@@ -5887,9 +5891,9 @@ exports.stockManagement = functions
             reception_libre: false, reception_libre_motif: "",
             ref_bon_physique: "", sortie_type: null, scan_url: scan_url || null,
             status: "en_attente_achats",
-            validations: { magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() } },
+            validations: { magasinier: { by: brCreatedBy.userId || "", name: brCreatedBy.name || "", at: Date.now() } },
             rejection: null,
-            created_by: created_by || {}, created_at: Date.now(), updated_at: Date.now(),
+            created_by: brCreatedBy, created_at: Date.now(), updated_at: Date.now(),
           });
         }
 
@@ -6129,6 +6133,9 @@ exports.stockManagement = functions
         const docRef = await db_firestore.collection("consumption_vouchers").add(bcData);
 
         // Create stock_movements grouped by parcelle + update stock_balances
+        // Identité créateur : userId = uid du TOKEN (anti-spoof), profileId/name
+        // conservés. Cf. stockMovementGuard.
+        const bcCreatedBy = { ...(created_by || {}), userId: authUser.uid };
         const lieuSource = req.body.lieu_source || { type: "magasin", id: allFermes[0] || "F1" };
         const validBcItems = bcItems.filter((it) => it.quantite > 0);
         const itemsByParcelle = {};
@@ -6154,8 +6161,8 @@ exports.stockManagement = functions
             ref_bon_physique: req.body.ref_bon_physique || "",
             sortie_type: null, scan_url: null,
             status: "valide_mag",
-            validations: { magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() } },
-            rejection: null, created_by: created_by || {},
+            validations: { magasinier: { by: bcCreatedBy.userId || "", name: bcCreatedBy.name || "", at: Date.now() } },
+            rejection: null, created_by: bcCreatedBy,
             created_at: Date.now(), updated_at: Date.now(),
             bc_id: docRef.id, bc_numero: numero,
           };
@@ -8383,7 +8390,9 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           for (const b of balancesInit) add(b.lieu_type, b.lieu_id, b.article_ref, b.article_nom, b.unite, b.balance);
           const allMovSnap = await db_firestore.collection("stock_movements").get();
           for (const doc of allMovSnap.docs) {
-            for (const d of stockCaneva.movementDelta(doc.data())) add(d.lieu_type, d.lieu_id, d.article_ref, d.article_nom, d.unite, d.delta);
+            const mData = doc.data();
+            if (stockMovementGuard.isDeletedMovement(mData)) continue; // exclure les bons soft-deleted
+            for (const d of stockCaneva.movementDelta(mData)) add(d.lieu_type, d.lieu_id, d.article_ref, d.article_nom, d.unite, d.delta);
           }
           // Write computed balances; delete stale ones absent from the rebuild
           const existingBalSnap = await db_firestore.collection("stock_balances").get();
@@ -8596,6 +8605,11 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           return res.status(400).json({ success: false, error: "Motif obligatoire pour réception libre" });
         }
 
+        // Identité créateur : on force userId = uid du TOKEN (anti-spoof), en
+        // conservant profileId/name fournis par le body. Le contrôle créateur du
+        // guard (stockMovementGuard) s'appuie sur cet uid pour les éditions/suppressions.
+        const movCreatedBy = { ...(created_by || {}), userId: authUser.uid };
+
         const prefixMap = { reception: "BR", transfert: "BT", consommation: "BCS", sortie: "BS" };
         const numType = "stock_" + type;
         const numero = await getNextNumber(numType, prefixMap[type]);
@@ -8637,10 +8651,10 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           justificatif_url: justificatif_url || null,
           status: initialStatus,
           validations: {
-            magasinier: { by: (created_by || {}).userId || "", name: (created_by || {}).name || "", at: Date.now() }
+            magasinier: { by: movCreatedBy.userId || "", name: movCreatedBy.name || "", at: Date.now() }
           },
           rejection: null,
-          created_by: created_by || {},
+          created_by: movCreatedBy,
           created_at: Date.now(),
           updated_at: Date.now(),
         };
@@ -8664,7 +8678,10 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         if (status) q = q.where("status", "==", status);
         if (movFerme) q = q.where("ferme", "==", movFerme);
         const snap = await q.get();
-        const movements = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        // Exclure les bons soft-deleted (deleted:true / status supprime).
+        const movements = snap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((m) => !stockMovementGuard.isDeletedMovement(m));
         return res.json({ success: true, movements, count: movements.length });
       }
 
@@ -8674,7 +8691,11 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         if (!id) return res.status(400).json({ success: false, error: "id requis" });
         const snap = await db_firestore.collection("stock_movements").doc(id).get();
         if (!snap.exists) return res.status(404).json({ success: false, error: "Mouvement introuvable" });
-        return res.json({ success: true, movement: { id: snap.id, ...snap.data() } });
+        const movData = snap.data();
+        if (stockMovementGuard.isDeletedMovement(movData)) {
+          return res.status(404).json({ success: false, error: "Mouvement introuvable" });
+        }
+        return res.json({ success: true, movement: { id: snap.id, ...movData } });
       }
 
       // --- VALIDATE MOVEMENT ---
@@ -8805,6 +8826,110 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         return res.json({ success: true, status: "rejete" });
       }
 
+      // --- Helper: résout l'identité du demandeur depuis le TOKEN (jamais le body) ---
+      // Renvoie { profileId, userId } : userId = uid Firebase, profileId tiré de
+      // users/{uid}. Le contrôle créateur s'appuie dessus (cf. stockMovementGuard).
+      async function resolveRequesterIdentity(au) {
+        const uid = (au && au.uid) || "";
+        let profileId = "";
+        if (uid && uid !== "admin-cli") {
+          try {
+            const uDoc = await db_firestore.collection("users").doc(uid).get();
+            if (uDoc.exists) profileId = uDoc.data().profileId || "";
+          } catch (_) { /* ignore */ }
+        }
+        return { userId: uid, profileId, isAdminCli: uid === "admin-cli" };
+      }
+
+      // --- UPDATE MOVEMENT (édition d'un bon non validé, non importé, par son créateur) ---
+      if (action === "update-movement" && req.method === "POST") {
+        const { id, patch } = req.body || {};
+        if (!id || !patch || typeof patch !== "object") {
+          return res.status(400).json({ success: false, error: "id et patch requis" });
+        }
+        const docRef = db_firestore.collection("stock_movements").doc(id);
+        const snap = await docRef.get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "Mouvement introuvable" });
+        const mov = snap.data();
+
+        const requester = await resolveRequesterIdentity(authUser);
+        // admin-cli (script/secret) garde les garde-fous import/validé mais saute le contrôle créateur.
+        const evalRes = requester.isAdminCli
+          ? (stockMovementGuard.isDeletedMovement(mov) ? { allowed: false, reason: "deleted" }
+            : stockMovementGuard.isImportedMovement(mov) ? { allowed: false, reason: "imported" }
+              : stockMovementGuard.isValidatedMovement(mov) ? { allowed: false, reason: "validated" }
+                : { allowed: true, reason: null })
+          : stockMovementGuard.evaluateMutable(mov, requester);
+        if (!evalRes.allowed) {
+          const code = evalRes.reason === "not_found" ? 404 : 403;
+          return res.status(code).json({ success: false, error: stockMovementGuard.refusalMessage(evalRes.reason), reason: evalRes.reason });
+        }
+
+        // Champs éditables uniquement (whitelist) — pas de status / created_by / import_source / impact.
+        const EDITABLE = [
+          "date", "lieu_source", "lieu_destination", "ferme", "ref_bl_fournisseur",
+          "fournisseur_nom", "reception_libre_motif", "ref_bon_physique", "beneficiaire",
+          "sortie_type", "motif_rebut", "justificatif_url", "scan_url",
+        ];
+        const update = { updated_at: Date.now() };
+        for (const k of EDITABLE) {
+          if (Object.prototype.hasOwnProperty.call(patch, k)) update[k] = patch[k];
+        }
+        // Items : revalidés / normalisés comme à la création.
+        if (Object.prototype.hasOwnProperty.call(patch, "items")) {
+          if (!Array.isArray(patch.items) || patch.items.length === 0) {
+            return res.status(400).json({ success: false, error: "items[] non vide requis" });
+          }
+          update.items = patch.items.map((it) => ({
+            article_ref: it.article_ref || it.article || "",
+            article_nom: it.article_nom || it.article || "",
+            quantite: parseFloat(it.quantite) || 0,
+            unite: it.unite || "kg",
+          }));
+        }
+        // Bon non validé → aucun impact stock appliqué → pas de recalcul de soldes.
+        update.history = (mov.history || []).concat([{
+          action: "update", by: { userId: requester.userId, profileId: requester.profileId }, at: Date.now(),
+        }]);
+
+        await docRef.update(update);
+        return res.json({ success: true, id });
+      }
+
+      // --- DELETE MOVEMENT (soft-delete d'un bon non validé, non importé, par son créateur) ---
+      if (action === "delete-movement" && req.method === "POST") {
+        const { id } = req.body || {};
+        if (!id) return res.status(400).json({ success: false, error: "id requis" });
+        const docRef = db_firestore.collection("stock_movements").doc(id);
+        const snap = await docRef.get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "Mouvement introuvable" });
+        const mov = snap.data();
+
+        const requester = await resolveRequesterIdentity(authUser);
+        const evalRes = requester.isAdminCli
+          ? (stockMovementGuard.isDeletedMovement(mov) ? { allowed: false, reason: "deleted" }
+            : stockMovementGuard.isImportedMovement(mov) ? { allowed: false, reason: "imported" }
+              : stockMovementGuard.isValidatedMovement(mov) ? { allowed: false, reason: "validated" }
+                : { allowed: true, reason: null })
+          : stockMovementGuard.evaluateMutable(mov, requester);
+        if (!evalRes.allowed) {
+          const code = evalRes.reason === "not_found" ? 404 : 403;
+          return res.status(code).json({ success: false, error: stockMovementGuard.refusalMessage(evalRes.reason), reason: evalRes.reason });
+        }
+
+        // Soft-delete : traçabilité conservée, exclu des listes. Non validé → aucun impact stock.
+        await docRef.update({
+          deleted: true,
+          deleted_by: { userId: requester.userId, profileId: requester.profileId },
+          deleted_at: Date.now(),
+          updated_at: Date.now(),
+          history: (mov.history || []).concat([{
+            action: "delete", by: { userId: requester.userId, profileId: requester.profileId }, at: Date.now(),
+          }]),
+        });
+        return res.json({ success: true, id });
+      }
+
       // --- GET CONSUMPTION COSTS BY VARIETY ---
       if (action === "get-consumption-costs") {
         const snap = await db_firestore.collection("consumption_costs_by_variety").get();
@@ -8837,6 +8962,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         const balMap = {};
         for (const doc of snap.docs) {
           const m = doc.data();
+          if (stockMovementGuard.isDeletedMovement(m)) continue; // exclusion défensive soft-delete
           const needsMulti = m.type === "reception" || m.type === "sortie";
           if (needsMulti && m.status !== "valide_chef") continue;
           if (!m.status) continue;
@@ -8945,6 +9071,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         for (const doc of snap.docs) {
           const mov = doc.data();
           if (mov.status === "rejete") continue;
+          if (stockMovementGuard.isDeletedMovement(mov)) continue; // exclusion défensive soft-delete
 
           const item = (mov.items || []).find(i =>
             (i.article_nom || "").toLowerCase() === articleLower ||
@@ -9000,7 +9127,9 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         else if (pendingRole === "chef_avo") q = q.where("ferme", "in", ["F2", "F3", "F4", "F6"]);
 
         const snap = await q.get();
-        const pending = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const pending = snap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((m) => !stockMovementGuard.isDeletedMovement(m));
         return res.json({ success: true, pending, count: pending.length });
       }
 

@@ -25,7 +25,7 @@ if (babel.status !== 0) {
 
 // 2. Sentinel check — if the build is truncated or silently skipped, app.js will
 // not contain this identifier. Update the list as new screens are added.
-const SENTINELS = ["AgroAnalyseFoliairesTab", "generateIA", "CaisseTab", "BdcWorkflow.requiresChefValidation"];
+const SENTINELS = ["AgroAnalyseFoliairesTab", "generateIA", "CaisseTab", "BdcWorkflow.requiresChefValidation", "StockMovementGuard"];
 const built = fs.readFileSync(OUT, "utf8");
 for (const s of SENTINELS) {
   if (!built.includes(s)) {
@@ -43,6 +43,17 @@ if (!fs.existsSync(BDC_WORKFLOW)) {
 }
 if (!fs.readFileSync(BDC_WORKFLOW, "utf8").includes("DIRECT_DG_FARMS")) {
   console.error("[build-frontend] sentinel missing in public/lib/bdcWorkflow.js: DIRECT_DG_FARMS");
+  process.exit(2);
+}
+
+// 2ter. Sibling lib check — stockMovementGuard.js (édition/suppression de bons stock).
+const STOCK_GUARD = path.join(ROOT, "public/lib/stockMovementGuard.js");
+if (!fs.existsSync(STOCK_GUARD)) {
+  console.error("[build-frontend] missing public/lib/stockMovementGuard.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(STOCK_GUARD, "utf8").includes("canEditMovement")) {
+  console.error("[build-frontend] sentinel missing in public/lib/stockMovementGuard.js: canEditMovement");
   process.exit(2);
 }
 

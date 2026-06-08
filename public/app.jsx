@@ -52135,6 +52135,13 @@ ${rejetHtml}
 
             const [hideImports, setHideImports] = useState(false);
             const [query, setQuery] = useState('');
+            const [editMov, setEditMov] = useState(null); // mouvement en cours d'édition
+            const [editItems, setEditItems] = useState([]);
+            const [editDate, setEditDate] = useState('');
+            const [editSaving, setEditSaving] = useState(false);
+            // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
+            const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
+            const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
             const loadMovements = () => {
                 setLoading(true);
                 let url = '/api/stock?action=list-movements&limit=500';
@@ -52202,6 +52209,59 @@ ${rejetHtml}
                 return false;
             };
 
+            // Édition/suppression : créateur, bon non importé et non validé (cf. stockMovementGuard).
+            const canMutate = (mov) => Guard ? Guard.canEditMovement(mov, requester) : false;
+            // La colonne Actions s'affiche pour les valideurs (achats/chef) OU dès qu'au
+            // moins un bon est mutable par le demandeur courant (son créateur).
+            const isValidatorProfile = currentProfile === 'achats' || (currentProfile && currentProfile.startsWith('chef_'));
+            const anyMutable = movements.some(canMutate);
+            const showActionsCol = isValidatorProfile || anyMutable;
+
+            const openEdit = (mov) => {
+                setEditMov(mov);
+                setEditDate(mov.date || '');
+                setEditItems((mov.items || []).map(i => ({
+                    article: i.article_nom || i.article_ref || '',
+                    quantite: i.quantite != null ? String(i.quantite) : '',
+                    unite: i.unite || 'kg',
+                })));
+            };
+            const closeEdit = () => { setEditMov(null); setEditItems([]); setEditDate(''); };
+            const editAddItem = () => setEditItems(its => [...its, { article: '', quantite: '', unite: 'kg' }]);
+            const editRemoveItem = (idx) => setEditItems(its => its.filter((_, i) => i !== idx));
+            const editSetItem = (idx, field, val) => setEditItems(its => its.map((it, i) => i === idx ? { ...it, [field]: val } : it));
+
+            const handleSaveEdit = async () => {
+                const validItems = editItems.filter(i => i.article && i.quantite);
+                if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
+                setEditSaving(true);
+                try {
+                    const res = await fetch('/api/stock?action=update-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: editMov.id,
+                            patch: {
+                                date: editDate || editMov.date,
+                                items: validItems.map(i => ({ article_ref: i.article, article_nom: i.article, quantite: parseFloat(i.quantite), unite: i.unite })),
+                            },
+                        }),
+                    });
+                    const json = await res.json();
+                    if (json.success) { closeEdit(); loadMovements(); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                } catch (e) { alert('Erreur réseau'); }
+                finally { setEditSaving(false); }
+            };
+
+            const handleDelete = (mov) => {
+                if (!confirm('Supprimer le bon ' + mov.numero + ' ? Cette action est irréversible (le bon sera retiré des listes).')) return;
+                fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: mov.id }),
+                }).then(r => r.json()).then(json => {
+                    if (json.success) { alert('Bon supprimé.'); loadMovements(); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                }).catch(() => alert('Erreur réseau'));
+            };
+
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
             return (
@@ -52238,7 +52298,7 @@ ${rejetHtml}
                     </div>
 
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                        <thead><tr><th>N°</th><th>Type</th><th>Date</th><th>Source</th><th>Destination</th><th>Articles</th><th>Statut</th><th>Créé par</th>{(currentProfile === 'achats' || currentProfile?.startsWith('chef_')) && <th>Actions</th>}</tr></thead>
+                        <thead><tr><th>N°</th><th>Type</th><th>Date</th><th>Source</th><th>Destination</th><th>Articles</th><th>Statut</th><th>Créé par</th>{showActionsCol && <th>Actions</th>}</tr></thead>
                         <tbody>
                             {movements.filter(m => !hideImports || !isImport(m)).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.lieu_source?.id||'').toLowerCase().includes(q) || (m.lieu_destination?.id||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((m) => (
                                 <tr key={m.id}>
@@ -52252,21 +52312,59 @@ ${rejetHtml}
                                         {m.rejection && <div style={{fontSize:10,color:'var(--red)',marginTop:2}}>Motif: {m.rejection.reason}</div>}
                                     </td>
                                     <td style={{fontSize:11}}>{m.created_by?.name || '—'}</td>
-                                    {(currentProfile === 'achats' || currentProfile?.startsWith('chef_')) && (
+                                    {showActionsCol && (
                                         <td>
-                                            {canValidate(m) && (
-                                                <div style={{display:'flex',gap:4}}>
+                                            <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                                                {canValidate(m) && (<>
                                                     <button onClick={() => handleValidate(m)} style={{padding:'3px 8px',borderRadius:6,border:'none',background:'var(--green)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600}}>Valider</button>
                                                     <button onClick={() => handleReject(m)} style={{padding:'3px 8px',borderRadius:6,border:'none',background:'var(--red)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600}}>Rejeter</button>
-                                                </div>
-                                            )}
+                                                </>)}
+                                                {canMutate(m) && (<>
+                                                    <button onClick={() => openEdit(m)} title="Modifier" style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--blue)',background:'#fff',color:'var(--blue)',cursor:'pointer',fontSize:10,fontWeight:600}}><i className="fa-solid fa-pen" style={{marginRight:3}}></i>Modifier</button>
+                                                    <button onClick={() => handleDelete(m)} title="Supprimer" style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--red)',background:'#fff',color:'var(--red)',cursor:'pointer',fontSize:10,fontWeight:600}}><i className="fa-solid fa-trash" style={{marginRight:3}}></i>Supprimer</button>
+                                                </>)}
+                                            </div>
                                         </td>
                                     )}
                                 </tr>
                             ))}
-                            {movements.length === 0 && <tr><td colSpan={currentProfile === 'achats' || currentProfile?.startsWith('chef_') ? 9 : 8} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun mouvement trouvé.</td></tr>}
+                            {movements.length === 0 && <tr><td colSpan={showActionsCol ? 9 : 8} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun mouvement trouvé.</td></tr>}
                         </tbody>
                     </table></div>
+
+                    {editMov && (
+                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>
+                            <div className="modal-content" style={{maxWidth:600,maxHeight:'90vh',overflowY:'auto'}}>
+                                <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-pen" style={{marginRight:8}}></i>Modifier le bon {editMov.numero}</h3>
+                                <div style={{background:'#fff8e1',borderRadius:8,padding:10,marginBottom:16,fontSize:12,color:'#8a6d00'}}>
+                                    <i className="fa-solid fa-info-circle" style={{marginRight:6}}></i>Bon non validé : aucun impact stock n'a encore été appliqué. Vous pouvez l'ajuster avant validation.
+                                </div>
+                                <div style={{marginBottom:14}}>
+                                    <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date</label>
+                                    <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} />
+                                </div>
+                                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:6}}>Articles</label>
+                                <table className="data-table" style={{fontSize:12,marginBottom:8}}>
+                                    <thead><tr><th>Article</th><th style={{width:90}}>Quantité</th><th style={{width:80}}>Unité</th><th style={{width:36}}></th></tr></thead>
+                                    <tbody>
+                                        {editItems.map((it, idx) => (
+                                            <tr key={idx}>
+                                                <td><input value={it.article} onChange={e => editSetItem(idx, 'article', e.target.value)} style={{width:'100%',padding:'5px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                                <td><input type="number" value={it.quantite} onChange={e => editSetItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'5px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                                <td><input value={it.unite} onChange={e => editSetItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'5px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                                <td><button onClick={() => editRemoveItem(idx)} title="Retirer" style={{background:'none',border:'none',color:'var(--red)',cursor:'pointer',fontSize:13}}><i className="fa-solid fa-xmark"></i></button></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                                <button onClick={editAddItem} style={{background:'none',border:'1px dashed #ddd',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,color:'var(--blue)'}}>+ Ajouter article</button>
+                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                                    <button onClick={closeEdit} disabled={editSaving} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
+                                    <button onClick={handleSaveEdit} disabled={editSaving} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>{editSaving ? 'Enregistrement…' : 'Enregistrer'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
