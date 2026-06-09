@@ -17,6 +17,7 @@ const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
 const { resolveCallerRole } = require("./lib/auth/resolveRole");
 const { validateBugReport } = require("./lib/bugReports/validateBugReport");
+const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus } = require("./lib/bugReports/bugStatus");
 const stockMovementGuard = require("./lib/stock/movementGuard");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
@@ -1212,6 +1213,116 @@ exports.bugReports = functions
         return res.json({ success: true, id: docRef.id });
       } catch (err) {
         console.error("Erreur bugReports submit-bug:", err);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+    }
+
+    // --- Vue admin (Phase B) : list-bugs (GET) + update-bug-status (POST) ---
+    // Réservées aux profils admin (dg / resp RH). Le rôle est résolu côté serveur
+    // depuis users/{uid}.profileId (jamais depuis le body client), comme submit-bug.
+    if (action === "list-bugs" || action === "update-bug-status") {
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return; // 401 déjà envoyée
+
+      // Résoudre le profil de l'appelant depuis Firestore et vérifier l'accès admin.
+      let callerProfileId = null;
+      let callerName = authUser.name || authUser.email || "";
+      try {
+        const uSnap = await db_firestore.collection("users").doc(authUser.uid).get();
+        if (uSnap.exists) {
+          const u = uSnap.data() || {};
+          callerProfileId = u.profileId || null;
+          callerName = u.displayName || callerName;
+        }
+      } catch (e) {
+        console.warn("[bugReports] résolution profil appelant échouée:", e.message);
+      }
+      if (!isAdminProfile(callerProfileId)) {
+        return res.status(403).json({ success: false, error: "Accès réservé aux administrateurs" });
+      }
+
+      if (action === "list-bugs") {
+        if (req.method !== "GET") {
+          return res.status(405).json({ success: false, error: "GET uniquement" });
+        }
+        try {
+          const statusFilter = typeof req.query.status === "string" ? req.query.status : "";
+          let query = db_firestore.collection("bug_reports");
+          if (statusFilter && isValidStatus(statusFilter)) {
+            query = query.where("status", "==", statusFilter);
+          }
+          const snap = await query.get();
+          const bugs = [];
+          snap.forEach((doc) => {
+            const d = doc.data() || {};
+            bugs.push({
+              id: doc.id,
+              photo_url: d.photo_url || null,
+              description: d.description || "",
+              reporter: d.reporter || null,
+              screen: d.screen || "",
+              device: d.device || null,
+              status: d.status || "nouveau",
+              created_at: d.created_at ? d.created_at.toMillis() : null,
+              updated_at: d.updated_at ? d.updated_at.toMillis() : null,
+              history: Array.isArray(d.history) ? d.history.map((h) => ({
+                action: h.action || null,
+                from: h.from || null,
+                to: h.to || null,
+                by: h.by || null,
+                at: h.at && typeof h.at.toMillis === "function" ? h.at.toMillis() : (h.at || null),
+              })) : [],
+            });
+          });
+          // Tri côté serveur (helper pur) — created_at desc.
+          const sorted = sortReportsByCreatedDesc(bugs);
+          return res.json({ success: true, bugs: sorted });
+        } catch (err) {
+          console.error("Erreur bugReports list-bugs:", err);
+          return res.status(500).json({ success: false, error: err.message });
+        }
+      }
+
+      // action === "update-bug-status"
+      if (req.method !== "POST") {
+        return res.status(405).json({ success: false, error: "POST uniquement" });
+      }
+      try {
+        const check = validateStatusUpdate(req.body || {});
+        if (!check.valid) {
+          return res.status(400).json({ success: false, error: check.error });
+        }
+        const docRef = db_firestore.collection("bug_reports").doc(check.id);
+        const by = { uid: authUser.uid, name: callerName, profileId: callerProfileId };
+        // Transaction : lire l'ancien statut pour tracer la transition dans history.
+        const result = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          if (!snap.exists) {
+            return { notFound: true };
+          }
+          const data = snap.data() || {};
+          const from = data.status || "nouveau";
+          const historyEntry = {
+            action: "status_change",
+            from: from,
+            to: check.status,
+            by: by,
+            // serverTimestamp() interdit dans un élément de tableau → timestamp client (epoch ms).
+            at: Date.now(),
+          };
+          tx.update(docRef, {
+            status: check.status,
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+          });
+          return { notFound: false };
+        });
+        if (result.notFound) {
+          return res.status(404).json({ success: false, error: "Signalement introuvable" });
+        }
+        return res.json({ success: true, id: check.id, status: check.status });
+      } catch (err) {
+        console.error("Erreur bugReports update-bug-status:", err);
         return res.status(500).json({ success: false, error: err.message });
       }
     }

@@ -64,6 +64,7 @@ const COMPONENTS_DIR = path.join(ROOT, "public/components");
 // Sentinelles attendues dans la sortie .js de chaque composant (identifiant du global exposé).
 const COMPONENT_SENTINELS = {
   "BugReportButton.js": "window.BugReportButton",
+  "BugReportsAdmin.js": "window.BugReportsAdmin",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));

@@ -447,6 +447,7 @@
             { id: 'chef_validation_bons', label: 'Valid. Bons Apport', icon: 'fa-clipboard-check', chefOnly: true },
             { id: 'fin_budget', label: 'Budget vs Réel', icon: 'fa-chart-gantt', chefOnly: true },
             { id: 'suivi', label: 'Suivi Modifications', icon: 'fa-clipboard-list', rhOnly: true },
+            { id: 'bug_reports', label: 'Bugs signalés', icon: 'fa-bug', rhOnly: true },
         ];
 
         const NAV_ITEMS_QUALITE = [
@@ -534,6 +535,7 @@
             { id: 'dqr_daily', label: 'DQR Journalier', icon: 'fa-clipboard-list' },
             { id: 'dg_signature', label: 'Signature & Cachet', icon: 'fa-stamp', dgOnly: true },
             { id: 'dg_parametres', label: 'Paramètres', icon: 'fa-gear', dgOnly: true },
+            { id: 'bug_reports', label: 'Bugs signalés', icon: 'fa-bug', dgOnly: true },
         ];
 
         const NAV_ITEMS_DT = [
@@ -63106,6 +63108,7 @@ ${rejetHtml}
                                 {renderTab('agro_harvest', AgroHarvestPredictionTab, {}, 'Prédiction Récolte')}
                                 {renderTab('caisse', CaisseTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), userProfile }, 'Gestion de Caisse')}
                                 {renderTab('coming_soon', ComingSoonTab, {}, 'Bientôt Disponible')}
+                                {currentTab === 'bug_reports' && window.BugReportsAdmin && <TabErrorBoundary name="Bugs signalés" key="bug-reports-eb">{React.createElement(window.BugReportsAdmin, { currentProfile })}</TabErrorBoundary>}
                                 {currentTab === 'evolution' && <TabErrorBoundary name="Évolutions" key="evolution-eb"><EvolutionTab key={refreshKey + '-' + currentProfile} currentProfile={currentProfile} profileData={PROFILES.find(p => p.id === currentProfile)} userProfile={userProfile} isDG={userProfile.profileId === 'dg' || currentProfile === 'dg'} /></TabErrorBoundary>}
                                 {currentTab === 'admin_users' && userProfile.role === 'admin' && <TabErrorBoundary name="Admin" key="admin-eb"><AdminConsoleTab key={refreshKey} authUser={authUser} userProfile={userProfile} /></TabErrorBoundary>}
                             </div>
