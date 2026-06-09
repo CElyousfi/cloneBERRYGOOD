@@ -6669,15 +6669,30 @@
                         }
                     }
                 }
+                // BUG 1 (data dégradée) : variete vide → dériver la culture depuis le TEXTE
+                // parcelle via normalizeParcelle (distingue Myrtille vs Framboise) avant fallback.
+                if (!w.variete) {
+                    const np = normalizeParcelle(w.parcelle || '');
+                    if (np && np.culture) return np.culture;
+                }
                 // Fallback: use variete
                 return data.getCultureForVariete(w.variete);
+            };
+            // BUG 1 : variété robuste — colonne variete sinon dérivée du texte parcelle.
+            const resolveVariete = (w) => {
+                if (w && w.variete) return w.variete;
+                const np = normalizeParcelle((w && w.parcelle) || '');
+                return (np && np.variete) || '';
             };
             const allMapped = workers.map(w => {
                 const culture = resolveCulture(w);
                 const isMyrt = /myrtille/i.test(culture);
+                // BUG 1 : variété robuste (texte parcelle en fallback si colonne vide)
+                const variete = resolveVariete(w);
                 return {
                     ...w, kilos: w.quantite || 0,
-                    prime: calcPrime(w.quantite || 0, isMyrt ? 'myrtille' : w.variete, w.jour),
+                    variete,
+                    prime: calcPrime(w.quantite || 0, isMyrt ? 'myrtille' : variete, w.jour),
                     culture,
                     isLogistique: logistiqueOps.test(w.operation),
                     equipe: getEquipeName(getEquipePrefix(w.matricule))
@@ -7199,7 +7214,18 @@
                                     }
                                 }
                             }
+                            // BUG 1 : variete vide → dériver culture depuis texte parcelle avant fallback.
+                            if (!r.variete) {
+                                const np = normalizeParcelle(r.parcelle || '');
+                                if (np && np.culture) return np.culture;
+                            }
                             return data.getCultureForVariete(r.variete);
+                        };
+                        // BUG 1 : variété robuste pour les lignes equipeRows (colonne variete sinon parcelle).
+                        const resolveRowVariete = (r) => {
+                            if (r && r.variete) return r.variete;
+                            const np = normalizeParcelle((r && r.parcelle) || '');
+                            return (np && np.variete) || '';
                         };
 
                         // For "Jour" mode: use recolte data (same source as KPI) for consistency
@@ -7215,7 +7241,7 @@
                                 equipe: getEquipePrefix(r.matricule),
                                 totalKg: r.kilos, nbJours: r.kilos > 0 ? 1 : 0,
                                 avgKg: r.kilos, primeJour: r.prime,
-                                variete: (r.variete || '').trim(),
+                                variete: resolveRowVariete(r),
                                 culture: r.culture || resolveRowCulture(r),
                             }));
                         } else if (equipePeriodFilter === 'jour') {
@@ -7234,12 +7260,13 @@
                                 const culture = resolveRowCulture(w);
                                 const isMyrt = /myrtille/i.test(culture);
                                 const kg = Math.round(w.kg * 10) / 10;
+                                const variete = resolveRowVariete(w);
                                 return {
                                     matricule: w.matricule, nom: w.nom, ferme: w.ferme,
                                     equipe: getEquipePrefix(w.matricule),
                                     totalKg: kg, nbJours: kg > 0 ? 1 : 0, avgKg: kg,
-                                    primeJour: calcPrime(kg, isMyrt ? 'myrtille' : w.variete, w.jour),
-                                    variete: (w.variete || '').trim(), culture,
+                                    primeJour: calcPrime(kg, isMyrt ? 'myrtille' : variete, w.jour),
+                                    variete, culture,
                                 };
                             }).filter(w => w.totalKg > 0);
                         } else {
@@ -7260,7 +7287,7 @@
                                 const varCounts = {};
                                 const cultCounts = {};
                                 periodRows.forEach(r => {
-                                    const v = (r.variete || '').trim();
+                                    const v = resolveRowVariete(r);
                                     if (v) varCounts[v] = (varCounts[v] || 0) + 1;
                                     const c = r.resolvedCulture;
                                     if (c) cultCounts[c] = (cultCounts[c] || 0) + 1;
@@ -7915,7 +7942,20 @@
                         if (parcelle && (parcelle.includes(p.nom.toLowerCase()) || parcelle.includes(p.variete.toLowerCase()))) return p.culture;
                     }
                 }
+                // BUG 1 (data dégradée) : si la colonne variete est vide, dériver la culture
+                // depuis le TEXTE parcelle via normalizeParcelle (distingue Myrtille vs Framboise)
+                // AVANT le fallback générique 'Framboise'.
+                if (!w.variete) {
+                    const np = normalizeParcelle(w.parcelle || '');
+                    if (np && np.culture) return np.culture;
+                }
                 return data.getCultureForVariete ? data.getCultureForVariete(w.variete) : 'Framboise';
+            };
+            // BUG 1 : variété robuste — colonne variete sinon dérivée du texte parcelle.
+            const resolveVariete = (w) => {
+                if (w && w.variete) return w.variete;
+                const np = normalizeParcelle((w && w.parcelle) || '');
+                return (np && np.variete) || '';
             };
 
             const loadData = (date) => {
@@ -8005,9 +8045,11 @@
             // Apply culture filter
             const allFiltered2 = cultureFilter ? allFiltered1.filter(r => /myrtille/i.test(r.culture) === (cultureFilter === 'Myrtille')) : allFiltered1;
             // Available varietes (dynamic based on ferme + culture filters)
-            const availableVarietes = [...new Set(allFiltered2.map(r => r.variete).filter(Boolean))].sort();
+            // BUG 1 : si r.variete est vide (data dégradée), dériver depuis le texte parcelle
+            // via normalizeParcelle pour réalimenter le dropdown (Maravilla/Yazmin/Corina/...).
+            const availableVarietes = [...new Set(allFiltered2.map(resolveVariete).filter(Boolean))].sort();
             // Apply variete filter
-            const allFiltered = varieteFilter ? allFiltered2.filter(r => r.variete === varieteFilter) : allFiltered2;
+            const allFiltered = varieteFilter ? allFiltered2.filter(r => resolveVariete(r) === varieteFilter) : allFiltered2;
 
             // ---- Logistique (parallel pipeline) — conditionnement / chargement / encadrement / caporal ----
             // Réutilise les mêmes filtres ferme/culture/variété sur les lignes logistique pour calculer le coût logistique/Kg récolté.
@@ -8092,6 +8134,113 @@
             const dhParKgLog = totalKg > 0 ? Math.round(totalLogCout / totalKg * 100) / 100 : null;
             const dhParKgNet = totalKg > 0 ? Math.round((totalCout + totalLogCout) / totalKg * 100) / 100 : null;
 
+            // ---- KPI agrégés sur la PLAGE du graphe (BUG 2) ------------------------------
+            // Les KPI cards doivent suivre la fenêtre 7/30/60/90j sélectionnée pour le graphe
+            // « Historique DH/Kg », pas seulement le jour courant. On réutilise EXACTEMENT
+            // la même série par jour que le graphe (mêmes filtres ferme/sous-ferme/culture/variété,
+            // même fenêtre de jours-avec-données décalée par histOffset, même agrégation par jour),
+            // puis on agrège via RecolteKpiUtils.aggregatePeriodKpis (somme + moyenne pondérée).
+            // Sémantique :
+            //  - Coût Net/Brut/Total, Total Kg = SOMME sur la plage.
+            //  - « Ouvriers Récolte » (libellé sans /jour) = ouvriers DISTINCTS sur la plage.
+            //  - « Coût Moyen/Ouvrier/Jour » = moyenne PONDÉRÉE (somme coûts / somme ouvrier-jours).
+            // Le jour sélectionné/aujourd'hui (mode Jour) reprend les totaux du KPI jour
+            // (source recolte, dédupliquée) pour rester aligné avec la barre « jour » du graphe.
+            // NB : calcul direct (pas de React.useMemo) car ce bloc est APRÈS le early-return
+            // `if (loading)` — un hook conditionnel violerait les Rules of Hooks. Le coût reste
+            // négligeable (même ordre de grandeur que le graphe qui recalcule déjà par render).
+            const periodKpi = (() => {
+                const RK = (typeof window !== 'undefined' && window.RecolteKpiUtils) ? window.RecolteKpiUtils : null;
+                if (!RK) return null; // fallback : KPI jour (lib non chargée)
+                const logOps = logistiqueOps;
+                // Filtres identiques au graphe
+                const baseRows = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
+                const cultRows = cultureFilter ? baseRows.filter(r => /myrtille/i.test(r.culture || resolveCulture(r)) === (cultureFilter === 'Myrtille')) : baseRows;
+                const varRows = varieteFilter ? cultRows.filter(r => resolveVariete(r) === varieteFilter) : cultRows;
+                // Fenêtre = histRange jours-avec-données, décalée par histOffset (comme le graphe)
+                const allDatesDesc = [...new Set(varRows.map(r => r.jour))].sort().reverse();
+                const winStart = histOffset * histRange;
+                const windowDates = allDatesDesc.slice(winStart, winStart + histRange);
+                const todayStr = new Date().toISOString().slice(0, 10);
+                const recolteDate = selectedDate || todayStr;
+                // Agrégation d'un jour (récolte OU logistique) : dédup par matricule, recalcul prime/transport
+                const aggregateRows = (rows) => {
+                    const byW = {};
+                    rows.forEach(r => {
+                        const k = r.matricule;
+                        if (!byW[k]) byW[k] = { matricule: r.matricule, kg: 0, salaire: 0, variete: r.variete, parcelle: r.parcelle, culture: r.culture, jour: r.jour };
+                        byW[k].kg += (r.kg || 0);
+                        byW[k].salaire += (r.cout || 0);
+                    });
+                    const wList = Object.values(byW);
+                    const dayPeriode = (rows.find(r => r.periode) || {}).periode || '';
+                    let tSalaire = 0, tTransport = 0, tPrime = 0, tCharges = 0, tKg = 0;
+                    wList.forEach(w => {
+                        const culture = w.culture || resolveCulture(w);
+                        const isMyrt = /myrtille/i.test(culture);
+                        const prefix = getEquipePrefix(w.matricule);
+                        tSalaire += w.salaire;
+                        tTransport += getTransport(prefix, dayPeriode);
+                        tPrime += calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour);
+                        tCharges += CHARGES_SOCIALES;
+                        tKg += w.kg;
+                    });
+                    return { salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, kg: tKg, nbOuvJour: wList.length, matricules: wList.map(w => w.matricule) };
+                };
+                const recSeries = [];
+                const logSeries = [];
+                const ouvKeys = {};
+                windowDates.forEach(date => {
+                    // Jour sélectionné/aujourd'hui en mode Jour → reprendre les totaux du KPI jour
+                    if (!isQuinzaineMode && date === recolteDate) {
+                        recSeries.push({ salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, kg: totalKg, nbOuvJour: nbOuvriers });
+                        logSeries.push({ salaire: logSalaire, transport: logTransport, prime: logPrime, charges: logCharges, kg: 0, nbOuvJour: 0 });
+                        allFiltered.forEach(r => { const key = (r.matricule || r.nom || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
+                        return;
+                    }
+                    const dayRec = varRows.filter(r => r.jour === date && !logOps.test(r.operation || ''));
+                    const dayLog = varRows.filter(r => r.jour === date && logOps.test(r.operation || ''));
+                    const aRec = aggregateRows(dayRec);
+                    const aLog = aggregateRows(dayLog);
+                    recSeries.push(aRec);
+                    logSeries.push(aLog);
+                    aRec.matricules.forEach(m => { const key = (m || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
+                });
+                const recAgg = RK.aggregatePeriodKpis(recSeries);
+                const logAgg = RK.aggregatePeriodKpis(logSeries);
+                const net = RK.computeNetDhParKg(recAgg.totalCout, logAgg.totalCout, recAgg.totalKg);
+                const pctSal = recAgg.totalCout > 0 ? Math.round(recAgg.totalSalaire / recAgg.totalCout * 100) : 0;
+                return {
+                    totalSalaire: recAgg.totalSalaire, totalTransport: recAgg.totalTransport,
+                    totalPrime: recAgg.totalPrime, totalCharges: recAgg.totalCharges,
+                    totalCout: recAgg.totalCout, totalKg: recAgg.totalKg,
+                    dhParKgGlobal: recAgg.dhParKgBrut,
+                    dhParKgLog: net.dhParKgLog, dhParKgNet: net.dhParKgNet,
+                    nbOuvriers: Object.keys(ouvKeys).length,
+                    coutMoyenOuvrierJour: recAgg.coutMoyenOuvrierJour,
+                    pctSalaire: pctSal,
+                    nbJours: windowDates.length,
+                };
+            })();
+
+            // Valeurs affichées par les KPI cards : période quand le graphe (et son sélecteur
+            // 7/30/60/90j) est visible, sinon retour aux KPI du jour. Garde la cohérence
+            // graphe/KPI : tant que le sélecteur de période est affiché, KPI = même plage.
+            const userPeriodKpi = periodKpi && showTrend;
+            const kpiSalaire = userPeriodKpi ? periodKpi.totalSalaire : totalSalaire;
+            const kpiTransport = userPeriodKpi ? periodKpi.totalTransport : totalTransport;
+            const kpiPrime = userPeriodKpi ? periodKpi.totalPrime : totalPrime;
+            const kpiCharges = userPeriodKpi ? periodKpi.totalCharges : totalCharges;
+            const kpiCout = userPeriodKpi ? periodKpi.totalCout : totalCout;
+            const kpiTotalKg = userPeriodKpi ? periodKpi.totalKg : totalKg;
+            const kpiDhParKgGlobal = userPeriodKpi ? periodKpi.dhParKgGlobal : dhParKgGlobal;
+            const kpiDhParKgLog = userPeriodKpi ? periodKpi.dhParKgLog : dhParKgLog;
+            const kpiDhParKgNet = userPeriodKpi ? periodKpi.dhParKgNet : dhParKgNet;
+            const kpiNbOuvriers = userPeriodKpi ? periodKpi.nbOuvriers : nbOuvriers;
+            const kpiCoutMoyenOuvrierJour = userPeriodKpi ? periodKpi.coutMoyenOuvrierJour : coutMoyenOuvrierJour;
+            const kpiPctSalaire = userPeriodKpi ? periodKpi.pctSalaire : pctSalaire;
+            const kpiPeriodLabel = userPeriodKpi ? (histOffset === 0 ? `${histRange} derniers jours` : `${histRange}j (fenêtre -${histOffset})`) : 'Aujourd\'hui';
+
             // Aggregation par équipe
             const equipeAgg = {};
             allFiltered.forEach(r => {
@@ -8128,7 +8277,8 @@
             // Aggregation par culture
             const cultAgg = {};
             allFiltered.forEach(r => {
-                const key = r.culture || 'Autre';
+                // BUG 1 : reventiler Framboise/Myrtille même si r.culture vide (data dégradée).
+                const key = r.culture || (normalizeParcelle(r.parcelle || '') || {}).culture || 'Autre';
                 if (!cultAgg[key]) cultAgg[key] = { culture: key, nbOuv: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
                 cultAgg[key].nbOuv++;
                 cultAgg[key].kg += r.kg;
@@ -8285,20 +8435,27 @@
                     )}
                     </div>
 
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,flexWrap:'wrap'}}>
+                        <span style={{fontSize:10,fontWeight:600,color:userPeriodKpi?'var(--berry)':'var(--gray-500)',background:userPeriodKpi?'var(--berry-pale)':'var(--gray-100)',padding:'2px 10px',borderRadius:10}}>
+                            <i className="fa-solid fa-calendar-day" style={{marginRight:4}}></i>Indicateurs : {kpiPeriodLabel}
+                        </span>
+                    </div>
                     <div className="kpi-grid">
-                        <KPICard icon="fa-coins" iconClass="purple" value={dhParKgNet !== null ? dhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: dhParKgGlobal !== null ? dhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: dhParKgLog !== null ? dhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-divide" iconClass="berry" value={dhParKgGlobal !== null ? dhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(totalCout)} label="Coût Total (DH)" subItems={[{value: fmt(totalSalaire), label: 'Salaire'}, {value: fmt(totalTransport), label: 'Transport'}, {value: fmt(totalPrime), label: 'Prime'}, {value: fmt(totalCharges), label: 'Charges'}]} onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(totalKg)} label="Total Kg" onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-user" iconClass="blue" value={fmt(coutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
-                        <KPICard icon="fa-users" iconClass="green" value={nbOuvriers} label="Ouvriers Récolte" />
-                        <KPICard icon="fa-chart-pie" iconClass="purple" value={pctSalaire + '%'} label="Salaire dans Coût" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCout)} label="Coût Total (DH)" subItems={[{value: fmt(kpiSalaire), label: 'Salaire'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges'}]} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKg)} label="Total Kg" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-user" iconClass="blue" value={fmt(kpiCoutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
+                        <KPICard icon="fa-users" iconClass="green" value={kpiNbOuvriers} label="Ouvriers Récolte" />
+                        <KPICard icon="fa-chart-pie" iconClass="purple" value={kpiPctSalaire + '%'} label="Salaire dans Coût" onClick={() => setShowTrend(!showTrend)} />
                     </div>
 
                     {showTrend && (() => {
                         const allEqRows = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
                         const cultureFilteredEq = cultureFilter ? allEqRows.filter(r => /myrtille/i.test(r.culture || resolveCulture(r)) === (cultureFilter === 'Myrtille')) : allEqRows;
-                        const varieteFilteredEq = varieteFilter ? cultureFilteredEq.filter(r => r.variete === varieteFilter) : cultureFilteredEq;
+                        // BUG 1 : filtre variété robuste (texte parcelle en fallback si colonne vide),
+                        // aligné avec le calcul des KPI période (resolveVariete).
+                        const varieteFilteredEq = varieteFilter ? cultureFilteredEq.filter(r => resolveVariete(r) === varieteFilter) : cultureFilteredEq;
                         // Pagination : fenêtre de histRange JOURS DE DONNÉES, décalée par histOffset.
                         // La pagination s'appuie sur les jours réellement présents (évite des pages vides),
                         // mais l'axe X affiché est rendu CONTINU (jours sans récolte inclus à 0) pour ne
