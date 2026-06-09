@@ -154,7 +154,7 @@ deploy depuis un checkout propre de main. La branche `feat/chef-bahia` est
 Chaque deploy suit cette séquence en 2 temps :
 
 1. DEPLOY FUNCTIONS d'abord (backend) :
-   firebase deploy --only functions
+   scripts/deploy.sh functions
    → Le nouveau backend est live, l'ancien frontend fonctionne toujours.
 
 2. DEPLOY HOSTING sur un PREVIEW (pas en prod) :
@@ -168,7 +168,7 @@ Chaque deploy suit cette séquence en 2 temps :
    → Omar valide visuellement depuis le téléphone.
 
 4. SI OK → DEPLOY HOSTING en live :
-   firebase deploy --only hosting
+   scripts/deploy.sh hosting
    → Le frontend rejoint le backend déjà en prod.
 
 5. SMOKE POST-DEPLOY contre la prod :
@@ -177,6 +177,30 @@ Chaque deploy suit cette séquence en 2 temps :
 
 Règle : JAMAIS de deploy hosting en prod sans QA visuelle sur le
 preview d'abord (sauf hotfix critique avec accord Omar explicite).
+
+### Token CI (deploy non-interactif) — OBLIGATOIRE
+
+Le token de **session interactif** (`firebase login`) **expire régulièrement** et
+casse les deploys en plein milieu. Donc : **TOUS les deploys passent par
+`scripts/deploy.sh`**, qui utilise un **token CI explicite** :
+
+```
+scripts/deploy.sh hosting,functions   # deploy ciblé (défaut)
+scripts/deploy.sh functions           # backend seul
+scripts/deploy.sh hosting             # frontend seul
+```
+
+En interne le script lance :
+`firebase deploy --only <cible> --project berrygood-farms-dashboard --token "$FIREBASE_TOKEN" --non-interactive`
+
+- `FIREBASE_TOKEN` est chargé depuis `.env` (gitignored). **Ne jamais le committer.**
+- Génération du token (une fois, par Omar — flux navigateur interactif que
+  l'agent ne peut pas faire) : `firebase login:ci` → copier le token →
+  l'ajouter dans `.env` sous `FIREBASE_TOKEN=...`.
+- **Ne plus jamais** déployer via `firebase deploy` sans `--token` (login session).
+- Caveat : Google déprécie progressivement les tokens `login:ci` au profit d'un
+  service account (`GOOGLE_APPLICATION_CREDENTIALS`). Tant que `login:ci`
+  fonctionne on le garde ; migrer vers un service account si le token cesse d'être accepté.
 
 ## Autorisation de deploy par validation visuelle
 
