@@ -5517,6 +5517,10 @@
             const presenceByMat = React.useMemo(() => Object.fromEntries((presenceData.rows || []).map(r => [(r.matricule || '').toUpperCase().trim(), r])), [presenceData]);
             const lookupPresence = (mat) => presenceByMat[(mat || '').toUpperCase().trim()] || null;
             const [workerPopup, setWorkerPopup] = useState(null);
+            // Modèle paie unifié pour la popup ouvrier : barèmes + registre + jours pointés distincts.
+            const [paieBaremes, setPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            const [ouvriersRegistry, setOuvriersRegistry] = useState({}); // matricule → {declare, baselineJours, baselineDate, primeFonction}
+            const [paieDistinctDays, setPaieDistinctDays] = useState(new Map()); // matricule → {joursPointes:Set, nom}
             const [visaStatus, setVisaStatus] = useState({});
             const [visaLoading, setVisaLoading] = useState(false);
             const [uploadTimes, setUploadTimes] = useState([]);
@@ -5650,6 +5654,70 @@
                     if (json && json.success) setPresenceData({ rows: json.rows || [], syncedAt: json.syncedAt || null });
                 }).catch(() => {});
             }, []);
+
+            // Charge barèmes paie + registre ouvriers (une fois) pour la popup salaire.
+            React.useEffect(() => {
+                const db = firebase.firestore();
+                let cancelled = false;
+                db.collection('app_settings').doc('paie_baremes').get()
+                    .then(doc => { if (!cancelled && doc.exists) setPaieBaremes(prev => ({ ...prev, ...doc.data() })); })
+                    .catch(e => console.warn('paie_baremes load:', e));
+                db.collection('ouvriers_registry').get()
+                    .then(snap => {
+                        if (cancelled) return;
+                        const reg = {};
+                        snap.forEach(d => { reg[d.id] = { matricule: d.id, ...d.data() }; });
+                        setOuvriersRegistry(reg);
+                    })
+                    .catch(e => console.warn('ouvriers_registry load:', e));
+                return () => { cancelled = true; };
+            }, []);
+
+            // Calcule l'ancienneté (jours pointés distincts) pour la date sélectionnée.
+            // Plage = de la plus ancienne baselineDate du registre jusqu'à la date sélectionnée.
+            // Une seule requête sql_mirror_pointage, mise en cache dans paieDistinctDays.
+            const paieDateISO = selectedDate || (dates[0] && dates[0].date) || (apiData && apiData.date) || new Date().toISOString().slice(0, 10);
+            React.useEffect(() => {
+                if (!paieDateISO) return;
+                const regVals = Object.values(ouvriersRegistry);
+                if (regVals.length === 0) return;
+                const db = firebase.firestore();
+                let cancelled = false;
+                const minBase = regVals.map(r => r.baselineDate).filter(Boolean).sort()[0];
+                const minDate = (minBase && minBase < paieDateISO) ? minBase : paieDateISO;
+                loadPointageDistinctDays(db, minDate, paieDateISO)
+                    .then(map => { if (!cancelled) setPaieDistinctDays(map); })
+                    .catch(e => console.warn('paie distinct days:', e));
+                return () => { cancelled = true; };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [paieDateISO, ouvriersRegistry]);
+
+            // Map prefix équipe → coût transport (remboursement), depuis data.transportConfig (même réf que l'onglet Équipes).
+            const getEqPrefixForPaie = (mat) => {
+                const m = String(mat || '').toUpperCase().trim();
+                if (m.startsWith('HAFI')) return 'HA';
+                const p2 = m.substring(0, 2);
+                return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
+            };
+            const getTransportForMat = (mat) => {
+                const team = (data.transportConfig || []).find(t => t.prefix === getEqPrefixForPaie(mat));
+                if (!team) return 0;
+                const hist = team.history || [];
+                if (!hist.length) return Number(team.coutParOuvrier) || 0;
+                // tarif courant (le plus récent) — la popup affiche l'estimation du jour
+                const sorted = [...hist].sort((a, b) => (qOrder(b.effectiveFrom) - qOrder(a.effectiveFrom)));
+                return Number((sorted[0] && sorted[0].coutParOuvrier) != null ? sorted[0].coutParOuvrier : team.coutParOuvrier) || 0;
+            };
+            // ordre quinzaine local (préfixe DD/MM/YYYY ou numéro) pour trier l'historique transport
+            const qOrder = (s) => {
+                if (!s) return 0;
+                const m = String(s).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+                if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00`).getTime();
+                const n = String(s).match(/\d+/);
+                return n ? parseInt(n[0], 10) : 0;
+            };
+            // Statut déclaré d'un matricule (défensif : absent → non déclaré).
+            const isDeclareForMat = (mat) => !!(ouvriersRegistry[mat] && ouvriersRegistry[mat].declare);
 
             const handleDateChange = (d) => { setSelectedDate(d); setLoading(true); loadData(d); loadVisaStatus(d); };
 
@@ -6069,7 +6137,10 @@
                                                                         onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                         onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                         <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
-                                                                        <td style={{fontWeight:600,padding:'6px 10px'}}>{r.nom}</td>
+                                                                        <td style={{fontWeight:600,padding:'6px 10px'}}>
+                                                                            <span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span>
+                                                                            {r.nom}
+                                                                        </td>
                                                                         <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
                                                                         <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
                                                                         <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
@@ -6185,7 +6256,7 @@
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
-                                                                <td style={{fontWeight:600,padding:'6px 10px'}}><WorkerLink matricule={r.matricule} nom={r.nom} /></td>
+                                                                <td style={{fontWeight:600,padding:'6px 10px'}}><span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span><WorkerLink matricule={r.matricule} nom={r.nom} /></td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
                                                                 <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight: r.quantite ? 600 : 400}}>{r.quantite || '—'}</td>
@@ -6305,10 +6376,28 @@
                     {/* Popup détail ouvrier */}
                     {workerPopup && (() => {
                         const r = workerPopup;
-                        const prime = r.type === 'recolte' ? calcPrime(r.quantite, r.variete, r.jour) : 0;
-                        const salaireBase = Math.round(r.cout || 0);
-                        const salaireBrut = salaireBase + prime;
+                        const primeRecolte = r.type === 'recolte' ? calcPrime(r.quantite, r.variete, r.jour) : 0;
                         const hs25 = r.hs25 || 0, hs50 = r.hs50 || 0, hs100 = r.hs100 || 0;
+                        // Modèle paie complet (source unique window.PaieUtils). Cas défensif : ouvrier
+                        // absent du registre → non déclaré, ancienneté 0, prime fonction 0 (pas de crash).
+                        const reg = ouvriersRegistry[r.matricule] || {};
+                        const declare = !!reg.declare;
+                        const baselineDate = reg.baselineDate || '';
+                        const baselineJours = Number(reg.baselineJours || 0);
+                        const primeFonctionJour = Number(reg.primeFonction || 0);
+                        const pt = paieDistinctDays.get(r.matricule);
+                        let joursDepuisBaseline = 0;
+                        if (pt && pt.joursPointes) {
+                            pt.joursPointes.forEach(dISO => { if (!baselineDate || dISO >= baselineDate) joursDepuisBaseline++; });
+                        }
+                        const anciennete = baselineJours + joursDepuisBaseline;
+                        const joursTravailles = Number(r.jours || 0);
+                        const primeTransport = getTransportForMat(r.matricule);
+                        const paie = (window.PaieUtils && window.PaieUtils.computeWorkerPaie)
+                            ? window.PaieUtils.computeWorkerPaie({ declare, joursTravailles, anciennete, baremes: paieBaremes, dateISO: paieDateISO, primeFonctionJour, primeTransport })
+                            : { statutDeclare: declare, smagBaseJour: 0, smagBaseTotal: 0, anciennetePalier: '—', anciennetePourcent: 0, primeAnciennete: 0, primeFonction: 0, primeTransport: 0, brut: 0, cotisationsSalariales: 0, chargesPatronales: 0, net: 0, coutEmployeur: 0 };
+                        const totalBrutEstime = Math.round(paie.brut + primeRecolte);
+                        const dh = (n) => Math.round(n).toLocaleString('fr-FR');
                         return (
                         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setWorkerPopup(null)}>
                             <div style={{background:'#fff',borderRadius:12,maxWidth:480,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
@@ -6316,6 +6405,11 @@
                                     <div>
                                         <h3 style={{margin:0,fontSize:16,color:'var(--berry)'}}><i className="fa-solid fa-user" style={{marginRight:8}}></i>{r.nom}</h3>
                                         <div style={{fontSize:12,color:'var(--gray-500)',marginTop:2,fontFamily:'monospace'}}>{r.matricule}</div>
+                                        <div style={{marginTop:6}}>
+                                            <span style={{display:'inline-block',padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700,background: declare ? 'var(--green-pale)' : 'var(--red-pale)', color: declare ? 'var(--green)' : 'var(--red)'}}>
+                                                {declare ? '🟢 Déclaré' : '🔴 Non déclaré'}
+                                            </span>
+                                        </div>
                                     </div>
                                     <button onClick={() => setWorkerPopup(null)} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--gray-400)'}}>&times;</button>
                                 </div>
@@ -6347,19 +6441,46 @@
 
                                     {!isCaporal && (
                                     <div style={{marginTop:16,background:'var(--berry-pale)',borderRadius:10,padding:14}}>
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Coût journée</span>
-                                            <span style={{fontWeight:600}}>{salaireBase} DH</span>
+                                        <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:8}}>
+                                            Estimation paie du {paieDateISO} — modèle complet ({declare ? 'déclaré' : 'non déclaré'}).
                                         </div>
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>SMAG base ({dh(paie.smagBaseJour)} DH/j × {joursTravailles} j)</span>
+                                            <span style={{fontWeight:600}}>{dh(paie.smagBaseTotal)} DH</span>
+                                        </div>
+                                        {declare && (
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté ({anciennete} j → {paie.anciennetePalier} {paie.anciennetePourcent}%)</span>
+                                            <span style={{fontWeight:600,color: paie.primeAnciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{paie.primeAnciennete > 0 ? `+${dh(paie.primeAnciennete)}` : '0'} DH</span>
+                                        </div>
+                                        )}
+                                        {primeFonctionJour > 0 && (
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime de fonction ({dh(primeFonctionJour)} DH/j × {joursTravailles} j)</span>
+                                            <span style={{fontWeight:600,color:'var(--berry)'}}>+{dh(paie.primeFonction)} DH</span>
+                                        </div>
+                                        )}
+                                        {primeTransport > 0 && (
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime transport (équipe {getEqPrefixForPaie(r.matricule)}, remboursement)</span>
+                                            <span style={{fontWeight:600,color:'var(--blue)'}}>+{dh(primeTransport)} DH</span>
+                                        </div>
+                                        )}
+                                        {declare && paie.chargesPatronales > 0 && (
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS / charges patronales ({Math.round((paieBaremes.tauxChargesPatronales || 0) * 100)}%)</span>
+                                            <span style={{fontWeight:600,color:'var(--gray-500)'}}>{dh(paie.chargesPatronales)} DH</span>
+                                        </div>
+                                        )}
                                         {r.type === 'recolte' && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime récolte ({r.quantite || 0} kg)</span>
-                                            <span style={{fontWeight:600,color:prime > 0 ? 'var(--green)' : 'var(--gray-400)'}}>{prime > 0 ? `+${prime}` : '0'} DH</span>
+                                            <span style={{fontWeight:600,color:primeRecolte > 0 ? 'var(--green)' : 'var(--gray-400)'}}>{primeRecolte > 0 ? `+${dh(primeRecolte)}` : '0'} DH</span>
                                         </div>
                                         )}
                                         <div style={{display:'flex',justifyContent:'space-between',borderTop:'2px solid var(--berry)',paddingTop:8}}>
-                                            <span style={{fontWeight:700,color:'var(--berry)'}}>Salaire Brut Estimé</span>
-                                            <span style={{fontWeight:700,fontSize:16,color:'var(--berry)'}}>{salaireBrut} DH</span>
+                                            <span style={{fontWeight:700,color:'var(--berry)'}}>Total Salaire Brut Estimé</span>
+                                            <span style={{fontWeight:700,fontSize:16,color:'var(--berry)'}}>{dh(totalBrutEstime)} DH</span>
                                         </div>
                                     </div>
                                     )}
@@ -22529,7 +22650,12 @@ ${rejetHtml}
         }
 
         // ===================== PAIE — Helpers + Composants =====================
-        const PAIE_BAREMES_DEFAULT = {
+        // Source unique du modèle paie : public/lib/paieUtils.js (window.PaieUtils).
+        // On référence ici les helpers/const pour éviter toute duplication de logique.
+        // Fallback minimal défensif si la lib n'a pas (encore) chargé (ne devrait pas arriver,
+        // le <script> est chargé avant app.js).
+        const __PaieUtils = (typeof window !== 'undefined' && window.PaieUtils) || {};
+        const PAIE_BAREMES_DEFAULT = __PaieUtils.PAIE_BAREMES_DEFAULT || {
             smagBrutJournalier: 88.58,
             smagNetJournalier: 82.61,
             joursParMois: 26,
@@ -22541,31 +22667,9 @@ ${rejetHtml}
                 { seuilJours: 3120, pourcentage: 15, label: '≥ 10 ans' },
             ],
         };
-
-        function trouverPalierAnciennete(anciennete, paliers) {
-            const sorted = [...(paliers || [])].sort((a, b) => (b.seuilJours || 0) - (a.seuilJours || 0));
-            const p = sorted.find(x => anciennete >= (x.seuilJours || 0));
-            return { palier: p?.label || '—', pourcentage: p?.pourcentage ?? 0 };
-        }
-
-        function calculerPaieOuvrier({ declare, joursTravailles, anciennete, baremes }) {
-            const jrs = Number(joursTravailles) || 0;
-            const b = { ...PAIE_BAREMES_DEFAULT, ...(baremes || {}) };
-            if (!declare) {
-                const net = (b.smagNetJournalier || 0) * jrs;
-                return { net, brut: net, prime: 0, palier: '—', pourcentage: 0,
-                    chargesPatronales: 0, cotisationsSalariales: 0, coutEmployeur: net };
-            }
-            const brutBase = (b.smagBrutJournalier || 0) * jrs;
-            const { palier, pourcentage } = trouverPalierAnciennete(anciennete || 0, b.paliers);
-            const prime = brutBase * (pourcentage / 100);
-            const brut = brutBase + prime;
-            const cotisSal = brut * (b.tauxCotisationsSalariales || 0);
-            const chargesPat = brut * (b.tauxChargesPatronales || 0);
-            return { net: brut - cotisSal, brut, prime, palier, pourcentage,
-                chargesPatronales: chargesPat, cotisationsSalariales: cotisSal,
-                coutEmployeur: brut + chargesPat };
-        }
+        const trouverPalierAnciennete = (anciennete, paliers) =>
+            window.PaieUtils.trouverPalierAnciennete(anciennete, paliers);
+        const calculerPaieOuvrier = (args) => window.PaieUtils.calculerPaieOuvrier(args);
 
         // Lit sql_mirror_pointage entre minDate et maxDate (IDs YYYY-MM-DD)
         // → Map<matricule, { joursPointes:Set<dateISO>, nom }>
@@ -22613,6 +22717,15 @@ ${rejetHtml}
             });
             const addPalier = () => setBaremes(b => ({ ...b, paliers: [...(b.paliers || []), { seuilJours: 0, pourcentage: 0, label: '' }] }));
             const removePalier = (i) => setBaremes(b => ({ ...b, paliers: (b.paliers || []).filter((_, idx) => idx !== i) }));
+            // SMAG daté (smagHistory) : entrées [{dateFrom:'YYYY-MM-DD', smagBrutJournalier, smagNetJournalier}]
+            const setSmagHist = (i, k, v) => setBaremes(b => {
+                const arr = [...(b.smagHistory || [])];
+                arr[i] = { ...arr[i], [k]: k === 'dateFrom' ? v : Number(v) };
+                return { ...b, smagHistory: arr };
+            });
+            const addSmagHist = () => setBaremes(b => ({ ...b, smagHistory: [...(b.smagHistory || []), { dateFrom: new Date().toISOString().slice(0, 10), smagBrutJournalier: b.smagBrutJournalier || 0, smagNetJournalier: b.smagNetJournalier || 0 }] }));
+            const removeSmagHist = (i) => setBaremes(b => ({ ...b, smagHistory: (b.smagHistory || []).filter((_, idx) => idx !== i) }));
+            const sortSmagHist = () => setBaremes(b => ({ ...b, smagHistory: [...(b.smagHistory || [])].sort((a, c) => (a.dateFrom < c.dateFrom ? -1 : a.dateFrom > c.dateFrom ? 1 : 0)) }));
             const save = async () => {
                 setSaving(true); setSaveMsg('');
                 try {
@@ -22671,6 +22784,41 @@ ${rejetHtml}
                             ))}
                         </tbody>
                     </table>
+
+                    <h4 style={{fontSize:12, fontWeight:700, marginTop:16, marginBottom:4, color:'var(--berry)'}}>SMAG daté (historique)</h4>
+                    <div style={{fontSize:10, color:'var(--gray-400)', marginBottom:8}}>
+                        Le SMAG applicable à une date est l'entrée datée la plus récente ≤ cette date. En l'absence d'entrée applicable, les champs plats ci-dessus servent de défaut.
+                    </div>
+                    <table className="data-table" style={{fontSize:11, marginBottom:12}}>
+                        <thead><tr>
+                            <th>Applicable à partir du</th>
+                            <th style={{textAlign:'right'}}>SMAG brut/j (DH)</th>
+                            <th style={{textAlign:'right'}}>SMAG net/j (DH)</th>
+                            <th style={{width:40}}></th>
+                        </tr></thead>
+                        <tbody>
+                            {(baremes.smagHistory || []).map((h, i) => (
+                                <tr key={i}>
+                                    <td><input type="date" value={h.dateFrom || ''} onChange={e => setSmagHist(i, 'dateFrom', e.target.value)} style={{...inputStyle, width:'90%'}} /></td>
+                                    <td style={{textAlign:'right'}}><input type="number" step="0.01" value={h.smagBrutJournalier} onChange={e => setSmagHist(i, 'smagBrutJournalier', e.target.value)} style={{...inputStyle, textAlign:'right'}} /></td>
+                                    <td style={{textAlign:'right'}}><input type="number" step="0.01" value={h.smagNetJournalier} onChange={e => setSmagHist(i, 'smagNetJournalier', e.target.value)} style={{...inputStyle, textAlign:'right'}} /></td>
+                                    <td><button onClick={() => removeSmagHist(i)} style={{background:'transparent', border:'none', color:'var(--red)', cursor:'pointer'}} title="Supprimer"><i className="fa-solid fa-trash"></i></button></td>
+                                </tr>
+                            ))}
+                            {(!baremes.smagHistory || baremes.smagHistory.length === 0) && (
+                                <tr><td colSpan={4} style={{color:'var(--gray-400)', fontStyle:'italic', padding:'8px 4px'}}>Aucune entrée datée — le SMAG plat ci-dessus s'applique partout.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                    <div style={{display:'flex', gap:8, alignItems:'center', marginBottom:12}}>
+                        <button onClick={addSmagHist} style={{padding:'6px 12px', background:'var(--gray-100)', color:'var(--gray-500)', border:'1px solid var(--gray-300)', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                            <i className="fa-solid fa-plus" style={{marginRight:4}}></i> Ajouter une période SMAG
+                        </button>
+                        <button onClick={sortSmagHist} style={{padding:'6px 12px', background:'var(--gray-100)', color:'var(--gray-500)', border:'1px solid var(--gray-300)', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                            <i className="fa-solid fa-arrow-down-1-9" style={{marginRight:4}}></i> Trier par date
+                        </button>
+                    </div>
+
                     <div style={{display:'flex', gap:8, alignItems:'center'}}>
                         <button onClick={addPalier} style={{padding:'6px 12px', background:'var(--gray-100)', color:'var(--gray-500)', border:'1px solid var(--gray-300)', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
                             <i className="fa-solid fa-plus" style={{marginRight:4}}></i> Ajouter un palier
@@ -22760,6 +22908,7 @@ ${rejetHtml}
                     const declare = !!r.declare;
                     const paie = calculerPaieOuvrier({ declare, joursTravailles: joursPeriode, anciennete, baremes });
                     list.push({ matricule: mat, nom: r.nom || pt.nom || '', declare,
+                        primeFonction: Number(r.primeFonction || 0),
                         baselineJours, baselineDate, joursDepuisBaseline, anciennete, joursPeriode, paie });
                 });
                 list.sort((a, b) => (b.paie.coutEmployeur || 0) - (a.paie.coutEmployeur || 0));
@@ -22798,6 +22947,25 @@ ${rejetHtml}
                     }, { merge: true });
                 } catch (e) {
                     console.error('toggleDeclare:', e);
+                    setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
+                    alert('Erreur enregistrement: ' + e.message);
+                }
+            };
+
+            // Prime de fonction (DH/jour) par ouvrier — persistée dans ouvriers_registry.
+            const savePrimeFonction = async (matricule, val) => {
+                const db = firebase.firestore();
+                const prev = registry[matricule] || { matricule };
+                const num = Number(val) || 0;
+                setRegistry(prevReg => ({ ...prevReg, [matricule]: { ...prev, primeFonction: num } }));
+                try {
+                    await db.collection('ouvriers_registry').doc(matricule).set({
+                        matricule, primeFonction: num,
+                        nom: prev.nom || pointageMap.get(matricule)?.nom || '',
+                        updatedAt: Date.now(),
+                    }, { merge: true });
+                } catch (e) {
+                    console.error('savePrimeFonction:', e);
                     setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
                     alert('Erreur enregistrement: ' + e.message);
                 }
@@ -22957,6 +23125,7 @@ ${rejetHtml}
                                             <th>Matricule</th>
                                             <th>Nom</th>
                                             <th style={{textAlign:'center'}}>Déclaré</th>
+                                            <th style={{textAlign:'right'}}>Prime fct (DH/j)</th>
                                             <th style={{textAlign:'right'}}>Baseline (j)</th>
                                             <th style={{textAlign:'center'}}>Date coupure</th>
                                             <th style={{textAlign:'right'}}>Depuis (j)</th>
@@ -22979,6 +23148,11 @@ ${rejetHtml}
                                                 <td style={{textAlign:'center'}}>
                                                     <input type="checkbox" checked={r.declare} onChange={e => toggleDeclare(r.matricule, e.target.checked)} />
                                                 </td>
+                                                <td style={{textAlign:'right'}}>
+                                                    <input type="number" step="0.5" min="0" defaultValue={r.primeFonction || 0}
+                                                        onBlur={e => { const v = Number(e.target.value) || 0; if (v !== (r.primeFonction || 0)) savePrimeFonction(r.matricule, v); }}
+                                                        style={{width:60, textAlign:'right', padding:'2px 4px', borderRadius:4, border:'1px solid var(--gray-200)', fontSize:10}} />
+                                                </td>
                                                 <td style={{textAlign:'right'}}>{fmtInt(r.baselineJours)}</td>
                                                 <td style={{textAlign:'center', color:'var(--gray-400)'}}>{r.baselineDate || '—'}</td>
                                                 <td style={{textAlign:'right'}}>{fmtInt(r.joursDepuisBaseline)}</td>
@@ -22994,7 +23168,7 @@ ${rejetHtml}
                                             </tr>
                                         ))}
                                         {filteredRows.length === 0 && (
-                                            <tr><td colSpan={15} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
+                                            <tr><td colSpan={16} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
                                         )}
                                     </tbody>
                                     <tfoot>
