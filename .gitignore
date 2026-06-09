@@ -45,7 +45,7 @@ bower_components
 build/Release
 
 # Dependency directories
-node_modules/
+node_modules
 
 # Optional npm cache directory
 .npm
@@ -69,3 +69,22 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Imports Excel/data locaux (ad-hoc, jamais versionnés)
+/CANEVA STOCK BGF POUR SMARTBERRY.xlsx
+/ETAT NB JOUR PAR QNZ Ojra HAMZA ALLAOUI.xlsx
+/Informations sur les véhicules de transport des ouvriers.xlsx
+/Liste des postes fixes et des primes de fonction fixes.xlsx
+/MAGASIN_MOIS6_FIXED.xlsx
+/Prime Fonction Net par jour.xlsx
+/Total des Prime 2éme Qnz Mai.xls
+/Total des jours des ouvriers déclarés jusqu'à la 2ᵉ quinzaine de mai 2026.xlsx
+/data/Ouvriers Déclarés 190526.xlsx
+/data/baseline-anciennete-IMPORT.xlsx
+/data/baseline-anciennete-parsed.json
+/data/declares-IMPORT.xlsx
+/data/declares-parsed.json
+
+# Bruit OS / sauvegardes locales
+.DS_Store
+*.bak
