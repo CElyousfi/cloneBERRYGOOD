@@ -6394,9 +6394,13 @@
                         const joursTravailles = Number(r.jours || 0);
                         const primeTransport = getTransportForMat(r.matricule);
                         const paie = (window.PaieUtils && window.PaieUtils.computeWorkerPaie)
-                            ? window.PaieUtils.computeWorkerPaie({ declare, joursTravailles, anciennete, baremes: paieBaremes, dateISO: paieDateISO, primeFonctionJour, primeTransport })
-                            : { statutDeclare: declare, smagBaseJour: 0, smagBaseTotal: 0, anciennetePalier: '—', anciennetePourcent: 0, primeAnciennete: 0, primeFonction: 0, primeTransport: 0, brut: 0, cotisationsSalariales: 0, chargesPatronales: 0, net: 0, coutEmployeur: 0 };
-                        const totalBrutEstime = Math.round(paie.brut + primeRecolte);
+                            ? window.PaieUtils.computeWorkerPaie({ declare, joursTravailles, anciennete, baremes: paieBaremes, dateISO: paieDateISO, primeFonctionJour, primeTransport, hs25, hs50, hs100, primeRecolte })
+                            : { statutDeclare: declare, smagBaseJour: 0, smagBaseTotal: 0, anciennetePalier: '—', anciennetePourcent: 0, primeAnciennete: 0, primeFonction: 0, heuresSup: { h25: 0, h50: 0, h100: 0, tauxHoraire: 0, montant: 0 }, brut: 0, cotisationsSalariales: 0, chargesPatronales: 0, primeTransport: 0, primeRecolte: 0, net: 0, coutEmployeur: 0, coutTotalEmployeur: 0 };
+                        const hs = paie.heuresSup || { h25: 0, h50: 0, h100: 0, tauxHoraire: 0, montant: 0 };
+                        const totalHsHeures = (hs.h25 || 0) + (hs.h50 || 0) + (hs.h100 || 0);
+                        // Nom d'équipe pour la ligne Transport (même réf que le classement par équipe).
+                        const eqPrefix = getEqPrefixForPaie(r.matricule);
+                        const eqNamePaie = eqPrefix === 'BGF' ? 'BGF' : (((data.transportConfig || []).find(t => t.prefix === eqPrefix) || {}).equipe || `Équipe ${eqPrefix}`);
                         const dh = (n) => Math.round(n).toLocaleString('fr-FR');
                         return (
                         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setWorkerPopup(null)}>
@@ -6433,54 +6437,63 @@
                                         </tbody>
                                     </table>
 
-                                    {(hs25 > 0 || hs50 > 0 || hs100 > 0) && (
-                                        <div style={{marginTop:12,padding:'8px 12px',background:'#fff3cd',borderRadius:8,fontSize:12}}>
-                                            <strong>Heures Sup. :</strong> {hs25 > 0 && <span style={{marginLeft:8}}>HS 25%: {hs25}h</span>} {hs50 > 0 && <span style={{marginLeft:8}}>HS 50%: {hs50}h</span>} {hs100 > 0 && <span style={{marginLeft:8}}>HS 100%: {hs100}h</span>}
-                                        </div>
-                                    )}
-
                                     {!isCaporal && (
                                     <div style={{marginTop:16,background:'var(--berry-pale)',borderRadius:10,padding:14}}>
                                         <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:8}}>
                                             Estimation paie du {paieDateISO} — modèle complet ({declare ? 'déclaré' : 'non déclaré'}).
                                         </div>
+
+                                        {/* --- Bloc 1 : Salaire Brut (smag + ancienneté + fonction + HS) --- */}
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>SMAG base ({dh(paie.smagBaseJour)} DH/j × {joursTravailles} j)</span>
                                             <span style={{fontWeight:600}}>{dh(paie.smagBaseTotal)} DH</span>
                                         </div>
-                                        {declare && (
+                                        {/* Ancienneté : affichée même si palier 0% (informatif). */}
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté ({anciennete} j → {paie.anciennetePalier} {paie.anciennetePourcent}%)</span>
                                             <span style={{fontWeight:600,color: paie.primeAnciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{paie.primeAnciennete > 0 ? `+${dh(paie.primeAnciennete)}` : '0'} DH</span>
                                         </div>
-                                        )}
-                                        {primeFonctionJour > 0 && (
+                                        {paie.primeFonction > 0 && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime de fonction ({dh(primeFonctionJour)} DH/j × {joursTravailles} j)</span>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime fonction ({dh(primeFonctionJour)} DH/j × {joursTravailles} j)</span>
                                             <span style={{fontWeight:600,color:'var(--berry)'}}>+{dh(paie.primeFonction)} DH</span>
                                         </div>
                                         )}
-                                        {primeTransport > 0 && (
+                                        {hs.montant > 0 && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime transport (équipe {getEqPrefixForPaie(r.matricule)}, remboursement)</span>
-                                            <span style={{fontWeight:600,color:'var(--blue)'}}>+{dh(primeTransport)} DH</span>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Heures supplémentaires ({totalHsHeures} h × {Math.round(hs.tauxHoraire * 100) / 100} DH/h)</span>
+                                            <span style={{fontWeight:600,color:'var(--berry)'}}>+{dh(hs.montant)} DH</span>
                                         </div>
                                         )}
+                                        {/* = Salaire Brut */}
+                                        <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
+                                            <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire Brut</span>
+                                            <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{dh(paie.brut)} DH</span>
+                                        </div>
+
+                                        {/* --- Bloc 2 : ajouts au coût employeur (hors brut) --- */}
                                         {declare && paie.chargesPatronales > 0 && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS / charges patronales ({Math.round((paieBaremes.tauxChargesPatronales || 0) * 100)}%)</span>
-                                            <span style={{fontWeight:600,color:'var(--gray-500)'}}>{dh(paie.chargesPatronales)} DH</span>
+                                            <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{dh(paie.chargesPatronales)} DH</span>
                                         </div>
                                         )}
-                                        {r.type === 'recolte' && (
+                                        {/* Transport : toujours affiché (coût employeur), remboursement hors brut. */}
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime récolte ({r.quantite || 0} kg)</span>
-                                            <span style={{fontWeight:600,color:primeRecolte > 0 ? 'var(--green)' : 'var(--gray-400)'}}>{primeRecolte > 0 ? `+${dh(primeRecolte)}` : '0'} DH</span>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Transport (équipe {eqNamePaie})</span>
+                                            <span style={{fontWeight:600,color: primeTransport > 0 ? 'var(--blue)' : 'var(--gray-400)'}}>{primeTransport > 0 ? `+${dh(primeTransport)}` : '0'} DH</span>
+                                        </div>
+                                        {r.type === 'recolte' && primeRecolte > 0 && (
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime récolte ({r.quantite || 0} kg × barème)</span>
+                                            <span style={{fontWeight:600,color:'var(--green)'}}>+{dh(primeRecolte)} DH</span>
                                         </div>
                                         )}
-                                        <div style={{display:'flex',justifyContent:'space-between',borderTop:'2px solid var(--berry)',paddingTop:8}}>
-                                            <span style={{fontWeight:700,color:'var(--berry)'}}>Total Salaire Brut Estimé</span>
-                                            <span style={{fontWeight:700,fontSize:16,color:'var(--berry)'}}>{dh(totalBrutEstime)} DH</span>
+
+                                        {/* = Coût Total Employeur — chiffre clé DG, en évidence. */}
+                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--berry)',paddingTop:10,marginTop:4}}>
+                                            <span style={{fontWeight:800,color:'var(--berry)',fontSize:14}}>= Coût Total Employeur</span>
+                                            <span style={{fontWeight:800,fontSize:20,color:'var(--berry)'}}>{dh(paie.coutTotalEmployeur)} DH</span>
                                         </div>
                                     </div>
                                     )}
