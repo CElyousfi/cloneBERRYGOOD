@@ -6022,7 +6022,7 @@
                         const prefixToName = {};
                         transportConfig.forEach(t => { prefixToName[t.prefix] = t.equipe; });
                         const eqName = (eq) => eq === 'BGF' ? 'BGF' : (prefixToName[eq] || `Équipe ${eq}`);
-                        const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
+                        const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); if (p2 === 'BG') return 'BGF'; return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
                         // Group by equipe → parcelles
                         const byEquipe = {};
                         filteredDetail.forEach(r => {
@@ -6080,7 +6080,7 @@
                                     const prefixToName = {};
                                     (data.transportConfig || []).forEach(t => { prefixToName[t.prefix] = t.equipe; });
                                     const eqName = (eq) => eq === 'BGF' ? 'BGF' : (prefixToName[eq] || `Équipe ${eq}`);
-                                    const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
+                                    const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); if (p2 === 'BG') return 'BGF'; return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
                                     const fermeRows = isOpen ? detailRows.filter(r => r.ferme === p.ferme && matchSub(r)) : [];
                                     const byEquipe = {};
                                     fermeRows.forEach(r => {
@@ -6195,6 +6195,7 @@
                             const m = String(mat || '').toUpperCase().trim();
                             if (m.startsWith('HAFI')) return 'HA';
                             const p2 = m.substring(0, 2);
+                            if (p2 === 'BG') return 'BGF';
                             return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
                         };
 
