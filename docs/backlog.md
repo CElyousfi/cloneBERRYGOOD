@@ -265,7 +265,12 @@ Gated : oui — valider avec Omar avant de commencer : structure des dossiers,
 stratégie Phase 1 sans changement de build, moment de migration Vite,
 pattern TabErrorBoundary, convention de nommage, ordre des tabs à extraire.
 
-## [ ] ITEM — Signalement de bug in-app (photo + description)
+## [x] ITEM — Signalement de bug in-app (photo + description)
+✅ LIVRÉ PROD 2026-06-09 — Phase A (PR #81) bouton flottant 🐛 + popup (photo/description/contexte
+auto) + CF submit-bug + Storage + WhatsApp DG ; Phase B (PR #82) vue admin « Bugs signalés »
+(dg/rh) list-bugs/update-bug-status + statuts nouveau/en_cours/resolu. Composants séparés
+(BugReportButton.jsx, BugReportsAdmin.jsx) + build-frontend.js étendu (pattern modularisation
+Phase 1). Playwright 12/12 Chromium + 12/12 WebKit sur preview. QA approuvée 2 phases.
 Objectif : permettre aux utilisateurs de signaler un bug directement
 depuis l'application, sans quitter l'écran.
 
