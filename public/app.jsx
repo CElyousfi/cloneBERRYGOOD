@@ -163,7 +163,8 @@
         function SimpleBarChart({ data, dataKeys, colors, xKey, height = 250 }) {
             if (!data || !data.length) return null;
             const padding = { top: 20, right: 20, bottom: 30, left: 40 };
-            const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => d[k] || 0)));
+            const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => Number(d[k]) || 0)));
+            const safeMax = (maxVal > 0 && isFinite(maxVal)) ? maxVal : 1;
             const barGroupWidth = 100 / data.length;
             const barWidth = barGroupWidth / (dataKeys.length + 1);
 
@@ -174,7 +175,7 @@
                             const y = padding.top + (height - padding.top - padding.bottom) * (1 - tick);
                             return React.createElement('g', { key: i },
                                 React.createElement('line', { x1: padding.left, y1: y, x2: 600 - padding.right, y2: y, stroke: '#f0f0f0', strokeDasharray: '3 3' }),
-                                React.createElement('text', { x: padding.left - 5, y: y + 4, textAnchor: 'end', fontSize: '10', fill: '#999' }, Math.round(maxVal * tick))
+                                React.createElement('text', { x: padding.left - 5, y: y + 4, textAnchor: 'end', fontSize: '10', fill: '#999' }, Math.round(safeMax * tick))
                             );
                         }),
                         data.map((d, di) => {
@@ -182,8 +183,8 @@
                             const groupW = (600 - padding.left - padding.right) / data.length;
                             return React.createElement('g', { key: di },
                                 dataKeys.map((key, ki) => {
-                                    const val = d[key] || 0;
-                                    const barH = (val / (maxVal || 1)) * (height - padding.top - padding.bottom);
+                                    const val = Number(d[key]) || 0;
+                                    const barH = Math.max(0, (val / safeMax) * (height - padding.top - padding.bottom));
                                     const bw = groupW / (dataKeys.length + 1);
                                     const bx = groupX + (ki + 0.5) * bw;
                                     const by = padding.top + (height - padding.top - padding.bottom) - barH;
@@ -202,7 +203,8 @@
             const padding = { top: 30, right: 20, bottom: 30, left: 40 };
             const chartW = 600 - padding.left - padding.right;
             const chartH = height - padding.top - padding.bottom;
-            const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => d[k] || 0))) * 1.1;
+            const rawMax = Math.max(...data.flatMap(d => dataKeys.map(k => Number(d[k]) || 0))) * 1.1;
+            const maxVal = (rawMax > 0 && isFinite(rawMax)) ? rawMax : 1;
             const n = data.length;
             // Down-sample dots/labels/x-axis when there are too many points
             const dotEvery = n > 120 ? Math.ceil(n / 60) : 1;
@@ -220,8 +222,8 @@
                 dataKeys.map((key, ki) => {
                     const points = data.map((d, i) => ({
                         x: padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW),
-                        y: padding.top + chartH - ((d[key] || 0) / maxVal) * chartH,
-                        val: d[key]
+                        y: padding.top + chartH - ((Number(d[key]) || 0) / maxVal) * chartH,
+                        val: Number(d[key]) || 0
                     }));
                     const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
                     const areaD = pathD + ` L ${points[points.length - 1].x} ${padding.top + chartH} L ${points[0].x} ${padding.top + chartH} Z`;
@@ -246,14 +248,14 @@
             const chartW = W - padding.left - padding.right;
             const chartH = height - padding.top - padding.bottom;
             const n = data.length;
-            const maxLine = Math.max(1, ...data.map(d => d[lineKey] || 0)) * 1.1;
-            const maxBar = Math.max(1, ...data.map(d => d[barKey] || 0)) * 1.1;
+            const maxLine = Math.max(1, ...data.map(d => Number(d[lineKey]) || 0)) * 1.1;
+            const maxBar = Math.max(1, ...data.map(d => Number(d[barKey]) || 0)) * 1.1;
             const xLabelEvery = Math.max(1, Math.ceil(n / 12));
             const xAt = (i) => padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW);
             const barW = (n === 1 ? chartW * 0.4 : (chartW / n) * 0.6);
-            const yFor = (val) => padding.top + chartH - ((val || 0) / maxLine) * chartH;
+            const yFor = (val) => padding.top + chartH - ((Number(val) || 0) / maxLine) * chartH;
 
-            const peakPoints = data.map((d, i) => ({ x: xAt(i), y: yFor(d[lineKey]), val: d[lineKey] || 0 }));
+            const peakPoints = data.map((d, i) => ({ x: xAt(i), y: yFor(d[lineKey]), val: Number(d[lineKey]) || 0 }));
 
             let pathD;
             if (lineMode === 'sawtooth') {
@@ -282,8 +284,8 @@
                     );
                 }),
                 data.map((d, i) => {
-                    const val = d[barKey] || 0;
-                    const bh = (val / maxBar) * chartH;
+                    const val = Number(d[barKey]) || 0;
+                    const bh = Math.max(0, (val / maxBar) * chartH);
                     const bx = xAt(i) - barW / 2;
                     const by = padding.top + chartH - bh;
                     return React.createElement('rect', { key: 'b' + i, x: bx, y: by, width: barW, height: bh, fill: barColor, rx: 4, opacity: 0.7 });
@@ -296,12 +298,21 @@
 
         function SimplePieChart({ data, colors, size = 200 }) {
             if (!data || !data.length) return null;
-            const total = data.reduce((s, d) => s + d.value, 0);
+            const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0);
             const cx = size / 2, cy = size / 2, r = size * 0.35, ir = size * 0.22;
             let cumAngle = -Math.PI / 2;
 
+            // État vide propre : pas de total exploitable → aucun <path> (évite des angles NaN)
+            if (!(total > 0) || !isFinite(total)) {
+                return React.createElement('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}` },
+                    React.createElement('circle', { cx, cy, r, fill: 'none', stroke: '#eee', strokeWidth: size * 0.13 }),
+                    React.createElement('text', { x: cx, y: cy + 4, textAnchor: 'middle', fontSize: '12', fill: '#999' }, 'Aucune donnée')
+                );
+            }
+
             const slices = data.map((d, i) => {
-                const angle = (d.value / total) * Math.PI * 2;
+                const value = Number(d.value) || 0;
+                const angle = (value / total) * Math.PI * 2;
                 const startAngle = cumAngle;
                 cumAngle += angle;
                 const endAngle = cumAngle;
@@ -314,7 +325,7 @@
                 const midAngle = startAngle + angle / 2;
                 const lx = cx + (r + 20) * Math.cos(midAngle);
                 const ly = cy + (r + 20) * Math.sin(midAngle);
-                const pct = Math.round((d.value / total) * 100);
+                const pct = Math.round((value / total) * 100);
                 return { pathD, lx, ly, pct, name: d.name, i };
             });
 
@@ -2749,11 +2760,11 @@
 
             const maxScore = 100;
             const minScore = 0;
-            const dataPoints = data.slice().reverse();
-            const xStep = plotWidth / (dataPoints.length - 1);
+            const dataPoints = (data || []).slice().reverse();
+            const xStep = dataPoints.length > 1 ? plotWidth / (dataPoints.length - 1) : 0;
 
-            const getY = (score) => padding.top + plotHeight - ((score - minScore) / (maxScore - minScore)) * plotHeight;
-            const getX = (idx) => padding.left + idx * xStep;
+            const getY = (score) => padding.top + plotHeight - (((Number(score) || 0) - minScore) / (maxScore - minScore)) * plotHeight;
+            const getX = (idx) => padding.left + (dataPoints.length === 1 ? plotWidth / 2 : idx * xStep);
 
             const pathData = (dataKey) => {
                 return dataPoints.map((d, i) => {
