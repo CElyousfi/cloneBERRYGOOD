@@ -210,3 +210,137 @@ test('computeWorkerPaie: empty/defensive args → no throw, zeros', () => {
   assert.strictEqual(r.net, 0);
   assert.strictEqual(r.coutEmployeur, 0);
 });
+
+// ---------------------------------------------------------------------------
+// computeWorkerPaie — heures supplémentaires (HS) + coût total employeur
+// ---------------------------------------------------------------------------
+// SMAG brut journalier par défaut = 88.58 ; heuresNormalesParJour = 8.
+// → tauxHoraire (déclaré) = 88.58 / 8 = 11.0725 DH/h.
+const TAUX_H_DECLARE = 88.58 / 8;
+
+test('computeWorkerPaie: montant HS 25% seul (×1.25)', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 0, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs25: 4,
+  });
+  assert.ok(close(r.heuresSup.tauxHoraire, TAUX_H_DECLARE));
+  assert.ok(close(r.heuresSup.montant, 4 * TAUX_H_DECLARE * 1.25));
+  assert.ok(close(r.brut, 4 * TAUX_H_DECLARE * 1.25));
+});
+
+test('computeWorkerPaie: montant HS 50% seul (×1.5)', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 0, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs50: 3,
+  });
+  assert.ok(close(r.heuresSup.montant, 3 * TAUX_H_DECLARE * 1.5));
+});
+
+test('computeWorkerPaie: montant HS 100% seul (×2)', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 0, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs100: 2,
+  });
+  assert.ok(close(r.heuresSup.montant, 2 * TAUX_H_DECLARE * 2));
+});
+
+test('computeWorkerPaie: montant HS combiné (25+50+100)', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 0, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs25: 2, hs50: 1, hs100: 1,
+  });
+  const expected = 2 * TAUX_H_DECLARE * 1.25 + 1 * TAUX_H_DECLARE * 1.5 + 1 * TAUX_H_DECLARE * 2;
+  assert.ok(close(r.heuresSup.montant, expected));
+  assert.strictEqual(r.heuresSup.h25, 2);
+  assert.strictEqual(r.heuresSup.h50, 1);
+  assert.strictEqual(r.heuresSup.h100, 1);
+});
+
+test('computeWorkerPaie: HS incluses dans le brut → charges sur brut+HS', () => {
+  const withHS = computeWorkerPaie({
+    declare: true, joursTravailles: 10, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs25: 4,
+  });
+  const noHS = computeWorkerPaie({
+    declare: true, joursTravailles: 10, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+  });
+  const montantHS = 4 * TAUX_H_DECLARE * 1.25;
+  assert.ok(close(withHS.brut, noHS.brut + montantHS));
+  // charges patronales ET salariales calculées sur le brut majoré des HS
+  assert.ok(close(withHS.chargesPatronales, withHS.brut * 0.26));
+  assert.ok(close(withHS.cotisationsSalariales, withHS.brut * 0.0674));
+  assert.ok(withHS.chargesPatronales > noHS.chargesPatronales);
+});
+
+test('computeWorkerPaie: transport hors brut (charges inchangées) + récolte hors brut', () => {
+  const base = computeWorkerPaie({
+    declare: true, joursTravailles: 10, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+  });
+  const withExtras = computeWorkerPaie({
+    declare: true, joursTravailles: 10, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+    primeTransport: 30, primeRecolte: 50,
+  });
+  // brut & charges strictement inchangés par transport + récolte
+  assert.ok(close(withExtras.brut, base.brut));
+  assert.ok(close(withExtras.chargesPatronales, base.chargesPatronales));
+  assert.ok(close(withExtras.cotisationsSalariales, base.cotisationsSalariales));
+  assert.strictEqual(withExtras.primeRecolte, 50);
+  // net & coût employeur augmentés de transport + récolte
+  assert.ok(close(withExtras.net, base.net + 30 + 50));
+});
+
+test('computeWorkerPaie: coutTotalEmployeur = brut + charges + transport + récolte', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 26, anciennete: 1560,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+    primeFonctionJour: 10, primeTransport: 30, hs25: 4, primeRecolte: 50,
+  });
+  const expected = r.brut + r.chargesPatronales + 30 + 50;
+  assert.ok(close(r.coutTotalEmployeur, expected));
+  assert.ok(close(r.coutEmployeur, r.coutTotalEmployeur));
+});
+
+test('computeWorkerPaie: non-déclaré → HS au taux SMAG net, 0 charge', () => {
+  const r = computeWorkerPaie({
+    declare: false, joursTravailles: 0, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs100: 2,
+  });
+  const tauxNet = 82.61 / 8;
+  assert.ok(close(r.heuresSup.tauxHoraire, tauxNet));
+  assert.ok(close(r.heuresSup.montant, 2 * tauxNet * 2));
+  assert.ok(close(r.brut, 2 * tauxNet * 2));
+  assert.strictEqual(r.chargesPatronales, 0);
+  assert.strictEqual(r.cotisationsSalariales, 0);
+});
+
+test('computeWorkerPaie: heuresNormalesParJour configurable', () => {
+  const baremes = { ...PAIE_BAREMES_DEFAULT, heuresNormalesParJour: 10 };
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 0, anciennete: 0,
+    baremes, dateISO: '2026-06-01', hs25: 4,
+  });
+  const taux10 = 88.58 / 10;
+  assert.ok(close(r.heuresSup.tauxHoraire, taux10));
+  assert.ok(close(r.heuresSup.montant, 4 * taux10 * 1.25));
+});
+
+test('computeWorkerPaie: rétrocompat — hs/récolte absents → comportement Phase 1', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 26, anciennete: 1560,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+    primeFonctionJour: 10, primeTransport: 30,
+  });
+  const smagBaseTotal = 88.58 * 26;
+  const primeAnc = smagBaseTotal * 0.10;
+  const primeFonction = 10 * 26;
+  const brut = smagBaseTotal + primeAnc + primeFonction;
+  // HS nuls → brut identique à Phase 1
+  assert.strictEqual(r.heuresSup.montant, 0);
+  assert.ok(close(r.brut, brut));
+  assert.strictEqual(r.primeRecolte, 0);
+  // coût total = brut + charges + transport (pas de récolte)
+  assert.ok(close(r.coutTotalEmployeur, brut + brut * 0.26 + 30));
+});

@@ -41,6 +41,7 @@
    *   smagBrutJournalier: number,
    *   smagNetJournalier: number,
    *   joursParMois: number,
+   *   heuresNormalesParJour?: number,
    *   tauxChargesPatronales: number,
    *   tauxCotisationsSalariales: number,
    *   paliers: Array<{ seuilJours: number, pourcentage: number, label: string }>,
@@ -51,6 +52,7 @@
     smagBrutJournalier: 88.58,
     smagNetJournalier: 82.61,
     joursParMois: 26,
+    heuresNormalesParJour: 8,
     tauxChargesPatronales: 0.26,
     tauxCotisationsSalariales: 0.0674,
     paliers: [
@@ -139,15 +141,24 @@
   /**
    * Full per-worker payroll breakdown for a given day/period.
    *
-   * Model decisions (Phase 1):
+   * Model decisions:
    *   - SMAG is resolved by date via resolveSmagForDate (dated SMAG).
    *   - Prime de fonction (DH/day × jours) is added to the taxable gross, exactly like
    *     the seniority prime: it is subject to charges patronales & cotisations salariales.
+   *   - Heures supplémentaires (HS) ARE part of the taxable gross (added BEFORE charges).
+   *     Hourly rate = daily SMAG / heuresNormalesParJour (declared → SMAG brut,
+   *     non-declared → SMAG net). Markups: HS 25% ×1.25, HS 50% ×1.5, HS 100% ×2.
+   *     ⚠️ Valorisation hypothesis (taux horaire = SMAG/h normales, défaut 8h ;
+   *     majorations 1,25/1,5/2) — à confirmer Omar.
    *   - Prime de transport is a reimbursement: it is NOT taxable. It is added to the net
    *     and to the employer cost as a separate line, outside the brut.
-   *   - Non-declared worker: no charges, no seniority prime, no taxable prime de fonction
-   *     impact on charges (kept consistent with calculerPaieOuvrier). Prime de fonction
-   *     and transport are still paid (added to net/cost) but carry no charges.
+   *   - Prime de récolte is OUTSIDE the taxable gross: added to net & employer cost only,
+   *     NOT subject to charges.
+   *     // TODO confirmer Omar: prime récolte soumise aux charges ?
+   *   - Non-declared worker: no charges, no seniority prime; HS valued on SMAG net.
+   *     Primes (fonction, transport, récolte) still paid but carry no charges.
+   *
+   * Backward-compat: hs25/hs50/hs100/primeRecolte default to 0 → Phase 1 behaviour.
    *
    * @param {{
    *   declare: boolean,
@@ -156,7 +167,11 @@
    *   baremes?: object,
    *   dateISO?: string,
    *   primeFonctionJour?: number,
-   *   primeTransport?: number
+   *   primeTransport?: number,
+   *   hs25?: number,
+   *   hs50?: number,
+   *   hs100?: number,
+   *   primeRecolte?: number
    * }} args
    * @returns {{
    *   statutDeclare: boolean,
@@ -166,26 +181,40 @@
    *   anciennetePourcent: number,
    *   primeAnciennete: number,
    *   primeFonction: number,
-   *   primeTransport: number,
+   *   heuresSup: { h25: number, h50: number, h100: number, tauxHoraire: number, montant: number },
    *   brut: number,
    *   cotisationsSalariales: number,
    *   chargesPatronales: number,
+   *   primeTransport: number,
+   *   primeRecolte: number,
    *   net: number,
-   *   coutEmployeur: number
+   *   coutEmployeur: number,
+   *   coutTotalEmployeur: number
    * }}
    */
-  function computeWorkerPaie({ declare, joursTravailles, anciennete, baremes, dateISO, primeFonctionJour, primeTransport }) {
+  function computeWorkerPaie({ declare, joursTravailles, anciennete, baremes, dateISO, primeFonctionJour, primeTransport, hs25, hs50, hs100, primeRecolte }) {
     const jrs = Number(joursTravailles) || 0;
     const b = { ...PAIE_BAREMES_DEFAULT, ...(baremes || {}) };
     const smag = resolveSmagForDate(b, dateISO);
     const primeFonction = (Number(primeFonctionJour) || 0) * jrs;
     const transport = Number(primeTransport) || 0;
+    const recolte = Number(primeRecolte) || 0;
     const isDeclare = !!declare;
+
+    // Heures supplémentaires valuation (subject to charges → part of brut).
+    const h25 = Number(hs25) || 0;
+    const h50 = Number(hs50) || 0;
+    const h100 = Number(hs100) || 0;
+    const heuresNormalesParJour = Number(b.heuresNormalesParJour) || 8;
+    const smagJourForHS = isDeclare ? smag.smagBrutJournalier : smag.smagNetJournalier;
+    const tauxHoraire = heuresNormalesParJour > 0 ? smagJourForHS / heuresNormalesParJour : 0;
+    const montantHS = h25 * tauxHoraire * 1.25 + h50 * tauxHoraire * 1.5 + h100 * tauxHoraire * 2;
+    const heuresSup = { h25, h50, h100, tauxHoraire, montant: montantHS };
 
     if (!isDeclare) {
       const smagBaseTotal = smag.smagNetJournalier * jrs;
-      const brut = smagBaseTotal + primeFonction;
-      const net = brut + transport;
+      const brut = smagBaseTotal + primeFonction + montantHS;
+      const net = brut + transport + recolte;
       return {
         statutDeclare: false,
         smagBaseJour: smag.smagNetJournalier,
@@ -194,25 +223,28 @@
         anciennetePourcent: 0,
         primeAnciennete: 0,
         primeFonction,
-        primeTransport: transport,
+        heuresSup,
         brut,
         cotisationsSalariales: 0,
         chargesPatronales: 0,
+        primeTransport: transport,
+        primeRecolte: recolte,
         net,
         coutEmployeur: net,
+        coutTotalEmployeur: net,
       };
     }
 
     const smagBaseTotal = smag.smagBrutJournalier * jrs;
     const { palier, pourcentage } = trouverPalierAnciennete(anciennete || 0, b.paliers);
     const primeAnciennete = smagBaseTotal * (pourcentage / 100);
-    // Taxable gross = SMAG brut base + seniority prime + prime de fonction.
-    const brut = smagBaseTotal + primeAnciennete + primeFonction;
+    // Taxable gross = SMAG brut base + seniority prime + prime de fonction + heures sup.
+    const brut = smagBaseTotal + primeAnciennete + primeFonction + montantHS;
     const cotisationsSalariales = brut * (b.tauxCotisationsSalariales || 0);
     const chargesPatronales = brut * (b.tauxChargesPatronales || 0);
-    // Transport is a non-taxable reimbursement → added to net and employer cost only.
-    const net = brut - cotisationsSalariales + transport;
-    const coutEmployeur = brut + chargesPatronales + transport;
+    // Transport & récolte are non-taxable → added to net and employer cost only.
+    const net = brut - cotisationsSalariales + transport + recolte;
+    const coutTotalEmployeur = brut + chargesPatronales + transport + recolte;
     return {
       statutDeclare: true,
       smagBaseJour: smag.smagBrutJournalier,
@@ -221,12 +253,16 @@
       anciennetePourcent: pourcentage,
       primeAnciennete,
       primeFonction,
-      primeTransport: transport,
+      heuresSup,
       brut,
       cotisationsSalariales,
       chargesPatronales,
+      primeTransport: transport,
+      primeRecolte: recolte,
       net,
-      coutEmployeur,
+      // coutEmployeur kept as alias for backward-compat (= coutTotalEmployeur).
+      coutEmployeur: coutTotalEmployeur,
+      coutTotalEmployeur,
     };
   }
 

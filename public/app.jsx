@@ -163,7 +163,8 @@
         function SimpleBarChart({ data, dataKeys, colors, xKey, height = 250 }) {
             if (!data || !data.length) return null;
             const padding = { top: 20, right: 20, bottom: 30, left: 40 };
-            const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => d[k] || 0)));
+            const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => Number(d[k]) || 0)));
+            const safeMax = (maxVal > 0 && isFinite(maxVal)) ? maxVal : 1;
             const barGroupWidth = 100 / data.length;
             const barWidth = barGroupWidth / (dataKeys.length + 1);
 
@@ -174,7 +175,7 @@
                             const y = padding.top + (height - padding.top - padding.bottom) * (1 - tick);
                             return React.createElement('g', { key: i },
                                 React.createElement('line', { x1: padding.left, y1: y, x2: 600 - padding.right, y2: y, stroke: '#f0f0f0', strokeDasharray: '3 3' }),
-                                React.createElement('text', { x: padding.left - 5, y: y + 4, textAnchor: 'end', fontSize: '10', fill: '#999' }, Math.round(maxVal * tick))
+                                React.createElement('text', { x: padding.left - 5, y: y + 4, textAnchor: 'end', fontSize: '10', fill: '#999' }, Math.round(safeMax * tick))
                             );
                         }),
                         data.map((d, di) => {
@@ -182,8 +183,8 @@
                             const groupW = (600 - padding.left - padding.right) / data.length;
                             return React.createElement('g', { key: di },
                                 dataKeys.map((key, ki) => {
-                                    const val = d[key] || 0;
-                                    const barH = (val / (maxVal || 1)) * (height - padding.top - padding.bottom);
+                                    const val = Number(d[key]) || 0;
+                                    const barH = Math.max(0, (val / safeMax) * (height - padding.top - padding.bottom));
                                     const bw = groupW / (dataKeys.length + 1);
                                     const bx = groupX + (ki + 0.5) * bw;
                                     const by = padding.top + (height - padding.top - padding.bottom) - barH;
@@ -202,7 +203,8 @@
             const padding = { top: 30, right: 20, bottom: 30, left: 40 };
             const chartW = 600 - padding.left - padding.right;
             const chartH = height - padding.top - padding.bottom;
-            const maxVal = Math.max(...data.flatMap(d => dataKeys.map(k => d[k] || 0))) * 1.1;
+            const rawMax = Math.max(...data.flatMap(d => dataKeys.map(k => Number(d[k]) || 0))) * 1.1;
+            const maxVal = (rawMax > 0 && isFinite(rawMax)) ? rawMax : 1;
             const n = data.length;
             // Down-sample dots/labels/x-axis when there are too many points
             const dotEvery = n > 120 ? Math.ceil(n / 60) : 1;
@@ -220,8 +222,8 @@
                 dataKeys.map((key, ki) => {
                     const points = data.map((d, i) => ({
                         x: padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW),
-                        y: padding.top + chartH - ((d[key] || 0) / maxVal) * chartH,
-                        val: d[key]
+                        y: padding.top + chartH - ((Number(d[key]) || 0) / maxVal) * chartH,
+                        val: Number(d[key]) || 0
                     }));
                     const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
                     const areaD = pathD + ` L ${points[points.length - 1].x} ${padding.top + chartH} L ${points[0].x} ${padding.top + chartH} Z`;
@@ -246,14 +248,14 @@
             const chartW = W - padding.left - padding.right;
             const chartH = height - padding.top - padding.bottom;
             const n = data.length;
-            const maxLine = Math.max(1, ...data.map(d => d[lineKey] || 0)) * 1.1;
-            const maxBar = Math.max(1, ...data.map(d => d[barKey] || 0)) * 1.1;
+            const maxLine = Math.max(1, ...data.map(d => Number(d[lineKey]) || 0)) * 1.1;
+            const maxBar = Math.max(1, ...data.map(d => Number(d[barKey]) || 0)) * 1.1;
             const xLabelEvery = Math.max(1, Math.ceil(n / 12));
             const xAt = (i) => padding.left + (n === 1 ? chartW / 2 : (i / (n - 1)) * chartW);
             const barW = (n === 1 ? chartW * 0.4 : (chartW / n) * 0.6);
-            const yFor = (val) => padding.top + chartH - ((val || 0) / maxLine) * chartH;
+            const yFor = (val) => padding.top + chartH - ((Number(val) || 0) / maxLine) * chartH;
 
-            const peakPoints = data.map((d, i) => ({ x: xAt(i), y: yFor(d[lineKey]), val: d[lineKey] || 0 }));
+            const peakPoints = data.map((d, i) => ({ x: xAt(i), y: yFor(d[lineKey]), val: Number(d[lineKey]) || 0 }));
 
             let pathD;
             if (lineMode === 'sawtooth') {
@@ -282,8 +284,8 @@
                     );
                 }),
                 data.map((d, i) => {
-                    const val = d[barKey] || 0;
-                    const bh = (val / maxBar) * chartH;
+                    const val = Number(d[barKey]) || 0;
+                    const bh = Math.max(0, (val / maxBar) * chartH);
                     const bx = xAt(i) - barW / 2;
                     const by = padding.top + chartH - bh;
                     return React.createElement('rect', { key: 'b' + i, x: bx, y: by, width: barW, height: bh, fill: barColor, rx: 4, opacity: 0.7 });
@@ -296,12 +298,21 @@
 
         function SimplePieChart({ data, colors, size = 200 }) {
             if (!data || !data.length) return null;
-            const total = data.reduce((s, d) => s + d.value, 0);
+            const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0);
             const cx = size / 2, cy = size / 2, r = size * 0.35, ir = size * 0.22;
             let cumAngle = -Math.PI / 2;
 
+            // État vide propre : pas de total exploitable → aucun <path> (évite des angles NaN)
+            if (!(total > 0) || !isFinite(total)) {
+                return React.createElement('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}` },
+                    React.createElement('circle', { cx, cy, r, fill: 'none', stroke: '#eee', strokeWidth: size * 0.13 }),
+                    React.createElement('text', { x: cx, y: cy + 4, textAnchor: 'middle', fontSize: '12', fill: '#999' }, 'Aucune donnée')
+                );
+            }
+
             const slices = data.map((d, i) => {
-                const angle = (d.value / total) * Math.PI * 2;
+                const value = Number(d.value) || 0;
+                const angle = (value / total) * Math.PI * 2;
                 const startAngle = cumAngle;
                 cumAngle += angle;
                 const endAngle = cumAngle;
@@ -314,7 +325,7 @@
                 const midAngle = startAngle + angle / 2;
                 const lx = cx + (r + 20) * Math.cos(midAngle);
                 const ly = cy + (r + 20) * Math.sin(midAngle);
-                const pct = Math.round((d.value / total) * 100);
+                const pct = Math.round((value / total) * 100);
                 return { pathD, lx, ly, pct, name: d.name, i };
             });
 
@@ -2692,7 +2703,7 @@
                         </div>
                         <div className="farm-banner-stat">
                             <div className="value">{farmInfo.postesFixes}</div>
-                            <div className="label">Postes Fixes</div>
+                            <div className="label">Ouvrier Avocatier</div>
                         </div>
                     </div>
                 </div>
@@ -2749,11 +2760,11 @@
 
             const maxScore = 100;
             const minScore = 0;
-            const dataPoints = data.slice().reverse();
-            const xStep = plotWidth / (dataPoints.length - 1);
+            const dataPoints = (data || []).slice().reverse();
+            const xStep = dataPoints.length > 1 ? plotWidth / (dataPoints.length - 1) : 0;
 
-            const getY = (score) => padding.top + plotHeight - ((score - minScore) / (maxScore - minScore)) * plotHeight;
-            const getX = (idx) => padding.left + idx * xStep;
+            const getY = (score) => padding.top + plotHeight - (((Number(score) || 0) - minScore) / (maxScore - minScore)) * plotHeight;
+            const getX = (idx) => padding.left + (dataPoints.length === 1 ? plotWidth / 2 : idx * xStep);
 
             const pathData = (dataKey) => {
                 return dataPoints.map((d, i) => {
@@ -4264,8 +4275,8 @@
                                 subItems={[{ value: logCount, label: 'Logistique' }, { value: logPct + '%', label: 'Log/Récolte' }]} />
                             <KPICard icon="fa-trowel" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).horsRecolte || 0} label="Effectif Hors Récolte"
                                 onClick={() => setKpiPopup({ title: `Hors Récolte — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'horsRecolte', icon: 'fa-trowel' })} />
-                            <KPICard icon="fa-diagram-next" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).postesFixes || 0} label="Postes Fixes"
-                                onClick={() => setKpiPopup({ title: `Postes Fixes — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'postesFixes', icon: 'fa-diagram-next' })} />
+                            <KPICard icon="fa-diagram-next" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).postesFixes || 0} label="Ouvrier Avocatier"
+                                onClick={() => setKpiPopup({ title: `Ouvrier Avocatier — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'postesFixes', icon: 'fa-diagram-next' })} />
                         </div>
                     ) : (
                         <div className="kpi-grid">
@@ -4517,7 +4528,7 @@
                                                 <div style={{marginBottom:16}}>
                                                     <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-building" style={{marginRight:6,color:'var(--berry)'}}></i>Par Ferme</div>
                                                     <table className="data-table" style={{fontSize:11}}>
-                                                        <thead><tr><th>Ferme</th><th style={{textAlign:'right'}}>Journées</th><th style={{textAlign:'right'}}>Récolte</th><th style={{textAlign:'right'}}>Hors Récolte</th><th style={{textAlign:'right'}}>Postes Fixes</th><th style={{textAlign:'right'}}>Coût (DH)</th></tr></thead>
+                                                        <thead><tr><th>Ferme</th><th style={{textAlign:'right'}}>Journées</th><th style={{textAlign:'right'}}>Récolte</th><th style={{textAlign:'right'}}>Hors Récolte</th><th style={{textAlign:'right'}}>Ouvriers Avocatier</th><th style={{textAlign:'right'}}>Coût (DH)</th></tr></thead>
                                                         <tbody>
                                                             {quinzParFerme.map((f, i) => (
                                                                 <tr key={i}><td style={{fontWeight:600}}>{f.ferme}</td><td style={{textAlign:'right'}}>{f.journees}</td><td style={{textAlign:'right'}}>{f.recolte}</td><td style={{textAlign:'right'}}>{f.horsRecolte}</td><td style={{textAlign:'right'}}>{f.postesFixes}</td><td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{Math.round(f.cout).toLocaleString('fr-FR')}</td></tr>
@@ -5996,7 +6007,7 @@
                                 subItems={[
                                     { value: p.recolte, label: 'Récolte' },
                                     { value: p.horsRecolte, label: 'Hors Récolte' },
-                                    { value: p.postesFixes, label: 'Fixes' }
+                                    { value: p.postesFixes, label: 'Avocatier' }
                                 ]}
                             />
                         ))}
@@ -6055,7 +6066,7 @@
                                     <th>Récolte</th>
                                     <th>Hors Récolte</th>
                                     <th>Total Ouvriers</th>
-                                    <th>Postes Fixes</th>
+                                    <th>Ouvriers Avocatier</th>
                                     <th>Veille</th>
                                     <th>Variation</th>
                                     {!isCaporal && <th>Coût (DH)</th>}
@@ -6331,7 +6342,7 @@
                             });
                             const ops = Object.values(byOp).sort((a, b) => b.ouvriers.length - a.ouvriers.length);
                             return (
-                                <Panel title={`Postes Fixes (${fixesFiltered.length})`} icon="fa-anchor" actions={
+                                <Panel title={`Ouvriers Avocatier (${fixesFiltered.length})`} icon="fa-anchor" actions={
                                     <button onClick={() => setShowPostesFixes(!showPostesFixes)} style={{background:'none',border:'1px solid var(--gray-200)',borderRadius:6,padding:'3px 10px',fontSize:10,fontWeight:600,cursor:'pointer',color:'var(--gray-500)'}}>
                                         <i className={`fa-solid fa-chevron-${showPostesFixes ? 'up' : 'down'}`} style={{marginRight:4}}></i>{showPostesFixes ? 'Réduire' : 'Détail'}
                                     </button>
@@ -6394,9 +6405,13 @@
                         const joursTravailles = Number(r.jours || 0);
                         const primeTransport = getTransportForMat(r.matricule);
                         const paie = (window.PaieUtils && window.PaieUtils.computeWorkerPaie)
-                            ? window.PaieUtils.computeWorkerPaie({ declare, joursTravailles, anciennete, baremes: paieBaremes, dateISO: paieDateISO, primeFonctionJour, primeTransport })
-                            : { statutDeclare: declare, smagBaseJour: 0, smagBaseTotal: 0, anciennetePalier: '—', anciennetePourcent: 0, primeAnciennete: 0, primeFonction: 0, primeTransport: 0, brut: 0, cotisationsSalariales: 0, chargesPatronales: 0, net: 0, coutEmployeur: 0 };
-                        const totalBrutEstime = Math.round(paie.brut + primeRecolte);
+                            ? window.PaieUtils.computeWorkerPaie({ declare, joursTravailles, anciennete, baremes: paieBaremes, dateISO: paieDateISO, primeFonctionJour, primeTransport, hs25, hs50, hs100, primeRecolte })
+                            : { statutDeclare: declare, smagBaseJour: 0, smagBaseTotal: 0, anciennetePalier: '—', anciennetePourcent: 0, primeAnciennete: 0, primeFonction: 0, heuresSup: { h25: 0, h50: 0, h100: 0, tauxHoraire: 0, montant: 0 }, brut: 0, cotisationsSalariales: 0, chargesPatronales: 0, primeTransport: 0, primeRecolte: 0, net: 0, coutEmployeur: 0, coutTotalEmployeur: 0 };
+                        const hs = paie.heuresSup || { h25: 0, h50: 0, h100: 0, tauxHoraire: 0, montant: 0 };
+                        const totalHsHeures = (hs.h25 || 0) + (hs.h50 || 0) + (hs.h100 || 0);
+                        // Nom d'équipe pour la ligne Transport (même réf que le classement par équipe).
+                        const eqPrefix = getEqPrefixForPaie(r.matricule);
+                        const eqNamePaie = eqPrefix === 'BGF' ? 'BGF' : (((data.transportConfig || []).find(t => t.prefix === eqPrefix) || {}).equipe || `Équipe ${eqPrefix}`);
                         const dh = (n) => Math.round(n).toLocaleString('fr-FR');
                         return (
                         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setWorkerPopup(null)}>
@@ -6433,54 +6448,63 @@
                                         </tbody>
                                     </table>
 
-                                    {(hs25 > 0 || hs50 > 0 || hs100 > 0) && (
-                                        <div style={{marginTop:12,padding:'8px 12px',background:'#fff3cd',borderRadius:8,fontSize:12}}>
-                                            <strong>Heures Sup. :</strong> {hs25 > 0 && <span style={{marginLeft:8}}>HS 25%: {hs25}h</span>} {hs50 > 0 && <span style={{marginLeft:8}}>HS 50%: {hs50}h</span>} {hs100 > 0 && <span style={{marginLeft:8}}>HS 100%: {hs100}h</span>}
-                                        </div>
-                                    )}
-
                                     {!isCaporal && (
                                     <div style={{marginTop:16,background:'var(--berry-pale)',borderRadius:10,padding:14}}>
                                         <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:8}}>
                                             Estimation paie du {paieDateISO} — modèle complet ({declare ? 'déclaré' : 'non déclaré'}).
                                         </div>
+
+                                        {/* --- Bloc 1 : Salaire Brut (smag + ancienneté + fonction + HS) --- */}
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>SMAG base ({dh(paie.smagBaseJour)} DH/j × {joursTravailles} j)</span>
                                             <span style={{fontWeight:600}}>{dh(paie.smagBaseTotal)} DH</span>
                                         </div>
-                                        {declare && (
+                                        {/* Ancienneté : affichée même si palier 0% (informatif). */}
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté ({anciennete} j → {paie.anciennetePalier} {paie.anciennetePourcent}%)</span>
                                             <span style={{fontWeight:600,color: paie.primeAnciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{paie.primeAnciennete > 0 ? `+${dh(paie.primeAnciennete)}` : '0'} DH</span>
                                         </div>
-                                        )}
-                                        {primeFonctionJour > 0 && (
+                                        {paie.primeFonction > 0 && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime de fonction ({dh(primeFonctionJour)} DH/j × {joursTravailles} j)</span>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime fonction ({dh(primeFonctionJour)} DH/j × {joursTravailles} j)</span>
                                             <span style={{fontWeight:600,color:'var(--berry)'}}>+{dh(paie.primeFonction)} DH</span>
                                         </div>
                                         )}
-                                        {primeTransport > 0 && (
+                                        {hs.montant > 0 && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime transport (équipe {getEqPrefixForPaie(r.matricule)}, remboursement)</span>
-                                            <span style={{fontWeight:600,color:'var(--blue)'}}>+{dh(primeTransport)} DH</span>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Heures supplémentaires ({totalHsHeures} h × {Math.round(hs.tauxHoraire * 100) / 100} DH/h)</span>
+                                            <span style={{fontWeight:600,color:'var(--berry)'}}>+{dh(hs.montant)} DH</span>
                                         </div>
                                         )}
+                                        {/* = Salaire Brut */}
+                                        <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
+                                            <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire Brut</span>
+                                            <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{dh(paie.brut)} DH</span>
+                                        </div>
+
+                                        {/* --- Bloc 2 : ajouts au coût employeur (hors brut) --- */}
                                         {declare && paie.chargesPatronales > 0 && (
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
                                             <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS / charges patronales ({Math.round((paieBaremes.tauxChargesPatronales || 0) * 100)}%)</span>
-                                            <span style={{fontWeight:600,color:'var(--gray-500)'}}>{dh(paie.chargesPatronales)} DH</span>
+                                            <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{dh(paie.chargesPatronales)} DH</span>
                                         </div>
                                         )}
-                                        {r.type === 'recolte' && (
+                                        {/* Transport : toujours affiché (coût employeur), remboursement hors brut. */}
                                         <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime récolte ({r.quantite || 0} kg)</span>
-                                            <span style={{fontWeight:600,color:primeRecolte > 0 ? 'var(--green)' : 'var(--gray-400)'}}>{primeRecolte > 0 ? `+${dh(primeRecolte)}` : '0'} DH</span>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Transport (équipe {eqNamePaie})</span>
+                                            <span style={{fontWeight:600,color: primeTransport > 0 ? 'var(--blue)' : 'var(--gray-400)'}}>{primeTransport > 0 ? `+${dh(primeTransport)}` : '0'} DH</span>
+                                        </div>
+                                        {r.type === 'recolte' && primeRecolte > 0 && (
+                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime récolte ({r.quantite || 0} kg × barème)</span>
+                                            <span style={{fontWeight:600,color:'var(--green)'}}>+{dh(primeRecolte)} DH</span>
                                         </div>
                                         )}
-                                        <div style={{display:'flex',justifyContent:'space-between',borderTop:'2px solid var(--berry)',paddingTop:8}}>
-                                            <span style={{fontWeight:700,color:'var(--berry)'}}>Total Salaire Brut Estimé</span>
-                                            <span style={{fontWeight:700,fontSize:16,color:'var(--berry)'}}>{dh(totalBrutEstime)} DH</span>
+
+                                        {/* = Coût Total Employeur — chiffre clé DG, en évidence. */}
+                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--berry)',paddingTop:10,marginTop:4}}>
+                                            <span style={{fontWeight:800,color:'var(--berry)',fontSize:14}}>= Coût Total Employeur</span>
+                                            <span style={{fontWeight:800,fontSize:20,color:'var(--berry)'}}>{dh(paie.coutTotalEmployeur)} DH</span>
                                         </div>
                                     </div>
                                     )}
@@ -9606,7 +9630,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                         {[
                             {label:'Récolte',val:tot.recolte,color:'#E74C3C'},
                             {label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},
-                            {label:'Postes Fixes',val:tot.postesFixes,color:'#95A5A6'},
+                            {label:'Ouvriers Avocatier',val:tot.postesFixes,color:'#95A5A6'},
                             {label:'Total M.O',val:tot.total,color:'#8B2252'},
                         ].map((s,i) => (
                             <div key={i} style={{flex:1,minWidth:120,background:'#f8f9fa',borderRadius:10,padding:'12px 16px',textAlign:'center'}}>
@@ -9765,7 +9789,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
         }
 
         // ===================== QUINZAINE TAB =====================
-        function QuinzaineTab({ data, farmFilter, avoSubFilter }) {
+        function QuinzaineTab({ data, farmFilter, avoSubFilter, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
             const [loading, setLoading] = useState(true);
             const [selectedPeriode, setSelectedPeriode] = useState('');
@@ -9942,6 +9966,12 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                             <option value="">Dernière quinzaine</option>
                             {(apiData.periodes || []).map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
+                        {typeof onNavigateToPrimes === 'function' && (
+                            <button onClick={() => onNavigateToPrimes(selectedPeriode)}
+                                style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--berry)',background:'var(--berry)',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                                <i className="fa-solid fa-coins"></i>Voir les Primes
+                            </button>
+                        )}
                     </div>
 
                     <div className="quinzaine-card">
@@ -10015,7 +10045,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                                     <th>Coût (DH)</th>
                                     <th>Récolte (jr)</th>
                                     <th>Hors Récolte (jr)</th>
-                                    <th>Postes Fixes (jr)</th>
+                                    <th>Ouvriers Avocatier (jr)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -20748,9 +20778,22 @@ ${rejetHtml}
         }
 
         // ===================== TRANSPORTEUR TAB =====================
-        function PrimesTab({ data, farmFilter, avoSubFilter }) {
+        function PrimesTab({ data, farmFilter, avoSubFilter, initialPeriode, onInitialPeriodeConsumed }) {
             const [primeSub, setPrimeSub] = useState('recap');
-            const [sharedPeriode, setSharedPeriode] = useState('');
+            // initialPeriode != null => navigation depuis Quinzaine : on pré-sélectionne la quinzaine
+            // passée (peut être '' = dernière quinzaine, valeur sentinelle identique au défaut).
+            const [sharedPeriode, setSharedPeriode] = useState(initialPeriode != null ? initialPeriode : '');
+            // Quinzaine pré-sélectionnée à propager au sous-onglet récap (one-shot).
+            const [recapInitialPeriode, setRecapInitialPeriode] = useState(initialPeriode != null ? initialPeriode : '');
+            React.useEffect(() => {
+                if (initialPeriode != null) {
+                    setSharedPeriode(initialPeriode);
+                    setRecapInitialPeriode(initialPeriode);
+                    setPrimeSub('recap');
+                    if (typeof onInitialPeriodeConsumed === 'function') onInitialPeriodeConsumed();
+                }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [initialPeriode]);
             const navigateToDetail = (tabId, periode) => { if (periode) setSharedPeriode(periode); setPrimeSub(tabId); };
             const subTabs = [
                 { id: 'recap', label: 'Récapitulatif', icon: 'fa-chart-pie' },
@@ -20772,7 +20815,7 @@ ${rejetHtml}
                             </button>
                         ))}
                     </div>
-                    {primeSub === 'recap' && <PrimesRecapSub data={data} onNavigate={navigateToDetail} farmFilter={farmFilter} />}
+                    {primeSub === 'recap' && <PrimesRecapSub data={data} onNavigate={navigateToDetail} farmFilter={farmFilter} initialPeriode={recapInitialPeriode} />}
                     {primeSub === 'recolte' && <PrimesRecolteTab data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'transport' && <TransportSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'traitement' && <TraitementSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
@@ -20878,7 +20921,7 @@ ${rejetHtml}
             );
         }
 
-        function PrimesRecapSub({ data, onNavigate, farmFilter }) {
+        function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
             const [detailRows, setDetailRows] = useState([]);
             const [transportData, setTransportData] = useState({});
             const [recolteRows, setRecolteRows] = useState([]);
@@ -31131,7 +31174,7 @@ ${rejetHtml}
                             const COLORS_MO = ['#8B2252','#2D8B4E','#D4A847','#3498DB','#E67E22','#9B59B6','#E74C3C','#1ABC9C'];
                             return React.createElement('div', null,
                                 React.createElement('div', {style:{display:'flex',gap:16,marginBottom:16,flexWrap:'wrap'}},
-                                    [{label:'Récolte',val:tot.recolte,color:'#E74C3C'},{label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},{label:'Postes Fixes',val:tot.postesFixes,color:'#95A5A6'},{label:'Total M.O',val:tot.total,color:'#8B2252'}].map((s,i) =>
+                                    [{label:'Récolte',val:tot.recolte,color:'#E74C3C'},{label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},{label:'Ouvriers Avocatier',val:tot.postesFixes,color:'#95A5A6'},{label:'Total M.O',val:tot.total,color:'#8B2252'}].map((s,i) =>
                                         React.createElement('div', {key:i, style:{flex:1,minWidth:120,background:'#f8f9fa',borderRadius:10,padding:'12px 16px',textAlign:'center'}},
                                             React.createElement('div', {style:{fontSize:10,textTransform:'uppercase',letterSpacing:'0.5px',color:'#888',marginBottom:4}}, s.label),
                                             React.createElement('div', {style:{fontSize:18,fontWeight:700,color:s.color}}, (s.val/1000).toFixed(0) + 'k')
@@ -31146,7 +31189,7 @@ ${rejetHtml}
                                             React.createElement('th', null, 'Ferme'),
                                             React.createElement('th', {style:{textAlign:'right'}}, 'Récolte (DH)'),
                                             React.createElement('th', {style:{textAlign:'right'}}, 'Hors Récolte (DH)'),
-                                            React.createElement('th', {style:{textAlign:'right'}}, 'Postes Fixes (DH)'),
+                                            React.createElement('th', {style:{textAlign:'right'}}, 'Ouvrier Avocatier (DH)'),
                                             React.createElement('th', {style:{textAlign:'right'}}, 'Total (DH)'),
                                             React.createElement('th', {style:{textAlign:'right'}}, '%')
                                         )
@@ -31501,7 +31544,7 @@ ${rejetHtml}
                                     label: 'Autres HR', icon: 'fa-ellipsis', color: '#C0392B', isCharge: true, subLine: true, source: 'live', indent: true,
                                     getValue: (v) => { const d = getMo(v.variete, v.ferme).horsRecolteDetail || {}; return otherHrOps.reduce((s, op) => s + (d[op]?.cout || 0), 0); },
                                 }] : []),
-                                { label: 'M.O Postes Fixes', icon: 'fa-user-clock', color: '#95A5A6', getValue: (v) => getMo(v.variete, v.ferme).postesFixes.cout, isCharge: true, source: 'live' },
+                                { label: 'M.O Ouvrier Avocatier', icon: 'fa-user-clock', color: '#95A5A6', getValue: (v) => getMo(v.variete, v.ferme).postesFixes.cout, isCharge: true, source: 'live' },
                                 { label: 'Total M.O', icon: 'fa-users-gear', color: '#8B2252', getValue: (v) => getMo(v.variete, v.ferme).total.cout, isCharge: true, bold: true, source: 'live' },
                                 { label: '─', separator: true },
                                 // --- REEL (hardcodé, à connecter) ---
@@ -62152,6 +62195,7 @@ ${rejetHtml}
                 return userProfile.profileId;
             });
             const [currentTab, setCurrentTab] = useState(__savedTab);
+            const [primesInitialPeriode, setPrimesInitialPeriode] = useState(null);
             const [sidebarOpen, setSidebarOpen] = useState(false);
             const [showMoreMenu, setShowMoreMenu] = useState(false);
             const [showMobileProfileMenu, setShowMobileProfileMenu] = useState(false);
@@ -62912,10 +62956,10 @@ ${rejetHtml}
 
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
-                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter }, 'Quinzaine')}
+                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
                                 {renderTab('campagne', CampagneTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
-                                {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter }, 'Primes')}
+                                {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
