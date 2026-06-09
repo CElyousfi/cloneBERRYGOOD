@@ -62137,6 +62137,23 @@ ${rejetHtml}
             const [notifData, setNotifData] = useState(null);
             const [notifCount, setNotifCount] = useState(0);
             const notifFetchedRef = useRef(null);
+            // Dismissed notifications — persistance par user (localStorage, scopé uid+profil).
+            // NOTE: stockage local-only car il n'existe pas de collection Firestore writable par
+            // l'user pour les dismissals (cf. firestore.rules : `notifications` est read-only client).
+            // Une persistance Firestore cross-device nécessiterait une nouvelle règle
+            // `notif_dismissals/{uid}` ou une Cloud Function = deploy GATED (à arbitrer par l'archi).
+            const notifDismissStorageKey = (profileId) => 'notif_dismissed_' + (authUser && authUser.uid ? authUser.uid : 'anon') + '_' + (profileId || '');
+            const readNotifDismissed = (profileId) => {
+                try {
+                    const raw = localStorage.getItem(notifDismissStorageKey(profileId));
+                    if (!raw) return new Set();
+                    const arr = JSON.parse(raw);
+                    return new Set(Array.isArray(arr) ? arr : []);
+                } catch(e) { return new Set(); }
+            };
+            // Clé de dismissal : `key:count` → si le compteur change (nouveau travail), la notif revient.
+            const notifDismissId = (item) => (item.key || item.label || '') + ':' + (item.count || 0);
+            const notifDismissedRef = useRef(new Set());
 
             // Install guide state
             const [showInstallGuide, setShowInstallGuide] = useState(false);
@@ -62248,11 +62265,6 @@ ${rejetHtml}
             const meteoCacheRef = useRef({ data: null, ts: 0 });
 
             const fetchNotifications = React.useCallback(async (profileId, showPopup) => {
-                if (profileId === 'qualite') {
-                    setNotifData({ categories: { validations: [], taches: [], alertes: [] }, items: [], profileId, profileLabel: 'Qualité F1' });
-                    setNotifCount(0);
-                    return;
-                }
                 const p = PROFILES.find(x => x.id === profileId);
                 const ferme = p?.farm || '';
                 const url = '/api/notifications?profile=' + profileId + (ferme ? '&ferme=' + ferme : '');
@@ -62289,6 +62301,15 @@ ${rejetHtml}
                             }
                         } catch(e) { console.warn('Meteo notification error:', e); }
                     }
+
+                    // Filtrer les notifs marquées "ignorées" par cet user (badge ne compte que les non-dismissées).
+                    const dismissed = readNotifDismissed(profileId);
+                    notifDismissedRef.current = dismissed;
+                    Object.keys(categories).forEach(catKey => {
+                        if (Array.isArray(categories[catKey])) {
+                            categories[catKey] = categories[catKey].filter(item => !dismissed.has(notifDismissId(item)));
+                        }
+                    });
 
                     // Flatten all items for backward compatibility
                     const allItems = [...(categories.validations || []), ...(categories.taches || []), ...(categories.meteo || []), ...(categories.alertes || [])];
@@ -62338,6 +62359,19 @@ ${rejetHtml}
                 const [c1, c2] = profileColors[notifData.profileId] || ['#6c757d', '#495057'];
                 const cats = notifData.categories || {};
                 const firstTab = notifData.items[0]?.tab;
+
+                // « Tout ignorer » : marque toutes les notifs affichées comme dismissées pour cet user.
+                // Persistance localStorage (cf. note notifDismissStorageKey) — pas de suppression en base.
+                const dismissAllNotifs = () => {
+                    const profileId = notifData.profileId;
+                    const dismissed = readNotifDismissed(profileId);
+                    (notifData.items || []).forEach(item => { dismissed.add(notifDismissId(item)); });
+                    try { localStorage.setItem(notifDismissStorageKey(profileId), JSON.stringify([...dismissed])); } catch(e) {}
+                    notifDismissedRef.current = dismissed;
+                    setNotifData({ ...notifData, categories: { validations: [], taches: [], meteo: [], alertes: [] }, items: [] });
+                    setNotifCount(0);
+                    setNotifPopup(false);
+                };
 
                 const renderItem = (item, idx) => (
                     <div key={idx} onClick={() => { setCurrentTab(item.tab); localStorage.setItem('lastTab', item.tab); setNotifPopup(false); }}
@@ -62404,6 +62438,10 @@ ${rejetHtml}
                                 <button onClick={() => { if (firstTab) { setCurrentTab(firstTab); localStorage.setItem('lastTab', firstTab); } setNotifPopup(false); }}
                                     style={{flex:1, padding:'10px', borderRadius:10, border:'none', background:`linear-gradient(135deg, ${c1}, ${c2})`, color:'#fff', fontWeight:700, fontSize:13, cursor:'pointer'}}>
                                     <i className="fa-solid fa-arrow-right" style={{marginRight:6}}></i>Voir tout
+                                </button>
+                                <button onClick={dismissAllNotifs} title="Marquer toutes les notifications comme lues"
+                                    style={{padding:'10px 12px', borderRadius:10, border:'1.5px solid #eee', background:'#fafafa', color:'#999', fontWeight:600, fontSize:12.5, cursor:'pointer', whiteSpace:'nowrap'}}>
+                                    <i className="fa-solid fa-check-double" style={{marginRight:6}}></i>Tout ignorer
                                 </button>
                                 <button onClick={() => setNotifPopup(false)}
                                     style={{flex:1, padding:'10px', borderRadius:10, border:'1.5px solid #ddd', background:'#fff', color:'#666', fontWeight:600, fontSize:13, cursor:'pointer'}}>
