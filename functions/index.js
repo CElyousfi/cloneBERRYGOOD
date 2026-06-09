@@ -16,6 +16,7 @@ const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
 const { resolveCallerRole } = require("./lib/auth/resolveRole");
+const { validateBugReport } = require("./lib/bugReports/validateBugReport");
 const stockMovementGuard = require("./lib/stock/movementGuard");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
@@ -1115,6 +1116,107 @@ exports.uploadPhoto = functions
       console.error("Erreur upload photo:", err);
       res.status(500).json({ success: false, error: err.message });
     }
+  });
+
+// =============================================
+// API: Signalement de bug in-app (photo + description)
+// Route: /api/bug-reports?action=submit-bug
+// =============================================
+exports.bugReports = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    const action = req.query.action || (req.body && req.body.action);
+
+    if (action === "submit-bug") {
+      if (req.method !== "POST") {
+        return res.status(405).json({ success: false, error: "POST uniquement" });
+      }
+      const authUser = await requireAuth(req, res);
+      if (!authUser) return; // réponse 401 déjà envoyée
+
+      try {
+        const body = req.body || {};
+        const check = validateBugReport(body);
+        if (!check.valid) {
+          return res.status(400).json({ success: false, error: check.error });
+        }
+
+        // Résoudre le reporter depuis Firestore (jamais depuis le body client).
+        let reporterName = authUser.name || authUser.email || "";
+        let profileId = null;
+        try {
+          const uSnap = await db_firestore.collection("users").doc(authUser.uid).get();
+          if (uSnap.exists) {
+            const u = uSnap.data() || {};
+            reporterName = u.displayName || reporterName;
+            profileId = u.profileId || null;
+          }
+        } catch (e) {
+          console.warn("[bugReports] résolution user échouée:", e.message);
+        }
+
+        const device = (body.device && typeof body.device === "object") ? body.device : {};
+        const screen = typeof body.screen === "string" ? body.screen.slice(0, 200) : "";
+
+        // Pré-allouer l'ID du doc pour nommer le fichier Storage.
+        const docRef = db_firestore.collection("bug_reports").doc();
+        let photoUrl = null;
+
+        if (check.hasPhoto) {
+          // Même pattern que exports.uploadPhoto : décode base64 → buffer → file.save → URL publique.
+          const raw = body.photoBase64;
+          const matchExt = /^data:image\/(\w+);base64,/.exec(raw);
+          const ext = matchExt ? matchExt[1] : "jpg";
+          const buffer = Buffer.from(raw.replace(/^data:image\/\w+;base64,/, ""), "base64");
+          const storagePath = `bug_reports/${docRef.id}/photo.${ext}`;
+          const file = bucket.file(storagePath);
+          await file.save(buffer, { metadata: { contentType: `image/${ext}` } });
+          photoUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+        }
+
+        await docRef.set({
+          photo_url: photoUrl,
+          description: check.description,
+          reporter: { uid: authUser.uid, name: reporterName, profileId: profileId },
+          screen: screen,
+          device: {
+            userAgent: typeof device.userAgent === "string" ? device.userAgent.slice(0, 500) : "",
+            viewport: typeof device.viewport === "string" ? device.viewport.slice(0, 40) : "",
+          },
+          status: "nouveau",
+          created_at: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Notifier Omar (DG) par WhatsApp — best-effort, ne bloque jamais la création.
+        try {
+          const dgRecipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+          const shortDesc = check.description.length > 280
+            ? check.description.slice(0, 277) + "…"
+            : check.description;
+          const msg = "🐛 Nouveau signalement de bug\n"
+            + "Par : " + (reporterName || "?") + (profileId ? " (" + profileId + ")" : "") + "\n"
+            + "Écran : " + (screen || "?") + "\n"
+            + "Description : " + shortDesc
+            + (photoUrl ? "\n📎 Photo jointe" : "");
+          await Promise.allSettled(
+            dgRecipients.map((r) => whatsappService.sendTextMessage(r.phone, msg))
+          );
+        } catch (waErr) {
+          console.warn("[bugReports] notif WhatsApp échouée:", waErr.message);
+        }
+
+        return res.json({ success: true, id: docRef.id });
+      } catch (err) {
+        console.error("Erreur bugReports submit-bug:", err);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+    }
+
+    return res.status(400).json({ success: false, error: "Action inconnue ou méthode invalide" });
   });
 
 // =============================================

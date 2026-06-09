@@ -197,6 +197,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Bug reports — signalements in-app. Lecture par utilisateurs authentifiés
+    // (la vue admin filtrée arrive en Phase B). Écriture via Cloud Function
+    // exports.bugReports uniquement (admin SDK).
+    match /bug_reports/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Stock balances — read-only for authenticated users, write via Cloud Functions
     match /stock_balances/{docId} {
       allow read: if request.auth != null;

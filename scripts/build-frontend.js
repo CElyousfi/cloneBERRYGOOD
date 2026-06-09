@@ -57,11 +57,46 @@ if (!fs.readFileSync(STOCK_GUARD, "utf8").includes("canEditMovement")) {
   process.exit(2);
 }
 
+// 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
+// puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
+// <script> séparés et partagent le scope global (IIFE → un seul global unique).
+const COMPONENTS_DIR = path.join(ROOT, "public/components");
+// Sentinelles attendues dans la sortie .js de chaque composant (identifiant du global exposé).
+const COMPONENT_SENTINELS = {
+  "BugReportButton.js": "window.BugReportButton",
+};
+if (fs.existsSync(COMPONENTS_DIR)) {
+  const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));
+  for (const jsx of jsxFiles) {
+    const src = path.join(COMPONENTS_DIR, jsx);
+    const out = path.join(COMPONENTS_DIR, jsx.replace(/\.jsx$/, ".js"));
+    const res = spawnSync(
+      "npx",
+      ["babel", src, "--presets", "@babel/preset-react", "-o", out],
+      { stdio: "inherit", cwd: ROOT }
+    );
+    if (res.status !== 0) {
+      console.error(`[build-frontend] babel failed for component ${jsx} with status`, res.status);
+      process.exit(1);
+    }
+    const sentinel = COMPONENT_SENTINELS[path.basename(out)];
+    if (sentinel) {
+      const builtComp = fs.readFileSync(out, "utf8");
+      if (!builtComp.includes(sentinel)) {
+        console.error(`[build-frontend] sentinel missing in ${path.basename(out)}: ${sentinel}`);
+        process.exit(2);
+      }
+    }
+  }
+}
+
 // 3. Cache-bust: rewrite <script src="app.js?v=..."> AND <script src="lib/*.js?v=...">
+//    AND <script src="components/*.js?v=...">
 const version = Date.now().toString(36);
 const html = fs.readFileSync(HTML, "utf8");
 let updated = html.replace(/(<script[^>]+src=["']app\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
 updated = updated.replace(/(<script[^>]+src=["']lib\/[A-Za-z0-9_.\-]+\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
+updated = updated.replace(/(<script[^>]+src=["']components\/[A-Za-z0-9_.\-]+\.js)(\?v=[^"']*)?(["'])/g, `$1?v=${version}$3`);
 if (updated === html) {
   console.error("[build-frontend] could not find <script src=\"app.js\"> in index.html");
   process.exit(3);

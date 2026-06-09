@@ -63192,6 +63192,12 @@ ${rejetHtml}
                     {showInstallGuide && (
                         <InstallGuide onClose={() => setShowInstallGuide(false)} />
                     )}
+
+                    {/* Signalement de bug in-app — composant séparé (window.BugReportButton) */}
+                    {window.BugReportButton && React.createElement(window.BugReportButton, {
+                        currentProfile: profile || currentProfile,
+                        currentScreen: currentTab,
+                    })}
                 </div>
             );
         }

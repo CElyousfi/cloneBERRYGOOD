@@ -18,5 +18,11 @@ service firebase.storage {
     match /bdc_avis_virement/{path=**} {
       allow read, write: if request.auth != null;
     }
+    // Captures jointes aux signalements de bug in-app. Écriture via Cloud
+    // Function (admin SDK) ; lecture authentifiée.
+    match /bug_reports/{path=**} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
