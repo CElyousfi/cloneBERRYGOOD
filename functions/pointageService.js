@@ -1713,9 +1713,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
-          // Load les 4 quinzaines disponibles (~60 jours = nav historique ~45 jours pour le chart).
-          // Le mirror n'expose pas plus que ça ; pas la peine de slicer plus large (= fetch perf).
-          const targetPeriodes = periodes.slice(0, 4);
+          // Load les 6 quinzaines disponibles (~90 jours) pour couvrir la fenêtre 90j du chart Coût Récolte.
+          // Auparavant 4 quinzaines (~60j) ; étendu à 6 pour le bouton "90 j".
+          const targetPeriodes = periodes.slice(0, 6);
           const allRows = [];
           for (const p of targetPeriodes) {
             const pRows = await getPointageRowsForPeriode(p);

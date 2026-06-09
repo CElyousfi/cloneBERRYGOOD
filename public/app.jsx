@@ -7845,7 +7845,7 @@
             const [viewMode, setViewMode] = useState('jour'); // 'jour' or 'quinzaine'
             const [selectedQuinz, setSelectedQuinz] = useState('');
             const [showTrend, setShowTrend] = useState(true);
-            const [histRange, setHistRange] = useState(10); // 10 ou 30 jours
+            const [histRange, setHistRange] = useState(30); // 7 / 30 / 60 / 90 jours
             const [histOffset, setHistOffset] = useState(0); // 0 = fenêtre la plus récente
             const [varieteFilter, setVarieteFilter] = useState('');
             const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
@@ -8272,10 +8272,25 @@
                         const allEqRows = (fermeFilter ? equipeRows.filter(r => r.ferme === fermeFilter) : equipeRows).filter(matchSub);
                         const cultureFilteredEq = cultureFilter ? allEqRows.filter(r => /myrtille/i.test(r.culture || resolveCulture(r)) === (cultureFilter === 'Myrtille')) : allEqRows;
                         const varieteFilteredEq = varieteFilter ? cultureFilteredEq.filter(r => r.variete === varieteFilter) : cultureFilteredEq;
-                        // Pagination : fenêtre de histRange jours, décalée par histOffset
+                        // Pagination : fenêtre de histRange JOURS DE DONNÉES, décalée par histOffset.
+                        // La pagination s'appuie sur les jours réellement présents (évite des pages vides),
+                        // mais l'axe X affiché est rendu CONTINU (jours sans récolte inclus à 0) pour ne
+                        // laisser aucun trou dans la fenêtre — cf. point "vérifier données" du backlog.
                         const allDatesDesc = [...new Set(varieteFilteredEq.map(r => r.jour))].sort().reverse();
                         const winStart = histOffset * histRange;
-                        const allDates = allDatesDesc.slice(winStart, winStart + histRange).reverse();
+                        const dataDates = allDatesDesc.slice(winStart, winStart + histRange).reverse(); // jours avec données, asc
+                        // Remplir les jours calendaires manquants entre le premier et le dernier jour de données de la fenêtre.
+                        const fillCalendarGaps = (sortedAsc) => {
+                            if (sortedAsc.length < 2) return sortedAsc.slice();
+                            const out = [];
+                            const start = new Date(sortedAsc[0] + 'T12:00:00');
+                            const end = new Date(sortedAsc[sortedAsc.length - 1] + 'T12:00:00');
+                            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                                out.push(d.toISOString().slice(0, 10));
+                            }
+                            return out;
+                        };
+                        const allDates = fillCalendarGaps(dataDates);
                         const hasOlder = allDatesDesc.length > winStart + histRange;
                         const hasNewer = histOffset > 0;
                         const logOps = /caporal|conditionnement|encadrement|chargement/i;
@@ -8302,6 +8317,28 @@
                             });
                             return { salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, cout: tSalaire + tTransport + tPrime + tCharges, kg: tKg, nb: wList.length };
                         };
+                        // Surface (ha) couverte par la sélection un jour donné.
+                        // Hypothèse : on somme les ha des parcelles (variété × ferme) réellement
+                        // récoltées ce jour, pour le cycle du jour (getHaByCycle agrège les parcelles
+                        // d'une variété). Sous-variété ignorée car les lignes récolte ne portent que
+                        // la variété de base (Maravilla/Yazmin/Corina/…), pas LC/MD.
+                        // Garde-fous : ha >= 0, pas de double comptage (clé variete|ferme unique).
+                        const haForDay = (rows, date) => {
+                            const cyc = getCycle(date);
+                            const seen = {};
+                            let ha = 0;
+                            rows.forEach(r => {
+                                const v = r.variete;
+                                const f = r.ferme || '';
+                                if (!v) return;
+                                const key = `${v}|${f}`;
+                                if (seen[key]) return;
+                                seen[key] = true;
+                                const h = getHaByCycle(v, null, f || null, cyc) || 0;
+                                if (h > 0) ha += h;
+                            });
+                            return ha;
+                        };
                         const todayStrEarly = new Date().toISOString().slice(0, 10);
                         const recolteDateEarly = selectedDate || todayStrEarly;
                         const trendData = allDates.map(date => {
@@ -8311,7 +8348,9 @@
                                 const dhKg = totalKg > 0 ? Math.round(totalCout / totalKg * 100) / 100 : null;
                                 const dhKgLog = totalKg > 0 ? Math.round(totalLogCout / totalKg * 100) / 100 : null;
                                 const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
-                                return { date, label, salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, cout: totalCout, kg: totalKg, dhKg, dhKgLog, nb: nbOuvriers };
+                                const haDay = haForDay(allFiltered, date);
+                                const kgHa = haDay > 0 ? Math.round(totalKg / haDay * 10) / 10 : 0;
+                                return { date, label, salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, cout: totalCout, kg: totalKg, dhKg, dhKgLog, nb: nbOuvriers, ha: haDay, kgHa };
                             }
                             const dayRows = varieteFilteredEq.filter(r => r.jour === date && !logOps.test(r.operation || ''));
                             const logRows = varieteFilteredEq.filter(r => r.jour === date && logOps.test(r.operation || ''));
@@ -8321,7 +8360,9 @@
                             // Logistique DH/Kg : coût logistique du jour divisé par les kg RÉCOLTÉS du jour
                             const dhKgLog = agg.kg > 0 ? Math.round(logAgg.cout / agg.kg * 100) / 100 : null;
                             const label = new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric'});
-                            return { date, label, salaire: agg.salaire, transport: agg.transport, prime: agg.prime, charges: agg.charges, cout: agg.cout, kg: agg.kg, dhKg, dhKgLog, nb: agg.nb };
+                            const haDay = haForDay(dayRows, date);
+                            const kgHa = haDay > 0 ? Math.round(agg.kg / haDay * 10) / 10 : 0;
+                            return { date, label, salaire: agg.salaire, transport: agg.transport, prime: agg.prime, charges: agg.charges, cout: agg.cout, kg: agg.kg, dhKg, dhKgLog, nb: agg.nb, ha: haDay, kgHa };
                         });
                         // Échelle Y stable : calculée sur TOUTES les dates disponibles, pas seulement la fenêtre.
                         // Évite que les barres "grandissent" ou "rétrécissent" en navigant entre fenêtres.
@@ -8341,6 +8382,20 @@
                         });
                         const maxDhKg = Math.max(...allDhKgNet, 1);
                         const BAR_H = 200;
+                        // Axe Y secondaire (droite) pour la courbe Kg/ha. Échelle calculée sur la fenêtre affichée.
+                        // Garde-fou : min 1 pour éviter division par 0 / NaN.
+                        const maxKgHa = Math.max(1, ...trendData.map(d => d.kgHa || 0)) * 1.1;
+                        const KGHA_COLOR = '#059669';
+                        // Points de la courbe (coordonnées en % via preserveAspectRatio:none) : x = centre de colonne, y = band BAR_H.
+                        const nTrend = trendData.length;
+                        const kgHaPoints = trendData.map((d, i) => ({
+                            x: nTrend === 1 ? 50 : (i / (nTrend - 1)) * 100,
+                            y: BAR_H - Math.max(0, Math.min(BAR_H, ((d.kgHa || 0) / maxKgHa) * BAR_H)),
+                            kgHa: d.kgHa || 0,
+                            ha: d.ha || 0
+                        }));
+                        const hasKgHa = kgHaPoints.some(p => p.kgHa > 0);
+                        const kgHaPathD = kgHaPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
                         const todayStr = new Date().toISOString().slice(0, 10);
                         const recolteDate = selectedDate || todayStr;
                         const COLORS = { salaire: '#7c3aed', transport: '#0ea5e9', prime: '#f59e0b', charges: '#f87171', logistique: '#475569' };
@@ -8360,8 +8415,9 @@
                                             <i className="fa-solid fa-chevron-right"></i>
                                         </button>
                                         <div style={{display:'flex',gap:0,marginLeft:6}}>
-                                            <button onClick={() => { setHistRange(10); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderRadius:'6px 0 0 6px',fontSize:11,fontWeight:600,background:histRange===10?'var(--berry)':'white',color:histRange===10?'white':'var(--gray-600)',cursor:'pointer'}}>10 j</button>
-                                            <button onClick={() => { setHistRange(30); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderLeft:'none',borderRadius:'0 6px 6px 0',fontSize:11,fontWeight:600,background:histRange===30?'var(--berry)':'white',color:histRange===30?'white':'var(--gray-600)',cursor:'pointer'}}>30 j</button>
+                                            {[7, 30, 60, 90].map((r, ri, arr) => (
+                                                <button key={r} onClick={() => { setHistRange(r); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderLeft:ri===0?'1px solid var(--gray-200)':'none',borderRadius:ri===0?'6px 0 0 6px':(ri===arr.length-1?'0 6px 6px 0':0),fontSize:11,fontWeight:600,background:histRange===r?'var(--berry)':'white',color:histRange===r?'white':'var(--gray-600)',cursor:'pointer'}}>{r} j</button>
+                                            ))}
                                         </div>
                                         <button onClick={() => setShowTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16,marginLeft:4}}><i className="fa-solid fa-xmark"></i></button>
                                     </div>
@@ -8369,12 +8425,19 @@
                                 {trendData.length === 0 ? (
                                     <div style={{textAlign:'center',padding:20,color:'var(--gray-400)',fontSize:12}}>Pas de données disponibles</div>
                                 ) : (
-                                    <div>
-                                        <div style={{display:'flex',alignItems:'flex-end',gap:6,height:BAR_H + 40,padding:'0 4px'}}>
+                                    <div style={{position:'relative'}}>
+                                        {/* Axe Y secondaire (Kg/ha) — graduations à droite */}
+                                        {hasKgHa && (
+                                        <div style={{position:'absolute',right:0,top:18,height:BAR_H,width:34,pointerEvents:'none',zIndex:1}}>
+                                            {[0,0.25,0.5,0.75,1].map((t,ti) => (
+                                                <span key={ti} style={{position:'absolute',right:0,top:`${(1-t)*BAR_H-6}px`,fontSize:8,color:KGHA_COLOR,fontWeight:600}}>{Math.round(maxKgHa*t)}</span>
+                                            ))}
+                                        </div>
+                                        )}
+                                        <div style={{display:'flex',alignItems:'flex-end',gap:6,padding:'0 4px'}}>
                                             {trendData.map((d, i) => {
                                                 const isToday = d.date === recolteDate;
                                                 const dhKgNet = (d.dhKg || 0) + (d.dhKgLog || 0);
-                                                const netBarH = dhKgNet > 0 ? (dhKgNet / maxDhKg) * BAR_H : 0;
                                                 // Clamp défensif : aucune barre (récolte ou logistique) ne doit dépasser BAR_H,
                                                 // et leur somme empilée non plus — garde-fou contre toute désync d'échelle.
                                                 const rawTotalBarH = d.dhKg !== null ? (d.dhKg / maxDhKg) * BAR_H : 0;
@@ -8391,29 +8454,54 @@
                                                 const hCha = totalBarH * pCha;
                                                 return (
                                                     <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(dhKgNet || null)}}>{dhKgNet > 0 ? dhKgNet.toFixed(1) : '-'}</span>
-                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
-                                                        <div style={{width:'100%',maxWidth:48,display:'flex',flexDirection:'column',borderRadius:'6px 6px 0 0',overflow:'hidden',border:isToday?'2px solid var(--berry)':'none'}}>
-                                                            <div style={{height:hCha,background:COLORS.charges,transition:'height 0.3s'}} title={`Charges: ${fmt(d.charges)} DH`}></div>
-                                                            <div style={{height:hPri,background:COLORS.prime,transition:'height 0.3s'}} title={`Prime: ${fmt(d.prime)} DH`}></div>
-                                                            <div style={{height:hTra,background:COLORS.transport,transition:'height 0.3s'}} title={`Transport: ${fmt(d.transport)} DH`}></div>
-                                                            <div style={{height:hSal,background:COLORS.salaire,transition:'height 0.3s'}} title={`Salaire: ${fmt(d.salaire)} DH`}></div>
-                                                            {hLog > 0 && (
-                                                                <div style={{height:hLog,background:LOG_HATCH,transition:'height 0.3s'}} title={`Logistique: ${d.dhKgLog.toFixed(2)} DH/Kg`}></div>
-                                                            )}
+                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(dhKgNet || null),height:14}}>{dhKgNet > 0 ? dhKgNet.toFixed(1) : '-'}</span>
+                                                        {/* Bande de tracé fixe (BAR_H) — la barre s'aligne en bas, partagée avec l'overlay courbe Kg/ha */}
+                                                        <div style={{width:'100%',height:BAR_H,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+                                                            <div style={{width:'100%',maxWidth:48,display:'flex',flexDirection:'column',justifyContent:'flex-end',borderRadius:'6px 6px 0 0',overflow:'hidden',border:isToday?'2px solid var(--berry)':'none'}}>
+                                                                <div style={{height:hCha,background:COLORS.charges,transition:'height 0.3s'}} title={`Charges: ${fmt(d.charges)} DH`}></div>
+                                                                <div style={{height:hPri,background:COLORS.prime,transition:'height 0.3s'}} title={`Prime: ${fmt(d.prime)} DH`}></div>
+                                                                <div style={{height:hTra,background:COLORS.transport,transition:'height 0.3s'}} title={`Transport: ${fmt(d.transport)} DH`}></div>
+                                                                <div style={{height:hSal,background:COLORS.salaire,transition:'height 0.3s'}} title={`Salaire: ${fmt(d.salaire)} DH`}></div>
+                                                                {hLog > 0 && (
+                                                                    <div style={{height:hLog,background:LOG_HATCH,transition:'height 0.3s'}} title={`Logistique: ${d.dhKgLog.toFixed(2)} DH/Kg`}></div>
+                                                                )}
+                                                            </div>
                                                         </div>
+                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
                                                         <span style={{fontSize:9,color:isToday?'var(--berry)':'var(--gray-500)',fontWeight:isToday?700:400}}>{d.label}</span>
                                                         <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.nb} ouv.</span>
                                                     </div>
                                                 );
                                             })}
                                         </div>
+                                        {/* Overlay SVG courbe Kg/ha (axe Y secondaire à droite). preserveAspectRatio:none → coords directes. */}
+                                        {hasKgHa && (
+                                        <svg width="100%" height={BAR_H} viewBox={`0 0 100 ${BAR_H}`} preserveAspectRatio="none" style={{position:'absolute',left:0,top:18,pointerEvents:'none',overflow:'visible',zIndex:2}}>
+                                            <path d={kgHaPathD} fill="none" stroke={KGHA_COLOR} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+                                        </svg>
+                                        )}
+                                        {/* Pastilles + valeurs Kg/ha alignées par colonne (hors SVG pour rester lisibles à l'échelle) */}
+                                        {hasKgHa && (
+                                        <div style={{position:'absolute',left:4,right:4,top:18,height:BAR_H,display:'flex',gap:6,pointerEvents:'none',zIndex:3}}>
+                                            {kgHaPoints.map((p, i) => (
+                                                <div key={i} style={{flex:1,position:'relative'}}>
+                                                    {p.kgHa > 0 && (
+                                                    <span style={{position:'absolute',left:'50%',top:`${p.y}px`,transform:'translate(-50%,-130%)',fontSize:8,fontWeight:700,color:KGHA_COLOR,whiteSpace:'nowrap'}}>{p.kgHa}</span>
+                                                    )}
+                                                    {p.kgHa > 0 && (
+                                                    <span style={{position:'absolute',left:'50%',top:`${p.y}px`,transform:'translate(-50%,-50%)',width:5,height:5,borderRadius:'50%',background:KGHA_COLOR}}></span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        )}
                                         <div style={{display:'flex',justifyContent:'center',gap:16,marginTop:14,fontSize:10,color:'var(--gray-600)',flexWrap:'wrap'}}>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.salaire,marginRight:4,verticalAlign:'middle'}}></span>Salaire de Base</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.transport,marginRight:4,verticalAlign:'middle'}}></span>Transport</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.prime,marginRight:4,verticalAlign:'middle'}}></span>Prime Récolte</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges Sociales (40 DH)</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:LOG_HATCH,marginRight:4,verticalAlign:'middle'}}></span>Part Logistique</span>
+                                            {hasKgHa && <span><span style={{display:'inline-block',width:14,height:3,borderRadius:2,background:KGHA_COLOR,marginRight:4,verticalAlign:'middle'}}></span>Volume Kg/ha (axe droit)</span>}
                                         </div>
                                     </div>
                                 )}
