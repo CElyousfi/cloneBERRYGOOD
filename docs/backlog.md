@@ -370,38 +370,6 @@ LIVRÉ (PR #62). Datalist Bon de Consommation = catalogue complet (au lieu de st
 LIVRÉ (PR #62). Unité pré-remplie depuis le catalogue à la sélection d'un article
 (BC + bonus BDC/DA). Reste : deploy (preview testable).
 
-## [ ] 8. Option B — Reconstruction de BR_Pointage depuis le brut (planifié, ~4-5 j)
-Contexte : solution long terme robuste (si l'actualisation BEE ONE reste fragile).
-Reconstruire BR_Pointage en lisant directement `BEE_BERRY_GOOD.Pointage` (brut, prod,
-lecture seule via getPoolProd) et en refaisant la dénormalisation que fait BEE ONE.
-Phases :
-- (1) Reverse-engineering de la requête ~2 j — grain ≈ 1 ligne/ouvrier ; `cout>0`
-  donne 195 vs cible 197 (31 mai) → règles de bord à élucider ; mapping coût/HS/prime
-  depuis les 93 colonnes de Personnel_Pointage + lookups (Personnel, Operation_REF,
-  ParcelleCulturale, Fermes) + Periode_paie calculée depuis DATE.
-- (2) Validation row-exact vs golden mirror sur ≥3 quinzaines ~1 j.
-- (3) Intégration sync + cutover (garder self-heal) ~1 j.
-- (4) Buffer (fériés, primes, archivage, perf SQLEXPRESS) ~1 j.
-Règle de sécurité : AUCUN basculement prod tant que la parité row-exact n'est pas
-prouvée contre le golden mirror (données paie).
-Gated : oui — démarrage sur GO d'Omar.
-
-### Phase 1 — cartographie des sources (FAIT, read-only, 2026-06-08)
-Cible BR_Pointage (golden mirror 31 mai = 197 lignes) ← sources prod BEE_BERRY_GOOD :
-- grain = ouvrier (`Personnel_Pointage` par `IDPointage`) × opération (sur l'EN-TÊTE).
-- `Personnel_Matricule` ← `Personnel.Mat` (join `Personnel_Pointage.Pers_Id = Personnel.ID`).
-- `Personnel_Nom` ← `Personnel.Nom` (+ Prenom ?).
-- `Operation`/`Operation_Famille`/`Operation_Groupe` ← `Operation_REF` (join
-  `Pointage.Operef_id = Operation_REF.OpeRef_Id` → `OpeRef_Intitule`/`Oper_Famille`/`OpeRef_Gr`).
-- `Cout`, `Nombre_Jr` (=`Nombre_jour`), `HS_25/50/100/NM`, `Quantite_unite` (=`Qte_Unite`) ← `Personnel_Pointage`.
-- `Parcelle_Culturale`/`Ref_parcelle`/`Variete`/`Culture` ← `Pointage_ParcelleCulturale → ParcelleCulturale`
-  (`parcelle`/`Ref`/`Variete`) — parcelle est par en-tête (distribution ouvrier×parcelle à confirmer).
-- `Periode_paie` ← calculé depuis `Pointage.DATE` (quinzaine), car `IDPeriode=0` dans l'en-tête.
-- `DateStr` ← `Pointage.DATE`.
-Reste phase 1 : règle exacte du grain 269→197 (filtre `cout>0` donne 195 ; +2 lignes de bord à
-élucider) + distribution ouvrier×parcelle, puis requête complète + validation row-exact vs
-golden mirror sur ≥3 quinzaines.
-
 ## [ ] 9. Refonte notifications WhatsApp BDC virement
 À cadrer avec Omar (détails, critères d'acceptation).
 
