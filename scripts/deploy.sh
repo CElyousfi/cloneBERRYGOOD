@@ -9,11 +9,14 @@
 #   scripts/deploy.sh hosting,functions     # deploy ciblé
 #   scripts/deploy.sh hosting               # frontend seul
 #   scripts/deploy.sh functions             # backend seul
+#   scripts/deploy.sh hosting --dry-run     # validation sans déployer
+# Tout argument après la cible est transmis tel quel à `firebase deploy`.
 #
 # Le token CI évite l'expiration du token de session interactif.
 set -euo pipefail
 
 ONLY="${1:-hosting,functions}"
+shift || true   # le reste ("$@") est transmis à firebase deploy (ex. --dry-run)
 PROJECT="berrygood-farms-dashboard"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -31,5 +34,5 @@ if [ -z "${FIREBASE_TOKEN:-}" ]; then
 fi
 
 echo "[deploy] branche : $(git -C "$ROOT" rev-parse --abbrev-ref HEAD) @ $(git -C "$ROOT" rev-parse --short HEAD)"
-echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)"
-firebase deploy --only "$ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive
+echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
+firebase deploy --only "$ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive "$@"
