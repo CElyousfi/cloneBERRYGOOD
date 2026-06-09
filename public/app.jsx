@@ -2692,7 +2692,7 @@
                         </div>
                         <div className="farm-banner-stat">
                             <div className="value">{farmInfo.postesFixes}</div>
-                            <div className="label">Postes Fixes</div>
+                            <div className="label">Ouvrier Avocatier</div>
                         </div>
                     </div>
                 </div>
@@ -4264,8 +4264,8 @@
                                 subItems={[{ value: logCount, label: 'Logistique' }, { value: logPct + '%', label: 'Log/Récolte' }]} />
                             <KPICard icon="fa-trowel" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).horsRecolte || 0} label="Effectif Hors Récolte"
                                 onClick={() => setKpiPopup({ title: `Hors Récolte — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'horsRecolte', icon: 'fa-trowel' })} />
-                            <KPICard icon="fa-diagram-next" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).postesFixes || 0} label="Postes Fixes"
-                                onClick={() => setKpiPopup({ title: `Postes Fixes — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'postesFixes', icon: 'fa-diagram-next' })} />
+                            <KPICard icon="fa-diagram-next" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).postesFixes || 0} label="Ouvrier Avocatier"
+                                onClick={() => setKpiPopup({ title: `Ouvrier Avocatier — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'postesFixes', icon: 'fa-diagram-next' })} />
                         </div>
                     ) : (
                         <div className="kpi-grid">
@@ -4517,7 +4517,7 @@
                                                 <div style={{marginBottom:16}}>
                                                     <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-building" style={{marginRight:6,color:'var(--berry)'}}></i>Par Ferme</div>
                                                     <table className="data-table" style={{fontSize:11}}>
-                                                        <thead><tr><th>Ferme</th><th style={{textAlign:'right'}}>Journées</th><th style={{textAlign:'right'}}>Récolte</th><th style={{textAlign:'right'}}>Hors Récolte</th><th style={{textAlign:'right'}}>Postes Fixes</th><th style={{textAlign:'right'}}>Coût (DH)</th></tr></thead>
+                                                        <thead><tr><th>Ferme</th><th style={{textAlign:'right'}}>Journées</th><th style={{textAlign:'right'}}>Récolte</th><th style={{textAlign:'right'}}>Hors Récolte</th><th style={{textAlign:'right'}}>Ouvriers Avocatier</th><th style={{textAlign:'right'}}>Coût (DH)</th></tr></thead>
                                                         <tbody>
                                                             {quinzParFerme.map((f, i) => (
                                                                 <tr key={i}><td style={{fontWeight:600}}>{f.ferme}</td><td style={{textAlign:'right'}}>{f.journees}</td><td style={{textAlign:'right'}}>{f.recolte}</td><td style={{textAlign:'right'}}>{f.horsRecolte}</td><td style={{textAlign:'right'}}>{f.postesFixes}</td><td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{Math.round(f.cout).toLocaleString('fr-FR')}</td></tr>
@@ -5996,7 +5996,7 @@
                                 subItems={[
                                     { value: p.recolte, label: 'Récolte' },
                                     { value: p.horsRecolte, label: 'Hors Récolte' },
-                                    { value: p.postesFixes, label: 'Fixes' }
+                                    { value: p.postesFixes, label: 'Avocatier' }
                                 ]}
                             />
                         ))}
@@ -6055,7 +6055,7 @@
                                     <th>Récolte</th>
                                     <th>Hors Récolte</th>
                                     <th>Total Ouvriers</th>
-                                    <th>Postes Fixes</th>
+                                    <th>Ouvriers Avocatier</th>
                                     <th>Veille</th>
                                     <th>Variation</th>
                                     {!isCaporal && <th>Coût (DH)</th>}
@@ -6331,7 +6331,7 @@
                             });
                             const ops = Object.values(byOp).sort((a, b) => b.ouvriers.length - a.ouvriers.length);
                             return (
-                                <Panel title={`Postes Fixes (${fixesFiltered.length})`} icon="fa-anchor" actions={
+                                <Panel title={`Ouvriers Avocatier (${fixesFiltered.length})`} icon="fa-anchor" actions={
                                     <button onClick={() => setShowPostesFixes(!showPostesFixes)} style={{background:'none',border:'1px solid var(--gray-200)',borderRadius:6,padding:'3px 10px',fontSize:10,fontWeight:600,cursor:'pointer',color:'var(--gray-500)'}}>
                                         <i className={`fa-solid fa-chevron-${showPostesFixes ? 'up' : 'down'}`} style={{marginRight:4}}></i>{showPostesFixes ? 'Réduire' : 'Détail'}
                                     </button>
@@ -9518,7 +9518,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                         {[
                             {label:'Récolte',val:tot.recolte,color:'#E74C3C'},
                             {label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},
-                            {label:'Postes Fixes',val:tot.postesFixes,color:'#95A5A6'},
+                            {label:'Ouvriers Avocatier',val:tot.postesFixes,color:'#95A5A6'},
                             {label:'Total M.O',val:tot.total,color:'#8B2252'},
                         ].map((s,i) => (
                             <div key={i} style={{flex:1,minWidth:120,background:'#f8f9fa',borderRadius:10,padding:'12px 16px',textAlign:'center'}}>
@@ -9927,7 +9927,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                                     <th>Coût (DH)</th>
                                     <th>Récolte (jr)</th>
                                     <th>Hors Récolte (jr)</th>
-                                    <th>Postes Fixes (jr)</th>
+                                    <th>Ouvriers Avocatier (jr)</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -31043,7 +31043,7 @@ ${rejetHtml}
                             const COLORS_MO = ['#8B2252','#2D8B4E','#D4A847','#3498DB','#E67E22','#9B59B6','#E74C3C','#1ABC9C'];
                             return React.createElement('div', null,
                                 React.createElement('div', {style:{display:'flex',gap:16,marginBottom:16,flexWrap:'wrap'}},
-                                    [{label:'Récolte',val:tot.recolte,color:'#E74C3C'},{label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},{label:'Postes Fixes',val:tot.postesFixes,color:'#95A5A6'},{label:'Total M.O',val:tot.total,color:'#8B2252'}].map((s,i) =>
+                                    [{label:'Récolte',val:tot.recolte,color:'#E74C3C'},{label:'Hors Récolte',val:tot.horsRecolte,color:'#3498DB'},{label:'Ouvriers Avocatier',val:tot.postesFixes,color:'#95A5A6'},{label:'Total M.O',val:tot.total,color:'#8B2252'}].map((s,i) =>
                                         React.createElement('div', {key:i, style:{flex:1,minWidth:120,background:'#f8f9fa',borderRadius:10,padding:'12px 16px',textAlign:'center'}},
                                             React.createElement('div', {style:{fontSize:10,textTransform:'uppercase',letterSpacing:'0.5px',color:'#888',marginBottom:4}}, s.label),
                                             React.createElement('div', {style:{fontSize:18,fontWeight:700,color:s.color}}, (s.val/1000).toFixed(0) + 'k')
@@ -31058,7 +31058,7 @@ ${rejetHtml}
                                             React.createElement('th', null, 'Ferme'),
                                             React.createElement('th', {style:{textAlign:'right'}}, 'Récolte (DH)'),
                                             React.createElement('th', {style:{textAlign:'right'}}, 'Hors Récolte (DH)'),
-                                            React.createElement('th', {style:{textAlign:'right'}}, 'Postes Fixes (DH)'),
+                                            React.createElement('th', {style:{textAlign:'right'}}, 'Ouvrier Avocatier (DH)'),
                                             React.createElement('th', {style:{textAlign:'right'}}, 'Total (DH)'),
                                             React.createElement('th', {style:{textAlign:'right'}}, '%')
                                         )
@@ -31413,7 +31413,7 @@ ${rejetHtml}
                                     label: 'Autres HR', icon: 'fa-ellipsis', color: '#C0392B', isCharge: true, subLine: true, source: 'live', indent: true,
                                     getValue: (v) => { const d = getMo(v.variete, v.ferme).horsRecolteDetail || {}; return otherHrOps.reduce((s, op) => s + (d[op]?.cout || 0), 0); },
                                 }] : []),
-                                { label: 'M.O Postes Fixes', icon: 'fa-user-clock', color: '#95A5A6', getValue: (v) => getMo(v.variete, v.ferme).postesFixes.cout, isCharge: true, source: 'live' },
+                                { label: 'M.O Ouvrier Avocatier', icon: 'fa-user-clock', color: '#95A5A6', getValue: (v) => getMo(v.variete, v.ferme).postesFixes.cout, isCharge: true, source: 'live' },
                                 { label: 'Total M.O', icon: 'fa-users-gear', color: '#8B2252', getValue: (v) => getMo(v.variete, v.ferme).total.cout, isCharge: true, bold: true, source: 'live' },
                                 { label: '─', separator: true },
                                 // --- REEL (hardcodé, à connecter) ---
