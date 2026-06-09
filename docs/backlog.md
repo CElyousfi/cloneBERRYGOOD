@@ -58,7 +58,8 @@ Priorité : haute
 Gated : oui — valider le workflow de soumission et le circuit
 de déverrouillage avant d'implémenter.
 
-## [ ] ITEM (PRIORITÉ HAUTE) — Formule Paie unifiée + fiche ouvrier enrichie
+## [x] ITEM (PRIORITÉ HAUTE) — Formule Paie unifiée + fiche ouvrier enrichie
+✅ LIVRÉ PROD (batch 3) — paieUtils.js + popup Pointage (app.jsx:6408) + breakdown Paie (#78).
 Objectif : utiliser le modèle Paie complet (extraire `calculerPaieOuvrier`
 app.jsx:22551 en helper pur réutilisable, ex. public/lib/paieUtils.js) partout
 dans l'app, pas seulement dans l'onglet Paie.
@@ -94,17 +95,24 @@ Objectif : après la popup Pointage, remplacer les formules simplifiées
 par paieUtils (SMAG daté + ancienneté + déclaré + prime + transport)
 dans : Coût Récolte, Quinzaine, Dashboard, et tout écran affichant
 un coût ouvrier/jour.
-Dépendance : après l'item "Formule Paie unifiée + fiche ouvrier".
-Gated : non.
+Dépendance : après l'item "Formule Paie unifiée + fiche ouvrier" (✅ fait).
+⚠️ Blast radius ÉLEVÉ : `r.cout` (brut BEE ONE) est sommé dans Quinzaine, Coût Récolte,
+Dashboard, Pointage (~30 points). Repasser à computeWorkerPaie demande de replumber la
+donnée par ouvrier-jour (declare, ancienneté, baremes, date, primeFonction, transport, HS)
+dans chaque agrégation — non disponible par ligne aujourd'hui. + décision brut vs coût
+employeur (charges patronales) par écran. → nécessite un mini-doc de design AVANT code.
+Gated : non, mais à NE PAS lancer sans plan de design validé (risque sur tous les chiffres €).
 
-## [ ] ITEM — Fusionner Équipe BG et BGF (Pointage classement)
+## [x] ITEM — Fusionner Équipe BG et BGF (Pointage classement)
+✅ LIVRÉ PROD (batch 3) — mapping BG→BGF dans la dérivation préfixe (app.jsx).
 Pointage du jour : « Équipe BG » (1 ouvrier) et « BGF » (8) = même équipe affichée 2×.
 Diagnostic : le classement (#76) dérive un préfixe 2 lettres via transportConfig ; les
 matricules « BG… » → préfixe « BG » → fallback « Équipe BG », distinct du catch-all « BGF ».
 Correction : fusionner en une seule équipe, nom survivant **BGF** (mapper « BG » → BGF dans
 la dérivation). Vérifier cohérence onglet Équipes. Non-gated, screenshots clean avant deploy.
 
-## [ ] ITEM — Notifications : bouton « Tout ignorer » + tous profils
+## [x] ITEM — Notifications : bouton « Tout ignorer » + tous profils
+✅ LIVRÉ PROD (batch 3) — bouton « Tout ignorer » + localStorage notif_dismissed + tous profils.
 Popup notifications (cloche). Non-gated.
 ### 1. Bouton « Tout ignorer »
 3e bouton dans le popup (entre « Voir tout » et « Plus tard », ou remplace « Plus tard »).
@@ -193,7 +201,8 @@ l'architecte envoie les notifs WhatsApp aux profils concernés.
 - Soumettre le template Meta si nécessaire.
 Gated : oui — valider numéros de téléphone + contenu du template avec Omar.
 
-## [ ] ITEM (PRIORITÉ HAUTE) — Tests E2E visuels automatisés (Playwright)
+## [x] ITEM (PRIORITÉ HAUTE) — Tests E2E visuels automatisés (Playwright)
+✅ LIVRÉ (#79) — tests/e2e-visual.js, Chromium+WebKit, 12 écrans, login QA via .env.
 Objectif : après chaque deploy preview, le qa-reviewer lance une suite
 Playwright qui :
 1. Ouvre le preview dans un headless browser
@@ -289,20 +298,23 @@ depuis l'application, sans quitter l'écran.
 
 Gated : non.
 
-## [ ] ITEM — Renommer "Poste Fixe" en "Ouvrier Avocatier" (Pointage)
+## [x] ITEM — Renommer "Poste Fixe" en "Ouvrier Avocatier" (Pointage)
+✅ LIVRÉ PROD (batch 3).
 Objectif : dans le Pointage du jour et partout où la tâche "Poste Fixe"
 apparaît, renommer en "Ouvrier Avocatier". C'est un renommage de label
 uniquement (pas de changement de données).
 Gated : non.
 
-## [ ] ITEM — Lien Primes (Quinzaine) → tableau Primes avec bonne quinzaine
+## [x] ITEM — Lien Primes (Quinzaine) → tableau Primes avec bonne quinzaine
+✅ LIVRÉ PROD (batch 3) — onNavigateToPrimes.
 Objectif : quand on clique sur "Primes" depuis l'onglet Quinzaine, ça
 doit rediriger vers le tableau des Primes avec la quinzaine correspondante
 pré-sélectionnée (pas la quinzaine par défaut). Passer la quinzaine en
 paramètre de navigation.
 Gated : non.
 
-## [ ] ITEM — Coût Récolte : graphe enrichi (variété + Kg/ha + nav temps) [inclut Volume Kg/ha]
+## [x] ITEM — Coût Récolte : graphe enrichi (variété + Kg/ha + nav temps) [inclut Volume Kg/ha]
+✅ LIVRÉ PROD (batch 3) — filtre variété + overlay Kg/ha + nav 7/30/60/90j + fillCalendarGaps.
 Onglet Coût Récolte, graphe « Historique DH/Kg » — 4 points (non-gated) :
 1. **Filtre par VARIÉTÉ** (Maravilla LC, Maravilla MD, Yasmin, Corina, Cascade, Breeze)
    en plus du filtre par culture (Framboise/Myrtille). Voir le coût par variété.
