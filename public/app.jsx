@@ -22805,6 +22805,18 @@ ${rejetHtml}
             window.PaieUtils.trouverPalierAnciennete(anciennete, paliers);
         const calculerPaieOuvrier = (args) => window.PaieUtils.calculerPaieOuvrier(args);
 
+        // Cache module-level (TTL 5 min) des lectures Firestore lourdes du tab Paie.
+        // PaieTab est démonté/remonté à chaque ouverture du tab (renderTab → null
+        // quand inactif), donc sans cache chaque ouverture relisait ouvriers_registry
+        // (~1636 docs) + sql_mirror_pointage (plage d'historique) → >120s sur Safari.
+        // Le cache ne change AUCUNE valeur : il rejoue les mêmes données, juste sans
+        // re-fetch. Fallback no-op défensif si le <script> n'est pas chargé.
+        const __PaieDataCache = (typeof window !== 'undefined' && window.PaieDataCache) || {
+            pointageKey: (a, b) => 'pointage:' + a + '..' + b,
+            getOrLoad: (_k, loader) => Promise.resolve().then(loader),
+            invalidate: () => {},
+        };
+
         // Lit sql_mirror_pointage entre minDate et maxDate (IDs YYYY-MM-DD)
         // → Map<matricule, { joursPointes:Set<dateISO>, nom }>
         async function loadPointageDistinctDays(db, minDate, maxDate) {
@@ -22987,24 +22999,35 @@ ${rejetHtml}
                 return () => unsub && unsub();
             }, []);
 
-            // Initial load
+            // Initial load — registre + meta + pointage, servis depuis le cache
+            // module-level (TTL 5 min) quand ils sont frais. Mêmes données, juste
+            // sans re-fetch Firestore à chaque ré-ouverture du tab.
             useEffect(() => {
                 const db = firebase.firestore();
                 let cancelled = false;
                 (async () => {
                     try {
-                        const [regSnap, metaDoc] = await Promise.all([
-                            db.collection('ouvriers_registry').get(),
-                            db.collection('app_settings').doc('paie_import_meta').get(),
+                        const [reg, metaData] = await Promise.all([
+                            __PaieDataCache.getOrLoad('paie:registry', async () => {
+                                const regSnap = await db.collection('ouvriers_registry').get();
+                                const out = {};
+                                regSnap.forEach(d => { out[d.id] = { matricule: d.id, ...d.data() }; });
+                                return out;
+                            }),
+                            __PaieDataCache.getOrLoad('paie:import_meta', async () => {
+                                const metaDoc = await db.collection('app_settings').doc('paie_import_meta').get();
+                                return metaDoc.exists ? metaDoc.data() : null;
+                            }),
                         ]);
                         if (cancelled) return;
-                        const reg = {};
-                        regSnap.forEach(d => { reg[d.id] = { matricule: d.id, ...d.data() }; });
                         setRegistry(reg);
-                        if (metaDoc.exists) setMeta(metaDoc.data());
+                        if (metaData) setMeta(metaData);
                         const minBase = Object.values(reg).map(r => r.baselineDate).filter(Boolean).sort()[0];
                         const minDate = (minBase && minBase < periodStart) ? minBase : periodStart;
-                        const map = await loadPointageDistinctDays(db, minDate, periodEnd);
+                        const map = await __PaieDataCache.getOrLoad(
+                            __PaieDataCache.pointageKey(minDate, periodEnd),
+                            () => loadPointageDistinctDays(db, minDate, periodEnd)
+                        );
                         if (cancelled) return;
                         setPointageMap(map);
                     } catch (e) { console.error('Paie load:', e); }
@@ -23014,13 +23037,16 @@ ${rejetHtml}
             // eslint-disable-next-line react-hooks/exhaustive-deps
             }, []);
 
-            // Reload pointage when period bounds change
+            // Reload pointage when period bounds change — même cache (clé = plage).
             useEffect(() => {
                 if (loading) return;
                 const db = firebase.firestore();
                 const minBase = Object.values(registry).map(r => r.baselineDate).filter(Boolean).sort()[0];
                 const minDate = (minBase && minBase < periodStart) ? minBase : periodStart;
-                loadPointageDistinctDays(db, minDate, periodEnd).then(setPointageMap).catch(e => console.error('reload pointage:', e));
+                __PaieDataCache.getOrLoad(
+                    __PaieDataCache.pointageKey(minDate, periodEnd),
+                    () => loadPointageDistinctDays(db, minDate, periodEnd)
+                ).then(setPointageMap).catch(e => console.error('reload pointage:', e));
             // eslint-disable-next-line react-hooks/exhaustive-deps
             }, [periodStart, periodEnd]);
 
@@ -23079,6 +23105,8 @@ ${rejetHtml}
                         nom: prev.nom || pointageMap.get(matricule)?.nom || '',
                         updatedAt: Date.now(),
                     }, { merge: true });
+                    // Cache devenu obsolète → la prochaine ouverture relira le registre.
+                    __PaieDataCache.invalidate('paie:registry');
                 } catch (e) {
                     console.error('toggleDeclare:', e);
                     setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
@@ -23098,6 +23126,7 @@ ${rejetHtml}
                         nom: prev.nom || pointageMap.get(matricule)?.nom || '',
                         updatedAt: Date.now(),
                     }, { merge: true });
+                    __PaieDataCache.invalidate('paie:registry');
                 } catch (e) {
                     console.error('savePrimeFonction:', e);
                     setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
@@ -23144,6 +23173,8 @@ ${rejetHtml}
                         if (count > 0) await batch.commit();
                         const metaPayload = { lastDeclaresImportAt: Date.now(), lastDeclaresImportCount: ok, lastDeclaresImportFile: file.name };
                         await db.collection('app_settings').doc('paie_import_meta').set(metaPayload, { merge: true });
+                        __PaieDataCache.invalidate('paie:registry');
+                        __PaieDataCache.invalidate('paie:import_meta');
                         setRegistry(newRegistry);
                         setMeta(prev => ({ ...(prev || {}), ...metaPayload }));
                         alert(`Import OK : ${ok} ouvrier(s) marqué(s) déclaré(s).`);
@@ -23183,6 +23214,10 @@ ${rejetHtml}
                         if (count > 0) await batch.commit();
                         const metaPayload = { lastBaselineImportAt: Date.now(), lastBaselineImportCount: ok, lastBaselineImportFile: file.name };
                         await db.collection('app_settings').doc('paie_import_meta').set(metaPayload, { merge: true });
+                        // Baseline touche les bornes d'ancienneté → invalider aussi le pointage en cache.
+                        __PaieDataCache.invalidate('paie:registry');
+                        __PaieDataCache.invalidate('paie:import_meta');
+                        __PaieDataCache.invalidate('pointage:');
                         setRegistry(newRegistry);
                         setMeta(prev => ({ ...(prev || {}), ...metaPayload }));
                         alert(`Import baseline OK : ${ok} ligne(s).`);
@@ -62958,7 +62993,7 @@ ${rejetHtml}
                                             </div>
                                         )}
                                     </div>
-                                    <button className="header-btn refresh-btn" onClick={() => { invalidateCache(); setRefreshKey(k => k + 1); }}>
+                                    <button className="header-btn refresh-btn" onClick={() => { invalidateCache(); if (window.PaieDataCache) window.PaieDataCache.invalidate(); setRefreshKey(k => k + 1); }}>
                                         <i className="fa-solid fa-arrow-rotate-right"></i>
                                         Rafraîchir
                                     </button>
@@ -62969,7 +63004,7 @@ ${rejetHtml}
                             <div className="content-scroll" ref={pullRef}
                                 onTouchStart={e => { if (pullRef.current && pullRef.current.scrollTop === 0) pullStartY.current = e.touches[0].clientY; else pullStartY.current = null; }}
                                 onTouchMove={e => { if (pullStartY.current !== null) { const dy = e.touches[0].clientY - pullStartY.current; setPullDist(dy > 0 ? Math.min(dy, 120) : 0); }}}
-                                onTouchEnd={() => { if (pullDist > 60) { setRefreshKey(k => k + 1); } setPullDist(0); pullStartY.current = null; }}>
+                                onTouchEnd={() => { if (pullDist > 60) { if (window.PaieDataCache) window.PaieDataCache.invalidate(); setRefreshKey(k => k + 1); } setPullDist(0); pullStartY.current = null; }}>
                                 {pullDist > 0 && (
                                     <div style={{display:'flex', justifyContent:'center', alignItems:'center', height: pullDist * 0.5, overflow:'hidden', transition: pullDist > 60 ? 'none' : 'height 0.2s'}}>
                                         <i className={`fa-solid fa-arrow-rotate-right${pullDist > 60 ? ' fa-spin' : ''}`} style={{fontSize:18, color: pullDist > 60 ? 'var(--berry)' : 'var(--gray-400)', transform:`rotate(${pullDist * 3}deg)`, transition:'color 0.2s'}}></i>
