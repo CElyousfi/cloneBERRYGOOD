@@ -145,6 +145,14 @@ AUCUN nouvel article créé silencieusement par import — match existant ou cr�
 
 Gated : oui (GO Omar avant exécution Phase 2 ; cadrage seuil fuzzy + UI Phase 3).
 
+## [ ] ITEM — Perf onglet Paie sur Safari/mobile (>120s de chargement)
+Le tab Paie charge en >120s sur WebKit/Safari (détecté par la QA Playwright). Cause :
+lectures Firestore lourdes côté CLIENT (`ouvriers_registry` complet + `sql_mirror_pointage`
+plage + paie_baremes) à chaque ouverture. Pré-existant (#77/#78), pas une régression.
+Pistes : déplacer le calcul d'ancienneté/registre côté Cloud Function (pré-agrégé),
+paginer/limiter la période chargée par défaut, cache Firestore. Idem popup Paie du Pointage
+(même source). Gated : non.
+
 ## [ ] ITEM (PRIO HAUTE — gated) — Vérification programme engrais (théorique vs réel)
 Comparer fertilisation théorique (prescrite) vs consommation réelle, détecter écarts, alerter hebdo. 3 phases.
 ### Phase 1 — Comparaison via BEE ONE (gated)
