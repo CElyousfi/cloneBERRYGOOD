@@ -5,19 +5,6 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
-## [~] 1. URGENT — Pointage manquant depuis le 1er juin (bug critique)
-Diagnostic LIVRÉ + actions en cours :
-- Cause = la table reporting `BR_BERRY_GOOD.BR_Pointage` n'est plus alimentée
-  depuis le 1er juin ~21h24 (0 ligne). Donnée brute INTACTE dans
-  `BEE_BERRY_GOOD.Pointage` (prod). Alimentation pilotée par l'appli BEE ONE
-  (aucune procédure stockée) → arrêt silencieux. Notre sync est sain.
-- ✅ Option C (alerte 0-ligne) LIVRÉE → rejouée sur main courant : **PR #73**
-  (`feat/pointage-zero-alert-v2`), node -c OK. PRÊTE pour le déploiement groupé `functions`.
-- 🔵 Option A : Omar relance l'actualisation BEE ONE de son côté → débloque juin
-  immédiatement, 0 risque.
-- 🔜 Option B (reconstruction long terme) → déplacée en item planifié #8.
-Statut : diagnostic clos, alerte livrée, récupération via A (Omar). Reste B (#8).
-
 ## [x] 2. URGENT — Bug menu « Historique Irrigation » dupliqué
 Corrigé : `baseNavItems.push()` mutait une constante NAV_ITEMS partagée à chaque
 re-render → ~12 doublons. Fix = copie fraîche (spread). QA APPROUVÉ, 224/224.
