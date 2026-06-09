@@ -9677,7 +9677,7 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
         }
 
         // ===================== QUINZAINE TAB =====================
-        function QuinzaineTab({ data, farmFilter, avoSubFilter }) {
+        function QuinzaineTab({ data, farmFilter, avoSubFilter, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
             const [loading, setLoading] = useState(true);
             const [selectedPeriode, setSelectedPeriode] = useState('');
@@ -9854,6 +9854,12 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                             <option value="">Dernière quinzaine</option>
                             {(apiData.periodes || []).map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
+                        {typeof onNavigateToPrimes === 'function' && (
+                            <button onClick={() => onNavigateToPrimes(selectedPeriode)}
+                                style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--berry)',background:'var(--berry)',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                                <i className="fa-solid fa-coins"></i>Voir les Primes
+                            </button>
+                        )}
                     </div>
 
                     <div className="quinzaine-card">
@@ -20660,9 +20666,22 @@ ${rejetHtml}
         }
 
         // ===================== TRANSPORTEUR TAB =====================
-        function PrimesTab({ data, farmFilter, avoSubFilter }) {
+        function PrimesTab({ data, farmFilter, avoSubFilter, initialPeriode, onInitialPeriodeConsumed }) {
             const [primeSub, setPrimeSub] = useState('recap');
-            const [sharedPeriode, setSharedPeriode] = useState('');
+            // initialPeriode != null => navigation depuis Quinzaine : on pré-sélectionne la quinzaine
+            // passée (peut être '' = dernière quinzaine, valeur sentinelle identique au défaut).
+            const [sharedPeriode, setSharedPeriode] = useState(initialPeriode != null ? initialPeriode : '');
+            // Quinzaine pré-sélectionnée à propager au sous-onglet récap (one-shot).
+            const [recapInitialPeriode, setRecapInitialPeriode] = useState(initialPeriode != null ? initialPeriode : '');
+            React.useEffect(() => {
+                if (initialPeriode != null) {
+                    setSharedPeriode(initialPeriode);
+                    setRecapInitialPeriode(initialPeriode);
+                    setPrimeSub('recap');
+                    if (typeof onInitialPeriodeConsumed === 'function') onInitialPeriodeConsumed();
+                }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [initialPeriode]);
             const navigateToDetail = (tabId, periode) => { if (periode) setSharedPeriode(periode); setPrimeSub(tabId); };
             const subTabs = [
                 { id: 'recap', label: 'Récapitulatif', icon: 'fa-chart-pie' },
@@ -20684,7 +20703,7 @@ ${rejetHtml}
                             </button>
                         ))}
                     </div>
-                    {primeSub === 'recap' && <PrimesRecapSub data={data} onNavigate={navigateToDetail} farmFilter={farmFilter} />}
+                    {primeSub === 'recap' && <PrimesRecapSub data={data} onNavigate={navigateToDetail} farmFilter={farmFilter} initialPeriode={recapInitialPeriode} />}
                     {primeSub === 'recolte' && <PrimesRecolteTab data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'transport' && <TransportSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
                     {primeSub === 'traitement' && <TraitementSub data={data} farmFilter={farmFilter} initialPeriode={sharedPeriode} />}
@@ -20790,7 +20809,7 @@ ${rejetHtml}
             );
         }
 
-        function PrimesRecapSub({ data, onNavigate, farmFilter }) {
+        function PrimesRecapSub({ data, onNavigate, farmFilter, initialPeriode }) {
             const [detailRows, setDetailRows] = useState([]);
             const [transportData, setTransportData] = useState({});
             const [recolteRows, setRecolteRows] = useState([]);
@@ -62064,6 +62083,7 @@ ${rejetHtml}
                 return userProfile.profileId;
             });
             const [currentTab, setCurrentTab] = useState(__savedTab);
+            const [primesInitialPeriode, setPrimesInitialPeriode] = useState(null);
             const [sidebarOpen, setSidebarOpen] = useState(false);
             const [showMoreMenu, setShowMoreMenu] = useState(false);
             const [showMobileProfileMenu, setShowMobileProfileMenu] = useState(false);
@@ -62824,10 +62844,10 @@ ${rejetHtml}
 
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
-                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter }, 'Quinzaine')}
+                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
                                 {renderTab('campagne', CampagneTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
-                                {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter }, 'Primes')}
+                                {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
