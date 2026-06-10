@@ -6185,7 +6185,7 @@
                     })()}
 
                     {/* Affectation Ouvriers - Vue Chef de Ferme */}
-                    {currentProfile && (currentProfile.startsWith('chef_') || currentProfile.startsWith('caporal_')) && filteredDetail.length > 0 && (() => {
+                    {!isValidation && currentProfile && (currentProfile.startsWith('chef_') || currentProfile.startsWith('caporal_')) && filteredDetail.length > 0 && (() => {
                         // Classement par équipe : MÊME source/logique que l'onglet « Équipes — Primes de transport »
                         // (référentiel data.transportConfig). Code équipe = 2 LETTRES, HAFI→HA, catch-all « BGF ».
                         const transportConfig = data.transportConfig || [];
@@ -6391,7 +6391,7 @@
                     })()}
 
                     {/* Pointage par Parcelle → Tâche → Équipe */}
-                    {(() => {
+                    {!isValidation && (() => {
                         // Classement par équipe : MÊME source/logique que l'onglet « Équipes » (référentiel data.transportConfig).
                         const eqColors = {
                             'NA': '#8B2252', 'RE': '#c0392b', 'CA': '#8B4513', 'NV': '#6c3483',
@@ -6500,6 +6500,7 @@
                         ));
                     })()}
 
+                    {!isValidation && (
                     <Panel title="Évolution Pointage - Semaine" icon="fa-chart-area">
                         <SimpleBarChart data={weeklyTrend} dataKeys={pointage.map(p => p.ferme)} colors={['#8B2252', '#2D8B4E', '#D4A847']} xKey="jour" height={250} />
                         <div style={{display:'flex',gap:16,justifyContent:'center',marginTop:10,flexWrap:'wrap'}}>
@@ -6511,8 +6512,10 @@
                             ))}
                         </div>
                     </Panel>
+                    )}
 
                     {/* Top 10 Hors Récolte + Postes Fixes */}
+                    {!isValidation && (
                     <div className="two-col">
                         {/* Top 10 Hors Récolte */}
                         {(() => {
@@ -6595,6 +6598,7 @@
                             );
                         })()}
                     </div>
+                    )}
 
                     {/* Popup détail ouvrier */}
                     {workerPopup && (() => {
