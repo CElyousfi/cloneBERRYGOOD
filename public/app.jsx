@@ -5511,7 +5511,7 @@
         }
 
         // ===================== POINTAGE TAB =====================
-        function PointageTab({ data, farmFilter, avoSubFilter, currentProfile }) {
+        function PointageTab({ data, farmFilter, avoSubFilter, currentProfile, isValidation }) {
             // Pretty parcelle label via PARCELLES_CULTURALES.designations
             const prettyParcelle = React.useCallback((raw, ferme) => {
                 if (!raw) return raw;
@@ -6223,6 +6223,7 @@
                         );
                     })()}
 
+                    {!isValidation && (
                     <Panel title="Détail Pointage du Jour" icon="fa-clipboard-list">
                         <div style={{fontSize:10,color:'var(--gray-400)',marginBottom:8}}>
                             <i className="fa-solid fa-hand-pointer" style={{marginRight:4}}></i>
@@ -6348,6 +6349,7 @@
                             </tbody>
                         </table>
                     </Panel>
+                    )}
 
                     {/* Validation du pointage du jour PAR ÉQUIPE / PAR FERME (composant séparé) */}
                     {window.PointageValidationPanel && (selectedDate || (dates[0] && dates[0].date)) && (() => {
@@ -63390,7 +63392,7 @@ ${rejetHtml}
                                 <MesTachesWidget currentProfile={currentProfile} />
                                 {renderTab('dashboard', DashboardTab, { data, farmFilter, avoSubFilter, currentProfile, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Dashboard')}
                                 {renderTab('pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Pointage')}
-                                {renderTab('validation_pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Validation du pointage')}
+                                {renderTab('validation_pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile, isValidation: true }, 'Validation du pointage')}
                                 {renderTab('pointage_divers', PointageDiversTab, { currentProfile }, 'Pointage Divers')}
                                 {renderTab('recolte', RecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Récolte')}
                                 {renderTab('cout_recolte', CoutRecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Coût Récolte')}

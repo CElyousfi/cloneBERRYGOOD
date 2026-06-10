@@ -51,6 +51,28 @@
     try { return v.toLocaleString('fr-FR'); } catch (e) { return String(v); }
   }
 
+  // Regroupe les ouvriers d'une équipe par parcelle (2e niveau d'affichage).
+  // Renvoie un tableau de groupes { parcelle, ouvriers, totalHeures }, trié par
+  // effectif décroissant (parcelle la plus peuplée d'abord). Les ouvriers de
+  // chaque groupe sont triés par nom. AFFICHAGE uniquement : aucune incidence
+  // sur la validation (qui reste au niveau équipe).
+  function groupOuvriersByParcelle(ouvriers) {
+    var map = {};
+    var order = [];
+    (ouvriers || []).forEach(function (o) {
+      var key = (o && o.parcelle) ? o.parcelle : '— Sans parcelle';
+      if (!map[key]) { map[key] = { parcelle: key, ouvriers: [], totalHeures: 0 }; order.push(key); }
+      map[key].ouvriers.push(o);
+      if (o && typeof o.heures === 'number') map[key].totalHeures += o.heures;
+    });
+    var groups = order.map(function (k) { return map[k]; });
+    groups.forEach(function (g) {
+      g.ouvriers.sort(function (a, b) { return (a.nom || '').localeCompare(b.nom || ''); });
+    });
+    groups.sort(function (a, b) { return b.ouvriers.length - a.ouvriers.length; });
+    return groups;
+  }
+
   // -------- composant principal --------
   function PointageValidationPanel(props) {
     var date = props.date;
@@ -219,21 +241,32 @@
                   React.createElement('th', { style: { padding: '6px 10px' } }, 'Matricule'),
                   React.createElement('th', { style: { padding: '6px 10px' } }, 'Nom'),
                   React.createElement('th', { style: { padding: '6px 10px' } }, 'Tâche'),
-                  React.createElement('th', { style: { padding: '6px 10px' } }, 'Parcelle'),
                   React.createElement('th', { style: { padding: '6px 10px', textAlign: 'center' } }, 'Heures')
                 )
               ),
               React.createElement('tbody', null,
                 ouvriers.length === 0
-                  ? React.createElement('tr', null, React.createElement('td', { colSpan: 5, style: { padding: '8px 10px', color: '#9aa0a6', fontStyle: 'italic' } }, 'Aucun ouvrier.'))
-                  : ouvriers.map(function (r, i) {
-                    return React.createElement('tr', { key: i },
-                      React.createElement('td', { style: { fontFamily: 'monospace', fontSize: 10, padding: '6px 10px', color: '#9aa0a6' } }, r.matricule),
-                      React.createElement('td', { style: { fontWeight: 600, padding: '6px 10px' } }, r.nom),
-                      React.createElement('td', { style: { fontSize: 11, color: '#5f6368', padding: '6px 10px' } }, r.operation),
-                      React.createElement('td', { style: { fontSize: 10, color: '#9aa0a6', padding: '6px 10px' } }, r.parcelle),
-                      React.createElement('td', { style: { textAlign: 'center', padding: '6px 10px' } }, (r.heures != null ? r.heures + 'h' : '—'))
-                    );
+                  ? React.createElement('tr', null, React.createElement('td', { colSpan: 4, style: { padding: '8px 10px', color: '#9aa0a6', fontStyle: 'italic' } }, 'Aucun ouvrier.'))
+                  : groupOuvriersByParcelle(ouvriers).map(function (g, gi) {
+                    var rows = [];
+                    // sous-en-tête parcelle (2e niveau)
+                    rows.push(React.createElement('tr', { key: 'p' + gi, style: { background: '#eef1f4' } },
+                      React.createElement('td', { colSpan: 4, style: { padding: '6px 10px', fontWeight: 700, fontSize: 11, color: '#3c4043' } },
+                        React.createElement('i', { className: 'fa-solid fa-location-dot', style: { fontSize: 10, color: '#9aa0a6', marginRight: 6 } }),
+                        g.parcelle,
+                        React.createElement('span', { style: { fontWeight: 600, color: '#9aa0a6', marginLeft: 8 } },
+                          '(' + g.ouvriers.length + ' ouv.' + (g.totalHeures > 0 ? ' · ' + g.totalHeures + 'h' : '') + ')')
+                      )
+                    ));
+                    g.ouvriers.forEach(function (r, i) {
+                      rows.push(React.createElement('tr', { key: gi + '-' + i },
+                        React.createElement('td', { style: { fontFamily: 'monospace', fontSize: 10, padding: '6px 10px', color: '#9aa0a6' } }, r.matricule),
+                        React.createElement('td', { style: { fontWeight: 600, padding: '6px 10px' } }, r.nom),
+                        React.createElement('td', { style: { fontSize: 11, color: '#5f6368', padding: '6px 10px' } }, r.operation),
+                        React.createElement('td', { style: { textAlign: 'center', padding: '6px 10px' } }, (r.heures != null ? r.heures + 'h' : '—'))
+                      ));
+                    });
+                    return rows;
                   })
               )
             )
