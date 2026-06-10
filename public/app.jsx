@@ -424,7 +424,8 @@
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
             { id: 'campagne', label: 'Campagne', icon: 'fa-chart-line' },
-            { id: 'pointage', label: 'Pointage du jour', icon: 'fa-clock' },
+            { id: 'pointage', label: 'Pointage Quotidien', icon: 'fa-clock' },
+            { id: 'validation_pointage', label: 'Validation du pointage', icon: 'fa-stamp' },
             { id: 'pointage_divers', label: 'Pointage Divers', icon: 'fa-truck' },
             { id: 'recolte', label: 'Récolte', icon: 'fa-basket-shopping' },
             { id: 'cout_recolte', label: 'Coût Récolte', icon: 'fa-calculator' },
@@ -475,7 +476,8 @@
         ];
 
         const NAV_ITEMS_CAPORAL = [
-            { id: 'pointage', label: 'Pointage du jour', icon: 'fa-user-check' },
+            { id: 'pointage', label: 'Pointage Quotidien', icon: 'fa-user-check' },
+            { id: 'validation_pointage', label: 'Validation du pointage', icon: 'fa-stamp' },
             { id: 'caporal_suivi', label: 'Suivi du Jour', icon: 'fa-clipboard-list' },
             { id: 'caporal_historique', label: 'Historique Hors Récolte', icon: 'fa-clock-rotate-left' },
         ];
@@ -497,7 +499,8 @@
 
         const NAV_ITEMS_FINANCE = [
             { id: 'dashboard', label: 'Dashboard Pointage', icon: 'fa-gauge-high', dgOnly: true },
-            { id: 'pointage', label: 'Pointage du Jour', icon: 'fa-clock', dgOnly: true },
+            { id: 'pointage', label: 'Pointage Quotidien', icon: 'fa-clock', dgOnly: true },
+            { id: 'validation_pointage', label: 'Validation du pointage', icon: 'fa-stamp', dgOnly: true },
             { id: 'recolte', label: 'Dashboard Récolte', icon: 'fa-basket-shopping', dgOnly: true },
             { id: 'cout_recolte', label: 'Coût Récolte', icon: 'fa-calculator' },
             { id: 'quinzaine', label: 'Dashboard Quinzaine', icon: 'fa-calendar-days', dgOnly: true },
@@ -581,7 +584,8 @@
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
             { id: 'campagne', label: 'Campagne', icon: 'fa-chart-line' },
-            { id: 'pointage', label: 'Pointage du jour', icon: 'fa-clock' },
+            { id: 'pointage', label: 'Pointage Quotidien', icon: 'fa-clock' },
+            { id: 'validation_pointage', label: 'Validation du pointage', icon: 'fa-stamp' },
             { id: 'hors_recolte', label: 'Hors Récolte', icon: 'fa-trowel' },
             { id: 'chef_agronomie', label: 'Agronomie', icon: 'fa-seedling' },
             { id: 'chef_tracking', label: 'Suivi Commandes', icon: 'fa-route' },
@@ -594,7 +598,8 @@
 
         // Chef de ferme BAHIA — accès restreint : DA + suivi, météo, pointage & quinzaine BAHIA (consultation).
         const NAV_ITEMS_CHEF_BAHIA = [
-            { id: 'pointage', label: 'Pointage du jour', icon: 'fa-clock' },
+            { id: 'pointage', label: 'Pointage Quotidien', icon: 'fa-clock' },
+            { id: 'validation_pointage', label: 'Validation du pointage', icon: 'fa-stamp' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
             { id: 'station_meteo', label: 'Météo', icon: 'fa-cloud-sun' },
             { id: 'chef_da', label: 'Demande d\'Achat', icon: 'fa-file-lines' },
@@ -63310,7 +63315,7 @@ ${rejetHtml}
                                         </div>
                                     )}
                                     {(() => {
-                                        const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'recolte', 'cout_recolte', 'hors_recolte', 'quinzaine', 'primes', 'paie', 'evolution'];
+                                        const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'validation_pointage', 'recolte', 'cout_recolte', 'hors_recolte', 'quinzaine', 'primes', 'paie', 'evolution'];
                                         const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_suivi_calibre', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
                                         const webScrapeTabs = ['fin_telecom'];
                                         const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_receptions_valoriser', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'agro_growth', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
@@ -63385,6 +63390,7 @@ ${rejetHtml}
                                 <MesTachesWidget currentProfile={currentProfile} />
                                 {renderTab('dashboard', DashboardTab, { data, farmFilter, avoSubFilter, currentProfile, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Dashboard')}
                                 {renderTab('pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Pointage')}
+                                {renderTab('validation_pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Validation du pointage')}
                                 {renderTab('pointage_divers', PointageDiversTab, { currentProfile }, 'Pointage Divers')}
                                 {renderTab('recolte', RecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Récolte')}
                                 {renderTab('cout_recolte', CoutRecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Coût Récolte')}
