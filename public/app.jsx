@@ -21895,13 +21895,7 @@ ${rejetHtml}
             const [loading, setLoading] = useState(true);
             const [periodes, setPeriodes] = useState([]);
             const [selectedPeriode, setSelectedPeriode] = useState('');
-            const [editingIdx, setEditingIdx] = useState(null);
-            const [editVal, setEditVal] = useState('');
             const [workerPopup, setWorkerPopup] = useState(null);
-            const [pendingChanges, setPendingChanges] = useState([]);
-            const [submittingChange, setSubmittingChange] = useState(false);
-            const [showAddEquipe, setShowAddEquipe] = useState(false);
-            const [newEquipe, setNewEquipe] = useState({ prefix: '', equipe: '', caporal: '', coutParOuvrier: 30 });
 
             // Equipe prefix helper
             const getEqPrefix = (mat) => {
@@ -21915,12 +21909,6 @@ ${rejetHtml}
                 return null;
             };
 
-            const loadPendingChanges = () => {
-                fetch('/api/validation?action=transport-config').then(r => r.json()).then(json => {
-                    if (json.success) setPendingChanges(json.pendingChanges || []);
-                }).catch(() => {});
-            };
-
             React.useEffect(() => {
                 // Load all workers (all operations) for transport cost
                 cachedFetch('/api/pointage-rh?action=transport').then(json => {
@@ -21930,32 +21918,7 @@ ${rejetHtml}
                         if (json.periodes && json.periodes.length > 0) setSelectedPeriode(json.periodes[0]);
                     }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
-                loadPendingChanges();
             }, []);
-
-            const handleSaveCout = (idx) => {
-                const t = transportEquipes[idx];
-                const newCout = parseFloat(editVal) || 0;
-                if (newCout === t.coutParOuvrier) { setEditingIdx(null); return; }
-                setSubmittingChange(true);
-                fetch('/api/validation?action=transport-config-submit', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ changeType: 'modifier_prix', data: { prefix: t.prefix, equipe: t.equipe, oldCout: t.coutParOuvrier, newCout }, submittedBy: 'RH' }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { loadPendingChanges(); alert('Demande de modification soumise. En attente de validation Finance.'); }
-                }).catch(err => alert('Erreur: ' + err.message)).finally(() => { setSubmittingChange(false); setEditingIdx(null); });
-            };
-
-            const handleAddEquipe = () => {
-                if (!newEquipe.prefix || !newEquipe.equipe) { alert('Préfixe et nom requis'); return; }
-                setSubmittingChange(true);
-                fetch('/api/validation?action=transport-config-submit', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ changeType: 'ajouter_equipe', data: newEquipe, submittedBy: 'RH' }),
-                }).then(r => r.json()).then(json => {
-                    if (json.success) { loadPendingChanges(); setShowAddEquipe(false); setNewEquipe({ prefix: '', equipe: '', caporal: '', coutParOuvrier: 30 }); alert('Demande d\'ajout soumise. En attente de validation Finance.'); }
-                }).catch(err => alert('Erreur: ' + err.message)).finally(() => setSubmittingChange(false));
-            };
 
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🍇</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement transport...</div></div>;
 
@@ -22038,7 +22001,7 @@ ${rejetHtml}
 
                     {/* Config équipes */}
                     <Panel title="Configuration Transport par Équipe" icon="fa-sliders">
-                        <div style={{fontSize:10,color:'var(--gray-400)',marginBottom:10}}>Cliquez sur le coût pour soumettre une modification (validation Finance requise). Cliquez sur l'équipe pour voir les ouvriers.</div>
+                        <div style={{fontSize:10,color:'var(--gray-400)',marginBottom:10}}>Lecture seule — la modification des primes de transport se fait dans le module Équipes. Cliquez sur l'équipe pour voir les ouvriers.</div>
                         <table className="data-table">
                             <thead>
                                 <tr>
@@ -22060,84 +22023,12 @@ ${rejetHtml}
                                         <td style={{textAlign:'center',fontWeight:600}}>{(t.workerList||[]).length}</td>
                                         <td style={{textAlign:'center',fontWeight:600}}>{t.totalWorkerDays}</td>
                                         <td>
-                                            {editingIdx === i ? (
-                                                <div style={{display:'flex',gap:4,alignItems:'center'}}>
-                                                    <input type="number" value={editVal} onChange={e => setEditVal(e.target.value)} autoFocus
-                                                        disabled={submittingChange}
-                                                        onKeyDown={e => { if (e.key === 'Enter') handleSaveCout(i); if (e.key === 'Escape') setEditingIdx(null); }}
-                                                        style={{width:60,padding:'3px 6px',borderRadius:4,border:'1px solid var(--berry)',fontSize:12,fontWeight:700,textAlign:'center'}} />
-                                                    <button onClick={() => handleSaveCout(i)} disabled={submittingChange} style={{background: submittingChange ? 'var(--gray-300)' : 'var(--green)',color:'#fff',border:'none',borderRadius:4,padding:'3px 8px',fontSize:11,cursor: submittingChange ? 'wait' : 'pointer'}}>
-                                                        <i className={`fa-solid ${submittingChange ? 'fa-spinner fa-spin' : 'fa-check'}`}></i>
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <span onClick={() => { setEditingIdx(i); setEditVal(t.coutParOuvrier); }}
-                                                    style={{cursor:'pointer',fontWeight:700,color:'var(--berry)',borderBottom:'1px dashed var(--berry)',padding:'2px 8px'}}>
-                                                    {t.coutParOuvrier} DH
-                                                </span>
-                                            )}
+                                            <span style={{fontWeight:700,padding:'2px 8px'}}>{t.coutParOuvrier} DH</span>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-
-                        {/* Ajouter nouvelle équipe */}
-                        <div style={{marginTop:12}}>
-                            {!showAddEquipe ? (
-                                <button onClick={() => setShowAddEquipe(true)} style={{padding:'6px 14px',background:'var(--blue)',color:'#fff',border:'none',borderRadius:6,fontSize:11,fontWeight:600,cursor:'pointer'}}>
-                                    <i className="fa-solid fa-plus" style={{marginRight:4}}></i> Ajouter une équipe
-                                </button>
-                            ) : (
-                                <div style={{background:'var(--gray-50)',borderRadius:8,padding:12,border:'1px solid var(--gray-200)'}}>
-                                    <div style={{fontSize:12,fontWeight:600,marginBottom:8}}>Nouvelle équipe <span style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>(soumis à validation Finance)</span></div>
-                                    <div style={{display:'grid',gridTemplateColumns:'80px 1fr 1fr 100px',gap:8,marginBottom:8}}>
-                                        <input placeholder="Préfixe" value={newEquipe.prefix} onChange={e => setNewEquipe({...newEquipe, prefix: e.target.value.toUpperCase().slice(0,2)})} maxLength={2}
-                                            style={{padding:'6px 8px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:700,textAlign:'center',fontFamily:'monospace'}} />
-                                        <input placeholder="Nom équipe" value={newEquipe.equipe} onChange={e => setNewEquipe({...newEquipe, equipe: e.target.value})}
-                                            style={{padding:'6px 8px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11}} />
-                                        <input placeholder="Caporal" value={newEquipe.caporal} onChange={e => setNewEquipe({...newEquipe, caporal: e.target.value})}
-                                            style={{padding:'6px 8px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11}} />
-                                        <input type="number" placeholder="Coût" value={newEquipe.coutParOuvrier} onChange={e => setNewEquipe({...newEquipe, coutParOuvrier: parseFloat(e.target.value) || 0})}
-                                            style={{padding:'6px 8px',borderRadius:6,border:'1px solid var(--gray-200)',fontSize:11,textAlign:'center'}} />
-                                    </div>
-                                    <div style={{display:'flex',gap:8}}>
-                                        <button onClick={handleAddEquipe} disabled={submittingChange} style={{padding:'6px 14px',background: submittingChange ? 'var(--gray-300)' : 'var(--green)',color:'#fff',border:'none',borderRadius:6,fontSize:11,fontWeight:600,cursor: submittingChange ? 'wait' : 'pointer'}}>
-                                            <i className={`fa-solid ${submittingChange ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} style={{marginRight:4}}></i> Soumettre
-                                        </button>
-                                        <button onClick={() => setShowAddEquipe(false)} style={{padding:'6px 14px',background:'var(--gray-200)',color:'var(--gray-600)',border:'none',borderRadius:6,fontSize:11,cursor:'pointer'}}>Annuler</button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Demandes en attente de validation Finance */}
-                        {pendingChanges.length > 0 && (
-                            <div style={{marginTop:16}}>
-                                <div style={{fontSize:12,fontWeight:600,marginBottom:8,color:'#e67e22'}}>
-                                    <i className="fa-solid fa-clock" style={{marginRight:6}}></i>
-                                    {pendingChanges.length} demande{pendingChanges.length > 1 ? 's' : ''} en attente de validation Finance
-                                </div>
-                                {pendingChanges.map((ch, ci) => (
-                                    <div key={ch.id} style={{background:'rgba(230,126,34,0.08)',borderRadius:8,padding:'8px 12px',marginBottom:4,fontSize:11,display:'flex',justifyContent:'space-between',alignItems:'center',border:'1px solid rgba(230,126,34,0.2)'}}>
-                                        <div>
-                                            {ch.changeType === 'modifier_prix' && (
-                                                <span><strong>{ch.data.equipe}</strong> — Prix: {ch.data.oldCout} DH → <strong style={{color:'var(--berry)'}}>{ch.data.newCout} DH</strong></span>
-                                            )}
-                                            {ch.changeType === 'ajouter_equipe' && (
-                                                <span>Ajout: <strong>{ch.data.equipe}</strong> ({ch.data.prefix}) — {ch.data.coutParOuvrier} DH/ouv.</span>
-                                            )}
-                                            {ch.changeType === 'supprimer_equipe' && (
-                                                <span>Suppression: <strong>{ch.data.equipe}</strong></span>
-                                            )}
-                                        </div>
-                                        <span className="status-badge" style={{background:'rgba(230,126,34,0.15)',color:'#e67e22',fontSize:10}}>
-                                            <i className="fa-solid fa-hourglass-half" style={{marginRight:4}}></i>En attente
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
                     </Panel>
 
                     {/* Coût transport par jour */}
