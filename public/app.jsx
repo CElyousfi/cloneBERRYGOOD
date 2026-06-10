@@ -4198,11 +4198,16 @@
             const effectifOverride = avoSubFilter ? (() => {
                 const filtered = detailRows.filter(r => r.ferme === 'Avocatier' && matchSub(r));
                 const byType = (type) => new Set(filtered.filter(r => r.type === type).map(r => r.matricule)).size;
-                return { recolte: byType('recolte'), horsRecolte: byType('horsRecolte'), postesFixes: byType('postesFixes'), cout: filtered.reduce((s, r) => s + (r.cout || 0), 0) };
+                // total = matricules DISTINCTS tous types confondus (un ouvrier multi-types compte 1×)
+                const total = new Set(filtered.map(r => r.matricule)).size;
+                return { recolte: byType('recolte'), horsRecolte: byType('horsRecolte'), postesFixes: byType('postesFixes'), total: total, cout: filtered.reduce((s, r) => s + (r.cout || 0), 0) };
             })() : null;
             const eff = avoSubFilter ? { [farmFilter]: effectifOverride } : effectif;
 
-            const totalEffectif = farms.reduce((s, f) => { const e = eff[f] || {}; return s + (e.recolte||0) + (e.horsRecolte||0) + (e.postesFixes||0); }, 0);
+            // Effectif total = matricules DISTINCTS (backend renvoie déjà e.total distinct via
+            // countDistinctByFermeType). Fallback sur la somme des types si total absent.
+            const effTotal = (e) => (e && e.total != null) ? e.total : ((e.recolte||0) + (e.horsRecolte||0) + (e.postesFixes||0));
+            const totalEffectif = farms.reduce((s, f) => s + effTotal(eff[f] || {}), 0);
             const totalRecolte = farms.reduce((s, f) => s + ((eff[f]||{}).recolte||0), 0);
             const totalHorsRecolte = farms.reduce((s, f) => s + ((eff[f]||{}).horsRecolte||0), 0);
             const totalFixes = farms.reduce((s, f) => s + ((eff[f]||{}).postesFixes||0), 0);
@@ -4210,7 +4215,7 @@
 
             const pieData = farms.map(f => {
                 const e = eff[f] || {};
-                return { name: f, value: (e.recolte||0) + (e.horsRecolte||0) + (e.postesFixes||0) };
+                return { name: f, value: effTotal(e) };
             });
 
             const pointageJour = apiData.pointageJour || [];
@@ -4283,7 +4288,7 @@
 
                     {farmFilter ? (
                         <div className="kpi-grid">
-                            <KPICard icon={farmFilter === 'Avocatier' ? 'fa-tree' : 'fa-leaf'} iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).recolte + (eff[farmFilter]||{}).horsRecolte + (eff[farmFilter]||{}).postesFixes || 0} label={avoSubFilter ? `Effectif ${avoSubFilter}` : "Effectif Total"}
+                            <KPICard icon={farmFilter === 'Avocatier' ? 'fa-tree' : 'fa-leaf'} iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={effTotal(eff[farmFilter]||{})} label={avoSubFilter ? `Effectif ${avoSubFilter}` : "Effectif Total"}
                                 onClick={() => setKpiPopup({ title: `Effectif Total — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'all', icon: 'fa-users' })} />
                             <KPICard icon="fa-basket-shopping" iconClass={farmFilter === 'F1' ? 'berry' : (farmFilter === 'F5' ? 'green' : 'orange')} value={(eff[farmFilter]||{}).recolte || 0} label="Effectif Récolte"
                                 onClick={() => setKpiPopup({ title: `Récolte — ${avoSubFilter || farmFilter}`, ferme: farmFilter, type: 'recolte', icon: 'fa-basket-shopping' })}
@@ -4297,7 +4302,7 @@
                         <div className="kpi-grid">
                             {farms.map(f => {
                                 const e = effectif[f] || {};
-                                const total = (e.recolte||0) + (e.horsRecolte||0) + (e.postesFixes||0);
+                                const total = effTotal(e);
                                 const pj = pointageJour.find(p => p.ferme === f) || {};
                                 const fRw = recolteWorkers.filter(w => (w.ferme || '') === f);
                                 const fLog = fRw.filter(w => logOps.test(w.operation)).length;
@@ -4936,15 +4941,24 @@
                             ? recolteEquipeRows.filter(r => r.ferme === farmFilter && matchSub(r) && r.jour === new Date().toISOString().slice(0,10)).reduce((s, r) => s + (r.kg || 0), 0)
                             : (filteredCu.length > 0 ? filteredCu.reduce((s, c) => s + c.totalKg, 0) : filtered.reduce((s, r) => s + r.kilos, 0));
                         const totalPrimes = filtered.reduce((s, r) => s + r.prime, 0);
-                        const nbPrimes = filtered.filter(r => r.prime > 0).length;
+                        // Ouvriers primés = matricules DISTINCTS ayant au moins une prime > 0
+                        // (cohérent avec le dénominateur distinct ci-dessous).
+                        const nbPrimes = new Set(filtered.filter(r => r.prime > 0).map(r => r.matricule)).size;
+
+                        // Effectif récolte = matricules DISTINCTS (un ouvrier multi-parcelles compte 1×).
+                        // Kg/prime restent des SOMMES (inchangé).
+                        const distinctOuvFiltered = window.RecolteKpiUtils
+                            ? window.RecolteKpiUtils.distinctOuvriersFromRows(filtered)
+                            : new Set(filtered.map(r => r.matricule)).size;
 
                         // By Ferme + Variété
                         const byFermeVar = {};
                         filtered.forEach(r => {
                             const v = (r.variete || 'N/A').trim();
                             const key = r.ferme + '|' + v;
-                            if (!byFermeVar[key]) byFermeVar[key] = { ferme: r.ferme, variete: v, nbOuv: 0, totalKg: 0, totalPrime: 0 };
-                            byFermeVar[key].nbOuv++;
+                            if (!byFermeVar[key]) byFermeVar[key] = { ferme: r.ferme, variete: v, _mats: new Set(), nbOuv: 0, totalKg: 0, totalPrime: 0 };
+                            byFermeVar[key]._mats.add(r.matricule);
+                            byFermeVar[key].nbOuv = byFermeVar[key]._mats.size;
                             byFermeVar[key].totalKg += r.kilos;
                             byFermeVar[key].totalPrime += r.prime;
                         });
@@ -4957,12 +4971,13 @@
                         }
                         const fermeStats = Object.values(byFermeVar).sort((a, b) => a.ferme.localeCompare(b.ferme) || b.totalKg - a.totalKg);
 
-                        // By Équipe
+                        // By Équipe — nbOuv = matricules DISTINCTS (kg/prime = sommes inchangées)
                         const byEquipe = {};
                         filtered.forEach(r => {
                             const eq = r.equipe || 'NV';
-                            if (!byEquipe[eq]) byEquipe[eq] = { prefix: eq, nom: eqNames[eq] || eq, nbOuv: 0, totalKg: 0, totalPrime: 0 };
-                            byEquipe[eq].nbOuv++;
+                            if (!byEquipe[eq]) byEquipe[eq] = { prefix: eq, nom: eqNames[eq] || eq, _mats: new Set(), nbOuv: 0, totalKg: 0, totalPrime: 0 };
+                            byEquipe[eq]._mats.add(r.matricule);
+                            byEquipe[eq].nbOuv = byEquipe[eq]._mats.size;
                             byEquipe[eq].totalKg += r.kilos;
                             byEquipe[eq].totalPrime += r.prime;
                         });
@@ -4973,14 +4988,15 @@
                         if (filteredCu.length > 0) {
                             parcStats = filteredCu.map(c => ({
                                 parcelle: c.parcelle, ferme: c.ferme, totalKg: c.totalKg, totalCaisses: c.totalCaisses,
-                                nbOuv: filtered.filter(r => r.parcelle === c.parcelle).length,
+                                nbOuv: new Set(filtered.filter(r => r.parcelle === c.parcelle).map(r => r.matricule)).size,
                             })).sort((a, b) => b.totalKg - a.totalKg);
                         } else {
                             const pMap = {};
                             filtered.forEach(r => {
                                 const key = r.parcelle || 'N/A';
-                                if (!pMap[key]) pMap[key] = { parcelle: key, ferme: r.ferme, nbOuv: 0, totalKg: 0 };
-                                pMap[key].nbOuv++;
+                                if (!pMap[key]) pMap[key] = { parcelle: key, ferme: r.ferme, _mats: new Set(), nbOuv: 0, totalKg: 0 };
+                                pMap[key]._mats.add(r.matricule);
+                                pMap[key].nbOuv = pMap[key]._mats.size;
                                 pMap[key].totalKg += r.kilos;
                             });
                             parcStats = Object.values(pMap).sort((a, b) => b.totalKg - a.totalKg);
@@ -4991,9 +5007,9 @@
                             <div>
                                 <div className="kpi-grid" style={{marginBottom:16}}>
                                     <KPICard icon="fa-basket-shopping" iconClass="berry" value={Math.round(totalKg).toLocaleString('fr-FR')} label="Total Kg Récolte" />
-                                    <KPICard icon="fa-users" iconClass="green" value={filtered.length} label="Ouvriers Récolte" />
+                                    <KPICard icon="fa-users" iconClass="green" value={distinctOuvFiltered} label="Ouvriers Récolte" />
                                     <KPICard icon="fa-coins" iconClass="orange" value={Math.round(totalPrimes).toLocaleString('fr-FR')} label="Primes Récolte (DH)" />
-                                    <KPICard icon="fa-medal" iconClass="yellow" value={nbPrimes + '/' + filtered.length} label="Ouvriers Primés" onClick={() => setShowPrimeTrend(!showPrimeTrend)} />
+                                    <KPICard icon="fa-medal" iconClass="yellow" value={nbPrimes + '/' + distinctOuvFiltered} label="Ouvriers Primés" onClick={() => setShowPrimeTrend(!showPrimeTrend)} />
                                 </div>
 
                                 {showPrimeTrend && (() => {
@@ -6288,14 +6304,15 @@
                                                 <div style={{color:'var(--gray-400)',fontSize:12,fontStyle:'italic'}}>Aucun pointage détaillé.</div>
                                             ) : (
                                             <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                                                {Object.values(byEquipe).sort((a,b) => b.ouvriers.length - a.ouvriers.length).map(eq => {
+                                                {Object.values(byEquipe).sort((a,b) => new Set(b.ouvriers.map(r=>r.matricule)).size - new Set(a.ouvriers.map(r=>r.matricule)).size).map(eq => {
                                                     const bgColor = eqColors[eq.prefix] || '#95a5a6';
+                                                    const eqDistinct = new Set(eq.ouvriers.map(r=>r.matricule)).size;
                                                     return (
                                                     <div key={eq.prefix} style={{background:'#fff',border:'1px solid var(--gray-100)',borderRadius:10,overflow:'hidden'}}>
                                                         <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',borderBottom:'1px solid var(--gray-100)'}}>
                                                             <span style={{background:bgColor,color:'#fff',padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,minWidth:32,textAlign:'center'}}>{eq.prefix}</span>
                                                             <span style={{fontSize:13,fontWeight:600,color:'var(--gray-700)',flex:1}}>{eq.nom}</span>
-                                                            <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{eq.ouvriers.length} ouvrier{eq.ouvriers.length > 1 ? 's' : ''}</span>
+                                                            <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{eqDistinct} ouvrier{eqDistinct > 1 ? 's' : ''}</span>
                                                         </div>
                                                         <div className="table-responsive">
                                                         <table className="data-table" style={{fontSize:12,margin:0}}>
@@ -6411,17 +6428,20 @@
                         };
 
                         // Build hierarchy: parcelle → tâche (operationFamille) → équipe → ouvriers
+                        // Effectifs = matricules DISTINCTS à chaque niveau (Set). Coût = SOMME (inchangé).
                         const hierarchy = {};
                         filteredDetail.forEach(r => {
                             const parc = r.parcelle || 'N/A';
                             const tache = r.operationFamille || r.operation || 'Autre';
                             const eq = getEqPrefix(r.matricule);
-                            if (!hierarchy[parc]) hierarchy[parc] = { parcelle: parc, displayName: displayParcelle(parc), ferme: r.ferme, culture: (normalizeParcelle(parc) || {}).culture || '', taches: {}, nbOuv: 0, totalCout: 0 };
-                            if (!hierarchy[parc].taches[tache]) hierarchy[parc].taches[tache] = { tache, equipes: {}, nbOuv: 0 };
+                            if (!hierarchy[parc]) hierarchy[parc] = { parcelle: parc, displayName: displayParcelle(parc), ferme: r.ferme, culture: (normalizeParcelle(parc) || {}).culture || '', taches: {}, _mats: new Set(), nbOuv: 0, totalCout: 0 };
+                            if (!hierarchy[parc].taches[tache]) hierarchy[parc].taches[tache] = { tache, equipes: {}, _mats: new Set(), nbOuv: 0 };
                             if (!hierarchy[parc].taches[tache].equipes[eq]) hierarchy[parc].taches[tache].equipes[eq] = { prefix: eq, nom: eqName(eq), ouvriers: [] };
                             hierarchy[parc].taches[tache].equipes[eq].ouvriers.push(r);
-                            hierarchy[parc].taches[tache].nbOuv++;
-                            hierarchy[parc].nbOuv++;
+                            hierarchy[parc].taches[tache]._mats.add(r.matricule);
+                            hierarchy[parc].taches[tache].nbOuv = hierarchy[parc].taches[tache]._mats.size;
+                            hierarchy[parc]._mats.add(r.matricule);
+                            hierarchy[parc].nbOuv = hierarchy[parc]._mats.size;
                             hierarchy[parc].totalCout += (r.cout || 0);
                         });
 
@@ -6447,16 +6467,17 @@
                                         </div>
 
                                         <div style={{display:'flex',flexDirection:'column',gap:6,marginLeft:4}}>
-                                        {Object.values(tache.equipes).sort((a, b) => b.ouvriers.length - a.ouvriers.length).map(eq => {
+                                        {Object.values(tache.equipes).sort((a, b) => new Set(b.ouvriers.map(r=>r.matricule)).size - new Set(a.ouvriers.map(r=>r.matricule)).size).map(eq => {
                                             const eqKey = parc.parcelle + '|' + tache.tache + '|' + eq.prefix;
                                             const isOpen = expandedEqs[eqKey];
                                             const bgColor = eqColors[eq.prefix] || '#95a5a6';
+                                            const eqDistinct = new Set(eq.ouvriers.map(r=>r.matricule)).size;
                                             return (
                                             <div key={eq.prefix} style={{background: isOpen ? '#fafafa' : '#fff', border:'1px solid var(--gray-100)', borderRadius:10, overflow:'hidden'}}>
                                                 <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 14px',cursor:'pointer',userSelect:'none'}} onClick={() => toggleEq(eqKey)}>
                                                     <span style={{background: bgColor, color:'#fff',padding:'3px 10px',borderRadius:12,fontSize:11,fontWeight:700,minWidth:32,textAlign:'center'}}>{eq.prefix}</span>
                                                     <span style={{fontSize:13,fontWeight:600,color:'var(--gray-700)',flex:1}}>{eq.nom}</span>
-                                                    <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{eq.ouvriers.length}</span>
+                                                    <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'2px 10px',borderRadius:12,fontSize:11,fontWeight:700}}>{eqDistinct}</span>
                                                     <i className={`fa-solid fa-chevron-${isOpen ? 'up' : 'down'}`} style={{fontSize:10,color:'var(--gray-400)'}}></i>
                                                 </div>
                                                 {isOpen && (
@@ -6555,9 +6576,13 @@
                                 byOp[op].ouvriers.push(r);
                                 byOp[op].totalCout += r.cout;
                             });
-                            const ops = Object.values(byOp).sort((a, b) => b.ouvriers.length - a.ouvriers.length);
+                            // Effectif = matricules DISTINCTS (un ouvrier multi-postes compte 1×).
+                            // Le COÛT reste la SOMME des lignes (inchangé).
+                            const distinctOuv = (rows) => new Set(rows.map(r => r.matricule)).size;
+                            const ops = Object.values(byOp).sort((a, b) => distinctOuv(b.ouvriers) - distinctOuv(a.ouvriers));
+                            const totalDistinctFixes = new Set(fixesFiltered.map(r => r.matricule)).size;
                             return (
-                                <Panel title={`Ouvriers Avocatier (${fixesFiltered.length})`} icon="fa-anchor" actions={
+                                <Panel title={`Ouvriers Avocatier (${totalDistinctFixes})`} icon="fa-anchor" actions={
                                     <button onClick={() => setShowPostesFixes(!showPostesFixes)} style={{background:'none',border:'1px solid var(--gray-200)',borderRadius:6,padding:'3px 10px',fontSize:10,fontWeight:600,cursor:'pointer',color:'var(--gray-500)'}}>
                                         <i className={`fa-solid fa-chevron-${showPostesFixes ? 'up' : 'down'}`} style={{marginRight:4}}></i>{showPostesFixes ? 'Réduire' : 'Détail'}
                                     </button>
@@ -6571,7 +6596,7 @@
                                                 <React.Fragment key={i}>
                                                     <tr style={{cursor:'pointer',background:isExpanded?'var(--berry-pale)':''}} onClick={() => setExpandedPostes(prev => ({...prev, [o.operation]: !prev[o.operation]}))}>
                                                         <td style={{fontWeight:500}}>{o.operation}</td>
-                                                        <td style={{textAlign:'center',fontWeight:700}}>{o.ouvriers.length}</td>
+                                                        <td style={{textAlign:'center',fontWeight:700}}>{distinctOuv(o.ouvriers)}</td>
                                                         {!isCaporal && <td style={{textAlign:'right',color:'var(--gray-500)'}}>{o.totalCout.toLocaleString('fr-FR')}</td>}
                                                         <td style={{textAlign:'center',width:30}}><i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'}`} style={{fontSize:10,color:'var(--gray-400)'}}></i></td>
                                                     </tr>
@@ -6588,7 +6613,7 @@
                                             })}
                                             <tr style={{fontWeight:700,borderTop:'2px solid var(--gray-200)'}}>
                                                 <td>Total</td>
-                                                <td style={{textAlign:'center'}}>{fixesFiltered.length}</td>
+                                                <td style={{textAlign:'center'}}>{totalDistinctFixes}</td>
                                                 {!isCaporal && <td style={{textAlign:'right'}}>{fixesFiltered.reduce((s, r) => s + r.cout, 0).toLocaleString('fr-FR')}</td>}
                                                 <td></td>
                                             </tr>
@@ -6919,6 +6944,14 @@
             let recolte = allFiltered.filter(r => !r.isLogistique).sort((a, b) => b.kilos - a.kilos).map((r, i) => ({ ...r, rank: i + 1 }));
 
             const totalKgPointage = recolte.reduce((s, r) => s + r.kilos, 0);
+            // Effectifs = matricules DISTINCTS (un ouvrier multi-parcelles compte 1×).
+            // Coûts/Kg/primes restent des SOMMES (inchangé).
+            const distinctCount = (rows) => window.RecolteKpiUtils
+                ? window.RecolteKpiUtils.distinctOuvriersFromRows(rows)
+                : new Set(rows.map(r => r.matricule)).size;
+            const nbOuvRecolte = distinctCount(recolte);
+            const nbOuvLogistique = distinctCount(logistiqueWorkers);
+            const nbOuvPrimes = distinctCount(recolte.filter(r => r.prime > 0));
             const filteredCueillette = (fermeFilter ? cueillette.filter(c => c.ferme === fermeFilter) : cueillette).filter(matchSub).filter(matchCultureCueillette);
             const filteredCueilletteKg = filteredCueillette.reduce((s, c) => s + c.totalKg, 0);
             const totalKg = filteredCueilletteKg > 0 ? filteredCueilletteKg : totalKgPointage;
@@ -6930,15 +6963,16 @@
             if (filteredCueillette.length > 0) {
                 parcStats = filteredCueillette.map(c => ({
                     parcelle: c.parcelle, ferme: c.ferme, totalKg: c.totalKg, totalCaisses: c.totalCaisses,
-                    nbOuv: recolte.filter(r => r.parcelle === c.parcelle).length,
+                    nbOuv: new Set(recolte.filter(r => r.parcelle === c.parcelle).map(r => r.matricule)).size,
                     totalCout: recolte.filter(r => r.parcelle === c.parcelle).reduce((s, r) => s + (r.cout || 0), 0),
                 })).sort((a, b) => b.totalKg - a.totalKg);
             } else {
                 const parcelleStats = {};
                 recolte.forEach(r => {
                     const key = r.parcelle || 'N/A';
-                    if (!parcelleStats[key]) parcelleStats[key] = { parcelle: key, ferme: r.ferme, nbOuv: 0, totalKg: 0, totalCout: 0 };
-                    parcelleStats[key].nbOuv++;
+                    if (!parcelleStats[key]) parcelleStats[key] = { parcelle: key, ferme: r.ferme, _mats: new Set(), nbOuv: 0, totalKg: 0, totalCout: 0 };
+                    parcelleStats[key]._mats.add(r.matricule);
+                    parcelleStats[key].nbOuv = parcelleStats[key]._mats.size;
                     parcelleStats[key].totalKg += r.kilos;
                     parcelleStats[key].totalCout += r.cout || 0;
                 });
@@ -6984,16 +7018,16 @@
 
                     <div className="kpi-grid">
                         <KPICard icon="fa-basket-shopping" iconClass="berry" value={Math.round(totalKg).toLocaleString('fr-FR')} label="Total Kg (Récolte)" onClick={() => setShowKgDetail(!showKgDetail)} />
-                        <KPICard icon="fa-users" iconClass="green" value={recolte.length} label="Ouvriers Récolte" />
-                        <KPICard icon="fa-gauge-high" iconClass="purple" value={recolte.length > 0 ? Math.round(totalKg / recolte.length) + ' kg' : '-'} label="Rendement moyen / Ouvrier / Jour" onClick={() => setShowRendementTrend(!showRendementTrend)} />
-                        <KPICard icon="fa-truck-loading" iconClass="blue" value={logistiqueWorkers.length + ' (' + (recolte.length > 0 ? Math.round(logistiqueWorkers.length / (recolte.length + logistiqueWorkers.length) * 100) : 0) + '%)'} label="Logistique Récolte" onClick={() => setShowLogTrendRH(!showLogTrendRH)} subItems={(() => {
+                        <KPICard icon="fa-users" iconClass="green" value={nbOuvRecolte} label="Ouvriers Récolte" />
+                        <KPICard icon="fa-gauge-high" iconClass="purple" value={nbOuvRecolte > 0 ? Math.round(totalKg / nbOuvRecolte) + ' kg' : '-'} label="Rendement moyen / Ouvrier / Jour" onClick={() => setShowRendementTrend(!showRendementTrend)} />
+                        <KPICard icon="fa-truck-loading" iconClass="blue" value={nbOuvLogistique + ' (' + (nbOuvRecolte + nbOuvLogistique > 0 ? Math.round(nbOuvLogistique / (nbOuvRecolte + nbOuvLogistique) * 100) : 0) + '%)'} label="Logistique Récolte" onClick={() => setShowLogTrendRH(!showLogTrendRH)} subItems={(() => {
                             const byOp = {};
-                            logistiqueWorkers.forEach(w => { const op = (w.operation || 'Autre').trim(); byOp[op] = (byOp[op] || 0) + 1; });
-                            return Object.entries(byOp).map(([op, n]) => ({ value: n, label: op }));
+                            logistiqueWorkers.forEach(w => { const op = (w.operation || 'Autre').trim(); if (!byOp[op]) byOp[op] = new Set(); byOp[op].add(w.matricule); });
+                            return Object.entries(byOp).map(([op, set]) => ({ value: set.size, label: op }));
                         })()} />
                         <KPICard icon="fa-coins" iconClass="orange" value={Math.round(totalCout).toLocaleString('fr-FR')} label="Coût Total (DH)" />
                         <KPICard icon="fa-medal" iconClass="yellow" value={Math.round(totalPrimes).toLocaleString('fr-FR')} label="Primes estimées (DH)" />
-                        <KPICard icon="fa-percent" iconClass="green" value={recolte.length > 0 ? Math.round(recolte.filter(r => r.prime > 0).length / recolte.length * 100) + '%' : '-'} label="Ouvriers avec Prime" onClick={() => setShowPrimeTrendRH(!showPrimeTrendRH)} />
+                        <KPICard icon="fa-percent" iconClass="green" value={nbOuvRecolte > 0 ? Math.round(nbOuvPrimes / nbOuvRecolte * 100) + '%' : '-'} label="Ouvriers avec Prime" onClick={() => setShowPrimeTrendRH(!showPrimeTrendRH)} />
                     </div>
 
                     {showPrimeTrendRH && (() => {
@@ -7008,9 +7042,10 @@
                         datesSetP.add(recolteDate);
                         const allDates = Array.from(datesSetP).sort().reverse().slice(0, 7).reverse();
                         const logOpsPopup = /caporal|conditionnement|encadrement|chargement/i;
-                        // Données live pour la date affichée (alignées avec le KPI haut)
-                        const liveTotal = recolte.length;
-                        const liveWithPrime = recolte.filter(r => r.prime > 0).length;
+                        // Données live pour la date affichée (alignées avec le KPI haut :
+                        // matricules DISTINCTS, pas lignes par parcelle).
+                        const liveTotal = nbOuvRecolte;
+                        const liveWithPrime = nbOuvPrimes;
                         const computePrimeFromBuckets = (workersBucket) => workersBucket.filter(w => {
                             if (w.kg <= 0) return false;
                             const isMyrt = /myrtille/i.test(w.culture || resolveCulture({ parcelle: w.parcelle, variete: w.variete }));
@@ -7229,8 +7264,9 @@
                         const logOpsR = /caporal|conditionnement|encadrement|chargement/i;
                         const todayStrR = new Date().toISOString().slice(0, 10);
                         const selectedDateStrR = selectedDate || todayStrR;
-                        // Pour la date affichée, utiliser la donnée live (alignée avec les KPI haut)
-                        const liveBucket = { kg: totalKg, nb: recolte.length };
+                        // Pour la date affichée, utiliser la donnée live (alignée avec les KPI haut :
+                        // matricules DISTINCTS).
+                        const liveBucket = { kg: totalKg, nb: nbOuvRecolte };
                         // Construire la liste de dates : historique + date affichée (au cas où equipeRows ne contient pas encore today)
                         const datesSet = new Set(cultureFilteredR.map(r => r.jour));
                         datesSet.add(selectedDateStrR);
@@ -8333,7 +8369,12 @@
             const totalCharges = allFiltered.reduce((s, r) => s + r.charges, 0);
             const totalCout = totalSalaire + totalTransport + totalPrime + totalCharges;
             const dhParKgGlobal = totalKg > 0 ? Math.round(totalCout / totalKg * 100) / 100 : null;
-            const nbOuvriers = allFiltered.length;
+            // Effectif = matricules DISTINCTS (défensif : si le backend recolte ne déduplique
+            // pas les workers — pas de scan prod — allFiltered peut avoir 1 ligne/parcelle).
+            // Les coûts/jours ci-dessous restent des SOMMES sur toutes les lignes (inchangé).
+            const nbOuvriers = window.RecolteKpiUtils
+                ? window.RecolteKpiUtils.distinctOuvriersFromRows(allFiltered)
+                : new Set(allFiltered.map(r => r.matricule)).size;
             const totalJoursOuvriers = allFiltered.reduce((s, r) => s + (r.jours || 1), 0);
             const coutMoyenOuvrierJour = totalJoursOuvriers > 0 ? Math.round(totalCout / totalJoursOuvriers) : 0;
             const pctSalaire = totalCout > 0 ? Math.round(totalSalaire / totalCout * 100) : 0;
@@ -8458,8 +8499,9 @@
             const equipeAgg = {};
             allFiltered.forEach(r => {
                 const key = r.prefix;
-                if (!equipeAgg[key]) equipeAgg[key] = { prefix: key, equipe: r.equipe, effectif: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0, workers: [] };
-                equipeAgg[key].effectif++;
+                if (!equipeAgg[key]) equipeAgg[key] = { prefix: key, equipe: r.equipe, _mats: new Set(), effectif: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0, workers: [] };
+                equipeAgg[key]._mats.add(r.matricule);
+                equipeAgg[key].effectif = equipeAgg[key]._mats.size;
                 equipeAgg[key].kg += r.kg;
                 equipeAgg[key].salaire += r.salaire;
                 equipeAgg[key].transport += r.transport;
@@ -8475,8 +8517,9 @@
             const parcAgg = {};
             allFiltered.forEach(r => {
                 const key = r.parcelle || 'N/A';
-                if (!parcAgg[key]) parcAgg[key] = { parcelle: key, ferme: r.ferme, culture: r.culture, nbOuv: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
-                parcAgg[key].nbOuv++;
+                if (!parcAgg[key]) parcAgg[key] = { parcelle: key, ferme: r.ferme, culture: r.culture, _mats: new Set(), nbOuv: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
+                parcAgg[key]._mats.add(r.matricule);
+                parcAgg[key].nbOuv = parcAgg[key]._mats.size;
                 parcAgg[key].kg += r.kg;
                 parcAgg[key].salaire += r.salaire;
                 parcAgg[key].transport += r.transport;
@@ -8492,8 +8535,9 @@
             allFiltered.forEach(r => {
                 // BUG 1 : reventiler Framboise/Myrtille même si r.culture vide (data dégradée).
                 const key = r.culture || (normalizeParcelle(r.parcelle || '') || {}).culture || 'Autre';
-                if (!cultAgg[key]) cultAgg[key] = { culture: key, nbOuv: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
-                cultAgg[key].nbOuv++;
+                if (!cultAgg[key]) cultAgg[key] = { culture: key, _mats: new Set(), nbOuv: 0, kg: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
+                cultAgg[key]._mats.add(r.matricule);
+                cultAgg[key].nbOuv = cultAgg[key]._mats.size;
                 cultAgg[key].kg += r.kg;
                 cultAgg[key].salaire += r.salaire;
                 cultAgg[key].transport += r.transport;
@@ -9833,11 +9877,22 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
         function HorsRecolteTab({ data, farmFilter, avoSubFilter }) {
             const [fermeFilter, setFermeFilter] = useState('');
             const [operations, setOperations] = useState([]);
+            // Effectifs DISTINCTS calculés côté backend (le payload operations[].effectif est
+            // par op×parcelle, donc non sommable sans double-comptage des ouvriers multi-parcelles).
+            const [effDistinct, setEffDistinct] = useState({ global: 0, parFamille: {}, parFerme: {}, familleParFerme: {} });
             const [loading, setLoading] = useState(true);
 
             React.useEffect(() => {
                 cachedFetch('/api/pointage-rh?action=hors-recolte').then(json => {
-                    if (json.success) setOperations(json.operations || []);
+                    if (json.success) {
+                        setOperations(json.operations || []);
+                        setEffDistinct({
+                            global: json.effectifDistinct || 0,
+                            parFamille: json.effectifParFamille || {},
+                            parFerme: json.effectifDistinctParFerme || {},
+                            familleParFerme: json.effectifFamilleParFerme || {},
+                        });
+                    }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
             }, []);
 
@@ -9845,16 +9900,22 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
 
             const activeFerme = farmFilter || fermeFilter;
             let filtered = activeFerme ? operations.filter(o => o.ferme === activeFerme) : operations;
-            const totalEffectif = filtered.reduce((s, o) => s + o.effectif, 0);
+            // Effectif = matricules DISTINCTS (backend). Selon le filtre ferme actif, on prend
+            // le distinct global ou le distinct de la ferme. heures/coût restent des sommes.
+            const totalEffectif = activeFerme ? (effDistinct.parFerme[activeFerme] || 0) : effDistinct.global;
             const totalHeures = filtered.reduce((s, o) => s + (o.heures || 0), 0);
             const totalCout = filtered.reduce((s, o) => s + (o.cout || 0), 0);
+            // Effectif distinct par famille (selon le filtre ferme actif)
+            const familleEffectif = (key) => activeFerme
+                ? ((effDistinct.familleParFerme[activeFerme] || {})[key] || 0)
+                : (effDistinct.parFamille[key] || 0);
 
-            // Group by operation famille
+            // Group by operation famille (heures/coût = sommes ; effectif = distinct backend)
             const byFamille = {};
             filtered.forEach(o => {
                 const key = o.operationFamille || 'Autre';
                 if (!byFamille[key]) byFamille[key] = { famille: key, effectif: 0, heures: 0, cout: 0, ops: [] };
-                byFamille[key].effectif += o.effectif;
+                byFamille[key].effectif = familleEffectif(key);
                 byFamille[key].heures += o.heures || 0;
                 byFamille[key].cout += o.cout || 0;
                 byFamille[key].ops.push(o);

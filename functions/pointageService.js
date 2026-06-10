@@ -31,6 +31,7 @@ const {
 // Pointage — effectifs ouvriers DISTINCTS par (ferme, type).
 // Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
+const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -1364,6 +1365,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           workers = pointageRes.recordset.map((r, i) => ({ rank: i + 1, matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), operation: r.Operation, quantite: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: r.Cout, parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: r.Variete }));
         }
 
+        // Dédup SYSTÉMATIQUE par matricule : 1 ligne BR_Pointage par (ouvrier × parcelle),
+        // donc un ouvrier multi-parcelles était compté N fois (count gonflé). On regroupe
+        // par matricule en SOMMANT heures/cout/quantite (somme totale inchangée — rien perdu).
+        // Auparavant ce regroupement n'avait lieu que dans la branche scan prod ci-dessous.
+        workers = dedupeWorkersByMatricule(workers);
+
         // Enrich with production data (Tracabilite_recolte) if available
         let prodSyncedAt = null;
         try {
@@ -1388,19 +1395,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const prodData = prodDoc.data();
             const prodRows = prodData.rows || [];
             if (prodRows.length > 0) {
-              // Deduplicate workers by matricule (keep first, merge info)
-              const deduped = {};
-              workers.forEach(w => {
-                const matUp = (w.matricule || "").toUpperCase();
-                if (!deduped[matUp]) {
-                  deduped[matUp] = { ...w };
-                } else {
-                  // Merge: keep existing but add heures/cout
-                  deduped[matUp].heures += w.heures || 0;
-                  deduped[matUp].cout += w.cout || 0;
-                }
-              });
-              workers = Object.values(deduped);
+              // workers est déjà dédupliqué par matricule (cf. dedupeWorkersByMatricule
+              // appelé plus haut, systématiquement). Idempotent par sécurité.
+              workers = dedupeWorkersByMatricule(workers);
 
               const prodMap = {};
               prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
@@ -1528,15 +1525,37 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         let periodeFilter = "";
         if (periodeParam) { periodeFilter = `AND Periode_paie = '${periodeParam}'`; }
         else { const latest = await db.request().query(`SELECT TOP 1 Periode_paie FROM BR_Pointage ORDER BY Periode_Date DESC`); const latestPeriode = latest.recordset[0]?.Periode_paie || ""; periodeFilter = latestPeriode ? `AND Periode_paie = '${latestPeriode}'` : ""; }
-        const [summaryRes, perDayRes, periodesRes] = await Promise.all([
+        const [summaryRes, perDayRes, perDayMatRes, periodesRes] = await Promise.all([
           db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout, SUM(Quantite_unite) AS totalQty FROM BR_Pointage WHERE 1=1 ${periodeFilter} GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille`),
           db.request().query(`SELECT CONVERT(date, Periode_Date) AS jour, Ref_parcelle, Parcelle_Culturale, Operation_Famille, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE 1=1 ${periodeFilter} GROUP BY CONVERT(date, Periode_Date), Ref_parcelle, Parcelle_Culturale, Operation_Famille ORDER BY jour`),
+          // Lignes (jour, matricule, parcelle) pour compter des matricules DISTINCTS par jour
+          // et par (jour, ferme) en JS — la ferme est dérivée en JS, pas une colonne SQL,
+          // donc un GROUP BY ferme côté SQL n'est pas possible. Mirroir du chemin MIRROR.
+          db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour, Personnel_Matricule, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE 1=1 ${periodeFilter}`),
           db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`),
         ]);
         const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
         for (const row of summaryRes.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); const type = classifyType(row.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += row.totalJr || 0; qFermes[ferme].cout += row.totalCout || 0; qFermes[ferme][type] += row.totalJr || 0; } }
+        // journees/cout = SOMMES sur les groupes (parcelle × op-famille) — INCHANGÉ.
         const dayMap = {};
-        for (const row of perDayRes.recordset) { const d = new Date(row.jour); const key = d.toISOString().slice(0, 10); if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 }; const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); dayMap[key].nbOuv += row.nbOuv; dayMap[key].journees += row.totalJr || 0; dayMap[key].cout += row.totalCout || 0; if (dayMap[key][ferme] !== undefined) dayMap[key][ferme] += row.nbOuv; }
+        for (const row of perDayRes.recordset) { const d = new Date(row.jour); const key = d.toISOString().slice(0, 10); if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 }; dayMap[key].journees += row.totalJr || 0; dayMap[key].cout += row.totalCout || 0; }
+        // nbOuv (jour + par ferme) = matricules DISTINCTS via Set (corrige le gonflage :
+        // on ne somme plus des COUNT(DISTINCT) par parcelle/op). Mirroir du chemin MIRROR.
+        const daySets = {};
+        for (const row of perDayMatRes.recordset) {
+          const d = new Date(row.jour); const key = d.toISOString().slice(0, 10);
+          if (!daySets[key]) daySets[key] = { nbOuv: new Set(), F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
+          const mat = row.Personnel_Matricule;
+          daySets[key].nbOuv.add(mat);
+          const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
+          if (daySets[key][ferme]) daySets[key][ferme].add(mat);
+        }
+        for (const key of Object.keys(daySets)) {
+          if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: new Date(key).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 };
+          const s = daySets[key];
+          dayMap[key].nbOuv = s.nbOuv.size;
+          dayMap[key].F1 = s.F1.size; dayMap[key].F5 = s.F5.size; dayMap[key].Avocatier = s.Avocatier.size; dayMap[key].BAHIA = s.BAHIA.size;
+        }
         const perDay = Object.values(dayMap).sort((a, b) => a.jour.localeCompare(b.jour));
         const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
         const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
@@ -1603,12 +1622,71 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               groups[key].totalCout += r.Cout || 0;
             }
             const ops = Object.values(groups).map(g => ({ operationFamille: g.Operation_Famille, operation: g.Operation, effectif: g.workers.size, heures: g.totalHr, journees: g.totalJr, cout: Math.round(g.totalCout), parcelle: (g.Parcelle_Culturale || "").trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale) })).sort((a, b) => b.effectif - a.effectif);
-            return { success: true, date: dateForCheck, operations: ops };
+            // Effectifs DISTINCTS (Set de matricules) — le front ne peut pas dédupliquer car
+            // operations[].effectif est par (op×parcelle). On expose ici l'effectif distinct
+            // global, par operationFamille, et par (ferme, famille) pour les vues filtrées.
+            // heures/journees/cout restent des sommes côté front.
+            const globalSet = new Set();
+            const familleSets = {};
+            const fermeSets = {};       // ferme -> Set global de la ferme
+            const fermeFamilleSets = {}; // ferme -> famille -> Set
+            for (const r of filtered) {
+              const mat = r.Personnel_Matricule;
+              const f = r.Operation_Famille || "Autre";
+              const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+              globalSet.add(mat);
+              if (!familleSets[f]) familleSets[f] = new Set();
+              familleSets[f].add(mat);
+              if (!fermeSets[ferme]) fermeSets[ferme] = new Set();
+              fermeSets[ferme].add(mat);
+              if (!fermeFamilleSets[ferme]) fermeFamilleSets[ferme] = {};
+              if (!fermeFamilleSets[ferme][f]) fermeFamilleSets[ferme][f] = new Set();
+              fermeFamilleSets[ferme][f].add(mat);
+            }
+            const effectifParFamille = {};
+            for (const f of Object.keys(familleSets)) effectifParFamille[f] = familleSets[f].size;
+            const effectifDistinctParFerme = {};
+            for (const ferme of Object.keys(fermeSets)) effectifDistinctParFerme[ferme] = fermeSets[ferme].size;
+            const effectifFamilleParFerme = {};
+            for (const ferme of Object.keys(fermeFamilleSets)) {
+              effectifFamilleParFerme[ferme] = {};
+              for (const f of Object.keys(fermeFamilleSets[ferme])) effectifFamilleParFerme[ferme][f] = fermeFamilleSets[ferme][f].size;
+            }
+            return { success: true, date: dateForCheck, operations: ops, effectifDistinct: globalSet.size, effectifParFamille, effectifDistinctParFerme, effectifFamilleParFerme };
           }
           const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
           const result = await db.request().query(`SELECT Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Hr) AS totalHr, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes' GROUP BY Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale ORDER BY Operation_Famille, nbOuv DESC`);
           const ops = result.recordset.map(r => ({ operationFamille: r.Operation_Famille, operation: r.Operation, effectif: r.nbOuv, heures: r.totalHr, journees: r.totalJr, cout: Math.round(r.totalCout || 0), parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
-          return { success: true, date: dateForCheck, operations: ops };
+          // Effectifs DISTINCTS : on ramène les couples DISTINCTS (matricule, famille, parcelle)
+          // pour dériver la ferme en JS et compter via Set (global / par famille / par ferme).
+          const matRes = await db.request().query(`SELECT DISTINCT Personnel_Matricule, Operation_Famille, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes'`);
+          const globalSet = new Set();
+          const familleSets = {};
+          const fermeSets = {};
+          const fermeFamilleSets = {};
+          for (const r of matRes.recordset) {
+            const mat = r.Personnel_Matricule;
+            const f = r.Operation_Famille || "Autre";
+            const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+            globalSet.add(mat);
+            if (!familleSets[f]) familleSets[f] = new Set();
+            familleSets[f].add(mat);
+            if (!fermeSets[ferme]) fermeSets[ferme] = new Set();
+            fermeSets[ferme].add(mat);
+            if (!fermeFamilleSets[ferme]) fermeFamilleSets[ferme] = {};
+            if (!fermeFamilleSets[ferme][f]) fermeFamilleSets[ferme][f] = new Set();
+            fermeFamilleSets[ferme][f].add(mat);
+          }
+          const effectifParFamille = {};
+          for (const f of Object.keys(familleSets)) effectifParFamille[f] = familleSets[f].size;
+          const effectifDistinctParFerme = {};
+          for (const ferme of Object.keys(fermeSets)) effectifDistinctParFerme[ferme] = fermeSets[ferme].size;
+          const effectifFamilleParFerme = {};
+          for (const ferme of Object.keys(fermeFamilleSets)) {
+            effectifFamilleParFerme[ferme] = {};
+            for (const f of Object.keys(fermeFamilleSets[ferme])) effectifFamilleParFerme[ferme][f] = fermeFamilleSets[ferme][f].size;
+          }
+          return { success: true, date: dateForCheck, operations: ops, effectifDistinct: globalSet.size, effectifParFamille, effectifDistinctParFerme, effectifFamilleParFerme };
         });
         return res.json(cached);
       }
@@ -2398,10 +2476,14 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
         const statsRes = await db.request().query(`SELECT MAX(last_user_update) AS lastWrite FROM sys.dm_db_index_usage_stats WHERE database_id = DB_ID() AND object_id = OBJECT_ID('BR_Pointage')`);
         const lastTableWrite = statsRes.recordset[0]?.lastWrite || null;
-        const result = await db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} GROUP BY Ref_parcelle, Parcelle_Culturale`);
-        const farmData = { F1: { nbOuv: 0 }, F5: { nbOuv: 0 }, Avocatier: { nbOuv: 0 }, BAHIA: { nbOuv: 0 } };
-        for (const row of result.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].nbOuv += row.nbOuv; }
-        const uploads = Object.entries(farmData).map(([ferme, d]) => ({ ferme, nbOuv: d.nbOuv }));
+        // nbOuv par ferme = matricules DISTINCTS. La ferme est dérivée en JS (pas une
+        // colonne SQL) → on ramène les couples DISTINCTS (matricule, parcelle) et on
+        // déduplique via un Set par ferme. Auparavant on sommait des COUNT(DISTINCT) par
+        // parcelle → un ouvrier multi-parcelles était compté N fois. Mirroir du chemin MIRROR.
+        const result = await db.request().query(`SELECT DISTINCT Personnel_Matricule, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL}`);
+        const farmData = { F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
+        for (const row of result.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].add(row.Personnel_Matricule); }
+        const uploads = Object.entries(farmData).map(([ferme, workers]) => ({ ferme, nbOuv: workers.size }));
         return res.json({ success: true, date: dateForCheck, lastTableWrite: lastTableWrite ? new Date(lastTableWrite).toISOString() : null, uploads });
       }
 
