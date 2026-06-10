@@ -28,6 +28,11 @@ const {
   shouldExcludeWorkerDay,
 } = require("./lib/heuresSup/heuresSup");
 
+// Pointage — effectifs ouvriers DISTINCTS par (ferme, type).
+// Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
+const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
+const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
+
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
 let sql = null;
 let pool = null;
@@ -501,21 +506,15 @@ async function fetchDetailFromMirror(dateParam) {
 async function fetchSummaryFromMirror(dateParam) {
   const dateStr = dateParam || new Date().toISOString().slice(0, 10);
   const rows = await getPointageRowsForDate(dateStr);
-  const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
-  // Group by ref_parcelle+operation_famille to count distinct workers
-  const groups = {};
-  for (const r of rows) {
-    const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
-    if (!groups[key]) groups[key] = { Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale, Operation_Famille: r.Operation_Famille, workers: new Set(), totalCout: 0 };
-    groups[key].workers.add(r.Personnel_Matricule);
-    groups[key].totalCout += r.Cout || 0;
-  }
-  for (const g of Object.values(groups)) {
-    const ferme = deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale);
-    const type = classifyType(g.Operation_Famille);
-    if (fermes[ferme]) { fermes[ferme][type] += g.workers.size; fermes[ferme].cout += g.totalCout; }
-  }
-  return fermes;
+  // Effectifs = OUVRIERS DISTINCTS par (ferme, type). On itère les lignes brutes
+  // (1 ligne / ouvrier / parcelle / op) et on déduplique les matricules par ferme,type.
+  const lines = rows.map(r => ({
+    matricule: r.Personnel_Matricule,
+    ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+    type: classifyType(r.Operation_Famille),
+    cout: r.Cout || 0,
+  }));
+  return countDistinctByFermeType(lines, POINTAGE_FERMES);
 }
 
 async function fetchPostesFixesFromMirror(dateParam) {
@@ -571,23 +570,23 @@ async function fetchDetailFromSQL(dateParam) {
 async function fetchSummaryFromSQL(dateParam) {
   const db = await getPool();
   const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
+  // Effectifs = OUVRIERS DISTINCTS par (ferme, type). On récupère le matricule au grain
+  // (parcelle, op) puis on déduplique côté JS par (ferme, type) — un ouvrier multi-parcelles
+  // ne doit être compté qu'une fois. On agrège le coût au même grain (somme inchangée).
   const todayRes = await db.request().query(`
-    SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille,
-      COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout
+    SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule,
+      SUM(Cout) AS totalCout
     FROM BR_Pointage
     WHERE CONVERT(date, Periode_Date) = ${dateSQL}
-    GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille
+    GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule
   `);
-  const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
-  for (const row of todayRes.recordset) {
-    const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
-    const type = classifyType(row.Operation_Famille);
-    if (fermes[ferme]) {
-      fermes[ferme][type] += row.nbOuv;
-      fermes[ferme].cout += row.totalCout || 0;
-    }
-  }
-  return fermes;
+  const lines = todayRes.recordset.map(r => ({
+    matricule: r.Personnel_Matricule,
+    ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+    type: classifyType(r.Operation_Famille),
+    cout: r.totalCout || 0,
+  }));
+  return countDistinctByFermeType(lines, POINTAGE_FERMES);
 }
 
 // Fetch postes fixes from SQL for a given date
@@ -701,36 +700,30 @@ async function warmAllPointageCaches() {
         getPointageRowsForDate(yesterdayStr),
         getPointageRowsForDateRange(weekStartStr, today),
       ]);
-      const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
-      const todayGroups = {};
-      for (const r of todayRows) {
-        const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
-        if (!todayGroups[key]) todayGroups[key] = { ...r, workers: new Set(), totalCout: 0 };
-        todayGroups[key].workers.add(r.Personnel_Matricule);
-        todayGroups[key].totalCout += r.Cout || 0;
-      }
-      for (const g of Object.values(todayGroups)) {
-        const ferme = deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale);
-        const type = classifyType(g.Operation_Famille);
-        if (fermes[ferme]) { fermes[ferme][type] += g.workers.size; fermes[ferme].cout += g.totalCout; }
-      }
-      const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 }, BAHIA: { total: 0 } };
-      const yGroups = {};
-      for (const r of yesterdayRows) {
-        const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
-        if (!yGroups[key]) yGroups[key] = { ...r, workers: new Set() };
-        yGroups[key].workers.add(r.Personnel_Matricule);
-      }
-      for (const g of Object.values(yGroups)) {
-        const ferme = deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale);
-        if (fermesYesterday[ferme]) fermesYesterday[ferme].total += g.workers.size;
-      }
+      // Effectifs = OUVRIERS DISTINCTS par (ferme, type), dédupliqués sur les lignes brutes.
+      const fermes = countDistinctByFermeType(todayRows.map(r => ({
+        matricule: r.Personnel_Matricule,
+        ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+        type: classifyType(r.Operation_Famille),
+        cout: r.Cout || 0,
+      })), POINTAGE_FERMES);
+      // Veille = même méthode distincte (sinon variation faussée : distinct vs gonflé).
+      const veilleEffectif = countDistinctByFermeType(yesterdayRows.map(r => ({
+        matricule: r.Personnel_Matricule,
+        ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+        type: classifyType(r.Operation_Famille),
+        cout: r.Cout || 0,
+      })), POINTAGE_FERMES);
+      const fermesYesterday = { F1: { total: veilleEffectif.F1.total }, F5: { total: veilleEffectif.F5.total }, Avocatier: { total: veilleEffectif.Avocatier.total }, BAHIA: { total: veilleEffectif.BAHIA.total } };
       for (const f of Object.keys(submittedFermes)) {
         const snapData = await getSnapshotData(today, f);
         if (snapData && snapData.summary && fermes[f]) fermes[f] = snapData.summary;
       }
       const pointageJour = Object.keys(fermes).map(f => {
-        const e = fermes[f]; const total = e.recolte + e.horsRecolte + e.postesFixes;
+        const e = fermes[f];
+        // total = ouvriers DISTINCTS de la ferme tous types (Set ferme global) ; fallback
+        // sur la somme pour les snapshots sans champ `total` (ancien format).
+        const total = (typeof e.total === 'number') ? e.total : (e.recolte + e.horsRecolte + e.postesFixes);
         const veille = fermesYesterday[f] ? fermesYesterday[f].total : total;
         return { ferme: f, total, recolte: e.recolte, horsRecolte: e.horsRecolte, postesFixes: e.postesFixes, cout: Math.round(e.cout), veille, diff: veille > 0 ? Math.round(((total - veille) / veille) * 1000) / 10 : 0 };
       });
@@ -1149,39 +1142,31 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             getPointageRowsForDate(yesterdayStr),
             getPointageRowsForDateRange(weekStartStr, dateForCheck),
           ]);
-          // Build fermes effectif from today rows
-          const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
-          const todayGroups = {};
-          for (const r of todayRows) {
-            const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
-            if (!todayGroups[key]) todayGroups[key] = { ...r, workers: new Set(), totalCout: 0 };
-            todayGroups[key].workers.add(r.Personnel_Matricule);
-            todayGroups[key].totalCout += r.Cout || 0;
-          }
-          for (const g of Object.values(todayGroups)) {
-            const ferme = deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale);
-            const type = classifyType(g.Operation_Famille);
-            if (fermes[ferme]) { fermes[ferme][type] += g.workers.size; fermes[ferme].cout += g.totalCout; }
-          }
-          // Yesterday
-          const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 }, BAHIA: { total: 0 } };
-          const yGroups = {};
-          for (const r of yesterdayRows) {
-            const key = `${r.Ref_parcelle}|${r.Parcelle_Culturale}|${r.Operation_Famille}`;
-            if (!yGroups[key]) yGroups[key] = { ...r, workers: new Set() };
-            yGroups[key].workers.add(r.Personnel_Matricule);
-          }
-          for (const g of Object.values(yGroups)) {
-            const ferme = deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale);
-            if (fermesYesterday[ferme]) fermesYesterday[ferme].total += g.workers.size;
-          }
+          // Effectifs = OUVRIERS DISTINCTS par (ferme, type), dédupliqués sur les lignes brutes
+          // (un ouvrier multi-parcelles compté 1×, cohérent avec le popup détail).
+          const fermes = countDistinctByFermeType(todayRows.map(r => ({
+            matricule: r.Personnel_Matricule,
+            ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+            type: classifyType(r.Operation_Famille),
+            cout: r.Cout || 0,
+          })), POINTAGE_FERMES);
+          // Veille = même méthode distincte (sinon variation faussée : distinct vs gonflé).
+          const veilleEffectif = countDistinctByFermeType(yesterdayRows.map(r => ({
+            matricule: r.Personnel_Matricule,
+            ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+            type: classifyType(r.Operation_Famille),
+            cout: r.Cout || 0,
+          })), POINTAGE_FERMES);
+          const fermesYesterday = { F1: { total: veilleEffectif.F1.total }, F5: { total: veilleEffectif.F5.total }, Avocatier: { total: veilleEffectif.Avocatier.total }, BAHIA: { total: veilleEffectif.BAHIA.total } };
           // Override with snapshot data
           for (const f of Object.keys(submittedFermes)) {
             const snapData = await getSnapshotData(dateForCheck, f);
             if (snapData && snapData.summary && fermes[f]) fermes[f] = snapData.summary;
           }
           const pointageJour = Object.keys(fermes).map(f => {
-            const e = fermes[f]; const total = e.recolte + e.horsRecolte + e.postesFixes;
+            const e = fermes[f];
+            // total = ouvriers DISTINCTS ferme tous types ; fallback somme pour snapshots ancien format.
+            const total = (typeof e.total === 'number') ? e.total : (e.recolte + e.horsRecolte + e.postesFixes);
             const veille = fermesYesterday[f] ? fermesYesterday[f].total : total;
             return { ferme: f, total, recolte: e.recolte, horsRecolte: e.horsRecolte, postesFixes: e.postesFixes, cout: Math.round(e.cout), veille, diff: veille > 0 ? Math.round(((total - veille) / veille) * 1000) / 10 : 0 };
           });
@@ -1216,27 +1201,30 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // === FALLBACK SQL PATH ===
         const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
 
+        // Effectifs = OUVRIERS DISTINCTS par (ferme, type). On descend le matricule au grain
+        // (parcelle, op) afin de dédupliquer côté JS par (ferme, type) — un ouvrier multi-parcelles
+        // ne doit compter qu'une fois. Le coût reste une SOMME (inchangé). Idem veille + trend.
         const [todayRes, yesterdayRes, trendRes, topOpsRes, recolteKgRes, lastSaisieRes] = await Promise.all([
-          db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille`),
-          db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = DATEADD(day, -1, ${dateSQL}) GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille`),
-          db.request().query(`SELECT CONVERT(date, Periode_Date) AS jour, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE Periode_Date >= DATEADD(day, -6, ${dateSQL}) AND CONVERT(date, Periode_Date) <= ${dateSQL} GROUP BY CONVERT(date, Periode_Date), Ref_parcelle, Parcelle_Culturale ORDER BY jour`),
+          db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule`),
+          db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = DATEADD(day, -1, ${dateSQL}) GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule`),
+          db.request().query(`SELECT CONVERT(date, Periode_Date) AS jour, Ref_parcelle, Parcelle_Culturale, Personnel_Matricule FROM BR_Pointage WHERE Periode_Date >= DATEADD(day, -6, ${dateSQL}) AND CONVERT(date, Periode_Date) <= ${dateSQL} GROUP BY CONVERT(date, Periode_Date), Ref_parcelle, Parcelle_Culturale, Personnel_Matricule ORDER BY jour`),
           db.request().query(`SELECT Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Hr) AS totalHr FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes' GROUP BY Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale ORDER BY nbOuv DESC`),
           db.request().query(`SELECT SUM(Quantite_unite) AS totalQty, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille = '8. Récolte'`),
           db.request().query(`SELECT TOP 1 Periode_Date FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} ORDER BY Periode_Date DESC`),
         ]);
 
-        const fermes = { F1: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, F5: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, Avocatier: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 }, BAHIA: { recolte: 0, horsRecolte: 0, postesFixes: 0, cout: 0 } };
-        const fermesYesterday = { F1: { total: 0 }, F5: { total: 0 }, Avocatier: { total: 0 }, BAHIA: { total: 0 } };
-
-        for (const row of todayRes.recordset) {
-          const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
-          const type = classifyType(row.Operation_Famille);
-          if (fermes[ferme]) { fermes[ferme][type] += row.nbOuv; fermes[ferme].cout += row.totalCout || 0; }
-        }
-        for (const row of yesterdayRes.recordset) {
-          const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
-          if (fermesYesterday[ferme]) fermesYesterday[ferme].total += row.nbOuv;
-        }
+        const fermes = countDistinctByFermeType(todayRes.recordset.map(row => ({
+          matricule: row.Personnel_Matricule,
+          ferme: deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale),
+          type: classifyType(row.Operation_Famille),
+          cout: row.totalCout || 0,
+        })), POINTAGE_FERMES);
+        const veilleEffectif = countDistinctByFermeType(yesterdayRes.recordset.map(row => ({
+          matricule: row.Personnel_Matricule,
+          ferme: deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale),
+          type: classifyType(row.Operation_Famille),
+        })), POINTAGE_FERMES);
+        const fermesYesterday = { F1: { total: veilleEffectif.F1.total }, F5: { total: veilleEffectif.F5.total }, Avocatier: { total: veilleEffectif.Avocatier.total }, BAHIA: { total: veilleEffectif.BAHIA.total } };
 
         // Override with snapshot data for submitted fermes
         for (const f of Object.keys(submittedFermes)) {
@@ -1249,7 +1237,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // Build pointageJour array
         const pointageJour = Object.keys(fermes).map(f => {
           const e = fermes[f];
-          const total = e.recolte + e.horsRecolte + e.postesFixes;
+          // total = ouvriers DISTINCTS ferme tous types ; fallback somme pour snapshots ancien format.
+          const total = (typeof e.total === 'number') ? e.total : (e.recolte + e.horsRecolte + e.postesFixes);
           const veille = fermesYesterday[f] ? fermesYesterday[f].total : total;
           return {
             ferme: f, total, recolte: e.recolte, horsRecolte: e.horsRecolte, postesFixes: e.postesFixes,
@@ -1257,16 +1246,18 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           };
         });
 
-        // Weekly trend
+        // Weekly trend — ouvriers distincts par (jour, ferme), dédupliqués via Set.
         const trendMap = {};
         for (const row of trendRes.recordset) {
           const d = new Date(row.jour);
           const key = d.toISOString().slice(0, 10);
-          if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }), F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 };
+          if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }), F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
           const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale);
-          if (trendMap[key][ferme] !== undefined) trendMap[key][ferme] += row.nbOuv;
+          if (trendMap[key][ferme]) trendMap[key][ferme].add(row.Personnel_Matricule);
         }
-        const weeklyTrend = Object.values(trendMap).sort((a, b) => a.jour.localeCompare(b.jour));
+        const weeklyTrend = Object.values(trendMap)
+          .map(t => ({ jour: t.jour, jourLabel: t.jourLabel, F1: t.F1.size, F5: t.F5.size, Avocatier: t.Avocatier.size, BAHIA: t.BAHIA.size }))
+          .sort((a, b) => a.jour.localeCompare(b.jour));
 
         // Top ops
         const topOps = topOpsRes.recordset.slice(0, 10).map(r => ({
