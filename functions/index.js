@@ -5072,6 +5072,85 @@ exports.validation = functions
         return res.json({ success: true, id: docRef.id, message: "Demande soumise, en attente de validation Finance" });
       }
 
+      // POST: action=transport-config-apply → RH applies a change DIRECTLY (no Finance validation)
+      // Source de vérité unique : rh_config/transport_primes (même schéma versionné que l'onglet DG « Équipes »).
+      // Notifie le DG par WhatsApp en cas d'AUGMENTATION de tarif (fire-and-forget).
+      if (action === "transport-config-apply" && req.method === "POST") {
+        const { changeType, data: changeData, effectiveFrom } = req.body || {};
+        // changeType: "modifier_prix" | "ajouter_equipe" | "supprimer_equipe"
+        if (!changeType || !changeData || !changeData.prefix) {
+          return res.status(400).json({ success: false, error: "changeType et data.prefix requis" });
+        }
+        if (changeType !== "supprimer_equipe" && !effectiveFrom) {
+          return res.status(400).json({ success: false, error: "effectiveFrom (quinzaine) requis" });
+        }
+        const prefix = String(changeData.prefix).toUpperCase();
+        const updatedBy = (authUser && authUser.email) || "RH";
+        const docRef = db_firestore.collection("rh_config").doc("transport_primes");
+
+        await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const equipes = (snap.exists && Array.isArray(snap.data().equipes)) ? snap.data().equipes : [];
+          const idx = equipes.findIndex(e => e && e.prefix === prefix);
+
+          if (changeType === "supprimer_equipe") {
+            if (idx >= 0) equipes.splice(idx, 1);
+          } else {
+            const newCout = Number(changeType === "modifier_prix" ? changeData.newCout : changeData.coutParOuvrier);
+            const entry = { effectiveFrom, coutParOuvrier: newCout, updatedAt: new Date().toISOString(), updatedBy };
+            if (idx >= 0) {
+              const t = equipes[idx];
+              const history = (Array.isArray(t.history) ? t.history : [])
+                .filter(h => !(h.effectiveFrom === effectiveFrom && h.coutParOuvrier === newCout));
+              history.push(entry);
+              equipes[idx] = {
+                prefix,
+                equipe: changeData.equipe || t.equipe || prefix,
+                caporal: changeData.caporal != null ? changeData.caporal : (t.caporal || ""),
+                ferme: changeData.ferme != null ? changeData.ferme : (t.ferme || ""),
+                history,
+              };
+            } else {
+              equipes.push({
+                prefix,
+                equipe: changeData.equipe || prefix,
+                caporal: changeData.caporal || "",
+                ferme: changeData.ferme || "",
+                history: [entry],
+              });
+            }
+          }
+
+          tx.set(docRef, {
+            equipes,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            updatedBy,
+          }, { merge: false });
+        });
+
+        // Alerte DG en cas d'augmentation. La modif est déjà persistée (transaction ci-dessus) :
+        // on attend l'envoi pour garantir la livraison (CF peut geler l'instance après la réponse),
+        // mais un échec d'envoi ne remet jamais en cause la modif.
+        if (changeType === "modifier_prix") {
+          const oldCout = Number(changeData.oldCout);
+          const newCout = Number(changeData.newCout);
+          if (!isNaN(oldCout) && !isNaN(newCout) && newCout > oldCout) {
+            const equipeLbl = changeData.equipe ? `${prefix} (${changeData.equipe})` : prefix;
+            const message = `Augmentation tarif transport — équipe ${equipeLbl} : ${oldCout} → ${newCout} MAD/ouvrier, à partir de ${effectiveFrom} (par ${updatedBy})`;
+            try {
+              const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+              await Promise.allSettled(
+                recipients.map(r => whatsappService.sendTemplateMessage(r.phone, "general_alert", [message]))
+              );
+            } catch (e) {
+              console.error("[transport-config-apply] WhatsApp DG notification failed:", e && e.message);
+            }
+          }
+        }
+
+        return res.json({ success: true, message: "Tarif appliqué" });
+      }
+
       // POST: action=transport-config-validate → Finance approves or rejects
       if (action === "transport-config-validate" && req.method === "POST") {
         const { changeId, decision, validatedBy, comment } = req.body || {};
