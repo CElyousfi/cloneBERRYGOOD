@@ -6329,26 +6329,61 @@
                                                                 </tr>
                                                             </thead>
                                                             <tbody>
-                                                                {eq.ouvriers.sort((a,b) => (a.nom || '').localeCompare(b.nom || '')).map((r, i) => {
-                                                                    const pres = lookupPresence(r.matricule);
-                                                                    return (
-                                                                    <tr key={i} style={{cursor:'pointer'}} onClick={() => setWorkerPopup(r)}
-                                                                        onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
-                                                                        onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                        <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
-                                                                        <td style={{fontWeight:600,padding:'6px 10px'}}>
-                                                                            <span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span>
-                                                                            {r.nom}
-                                                                        </td>
-                                                                        <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
-                                                                        <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
-                                                                        <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
-                                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
-                                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
-                                                                        {!isCaporal && <td style={{fontWeight:700,textAlign:'right',padding:'6px 10px'}}>{Math.round(r.cout || 0).toLocaleString('fr-FR')}</td>}
-                                                                    </tr>
-                                                                    );
-                                                                })}
+                                                                {(() => {
+                                                                    // Agrégation par OUVRIER (matricule) : 1 ligne/ouvrier au lieu d'1 ligne/parcelle.
+                                                                    // MÊME logique que le popup pointagePopup (popAggMap/popFmtParcelles/popFmtHeures, ~6068).
+                                                                    // On somme heures + coût (n'altère aucun montant : agrégation d'affichage),
+                                                                    // on fusionne opérations/parcelles distinctes. On conserve la 1re ligne brute
+                                                                    // (raw) car le popup workerPopup attend un enregistrement complet
+                                                                    // (type, ferme, operationFamille, quantite, variete, jour, hs…), absent de l'agrégat.
+                                                                    const detailAgg = {};
+                                                                    eq.ouvriers.forEach(r => {
+                                                                        const mat = r.matricule;
+                                                                        if (!detailAgg[mat]) {
+                                                                            detailAgg[mat] = {
+                                                                                matricule: mat, nom: r.nom, raw: r,
+                                                                                heures: 0, cout: 0,
+                                                                                operations: new Set(), parcelles: new Set()
+                                                                            };
+                                                                        }
+                                                                        const a = detailAgg[mat];
+                                                                        a.heures += (r.heures || 0);
+                                                                        a.cout += (r.cout || 0);
+                                                                        if (r.operation) a.operations.add(r.operation);
+                                                                        if (r.parcelle) a.parcelles.add(r.parcelle);
+                                                                    });
+                                                                    const fmtHeures = (h) => {
+                                                                        const v = Math.round((h || 0) * 100) / 100;
+                                                                        return Number.isInteger(v) ? String(v) : String(v).replace(/0+$/, '').replace(/\.$/, '');
+                                                                    };
+                                                                    const fmtParcelles = (arr) => {
+                                                                        if (arr.length === 0) return '—';
+                                                                        if (arr.length <= 3) return arr.join(', ');
+                                                                        return arr.slice(0, 2).join(', ') + ' +' + (arr.length - 2);
+                                                                    };
+                                                                    const detailRowsAgg = Object.values(detailAgg).sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+                                                                    return detailRowsAgg.map((a, i) => {
+                                                                        const pres = lookupPresence(a.matricule);
+                                                                        const parcArr = [...a.parcelles];
+                                                                        return (
+                                                                        <tr key={i} style={{cursor:'pointer'}} onClick={() => setWorkerPopup(a.raw)}
+                                                                            onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
+                                                                            onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                            <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{a.matricule}</td>
+                                                                            <td style={{fontWeight:600,padding:'6px 10px'}}>
+                                                                                <span title={isDeclareForMat(a.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(a.matricule) ? '🟢' : '🔴'}</span>
+                                                                                {a.nom}
+                                                                            </td>
+                                                                            <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{[...a.operations].join(', ') || '—'}</td>
+                                                                            <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}} title={parcArr.join(', ')}>{fmtParcelles(parcArr)}</td>
+                                                                            <td style={{textAlign:'center',padding:'6px 10px'}}>{fmtHeures(a.heures)}h</td>
+                                                                            <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
+                                                                            <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
+                                                                            {!isCaporal && <td style={{fontWeight:700,textAlign:'right',padding:'6px 10px'}}>{Math.round(a.cout || 0).toLocaleString('fr-FR')}</td>}
+                                                                        </tr>
+                                                                        );
+                                                                    });
+                                                                })()}
                                                             </tbody>
                                                         </table>
                                                         </div>
