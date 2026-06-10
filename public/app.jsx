@@ -6009,7 +6009,7 @@
                                 subItems={[
                                     { value: p.recolte, label: 'Récolte' },
                                     { value: p.horsRecolte, label: 'Hors Récolte' },
-                                    { value: p.postesFixes, label: 'Avocatier' }
+                                    { value: p.postesFixes, label: 'Poste fixe' }
                                 ]}
                             />
                         ))}
