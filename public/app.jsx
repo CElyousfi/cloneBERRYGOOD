@@ -2735,12 +2735,20 @@
                     <div className="kpi-label">{label}</div>
                     {subItems && (
                         <div className="kpi-sub">
-                            {subItems.map((item, i) => (
-                                <div className="kpi-sub-item" key={i}>
-                                    <strong>{item.value}</strong>
-                                    {item.label}
-                                </div>
-                            ))}
+                            {subItems.map((item, i) => {
+                                const clickable = typeof item.onClick === 'function';
+                                return (
+                                    <div className="kpi-sub-item" key={i}
+                                        onClick={clickable ? (e) => { e.stopPropagation(); item.onClick(e); } : undefined}
+                                        style={clickable ? {cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted', textUnderlineOffset:2} : {}}
+                                        onMouseEnter={clickable ? (e) => { e.currentTarget.style.color='var(--berry)'; } : undefined}
+                                        onMouseLeave={clickable ? (e) => { e.currentTarget.style.color=''; } : undefined}
+                                        title={clickable ? 'Voir le détail des ouvriers' : undefined}>
+                                        <strong>{item.value}</strong>
+                                        {item.label}
+                                    </div>
+                                );
+                            })}
                         </div>
                     )}
                 </div>
@@ -5530,6 +5538,14 @@
             const presenceByMat = React.useMemo(() => Object.fromEntries((presenceData.rows || []).map(r => [(r.matricule || '').toUpperCase().trim(), r])), [presenceData]);
             const lookupPresence = (mat) => presenceByMat[(mat || '').toUpperCase().trim()] || null;
             const [workerPopup, setWorkerPopup] = useState(null);
+            // Popup breakdown KPI : liste des ouvriers d'une ferme pour un type donné (recolte/horsRecolte/postesFixes).
+            const [pointagePopup, setPointagePopup] = useState(null); // { ferme, type, title }
+            React.useEffect(() => {
+                if (!pointagePopup) return;
+                const onKey = (e) => { if (e.key === 'Escape') setPointagePopup(null); };
+                window.addEventListener('keydown', onKey);
+                return () => window.removeEventListener('keydown', onKey);
+            }, [pointagePopup]);
             // Modèle paie unifié pour la popup ouvrier : barèmes + registre + jours pointés distincts.
             const [paieBaremes, setPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             const [ouvriersRegistry, setOuvriersRegistry] = useState({}); // matricule → {declare, baselineJours, baselineDate, primeFonction}
@@ -6007,14 +6023,90 @@
                         {pointage.map(p => (
                             <KPICard key={p.ferme} icon="fa-user-check" iconClass={p.ferme === 'F1' ? 'berry' : (p.ferme === 'F5' ? 'green' : 'orange')} value={p.total} label={`Pointage ${p.ferme}`} change={p.diff}
                                 subItems={[
-                                    { value: p.recolte, label: 'Récolte' },
-                                    { value: p.horsRecolte, label: 'Hors Récolte' },
-                                    { value: p.postesFixes, label: 'Poste fixe' }
+                                    { value: p.recolte, label: 'Récolte', onClick: () => setPointagePopup({ ferme: p.ferme, type: 'recolte', title: `Récolte — ${p.ferme}` }) },
+                                    { value: p.horsRecolte, label: 'Hors Récolte', onClick: () => setPointagePopup({ ferme: p.ferme, type: 'horsRecolte', title: `Hors Récolte — ${p.ferme}` }) },
+                                    { value: p.postesFixes, label: 'Poste fixe', onClick: () => setPointagePopup({ ferme: p.ferme, type: 'postesFixes', title: `Poste fixe — ${p.ferme}` }) }
                                 ]}
                             />
                         ))}
                         {!isCaporal && <KPICard icon="fa-coins" iconClass="orange" value={totalCout.toLocaleString('fr-FR')} label="Coût Total (DH)" />}
                     </div>
+
+                    {/* Popup breakdown KPI : ouvriers d'une ferme par type (récolte / hors récolte / poste fixe) */}
+                    {pointagePopup && (() => {
+                        const popRows = detailRows
+                            .filter(r => r.ferme === pointagePopup.ferme && matchSub(r) && r.type === pointagePopup.type)
+                            .slice()
+                            .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
+                        const popTotalCout = popRows.reduce((s, r) => s + (r.cout || 0), 0);
+                        const popWorkers = new Set(popRows.map(r => r.matricule)).size;
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setPointagePopup(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:'linear-gradient(135deg, var(--berry) 0%, #6b1a3a 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className="fa-solid fa-user-check" style={{marginRight:8}}></i>{pointagePopup.title}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{apiData.date} — {popWorkers} ouvrier{popWorkers > 1 ? 's' : ''}{!isCaporal ? ` — ${Math.round(popTotalCout).toLocaleString('fr-FR')} DH` : ''}</div>
+                                        </div>
+                                        <button onClick={() => setPointagePopup(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        {popRows.length === 0 ? (
+                                            <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Aucun ouvrier.</div>
+                                        ) : (
+                                        <div className="table-responsive">
+                                        <table className="data-table" style={{fontSize:12,margin:0}}>
+                                            <thead>
+                                                <tr style={{background:'var(--gray-50)'}}>
+                                                    <th style={{padding:'6px 10px'}}>Matricule</th>
+                                                    <th style={{padding:'6px 10px'}}>Nom</th>
+                                                    <th style={{padding:'6px 10px'}}>Opération</th>
+                                                    <th style={{padding:'6px 10px'}}>Parcelle</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Entrée</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Sortie</th>
+                                                    {!isCaporal && <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {popRows.map((r, i) => {
+                                                    const pres = lookupPresence(r.matricule);
+                                                    return (
+                                                    <tr key={i}>
+                                                        <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
+                                                        <td style={{fontWeight:600,padding:'6px 10px'}}>
+                                                            <span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span>
+                                                            {r.nom}
+                                                        </td>
+                                                        <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
+                                                        <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
+                                                        <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
+                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
+                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
+                                                        {!isCaporal && <td style={{fontWeight:700,textAlign:'right',padding:'6px 10px'}}>{Math.round(r.cout || 0).toLocaleString('fr-FR')}</td>}
+                                                    </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            {!isCaporal && popRows.length > 0 && (
+                                            <tfoot>
+                                                <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                                    <td colSpan={4} style={{padding:'6px 10px'}}>Total — {popWorkers} ouvrier{popWorkers > 1 ? 's' : ''}</td>
+                                                    <td colSpan={3}></td>
+                                                    <td style={{textAlign:'right',padding:'6px 10px'}}>{Math.round(popTotalCout).toLocaleString('fr-FR')}</td>
+                                                </tr>
+                                            </tfoot>
+                                            )}
+                                        </table>
+                                        </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Affectation Ouvriers - Vue Chef de Ferme */}
                     {currentProfile && (currentProfile.startsWith('chef_') || currentProfile.startsWith('caporal_')) && filteredDetail.length > 0 && (() => {
