@@ -19,6 +19,7 @@ const { resolveCallerRole } = require("./lib/auth/resolveRole");
 const { validateBugReport } = require("./lib/bugReports/validateBugReport");
 const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus } = require("./lib/bugReports/bugStatus");
 const stockMovementGuard = require("./lib/stock/movementGuard");
+const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const whatsappService = require("./whatsappService");
@@ -4415,6 +4416,268 @@ exports.pointageV3 = functions
     const authUser = await requireAuth(req, res);
     if (!authUser) return;
     return pointageMod.pointageRH(req, res);
+  });
+
+// =============================================
+// API: Validation Pointage du jour PAR ÉQUIPE / PAR FERME
+// Route /api/pointage-validation (firebase.json → pointageValidation).
+//
+// Circuit (validé par Omar) :
+//   RH valide/rejette chaque équipe + le Pointage Divers de la ferme
+//   → RH soumet la ferme à SON Chef → Chef valide → FIGÉ (locked)
+//   → DG peut déverrouiller.
+//
+// Collection Firestore : `pointage_validations_equipe`, 1 doc/jour, id=YYYY-MM-DD.
+// (Collection DISTINCTE de `pointage_validations` qui héberge déjà le workflow
+//  visaRH/Caporal/Chef par `${date}_${ferme}` — exports.validation — pour éviter
+//  tout mélange de schéma.)
+//
+// Rôles résolus SERVEUR (resolveCallerRole, jamais depuis le body) :
+//   - validate-equipe / validate-divers / submit-ferme : rh
+//   - chef-validate-ferme : chef de LA ferme (chef_f1|chef_f5|chef_avo|chef_bahia)
+//   - unlock-ferme : dg
+// Mutations atomiques via runTransaction + gardes du state machine pur.
+// =============================================
+const POINTAGE_VALIDATION_FERMES = ['F1', 'F5', 'Avocatier', 'BAHIA'];
+
+function emptyPointageValidationDoc(date) {
+  return { date, fermes: {}, history: [], updated_at: null };
+}
+
+function emptyFermeValidationState() {
+  return {
+    equipes: {},
+    divers: { status: 'na', motif: null, by: null, at: null },
+    submitState: 'brouillon',
+    soumis_by: null,
+    soumis_at: null,
+    chef_valide_by: null,
+    chef_valide_at: null,
+    locked: false,
+  };
+}
+
+// Best-effort WhatsApp : envoie un texte à tous les destinataires d'un profil.
+async function notifyProfilePointageValidation(profileId, ferme, text) {
+  try {
+    const recipients = await whatsappService.resolveRecipientsForProfile(profileId, ferme);
+    if (!recipients || !recipients.length) return;
+    await Promise.all(recipients.map((r) => whatsappService.sendTextMessage(r.phone, text)));
+  } catch (e) {
+    console.error('[pointageValidation] WhatsApp notify failed:', profileId, e.message);
+  }
+}
+
+exports.pointageValidation = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    const action = req.query.action || (req.body && req.body.action) || "";
+    const collRef = db_firestore.collection("pointage_validations_equipe");
+
+    try {
+      // ---- GET : état du jour (tous profils authentifiés) ----
+      if (action === "get-validations") {
+        const date = req.query.date || (req.body && req.body.date);
+        if (!date) return res.status(400).json({ success: false, error: "date requise" });
+        const snap = await collRef.doc(date).get();
+        const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+        return res.json({ success: true, validation: doc });
+      }
+
+      // Toutes les actions ci-dessous sont des mutations POST.
+      if (req.method !== "POST") {
+        return res.status(405).json({ success: false, error: "POST uniquement" });
+      }
+
+      const callerRole = await resolveCallerRole(authUser);
+      const by = {
+        uid: authUser.uid,
+        name: (authUser.name || authUser.displayName || authUser.email || "").toString(),
+        profileId: callerRole || null,
+      };
+      const { date, ferme } = req.body || {};
+      if (!date || !ferme) return res.status(400).json({ success: false, error: "date et ferme requis" });
+      if (POINTAGE_VALIDATION_FERMES.indexOf(ferme) < 0) {
+        return res.status(400).json({ success: false, error: "ferme inconnue: " + ferme });
+      }
+      const docRef = collRef.doc(date);
+
+      // ---- RH : valider/rejeter une équipe ----
+      if (action === "validate-equipe") {
+        if (callerRole !== "rh") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
+        const { equipeId, status, motif } = req.body || {};
+        if (!equipeId) return res.status(400).json({ success: false, error: "equipeId requis" });
+        if (status !== "valide" && status !== "rejete") {
+          return res.status(400).json({ success: false, error: "status invalide (valide|rejete)" });
+        }
+        const out = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+          if (!doc.fermes) doc.fermes = {};
+          if (!doc.fermes[ferme]) doc.fermes[ferme] = emptyFermeValidationState();
+          const fermeState = doc.fermes[ferme];
+          if (!pointageValidationSM.canValidateEquipe(fermeState)) {
+            return { http: 409, body: { success: false, error: "Ferme soumise ou figée — saisie verrouillée" } };
+          }
+          if (!fermeState.equipes) fermeState.equipes = {};
+          fermeState.equipes[equipeId] = { status, motif: motif || null, by, at: Date.now() };
+          doc.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          const historyEntry = { action: "validate-equipe", ferme, equipeId, status, by, at: Date.now() };
+          tx.set(docRef, doc, { merge: false });
+          tx.update(docRef, { history: admin.firestore.FieldValue.arrayUnion(historyEntry) });
+          return { http: 200, body: { success: true, validation: doc } };
+        });
+        return res.status(out.http).json(out.body);
+      }
+
+      // ---- RH : valider/rejeter le Pointage Divers de la ferme ----
+      if (action === "validate-divers") {
+        if (callerRole !== "rh") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
+        const { status, motif } = req.body || {};
+        if (["valide", "rejete", "na"].indexOf(status) < 0) {
+          return res.status(400).json({ success: false, error: "status invalide (valide|rejete|na)" });
+        }
+        const out = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+          if (!doc.fermes) doc.fermes = {};
+          if (!doc.fermes[ferme]) doc.fermes[ferme] = emptyFermeValidationState();
+          const fermeState = doc.fermes[ferme];
+          if (!pointageValidationSM.canValidateEquipe(fermeState)) {
+            return { http: 409, body: { success: false, error: "Ferme soumise ou figée — saisie verrouillée" } };
+          }
+          fermeState.divers = { status, motif: motif || null, by, at: Date.now() };
+          doc.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          const historyEntry = { action: "validate-divers", ferme, status, by, at: Date.now() };
+          tx.set(docRef, doc, { merge: false });
+          tx.update(docRef, { history: admin.firestore.FieldValue.arrayUnion(historyEntry) });
+          return { http: 200, body: { success: true, validation: doc } };
+        });
+        return res.status(out.http).json(out.body);
+      }
+
+      // ---- RH : soumettre la ferme à son chef ----
+      if (action === "submit-ferme") {
+        if (callerRole !== "rh") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
+        const equipesDuJour = Array.isArray(req.body && req.body.equipesDuJour) ? req.body.equipesDuJour : [];
+        const out = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+          if (!doc.fermes) doc.fermes = {};
+          if (!doc.fermes[ferme]) doc.fermes[ferme] = emptyFermeValidationState();
+          const fermeState = doc.fermes[ferme];
+          const check = pointageValidationSM.canSubmitFerme(fermeState, equipesDuJour);
+          if (!check.ok) {
+            const status = check.reason === "equipes_non_adressees" || check.reason === "divers_non_adresse" || check.reason === "aucune_equipe" ? 400 : 409;
+            return { http: status, body: { success: false, error: "Soumission impossible: " + check.reason, manquantes: check.manquantes || [] } };
+          }
+          fermeState.submitState = "soumis";
+          fermeState.soumis_by = by;
+          fermeState.soumis_at = Date.now();
+          doc.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          const historyEntry = { action: "submit-ferme", ferme, by, at: Date.now() };
+          tx.set(docRef, doc, { merge: false });
+          tx.update(docRef, { history: admin.firestore.FieldValue.arrayUnion(historyEntry) });
+          return { http: 200, body: { success: true, validation: doc } };
+        });
+        if (out.http === 200) {
+          const chefProfile = Object.keys(pointageValidationSM.CHEF_FERME_BY_PROFILE).find(
+            (p) => pointageValidationSM.CHEF_FERME_BY_PROFILE[p] === ferme
+          );
+          if (chefProfile) {
+            notifyProfilePointageValidation(
+              chefProfile, ferme,
+              `Pointage du ${date} — ferme ${ferme} soumis par le RH. Merci de valider dans l'app (Pointage du jour).`
+            );
+          }
+        }
+        return res.status(out.http).json(out.body);
+      }
+
+      // ---- Chef de LA ferme : valider (figer) ----
+      if (action === "chef-validate-ferme") {
+        // Pré-garde rôle/ferme : seul le chef de CETTE ferme peut valider.
+        if (pointageValidationSM.fermeForChefProfile(callerRole) !== ferme) {
+          const msg = pointageValidationSM.fermeForChefProfile(callerRole)
+            ? "Vous n'êtes pas le Chef de cette ferme"
+            : "Réservé au Chef de ferme";
+          return res.status(403).json({ success: false, error: msg });
+        }
+        const out = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+          if (!doc.fermes) doc.fermes = {};
+          if (!doc.fermes[ferme]) doc.fermes[ferme] = emptyFermeValidationState();
+          const fermeState = doc.fermes[ferme];
+          const check = pointageValidationSM.canChefValidate(fermeState, ferme, callerRole);
+          if (!check.ok) {
+            const status = (check.reason === "pas_un_chef" || check.reason === "mauvaise_ferme") ? 403 : 409;
+            const msg = check.reason === "pas_un_chef" ? "Réservé au Chef de ferme"
+              : check.reason === "mauvaise_ferme" ? "Vous n'êtes pas le Chef de cette ferme"
+                : "La ferme n'est pas en attente de validation Chef";
+            return { http: status, body: { success: false, error: msg } };
+          }
+          fermeState.submitState = "valide";
+          fermeState.locked = true;
+          fermeState.chef_valide_by = by;
+          fermeState.chef_valide_at = Date.now();
+          doc.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          const historyEntry = { action: "chef-validate-ferme", ferme, by, at: Date.now() };
+          tx.set(docRef, doc, { merge: false });
+          tx.update(docRef, { history: admin.firestore.FieldValue.arrayUnion(historyEntry) });
+          return { http: 200, body: { success: true, validation: doc } };
+        });
+        if (out.http === 200) {
+          const msg = `Pointage du ${date} — ferme ${ferme} VALIDÉ et figé par le Chef.`;
+          notifyProfilePointageValidation("rh", ferme, msg);
+          notifyProfilePointageValidation("dg", ferme, msg);
+        }
+        return res.status(out.http).json(out.body);
+      }
+
+      // ---- DG : déverrouiller (rouvre la saisie RH) ----
+      if (action === "unlock-ferme") {
+        if (callerRole !== "dg") return res.status(403).json({ success: false, error: "Réservé au DG" });
+        const out = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+          if (!doc.fermes) doc.fermes = {};
+          if (!doc.fermes[ferme]) doc.fermes[ferme] = emptyFermeValidationState();
+          const fermeState = doc.fermes[ferme];
+          const check = pointageValidationSM.canUnlock(fermeState);
+          if (!check.ok) {
+            return { http: 409, body: { success: false, error: "Ferme non verrouillée — rien à déverrouiller" } };
+          }
+          fermeState.locked = false;
+          fermeState.submitState = "brouillon";
+          doc.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          const historyEntry = { action: "unlock-ferme", ferme, by, at: Date.now() };
+          tx.set(docRef, doc, { merge: false });
+          tx.update(docRef, { history: admin.firestore.FieldValue.arrayUnion(historyEntry) });
+          return { http: 200, body: { success: true, validation: doc } };
+        });
+        if (out.http === 200) {
+          const chefProfile = Object.keys(pointageValidationSM.CHEF_FERME_BY_PROFILE).find(
+            (p) => pointageValidationSM.CHEF_FERME_BY_PROFILE[p] === ferme
+          );
+          const msg = `Pointage du ${date} — ferme ${ferme} DÉVERROUILLÉ par le DG. La saisie RH est rouverte.`;
+          notifyProfilePointageValidation("rh", ferme, msg);
+          if (chefProfile) notifyProfilePointageValidation(chefProfile, ferme, msg);
+        }
+        return res.status(out.http).json(out.body);
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue: " + action });
+    } catch (err) {
+      console.error("Erreur pointageValidation:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
   });
 
 // =============================================

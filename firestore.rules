@@ -70,6 +70,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Validation Pointage du jour PAR ÉQUIPE / PAR FERME — lecture par utilisateurs
+    // authentifiés, écriture via Cloud Function exports.pointageValidation uniquement.
+    match /pointage_validations_equipe/{date} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Stock requests
     match /stock_requests/{docId} {
       allow read: if request.auth != null;

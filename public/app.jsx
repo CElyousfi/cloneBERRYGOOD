@@ -6181,6 +6181,45 @@
                         </table>
                     </Panel>
 
+                    {/* Validation du pointage du jour PAR ÉQUIPE / PAR FERME (composant séparé) */}
+                    {window.PointageValidationPanel && (selectedDate || (dates[0] && dates[0].date)) && (() => {
+                        // Construit equipesParFerme depuis detailRows (MÊME logique getEq que ci-dessus).
+                        const dateToUse = selectedDate || (dates[0] && dates[0].date);
+                        const prefixToName = {};
+                        const coutMap = {};
+                        (data.transportConfig || []).forEach(t => { prefixToName[t.prefix] = t.equipe; coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, null) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
+                        const eqName = (eq) => eq === 'BGF' ? 'BGF' : (prefixToName[eq] || `Équipe ${eq}`);
+                        const getEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0, 2); if (p2 === 'BG') return 'BGF'; return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
+                        const equipesParFerme = {};
+                        (detailRows || []).filter(r => matchSub(r)).forEach(r => {
+                            const ferme = r.ferme;
+                            if (!ferme || ['F1', 'F5', 'Avocatier', 'BAHIA'].indexOf(ferme) < 0) return;
+                            if (farmFilter && ferme !== farmFilter) return;
+                            if (!equipesParFerme[ferme]) equipesParFerme[ferme] = { _eq: {}, diversCount: 0 };
+                            const eq = getEq(r.matricule);
+                            if (!equipesParFerme[ferme]._eq[eq]) equipesParFerme[ferme]._eq[eq] = { prefix: eq, nom: eqName(eq), _mats: new Set(), ouvriers: [] };
+                            const bucket = equipesParFerme[ferme]._eq[eq];
+                            if (!bucket._mats.has(r.matricule)) {
+                                bucket._mats.add(r.matricule);
+                                bucket.ouvriers.push({ matricule: r.matricule, nom: r.nom, operation: r.operation, parcelle: r.parcelle, heures: r.heures });
+                            }
+                        });
+                        const result = {};
+                        Object.keys(equipesParFerme).forEach(ferme => {
+                            const eqs = Object.values(equipesParFerme[ferme]._eq).map(e => ({
+                                prefix: e.prefix, nom: e.nom, ouvriers: e.ouvriers,
+                                coutTransport: (coutMap[e.prefix] || 0) * e.ouvriers.length,
+                            })).sort((a, b) => b.ouvriers.length - a.ouvriers.length);
+                            result[ferme] = { equipes: eqs, diversCount: 0 };
+                        });
+                        if (!Object.keys(result).length) return null;
+                        return React.createElement(window.PointageValidationPanel, {
+                            date: dateToUse,
+                            currentProfile,
+                            equipesParFerme: result,
+                        });
+                    })()}
+
                     {/* Pointage par Parcelle → Tâche → Équipe */}
                     {(() => {
                         // Classement par équipe : MÊME source/logique que l'onglet « Équipes » (référentiel data.transportConfig).

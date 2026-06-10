@@ -31,6 +31,7 @@
       { "source": "/api/harvest-prediction", "function": { "functionId": "harvestPrediction", "region": "europe-west1" } },
       { "source": "/api/upload-ecarts", "function": { "functionId": "uploadEcarts", "region": "europe-west1" } },
       { "source": "/api/validation", "function": { "functionId": "validation", "region": "europe-west1" } },
+      { "source": "/api/pointage-validation", "function": { "functionId": "pointageValidation", "region": "europe-west1" } },
       { "source": "/api/stock", "function": { "functionId": "stockManagement", "region": "europe-west1" } },
       { "source": "/api/auth", "function": { "functionId": "authApi", "region": "europe-west1" } },
       { "source": "/api/hors-recolte-suivi", "function": { "functionId": "horsRecolteService", "region": "europe-west1" } },
