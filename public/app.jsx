@@ -6040,6 +6040,25 @@
                             .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
                         const popTotalCout = popRows.reduce((s, r) => s + (r.cout || 0), 0);
                         const popWorkers = new Set(popRows.map(r => r.matricule)).size;
+                        // Regroupement par équipe : MÊME logique que « Détail Pointage du Jour » / « Affectation des Équipes »
+                        // (référentiel data.transportConfig). Code équipe = 2 LETTRES, HAFI→HA, catch-all « BGF ».
+                        const popPrefixToName = {};
+                        (data.transportConfig || []).forEach(t => { popPrefixToName[t.prefix] = t.equipe; });
+                        const popEqName = (eq) => eq === 'BGF' ? 'BGF' : (popPrefixToName[eq] || `Équipe ${eq}`);
+                        const popGetEq = (mat) => { const m = String(mat || '').toUpperCase().trim(); if (m.startsWith('HAFI')) return 'HA'; const p2 = m.substring(0,2); if (p2 === 'BG') return 'BGF'; return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF'; };
+                        // Groupes : { prefix, nom, rows[] }. popRows déjà trié par nom → ordre interne conservé.
+                        const popGroupsMap = {};
+                        popRows.forEach(r => {
+                            const eq = popGetEq(r.matricule);
+                            if (!popGroupsMap[eq]) popGroupsMap[eq] = { prefix: eq, nom: popEqName(eq), rows: [] };
+                            popGroupsMap[eq].rows.push(r);
+                        });
+                        // Tri des groupes : effectif (ouvriers distincts) décroissant, puis nom d'équipe.
+                        const popGroups = Object.values(popGroupsMap).map(g => ({
+                            ...g,
+                            count: new Set(g.rows.map(r => r.matricule)).size,
+                            coutTotal: g.rows.reduce((s, r) => s + (r.cout || 0), 0)
+                        })).sort((a, b) => (b.count - a.count) || a.nom.localeCompare(b.nom));
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setPointagePopup(null)}>
                                 <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
@@ -6071,24 +6090,36 @@
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {popRows.map((r, i) => {
-                                                    const pres = lookupPresence(r.matricule);
-                                                    return (
-                                                    <tr key={i}>
-                                                        <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
-                                                        <td style={{fontWeight:600,padding:'6px 10px'}}>
-                                                            <span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span>
-                                                            {r.nom}
-                                                        </td>
-                                                        <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
-                                                        <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
-                                                        <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
-                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
-                                                        <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
-                                                        {!isCaporal && <td style={{fontWeight:700,textAlign:'right',padding:'6px 10px'}}>{Math.round(r.cout || 0).toLocaleString('fr-FR')}</td>}
-                                                    </tr>
-                                                    );
-                                                })}
+                                                {popGroups.map((g) => (
+                                                    <React.Fragment key={g.prefix}>
+                                                        <tr style={{background:'var(--green-pale, #eef7ef)'}}>
+                                                            <td colSpan={isCaporal ? 7 : 6} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
+                                                                <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.prefix}</span>
+                                                                {g.nom}
+                                                                <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.count} ouvrier{g.count > 1 ? 's' : ''}</span>
+                                                            </td>
+                                                            {!isCaporal && <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'var(--green, #2e7d32)'}}>{Math.round(g.coutTotal).toLocaleString('fr-FR')}</td>}
+                                                        </tr>
+                                                        {g.rows.map((r, i) => {
+                                                            const pres = lookupPresence(r.matricule);
+                                                            return (
+                                                            <tr key={g.prefix + '-' + i}>
+                                                                <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
+                                                                <td style={{fontWeight:600,padding:'6px 10px'}}>
+                                                                    <span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span>
+                                                                    {r.nom}
+                                                                </td>
+                                                                <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
+                                                                <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
+                                                                <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
+                                                                <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
+                                                                <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
+                                                                {!isCaporal && <td style={{fontWeight:700,textAlign:'right',padding:'6px 10px'}}>{Math.round(r.cout || 0).toLocaleString('fr-FR')}</td>}
+                                                            </tr>
+                                                            );
+                                                        })}
+                                                    </React.Fragment>
+                                                ))}
                                             </tbody>
                                             {!isCaporal && popRows.length > 0 && (
                                             <tfoot>
