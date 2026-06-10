@@ -6034,12 +6034,52 @@
 
                     {/* Popup breakdown KPI : ouvriers d'une ferme par type (récolte / hors récolte / poste fixe) */}
                     {pointagePopup && (() => {
-                        const popRows = detailRows
-                            .filter(r => r.ferme === pointagePopup.ferme && matchSub(r) && r.type === pointagePopup.type)
-                            .slice()
-                            .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
-                        const popTotalCout = popRows.reduce((s, r) => s + (r.cout || 0), 0);
-                        const popWorkers = new Set(popRows.map(r => r.matricule)).size;
+                        const popRawRows = detailRows
+                            .filter(r => r.ferme === pointagePopup.ferme && matchSub(r) && r.type === pointagePopup.type);
+                        // Totaux globaux calculés sur les lignes BRUTES (1 enregistrement = 1 parcelle/opération)
+                        // → garantit que l'agrégation par ouvrier ne change aucun montant ni effectif.
+                        const popTotalCout = popRawRows.reduce((s, r) => s + (r.cout || 0), 0);
+                        const popWorkers = new Set(popRawRows.map(r => r.matricule)).size;
+                        // Agrégation par OUVRIER (matricule) : 1 ligne par ouvrier dans le popup.
+                        // Le temps/coût d'un irrigant sont fractionnés par parcelle dans detailRows
+                        // (ex. BOUMADIAN = 4 lignes IRRIGATION) → on somme heures + coût, on fusionne
+                        // les opérations/parcelles distinctes. matricule/nom = constants par ouvrier.
+                        const popAggMap = {};
+                        popRawRows.forEach(r => {
+                            const mat = r.matricule;
+                            if (!popAggMap[mat]) {
+                                popAggMap[mat] = {
+                                    matricule: mat, nom: r.nom,
+                                    heures: 0, cout: 0,
+                                    operations: new Set(), parcelles: new Set()
+                                };
+                            }
+                            const agg = popAggMap[mat];
+                            agg.heures += (r.heures || 0);
+                            agg.cout += (r.cout || 0);
+                            if (r.operation) agg.operations.add(r.operation);
+                            if (r.parcelle) agg.parcelles.add(r.parcelle);
+                        });
+                        // Formatage heures : arrondi 2 décimales, sans zéros inutiles (ex. 8, 8.5, 8.04).
+                        const popFmtHeures = (h) => {
+                            const v = Math.round((h || 0) * 100) / 100;
+                            return Number.isInteger(v) ? String(v) : String(v).replace(/0+$/, '').replace(/\.$/, '');
+                        };
+                        // Parcelles multiples : au-delà de 3, format compact « P1, P2, P3 +N ».
+                        const popFmtParcelles = (set) => {
+                            const arr = [...set];
+                            if (arr.length === 0) return '—';
+                            if (arr.length <= 3) return arr.join(', ');
+                            return arr.slice(0, 2).join(', ') + ' +' + (arr.length - 2);
+                        };
+                        const popRows = Object.values(popAggMap).map(a => ({
+                            matricule: a.matricule, nom: a.nom,
+                            heures: popFmtHeures(a.heures),
+                            cout: a.cout,
+                            operation: [...a.operations].join(', ') || '—',
+                            parcelle: popFmtParcelles(a.parcelles),
+                            parcelleTitle: [...a.parcelles].join(', ')
+                        })).sort((a, b) => (a.nom || '').localeCompare(b.nom || ''));
                         // Regroupement par équipe : MÊME logique que « Détail Pointage du Jour » / « Affectation des Équipes »
                         // (référentiel data.transportConfig). Code équipe = 2 LETTRES, HAFI→HA, catch-all « BGF ».
                         const popPrefixToName = {};
@@ -6110,7 +6150,7 @@
                                                                     {r.nom}
                                                                 </td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{r.operation}</td>
-                                                                <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{r.parcelle}</td>
+                                                                <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}} title={r.parcelleTitle || r.parcelle}>{r.parcelle}</td>
                                                                 <td style={{textAlign:'center',padding:'6px 10px'}}>{r.heures}h</td>
                                                                 <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</td>
                                                                 <td style={{textAlign:'center',fontFamily:'monospace',fontSize:11,padding:'6px 10px',color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</td>
