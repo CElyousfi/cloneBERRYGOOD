@@ -23864,7 +23864,6 @@ ${rejetHtml}
                                             <th style={{textAlign:'right'}}>Jours période</th>
                                             <th style={{textAlign:'right'}}>Brut</th>
                                             <th style={{textAlign:'right'}}>Prime</th>
-                                            <th style={{textAlign:'right'}}>Cotis. sal.</th>
                                             <th style={{textAlign:'right', background:'rgba(46,204,113,0.08)'}}>Net à virer</th>
                                             <th style={{textAlign:'right'}}>Charges patr.</th>
                                             <th style={{textAlign:'right', background:'rgba(139,34,82,0.08)'}}>Coût employeur</th>
@@ -23891,14 +23890,13 @@ ${rejetHtml}
                                                 <td style={{textAlign:'right'}}>{fmtInt(r.joursPeriode)}</td>
                                                 <td style={{textAlign:'right'}}>{fmt(r.paie.brut)}</td>
                                                 <td style={{textAlign:'right', color: r.paie.prime > 0 ? 'var(--berry)' : 'var(--gray-300)'}}>{fmt(r.paie.prime)}</td>
-                                                <td style={{textAlign:'right', color:'var(--red)'}}>{fmt(r.paie.cotisationsSalariales)}</td>
                                                 <td style={{textAlign:'right', fontWeight:700, background:'rgba(46,204,113,0.08)'}}>{fmt(r.paie.net)}</td>
                                                 <td style={{textAlign:'right', color:'var(--gray-500)'}}>{fmt(r.paie.chargesPatronales)}</td>
                                                 <td style={{textAlign:'right', fontWeight:700, background:'rgba(139,34,82,0.08)'}}>{fmt(r.paie.coutEmployeur)}</td>
                                             </tr>
                                         ))}
                                         {filteredRows.length === 0 && (
-                                            <tr><td colSpan={16} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
+                                            <tr><td colSpan={15} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
                                         )}
                                     </tbody>
                                     <tfoot>
@@ -23906,7 +23904,6 @@ ${rejetHtml}
                                             <td colSpan={9} style={{textAlign:'right'}}>Totaux ({filteredRows.length} ouvrier{filteredRows.length > 1 ? 's' : ''})</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.brut)}</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.prime)}</td>
-                                            <td style={{textAlign:'right'}}>{fmt(totals.cotis)}</td>
                                             <td style={{textAlign:'right', background:'rgba(46,204,113,0.15)'}}>{fmt(totals.net)}</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.charges)}</td>
                                             <td style={{textAlign:'right', background:'rgba(139,34,82,0.15)'}}>{fmt(totals.cout)}</td>
@@ -23918,9 +23915,9 @@ ${rejetHtml}
 
                         <div style={{marginTop:10, fontSize:10, color:'var(--gray-400)', lineHeight:1.5}}>
                             <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>
-                            <strong>Non déclarés</strong> : SMAG net × jours pointés sur la période — pas de charges, pas de prime.
+                            <strong>Non déclarés</strong> : Brut = SMAG brut × jours pointés — pas de charges, pas de prime d'ancienneté. Net à virer = Brut. Coût employeur = Brut.
                             <br />
-                            <strong>Déclarés</strong> : Brut = SMAG brut × jours + prime ancienneté ; Net à virer = Brut − cotisations salariales ; Coût employeur = Brut + charges patronales.
+                            <strong>Déclarés</strong> : Brut = SMAG brut × jours + prime ancienneté ; Net à virer = Brut (aucune retenue salariale) ; Coût employeur = Brut + charges patronales (CNSS, à la charge de la société).
                             <br />
                             Les barèmes (SMAG, taux, paliers) sont éditables dans <em>Paramètres</em> et appliqués en temps réel.
                         </div>

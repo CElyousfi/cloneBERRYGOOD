@@ -45,35 +45,59 @@ test('trouverPalierAnciennete: between brackets picks lower bracket', () => {
 });
 
 // ---------------------------------------------------------------------------
-// calculerPaieOuvrier — declared / non-declared (unchanged behaviour)
+// calculerPaieOuvrier — modèle validé Omar 2026-06 :
+//   SMAG base = BRUT pour TOUS ; aucune retenue salariale (cotis = 0) ;
+//   net = brut + primes ; CNSS patronale seulement sur coût employeur déclaré.
 // ---------------------------------------------------------------------------
-test('calculerPaieOuvrier: non-declared → net = SMAG net × jours, no charges', () => {
+test('calculerPaieOuvrier: non-déclaré → base BRUT × jours, 0 retenue, net = brut, pas de CNSS', () => {
   const r = calculerPaieOuvrier({ declare: false, joursTravailles: 10, anciennete: 5000, baremes: PAIE_BAREMES_DEFAULT });
-  assert.ok(close(r.net, 82.61 * 10));
+  const brutBase = 88.58 * 10;
+  assert.ok(close(r.brut, brutBase));
+  assert.ok(close(r.net, brutBase));
   assert.strictEqual(r.brut, r.net);
   assert.strictEqual(r.chargesPatronales, 0);
   assert.strictEqual(r.cotisationsSalariales, 0);
   assert.strictEqual(r.prime, 0);
-  assert.ok(close(r.coutEmployeur, 82.61 * 10));
+  assert.ok(close(r.coutEmployeur, brutBase));
 });
 
-test('calculerPaieOuvrier: declared no seniority', () => {
+test('calculerPaieOuvrier: déclaré sans ancienneté → net = brut (0 retenue), coût = brut + CNSS patronale', () => {
   const r = calculerPaieOuvrier({ declare: true, joursTravailles: 26, anciennete: 0, baremes: PAIE_BAREMES_DEFAULT });
   const brutBase = 88.58 * 26;
   assert.ok(close(r.brut, brutBase));
   assert.ok(close(r.prime, 0));
-  assert.ok(close(r.cotisationsSalariales, brutBase * 0.0674));
+  assert.strictEqual(r.cotisationsSalariales, 0);
   assert.ok(close(r.chargesPatronales, brutBase * 0.26));
-  assert.ok(close(r.net, brutBase - brutBase * 0.0674));
+  assert.ok(close(r.net, brutBase));
   assert.ok(close(r.coutEmployeur, brutBase + brutBase * 0.26));
 });
 
-test('calculerPaieOuvrier: declared with 10% seniority prime', () => {
+test('calculerPaieOuvrier: déclaré avec prime ancienneté 10% → net = brut, coût = brut + CNSS', () => {
   const r = calculerPaieOuvrier({ declare: true, joursTravailles: 26, anciennete: 1560, baremes: PAIE_BAREMES_DEFAULT });
   const brutBase = 88.58 * 26;
   const prime = brutBase * 0.10;
+  const brut = brutBase + prime;
   assert.ok(close(r.prime, prime));
-  assert.ok(close(r.brut, brutBase + prime));
+  assert.ok(close(r.brut, brut));
+  assert.strictEqual(r.cotisationsSalariales, 0);
+  assert.ok(close(r.net, brut));
+  assert.ok(close(r.coutEmployeur, brut + brut * 0.26));
+});
+
+test('calculerPaieOuvrier: comparatif déclaré vs non-déclaré — même base brut, même net, seul le coût employeur diffère (CNSS patronale)', () => {
+  // anciennete 0 → pas de prime, donc base brut strictement identique des deux côtés.
+  const nonDecl = calculerPaieOuvrier({ declare: false, joursTravailles: 26, anciennete: 0, baremes: PAIE_BAREMES_DEFAULT });
+  const decl = calculerPaieOuvrier({ declare: true, joursTravailles: 26, anciennete: 0, baremes: PAIE_BAREMES_DEFAULT });
+  // Même base brut et même net ouvrier.
+  assert.ok(close(nonDecl.brut, decl.brut));
+  assert.ok(close(nonDecl.net, decl.net));
+  // Aucune retenue salariale d'un côté comme de l'autre.
+  assert.strictEqual(nonDecl.cotisationsSalariales, 0);
+  assert.strictEqual(decl.cotisationsSalariales, 0);
+  // Seul le coût employeur diffère, exactement de la CNSS patronale.
+  assert.strictEqual(nonDecl.chargesPatronales, 0);
+  assert.ok(close(decl.chargesPatronales, decl.brut * 0.26));
+  assert.ok(close(decl.coutEmployeur - nonDecl.coutEmployeur, decl.brut * 0.26));
 });
 
 // ---------------------------------------------------------------------------
@@ -117,7 +141,7 @@ test('resolveSmagForDate: date before first entry → flat fallback', () => {
 // ---------------------------------------------------------------------------
 // computeWorkerPaie
 // ---------------------------------------------------------------------------
-test('computeWorkerPaie: declared, prime fonction is taxed (subject to charges)', () => {
+test('computeWorkerPaie: declared, prime fonction dans le brut, CNSS patronale sur brut, AUCUNE retenue salariale', () => {
   const r = computeWorkerPaie({
     declare: true, joursTravailles: 10, anciennete: 0,
     baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
@@ -129,10 +153,12 @@ test('computeWorkerPaie: declared, prime fonction is taxed (subject to charges)'
   assert.ok(close(r.smagBaseTotal, smagBaseTotal));
   assert.ok(close(r.primeFonction, primeFonction));
   assert.ok(close(r.brut, brut));
-  // charges computed on brut INCLUDING prime de fonction
-  assert.ok(close(r.cotisationsSalariales, brut * 0.0674));
+  // Aucune retenue salariale (modèle Omar 2026-06)
+  assert.strictEqual(r.cotisationsSalariales, 0);
+  // CNSS patronale calculée sur le brut INCLUANT prime de fonction
   assert.ok(close(r.chargesPatronales, brut * 0.26));
-  assert.ok(close(r.net, brut - brut * 0.0674));
+  // Net ouvrier = brut (pas de retenue), CNSS patronale uniquement dans le coût employeur
+  assert.ok(close(r.net, brut));
   assert.ok(close(r.coutEmployeur, brut + brut * 0.26));
 });
 
@@ -150,22 +176,24 @@ test('computeWorkerPaie: prime transport is NOT taxed (added to net & cost only)
   // brut & charges unchanged by transport
   assert.ok(close(withT.brut, noT.brut));
   assert.ok(close(withT.chargesPatronales, noT.chargesPatronales));
-  assert.ok(close(withT.cotisationsSalariales, noT.cotisationsSalariales));
+  assert.strictEqual(withT.cotisationsSalariales, 0);
+  assert.strictEqual(noT.cotisationsSalariales, 0);
   // net & cost increased by exactly the transport amount
   assert.ok(close(withT.net, noT.net + 30));
   assert.ok(close(withT.coutEmployeur, noT.coutEmployeur + 30));
   assert.strictEqual(withT.primeTransport, 30);
 });
 
-test('computeWorkerPaie: non-declared uses SMAG net, no charges, still pays primes', () => {
+test('computeWorkerPaie: non-declared utilise SMAG BRUT, no charges, still pays primes', () => {
   const r = computeWorkerPaie({
     declare: false, joursTravailles: 10, anciennete: 5000,
     baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
     primeFonctionJour: 5, primeTransport: 30,
   });
-  const smagBaseTotal = 82.61 * 10;
+  const smagBaseTotal = 88.58 * 10; // BRUT, plus le net
   const primeFonction = 5 * 10;
   assert.strictEqual(r.statutDeclare, false);
+  assert.ok(close(r.smagBaseJour, 88.58));
   assert.ok(close(r.smagBaseTotal, smagBaseTotal));
   assert.strictEqual(r.chargesPatronales, 0);
   assert.strictEqual(r.cotisationsSalariales, 0);
@@ -267,9 +295,9 @@ test('computeWorkerPaie: HS incluses dans le brut → charges sur brut+HS', () =
   });
   const montantHS = 4 * TAUX_H_DECLARE * 1.25;
   assert.ok(close(withHS.brut, noHS.brut + montantHS));
-  // charges patronales ET salariales calculées sur le brut majoré des HS
+  // CNSS patronale calculée sur le brut majoré des HS ; aucune retenue salariale
   assert.ok(close(withHS.chargesPatronales, withHS.brut * 0.26));
-  assert.ok(close(withHS.cotisationsSalariales, withHS.brut * 0.0674));
+  assert.strictEqual(withHS.cotisationsSalariales, 0);
   assert.ok(withHS.chargesPatronales > noHS.chargesPatronales);
 });
 
@@ -286,7 +314,8 @@ test('computeWorkerPaie: transport hors brut (charges inchangées) + récolte ho
   // brut & charges strictement inchangés par transport + récolte
   assert.ok(close(withExtras.brut, base.brut));
   assert.ok(close(withExtras.chargesPatronales, base.chargesPatronales));
-  assert.ok(close(withExtras.cotisationsSalariales, base.cotisationsSalariales));
+  assert.strictEqual(withExtras.cotisationsSalariales, 0);
+  assert.strictEqual(base.cotisationsSalariales, 0);
   assert.strictEqual(withExtras.primeRecolte, 50);
   // net & coût employeur augmentés de transport + récolte
   assert.ok(close(withExtras.net, base.net + 30 + 50));
@@ -303,15 +332,15 @@ test('computeWorkerPaie: coutTotalEmployeur = brut + charges + transport + réco
   assert.ok(close(r.coutEmployeur, r.coutTotalEmployeur));
 });
 
-test('computeWorkerPaie: non-déclaré → HS au taux SMAG net, 0 charge', () => {
+test('computeWorkerPaie: non-déclaré → HS au taux SMAG BRUT, 0 charge', () => {
   const r = computeWorkerPaie({
     declare: false, joursTravailles: 0, anciennete: 0,
     baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01', hs100: 2,
   });
-  const tauxNet = 82.61 / 8;
-  assert.ok(close(r.heuresSup.tauxHoraire, tauxNet));
-  assert.ok(close(r.heuresSup.montant, 2 * tauxNet * 2));
-  assert.ok(close(r.brut, 2 * tauxNet * 2));
+  // Non-déclaré payé sur le brut → HS valorisées sur le brut (modèle Omar 2026-06)
+  assert.ok(close(r.heuresSup.tauxHoraire, TAUX_H_DECLARE));
+  assert.ok(close(r.heuresSup.montant, 2 * TAUX_H_DECLARE * 2));
+  assert.ok(close(r.brut, 2 * TAUX_H_DECLARE * 2));
   assert.strictEqual(r.chargesPatronales, 0);
   assert.strictEqual(r.cotisationsSalariales, 0);
 });
@@ -343,4 +372,49 @@ test('computeWorkerPaie: rétrocompat — hs/récolte absents → comportement P
   assert.strictEqual(r.primeRecolte, 0);
   // coût total = brut + charges + transport (pas de récolte)
   assert.ok(close(r.coutTotalEmployeur, brut + brut * 0.26 + 30));
+});
+
+// ---------------------------------------------------------------------------
+// computeWorkerPaie — comparatif déclaré vs non-déclaré (modèle Omar 2026-06)
+// Même SMAG brut configuré → smagBaseJour identique ; net identique à primes
+// égales ; seul coutTotalEmployeur diffère, de la CNSS patronale.
+// ---------------------------------------------------------------------------
+test('computeWorkerPaie: déclaré vs non-déclaré — même base brut, même net, seul coût employeur diffère (CNSS patronale)', () => {
+  const baremes = {
+    ...PAIE_BAREMES_DEFAULT,
+    smagHistory: [{ dateFrom: '2026-06-01', smagBrutJournalier: 97.44, smagNetJournalier: 83 }],
+  };
+  const common = {
+    joursTravailles: 26, anciennete: 0, // 0 ancienneté → pas de prime, comparaison à primes égales
+    baremes, dateISO: '2026-06-08',
+    primeFonctionJour: 10, primeTransport: 30,
+  };
+  const dec = computeWorkerPaie({ ...common, declare: true });
+  const non = computeWorkerPaie({ ...common, declare: false });
+
+  // SMAG base journalier = BRUT (97,44) pour les deux, jamais le net (83)
+  assert.ok(close(dec.smagBaseJour, 97.44));
+  assert.ok(close(non.smagBaseJour, 97.44));
+  assert.ok(close(dec.smagBaseJour, non.smagBaseJour));
+
+  // Aucune retenue salariale pour personne
+  assert.strictEqual(dec.cotisationsSalariales, 0);
+  assert.strictEqual(non.cotisationsSalariales, 0);
+
+  // À primes égales (ancienneté 0), brut et net identiques
+  assert.ok(close(dec.brut, non.brut));
+  assert.ok(close(dec.net, non.net));
+
+  // Net = brut + transport (récolte=0) pour les deux
+  assert.ok(close(dec.net, dec.brut + 30));
+  assert.ok(close(non.net, non.brut + 30));
+
+  // Seul le déclaré porte la CNSS patronale → seul son coût employeur la contient
+  assert.ok(dec.chargesPatronales > 0);
+  assert.strictEqual(non.chargesPatronales, 0);
+  assert.ok(close(dec.chargesPatronales, dec.brut * 0.26));
+
+  // Le coût employeur diffère exactement de la CNSS patronale
+  assert.ok(close(dec.coutTotalEmployeur - non.coutTotalEmployeur, dec.chargesPatronales));
+  assert.ok(close(non.coutTotalEmployeur, non.net));
 });

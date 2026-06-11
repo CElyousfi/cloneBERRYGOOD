@@ -80,9 +80,16 @@
   }
 
   /**
-   * Core payroll formula — UNCHANGED behaviour from app.jsx (single source of truth).
-   * Non-declared worker → net = SMAG net × jours, no charges, no seniority prime.
-   * Declared worker → SMAG brut × jours + seniority prime, then patronal/salarial rates.
+   * Core payroll formula (PaieTab) — modèle validé Omar 2026-06.
+   * SMAG base = BRUT pour TOUS (déclarés ET non-déclarés). AUCUNE retenue salariale
+   * (cotisationsSalariales = 0 partout). Net ouvrier = brut + primes pour tous.
+   *   - NON-DÉCLARÉ : base brut × jours, pas de CNSS patronale, pas de prime d'ancienneté.
+   *     net = brut ; coutEmployeur = brut.
+   *   - DÉCLARÉ : base brut × jours + prime d'ancienneté ; la société paie EN PLUS la
+   *     CNSS patronale (chargesPatronales) → impacte UNIQUEMENT coutEmployeur, pas le net.
+   *     net = brut ; coutEmployeur = brut + chargesPatronales.
+   * Forme de sortie inchangée (consommée par PaieTab) ; seules les valeurs changent
+   * (base brut pour tous, cotisationsSalariales = 0, net = brut).
    * @param {{ declare: boolean, joursTravailles: number, anciennete: number, baremes?: object }} args
    * @returns {{ net: number, brut: number, prime: number, palier: string, pourcentage: number,
    *   chargesPatronales: number, cotisationsSalariales: number, coutEmployeur: number }}
@@ -90,22 +97,23 @@
   function calculerPaieOuvrier({ declare, joursTravailles, anciennete, baremes }) {
     const jrs = Number(joursTravailles) || 0;
     const b = { ...PAIE_BAREMES_DEFAULT, ...(baremes || {}) };
+    const brutBase = (b.smagBrutJournalier || 0) * jrs;
     if (!declare) {
-      const net = (b.smagNetJournalier || 0) * jrs;
+      // Non-déclaré : base brut, pas de CNSS, pas d'ancienneté, pas de retenue.
       return {
-        net, brut: net, prime: 0, palier: '—', pourcentage: 0,
-        chargesPatronales: 0, cotisationsSalariales: 0, coutEmployeur: net,
+        net: brutBase, brut: brutBase, prime: 0, palier: '—', pourcentage: 0,
+        chargesPatronales: 0, cotisationsSalariales: 0, coutEmployeur: brutBase,
       };
     }
-    const brutBase = (b.smagBrutJournalier || 0) * jrs;
     const { palier, pourcentage } = trouverPalierAnciennete(anciennete || 0, b.paliers);
     const prime = brutBase * (pourcentage / 100);
     const brut = brutBase + prime;
-    const cotisSal = brut * (b.tauxCotisationsSalariales || 0);
+    // Modèle validé Omar 2026-06 : aucune retenue salariale ; net = brut.
+    // La CNSS patronale s'ajoute uniquement au coût employeur du déclaré.
     const chargesPat = brut * (b.tauxChargesPatronales || 0);
     return {
-      net: brut - cotisSal, brut, prime, palier, pourcentage,
-      chargesPatronales: chargesPat, cotisationsSalariales: cotisSal,
+      net: brut, brut, prime, palier, pourcentage,
+      chargesPatronales: chargesPat, cotisationsSalariales: 0,
       coutEmployeur: brut + chargesPat,
     };
   }
@@ -145,18 +153,20 @@
    *   - SMAG is resolved by date via resolveSmagForDate (dated SMAG).
    *   - Prime de fonction (DH/day × jours) is added to the taxable gross, exactly like
    *     the seniority prime: it is subject to charges patronales & cotisations salariales.
-   *   - Heures supplémentaires (HS) ARE part of the taxable gross (added BEFORE charges).
-   *     Hourly rate = daily SMAG / heuresNormalesParJour (declared → SMAG brut,
-   *     non-declared → SMAG net). Markups: HS 25% ×1.25, HS 50% ×1.5, HS 100% ×2.
-   *     ⚠️ Valorisation hypothesis (taux horaire = SMAG/h normales, défaut 8h ;
+   *   - Heures supplémentaires (HS) ARE part of the gross (added BEFORE charges patronales).
+   *     Hourly rate = SMAG BRUT / heuresNormalesParJour for ALL workers (déclaré ET
+   *     non-déclaré sont payés sur le brut). Markups: HS 25% ×1.25, HS 50% ×1.5, HS 100% ×2.
+   *     ⚠️ Valorisation hypothesis (taux horaire = SMAG brut/h normales, défaut 8h ;
    *     majorations 1,25/1,5/2) — à confirmer Omar.
-   *   - Prime de transport is a reimbursement: it is NOT taxable. It is added to the net
-   *     and to the employer cost as a separate line, outside the brut.
-   *   - Prime de récolte is OUTSIDE the taxable gross: added to net & employer cost only,
-   *     NOT subject to charges.
-   *     // TODO confirmer Omar: prime récolte soumise aux charges ?
-   *   - Non-declared worker: no charges, no seniority prime; HS valued on SMAG net.
-   *     Primes (fonction, transport, récolte) still paid but carry no charges.
+   *   - Prime de transport is a reimbursement: it is NOT in the brut. It is added to the net
+   *     and to the employer cost as a separate line.
+   *   - Prime de récolte is OUTSIDE the brut: added to net & employer cost only.
+   *     // TODO confirmer Omar: prime récolte soumise aux charges patronales ?
+   *   - Modèle validé Omar 2026-06 : SMAG base = BRUT pour TOUS ; AUCUNE retenue salariale
+   *     (cotisationsSalariales = 0 partout) ; net = brut + primes pour tous.
+   *     DÉCLARÉ : la société paie EN PLUS la CNSS patronale (chargesPatronales) → impacte
+   *     UNIQUEMENT coutTotalEmployeur, pas le net ouvrier.
+   *     NON-DÉCLARÉ : pas de CNSS (chargesPatronales = 0), pas de prime d'ancienneté.
    *
    * Backward-compat: hs25/hs50/hs100/primeRecolte default to 0 → Phase 1 behaviour.
    *
@@ -206,18 +216,22 @@
     const h50 = Number(hs50) || 0;
     const h100 = Number(hs100) || 0;
     const heuresNormalesParJour = Number(b.heuresNormalesParJour) || 8;
-    const smagJourForHS = isDeclare ? smag.smagBrutJournalier : smag.smagNetJournalier;
+    // Tous les ouvriers sont payés sur le SMAG brut → les HS se valorisent sur le brut
+    // (déclaré ET non-déclaré), modèle validé Omar 2026-06.
+    const smagJourForHS = smag.smagBrutJournalier;
     const tauxHoraire = heuresNormalesParJour > 0 ? smagJourForHS / heuresNormalesParJour : 0;
     const montantHS = h25 * tauxHoraire * 1.25 + h50 * tauxHoraire * 1.5 + h100 * tauxHoraire * 2;
     const heuresSup = { h25, h50, h100, tauxHoraire, montant: montantHS };
 
     if (!isDeclare) {
-      const smagBaseTotal = smag.smagNetJournalier * jrs;
+      // Modèle validé Omar 2026-06 : non-déclaré payé sur le SMAG BRUT (comme le déclaré),
+      // sans CNSS patronale ni prime d'ancienneté. Aucune retenue salariale.
+      const smagBaseTotal = smag.smagBrutJournalier * jrs;
       const brut = smagBaseTotal + primeFonction + montantHS;
       const net = brut + transport + recolte;
       return {
         statutDeclare: false,
-        smagBaseJour: smag.smagNetJournalier,
+        smagBaseJour: smag.smagBrutJournalier,
         smagBaseTotal,
         anciennetePalier: '—',
         anciennetePourcent: 0,
@@ -240,10 +254,12 @@
     const primeAnciennete = smagBaseTotal * (pourcentage / 100);
     // Taxable gross = SMAG brut base + seniority prime + prime de fonction + heures sup.
     const brut = smagBaseTotal + primeAnciennete + primeFonction + montantHS;
-    const cotisationsSalariales = brut * (b.tauxCotisationsSalariales || 0);
+    // Modèle validé Omar 2026-06 : AUCUNE retenue salariale (cotisations salariales = 0
+    // pour tous). Le déclaré porte uniquement la CNSS patronale (coût société).
+    const cotisationsSalariales = 0;
     const chargesPatronales = brut * (b.tauxChargesPatronales || 0);
-    // Transport & récolte are non-taxable → added to net and employer cost only.
-    const net = brut - cotisationsSalariales + transport + recolte;
+    // Net ouvrier = brut + primes non-imposables (transport, récolte), sans retenue.
+    const net = brut + transport + recolte;
     const coutTotalEmployeur = brut + chargesPatronales + transport + recolte;
     return {
       statutDeclare: true,
