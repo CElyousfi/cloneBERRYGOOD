@@ -5212,10 +5212,13 @@ exports.validation = functions
       }
 
       // GET: list active divers config items
+      // Pas de .orderBy("beneficiaire") ici : combiné au .where("active","==",true)
+      // il exige un index composite (FAILED_PRECONDITION) → on trie en JS.
       if (action === "divers-config") {
-        const snap = await db_firestore.collection("pointage_divers_config").where("active", "==", true).orderBy("beneficiaire").get();
+        const snap = await db_firestore.collection("pointage_divers_config").where("active", "==", true).get();
         const items = [];
         snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+        items.sort((a, b) => String(a.beneficiaire || "").localeCompare(String(b.beneficiaire || "")));
         return res.json({ success: true, items });
       }
 

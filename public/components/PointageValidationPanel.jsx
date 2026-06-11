@@ -230,7 +230,24 @@
           React.createElement('span', { style: { fontWeight: 600, fontSize: 13, flex: 1 } }, eq.nom || prefix),
           React.createElement('span', { style: { background: 'rgba(52,152,219,0.1)', color: 'var(--blue)', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 } }, ouvriers.length + ' ouv.'),
           (eq.coutTransport != null) && React.createElement('span', { style: { fontSize: 11, color: '#9aa0a6' } }, 'Transport ' + fmtMoney(eq.coutTransport) + ' DH'),
-          React.createElement('span', { style: { background: badge.bg, color: badge.color, padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 } }, badge.txt)
+          React.createElement('span', { style: { background: badge.bg, color: badge.color, padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 } }, badge.txt),
+          // actions RH (valider / ne pas valider) dans le header → toujours visibles sans déplier
+          // stopPropagation pour ne pas toggler l'expand au clic des boutons
+          canRHEdit && React.createElement('div', {
+            style: { display: 'flex', alignItems: 'center', gap: 6 },
+            onClick: function (e) { e.stopPropagation(); }
+          },
+            React.createElement('button', {
+              disabled: !!busy,
+              onClick: function () { post('validate-equipe', { date: date, ferme: ferme, equipeId: prefix, status: 'valide', motif: motifVal }, k + '|v'); },
+              style: { padding: '5px 12px', background: '#137333', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
+            }, '🟢 Valider'),
+            React.createElement('button', {
+              disabled: !!busy,
+              onClick: function () { post('validate-equipe', { date: date, ferme: ferme, equipeId: prefix, status: 'rejete', motif: motifVal }, k + '|r'); },
+              style: { padding: '5px 12px', background: '#b3261e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
+            }, '🔴 Ne pas valider')
+          )
         ),
         // liste ouvriers (masquée par défaut)
         isOpen && React.createElement('div', { style: { borderTop: '1px solid var(--gray-100)', background: '#fafafa' } },
@@ -272,23 +289,14 @@
             )
           )
         ),
-        // actions RH (valider / ne pas valider)
-        canRHEdit && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '1px solid var(--gray-100)', flexWrap: 'wrap' } },
+        // champ motif (optionnel) — dans le bloc déplié pour la lisibilité ;
+        // les boutons Valider/Ne pas valider sont remontés dans le header
+        (canRHEdit && isOpen) && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderTop: '1px solid var(--gray-100)', flexWrap: 'wrap' } },
           React.createElement('input', {
             type: 'text', placeholder: 'Motif (optionnel)', value: motifVal,
             onChange: function (e) { setMotif(ferme, prefix, e.target.value); },
             style: { flex: 1, minWidth: 120, padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 8, fontSize: 12 }
-          }),
-          React.createElement('button', {
-            disabled: !!busy,
-            onClick: function () { post('validate-equipe', { date: date, ferme: ferme, equipeId: prefix, status: 'valide', motif: motifVal }, k + '|v'); },
-            style: { padding: '6px 14px', background: '#137333', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
-          }, '🟢 Valider'),
-          React.createElement('button', {
-            disabled: !!busy,
-            onClick: function () { post('validate-equipe', { date: date, ferme: ferme, equipeId: prefix, status: 'rejete', motif: motifVal }, k + '|r'); },
-            style: { padding: '6px 14px', background: '#b3261e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
-          }, '🔴 Ne pas valider')
+          })
         ),
         // motif affiché si déjà adressé
         eqVal && eqVal.motif && React.createElement('div', { style: { padding: '4px 12px', fontSize: 11, color: '#5f6368', borderTop: '1px dashed var(--gray-100)' } },
