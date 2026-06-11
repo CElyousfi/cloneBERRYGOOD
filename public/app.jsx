@@ -5559,6 +5559,33 @@
             const presenceByMat = React.useMemo(() => Object.fromEntries((presenceData.rows || []).map(r => [(r.matricule || '').toUpperCase().trim(), r])), [presenceData]);
             const lookupPresence = (mat) => presenceByMat[(mat || '').toUpperCase().trim()] || null;
             const [workerPopup, setWorkerPopup] = useState(null);
+            // Contexte de navigation de la fiche ouvrier : liste des enregistrements bruts
+            // de l'équipe d'où vient le clic + index courant. Permet les flèches ◀/▶ (et
+            // les touches clavier) pour passer à l'ouvrier précédent/suivant DE LA MÊME ÉQUIPE.
+            // null quand la fiche n'est pas ouverte depuis un breakdown navigable.
+            const [workerNav, setWorkerNav] = useState(null); // { list: [rawRecord], index }
+            // Ouvre la fiche ouvrier depuis une liste d'équipe (raws) à un index donné.
+            // Réutilise le même mécanisme que setWorkerPopup (calcul paie client-side via PaieUtils).
+            const openWorkerFromNav = (list, index) => {
+                if (!list || !list.length) return;
+                const i = ((index % list.length) + list.length) % list.length; // boucle (wrap)
+                setWorkerNav({ list, index: i });
+                setWorkerPopup(list[i]);
+            };
+            const closeWorkerPopup = () => { setWorkerPopup(null); setWorkerNav(null); };
+            // Navigation clavier dans la fiche ouvrier : ◀/▶ = ouvrier précédent/suivant (boucle),
+            // Escape = fermer. Actif uniquement quand la fiche est ouverte.
+            React.useEffect(() => {
+                if (!workerPopup) return;
+                const onKey = (e) => {
+                    if (e.key === 'Escape') { closeWorkerPopup(); return; }
+                    if (!workerNav || workerNav.list.length <= 1) return;
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); openWorkerFromNav(workerNav.list, workerNav.index - 1); }
+                    else if (e.key === 'ArrowRight') { e.preventDefault(); openWorkerFromNav(workerNav.list, workerNav.index + 1); }
+                };
+                window.addEventListener('keydown', onKey);
+                return () => window.removeEventListener('keydown', onKey);
+            }, [workerPopup, workerNav]);
             // Popup breakdown KPI : liste des ouvriers d'une ferme pour un type donné (recolte/horsRecolte/postesFixes).
             const [pointagePopup, setPointagePopup] = useState(null); // { ferme, type, title }
             React.useEffect(() => {
@@ -6084,7 +6111,7 @@
                             const mat = r.matricule;
                             if (!popAggMap[mat]) {
                                 popAggMap[mat] = {
-                                    matricule: mat, nom: r.nom,
+                                    matricule: mat, nom: r.nom, raw: r,
                                     heures: 0, cout: 0,
                                     operations: new Set(), parcelles: new Set()
                                 };
@@ -6108,7 +6135,7 @@
                             return arr.slice(0, 2).join(', ') + ' +' + (arr.length - 2);
                         };
                         const popRows = Object.values(popAggMap).map(a => ({
-                            matricule: a.matricule, nom: a.nom,
+                            matricule: a.matricule, nom: a.nom, raw: a.raw,
                             heures: popFmtHeures(a.heures),
                             cout: a.cout,
                             operation: [...a.operations].join(', ') || '—',
@@ -6177,8 +6204,13 @@
                                                         </tr>
                                                         {g.rows.map((r, i) => {
                                                             const pres = lookupPresence(r.matricule);
+                                                            const navList = g.rows.map(x => x.raw).filter(Boolean);
                                                             return (
-                                                            <tr key={g.prefix + '-' + i}>
+                                                            <tr key={g.prefix + '-' + i}
+                                                                style={{cursor:'pointer',transition:'background 0.15s'}}
+                                                                onClick={() => r.raw && openWorkerFromNav(navList, navList.indexOf(r.raw))}
+                                                                onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
+                                                                onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
                                                                 <td style={{fontWeight:600,padding:'6px 10px'}}>
                                                                     <span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span>
@@ -6380,7 +6412,7 @@
                                                                         const pres = lookupPresence(a.matricule);
                                                                         const parcArr = [...a.parcelles];
                                                                         return (
-                                                                        <tr key={i} style={{cursor:'pointer'}} onClick={() => setWorkerPopup(a.raw)}
+                                                                        <tr key={i} style={{cursor:'pointer'}} onClick={() => openWorkerFromNav(detailRowsAgg.map(x => x.raw).filter(Boolean), i)}
                                                                             onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                             onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                             <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{a.matricule}</td>
@@ -6554,7 +6586,7 @@
                                                     </thead>
                                                     <tbody>
                                                         {eq.ouvriers.sort((a, b) => (a.nom || '').localeCompare(b.nom || '')).map((r, i) => (
-                                                            <tr key={i} style={{cursor:'pointer',transition:'background 0.15s'}} onClick={() => setWorkerPopup(r)}
+                                                            <tr key={i} style={{cursor:'pointer',transition:'background 0.15s'}} onClick={() => openWorkerFromNav(eq.ouvriers.slice().sort((a, b) => (a.nom || '').localeCompare(b.nom || '')), i)}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{r.matricule}</td>
@@ -6712,8 +6744,9 @@
                         const eqPrefix = getEqPrefixForPaie(r.matricule);
                         const eqNamePaie = eqPrefix === 'BGF' ? 'BGF' : (((data.transportConfig || []).find(t => t.prefix === eqPrefix) || {}).equipe || `Équipe ${eqPrefix}`);
                         const dh = (n) => Math.round(n).toLocaleString('fr-FR');
+                        const navActive = !!(workerNav && workerNav.list && workerNav.list.length > 1);
                         return (
-                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setWorkerPopup(null)}>
+                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => closeWorkerPopup()}>
                             <div style={{background:'#fff',borderRadius:12,maxWidth:480,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
                                 <div style={{padding:'16px 20px',borderBottom:'2px solid var(--gray-100)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                                     <div>
@@ -6725,7 +6758,22 @@
                                             </span>
                                         </div>
                                     </div>
-                                    <button onClick={() => setWorkerPopup(null)} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--gray-400)'}}>&times;</button>
+                                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                        {navActive && (
+                                        <div style={{display:'flex',alignItems:'center',gap:4}}>
+                                            <button title="Ouvrier précédent (←)" onClick={() => openWorkerFromNav(workerNav.list, workerNav.index - 1)}
+                                                style={{background:'var(--berry-pale)',border:'none',color:'var(--berry)',fontSize:14,cursor:'pointer',borderRadius:8,width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                                <i className="fa-solid fa-chevron-left"></i>
+                                            </button>
+                                            <span style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',minWidth:42,textAlign:'center'}}>{workerNav.index + 1} / {workerNav.list.length}</span>
+                                            <button title="Ouvrier suivant (→)" onClick={() => openWorkerFromNav(workerNav.list, workerNav.index + 1)}
+                                                style={{background:'var(--berry-pale)',border:'none',color:'var(--berry)',fontSize:14,cursor:'pointer',borderRadius:8,width:30,height:30,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                                <i className="fa-solid fa-chevron-right"></i>
+                                            </button>
+                                        </div>
+                                        )}
+                                        <button onClick={() => closeWorkerPopup()} style={{background:'none',border:'none',fontSize:20,cursor:'pointer',color:'var(--gray-400)'}}>&times;</button>
+                                    </div>
                                 </div>
                                 <div style={{padding:'16px 20px'}}>
                                     <table style={{width:'100%',fontSize:13,borderCollapse:'collapse'}}>
