@@ -22076,38 +22076,6 @@ ${rejetHtml}
                         <KPICard icon="fa-calculator" iconClass="blue" value={grandTotalWorkerDays > 0 ? Math.round(grandTotalCout / grandTotalWorkerDays) + ' DH' : '-'} label="Coût Moyen / Ouvrier-Jour" />
                     </div>
 
-                    {/* Config équipes */}
-                    <Panel title="Configuration Transport par Équipe" icon="fa-sliders">
-                        <div style={{fontSize:10,color:'var(--gray-400)',marginBottom:10}}>Lecture seule — la modification des primes de transport se fait dans le module Équipes. Cliquez sur l'équipe pour voir les ouvriers.</div>
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Préfixe</th>
-                                    <th>Équipe</th>
-                                    <th>Caporal</th>
-                                    <th>Nb Ouvriers</th>
-                                    <th>Jours</th>
-                                    <th>Coût / Ouvrier (DH)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {equipeTransport.map((t, i) => (
-                                    <tr key={t.prefix}>
-                                        <td><strong style={{fontFamily:'monospace'}}>{t.prefix}</strong></td>
-                                        <td style={{fontWeight:600,color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}}
-                                            onClick={() => setWorkerPopup({ equipe: t.equipe, caporal: t.caporal, cout: t.coutParOuvrier, workers: t.workerList || [] })}>{t.equipe} <i className="fa-solid fa-eye" style={{fontSize:9,marginLeft:4}}></i></td>
-                                        <td>{t.caporal}</td>
-                                        <td style={{textAlign:'center',fontWeight:600}}>{(t.workerList||[]).length}</td>
-                                        <td style={{textAlign:'center',fontWeight:600}}>{t.totalWorkerDays}</td>
-                                        <td>
-                                            <span style={{fontWeight:700,padding:'2px 8px'}}>{t.coutParOuvrier} DH</span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </Panel>
-
                     {/* Coût transport par jour */}
                     <Panel title="Coût Transport par Jour" icon="fa-calendar-day">
                         <div className="table-responsive">
@@ -22802,6 +22770,7 @@ ${rejetHtml}
             const [saveMsg, setSaveMsg] = useState(null);
             const [filterFerme, setFilterFerme] = useState('');
             const [apiPeriodes, setApiPeriodes] = useState([]);
+            const [apiTransportPeriodes, setApiTransportPeriodes] = useState([]);
 
             // Re-sync teams quand data.transportConfig change (= override Firestore appliqué)
             // Évite que teams reste figé sur le seed alors que data a été enrichi de l'historique
@@ -22823,7 +22792,10 @@ ${rejetHtml}
             React.useEffect(() => {
                 if (typeof cachedFetch !== 'function') return;
                 cachedFetch('/api/pointage-rh?action=transport')
-                    .then(json => { if (json && json.success && Array.isArray(json.rows)) setDetailRows(json.rows); })
+                    .then(json => {
+                        if (json && json.success && Array.isArray(json.rows)) setDetailRows(json.rows);
+                        if (json && json.success && Array.isArray(json.periodes)) setApiTransportPeriodes(json.periodes);
+                    })
                     .catch(() => {});
             }, []);
 
@@ -22862,8 +22834,9 @@ ${rejetHtml}
                 return out;
             };
 
-            // Quinzaine en cours (la plus récente générée) — toujours présente dans la liste.
-            const currentPeriode = genQuinzaines(1)[0] || '';
+            // Quinzaine en cours : on privilégie la VRAIE quinzaine renvoyée par l'API transport
+            // (libellé Driscoll's réel porté par detailRows), sinon fallback sur génération locale.
+            const currentPeriode = apiTransportPeriodes[0] || genQuinzaines(1)[0] || '';
 
             // Liste COMPLÈTE des quinzaines : on FUSIONNE TOUJOURS les périodes de l'API
             // (apiPeriodes / recolteData / pointageJour) avec une génération des 18 dernières
