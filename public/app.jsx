@@ -22806,6 +22806,7 @@ ${rejetHtml}
                 const m = String(mat || '').toUpperCase().trim();
                 if (m.startsWith('HAFI')) return 'HA';
                 const p2 = m.substring(0, 2);
+                if (p2 === 'BG') return 'BGF';
                 return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
             };
 

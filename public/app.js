@@ -982,7 +982,7 @@ React.useEffect(()=>{if(typeof cachedFetch!=='function')return;cachedFetch('/api
 React.useEffect(()=>{if(typeof cachedFetch!=='function')return;cachedFetch('/api/pointage-rh?action=transport').then(json=>{if(json&&json.success&&Array.isArray(json.rows))setDetailRows(json.rows);if(json&&json.success&&Array.isArray(json.periodes))setApiTransportPeriodes(json.periodes);}).catch(()=>{});},[]);// Préfixe d'équipe depuis un matricule. Code équipe = 2 LETTRES (AY, CA, HA, MM, NA, NF, LA…).
 // 3 lettres réduites à 2 (HAFI→HA, MMG→MM). Matricule SANS préfixe-lettre (numérique 752…,
 // vide) → équipe BGF (prime 0). Ne renvoie jamais null : tout ouvrier est rattaché à une équipe.
-const getEqPrefix=mat=>{const m=String(mat||'').toUpperCase().trim();if(m.startsWith('HAFI'))return'HA';const p2=m.substring(0,2);return /^[A-Z]{2}$/.test(p2)?p2:'BGF';};// Génère les N dernières quinzaines (1-15 / 16-fin) au format canonique
+const getEqPrefix=mat=>{const m=String(mat||'').toUpperCase().trim();if(m.startsWith('HAFI'))return'HA';const p2=m.substring(0,2);if(p2==='BG')return'BGF';return /^[A-Z]{2}$/.test(p2)?p2:'BGF';};// Génère les N dernières quinzaines (1-15 / 16-fin) au format canonique
 // « DD/MM/YYYY - DD/MM/YYYY » (cohérent avec data.quinzaineOrder + history[].effectiveFrom).
 const genQuinzaines=count=>{const out=[];const fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();const now=new Date();let y=now.getFullYear(),m=now.getMonth();// m = 0..11
 let isSecond=now.getDate()>=16;for(let i=0;i<count;i++){let start,end;if(isSecond){start=new Date(y,m,16);end=new Date(y,m+1,0);// dernier jour du mois
