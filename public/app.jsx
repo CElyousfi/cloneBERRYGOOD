@@ -5573,6 +5573,9 @@
             const [paieDistinctDays, setPaieDistinctDays] = useState(new Map()); // matricule → {joursPointes:Set, nom}
             const [visaStatus, setVisaStatus] = useState({});
             const [visaLoading, setVisaLoading] = useState(false);
+            // Pointage Divers du jour (sous-traitants / transporteurs) — collection globale
+            // pointage_divers/{date}, non scindée par ferme. Affiché dans le panneau de validation.
+            const [diversEntries, setDiversEntries] = useState([]);
             const [uploadTimes, setUploadTimes] = useState([]);
             const [lastSyncTime, setLastSyncTime] = useState(null);
             const [postesFixes, setPostesFixes] = useState([]);
@@ -5704,6 +5707,17 @@
                     if (json && json.success) setPresenceData({ rows: json.rows || [], syncedAt: json.syncedAt || null });
                 }).catch(() => {});
             }, []);
+
+            // Charge les entrées Pointage Divers du jour (même source que l'onglet Pointage Divers :
+            // /api/validation?action=divers-entries). Rafraîchi quand la date effective change.
+            const diversDate = selectedDate || (dates[0] && dates[0].date) || '';
+            React.useEffect(() => {
+                if (!diversDate) { setDiversEntries([]); return; }
+                fetch('/api/validation?action=divers-entries&date=' + diversDate)
+                    .then(r => r.json())
+                    .then(json => { setDiversEntries((json && json.success && json.data && json.data.entries) || []); })
+                    .catch(() => setDiversEntries([]));
+            }, [diversDate]);
 
             // Charge barèmes paie + registre ouvriers (une fois) pour la popup salaire.
             React.useEffect(() => {
@@ -6426,13 +6440,22 @@
                                 bucket.ouvriers.push({ matricule: r.matricule, nom: r.nom, operation: r.operation, parcelle: r.parcelle, heures: r.heures });
                             }
                         });
+                        // Pointage Divers : collection globale pointage_divers/{date}, non scindée
+                        // par ferme → on rattache la MÊME liste d'entrées à chaque ferme pour affichage.
+                        const diversList = (diversEntries || []).map(e => ({
+                            beneficiaire: e.beneficiaire || '',
+                            matricule: e.matricule || '',
+                            fonction: e.fonction || '',
+                            tache: e.tache || '',
+                            montant: Number(e.montant) || 0,
+                        }));
                         const result = {};
                         Object.keys(equipesParFerme).forEach(ferme => {
                             const eqs = Object.values(equipesParFerme[ferme]._eq).map(e => ({
                                 prefix: e.prefix, nom: e.nom, ouvriers: e.ouvriers,
                                 coutTransport: (coutMap[e.prefix] || 0) * e.ouvriers.length,
                             })).sort((a, b) => b.ouvriers.length - a.ouvriers.length);
-                            result[ferme] = { equipes: eqs, diversCount: 0 };
+                            result[ferme] = { equipes: eqs, diversCount: diversList.length, diversEntries: diversList };
                         });
                         if (!Object.keys(result).length) return null;
                         return React.createElement(window.PointageValidationPanel, {
@@ -22856,35 +22879,46 @@ ${rejetHtml}
                 return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
             };
 
+            // Génère les N dernières quinzaines (1-15 / 16-fin) au format canonique
+            // « DD/MM/YYYY - DD/MM/YYYY » (cohérent avec data.quinzaineOrder + history[].effectiveFrom).
+            const genQuinzaines = (count) => {
+                const out = [];
+                const fmt = (d) => String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+                const now = new Date();
+                let y = now.getFullYear(), m = now.getMonth(); // m = 0..11
+                let isSecond = now.getDate() >= 16;
+                for (let i = 0; i < count; i++) {
+                    let start, end;
+                    if (isSecond) {
+                        start = new Date(y, m, 16);
+                        end = new Date(y, m + 1, 0); // dernier jour du mois
+                    } else {
+                        start = new Date(y, m, 1);
+                        end = new Date(y, m, 15);
+                    }
+                    out.push(`${fmt(start)} - ${fmt(end)}`);
+                    // recule d'une quinzaine
+                    if (isSecond) { isSecond = false; }
+                    else { isSecond = true; m -= 1; if (m < 0) { m = 11; y -= 1; } }
+                }
+                return out;
+            };
+
+            // Quinzaine en cours (la plus récente générée) — toujours présente dans la liste.
+            const currentPeriode = genQuinzaines(1)[0] || '';
+
+            // Liste COMPLÈTE des quinzaines : on FUSIONNE TOUJOURS les périodes de l'API
+            // (apiPeriodes / recolteData / pointageJour) avec une génération des 18 dernières
+            // quinzaines (~9 mois), pas seulement en fallback. La quinzaine en cours reste en tête.
             const knownPeriodes = (() => {
                 const set = new Set();
+                set.add(currentPeriode);
                 apiPeriodes.forEach(p => { if (p) set.add(p); });
                 (data.recolteData || []).forEach(r => { if (r.periode) set.add(r.periode); });
                 (data.pointageJour || []).forEach(r => { if (r.periode) set.add(r.periode); });
-                // Fallback : si rien (mode démo ou API indispo), générer 12 dernières quinzaines (1-15 / 16-fin)
-                if (set.size === 0) {
-                    const fmt = (d) => String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
-                    const now = new Date();
-                    let y = now.getFullYear(), m = now.getMonth(); // m = 0..11
-                    let isSecond = now.getDate() >= 16;
-                    for (let i = 0; i < 12; i++) {
-                        let start, end;
-                        if (isSecond) {
-                            start = new Date(y, m, 16);
-                            end = new Date(y, m + 1, 0); // dernier jour du mois
-                        } else {
-                            start = new Date(y, m, 1);
-                            end = new Date(y, m, 15);
-                        }
-                        set.add(`${fmt(start)} - ${fmt(end)}`);
-                        // recule d'une quinzaine
-                        if (isSecond) { isSecond = false; }
-                        else { isSecond = true; m -= 1; if (m < 0) { m = 11; y -= 1; } }
-                    }
-                }
+                genQuinzaines(18).forEach(p => { if (p) set.add(p); });
                 return [...set].sort((a, b) => (data.quinzaineOrder ? data.quinzaineOrder(b) - data.quinzaineOrder(a) : 0));
             })();
-            const currentPeriode = knownPeriodes[0] || '';
 
             const openEdit = (team) => {
                 setEditForm({ prefix: team.prefix, equipe: team.equipe, caporal: team.caporal, ferme: team.ferme, coutParOuvrier: team.coutParOuvrier || 30, effectiveFrom: currentPeriode });

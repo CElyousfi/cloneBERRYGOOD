@@ -266,7 +266,7 @@
       var fstate = fermeState(ferme);
       var submitState = fstate.submitState || 'brouillon';
       var locked = fstate.locked === true || submitState === 'valide';
-      var canRHEdit = isRH && submitState === 'brouillon' && !locked;
+      var canRHEdit = (isRH || isDG) && submitState === 'brouillon' && !locked;
       var equipesList = fdata.equipes || [];
 
       // bandeau d'état ferme
@@ -610,9 +610,17 @@
         color: '#5f6368',
         bg: '#f1f3f4'
       } : statusBadge(diversStatus);
-      var count = fdata.diversCount || 0;
+      var entries = fdata.diversEntries || [];
+      var count = fdata.diversCount || entries.length || 0;
       var k = ferme + '|__divers__';
       var motifVal = motifs[k] || '';
+      var fmtMontant = function (n) {
+        var v = Number(n) || 0;
+        return v.toLocaleString('fr-FR', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2
+        }) + ' MAD';
+      };
       return React.createElement('div', {
         style: {
           border: '1px solid var(--gray-100)',
@@ -647,7 +655,55 @@
           fontSize: 11,
           fontWeight: 700
         }
-      }, badge.txt)), canRHEdit && React.createElement('div', {
+      }, badge.txt)),
+      // Liste réelle des sous-traitants / transporteurs du jour (source pointage_divers/{date}).
+      entries.length > 0 && React.createElement('div', {
+        style: {
+          marginTop: 8,
+          borderTop: '1px dashed var(--gray-100)',
+          paddingTop: 6
+        }
+      }, entries.map(function (en, i) {
+        var label = en.fonction || en.tache;
+        return React.createElement('div', {
+          key: i,
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            fontSize: 12,
+            padding: '3px 0',
+            borderBottom: i < entries.length - 1 ? '1px solid var(--gray-100)' : 'none'
+          }
+        }, React.createElement('span', {
+          style: {
+            fontWeight: 600,
+            color: '#3c4043'
+          }
+        }, en.beneficiaire || en.matricule || '—'), label && React.createElement('span', {
+          style: {
+            color: '#9aa0a6',
+            flex: 1
+          }
+        }, label), !label && React.createElement('span', {
+          style: {
+            flex: 1
+          }
+        }), en.montant > 0 && React.createElement('span', {
+          style: {
+            color: '#5f6368',
+            fontWeight: 600,
+            whiteSpace: 'nowrap'
+          }
+        }, fmtMontant(en.montant)));
+      })), entries.length === 0 && React.createElement('div', {
+        style: {
+          marginTop: 6,
+          fontSize: 11,
+          color: '#9aa0a6',
+          fontStyle: 'italic'
+        }
+      }, 'Aucune entrée Pointage Divers ce jour.'), canRHEdit && React.createElement('div', {
         style: {
           display: 'flex',
           alignItems: 'center',
@@ -716,8 +772,8 @@
     }
     function renderActions(ferme, fstate, submitState, locked, canSubmit, equipeIds) {
       var rows = [];
-      // RH : soumettre la ferme
-      if (isRH && submitState === 'brouillon' && !locked) {
+      // RH / DG : soumettre la ferme
+      if ((isRH || isDG) && submitState === 'brouillon' && !locked) {
         rows.push(React.createElement('button', {
           key: 'submit',
           disabled: !canSubmit || !!busy,
@@ -740,8 +796,8 @@
           }
         }, '📤 Soumettre le pointage du jour — ' + ferme));
       }
-      // RH : info en attente
-      if (isRH && submitState === 'soumis') {
+      // RH / DG : info en attente
+      if ((isRH || isDG) && submitState === 'soumis') {
         rows.push(React.createElement('div', {
           key: 'wait',
           style: {

@@ -4510,7 +4510,7 @@ exports.pointageValidation = functions
 
       // ---- RH : valider/rejeter une équipe ----
       if (action === "validate-equipe") {
-        if (callerRole !== "rh") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
+        if (callerRole !== "rh" && callerRole !== "dg") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
         const { equipeId, status, motif } = req.body || {};
         if (!equipeId) return res.status(400).json({ success: false, error: "equipeId requis" });
         if (status !== "valide" && status !== "rejete") {
@@ -4538,7 +4538,7 @@ exports.pointageValidation = functions
 
       // ---- RH : valider/rejeter le Pointage Divers de la ferme ----
       if (action === "validate-divers") {
-        if (callerRole !== "rh") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
+        if (callerRole !== "rh" && callerRole !== "dg") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
         const { status, motif } = req.body || {};
         if (["valide", "rejete", "na"].indexOf(status) < 0) {
           return res.status(400).json({ success: false, error: "status invalide (valide|rejete|na)" });
@@ -4564,7 +4564,7 @@ exports.pointageValidation = functions
 
       // ---- RH : soumettre la ferme à son chef ----
       if (action === "submit-ferme") {
-        if (callerRole !== "rh") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
+        if (callerRole !== "rh" && callerRole !== "dg") return res.status(403).json({ success: false, error: "Réservé au profil RH" });
         const equipesDuJour = Array.isArray(req.body && req.body.equipesDuJour) ? req.body.equipesDuJour : [];
         const out = await db_firestore.runTransaction(async (tx) => {
           const snap = await tx.get(docRef);
