@@ -310,7 +310,6 @@
       var entries = fdata.diversEntries || [];
       var count = fdata.diversCount || entries.length || 0;
       var k = ferme + '|__divers__';
-      var motifVal = motifs[k] || '';
       var fmtMontant = function (n) {
         var v = Number(n) || 0;
         return v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' MAD';
@@ -339,19 +338,14 @@
         ),
         entries.length === 0 && React.createElement('div', { style: { marginTop: 6, fontSize: 11, color: '#9aa0a6', fontStyle: 'italic' } }, 'Aucune entrée Pointage Divers ce jour.'),
         canRHEdit && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' } },
-          React.createElement('input', {
-            type: 'text', placeholder: 'Motif (optionnel)', value: motifVal,
-            onChange: function (e) { setMotif(ferme, '__divers__', e.target.value); },
-            style: { flex: 1, minWidth: 120, padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 8, fontSize: 12 }
-          }),
           React.createElement('button', {
             disabled: !!busy,
-            onClick: function () { post('validate-divers', { date: date, ferme: ferme, status: 'valide', motif: motifVal }, k + '|v'); },
+            onClick: function () { post('validate-divers', { date: date, ferme: ferme, status: 'valide', motif: '' }, k + '|v'); },
             style: { padding: '6px 14px', background: '#137333', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
           }, '🟢 Valider'),
           React.createElement('button', {
             disabled: !!busy,
-            onClick: function () { post('validate-divers', { date: date, ferme: ferme, status: 'rejete', motif: motifVal }, k + '|r'); },
+            onClick: function () { post('validate-divers', { date: date, ferme: ferme, status: 'rejete', motif: '' }, k + '|r'); },
             style: { padding: '6px 14px', background: '#b3261e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
           }, '🔴 Ne pas valider')
         )

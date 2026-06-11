@@ -418,7 +418,63 @@
           fontSize: 11,
           fontWeight: 700
         }
-      }, badge.txt)),
+      }, badge.txt),
+      // actions RH (valider / ne pas valider) dans le header → toujours visibles sans déplier
+      // stopPropagation pour ne pas toggler l'expand au clic des boutons
+      canRHEdit && React.createElement('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
+        },
+        onClick: function (e) {
+          e.stopPropagation();
+        }
+      }, React.createElement('button', {
+        disabled: !!busy,
+        onClick: function () {
+          post('validate-equipe', {
+            date: date,
+            ferme: ferme,
+            equipeId: prefix,
+            status: 'valide',
+            motif: motifVal
+          }, k + '|v');
+        },
+        style: {
+          padding: '5px 12px',
+          background: '#137333',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 8,
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: busy ? 'default' : 'pointer',
+          opacity: busy ? 0.6 : 1
+        }
+      }, '🟢 Valider'), React.createElement('button', {
+        disabled: !!busy,
+        onClick: function () {
+          post('validate-equipe', {
+            date: date,
+            ferme: ferme,
+            equipeId: prefix,
+            status: 'rejete',
+            motif: motifVal
+          }, k + '|r');
+        },
+        style: {
+          padding: '5px 12px',
+          background: '#b3261e',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 8,
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: busy ? 'default' : 'pointer',
+          opacity: busy ? 0.6 : 1
+        }
+      }, '🔴 Ne pas valider'))),
       // liste ouvriers (masquée par défaut)
       isOpen && React.createElement('div', {
         style: {
@@ -523,8 +579,9 @@
         });
         return rows;
       }))))),
-      // actions RH (valider / ne pas valider)
-      canRHEdit && React.createElement('div', {
+      // champ motif (optionnel) — dans le bloc déplié pour la lisibilité ;
+      // les boutons Valider/Ne pas valider sont remontés dans le header
+      canRHEdit && isOpen && React.createElement('div', {
         style: {
           display: 'flex',
           alignItems: 'center',
@@ -548,51 +605,7 @@
           borderRadius: 8,
           fontSize: 12
         }
-      }), React.createElement('button', {
-        disabled: !!busy,
-        onClick: function () {
-          post('validate-equipe', {
-            date: date,
-            ferme: ferme,
-            equipeId: prefix,
-            status: 'valide',
-            motif: motifVal
-          }, k + '|v');
-        },
-        style: {
-          padding: '6px 14px',
-          background: '#137333',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.6 : 1
-        }
-      }, '🟢 Valider'), React.createElement('button', {
-        disabled: !!busy,
-        onClick: function () {
-          post('validate-equipe', {
-            date: date,
-            ferme: ferme,
-            equipeId: prefix,
-            status: 'rejete',
-            motif: motifVal
-          }, k + '|r');
-        },
-        style: {
-          padding: '6px 14px',
-          background: '#b3261e',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.6 : 1
-        }
-      }, '🔴 Ne pas valider')),
+      })),
       // motif affiché si déjà adressé
       eqVal && eqVal.motif && React.createElement('div', {
         style: {
@@ -613,7 +626,6 @@
       var entries = fdata.diversEntries || [];
       var count = fdata.diversCount || entries.length || 0;
       var k = ferme + '|__divers__';
-      var motifVal = motifs[k] || '';
       var fmtMontant = function (n) {
         var v = Number(n) || 0;
         return v.toLocaleString('fr-FR', {
@@ -711,29 +723,14 @@
           marginTop: 8,
           flexWrap: 'wrap'
         }
-      }, React.createElement('input', {
-        type: 'text',
-        placeholder: 'Motif (optionnel)',
-        value: motifVal,
-        onChange: function (e) {
-          setMotif(ferme, '__divers__', e.target.value);
-        },
-        style: {
-          flex: 1,
-          minWidth: 120,
-          padding: '6px 10px',
-          border: '1px solid var(--gray-200)',
-          borderRadius: 8,
-          fontSize: 12
-        }
-      }), React.createElement('button', {
+      }, React.createElement('button', {
         disabled: !!busy,
         onClick: function () {
           post('validate-divers', {
             date: date,
             ferme: ferme,
             status: 'valide',
-            motif: motifVal
+            motif: ''
           }, k + '|v');
         },
         style: {
@@ -754,7 +751,7 @@
             date: date,
             ferme: ferme,
             status: 'rejete',
-            motif: motifVal
+            motif: ''
           }, k + '|r');
         },
         style: {

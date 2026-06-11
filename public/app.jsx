@@ -1246,21 +1246,6 @@
                 }
             });
 
-            // Configuration équipes (détectées par préfixe matricule)
-            const equipesConfig = equipePrefixes.map((prefix, i) => {
-                const membres = ouvriersMatricule.filter(o => o.equipePrefix === prefix);
-                const caporalNames = ['Hassan El Idrissi','Ahmed Boujemaa','Brahim Ait Lahcen','Khalid Ouazzani','Youssef El Fassi','Mohamed Benali','Said Moujahid','Rachid El Amrani'];
-                return {
-                    codeEquipe: prefix,
-                    nomEquipe: `Équipe ${prefix}`,
-                    effectif: membres.length,
-                    ferme: i < 4 ? 'F1' : (i < 7 ? 'F5' : 'Avocatier'),
-                    caporal: caporalNames[i] || '',
-                    telephone: `+212 6${Math.floor(10000000 + Math.random() * 89999999)}`,
-                    membres
-                };
-            });
-
             // Configuration des primes de récolte
             const primesConfig = {
                 framboise: {
@@ -2302,7 +2287,7 @@
                 return 'Framboise';
             };
 
-            return { effectif, topOps, recolteData, recolteParJour, horsRecolteDetail, pointageJour, quinzaineData, weeklyTrend, parcellesMap, parcelleDetail, equipes, suiviModifs, qualiteInspections, blocIds, qualiteHistorique, qualiteBrix, pfqHistory, weeklyRanking, expeditions, stockEmballages, stockIntrants, parcAuto, cpcData, cpcVarietes, cpcCharges, totalHa, totalCA, totalCAExport, totalCALocal, totalKgExport, totalChargesGlobales, cfDea, ebeParVariete, ebeFramboise, resultatAvantImpot, resultatParMois, caDetail, carburant, finStock, liquidations, parcelleConfig, normesProductivite, horsRecolteParTunnel, ouvriersMatricule, equipesConfig, primesConfig, meteoData, agroData, transportConfig, avocatierConfig, varieteCultureMap, getCultureForVariete, getCoutTransport, quinzaineOrder };
+            return { effectif, topOps, recolteData, recolteParJour, horsRecolteDetail, pointageJour, quinzaineData, weeklyTrend, parcellesMap, parcelleDetail, equipes, suiviModifs, qualiteInspections, blocIds, qualiteHistorique, qualiteBrix, pfqHistory, weeklyRanking, expeditions, stockEmballages, stockIntrants, parcAuto, cpcData, cpcVarietes, cpcCharges, totalHa, totalCA, totalCAExport, totalCALocal, totalKgExport, totalChargesGlobales, cfDea, ebeParVariete, ebeFramboise, resultatAvantImpot, resultatParMois, caDetail, carburant, finStock, liquidations, parcelleConfig, normesProductivite, horsRecolteParTunnel, ouvriersMatricule, primesConfig, meteoData, agroData, transportConfig, avocatierConfig, varieteCultureMap, getCultureForVariete, getCoutTransport, quinzaineOrder };
         }
 
         // ===== BUDGET BGF — Objectifs par variété (chargés depuis localStorage ou fallback hardcodé) =====
@@ -9403,29 +9388,6 @@
             const nbPrimes = ouvriersAvecKg.filter(o => o.prime > 0).length;
             const meilleurePrime = ouvriersAvecKg.length > 0 ? Math.max(...ouvriersAvecKg.map(o => o.prime)) : 0;
 
-            // Chefs d'équipe data — inclut tous les ouvriers affectés à la récolte (même 0 kg)
-            const chefsEquipe = data.equipesConfig.map(eq => {
-                const members = ouvriersJour.filter(o => o.equipeCode === eq.codeEquipe);
-                const totalKgEquipe = members.reduce((s, m) => s + m.kg, 0);
-                const moyKgEquipe = members.length > 0 ? Math.round((totalKgEquipe / members.length) * 10) / 10 : 0;
-                let primeCaporalCalc = 0;
-                if (moyKgEquipe >= 25) {
-                    primeCaporalCalc = data.primesConfig.primeCaporal.base;
-                    if (moyKgEquipe >= 30) {
-                        primeCaporalCalc += data.primesConfig.primeCaporal.bonusSiEquipeSup30;
-                    }
-                }
-                return {
-                    codeEquipe: eq.codeEquipe,
-                    nomEquipe: eq.nomEquipe,
-                    caporal: eq.caporal,
-                    effectif: eq.effectif,
-                    totalKgEquipe: Math.round(totalKgEquipe * 10) / 10,
-                    moyKgEquipe,
-                    primeCaporalCalc
-                };
-            }).filter(ce => ce.totalKgEquipe > 0 || fermeFilter === ce.codeEquipe.substring(0,2).replace('0','F'));
-
             // Recap quinzaine - for each worker, sum across all days (filtered by ferme/culture/variete)
             const nbJoursQuinzaine = joursLabels.length;
             const recapQuinzaine = {};
@@ -9465,13 +9427,12 @@
                 const ferme = printFerme;
                 const showNoms = printShowNoms;
                 const fermeLabel = ferme === 'F1' ? 'Ferme 172 (F1)' : 'Ferme 195 (F5)';
-                const equipsForFerme = data.equipesConfig.filter(e => e.ferme === ferme).map(e => e.codeEquipe);
 
                 // Build recap for this farm
                 const printRecap = {};
                 recolteParJour.forEach((jourWorkers, dayIdx) => {
                     jourWorkers.forEach(worker => {
-                        if (!equipsForFerme.includes(worker.equipeCode)) return;
+                        if (worker.ferme !== ferme) return;
                         const key = worker.matricule || worker.nom;
                         if (!printRecap[key]) {
                             printRecap[key] = { matricule: worker.matricule, nom: worker.nom, equipeCode: worker.equipeCode, jours: Array(joursLabels.length).fill(null), primes: Array(joursLabels.length).fill(0), totalKg: 0, totalPrime: 0 };
@@ -9484,20 +9445,7 @@
                 });
                 const printList = Object.values(printRecap).sort((a, b) => b.totalKg - a.totalKg);
 
-                // Chef caporal primes per day
-                const chefRows = data.equipesConfig.filter(e => e.ferme === ferme).map(eq => {
-                    const dailyPrimes = recolteParJour.map(jourWorkers => {
-                        const members = jourWorkers.filter(o => o.equipeCode === eq.codeEquipe);
-                        const moy = members.length > 0 ? members.reduce((s,m) => s + m.kg, 0) / members.length : 0;
-                        let p = 0;
-                        if (moy >= 25) { p = data.primesConfig.primeCaporal.base; if (moy >= 30) p += data.primesConfig.primeCaporal.bonusSiEquipeSup30; }
-                        return p;
-                    });
-                    return { code: eq.codeEquipe, nom: eq.nomEquipe, caporal: eq.caporal, dailyPrimes, total: dailyPrimes.reduce((s,v) => s+v, 0) };
-                });
-
                 const totalPrimesOuvriers = Math.round(printList.reduce((s, r) => s + r.totalPrime, 0));
-                const totalPrimesCaporaux = chefRows.reduce((s, c) => s + c.total, 0);
 
                 const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Primes Quinzaine - ${fermeLabel}</title>
 <style>
@@ -9528,8 +9476,6 @@ tr:nth-child(even) { background: #fafafa; }
 <div class="summary">
     <div class="summary-box"><div class="val">${printList.length}</div><div class="lbl">Ouvriers</div></div>
     <div class="summary-box"><div class="val">${totalPrimesOuvriers.toLocaleString('fr-FR')} DH</div><div class="lbl">Total Primes Ouvriers</div></div>
-    <div class="summary-box"><div class="val">${totalPrimesCaporaux.toLocaleString('fr-FR')} DH</div><div class="lbl">Total Primes Caporaux</div></div>
-    <div class="summary-box"><div class="val">${(totalPrimesOuvriers + totalPrimesCaporaux).toLocaleString('fr-FR')} DH</div><div class="lbl">Total Général</div></div>
 </div>
 <div class="section-title">Primes Ouvriers - Détail par Jour</div>
 <table>
@@ -9537,13 +9483,6 @@ tr:nth-child(even) { background: #fafafa; }
 <tbody>
 ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.matricule}</td>${showNoms ? '<td>' + r.nom + '</td>' : ''}<td>${r.equipeCode}</td>${r.jours.map((kg, di) => '<td style="text-align:center">' + (kg !== null ? '<div>' + kg + ' kg</div><div class="' + (r.primes[di] > 0 ? 'prime-pos' : 'prime-zero') + '">' + Math.round(r.primes[di]) + ' DH</div>' : '-') + '</td>').join('')}<td style="text-align:right;font-weight:600">${Math.round(r.totalKg * 10) / 10} kg</td><td style="text-align:right;font-weight:700;color:#2D8B4E">${Math.round(r.totalPrime)} DH</td></tr>`).join('')}
 <tr class="total-row"><td colspan="${showNoms ? 3 : 2}">TOTAL</td>${joursLabels.map((_, di) => { const dPrime = printList.reduce((s, r) => s + r.primes[di], 0); return '<td style="text-align:center;font-weight:700">' + Math.round(dPrime) + ' DH</td>'; }).join('')}<td style="text-align:right;font-weight:700">${Math.round(printList.reduce((s,r) => s + r.totalKg, 0))} kg</td><td style="text-align:right;font-weight:700;color:#2D8B4E">${totalPrimesOuvriers} DH</td></tr>
-</tbody></table>
-<div class="section-title">Primes Chef d'Équipe (Caporal)</div>
-<table>
-<thead><tr><th>Code</th><th>Équipe</th><th>Caporal</th>${joursLabels.map(j => '<th style="text-align:center">' + formatJour(j) + '</th>').join('')}<th style="text-align:right">Total</th></tr></thead>
-<tbody>
-${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}</td><td>${c.caporal}</td>${c.dailyPrimes.map(p => '<td style="text-align:center" class="' + (p > 0 ? 'prime-pos' : 'prime-zero') + '">' + p + ' DH</td>').join('')}<td style="text-align:right;font-weight:700;color:#D4A847">${c.total} DH</td></tr>`).join('')}
-<tr class="total-row"><td colspan="3">TOTAL</td>${joursLabels.map((_, di) => { const dTotal = chefRows.reduce((s, c) => s + c.dailyPrimes[di], 0); return '<td style="text-align:center;font-weight:700">' + dTotal + ' DH</td>'; }).join('')}<td style="text-align:right;font-weight:700;color:#D4A847">${totalPrimesCaporaux} DH</td></tr>
 </tbody></table>
 <div class="footer">Berry Good Farms - Document généré automatiquement - ${currentPeriode}</div>
 </body></html>`;
@@ -9737,35 +9676,6 @@ ${chefRows.map(c => `<tr><td style="font-weight:600">${c.code}</td><td>${c.nom}<
                                         <td><strong>{o.kg} kg</strong></td>
                                         <td style={{color: o.prime > 0 ? 'var(--green)' : 'var(--gray-400)', fontWeight: 600}}>
                                             {Math.round(o.prime)} DH
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </Panel>
-
-                    <Panel title={`Primes Chef d'Équipe - ${formatJour(joursLabels[activeJourIdx])}`} icon="fa-crown">
-                        <table className="data-table">
-                            <thead>
-                                <tr>
-                                    <th>Équipe</th>
-                                    <th>Caporal</th>
-                                    <th>Effectif</th>
-                                    <th>Total Kg Équipe</th>
-                                    <th>Moy/Ouvrier</th>
-                                    <th>Prime Caporal (DH)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {chefsEquipe.map((ce, i) => (
-                                    <tr key={i}>
-                                        <td style={{fontWeight: 600}}>{ce.codeEquipe}</td>
-                                        <td>{ce.caporal}</td>
-                                        <td>{ce.effectif}</td>
-                                        <td><strong>{ce.totalKgEquipe} kg</strong></td>
-                                        <td style={{color: 'var(--blue)'}}>{ce.moyKgEquipe} kg</td>
-                                        <td style={{color: ce.primeCaporalCalc > 0 ? 'var(--gold)' : 'var(--gray-400)', fontWeight: 600}}>
-                                            {Math.round(ce.primeCaporalCalc)} DH
                                         </td>
                                     </tr>
                                 ))}
@@ -24596,12 +24506,6 @@ ${rejetHtml}
             const [editingNormeIdx, setEditingNormeIdx] = useState(null);
             const [normeEditVal, setNormeEditVal] = useState('');
 
-            // Équipes state
-            const [equipesList, setEquipesList] = useState(() => data.equipesConfig.map(eq => ({...eq, membres: [...eq.membres]})));
-            const [editingEquipeField, setEditingEquipeField] = useState(null); // {idx, field}
-            const [equipeEditVal, setEquipeEditVal] = useState('');
-            const [expandedEquipe, setExpandedEquipe] = useState(null);
-
             // Avocatier config state
             const [avoConfig, setAvoConfig] = useState(() => {
                 const copy = {};
@@ -24788,110 +24692,6 @@ ${rejetHtml}
                                 </div>
                             </div>
                         )}
-                    </Panel>
-
-                    <Panel title="Détail Équipes" icon="fa-users">
-                        <div style={{fontSize:11, color:'var(--gray-400)', marginBottom:12}}>
-                            <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>
-                            Équipes auto-détectées par les 2 premiers chiffres du matricule ouvrier. Cliquez pour renommer, assigner un caporal ou ajouter un téléphone WhatsApp.
-                        </div>
-                        <table className="data-table" style={{fontSize:11}}>
-                            <thead>
-                                <tr>
-                                    <th style={{width:60}}>Code</th>
-                                    <th>Nom Équipe</th>
-                                    <th style={{width:70, textAlign:'center'}}>Effectif</th>
-                                    <th style={{width:80}}>Ferme</th>
-                                    <th>Caporal</th>
-                                    <th>Téléphone</th>
-                                    <th style={{width:40}}></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {equipesList.map((eq, i) => (
-                                    <tr key={i} style={{cursor:'pointer'}} onClick={() => setExpandedEquipe(expandedEquipe === i ? null : i)}>
-                                        <td><span style={{background:'var(--berry)', color:'white', padding:'2px 8px', borderRadius:10, fontSize:10, fontWeight:700}}>{eq.codeEquipe}</span></td>
-                                        <td style={{fontWeight:600}}>
-                                            {editingEquipeField?.idx === i && editingEquipeField?.field === 'nomEquipe' ? (
-                                                <input autoFocus value={equipeEditVal} onChange={e => setEquipeEditVal(e.target.value)}
-                                                    onBlur={() => { setEquipesList(prev => { const c=[...prev]; c[i]={...c[i], nomEquipe: equipeEditVal}; return c; }); setEditingEquipeField(null); }}
-                                                    onKeyDown={e => { if(e.key==='Enter') e.target.blur(); }}
-                                                    onClick={e => e.stopPropagation()}
-                                                    style={{width:'100%', padding:'4px 6px', borderRadius:6, border:'2px solid var(--berry)', fontSize:11, fontWeight:600, background:'rgba(139,34,82,0.05)'}} />
-                                            ) : (
-                                                <span onClick={e => { e.stopPropagation(); setEditingEquipeField({idx:i, field:'nomEquipe'}); setEquipeEditVal(eq.nomEquipe); }}
-                                                    style={{cursor:'pointer', borderBottom:'1px dashed var(--gray-300)'}} title="Cliquez pour renommer">{eq.nomEquipe}</span>
-                                            )}
-                                        </td>
-                                        <td style={{textAlign:'center', fontWeight:700, color:'var(--berry)'}}>{eq.effectif}</td>
-                                        <td><span style={{fontSize:10, padding:'2px 6px', borderRadius:6, background: eq.ferme==='F1'?'var(--green-pale)':eq.ferme==='F5'?'rgba(52,152,219,0.1)':'rgba(230,126,34,0.1)', color: eq.ferme==='F1'?'var(--green)':eq.ferme==='F5'?'var(--blue)':'var(--orange)', fontWeight:600}}>{eq.ferme}</span></td>
-                                        <td>
-                                            {editingEquipeField?.idx === i && editingEquipeField?.field === 'caporal' ? (
-                                                <input autoFocus value={equipeEditVal} onChange={e => setEquipeEditVal(e.target.value)}
-                                                    onBlur={() => { setEquipesList(prev => { const c=[...prev]; c[i]={...c[i], caporal: equipeEditVal}; return c; }); setEditingEquipeField(null); }}
-                                                    onKeyDown={e => { if(e.key==='Enter') e.target.blur(); }}
-                                                    onClick={e => e.stopPropagation()}
-                                                    style={{width:'100%', padding:'4px 6px', borderRadius:6, border:'2px solid var(--berry)', fontSize:11, fontWeight:600, background:'rgba(139,34,82,0.05)'}} />
-                                            ) : (
-                                                <span onClick={e => { e.stopPropagation(); setEditingEquipeField({idx:i, field:'caporal'}); setEquipeEditVal(eq.caporal); }}
-                                                    style={{cursor:'pointer', borderBottom:'1px dashed var(--gray-300)', color: eq.caporal ? 'inherit' : 'var(--gray-300)'}} title="Cliquez pour assigner">
-                                                    <i className="fa-solid fa-user-tie" style={{marginRight:4, fontSize:10, color:'var(--gray-300)'}}></i>
-                                                    {eq.caporal || 'Non assigné'}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td>
-                                            <div style={{display:'flex', alignItems:'center', gap:6}}>
-                                                {editingEquipeField?.idx === i && editingEquipeField?.field === 'telephone' ? (
-                                                    <input autoFocus value={equipeEditVal} onChange={e => setEquipeEditVal(e.target.value)}
-                                                        onBlur={() => { setEquipesList(prev => { const c=[...prev]; c[i]={...c[i], telephone: equipeEditVal}; return c; }); setEditingEquipeField(null); }}
-                                                        onKeyDown={e => { if(e.key==='Enter') e.target.blur(); }}
-                                                        onClick={e => e.stopPropagation()}
-                                                        placeholder="+212 6XXXXXXXX"
-                                                        style={{width:'100%', padding:'4px 6px', borderRadius:6, border:'2px solid var(--berry)', fontSize:11, background:'rgba(139,34,82,0.05)'}} />
-                                                ) : (
-                                                    <span onClick={e => { e.stopPropagation(); setEditingEquipeField({idx:i, field:'telephone'}); setEquipeEditVal(eq.telephone); }}
-                                                        style={{cursor:'pointer', borderBottom:'1px dashed var(--gray-300)', color: eq.telephone ? 'inherit' : 'var(--gray-300)', fontSize:11}} title="Cliquez pour saisir">
-                                                        {eq.telephone || 'Non renseigné'}
-                                                    </span>
-                                                )}
-                                                {eq.telephone && (
-                                                    <a href={`https://wa.me/${eq.telephone.replace(/[^0-9]/g,'')}`} target="_blank" rel="noopener noreferrer"
-                                                        onClick={e => e.stopPropagation()}
-                                                        style={{color:'#25D366', fontSize:16, lineHeight:1}} title="Envoyer WhatsApp">
-                                                        <i className="fa-brands fa-whatsapp"></i>
-                                                    </a>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td style={{textAlign:'center'}}>
-                                            <i className={`fa-solid fa-chevron-${expandedEquipe === i ? 'up' : 'down'}`} style={{fontSize:10, color:'var(--gray-400)'}}></i>
-                                        </td>
-                                    </tr>
-                                ))}
-                                {equipesList.map((eq, i) => expandedEquipe === i && (
-                                    <tr key={`detail-${i}`}>
-                                        <td colSpan="7" style={{padding:0}}>
-                                            <div style={{padding:'12px 16px', background:'rgba(139,34,82,0.03)', borderTop:'1px solid var(--gray-100)'}}>
-                                                <div style={{fontSize:11, fontWeight:600, marginBottom:8, color:'var(--berry)'}}>
-                                                    <i className="fa-solid fa-id-card" style={{marginRight:6}}></i>
-                                                    Membres de {eq.nomEquipe} ({eq.effectif} ouvriers)
-                                                </div>
-                                                <div style={{display:'flex', flexWrap:'wrap', gap:6}}>
-                                                    {eq.membres.map((m, mi) => (
-                                                        <span key={mi} style={{padding:'4px 10px', background:'white', borderRadius:8, fontSize:10, border:'1px solid var(--gray-100)', display:'flex', alignItems:'center', gap:4}}>
-                                                            <span style={{color:'var(--berry)', fontWeight:700, fontFamily:'monospace'}}>{m.matricule}</span>
-                                                            <span style={{color:'var(--gray-400)'}}>|</span>
-                                                            <span>{m.prenom} {m.nom}</span>
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
                     </Panel>
 
                     <SousTraitantsConfigPanel />
