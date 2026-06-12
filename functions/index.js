@@ -1516,6 +1516,88 @@ exports.onBugReportCreate = functions
     }
   });
 
+/**
+ * onBugReportUpdate — trigger Firestore (best-effort) qui notifie le REPORTER
+ * d'un bug report quand son signalement passe en statut 'resolved'.
+ *
+ * Idempotence : on ne déclenche QUE sur la transition `!== resolved -> resolved`
+ * (cf. bugTriage.shouldNotifyResolved). Pas de re-notif si déjà 'resolved',
+ * pas de notif sur les autres updates (triage 'qualified', etc.).
+ *
+ * Résolution du canal :
+ *  1. Téléphone WhatsApp du reporter lu dans users/{reporter.uid}.whatsappPhone,
+ *     en respectant whatsappEnabled (même contrat que resolveRecipientsForProfile).
+ *  2. Si numéro présent ET WhatsApp activé → whatsappService.sendTextMessage.
+ *  3. Sinon → pas de mécanisme in-app uid-scoppé disponible (le panneau lit
+ *     /api/notifications, calculé dynamiquement par PROFIL depuis les collections
+ *     métier, sans store générique par uid). On log un warning détaillé — à
+ *     trancher avec l'archi (cf. RENDU).
+ *
+ * Best-effort : jamais de throw, on retourne toujours null.
+ */
+exports.onBugReportUpdate = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .firestore.document("bug_reports/{id}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+
+    // Idempotence : uniquement la transition vers 'resolved'.
+    if (!bugTriage.shouldNotifyResolved(before, after)) return null;
+
+    const reporter = after.reporter || null;
+    const reporterUid = reporter && reporter.uid;
+    if (!reporterUid) {
+      console.warn("[onBugReportUpdate] bug", context.params.id, "résolu mais reporter.uid manquant — notification impossible");
+      return null;
+    }
+
+    const idCourt = bugTriage.shortId(context.params.id);
+    const msg = bugTriage.buildResolvedMessage(after, idCourt);
+
+    // Résoudre le téléphone WhatsApp du reporter depuis users/{uid}.
+    let phone = null;
+    let waEnabled = false;
+    try {
+      const uSnap = await db_firestore.collection("users").doc(reporterUid).get();
+      if (uSnap.exists) {
+        const u = uSnap.data() || {};
+        // whatsappEnabled absent => on considère désactivé (opt-in), comme
+        // resolveRecipientsForProfile qui filtre sur == true.
+        waEnabled = u.whatsappEnabled === true && !u.disabled;
+        if (waEnabled && u.whatsappPhone) {
+          phone = whatsappService.formatPhoneE164(u.whatsappPhone);
+        }
+      }
+    } catch (uErr) {
+      console.warn("[onBugReportUpdate] lecture users/" + reporterUid + " échouée:", uErr.message);
+    }
+
+    if (phone) {
+      // Canal WhatsApp — best-effort, ne jamais throw.
+      try {
+        await whatsappService.sendTextMessage(phone, msg);
+      } catch (waErr) {
+        console.warn("[onBugReportUpdate] notif WhatsApp reporter échouée:", waErr.message);
+      }
+      return null;
+    }
+
+    // Pas de WhatsApp (numéro absent ou désactivé) → fallback in-app.
+    // AUCUN mécanisme de notification in-app scoppé par uid n'existe :
+    // le panneau Notifications (/api/notifications) est calculé dynamiquement
+    // par PROFIL depuis les collections métier, il ne lit aucune collection
+    // générique `notifications`/`user_notifications`. On NE l'invente pas ici
+    // (cf. consigne) : on log un warning détaillé et on remonte à l'archi.
+    console.warn(
+      "[onBugReportUpdate] bug " + context.params.id + " résolu — reporter " + reporterUid +
+      " sans WhatsApp activé et AUCUN mécanisme in-app uid-scoppé disponible. " +
+      "Notification non délivrée. À trancher avec l'architecte (cf. RENDU)."
+    );
+    return null;
+  });
+
 // =============================================
 // API: Recommandation Claude AI
 // =============================================

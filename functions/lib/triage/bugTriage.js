@@ -90,6 +90,36 @@ function shortId(id) {
 }
 
 /**
+ * Détecte la TRANSITION d'un bug report vers le statut 'resolved'.
+ * Idempotent : ne déclenche que sur le passage `!== resolved -> resolved`.
+ * - Pas de re-notif si le doc était déjà 'resolved'.
+ * - Pas de notif sur les autres updates (ex. triage qui pose 'qualified').
+ * @param {{status?: string}} before
+ * @param {{status?: string}} after
+ * @returns {boolean}
+ */
+function shouldNotifyResolved(before, after) {
+  const b = (before && before.status) || null;
+  const a = (after && after.status) || null;
+  if (a !== 'resolved') return false;
+  if (b === 'resolved') return false;
+  return true;
+}
+
+/**
+ * Construit le message de notification envoyé au reporter quand son
+ * signalement est corrigé. Format identique WhatsApp / in-app.
+ * @param {{summary?: string, description?: string}} after
+ * @param {string} idCourt - réf courte (shortId)
+ * @returns {string}
+ */
+function buildResolvedMessage(after, idCourt) {
+  const detail = (after && (after.summary || after.description)) || '';
+  return '✅ Votre signalement #' + idCourt + ' a été corrigé et déployé.\n'
+    + detail + '. Merci pour votre retour !';
+}
+
+/**
  * Construit le bloc « BUGS RÉCENTS » injecté dans le system prompt.
  * @param {Array<{id?: string, module?: string, summary?: string}>} recentBugs
  * @returns {string}
@@ -236,6 +266,8 @@ module.exports = {
   SYSTEM_PROMPT,
   TRIAGE_TOOL,
   shortId,
+  shouldNotifyResolved,
+  buildResolvedMessage,
   buildRecentBugsBlock,
   buildSystemPrompt,
   buildTextBlock,
