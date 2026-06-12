@@ -564,3 +564,31 @@ récolte + gardiens) et s'intègre au **workflow de validation du pointage par �
   les HS validées, mêmes règles de verrouillage.
 
 Gated : oui — workflow de validation HS + UI bulk à valider avec Omar avant dev.
+
+## [ ] ITEM (PRIORITÉ HAUTE) — Validation de la quinzaine (assistant multi-écrans)
+Objectif : un parcours de validation de la quinzaine en plusieurs écrans, chaque
+partie étant validée avant d'arriver à la soumission finale aux chefs de ferme.
+
+Écrans (navigation séquentielle, validation à chaque étape) :
+1. **Récap jours pointés** : tableau des jours pointés **par équipe × par jour**.
+   Au clic sur un jour → afficher les **ouvriers** de ce jour.
+2. **Détail calcul main-d'œuvre** : séparer selon le statut de l'ouvrier —
+   **SMAG net** (non déclaré) vs **SMAG brut** (déclaré). (Réutilise le modèle
+   `computePayslip` unifié.)
+3. **Ancienneté + Prime Fixe (prime de fonction)** : afficher et **valider**.
+4. **Primes de récolte** : afficher et **valider**.
+5. **Heures supplémentaires** : afficher et **valider** (cf. item validation HS J+1).
+
+Principe :
+- Navigation **écran par écran** avant la **validation finale pour soumission aux
+  chefs de ferme**.
+- **Chacun valide sa partie** (rôles à définir : RH par étape, puis chef de ferme
+  en validation finale ; circuit exact à cadrer).
+
+À cadrer (gated) :
+- Découpage des rôles/validations par écran (qui valide quoi).
+- État de validation par étape × quinzaine (stockage + verrouillage progressif).
+- Articulation avec : sécurisation du pointage validé, validation HS J+1, et le
+  modèle de paie unifié (popup / PaieTab).
+
+Gated : oui — circuit de validation par étape + rôles à valider avec Omar avant dev.
