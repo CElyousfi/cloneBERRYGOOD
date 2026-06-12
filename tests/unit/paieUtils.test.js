@@ -216,20 +216,59 @@ test('computeWorkerPaie: dated SMAG applied via smagHistory', () => {
   assert.ok(close(r.brut, 97.44));
 });
 
-test('computeWorkerPaie: declared with seniority + prime fonction + transport combined', () => {
+test('computeWorkerPaie: declared with seniority + prime fonction + transport combined (prime fonction dans la base ancienneté)', () => {
   const r = computeWorkerPaie({
     declare: true, joursTravailles: 26, anciennete: 1560,
     baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
     primeFonctionJour: 10, primeTransport: 30,
   });
   const smagBaseTotal = 88.58 * 26;
-  const primeAnc = smagBaseTotal * 0.10;
   const primeFonction = 10 * 26;
-  const brut = smagBaseTotal + primeAnc + primeFonction;
+  // Modèle Omar 2026-06 : la prime de fonction entre dans la base AVANT l'ancienneté.
+  const baseAnc = smagBaseTotal + primeFonction;
+  const primeAnc = baseAnc * 0.10;
+  const brut = baseAnc + primeAnc;
   assert.ok(close(r.primeAnciennete, primeAnc));
+  assert.ok(close(r.primeFonction, primeFonction));
   assert.ok(close(r.brut, brut));
   assert.strictEqual(r.anciennetePourcent, 10);
   assert.ok(close(r.coutEmployeur, brut + brut * 0.26 + 30));
+});
+
+test('computeWorkerPaie: prime fonction × (1 + ancienneté%) — l\'ancienneté s\'applique AUSSI sur la prime de fonction', () => {
+  // Avec ancienneté 5% (≥624 j), la prime ancienneté = (SMAG base + prime fonction) × 5%.
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 10, anciennete: 700,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+    primeFonctionJour: 20, primeTransport: 0,
+  });
+  const smagBaseTotal = 88.58 * 10;
+  const primeFonction = 20 * 10;
+  const baseAnc = smagBaseTotal + primeFonction;
+  const primeAnc = baseAnc * 0.05;
+  assert.strictEqual(r.anciennetePourcent, 5);
+  assert.ok(close(r.primeFonction, primeFonction));
+  // primeAnciennete = (smagBase + primeFonction) × pct, PAS smagBase × pct.
+  assert.ok(close(r.primeAnciennete, primeAnc));
+  // La part d'ancienneté incrémentale due à la prime de fonction = primeFonction × pct.
+  assert.ok(close(r.primeAnciennete - smagBaseTotal * 0.05, primeFonction * 0.05));
+  assert.ok(close(r.brut, baseAnc + primeAnc));
+  assert.ok(close(r.coutEmployeur, r.brut * 1.26));
+});
+
+test('computeWorkerPaie: ancienneté 0 → prime fonction ajoutée telle quelle (pas multipliée)', () => {
+  const r = computeWorkerPaie({
+    declare: true, joursTravailles: 10, anciennete: 0,
+    baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
+    primeFonctionJour: 20, primeTransport: 0,
+  });
+  const smagBaseTotal = 88.58 * 10;
+  const primeFonction = 20 * 10;
+  assert.strictEqual(r.anciennetePourcent, 0);
+  assert.strictEqual(r.primeAnciennete, 0);
+  // brut = SMAG base + prime fonction (aucune majoration ancienneté).
+  assert.ok(close(r.brut, smagBaseTotal + primeFonction));
+  assert.ok(close(r.primeFonction, primeFonction));
 });
 
 test('computeWorkerPaie: empty/defensive args → no throw, zeros', () => {
@@ -363,10 +402,12 @@ test('computeWorkerPaie: rétrocompat — hs/récolte absents → comportement P
     primeFonctionJour: 10, primeTransport: 30,
   });
   const smagBaseTotal = 88.58 * 26;
-  const primeAnc = smagBaseTotal * 0.10;
   const primeFonction = 10 * 26;
-  const brut = smagBaseTotal + primeAnc + primeFonction;
-  // HS nuls → brut identique à Phase 1
+  // Prime de fonction incluse dans la base ancienneté (modèle Omar 2026-06).
+  const baseAnc = smagBaseTotal + primeFonction;
+  const primeAnc = baseAnc * 0.10;
+  const brut = baseAnc + primeAnc;
+  // HS nuls → brut sans majoration HS
   assert.strictEqual(r.heuresSup.montant, 0);
   assert.ok(close(r.brut, brut));
   assert.strictEqual(r.primeRecolte, 0);

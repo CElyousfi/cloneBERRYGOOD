@@ -251,9 +251,12 @@
 
     const smagBaseTotal = smag.smagBrutJournalier * jrs;
     const { palier, pourcentage } = trouverPalierAnciennete(anciennete || 0, b.paliers);
-    const primeAnciennete = smagBaseTotal * (pourcentage / 100);
-    // Taxable gross = SMAG brut base + seniority prime + prime de fonction + heures sup.
-    const brut = smagBaseTotal + primeAnciennete + primeFonction + montantHS;
+    // Modèle validé Omar 2026-06 : la prime de fonction entre dans la base AVANT
+    // l'ancienneté → brut = (SMAG brut×jours + prime fonction×jours) × (1 + ancienneté%).
+    const baseAnciennete = smagBaseTotal + primeFonction;
+    const primeAnciennete = baseAnciennete * (pourcentage / 100);
+    // Taxable gross = base (SMAG brut + prime de fonction) + prime ancienneté + heures sup.
+    const brut = baseAnciennete + primeAnciennete + montantHS;
     // Modèle validé Omar 2026-06 : AUCUNE retenue salariale (cotisations salariales = 0
     // pour tous). Le déclaré porte uniquement la CNSS patronale (coût société).
     const cotisationsSalariales = 0;
