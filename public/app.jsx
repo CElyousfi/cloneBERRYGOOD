@@ -5792,8 +5792,12 @@
                 const n = String(s).match(/\d+/);
                 return n ? parseInt(n[0], 10) : 0;
             };
+            // Le registre ouvriers_registry est keyé par matricule NUMÉRIQUE (ex. "10764"),
+            // alors que le pointage utilise des matricules À LETTRES (ex. "MMG10764").
+            // numKey extrait la partie numérique pour faire correspondre les deux.
+            const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             // Statut déclaré d'un matricule (défensif : absent → non déclaré).
-            const isDeclareForMat = (mat) => !!(ouvriersRegistry[mat] && ouvriersRegistry[mat].declare);
+            const isDeclareForMat = (mat) => { const r = ouvriersRegistry[numKey(mat)]; return !!(r && r.declare); };
 
             const handleDateChange = (d) => { setSelectedDate(d); setLoading(true); loadData(d); loadVisaStatus(d); };
 
@@ -6707,11 +6711,11 @@
                         const hs25 = r.hs25 || 0, hs50 = r.hs50 || 0, hs100 = r.hs100 || 0;
                         // Modèle paie complet (source unique window.PaieUtils). Cas défensif : ouvrier
                         // absent du registre → non déclaré, ancienneté 0, prime fonction 0 (pas de crash).
-                        const reg = ouvriersRegistry[r.matricule] || {};
+                        const reg = ouvriersRegistry[numKey(r.matricule)] || {};
                         const declare = !!reg.declare;
                         const baselineDate = reg.baselineDate || '';
                         const baselineJours = Number(reg.baselineJours || 0);
-                        const primeFonctionJour = Number(reg.primeFonction || 0);
+                        const primeFonctionJour = Number(reg.primeFonctionJournaliere || 0);
                         const pt = paieDistinctDays.get(r.matricule);
                         let joursDepuisBaseline = 0;
                         if (pt && pt.joursPointes) {
