@@ -4,6 +4,30 @@
 
 ---
 
+## ⛔ RÈGLES ANTI-DIVERGENCE (NON NÉGOCIABLES)
+
+> Problème récurrent : du code tourne en prod mais n'est pas dans le repo (chef-bahia, edits locaux VPS, worktrees pas mergés). Résultat : features qui disparaissent + code fantôme. Ces 3 règles priment sur toute autre considération de workflow.
+
+**RÈGLE 1 — `main` = prod. Toujours.**
+- Tout code en production DOIT être sur `main`.
+- Aucun deploy depuis une feature branch ou un worktree. On déploie le code de `main`.
+- Aucune édition directe sur un serveur de prod (VPS, console Firebase, working tree non committé).
+- Fix urgent = `commit → push main → deploy`. Pas de raccourci, même pour un hotfix.
+
+**RÈGLE 2 — Commit avant de changer de contexte.**
+- Avant de passer à un autre item/sprint : `commit + push + merge dans main`. Aucun WIP qui traîne dans un worktree ou sur un VPS.
+- Avant CHAQUE deploy, vérifier : `git status` propre (rien de non committé) ET branche = `main` ET `main` à jour avec le remote.
+- Le script de deploy DOIT vérifier automatiquement (a) working tree propre, (b) branche = `main`, (c) `main` à jour avec le remote. Si une condition échoue → le deploy s'arrête avec un message d'erreur explicite.
+
+**RÈGLE 3 — Pas de code untracked en production.**
+- Chaque fichier qui tourne en prod DOIT être tracké dans git et committé sur `main`. Aucun fichier untracked ni édition locale non committée ne doit être déployé.
+- Le build de prod part d'un checkout `main` propre (worktree dédié, tree clean), jamais d'un working tree avec du WIP.
+- _(NB : la fin de la RÈGLE 3 énoncée par Omar était tronquée dans le message d'origine — à confirmer/compléter avec lui.)_
+
+> Ces règles s'appliquent aux DEUX projets (Smart Berry + bgf-sentinel). Toute exception doit être validée explicitement par Omar et tracée.
+
+---
+
 ## Scope actif
 
 **Sprint 3 — Rapprochement & Avances 🚧** sur l'écran Gestion de Caisse. Sprint 2 livré et déployé en prod le 2026-05-18 (PR #17, merge commit `6e00e4d`). Voir [ROADMAP.md](ROADMAP.md) pour l'historique et la suite.
