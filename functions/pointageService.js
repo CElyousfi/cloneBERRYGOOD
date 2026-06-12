@@ -1823,16 +1823,38 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
           });
 
-          // Enrich with production data (Tracabilite_recolte) — more accurate kg
-          // Per-date try/catch : un date corrompu ne doit pas invalider les 16 autres.
+          // Enrich with production data (Tracabilite_recolte) — more accurate kg.
+          // Le kg de récolte vient UNIQUEMENT d'ici (quantiteToKg=0 sur l'opération « Récolte »).
+          // ⚠️ Historique : on lisait les ~16 docs prod SÉQUENTIELLEMENT (un get() par date, chacun
+          // dans un try/catch). Un échec transitoire Firestore (deadline/contention) faisait sauter
+          // l'enrichissement → kg=0 sur TOUTES les dates → payload dégradée servie au DG (KPIs DH/kg
+          // en tirets + graphe vide = faux « écran cassé », intermittent ~50/50 à froid).
+          // Parade : 1 SEUL getAll() batché (+ 1 retry) au lieu de N gets séquentiels → fiable.
           const prodDates = [...new Set(rows.map(r => r.jour))].sort();
           let enrichedCount = 0, addedCount = 0;
           const perDateStats = [];
+          const prodByDate = {};
+          if (prodDates.length > 0) {
+            const buildRefs = () => prodDates.map(d => db_firestore.collection("prod_tracabilite_recolte").doc(d));
+            let prodDocs = [];
+            try {
+              prodDocs = await db_firestore.getAll(...buildRefs());
+            } catch (batchErr) {
+              console.warn(`[recolte-equipes] getAll prod #1 échoué (${batchErr.message}), retry…`);
+              try {
+                prodDocs = await db_firestore.getAll(...buildRefs());
+              } catch (batchErr2) {
+                console.error(`[recolte-equipes] getAll prod échoué 2x (${batchErr2.message}) → enrichissement kg sauté`);
+                prodDocs = [];
+              }
+            }
+            prodDocs.forEach(doc => { if (doc && doc.exists) prodByDate[doc.id] = doc.data(); });
+          }
           for (const date of prodDates) {
             try {
-              const prodDoc = await db_firestore.collection("prod_tracabilite_recolte").doc(date).get();
-              if (!prodDoc.exists) { perDateStats.push(`${date}:noDoc`); continue; }
-              const prodRows = prodDoc.data().rows || [];
+              const prodData = prodByDate[date];
+              if (!prodData) { perDateStats.push(`${date}:noDoc`); continue; }
+              const prodRows = prodData.rows || [];
               if (prodRows.length === 0) { perDateStats.push(`${date}:emptyRows`); continue; }
               const prodMap = {};
               prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
