@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "bug_reports",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "triaged_at", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "transport_config_changes",
       "queryScope": "COLLECTION",
       "fields": [
