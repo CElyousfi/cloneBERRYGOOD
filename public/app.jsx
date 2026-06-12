@@ -9263,7 +9263,14 @@
                             if (a.kg <= 0) return 0;
                             return (a.cout + lA.cout) / a.kg;
                         });
-                        const maxDhKg = Math.max(...allDhKgNet, 1);
+                        // Échelle Y ROBUSTE aux outliers : un jour à très faible kg (coût/kg
+                        // énorme, ex. 1 ouvrier 0,5 kg → 200 DH/kg) ne doit pas écraser toutes les
+                        // autres barres. Avec plusieurs quinzaines chargées, ces jours dégénérés
+                        // sont plus fréquents → on plafonne maxDhKg à 3× la médiane des DH/kg>0
+                        // (échelle stable, les rares jours extrêmes clippent en haut, acceptable).
+                        const __dhPos = allDhKgNet.filter(v => v > 0).sort((a, b) => a - b);
+                        const __dhMed = __dhPos.length ? __dhPos[Math.floor(__dhPos.length / 2)] : 1;
+                        const maxDhKg = Math.max(1, Math.min(Math.max(...allDhKgNet, 1), __dhMed * 3));
                         const BAR_H = 200;
                         // Axe Y secondaire (droite) pour la courbe Kg/ha. Échelle calculée sur la fenêtre affichée.
                         // Garde-fou : min 1 pour éviter division par 0 / NaN.
