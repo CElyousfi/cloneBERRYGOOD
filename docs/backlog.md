@@ -538,3 +538,29 @@ le verrouillage (override autorisé DG uniquement, tracé dans l'historique).
 
 Gated : oui — valider le périmètre exact des données figées + le circuit d'override DG
 avant implémentation.
+
+## [ ] ITEM (PRIORITÉ HAUTE) — Validation des heures supplémentaires à J+1
+Objectif : valider les heures supplémentaires (HS) de la veille au moment de
+valider le pointage du jour. Autrement dit, la validation du pointage du jour J
+valide les HS de J-1 (validation HS à J+1).
+
+Flexibilité RH (le but = pointer facilement les HS des ouvriers) :
+- Pouvoir choisir de **NE PAS appliquer les HS** — au niveau **équipe** OU au niveau
+  **ouvrier** (exclusion sélective).
+- Pouvoir **spécifier en BULK une heure d'entrée ou de sortie manquante** pour les
+  ouvriers dont le pointage entrée/sortie est incomplet (saisie groupée plutôt
+  qu'un par un).
+
+Lien : s'appuie sur le module **Heures Supplémentaires** existant (HS calculées
+depuis le pointage entrée/sortie BEE ONE `prod_presence`, seuil 8h30, exclut
+récolte + gardiens) et s'intègre au **workflow de validation du pointage par équipe**.
+
+À cadrer :
+- Où s'insère la validation HS de J-1 dans l'écran de validation du jour J.
+- Stockage de l'état « HS validées / exclues » par jour×équipe×ouvrier.
+- UI de saisie bulk des entrées/sorties manquantes (sélection multiple + heure
+  appliquée à tous).
+- Articulation avec la sécurisation du pointage validé (item ci-dessus) : une fois
+  les HS validées, mêmes règles de verrouillage.
+
+Gated : oui — workflow de validation HS + UI bulk à valider avec Omar avant dev.
