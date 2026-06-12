@@ -345,3 +345,34 @@ Au début de chaque session, vérifier Firestore bug_reports où status="qualifi
 ET severity in ["critical","high"]. Les traiter AVANT les autres items du backlog.
 Quand le fix est déployé : status="resolved" + noter le commit/PR. Les bugs
 "medium"/"low" sont traités quand le backlog haute priorité est vide.
+
+## Gouvernance bug reports — actions autorisées vs gated
+
+Les bug reports qualifiés par le triage IA suivent ces règles.
+
+**AUTORISÉ (autonome, pas besoin de GO Omar) :**
+- Correction de bugs (crash, erreur d'affichage, données incorrectes, comportement cassé)
+- Fix de performance (écran lent, timeout)
+- Fix de compatibilité (Safari, mobile)
+
+**INTERDIT sans accord admin (GATED) :**
+- Modification de fonctionnalité (changer un comportement existant)
+- Suppression de fonctionnalité ou de données
+- Ajout de nouvelle fonctionnalité demandée par un utilisateur
+- Changement de logique métier (calculs paie, règles de validation)
+
+Si un bug report contient une demande de modification/suppression :
+1. Le triage qualifie comme `type: "feature_request"` (pas `"bug"`)
+2. L'architecte ne traite PAS — il ajoute au backlog gated
+3. WhatsApp Omar : « Demande de modification reçue de [reporter] : [description].
+   Ajoutée au backlog, en attente de ta validation. »
+
+Le triage IA doit distinguer :
+- « Le bouton X ne marche pas » → bug → autonome
+- « Je voudrais que le bouton X fasse Y » → feature → gated
+- « Supprime l'onglet Z » → suppression → gated
+
+⚠️ Un **renommage de label** demandé par un utilisateur ou déduit du backlog reste
+une **modification de fonctionnalité** (gated) : valider avec Omar AVANT, ne pas
+l'appliquer en autonome (cf. revert du rename « Poste Fixe → Ouvrier Avocatier »
+le 2026-06-12, refusé par Omar).
