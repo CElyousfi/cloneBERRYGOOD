@@ -8542,6 +8542,11 @@
                 windowDates.forEach(date => {
                     // Jour sélectionné/aujourd'hui en mode Jour → reprendre les totaux du KPI jour
                     if (!isQuinzaineMode && date === recolteDate) {
+                        // Exclure un « aujourd'hui » incomplet/vide (pas encore de récolte saisie :
+                        // kg=0 ET aucun coût) : il ne doit ni tirer les moyennes vers le bas ni
+                        // forcer le Total Kg à 0. On saute simplement ce jour de la fenêtre.
+                        const todayEmpty = (totalKg || 0) <= 0 && (totalCout || 0) <= 0;
+                        if (todayEmpty) return;
                         recSeries.push({ salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, kg: totalKg, nbOuvJour: nbOuvriers });
                         logSeries.push({ salaire: logSalaire, transport: logTransport, prime: logPrime, charges: logCharges, kg: 0, nbOuvJour: 0 });
                         allFiltered.forEach(r => { const key = (r.matricule || r.nom || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
@@ -8560,15 +8565,22 @@
                 const net = RK.computeNetDhParKg(recAgg.totalCout, logAgg.totalCout, recAgg.totalKg);
                 const pctSal = recAgg.totalCout > 0 ? Math.round(recAgg.totalSalaire / recAgg.totalCout * 100) : 0;
                 return {
+                    // Sommes (conservées pour info / cohérence interne)
                     totalSalaire: recAgg.totalSalaire, totalTransport: recAgg.totalTransport,
                     totalPrime: recAgg.totalPrime, totalCharges: recAgg.totalCharges,
                     totalCout: recAgg.totalCout, totalKg: recAgg.totalKg,
+                    // Moyennes / jour (vue période) : somme ÷ jours-avec-données
+                    coutMoyenJour: recAgg.coutMoyenJour, kgMoyenJour: recAgg.kgMoyenJour,
+                    salaireMoyenJour: recAgg.salaireMoyenJour, transportMoyenJour: recAgg.transportMoyenJour,
+                    primeMoyenJour: recAgg.primeMoyenJour, chargesMoyenJour: recAgg.chargesMoyenJour,
+                    // DH/kg = moyennes PONDÉRÉES (somme coûts ÷ somme kg)
                     dhParKgGlobal: recAgg.dhParKgBrut,
                     dhParKgLog: net.dhParKgLog, dhParKgNet: net.dhParKgNet,
                     nbOuvriers: Object.keys(ouvKeys).length,
                     coutMoyenOuvrierJour: recAgg.coutMoyenOuvrierJour,
                     pctSalaire: pctSal,
-                    nbJours: windowDates.length,
+                    // Dénominateur réel des moyennes/jour (exclut un aujourd'hui vide)
+                    nbJours: recAgg.nbJoursAvecDonnees,
                 };
             })();
 
@@ -8576,12 +8588,14 @@
             // 7/30/60/90j) est visible, sinon retour aux KPI du jour. Garde la cohérence
             // graphe/KPI : tant que le sélecteur de période est affiché, KPI = même plage.
             const userPeriodKpi = periodKpi && showTrend;
-            const kpiSalaire = userPeriodKpi ? periodKpi.totalSalaire : totalSalaire;
-            const kpiTransport = userPeriodKpi ? periodKpi.totalTransport : totalTransport;
-            const kpiPrime = userPeriodKpi ? periodKpi.totalPrime : totalPrime;
-            const kpiCharges = userPeriodKpi ? periodKpi.totalCharges : totalCharges;
-            const kpiCout = userPeriodKpi ? periodKpi.totalCout : totalCout;
-            const kpiTotalKg = userPeriodKpi ? periodKpi.totalKg : totalKg;
+            // En vue PÉRIODE (30/7/60/90 j) le DG veut des MOYENNES / jour (pas des
+            // sommes cumulées qui exagèrent). En mode Jour, on garde les totaux du jour.
+            const kpiSalaire = userPeriodKpi ? periodKpi.salaireMoyenJour : totalSalaire;
+            const kpiTransport = userPeriodKpi ? periodKpi.transportMoyenJour : totalTransport;
+            const kpiPrime = userPeriodKpi ? periodKpi.primeMoyenJour : totalPrime;
+            const kpiCharges = userPeriodKpi ? periodKpi.chargesMoyenJour : totalCharges;
+            const kpiCout = userPeriodKpi ? periodKpi.coutMoyenJour : totalCout;
+            const kpiTotalKg = userPeriodKpi ? periodKpi.kgMoyenJour : totalKg;
             const kpiDhParKgGlobal = userPeriodKpi ? periodKpi.dhParKgGlobal : dhParKgGlobal;
             const kpiDhParKgLog = userPeriodKpi ? periodKpi.dhParKgLog : dhParKgLog;
             const kpiDhParKgNet = userPeriodKpi ? periodKpi.dhParKgNet : dhParKgNet;
@@ -8589,6 +8603,9 @@
             const kpiCoutMoyenOuvrierJour = userPeriodKpi ? periodKpi.coutMoyenOuvrierJour : coutMoyenOuvrierJour;
             const kpiPctSalaire = userPeriodKpi ? periodKpi.pctSalaire : pctSalaire;
             const kpiPeriodLabel = userPeriodKpi ? (histOffset === 0 ? `${histRange} derniers jours` : `${histRange}j (fenêtre -${histOffset})`) : 'Aujourd\'hui';
+            // Libellés des cartes : en vue période ils deviennent des « moyennes / jour ».
+            const kpiCoutLabel = userPeriodKpi ? 'Coût moyen / jour' : 'Coût Total (DH)';
+            const kpiKgLabel = userPeriodKpi ? 'Kg moyen / jour' : 'Total Kg';
 
             // Aggregation par équipe
             const equipeAgg = {};
@@ -8795,8 +8812,8 @@
                     <div className="kpi-grid">
                         <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCout)} label="Coût Total (DH)" subItems={[{value: fmt(kpiSalaire), label: 'Salaire'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges'}]} onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKg)} label="Total Kg" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCout)} label={kpiCoutLabel} subItems={[{value: fmt(kpiSalaire), label: 'Salaire'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges'}]} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKg)} label={kpiKgLabel} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-user" iconClass="blue" value={fmt(kpiCoutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
                         <KPICard icon="fa-users" iconClass="green" value={kpiNbOuvriers} label="Ouvriers Récolte" />
                         <KPICard icon="fa-chart-pie" iconClass="purple" value={kpiPctSalaire + '%'} label="Salaire dans Coût" onClick={() => setShowTrend(!showTrend)} />
