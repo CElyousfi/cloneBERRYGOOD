@@ -1838,21 +1838,31 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           let enrichedCount = 0, addedCount = 0;
           const perDateStats = [];
           const prodByDate = {};
+          let getAllFailedChunks = 0;
           if (prodDates.length > 0) {
-            const buildRefs = () => prodDates.map(d => db_firestore.collection("prod_tracabilite_recolte").doc(d));
-            let prodDocs = [];
-            try {
-              prodDocs = await db_firestore.getAll(...buildRefs());
-            } catch (batchErr) {
-              console.warn(`[recolte-equipes] getAll prod #1 échoué (${batchErr.message}), retry…`);
-              try {
-                prodDocs = await db_firestore.getAll(...buildRefs());
-              } catch (batchErr2) {
-                console.error(`[recolte-equipes] getAll prod échoué 2x (${batchErr2.message}) → enrichissement kg sauté`);
-                prodDocs = [];
+            // ⚠️ Fiabilité : les docs prod_tracabilite portent de gros tableaux `rows`.
+            // Un seul getAll sur ~40 docs volumineux échoue par intermittence (deadline/taille)
+            // → enrichissement kg sauté → payload dégradée (kg=0) → graphe Coût Récolte vide.
+            // Parade : CHUNKER en lots de 10 docs, avec 3 tentatives par lot.
+            const CHUNK = 10;
+            for (let i = 0; i < prodDates.length; i += CHUNK) {
+              const chunkRefs = prodDates.slice(i, i + CHUNK)
+                .map(d => db_firestore.collection("prod_tracabilite_recolte").doc(d));
+              let docs = null;
+              for (let attempt = 0; attempt < 3 && docs === null; attempt++) {
+                try {
+                  docs = await db_firestore.getAll(...chunkRefs);
+                } catch (chunkErr) {
+                  if (attempt === 2) {
+                    getAllFailedChunks++;
+                    console.error(`[recolte-equipes] getAll lot ${i / CHUNK} échoué 3x (${chunkErr.message})`);
+                    docs = [];
+                  }
+                }
               }
+              docs.forEach(doc => { if (doc && doc.exists) prodByDate[doc.id] = doc.data(); });
             }
-            prodDocs.forEach(doc => { if (doc && doc.exists) prodByDate[doc.id] = doc.data(); });
+            if (getAllFailedChunks > 0) console.warn(`[recolte-equipes] ${getAllFailedChunks} lot(s) getAll en échec → enrichissement partiel`);
           }
           for (const date of prodDates) {
             try {
