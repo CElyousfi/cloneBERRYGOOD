@@ -6813,90 +6813,107 @@
 
                                     {!isCaporal && (
                                     <div style={{marginTop:16,background:'var(--berry-pale)',borderRadius:10,padding:14}}>
-                                        <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:8}}>
+                                        <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:10}}>
                                             Estimation paie du {paieDateISO} — modèle complet ({declare ? 'déclaré' : 'non déclaré'}).
                                         </div>
 
-                                        {/* --- Bloc 1 : Salaire Brut --- */}
-                                        {/* SMAG base : XX,XX DH/j × N j = XXX,XX DH */}
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>SMAG base : {f2(paie.smagBase)} DH/j × {paie.jT} j</span>
-                                            <span style={{fontWeight:600}}>{f2(paie.base)} DH</span>
-                                        </div>
-                                        {/* Jours fériés : XX,XX DH × N j = XXX,XX DH (si déclaré & jF>0) */}
-                                        {declare && paie.jF > 0 && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Jours fériés : {f2(paie.smagBase)} DH × {paie.jF} j</span>
-                                            <span style={{fontWeight:600,color:'var(--berry)'}}>+{f2(paie.feries)} DH</span>
-                                        </div>
-                                        )}
-                                        {/* Ancienneté : X% → +XX,XX DH (si déclaré) */}
-                                        {declare && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté : {Math.round(paie.ancienneteTaux * 100)}%</span>
-                                            <span style={{fontWeight:600,color: paie.anciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{paie.anciennete > 0 ? `+${f2(paie.anciennete)}` : '0,00'} DH</span>
-                                        </div>
-                                        )}
-                                        {/* Prime fonction : XX,XX DH/j × N j = +XX,XX DH (si >0) */}
-                                        {paie.primeFonction > 0 && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime fonction : {f2(paie.primeFonctionJour)} DH/j × {declare ? (paie.jT + paie.jF) : paie.jT} j</span>
-                                            <span style={{fontWeight:600,color:'var(--berry)'}}>+{f2(paie.primeFonction)} DH</span>
-                                        </div>
-                                        )}
-                                        {/* Primes optionnelles (récolte, rendement…) incluses dans le brut (déclaré). */}
-                                        {declare && paie.primesOptionnelles > 0 && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Primes (récolte / rendement)</span>
-                                            <span style={{fontWeight:600,color:'var(--green)'}}>+{f2(paie.primesOptionnelles)} DH</span>
-                                        </div>
-                                        )}
-                                        {/* = Salaire Brut (gras) */}
-                                        <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
-                                            <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire Brut</span>
-                                            <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{f2(paie.brut)} DH</span>
-                                        </div>
+                                        {/* 2 colonnes côte à côte (wrap en mobile) : bulletin ouvrier | coût employeur. */}
+                                        <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
 
-                                        {/* --- Bloc 2 : retenues salariales (déclaré) → Net ouvrier --- */}
-                                        {declare && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS ({(paie.tauxCnss * 100).toFixed(2).replace('.', ',')}%)</span>
-                                            <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(paie.cnss)} DH</span>
-                                        </div>
-                                        )}
-                                        {declare && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>AMO ({(paie.tauxAmo * 100).toFixed(2).replace('.', ',')}%)</span>
-                                            <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(paie.amo)} DH</span>
-                                        </div>
-                                        )}
-                                        {/* = Net ouvrier (gras) */}
-                                        <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
-                                            <span style={{fontWeight:700,color:'var(--green)'}}>= Net ouvrier</span>
-                                            <span style={{fontWeight:700,fontSize:14,color:'var(--green)'}}>{f2(paie.net)} DH</span>
-                                        </div>
+                                            {/* ===== Colonne GAUCHE : Bulletin ouvrier ===== */}
+                                            <div style={{flex:'1 1 180px',minWidth:180}}>
+                                                <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Bulletin ouvrier</div>
 
-                                        {/* ─── séparateur ─── */}
-                                        <div style={{textAlign:'center',color:'var(--gray-300)',fontSize:11,margin:'2px 0 8px'}}>─────────────</div>
+                                                {/* SMAG base : XX,XX DH/j × N j = XXX,XX DH */}
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>SMAG base : {f2(paie.smagBase)} × {paie.jT}</span>
+                                                    <span style={{fontWeight:600}}>{f2(paie.base)}</span>
+                                                </div>
+                                                {/* Jours fériés (si déclaré & jF>0) */}
+                                                {declare && paie.jF > 0 && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Jours fériés : {f2(paie.smagBase)} × {paie.jF}</span>
+                                                    <span style={{fontWeight:600,color:'var(--berry)'}}>+{f2(paie.feries)}</span>
+                                                </div>
+                                                )}
+                                                {/* Ancienneté (si déclaré) */}
+                                                {declare && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté {Math.round(paie.ancienneteTaux * 100)}%</span>
+                                                    <span style={{fontWeight:600,color: paie.anciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{paie.anciennete > 0 ? `+${f2(paie.anciennete)}` : '0,00'}</span>
+                                                </div>
+                                                )}
+                                                {/* Prime fonction (si >0) */}
+                                                {paie.primeFonction > 0 && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime fonction</span>
+                                                    <span style={{fontWeight:600,color:'var(--berry)'}}>+{f2(paie.primeFonction)}</span>
+                                                </div>
+                                                )}
+                                                {/* Primes optionnelles (récolte / rendement) incluses au brut (déclaré). */}
+                                                {declare && paie.primesOptionnelles > 0 && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Primes (récolte)</span>
+                                                    <span style={{fontWeight:600,color:'var(--green)'}}>+{f2(paie.primesOptionnelles)}</span>
+                                                </div>
+                                                )}
+                                                {/* = Salaire brut (gras) */}
+                                                <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
+                                                    <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire brut</span>
+                                                    <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{f2(paie.brut)} DH</span>
+                                                </div>
 
-                                        {/* --- Bloc 3 : coût employeur --- */}
-                                        {/* Charges patronales (26%) : +XX,XX DH (si déclaré) */}
-                                        {declare && (
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Charges patronales ({Math.round(paie.tauxChargesPatronales * 100)}%)</span>
-                                            <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{f2(paie.chargesPatronales)} DH</span>
-                                        </div>
-                                        )}
-                                        {/* Transport : +XX,XX DH (séparé, hors brut) */}
-                                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                            <span style={{fontSize:12,color:'var(--gray-500)'}}>Transport{eqNamePaie ? ` (équipe ${eqNamePaie})` : ''}</span>
-                                            <span style={{fontWeight:600,color: primeTransport > 0 ? 'var(--blue)' : 'var(--gray-400)'}}>{primeTransport > 0 ? `+${f2(primeTransport)}` : '0,00'} DH</span>
-                                        </div>
+                                                {/* Retenues salariales (déclaré uniquement) */}
+                                                {declare && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS ({(paie.tauxCnss * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                    <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(paie.cnss)}</span>
+                                                </div>
+                                                )}
+                                                {declare && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>AMO ({(paie.tauxAmo * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                    <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(paie.amo)}</span>
+                                                </div>
+                                                )}
+                                                {/* = Net à payer (gras vert) — sans transport */}
+                                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--green)',paddingTop:8,marginTop:4}}>
+                                                    <span style={{fontWeight:800,color:'var(--green)',fontSize:13}}>= Net à payer</span>
+                                                    <span style={{fontWeight:800,fontSize:17,color:'var(--green)'}}>{f2(paie.net)} DH</span>
+                                                </div>
+                                            </div>
 
-                                        {/* = Coût Total Employeur (gras) — chiffre clé DG, en évidence. */}
-                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--berry)',paddingTop:10,marginTop:4}}>
-                                            <span style={{fontWeight:800,color:'var(--berry)',fontSize:14}}>= Coût Total Employeur</span>
-                                            <span style={{fontWeight:800,fontSize:20,color:'var(--berry)'}}>{f2(coutTotalEmployeur)} DH</span>
+                                            {/* ===== séparateur léger ===== */}
+                                            <div style={{width:1,alignSelf:'stretch',background:'var(--gray-200)'}}></div>
+
+                                            {/* ===== Colonne DROITE : Coût employeur ===== */}
+                                            <div style={{flex:'1 1 180px',minWidth:180}}>
+                                                <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Coût employeur</div>
+
+                                                {/* Salaire brut */}
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Salaire brut</span>
+                                                    <span style={{fontWeight:600}}>{f2(paie.brut)}</span>
+                                                </div>
+                                                {/* Charges patronales (déclaré uniquement) */}
+                                                {declare && (
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Charges patronales ({Math.round(paie.tauxChargesPatronales * 100)}%)</span>
+                                                    <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{f2(paie.chargesPatronales)}</span>
+                                                </div>
+                                                )}
+                                                {/* Transport (séparé, hors brut) */}
+                                                <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Transport{eqNamePaie ? ` (${eqNamePaie})` : ''}</span>
+                                                    <span style={{fontWeight:600,color: primeTransport > 0 ? 'var(--blue)' : 'var(--gray-400)'}}>{primeTransport > 0 ? `+${f2(primeTransport)}` : '0,00'}</span>
+                                                </div>
+                                                {/* = Coût total employeur (gras) — chiffre clé DG. */}
+                                                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--berry)',paddingTop:8,marginTop:4}}>
+                                                    <span style={{fontWeight:800,color:'var(--berry)',fontSize:13}}>= Coût total employeur</span>
+                                                    <span style={{fontWeight:800,fontSize:17,color:'var(--berry)'}}>{f2(coutTotalEmployeur)} DH</span>
+                                                </div>
+                                            </div>
+
                                         </div>
                                     </div>
                                     )}
