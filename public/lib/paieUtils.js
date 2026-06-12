@@ -83,23 +83,29 @@
    * Core payroll formula (PaieTab) — modèle validé Omar 2026-06.
    * SMAG base = BRUT pour TOUS (déclarés ET non-déclarés). AUCUNE retenue salariale
    * (cotisationsSalariales = 0 partout). Net ouvrier = brut + primes pour tous.
-   *   - NON-DÉCLARÉ : base brut × jours, pas de CNSS patronale, pas de prime d'ancienneté.
-   *     net = brut ; coutEmployeur = brut.
-   *   - DÉCLARÉ : base brut × jours + prime d'ancienneté ; la société paie EN PLUS la
-   *     CNSS patronale (chargesPatronales) → impacte UNIQUEMENT coutEmployeur, pas le net.
-   *     net = brut ; coutEmployeur = brut + chargesPatronales.
+   *   - NON-DÉCLARÉ : (base brut + prime fonction) × jours, pas de CNSS patronale,
+   *     pas de prime d'ancienneté. net = brut ; coutEmployeur = brut.
+   *   - DÉCLARÉ : (base brut + prime fonction) × jours + prime d'ancienneté ; la société
+   *     paie EN PLUS la CNSS patronale (chargesPatronales) → impacte UNIQUEMENT
+   *     coutEmployeur, pas le net. net = brut ; coutEmployeur = brut + chargesPatronales.
    * Forme de sortie inchangée (consommée par PaieTab) ; seules les valeurs changent
    * (base brut pour tous, cotisationsSalariales = 0, net = brut).
-   * @param {{ declare: boolean, joursTravailles: number, anciennete: number, baremes?: object }} args
+   *
+   * Prime de fonction (primeFonctionJour, DH/jour) — optionnelle, rétro-compatible :
+   * absente ou 0 → comportement strictement identique au modèle d'origine. Quand
+   * présente, elle entre dans la base AVANT l'ancienneté (cohérent avec computeWorkerPaie)
+   * → brut déclaré = (SMAG brut×jours + prime fonction×jours) × (1 + ancienneté%).
+   * @param {{ declare: boolean, joursTravailles: number, anciennete: number, baremes?: object, primeFonctionJour?: number }} args
    * @returns {{ net: number, brut: number, prime: number, palier: string, pourcentage: number,
    *   chargesPatronales: number, cotisationsSalariales: number, coutEmployeur: number }}
    */
-  function calculerPaieOuvrier({ declare, joursTravailles, anciennete, baremes }) {
+  function calculerPaieOuvrier({ declare, joursTravailles, anciennete, baremes, primeFonctionJour }) {
     const jrs = Number(joursTravailles) || 0;
     const b = { ...PAIE_BAREMES_DEFAULT, ...(baremes || {}) };
-    const brutBase = (b.smagBrutJournalier || 0) * jrs;
+    const primeFonctionTotal = (Number(primeFonctionJour) || 0) * jrs;
+    const brutBase = (b.smagBrutJournalier || 0) * jrs + primeFonctionTotal;
     if (!declare) {
-      // Non-déclaré : base brut, pas de CNSS, pas d'ancienneté, pas de retenue.
+      // Non-déclaré : base brut (+ prime fonction), pas de CNSS, pas d'ancienneté, pas de retenue.
       return {
         net: brutBase, brut: brutBase, prime: 0, palier: '—', pourcentage: 0,
         chargesPatronales: 0, cotisationsSalariales: 0, coutEmployeur: brutBase,

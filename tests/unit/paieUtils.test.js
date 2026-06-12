@@ -100,6 +100,37 @@ test('calculerPaieOuvrier: comparatif déclaré vs non-déclaré — même base 
   assert.ok(close(decl.coutEmployeur - nonDecl.coutEmployeur, decl.brut * 0.26));
 });
 
+// calculerPaieOuvrier — prime de fonction (primeFonctionJour), rétro-compatible.
+test('calculerPaieOuvrier: param primeFonctionJour absent → comportement strictement inchangé', () => {
+  const sans = calculerPaieOuvrier({ declare: true, joursTravailles: 26, anciennete: 1560, baremes: PAIE_BAREMES_DEFAULT });
+  const zero = calculerPaieOuvrier({ declare: true, joursTravailles: 26, anciennete: 1560, baremes: PAIE_BAREMES_DEFAULT, primeFonctionJour: 0 });
+  assert.deepStrictEqual(zero, sans);
+});
+
+test('calculerPaieOuvrier: déclaré ancienneté 10% AVEC prime fonction → brut = (smag + prime)×jours × 1.10', () => {
+  const primeFonctionJour = 20;
+  const r = calculerPaieOuvrier({ declare: true, joursTravailles: 26, anciennete: 1560, baremes: PAIE_BAREMES_DEFAULT, primeFonctionJour });
+  const base = (88.58 + primeFonctionJour) * 26;
+  const prime = base * 0.10;
+  const brut = base + prime;
+  assert.ok(close(r.brut, brut));
+  assert.ok(close(r.brut, base * 1.10));
+  assert.ok(close(r.prime, prime));
+  assert.ok(close(r.net, brut));
+  assert.ok(close(r.coutEmployeur, brut + brut * 0.26));
+});
+
+test('calculerPaieOuvrier: non-déclaré AVEC prime fonction → brut = net = (smag + prime)×jours, pas d\'ancienneté ni CNSS', () => {
+  const primeFonctionJour = 15;
+  const r = calculerPaieOuvrier({ declare: false, joursTravailles: 10, anciennete: 5000, baremes: PAIE_BAREMES_DEFAULT, primeFonctionJour });
+  const base = (88.58 + primeFonctionJour) * 10;
+  assert.ok(close(r.brut, base));
+  assert.ok(close(r.net, base));
+  assert.strictEqual(r.prime, 0);
+  assert.strictEqual(r.chargesPatronales, 0);
+  assert.strictEqual(r.cotisationsSalariales, 0);
+});
+
 // ---------------------------------------------------------------------------
 // resolveSmagForDate
 // ---------------------------------------------------------------------------
