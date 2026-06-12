@@ -121,6 +121,24 @@ function canChefValidate(fermeState, ferme, profileId) {
 }
 
 /**
+ * Le chef identifié par `profileId` peut-il REJETER (renvoyer au RH) la ferme ?
+ * Mêmes gardes que `canChefValidate` : profil chef de CETTE ferme, état 'soumis'.
+ * Effet attendu côté action : soumis → brouillon (rouvre la saisie RH).
+ * @param {object|null|undefined} fermeState
+ * @param {string} ferme - ferme ciblée (ex. 'F1')
+ * @param {string} profileId - profileId du caller (résolu serveur)
+ * @returns {{ok:boolean, reason?:string}}
+ */
+function canChefReject(fermeState, ferme, profileId) {
+  const f = normalizeFermeState(fermeState);
+  const chefFerme = CHEF_FERME_BY_PROFILE[profileId];
+  if (!chefFerme) return { ok: false, reason: 'pas_un_chef' };
+  if (chefFerme !== ferme) return { ok: false, reason: 'mauvaise_ferme' };
+  if (f.submitState !== 'soumis') return { ok: false, reason: 'pas_soumis' };
+  return { ok: true };
+}
+
+/**
  * Le DG peut-il déverrouiller la ferme ?
  * Exige : ferme figée (locked === true).
  * @param {object|null|undefined} fermeState
@@ -135,17 +153,19 @@ function canUnlock(fermeState) {
 /**
  * Calcule le prochain submitState pour une transition donnée.
  * Transitions valides :
- *   submit  : brouillon → soumis
- *   chef    : soumis    → valide
- *   unlock  : valide    → brouillon
+ *   submit       : brouillon → soumis
+ *   chef         : soumis    → valide
+ *   chef-reject  : soumis    → brouillon
+ *   unlock       : valide    → brouillon
  * @param {string} currentState
- * @param {'submit'|'chef'|'unlock'} transition
+ * @param {'submit'|'chef'|'chef-reject'|'unlock'} transition
  * @returns {string|null} nouvel état, ou null si transition invalide
  */
 function nextSubmitState(currentState, transition) {
   const state = SUBMIT_STATES.indexOf(currentState) >= 0 ? currentState : 'brouillon';
   if (transition === 'submit' && state === 'brouillon') return 'soumis';
   if (transition === 'chef' && state === 'soumis') return 'valide';
+  if (transition === 'chef-reject' && state === 'soumis') return 'brouillon';
   if (transition === 'unlock' && state === 'valide') return 'brouillon';
   return null;
 }
@@ -169,6 +189,7 @@ module.exports = {
   canValidateEquipe,
   canSubmitFerme,
   canChefValidate,
+  canChefReject,
   canUnlock,
   nextSubmitState,
   fermeForChefProfile,

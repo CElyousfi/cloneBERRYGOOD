@@ -4698,6 +4698,51 @@ exports.pointageValidation = functions
         return res.status(out.http).json(out.body);
       }
 
+      // ---- Chef de LA ferme : rejeter (renvoyer au RH) ----
+      if (action === "chef-reject-ferme") {
+        // Pré-garde rôle/ferme : seul le chef de CETTE ferme peut rejeter.
+        if (pointageValidationSM.fermeForChefProfile(callerRole) !== ferme) {
+          const msg = pointageValidationSM.fermeForChefProfile(callerRole)
+            ? "Vous n'êtes pas le Chef de cette ferme"
+            : "Réservé au Chef de ferme";
+          return res.status(403).json({ success: false, error: msg });
+        }
+        const motif = (req.body && req.body.motif) || null;
+        const out = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRef);
+          const doc = snap.exists ? snap.data() : emptyPointageValidationDoc(date);
+          if (!doc.fermes) doc.fermes = {};
+          if (!doc.fermes[ferme]) doc.fermes[ferme] = emptyFermeValidationState();
+          const fermeState = doc.fermes[ferme];
+          const check = pointageValidationSM.canChefReject(fermeState, ferme, callerRole);
+          if (!check.ok) {
+            const status = (check.reason === "pas_un_chef" || check.reason === "mauvaise_ferme") ? 403 : 409;
+            const msg = check.reason === "pas_un_chef" ? "Réservé au Chef de ferme"
+              : check.reason === "mauvaise_ferme" ? "Vous n'êtes pas le Chef de cette ferme"
+                : "La ferme n'est pas en attente de validation Chef";
+            return { http: status, body: { success: false, error: msg } };
+          }
+          // soumis → brouillon : rouvre la saisie RH (canValidateEquipe redevient vrai).
+          fermeState.submitState = "brouillon";
+          fermeState.locked = false;
+          fermeState.chef_reject_by = by;
+          fermeState.chef_reject_at = Date.now();
+          fermeState.chef_reject_motif = motif;
+          doc.updated_at = admin.firestore.FieldValue.serverTimestamp();
+          const historyEntry = { action: "chef-reject-ferme", ferme, by, motif, at: Date.now() };
+          tx.set(docRef, doc, { merge: false });
+          tx.update(docRef, { history: admin.firestore.FieldValue.arrayUnion(historyEntry) });
+          return { http: 200, body: { success: true, validation: doc } };
+        });
+        if (out.http === 200) {
+          const motifTxt = motif ? ` Motif : ${motif}` : "";
+          const msg = `Pointage du ${date} — ferme ${ferme} RENVOYÉ AU RH par le Chef.${motifTxt} La saisie RH est rouverte.`;
+          notifyProfilePointageValidation("rh", ferme, msg);
+          notifyProfilePointageValidation("dg", ferme, msg);
+        }
+        return res.status(out.http).json(out.body);
+      }
+
       // ---- DG : déverrouiller (rouvre la saisie RH) ----
       if (action === "unlock-ferme") {
         if (callerRole !== "dg") return res.status(403).json({ success: false, error: "Réservé au DG" });

@@ -103,6 +103,44 @@ test('canChefValidate: pas soumis = refus', () => {
   assert.equal(r.reason, 'pas_soumis');
 });
 
+test('canChefReject: bon chef + soumis = OK (les 4 fermes)', () => {
+  const state = { submitState: 'soumis' };
+  assert.equal(sm.canChefReject(state, 'F1', 'chef_f1').ok, true);
+  assert.equal(sm.canChefReject(state, 'F5', 'chef_f5').ok, true);
+  assert.equal(sm.canChefReject(state, 'Avocatier', 'chef_avo').ok, true);
+  assert.equal(sm.canChefReject(state, 'BAHIA', 'chef_bahia').ok, true);
+});
+
+test('canChefReject: mauvaise ferme = refus (chef scopé à sa ferme)', () => {
+  const r = sm.canChefReject({ submitState: 'soumis' }, 'F5', 'chef_f1');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'mauvaise_ferme');
+});
+
+test('canChefReject: pas un chef = refus', () => {
+  const r = sm.canChefReject({ submitState: 'soumis' }, 'F1', 'rh');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'pas_un_chef');
+});
+
+test('canChefReject: pas soumis = refus (brouillon ou valide)', () => {
+  assert.equal(sm.canChefReject({ submitState: 'brouillon' }, 'F1', 'chef_f1').reason, 'pas_soumis');
+  assert.equal(sm.canChefReject({ submitState: 'valide' }, 'F1', 'chef_f1').reason, 'pas_soumis');
+});
+
+test('nextSubmitState chef-reject: soumis → brouillon, sinon null', () => {
+  assert.equal(sm.nextSubmitState('soumis', 'chef-reject'), 'brouillon');
+  assert.equal(sm.nextSubmitState('brouillon', 'chef-reject'), null);
+  assert.equal(sm.nextSubmitState('valide', 'chef-reject'), null);
+});
+
+test('chef-reject rouvre l\'édition RH: brouillon obtenu après rejet permet canValidateEquipe', () => {
+  // Après chef-reject, submitState repasse à 'brouillon' et locked=false.
+  const afterReject = { submitState: sm.nextSubmitState('soumis', 'chef-reject'), locked: false };
+  assert.equal(afterReject.submitState, 'brouillon');
+  assert.equal(sm.canValidateEquipe(afterReject), true);
+});
+
 test('canUnlock: seulement si verrouillée', () => {
   assert.equal(sm.canUnlock({ locked: true }).ok, true);
   assert.equal(sm.canUnlock({ locked: false }).ok, false);
