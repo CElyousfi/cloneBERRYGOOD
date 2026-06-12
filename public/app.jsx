@@ -10299,7 +10299,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
             const coutMap = {};
-            transportConfig.forEach(t => { coutMap[t.prefix] = t.coutParOuvrier; });
+            transportConfig.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, selectedPeriode || null) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
             const getEqPrefix = (mat) => {
                 if (!mat) return 'NV';
                 const m = mat.toUpperCase().trim();
@@ -21485,7 +21485,7 @@ ${rejetHtml}
 
             // Transport summary
             const coutMap = {};
-            transportEquipes.forEach(t => { coutMap[t.prefix] = t.coutParOuvrier; });
+            transportEquipes.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, currentPeriode) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
             const dailyByEquipe = {};
             periodeRows.forEach(r => {
                 const d = r.jour; const eq = getEqPrefix(r.matricule);
@@ -22053,7 +22053,7 @@ ${rejetHtml}
 
             // Build transport cost per equipe per day
             const coutMap = {};
-            transportEquipes.forEach(t => { coutMap[t.prefix] = t.coutParOuvrier; });
+            transportEquipes.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, currentPeriode) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
 
             // Build worker-level detail per equipe
             const workersByEquipe = {};
@@ -22074,7 +22074,8 @@ ${rejetHtml}
                 const totalWorkerDays = dailyCosts.reduce((s, dc) => s + dc.workers, 0);
                 const totalCout = dailyCosts.reduce((s, dc) => s + dc.cout, 0);
                 const workerList = Object.values(workersByEquipe[t.prefix] || {}).sort((a, b) => b.jh - a.jh);
-                return { ...t, dailyCosts, totalWorkerDays, totalCout, workerList };
+                const coutResolu = coutMap[t.prefix] || 0;
+                return { ...t, coutResolu, dailyCosts, totalWorkerDays, totalCout, workerList };
             });
 
             const grandTotalCout = equipeTransport.reduce((s, e) => s + e.totalCout, 0);
@@ -22127,8 +22128,8 @@ ${rejetHtml}
                                 {equipeTransport.map(e => (
                                     <tr key={e.prefix}>
                                         <td><strong style={{color:'var(--blue)',cursor:'pointer',textDecoration:'underline'}}
-                                            onClick={() => setWorkerPopup({ equipe: e.equipe, caporal: e.caporal, cout: e.coutParOuvrier, workers: e.workerList || [] })}>{e.equipe}</strong></td>
-                                        <td style={{color:'var(--gray-500)'}}>{e.coutParOuvrier}</td>
+                                            onClick={() => setWorkerPopup({ equipe: e.equipe, caporal: e.caporal, cout: e.coutResolu, workers: e.workerList || [] })}>{e.equipe}</strong></td>
+                                        <td style={{color:'var(--gray-500)'}}>{e.coutResolu}</td>
                                         {e.dailyCosts.map(dc => (
                                             <td key={dc.date} style={{textAlign:'center',fontSize:10}}>
                                                 {dc.workers > 0 ? (
