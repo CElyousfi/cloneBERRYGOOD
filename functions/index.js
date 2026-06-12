@@ -1574,27 +1574,35 @@ exports.onBugReportUpdate = functions
       console.warn("[onBugReportUpdate] lecture users/" + reporterUid + " échouée:", uErr.message);
     }
 
+    // 1. Notifier le REPORTER (celui qui a signalé) — best-effort, jamais throw.
     if (phone) {
-      // Canal WhatsApp — best-effort, ne jamais throw.
       try {
         await whatsappService.sendTextMessage(phone, msg);
       } catch (waErr) {
         console.warn("[onBugReportUpdate] notif WhatsApp reporter échouée:", waErr.message);
       }
-      return null;
+    } else {
+      // Pas de WhatsApp reporter (numéro absent ou désactivé) → pas de notif reporter.
+      // Décision Omar (2026-06-12) : « WhatsApp seulement, pas de collection in-app ».
+      // Le signalement reste consultable côté admin bugs.
+      console.info(
+        "[onBugReportUpdate] bug " + context.params.id + " résolu — reporter " + reporterUid +
+        " sans WhatsApp activé : pas de notif reporter (décision WhatsApp-seul)."
+      );
     }
 
-    // Pas de WhatsApp (numéro absent ou désactivé) → AUCUNE notification.
-    // Décision Omar (2026-06-12) : « WhatsApp seulement, pas de collection in-app ».
-    // On ne crée donc pas de collection `notifications`/`user_notifications` ;
-    // le panneau Notifications (/api/notifications) reste calculé par PROFIL depuis
-    // les collections métier et n'a pas de canal uid-scoppé. Si le reporter n'a pas
-    // activé WhatsApp, le signalement reste consultable côté admin bugs — on log
-    // simplement l'info, sans inventer de mécanisme.
-    console.info(
-      "[onBugReportUpdate] bug " + context.params.id + " résolu — reporter " + reporterUid +
-      " sans WhatsApp activé : pas de notif (décision WhatsApp-seul). Visible dans l'admin bugs."
-    );
+    // 2. Notifier le DG (Omar) — résumé de résolution, SYMÉTRIQUE de la soumission
+    //    (onBugReportCreate notifie déjà le DG à la création de chaque bug). Best-effort.
+    //    Dédup : si le reporter EST le DG (même numéro), on n'envoie pas 2× le même bug.
+    try {
+      const dgMsg = bugTriage.buildResolvedDGMessage(after, idCourt);
+      const dgRecipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+      const targets = (dgRecipients || []).filter((r) => r && r.phone && (!phone || r.phone !== phone));
+      await Promise.all(targets.map((r) => whatsappService.sendTextMessage(r.phone, dgMsg)));
+    } catch (dgErr) {
+      console.warn("[onBugReportUpdate] notif WhatsApp DG échouée:", dgErr.message);
+    }
+
     return null;
   });
 

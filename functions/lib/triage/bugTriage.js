@@ -120,6 +120,29 @@ function buildResolvedMessage(after, idCourt) {
 }
 
 /**
+ * Message WhatsApp destiné au DG résumant la résolution d'un bug.
+ * Symétrique de la notif de soumission (onBugReportCreate notifie déjà le DG).
+ * @param {object} after document bug_reports après passage en 'resolved'
+ * @param {string} idCourt identifiant court du bug
+ * @returns {string}
+ */
+function buildResolvedDGMessage(after, idCourt) {
+  const a = after || {};
+  const sevLabel = a.severity === 'critical' ? '🔴 CRITIQUE'
+    : a.severity === 'high' ? '🟠 IMPORTANT'
+    : a.severity === 'medium' ? '🟡 MOYEN'
+    : a.severity === 'low' ? '🟢 MINEUR'
+    : '⚪️ (non triée)';
+  const who = (a.reporter && a.reporter.name) || 'un utilisateur';
+  const sum = a.summary || a.description || '(sans résumé)';
+  const note = a.resolution_note ? ('\nRésolution : ' + a.resolution_note) : '';
+  return '✅ Bug #' + idCourt + ' RÉSOLU — ' + sevLabel + '\n'
+    + 'Écran : ' + (a.screen || a.module || '—') + '\n'
+    + 'Signalé par : ' + who + '\n'
+    + sum + note;
+}
+
+/**
  * Construit le bloc « BUGS RÉCENTS » injecté dans le system prompt.
  * @param {Array<{id?: string, module?: string, summary?: string}>} recentBugs
  * @returns {string}
@@ -268,6 +291,7 @@ module.exports = {
   shortId,
   shouldNotifyResolved,
   buildResolvedMessage,
+  buildResolvedDGMessage,
   buildRecentBugsBlock,
   buildSystemPrompt,
   buildTextBlock,
