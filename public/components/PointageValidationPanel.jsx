@@ -367,13 +367,26 @@
         rows.push(React.createElement('div', { key: 'wait', style: { fontSize: 12, color: '#b06000', fontWeight: 600 } },
           '⏳ Soumis — en attente de validation du Chef.'));
       }
-      // Chef de LA ferme : valider
+      // Chef de LA ferme : valider OU renvoyer au RH (avec motif).
       if (chefFerme === ferme && submitState === 'soumis') {
+        var rejK = ferme + '|__chefreject__';
+        var rejMotif = motifs[rejK] || '';
         rows.push(React.createElement('button', {
           key: 'chef', disabled: !!busy,
           onClick: function () { post('chef-validate-ferme', { date: date, ferme: ferme }, ferme + '|chef'); },
           style: { padding: '10px 16px', background: '#137333', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
         }, '✅ Valider le pointage de la ferme'));
+        // Champ motif (réutilise le pattern motif des équipes) + bouton renvoi.
+        rows.push(React.createElement('input', {
+          key: 'rejmotif', type: 'text', placeholder: 'Motif du renvoi (optionnel)', value: rejMotif,
+          onChange: function (e) { setMotif(ferme, '__chefreject__', e.target.value); },
+          style: { padding: '8px 12px', border: '1px solid var(--gray-200)', borderRadius: 8, fontSize: 12, minWidth: 200, flex: '1 1 200px' }
+        }));
+        rows.push(React.createElement('button', {
+          key: 'chefreject', disabled: !!busy,
+          onClick: function () { post('chef-reject-ferme', { date: date, ferme: ferme, motif: rejMotif }, ferme + '|chefreject'); },
+          style: { padding: '10px 16px', background: '#b3261e', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }
+        }, '🔴 Renvoyer au RH'));
       }
       // Chef de LA ferme : déjà validé
       if (chefFerme === ferme && (submitState === 'valide' || locked)) {

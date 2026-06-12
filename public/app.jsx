@@ -6852,6 +6852,20 @@
                 </div>
             );
         }
+        // Exposé pour PointageValidationView (composant séparé) qui rend
+        // PointageTab en mode validation, scopé à la ferme du profil.
+        window.PointageTab = PointageTab;
+
+        // Adaptateur app-scope → composant séparé window.PointageValidationView.
+        // Le menu « Validation du pointage » rend ceci (nouveau workflow), plus
+        // PointageTab(isValidation) directement.
+        function PointageValidationViewWrapper(props) {
+            const View = window.PointageValidationView;
+            if (!View) {
+                return <div style={{padding:24,color:'var(--red)'}}>Module Validation du pointage indisponible.</div>;
+            }
+            return <View {...props} />;
+        }
 
         // ===================== RECOLTE TAB =====================
         function RecolteTab({ data, farmFilter, avoSubFilter, currentProfile }) {
@@ -63508,7 +63522,8 @@ ${rejetHtml}
                                 <MesTachesWidget currentProfile={currentProfile} />
                                 {renderTab('dashboard', DashboardTab, { data, farmFilter, avoSubFilter, currentProfile, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Dashboard')}
                                 {renderTab('pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Pointage')}
-                                {renderTab('validation_pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile, isValidation: true }, 'Validation du pointage')}
+                                {/* Validation du pointage : nouveau workflow par équipe/ferme (PointageValidationView, composant séparé). Scoping ferme selon profil. */}
+                                {renderTab('validation_pointage', PointageValidationViewWrapper, { data, avoSubFilter, currentProfile }, 'Validation du pointage')}
                                 {renderTab('pointage_divers', PointageDiversTab, { currentProfile }, 'Pointage Divers')}
                                 {renderTab('recolte', RecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Récolte')}
                                 {renderTab('cout_recolte', CoutRecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Coût Récolte')}

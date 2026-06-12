@@ -66,6 +66,7 @@ const COMPONENT_SENTINELS = {
   "BugReportButton.js": "window.BugReportButton",
   "BugReportsAdmin.js": "window.BugReportsAdmin",
   "PointageValidationPanel.js": "window.PointageValidationPanel",
+  "PointageValidationView.js": "window.PointageValidationView",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));
