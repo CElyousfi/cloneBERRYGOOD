@@ -338,3 +338,10 @@ existante (voir functions/ pour le endpoint et le token) :
 Format : messages courts, lisibles sur mobile, en français.
 Le numéro d'Omar et la config WhatsApp sont dans le projet (phone number ID
 1040240149168335). Si le token/endpoint n'est pas trouvé, demander à Omar.
+
+## Règle bug reports automatiques
+
+Au début de chaque session, vérifier Firestore bug_reports où status="qualified"
+ET severity in ["critical","high"]. Les traiter AVANT les autres items du backlog.
+Quand le fix est déployé : status="resolved" + noter le commit/PR. Les bugs
+"medium"/"low" sont traités quand le backlog haute priorité est vide.
