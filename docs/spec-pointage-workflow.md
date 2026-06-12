@@ -67,13 +67,13 @@ Le menu **« Validation du pointage »** rend aujourd'hui l'**ancien** composant
 - Vérifier seulement que `chef-validate-ferme` accepte bien les 4 profils chef (incl. `chef_f1`/`chef_f5`/`chef_bahia`) — la fonction `fermeForChefProfile`/`canChefValidate` (`pointageValidationSM`) doit mapper les 4.
 - Si on ajoute un « rejet chef » (§5), prévoir une action `chef-reject-ferme` (soumis→brouillon, rouvre la saisie RH) — **gated, à décider**.
 
-## 5. Points à TRANCHER (Omar) — gated
+## 5. Décisions (TRANCHÉES par Omar 2026-06-12)
 
-1. **Rejet chef** : le chef peut-il *renvoyer au RH* (soumis→brouillon) avec un motif, ou seulement *valider* ? (Si rejet : nouvelle action backend + deploy functions.)
-2. **Caporal** : l'ancien workflow avait un visa Caporal (avec pièce jointe scan papier). Le nouveau workflow l'abandonne-t-il complètement, ou le caporal garde-t-il un rôle (ex. soumettre à la place du RH) ?
-3. **Chef = lecture seule sur les équipes ?** Le chef valide la ferme en bloc, ou peut-il rejeter une équipe précise (revalider au niveau équipe) ?
-4. **Pièce jointe** (scan pointage papier) : conservée dans le nouveau workflow, et à quelle étape (RH submit ? chef valide ?) ?
-5. **Sort de l'ancien `/api/validation` visa-chain** : on le débranche juste de l'UI (ce lot), ou on planifie sa suppression complète (lot suivant, après audit des appelants) ?
+1. **Rejet chef → OUI.** Le chef peut *valider* OU *renvoyer au RH avec un motif* (soumis→brouillon, rouvre la saisie RH). → nouvelle action backend **`chef-reject-ferme`** + **deploy functions (gated)**.
+2. **Caporal → ABANDONNÉ.** Plus d'étape caporal. Workflow = RH/DG valident équipes + divers → soumettent → Chef de la ferme valide (ou rejette).
+3. **Granularité chef → FERME EN BLOC.** Le RH valide/rejette par équipe ; le chef donne UN visa final sur toute la ferme (pas de rejet par équipe côté chef).
+4. **Pièce jointe (scan papier) → ABANDONNÉE.** Validation 100 % in-app, aucun scan obligatoire.
+5. **Ancien `/api/validation` visa-chain** : débranché de l'UI dans ce lot ; **suppression du code = lot ultérieur** (après audit qu'aucun autre écran ne l'appelle).
 
 ## 6. Plan d'implémentation (après validation du spec)
 1. **(non-gated)** Nav : ajouter `validation_pointage` à chef_f1/chef_f5 si absent ; câbler le menu sur `PointageValidationView` (nouveau wrapper) ; `farmFilter` selon profil.
