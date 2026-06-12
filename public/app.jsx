@@ -5792,8 +5792,12 @@
                 const n = String(s).match(/\d+/);
                 return n ? parseInt(n[0], 10) : 0;
             };
+            // Le registre ouvriers_registry est keyé par matricule NUMÉRIQUE (ex. "10764"),
+            // alors que le pointage utilise des matricules À LETTRES (ex. "MMG10764").
+            // numKey extrait la partie numérique pour faire correspondre les deux.
+            const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             // Statut déclaré d'un matricule (défensif : absent → non déclaré).
-            const isDeclareForMat = (mat) => !!(ouvriersRegistry[mat] && ouvriersRegistry[mat].declare);
+            const isDeclareForMat = (mat) => { const r = ouvriersRegistry[numKey(mat)]; return !!(r && r.declare); };
 
             const handleDateChange = (d) => { setSelectedDate(d); setLoading(true); loadData(d); loadVisaStatus(d); };
 
@@ -6707,11 +6711,11 @@
                         const hs25 = r.hs25 || 0, hs50 = r.hs50 || 0, hs100 = r.hs100 || 0;
                         // Modèle paie complet (source unique window.PaieUtils). Cas défensif : ouvrier
                         // absent du registre → non déclaré, ancienneté 0, prime fonction 0 (pas de crash).
-                        const reg = ouvriersRegistry[r.matricule] || {};
+                        const reg = ouvriersRegistry[numKey(r.matricule)] || {};
                         const declare = !!reg.declare;
                         const baselineDate = reg.baselineDate || '';
                         const baselineJours = Number(reg.baselineJours || 0);
-                        const primeFonctionJour = Number(reg.primeFonction || 0);
+                        const primeFonctionJour = Number(reg.primeFonctionJournaliere || 0);
                         const pt = paieDistinctDays.get(r.matricule);
                         let joursDepuisBaseline = 0;
                         if (pt && pt.joursPointes) {
@@ -23578,11 +23582,44 @@ ${rejetHtml}
             }, [periodStart, periodEnd]);
 
             const rows = useMemo(() => {
-                const mats = new Set([...Object.keys(registry), ...pointageMap.keys()]);
+                // ouvriers_registry est keyé NUMÉRIQUE (doc.id) alors que le pointage
+                // (pointageMap) est keyé par matricule À LETTRES (ex. "MMG10764").
+                // numKey extrait la partie numérique → clé canonique commune. On
+                // dédoublonne la liste sur cette clé : un même ouvrier présent dans les
+                // deux keyspaces (registre numérique + pointage à lettres) ne doit
+                // apparaître qu'une seule fois. On garde le matricule de POINTAGE pour
+                // l'affichage quand il existe (lisible), sinon la clé numérique.
+                const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
+                // canon → { registryKey, displayMat, pt }
+                const byCanon = new Map();
+                const ensure = (canon) => {
+                    let e = byCanon.get(canon);
+                    if (!e) { e = { registryKey: null, displayMat: null, pt: null }; byCanon.set(canon, e); }
+                    return e;
+                };
+                // Registre : clés numériques.
+                Object.keys(registry).forEach(k => {
+                    const canon = numKey(k);
+                    if (!canon) return;
+                    const e = ensure(canon);
+                    e.registryKey = k;
+                    if (!e.displayMat) e.displayMat = k;
+                });
+                // Pointage : matricules à lettres → on privilégie ce matricule pour l'affichage.
+                pointageMap.forEach((pt, mat) => {
+                    const canon = numKey(mat);
+                    if (!canon) return;
+                    const e = ensure(canon);
+                    e.pt = pt;
+                    e.displayMat = mat; // matricule pointage lisible prioritaire
+                    if (e.registryKey == null && registry[canon]) e.registryKey = canon;
+                });
                 const list = [];
-                mats.forEach(mat => {
-                    const r = registry[mat] || {};
-                    const pt = pointageMap.get(mat) || { joursPointes: new Set(), nom: '' };
+                byCanon.forEach((e, canon) => {
+                    // Lookup registre normalisé : la clé registre est numérique (canon).
+                    const r = registry[e.registryKey != null ? e.registryKey : canon] || {};
+                    const pt = e.pt || { joursPointes: new Set(), nom: '' };
+                    const matricule = e.displayMat || canon;
                     const baselineDate = r.baselineDate || '';
                     const baselineJours = Number(r.baselineJours || 0);
                     let joursDepuisBaseline = 0;
@@ -23593,9 +23630,10 @@ ${rejetHtml}
                     });
                     const anciennete = baselineJours + joursDepuisBaseline;
                     const declare = !!r.declare;
-                    const paie = calculerPaieOuvrier({ declare, joursTravailles: joursPeriode, anciennete, baremes });
-                    list.push({ matricule: mat, nom: r.nom || pt.nom || '', declare,
-                        primeFonction: Number(r.primeFonction || 0),
+                    const paie = calculerPaieOuvrier({ declare, joursTravailles: joursPeriode, anciennete, baremes,
+                        primeFonctionJour: Number(r.primeFonctionJournaliere || 0) });
+                    list.push({ matricule, nom: r.nom || pt.nom || '', declare,
+                        primeFonctionJournaliere: Number(r.primeFonctionJournaliere || 0),
                         baselineJours, baselineDate, joursDepuisBaseline, anciennete, joursPeriode, paie });
                 });
                 list.sort((a, b) => (b.paie.coutEmployeur || 0) - (a.paie.coutEmployeur || 0));
@@ -23622,13 +23660,20 @@ ${rejetHtml}
                 return acc;
             }, { net: 0, brut: 0, prime: 0, charges: 0, cotis: 0, cout: 0 }), [filteredRows]);
 
+            // ouvriers_registry est keyé NUMÉRIQUE (doc.id) alors que les matricules de
+            // pointage sont À LETTRES. numKey extrait la clé numérique canonique : on
+            // l'utilise pour TOUTES les écritures registre (doc id) afin de ne pas créer
+            // de doc parasite à lettres en doublon. Idempotent sur une clé déjà numérique.
+            const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
+
             const toggleDeclare = async (matricule, nextVal) => {
                 const db = firebase.firestore();
-                const prev = registry[matricule] || { matricule };
-                setRegistry(prevReg => ({ ...prevReg, [matricule]: { ...prev, declare: nextVal, declareSource: 'manual' } }));
+                const docId = numKey(matricule);
+                const prev = registry[docId] || { matricule: docId };
+                setRegistry(prevReg => ({ ...prevReg, [docId]: { ...prev, declare: nextVal, declareSource: 'manual' } }));
                 try {
-                    await db.collection('ouvriers_registry').doc(matricule).set({
-                        matricule, declare: nextVal, declareSource: 'manual',
+                    await db.collection('ouvriers_registry').doc(docId).set({
+                        matricule: docId, declare: nextVal, declareSource: 'manual',
                         nom: prev.nom || pointageMap.get(matricule)?.nom || '',
                         updatedAt: Date.now(),
                     }, { merge: true });
@@ -23636,27 +23681,29 @@ ${rejetHtml}
                     __PaieDataCache.invalidate('paie:registry');
                 } catch (e) {
                     console.error('toggleDeclare:', e);
-                    setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
+                    setRegistry(prevReg => ({ ...prevReg, [docId]: prev }));
                     alert('Erreur enregistrement: ' + e.message);
                 }
             };
 
-            // Prime de fonction (DH/jour) par ouvrier — persistée dans ouvriers_registry.
+            // Prime de fonction (DH/jour) par ouvrier — persistée dans ouvriers_registry
+            // sous le champ primeFonctionJournaliere (relu par le calcul de paie).
             const savePrimeFonction = async (matricule, val) => {
                 const db = firebase.firestore();
-                const prev = registry[matricule] || { matricule };
+                const docId = numKey(matricule);
+                const prev = registry[docId] || { matricule: docId };
                 const num = Number(val) || 0;
-                setRegistry(prevReg => ({ ...prevReg, [matricule]: { ...prev, primeFonction: num } }));
+                setRegistry(prevReg => ({ ...prevReg, [docId]: { ...prev, primeFonctionJournaliere: num } }));
                 try {
-                    await db.collection('ouvriers_registry').doc(matricule).set({
-                        matricule, primeFonction: num,
+                    await db.collection('ouvriers_registry').doc(docId).set({
+                        matricule: docId, primeFonctionJournaliere: num,
                         nom: prev.nom || pointageMap.get(matricule)?.nom || '',
                         updatedAt: Date.now(),
                     }, { merge: true });
                     __PaieDataCache.invalidate('paie:registry');
                 } catch (e) {
                     console.error('savePrimeFonction:', e);
-                    setRegistry(prevReg => ({ ...prevReg, [matricule]: prev }));
+                    setRegistry(prevReg => ({ ...prevReg, [docId]: prev }));
                     alert('Erreur enregistrement: ' + e.message);
                 }
             };
@@ -23689,11 +23736,13 @@ ${rejetHtml}
                             const mat = String(row['Matricule'] || row['matricule'] || row['MATRICULE'] || '').trim();
                             if (!mat) continue;
                             const nom = String(row['Nom'] || row['NOM'] || row['nom'] || '').trim();
-                            const ref = db.collection('ouvriers_registry').doc(mat);
-                            const payload = { matricule: mat, declare: true, declareSource: 'import', updatedAt: Date.now() };
+                            // Doc id NUMÉRIQUE (collection keyée numérique) : évite un doc à lettres en doublon.
+                            const docId = numKey(mat);
+                            const ref = db.collection('ouvriers_registry').doc(docId);
+                            const payload = { matricule: docId, declare: true, declareSource: 'import', updatedAt: Date.now() };
                             if (nom) payload.nom = nom;
                             batch.set(ref, payload, { merge: true });
-                            newRegistry[mat] = { ...(newRegistry[mat] || {}), ...payload };
+                            newRegistry[docId] = { ...(newRegistry[docId] || {}), ...payload };
                             count++; ok++;
                             if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
                         }
@@ -23730,11 +23779,13 @@ ${rejetHtml}
                             const jours = Number(row['JoursTravailles'] || row['Jours'] || row['joursTravailles'] || row['jours'] || 0);
                             const cutoff = parseDateCell(row['DateCoupure'] || row['dateCoupure'] || row['Date'] || '', defaultBaselineDate);
                             const nom = String(row['Nom'] || row['nom'] || '').trim();
-                            const ref = db.collection('ouvriers_registry').doc(mat);
-                            const payload = { matricule: mat, baselineJours: jours, baselineDate: cutoff, updatedAt: Date.now() };
+                            // Doc id NUMÉRIQUE (collection keyée numérique) : évite un doc à lettres en doublon.
+                            const docId = numKey(mat);
+                            const ref = db.collection('ouvriers_registry').doc(docId);
+                            const payload = { matricule: docId, baselineJours: jours, baselineDate: cutoff, updatedAt: Date.now() };
                             if (nom) payload.nom = nom;
                             batch.set(ref, payload, { merge: true });
-                            newRegistry[mat] = { ...(newRegistry[mat] || {}), ...payload };
+                            newRegistry[docId] = { ...(newRegistry[docId] || {}), ...payload };
                             count++; ok++;
                             if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
                         }
@@ -23844,8 +23895,8 @@ ${rejetHtml}
                                                     <input type="checkbox" checked={r.declare} onChange={e => toggleDeclare(r.matricule, e.target.checked)} />
                                                 </td>
                                                 <td style={{textAlign:'right'}}>
-                                                    <input type="number" step="0.5" min="0" defaultValue={r.primeFonction || 0}
-                                                        onBlur={e => { const v = Number(e.target.value) || 0; if (v !== (r.primeFonction || 0)) savePrimeFonction(r.matricule, v); }}
+                                                    <input type="number" step="0.5" min="0" defaultValue={r.primeFonctionJournaliere || 0}
+                                                        onBlur={e => { const v = Number(e.target.value) || 0; if (v !== (r.primeFonctionJournaliere || 0)) savePrimeFonction(r.matricule, v); }}
                                                         style={{width:60, textAlign:'right', padding:'2px 4px', borderRadius:4, border:'1px solid var(--gray-200)', fontSize:10}} />
                                                 </td>
                                                 <td style={{textAlign:'right'}}>{fmtInt(r.baselineJours)}</td>
