@@ -15,21 +15,35 @@ function safeCacheKey(cacheKey) {
 async function withCache(cacheKey, ttlMs, fetchFn, shouldCache) {
   const safeKey = safeCacheKey(cacheKey);
   const docRef = db.collection("api_cache").doc(safeKey);
+  // On conserve la dernière valeur cachée (même expirée) pour pouvoir s'y rabattre
+  // si la recompute renvoie une réponse DÉGRADÉE (cf. shouldCache).
+  let stalePayload = null;
   try {
     const snap = await docRef.get();
     if (snap.exists) {
       const d = snap.data();
+      if (d._payload) { try { stalePayload = JSON.parse(d._payload); } catch (e) { stalePayload = null; } }
       if (Date.now() - (d._cachedAt || 0) < ttlMs) {
-        const result = d._payload ? JSON.parse(d._payload) : d;
+        const result = stalePayload || d;
         result.cached = true;
         return result;
       }
     }
   } catch (e) { /* cache miss, continue */ }
   const result = await fetchFn();
-  // shouldCache(result) optionnel : skip cache write si la réponse est dégradée (ex: enrichissement échoué).
-  if (typeof shouldCache !== "function" || shouldCache(result)) {
+  // shouldCache(result) optionnel : la réponse est-elle saine (vs dégradée, ex: enrichissement échoué) ?
+  const ok = typeof shouldCache !== "function" || shouldCache(result);
+  if (ok) {
     docRef.set({ _payload: JSON.stringify(result), _cachedAt: Date.now() }).catch(() => {});
+    return result;
+  }
+  // Réponse DÉGRADÉE : ne pas la cacher ET ne pas la servir si on a une dernière
+  // valeur cachée SAINE — on sert le stale-good (évite, ex., un graphe Coût Récolte
+  // vide quand l'enrichissement kg de recolte-equipes échoue ponctuellement).
+  if (stalePayload && (typeof shouldCache !== "function" || shouldCache(stalePayload))) {
+    stalePayload.cached = true;
+    stalePayload.staleGoodFallback = true;
+    return stalePayload;
   }
   return result;
 }
