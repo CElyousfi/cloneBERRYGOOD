@@ -1584,16 +1584,16 @@ exports.onBugReportUpdate = functions
       return null;
     }
 
-    // Pas de WhatsApp (numéro absent ou désactivé) → fallback in-app.
-    // AUCUN mécanisme de notification in-app scoppé par uid n'existe :
-    // le panneau Notifications (/api/notifications) est calculé dynamiquement
-    // par PROFIL depuis les collections métier, il ne lit aucune collection
-    // générique `notifications`/`user_notifications`. On NE l'invente pas ici
-    // (cf. consigne) : on log un warning détaillé et on remonte à l'archi.
-    console.warn(
+    // Pas de WhatsApp (numéro absent ou désactivé) → AUCUNE notification.
+    // Décision Omar (2026-06-12) : « WhatsApp seulement, pas de collection in-app ».
+    // On ne crée donc pas de collection `notifications`/`user_notifications` ;
+    // le panneau Notifications (/api/notifications) reste calculé par PROFIL depuis
+    // les collections métier et n'a pas de canal uid-scoppé. Si le reporter n'a pas
+    // activé WhatsApp, le signalement reste consultable côté admin bugs — on log
+    // simplement l'info, sans inventer de mécanisme.
+    console.info(
       "[onBugReportUpdate] bug " + context.params.id + " résolu — reporter " + reporterUid +
-      " sans WhatsApp activé et AUCUN mécanisme in-app uid-scoppé disponible. " +
-      "Notification non délivrée. À trancher avec l'architecte (cf. RENDU)."
+      " sans WhatsApp activé : pas de notif (décision WhatsApp-seul). Visible dans l'admin bugs."
     );
     return null;
   });
