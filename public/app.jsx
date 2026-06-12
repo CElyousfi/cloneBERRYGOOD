@@ -9344,7 +9344,7 @@
                                                 const hCha = totalBarH * pCha;
                                                 return (
                                                     <div key={i} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(dhKgNet || null),height:14}}>{dhKgNet > 0 ? dhKgNet.toFixed(1) : '-'}</span>
+                                                        <span style={{fontSize:11,fontWeight:700,color:dhColor(dhKgNet || null),height:14,lineHeight:'14px',whiteSpace:'nowrap'}}>{dhKgNet > 0 ? dhKgNet.toFixed(1) : '-'}</span>
                                                         {/* Bande de tracé fixe (BAR_H) — la barre s'aligne en bas, partagée avec l'overlay courbe Kg/ha */}
                                                         <div style={{width:'100%',height:BAR_H,display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
                                                             <div style={{width:'100%',maxWidth:48,display:'flex',flexDirection:'column',justifyContent:'flex-end',borderRadius:'6px 6px 0 0',overflow:'hidden',border:isToday?'2px solid var(--berry)':'none'}}>
@@ -9357,9 +9357,9 @@
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
-                                                        <span style={{fontSize:9,color:isToday?'var(--berry)':'var(--gray-500)',fontWeight:isToday?700:400}}>{d.label}</span>
-                                                        <span style={{fontSize:8,color:'var(--gray-400)'}}>{d.nb} ouv.</span>
+                                                        <span style={{fontSize:8,color:'var(--gray-400)',height:11,lineHeight:'11px',whiteSpace:'nowrap'}}>{d.kg > 0 ? fmt(d.kg) + ' kg' : ''}</span>
+                                                        <span style={{fontSize:9,color:isToday?'var(--berry)':'var(--gray-500)',fontWeight:isToday?700:400,height:13,lineHeight:'13px',whiteSpace:'nowrap'}}>{d.label}</span>
+                                                        <span style={{fontSize:8,color:'var(--gray-400)',height:11,lineHeight:'11px',whiteSpace:'nowrap'}}>{d.nb} ouv.</span>
                                                     </div>
                                                 );
                                             })}
