@@ -17,7 +17,8 @@ const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
 const { resolveCallerRole } = require("./lib/auth/resolveRole");
 const { validateBugReport } = require("./lib/bugReports/validateBugReport");
-const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus } = require("./lib/bugReports/bugStatus");
+const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus, isFilterableStatus } = require("./lib/bugReports/bugStatus");
+const bugTriage = require("./lib/triage/bugTriage");
 const stockMovementGuard = require("./lib/stock/movementGuard");
 const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
@@ -1306,7 +1307,7 @@ exports.bugReports = functions
         try {
           const statusFilter = typeof req.query.status === "string" ? req.query.status : "";
           let query = db_firestore.collection("bug_reports");
-          if (statusFilter && isValidStatus(statusFilter)) {
+          if (statusFilter && isFilterableStatus(statusFilter)) {
             query = query.where("status", "==", statusFilter);
           }
           const snap = await query.get();
@@ -1321,6 +1322,15 @@ exports.bugReports = functions
               screen: d.screen || "",
               device: d.device || null,
               status: d.status || "nouveau",
+              // Champs posés par le triage IA (onBugReportCreate). Absents tant
+              // que le doc n'est pas qualifié (status reste 'nouveau').
+              severity: d.severity || null,
+              module: d.module || null,
+              summary: d.summary || null,
+              suggestedAction: d.suggestedAction || null,
+              isDuplicate: typeof d.isDuplicate === "boolean" ? d.isDuplicate : null,
+              duplicateOf: d.duplicateOf || null,
+              triaged_at: d.triaged_at && typeof d.triaged_at.toMillis === "function" ? d.triaged_at.toMillis() : null,
               created_at: d.created_at ? d.created_at.toMillis() : null,
               updated_at: d.updated_at ? d.updated_at.toMillis() : null,
               history: Array.isArray(d.history) ? d.history.map((h) => ({
@@ -1386,6 +1396,124 @@ exports.bugReports = functions
     }
 
     return res.status(400).json({ success: false, error: "Action inconnue ou méthode invalide" });
+  });
+
+/**
+ * onBugReportCreate — trigger Firestore (fire-and-forget) qui qualifie
+ * automatiquement un bug report via Claude (Sonnet), en async, sans bloquer la
+ * soumission HTTP (exports.bugReports répond déjà au client).
+ *
+ * Flux :
+ *  1. Lire le doc créé. Idempotence : on ne traite que status === 'nouveau'.
+ *  2. Construire le contexte « BUGS RÉCENTS » (≤ 20 derniers docs 'qualified').
+ *  3. Appeler Claude (tool_use forcé). 1 tentative + 1 retry court.
+ *  4. Succès → update(severity, module, summary, suggestedAction, isDuplicate,
+ *     duplicateOf, status:'qualified', triaged_at, triaged_model).
+ *  5. severity critical|high → WhatsApp à Omar (DG) via whatsappService.
+ *  6. Échec/timeout Claude → log 'triage_error', le doc reste 'nouveau'
+ *     (aucune perte, l'archi le voit dans la vue admin).
+ *
+ * La clé API est injectée via Secret Manager (ANTHROPIC_API_KEY_TRIAGE),
+ * jamais en clair dans le repo.
+ */
+exports.onBugReportCreate = functions
+  .region("europe-west1")
+  .runWith({ secrets: ["ANTHROPIC_API_KEY_TRIAGE"], timeoutSeconds: 120, memory: "512MB" })
+  .firestore.document("bug_reports/{id}")
+  .onCreate(async (snap, context) => {
+    const data = snap.data() || {};
+
+    // Idempotence : ne traiter qu'un doc fraîchement créé (status 'nouveau').
+    // 'new' toléré comme alias historique.
+    if (data.status !== "nouveau" && data.status !== "new") {
+      return null;
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY_TRIAGE;
+    if (!apiKey) {
+      console.error("[onBugReportCreate] triage_error: ANTHROPIC_API_KEY_TRIAGE manquant — doc reste 'nouveau'");
+      return null;
+    }
+
+    try {
+      // 1. Contexte « BUGS RÉCENTS » : derniers docs déjà qualifiés.
+      let recentBugs = [];
+      try {
+        const recentSnap = await db_firestore
+          .collection("bug_reports")
+          .where("status", "==", "qualified")
+          .orderBy("triaged_at", "desc")
+          .limit(20)
+          .get();
+        recentSnap.forEach((doc) => {
+          const rd = doc.data() || {};
+          recentBugs.push({ id: doc.id, module: rd.module, summary: rd.summary });
+        });
+      } catch (ctxErr) {
+        // Index manquant / collection vide → on continue sans contexte doublon.
+        console.warn("[onBugReportCreate] contexte bugs récents indisponible:", ctxErr.message);
+      }
+
+      // 2. Construire les entrées Claude (helpers purs).
+      const system = bugTriage.buildSystemPrompt(recentBugs);
+      const userContent = bugTriage.buildUserContent(data);
+
+      // 3. Appeler Claude (1 tentative + 1 retry court).
+      const Anthropic = require("@anthropic-ai/sdk");
+      const client = new Anthropic({ apiKey: apiKey });
+
+      let resp = null;
+      try {
+        resp = await bugTriage.callClaude(client, { system: system, userContent: userContent });
+      } catch (firstErr) {
+        console.warn("[onBugReportCreate] 1er appel Claude échoué, retry:", firstErr.message);
+        await new Promise((r) => setTimeout(r, 1500));
+        resp = await bugTriage.callClaude(client, { system: system, userContent: userContent });
+      }
+
+      const triage = bugTriage.parseTriage(resp);
+      if (!triage) {
+        console.error("[onBugReportCreate] triage_error: réponse Claude invalide (pas de tool_use exploitable) — doc reste 'nouveau'", snap.id);
+        return null;
+      }
+
+      // 4. Persister le triage.
+      await snap.ref.update({
+        severity: triage.severity,
+        module: triage.module,
+        summary: triage.summary,
+        suggestedAction: triage.suggestedAction,
+        isDuplicate: triage.isDuplicate,
+        duplicateOf: triage.duplicateOf,
+        status: "qualified",
+        triaged_at: admin.firestore.FieldValue.serverTimestamp(),
+        triaged_model: bugTriage.TRIAGE_MODEL,
+      });
+
+      // 5. WhatsApp à Omar (DG) si critique ou important — best-effort.
+      if (triage.severity === "critical" || triage.severity === "high") {
+        try {
+          const reporter = (data.reporter && data.reporter.name) || "?";
+          const labelSev = triage.severity === "critical" ? "CRITIQUE" : "IMPORTANT";
+          const refId = bugTriage.shortId(snap.id);
+          const msg = "🔴 BUG " + labelSev + " — [" + triage.module + "] : " + triage.summary
+            + ". Signalé par " + reporter + ". Réf #" + refId + ".";
+          const dgRecipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+          await Promise.allSettled(
+            dgRecipients.map((r) => whatsappService.sendTextMessage(r.phone, msg))
+          );
+        } catch (waErr) {
+          console.warn("[onBugReportCreate] notif WhatsApp échouée:", waErr.message);
+        }
+      }
+
+      return null;
+    } catch (err) {
+      // Échec global (Claude down/timeout après retry, etc.) : on NE change pas
+      // le status (reste 'nouveau'), aucune perte. L'archi le voit en vue admin.
+      console.error("[onBugReportCreate] triage_error:", err.message, "— doc", snap.id, "reste 'nouveau'");
+      return null;
+    }
   });
 
 // =============================================

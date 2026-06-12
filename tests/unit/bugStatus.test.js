@@ -4,7 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   BUG_STATUSES,
+  FILTERABLE_STATUSES,
   isValidStatus,
+  isFilterableStatus,
   isAdminProfile,
   validateStatusUpdate,
   sortReportsByCreatedDesc,
@@ -25,6 +27,22 @@ test('isValidStatus rejette les statuts inconnus / non-string', () => {
   assert.strictEqual(isValidStatus(''), false);
   assert.strictEqual(isValidStatus(null), false);
   assert.strictEqual(isValidStatus(42), false);
+});
+
+test('isValidStatus rejette qualified (pas une cible de transition manuelle)', () => {
+  assert.strictEqual(isValidStatus('qualified'), false);
+});
+
+test('FILTERABLE_STATUSES inclut qualified', () => {
+  assert.deepStrictEqual(FILTERABLE_STATUSES, ['nouveau', 'qualified', 'en_cours', 'resolu']);
+});
+
+test('isFilterableStatus accepte qualified et les statuts manuels', () => {
+  assert.strictEqual(isFilterableStatus('qualified'), true);
+  assert.strictEqual(isFilterableStatus('nouveau'), true);
+  assert.strictEqual(isFilterableStatus('resolu'), true);
+  assert.strictEqual(isFilterableStatus('fini'), false);
+  assert.strictEqual(isFilterableStatus(null), false);
 });
 
 test('isAdminProfile autorise dg et rh uniquement', () => {
