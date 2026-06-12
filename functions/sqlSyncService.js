@@ -402,22 +402,17 @@ async function syncPointage(db) {
   // =============================================
   await archiveQuinzaines(db, allPeriodes, periodes);
 
-  // Merge allPeriodes with archived periodes
-  const archiveSnaps = await db_firestore.collection("quinzaine_archive").listDocuments();
-  const archivedPeriodes = archiveSnaps.map(d => d.id);
-  const mergedAllPeriodes = [...new Set([...allPeriodes, ...archivedPeriodes])]
-    .sort((a, b) => {
-      const na = parseInt((a.match(/\d+/) || [0])[0], 10);
-      const nb = parseInt((b.match(/\d+/) || [0])[0], 10);
-      return nb - na;
-    });
+  // Reconstruire le meta depuis l'ENSEMBLE des daily docs persistés (pas seulement
+  // la fenêtre SQL 45 jours courante). Sinon, quand BR_Pointage ne renvoie plus
+  // qu'une quinzaine récente (ex. depuis l'arrêt d'alimentation du 1er juin), les
+  // quinzaines plus anciennes encore présentes dans les daily docs (ex. Quinzaine
+  // 21, 22) disparaissent de periodes/periodeMap/allPeriodes → invisibles dans le
+  // menu Quinzaine alors que leurs données existent. rebuildPointageMetaFromMirror
+  // fait l'union daily docs ∪ archive et écrit le meta canonique complet.
+  // (bug rCbmEuXS-sibling "Quinzaines 21 et 22 ne s'affichent pas" — Hassan SABRI)
+  await rebuildPointageMetaFromMirror();
 
-  // Update meta with merged allPeriodes
-  await db_firestore.collection("sql_mirror_pointage_meta").doc("config").update({
-    allPeriodes: mergedAllPeriodes,
-  });
-
-  console.log(`[Sync] BR_Pointage: ${rows.length} rows → ${dateEntries.length} daily docs, ${workerEntries.length} worker docs, ${periodes.length} periodes, ${archivedPeriodes.length} archived`);
+  console.log(`[Sync] BR_Pointage: ${rows.length} rows → ${dateEntries.length} daily docs, ${workerEntries.length} worker docs, ${periodes.length} periodes (fenêtre SQL) → meta reconstruit depuis le mirror complet`);
   return rows.length;
 }
 
