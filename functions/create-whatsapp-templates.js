@@ -96,6 +96,13 @@ const TEMPLATES = [
     examples: ["BDC-2026-0042", "45000 MAD", "2 jours"],
   },
   {
+    name: "sentinel_intrusion_img",
+    headerType: "IMAGE",
+    body: "🚨 Alerte intrusion — {{1}}\n📷 Caméra : {{2}}\n🕐 Heure : {{3}}\nPersonne détectée la nuit. Vérifiez le dashboard Sentinel.",
+    // ordre : {{1}}=ferme, {{2}}=caméra, {{3}}=heure
+    examples: ["F5", "Entrée Nord", "02:14"],
+  },
+  {
     name: "production_digest_dg",
     body: "SmartBerry — Production {{1}}\n\n{{2}}",
     examples: [
@@ -114,6 +121,16 @@ async function createTemplate(tpl) {
     const headerComponent = { type: "HEADER", format: "DOCUMENT" };
     if (process.env.WA_SAMPLE_PDF_HANDLE) {
       headerComponent.example = { header_handle: [process.env.WA_SAMPLE_PDF_HANDLE] };
+    }
+    components.push(headerComponent);
+  } else if (tpl.headerType === "IMAGE") {
+    // Meta requires a sample handle for media headers. Provide one via WA_SAMPLE_IMAGE_HANDLE
+    // (obtained from the resumable upload API, cf. uploadSampleImage ci-dessous). If absent,
+    // submit without — Meta REJETTERA probablement le template image sans sample ; il faudra
+    // alors fournir WA_SAMPLE_IMAGE_HANDLE.
+    const headerComponent = { type: "HEADER", format: "IMAGE" };
+    if (process.env.WA_SAMPLE_IMAGE_HANDLE) {
+      headerComponent.example = { header_handle: [process.env.WA_SAMPLE_IMAGE_HANDLE] };
     }
     components.push(headerComponent);
   }
@@ -162,6 +179,69 @@ async function listExistingTemplates() {
   } catch (e) {
     return new Map();
   }
+}
+
+/**
+ * Utilitaire OPTIONNEL — obtient un `header_handle` pour un header IMAGE via la
+ * Resumable Upload API de Meta. NON appelé automatiquement dans le flow principal :
+ * le handle reste fourni à createTemplate() via la variable d'env WA_SAMPLE_IMAGE_HANDLE.
+ *
+ * Prérequis :
+ *   - APP_ID    : ID de l'app Meta (process.env.APP_ID)
+ *   - WA_TOKEN  : déjà requis par ce script
+ *   - filePath  : chemin local vers une image (jpg/png)
+ *
+ * Usage manuel (one-shot) :
+ *   const handle = await uploadSampleImage('./sample.jpg');
+ *   // puis : WA_SAMPLE_IMAGE_HANDLE="<handle>" node create-whatsapp-templates.js
+ *
+ * Étapes (cf. https://developers.facebook.com/docs/graph-api/guides/upload) :
+ *   1) POST /{APP_ID}/uploads  -> ouvre une session, renvoie un upload id ("upload:...")
+ *   2) POST /{sessionId}       avec le fichier en body -> renvoie { h: "<header_handle>" }
+ *
+ * @param {string} filePath
+ * @returns {Promise<string>} header_handle
+ */
+async function uploadSampleImage(filePath) {
+  const fs = require("fs");
+  const path = require("path");
+  const appId = process.env.APP_ID;
+  if (!appId) throw new Error("APP_ID manquant (variable d'env)");
+  if (!filePath || !fs.existsSync(filePath)) throw new Error(`Fichier introuvable: ${filePath}`);
+
+  const fileBuffer = fs.readFileSync(filePath);
+  const fileLength = fileBuffer.length;
+  const ext = path.extname(filePath).toLowerCase();
+  const fileType = ext === ".png" ? "image/png" : "image/jpeg";
+
+  // 1) Ouvrir une session d'upload
+  const startUrl = `https://graph.facebook.com/v21.0/${appId}/uploads`
+    + `?file_length=${fileLength}&file_type=${encodeURIComponent(fileType)}`;
+  const startRes = await fetch(startUrl, {
+    method: "POST",
+    headers: { "Authorization": `Bearer ${token}` },
+  });
+  const startData = await startRes.json();
+  if (!startRes.ok || !startData.id) {
+    throw new Error(`Ouverture session échouée: ${startData.error?.message || JSON.stringify(startData)}`);
+  }
+  const sessionId = startData.id; // ex. "upload:XXXX"
+
+  // 2) Uploader le fichier (offset 0, fichier en une seule passe)
+  const uploadRes = await fetch(`https://graph.facebook.com/v21.0/${sessionId}`, {
+    method: "POST",
+    headers: {
+      "Authorization": `OAuth ${token}`,
+      "file_offset": "0",
+      "Content-Type": "application/octet-stream",
+    },
+    body: fileBuffer,
+  });
+  const uploadData = await uploadRes.json();
+  if (!uploadRes.ok || !uploadData.h) {
+    throw new Error(`Upload fichier échoué: ${uploadData.error?.message || JSON.stringify(uploadData)}`);
+  }
+  return uploadData.h; // header_handle
 }
 
 (async () => {

@@ -23,6 +23,7 @@ const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const whatsappService = require("./whatsappService");
+const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -1117,6 +1118,62 @@ exports.uploadPhoto = functions
     } catch (err) {
       console.error("Erreur upload photo:", err);
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// API: Sentinel recipients — synchro destinataires WhatsApp pour bgf-sentinel
+// Route: /api/sentinel-recipients (GET, auth par clé partagée x-sentinel-key)
+// Renvoie strictement { ferme, whatsappPhone, profileId } — aucun PII.
+// =============================================
+exports.sentinelRecipients = functions
+  .region("europe-west1")
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    if (req.method !== "GET") {
+      return res.status(405).json({ success: false, error: "GET uniquement" });
+    }
+
+    // --- Auth par clé partagée (config/sentinel.shared_key vs header x-sentinel-key) ---
+    try {
+      const cfgDoc = await db_firestore.collection("config").doc("sentinel").get();
+      const expectedKey = cfgDoc.exists ? cfgDoc.data().shared_key : null;
+      const providedKey = req.get("x-sentinel-key");
+
+      let authorized = false;
+      if (expectedKey && providedKey) {
+        const a = Buffer.from(String(expectedKey));
+        const b = Buffer.from(String(providedKey));
+        if (a.length === b.length) {
+          const crypto = require("crypto");
+          authorized = crypto.timingSafeEqual(a, b);
+        } else {
+          authorized = false; // length mismatch -> not equal (ne pas logger la clé)
+        }
+      }
+      if (!authorized) {
+        return res.status(401).json({ success: false, error: "unauthorized" });
+      }
+    } catch (err) {
+      console.error("sentinelRecipients auth error:", err.message);
+      return res.status(401).json({ success: false, error: "unauthorized" });
+    }
+
+    // --- Logique : users WhatsApp actifs projetés ---
+    try {
+      const snap = await db_firestore.collection("users").get();
+      const users = snap.docs.map((d) => d.data());
+      const recipients = filterSentinelRecipients(users);
+      return res.status(200).json({
+        success: true,
+        recipients,
+        count: recipients.length,
+      });
+    } catch (err) {
+      console.error("sentinelRecipients error:", err.message);
+      // Endpoint exposé à un tiers : ne pas divulguer le détail interne.
+      return res.status(500).json({ success: false, error: "internal_error" });
     }
   });
 

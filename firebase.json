@@ -53,6 +53,7 @@
       { "source": "/api/run-daily-phenology-job-now", "function": { "functionId": "runDailyPhenologyJobNow", "region": "europe-west1" } },
       { "source": "/api/run-sync-jours-feries-now", "function": { "functionId": "runSyncJoursFeriesNow", "region": "europe-west1" } },
       { "source": "/api/bug-reports", "function": { "functionId": "bugReports", "region": "europe-west1" } },
+      { "source": "/api/sentinel-recipients", "function": { "functionId": "sentinelRecipients", "region": "europe-west1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "predeploy": ["npm run build:frontend"],
