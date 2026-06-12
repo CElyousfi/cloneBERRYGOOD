@@ -512,3 +512,29 @@ Données : nouvelle collection Firestore (ex. growth_measurements) avec
 plotId, checkpointId, date, length_cm, createdBy.
 Gated : non.
 
+
+## [ ] ITEM (PRIORITÉ HAUTE) — Sécurisation du pointage validé (verrouillage post-validation)
+Objectif : une fois le pointage d'une journée VALIDÉ (RH puis chef de ferme,
+cf. workflow validation par équipe), figer définitivement les données de cette
+journée. Le nombre d'ouvriers et toute donnée relative au pointage du jour validé
+ne doivent PLUS changer, quelle que soit la source :
+- Si BEE ONE (BR_Pointage) renvoie une info différente pour un jour déjà validé,
+  le sync NE DOIT PAS écraser les données validées (cf. mécanisme `manualOverride`
+  existant dans sqlSyncService — à étendre en `locked`/`validated`).
+- Aucune modification manuelle du RH n'est possible après validation.
+
+Seul le **Directeur Général (DG)** peut effectuer une modification manuelle après
+le verrouillage (override autorisé DG uniquement, tracé dans l'historique).
+
+À cadrer :
+- État de verrouillage par jour×ferme (ex. `pointage_validation/{date}_{ferme}.locked`)
+  posé au moment de la double validation RH + chef de ferme.
+- Le sync (sqlToFirestoreSync / sqlSyncTrigger) respecte ce verrou : merge/skip
+  des jours verrouillés au lieu d'écraser (comme `manualOverride` aujourd'hui).
+- UI : griser/bloquer l'édition RH sur un jour verrouillé ; bouton override visible
+  uniquement pour le profil DG, avec saisie d'un motif + trace `history[]`.
+- Définir précisément le périmètre « données du pointage » figées (nb ouvriers,
+  heures, primes transport, divers, etc.).
+
+Gated : oui — valider le périmètre exact des données figées + le circuit d'override DG
+avant implémentation.
