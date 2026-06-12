@@ -5326,11 +5326,11 @@ exports.validation = functions
 
       // POST: create or update a divers config item
       if (action === "divers-config-save" && req.method === "POST") {
-        const { id, beneficiaire, fonction, tache, prixUnitaire, unite } = req.body || {};
+        const { id, beneficiaire, matricule, fonction, tache, prixUnitaire, unite } = req.body || {};
         if (!beneficiaire || !fonction || !tache || !prixUnitaire || !unite) {
           return res.status(400).json({ success: false, error: "beneficiaire, fonction, tache, prixUnitaire, unite required" });
         }
-        const data = { beneficiaire: beneficiaire.trim(), fonction: fonction.trim(), tache: tache.trim(), prixUnitaire: Number(prixUnitaire), unite: unite.trim(), active: true, updatedAt: Date.now() };
+        const data = { beneficiaire: beneficiaire.trim(), matricule: String(matricule || "").trim().toUpperCase(), fonction: fonction.trim(), tache: tache.trim(), prixUnitaire: Number(prixUnitaire), unite: unite.trim(), active: true, updatedAt: Date.now() };
         if (id) {
           await db_firestore.collection("pointage_divers_config").doc(id).update(data);
           return res.json({ success: true, id, message: "Mis à jour" });
