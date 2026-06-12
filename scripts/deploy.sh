@@ -33,6 +33,37 @@ if [ -z "${FIREBASE_TOKEN:-}" ]; then
   exit 1
 fi
 
+# === RÈGLES ANTI-DIVERGENCE (CLAUDE.md) — garde-fous bloquants avant tout deploy ===
+# (a) working tree propre  (b) branche = main  (c) main à jour avec le remote.
+# Toute condition en échec ARRÊTE le deploy. Pas d'override silencieux.
+REMOTE="${DEPLOY_REMOTE:-BERRYGOOD}"
+BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+if [ "$BRANCH" != "main" ]; then
+  echo "🛑 ERREUR (RÈGLE 1) : deploy autorisé UNIQUEMENT depuis 'main'. Branche actuelle : '$BRANCH'." >&2
+  echo "   → bascule sur main (ou merge ton travail dans main) avant de déployer." >&2
+  exit 1
+fi
+if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
+  echo "🛑 ERREUR (RÈGLE 2/3) : working tree NON propre (modifications ou fichiers untracked)." >&2
+  echo "   Rien de non committé ne doit partir en prod. État :" >&2
+  git -C "$ROOT" status --short >&2
+  exit 1
+fi
+echo "[deploy] fetch $REMOTE pour vérifier la synchro de main avec le remote..."
+if git -C "$ROOT" fetch "$REMOTE" main --quiet 2>/dev/null; then
+  LOCAL_SHA="$(git -C "$ROOT" rev-parse main)"
+  REMOTE_SHA="$(git -C "$ROOT" rev-parse "$REMOTE/main")"
+  if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
+    echo "🛑 ERREUR (RÈGLE 2) : main local ($(git -C "$ROOT" rev-parse --short main)) ≠ $REMOTE/main ($(git -C "$ROOT" rev-parse --short "$REMOTE/main"))." >&2
+    echo "   → push/pull pour aligner main avec $REMOTE avant de déployer." >&2
+    exit 1
+  fi
+else
+  echo "🛑 ERREUR (RÈGLE 2) : impossible de fetch '$REMOTE' (remote injoignable ?). Override : DEPLOY_REMOTE=<nom>." >&2
+  exit 1
+fi
+echo "[deploy] ✓ garde-fous OK : branche main · tree propre · main == $REMOTE/main"
+
 echo "[deploy] branche : $(git -C "$ROOT" rev-parse --abbrev-ref HEAD) @ $(git -C "$ROOT" rev-parse --short HEAD)"
 echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
 firebase deploy --only "$ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive "$@"

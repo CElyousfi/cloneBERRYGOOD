@@ -20,11 +20,16 @@
 - Le script de deploy DOIT vérifier automatiquement (a) working tree propre, (b) branche = `main`, (c) `main` à jour avec le remote. Si une condition échoue → le deploy s'arrête avec un message d'erreur explicite.
 
 **RÈGLE 3 — Pas de code untracked en production.**
-- Chaque fichier qui tourne en prod DOIT être tracké dans git et committé sur `main`. Aucun fichier untracked ni édition locale non committée ne doit être déployé.
-- Le build de prod part d'un checkout `main` propre (worktree dédié, tree clean), jamais d'un working tree avec du WIP.
-- _(NB : la fin de la RÈGLE 3 énoncée par Omar était tronquée dans le message d'origine — à confirmer/compléter avec lui.)_
+- Chaque fichier qui tourne en prod DOIT être dans le repo (tracké + committé sur `main`).
+- Interdit de créer un fichier sur le serveur sans le committer.
+- Le `docker-compose` (Sentinel) doit builder depuis un `git clone` propre, pas depuis un dossier avec des modifications locales. Côté Smart Berry : le build de prod part d'un checkout `main` propre, jamais d'un working tree avec du WIP.
 
-> Ces règles s'appliquent aux DEUX projets (Smart Berry + bgf-sentinel). Toute exception doit être validée explicitement par Omar et tracée.
+**IMPLÉMENTATION :**
+- **Smart Berry** : checks (a)(b)(c) de la RÈGLE 2 dans `scripts/deploy.sh` (bloque le deploy si tree sale / branche ≠ main / main en retard sur remote `BERRYGOOD`).
+- **Sentinel** (`bgf-sentinel`) : GitHub Actions auto-deploy sur push `main` + script pre-deploy avec les 3 vérifications.
+- **Les deux** : ces règles dans la section contraintes de leur `CLAUDE.md`.
+
+> **Rétroactif** : réconcilier tout code divergent (VPS Sentinel + worktrees/chef-bahia Smart Berry) dans `main` AVANT tout nouveau développement. Ces règles s'appliquent aux DEUX projets. Toute exception = validée explicitement par Omar et tracée.
 
 ---
 
