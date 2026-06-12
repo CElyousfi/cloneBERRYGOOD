@@ -57,6 +57,68 @@ test('aggregatePeriodKpis gère série vide / nulls', () => {
   assert.strictEqual(r2.totalCout, 0);
 });
 
+test('moyennes/jour = sommes ÷ nbJoursAvecDonnees (2 jours pleins)', () => {
+  const series = [
+    { salaire: 100, transport: 30, prime: 20, charges: 40, kg: 50, nbOuvJour: 2 },
+    { salaire: 200, transport: 60, prime: 0, charges: 80, kg: 100, nbOuvJour: 4 },
+  ];
+  const r = aggregatePeriodKpis(series);
+  assert.strictEqual(r.nbJoursAvecDonnees, 2);
+  // coût total = 530 → 265/jour ; kg total = 150 → 75/jour
+  assert.strictEqual(r.coutMoyenJour, 265);
+  assert.strictEqual(r.kgMoyenJour, 75);
+  assert.strictEqual(r.salaireMoyenJour, 150);
+  assert.strictEqual(r.transportMoyenJour, 45);
+  assert.strictEqual(r.primeMoyenJour, 10);
+  assert.strictEqual(r.chargesMoyenJour, 60);
+});
+
+test('un jour totalement vide n\'est pas compté dans nbJoursAvecDonnees', () => {
+  // 2 jours pleins + 1 jour vide (aujourd'hui sans récolte) : la moyenne/jour
+  // ne doit PAS être diluée par le 3e jour à 0.
+  const series = [
+    { salaire: 100, transport: 0, prime: 0, charges: 0, kg: 40, nbOuvJour: 1 },
+    { salaire: 100, transport: 0, prime: 0, charges: 0, kg: 60, nbOuvJour: 1 },
+    { salaire: 0, transport: 0, prime: 0, charges: 0, kg: 0, nbOuvJour: 0 }, // jour vide
+  ];
+  const r = aggregatePeriodKpis(series);
+  assert.strictEqual(r.nbJoursAvecDonnees, 2); // pas 3
+  assert.strictEqual(r.coutMoyenJour, 100); // 200/2, pas 200/3
+  assert.strictEqual(r.kgMoyenJour, 50); // 100/2
+});
+
+test('DH/kg pondéré reste correct quand les kg sont déséquilibrés entre jours', () => {
+  // Jour 1 : 100 DH / 40 kg ; Jour 2 : 60 DH / 60 kg
+  // Pondéré = (100+60)/(40+60) = 160/100 = 1.6 (≠ moyenne des ratios 2.5/1.0)
+  const series = [
+    { salaire: 100, transport: 0, prime: 0, charges: 0, kg: 40 },
+    { salaire: 60, transport: 0, prime: 0, charges: 0, kg: 60 },
+  ];
+  const r = aggregatePeriodKpis(series);
+  assert.strictEqual(r.dhParKgBrut, 1.6);
+});
+
+test('série uniquement composée d\'un jour vide → moyennes/jour = 0, dhParKg null', () => {
+  const r = aggregatePeriodKpis([{ salaire: 0, transport: 0, prime: 0, charges: 0, kg: 0, nbOuvJour: 0 }]);
+  assert.strictEqual(r.nbJoursAvecDonnees, 0);
+  assert.strictEqual(r.coutMoyenJour, 0);
+  assert.strictEqual(r.kgMoyenJour, 0);
+  assert.strictEqual(r.dhParKgBrut, null);
+});
+
+test('un jour avec coût mais sans kg compte comme jour-avec-données', () => {
+  // Cas data dégradée : cout présent, kg manquant. Le jour doit compter
+  // (sinon coutMoyenJour exploserait), mais dhParKg reste null faute de kg.
+  const series = [
+    { salaire: 100, transport: 0, prime: 0, charges: 0, kg: 0 },
+    { salaire: 100, transport: 0, prime: 0, charges: 0, kg: 0 },
+  ];
+  const r = aggregatePeriodKpis(series);
+  assert.strictEqual(r.nbJoursAvecDonnees, 2);
+  assert.strictEqual(r.coutMoyenJour, 100);
+  assert.strictEqual(r.dhParKgBrut, null);
+});
+
 test('computeNetDhParKg additionne récolte + logistique sur kg récolté', () => {
   const r = computeNetDhParKg(160, 40, 100);
   assert.strictEqual(r.dhParKgLog, 0.4);
