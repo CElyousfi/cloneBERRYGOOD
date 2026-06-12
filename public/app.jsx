@@ -8335,6 +8335,25 @@
 
             const handleDateChange = (d) => { setSelectedDate(d); setLoading(true); loadData(d); };
 
+            // La récolte du jour est souvent saisie/synchronisée avec 1 à 2 jours de retard.
+            // "Aujourd'hui" renvoie alors 0 ouvrier récolte → KPIs et tableau vides (faux "écran cassé").
+            // Parade : si "Aujourd'hui" n'a aucune récolte, basculer auto sur la dernière date qui en a
+            // (déduite d'equipeRows = jours réellement récoltés). L'utilisateur peut re-choisir Aujourd'hui.
+            const recolteDatesDispo = React.useMemo(
+                () => [...new Set((equipeRows || []).map(r => r.jour).filter(Boolean))].sort().reverse(),
+                [equipeRows]
+            );
+            const [autoFellBack, setAutoFellBack] = useState(false);
+            React.useEffect(() => {
+                if (viewMode === 'quinzaine') return;            // mode quinzaine = source equipeRows, non concerné
+                if (selectedDate || autoFellBack) return;        // l'utilisateur a déjà une date / déjà basculé
+                if (loading || equipeLoading) return;            // attendre les 2 fetchs (recolte + recolte-equipes)
+                if (workers.length > 0) return;                  // récolte présente aujourd'hui → garder Aujourd'hui
+                const today = new Date().toISOString().slice(0, 10);
+                const latest = recolteDatesDispo.find(d => d !== today);
+                if (latest) { setAutoFellBack(true); handleDateChange(latest); }
+            }, [viewMode, loading, equipeLoading, workers, recolteDatesDispo, selectedDate, autoFellBack]);
+
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement coût récolte...</div></div>;
 
             // ---- JOUR mode: use workers from recolte API ----
@@ -8778,6 +8797,11 @@
                             <option value="">Aujourd'hui</option>
                             {dates.filter(d => d.date !== new Date().toISOString().slice(0,10)).map(d => <option key={d.date} value={d.date}>{new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</option>)}
                         </select>
+                        )}
+                        {!isQuinzaineMode && autoFellBack && selectedDate && (
+                        <span title="La récolte du jour n'est pas encore saisie (synchronisation J+1/J+2)." style={{background:'#e0f2fe',color:'#075985',padding:'4px 10px',borderRadius:10,fontSize:10.5,fontWeight:600,display:'inline-flex',alignItems:'center',gap:4}}>
+                            <i className="fa-solid fa-circle-info"></i>Récolte du jour pas encore saisie — dernière journée affichée
+                        </span>
                         )}
                         {isQuinzaineMode && equipePeriodes.length > 0 && (
                         <select value={selectedQuinz || equipePeriodes[0]} onChange={e => setSelectedQuinz(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
