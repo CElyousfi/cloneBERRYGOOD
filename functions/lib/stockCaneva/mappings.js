@@ -176,6 +176,7 @@ const NEW_ARTICLES = [
 /** Parcelle name mapping (Excel -> system) */
 const PARCELLE_MAP = {
   'S3 MARAVILLA MOTTE F1': 'S3 Maravilla Motte',
+  'S3 MARAVILLA MOTTE F1 2026': 'S3 Maravilla Motte',
   'S7 MARAVILLA MOTTE F1': 'S7 Maravilla Motte',
   'S1/S4 MARAVILLA MOW DOWN F1': 'S1 Maravilla',
   'S2 YAZMIN MOW DOWN F1': 'S2 Yazmin',
@@ -187,6 +188,7 @@ const PARCELLE_MAP = {
   'S10 YAZMIN CUT BACK F5': 'S10 Yazmin',
   'S13 YAZMIN MOW DOWN F5': 'S13 Yazmin',
   'S9 REYNA F5': 'S9 Reyna',
+  'S9': 'S9 Reyna',
   'CORINA MYRTILLE S8': 'S8 Corina',
   'BREEZE MYRTILLE S8-2': 'S8 Corina',
   'CASCADE MYRTILLE S8-1': 'S8 Corina',

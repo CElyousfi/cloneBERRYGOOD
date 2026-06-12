@@ -160,7 +160,16 @@ function parseWorkbook(buffer, XLSX) {
   }
 
   // ---- Bons de Transfert ----
-  const rawTransferts = parseSheet(SHEETS.transferts).slice(1).filter(r => r[4] && String(r[4]).trim())
+  // Détection dynamique du layout : l'ancien fichier a une colonne UNITE en
+  // index 5 (qte en 6) ; le nouveau fichier n'a PAS de colonne UNITE
+  // (qte en 5, unité par défaut 'kg'). On lit le header (ligne 0) plutôt
+  // qu'une colonne fixe pour rester compatible avec les deux formats.
+  const transfertRows = parseSheet(SHEETS.transferts)
+  const transfertHeader = transfertRows[0] || []
+  const transfertHasUnite = String(transfertHeader[5] || '').trim().toUpperCase() === 'UNITE'
+  const trfUniteIdx = transfertHasUnite ? 5 : -1
+  const trfQteIdx = transfertHasUnite ? 6 : 5
+  const rawTransferts = transfertRows.slice(1).filter(r => r[4] && String(r[4]).trim())
   const transfertGroups = new Map()
   for (const row of rawTransferts) {
     const date = toISO(row[0])
@@ -168,8 +177,8 @@ function parseWorkbook(buffer, XLSX) {
     const depart = String(row[2] || '').trim()
     const arrivee = String(row[3] || '').trim()
     const { ref: artRef, nom: artNom } = resolveArticle(row[4], articleMap)
-    const unite = String(row[5] || 'kg').trim()
-    const qte = parseFloat(row[6]) || 0
+    const unite = trfUniteIdx >= 0 ? String(row[trfUniteIdx] || 'kg').trim() : 'kg'
+    const qte = parseFloat(row[trfQteIdx]) || 0
     if (!artRef || qte === 0 || !depart) continue
     const key = `${date}|${bt}|${depart}|${arrivee}`
     if (!transfertGroups.has(key)) transfertGroups.set(key, { date, bt, depart, arrivee, items: [] })

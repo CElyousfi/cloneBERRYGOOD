@@ -24,6 +24,8 @@ const H = {
   inv: ['LIEU', 'LIEU DE STOCK', 'NOM ARTICLE', 'UNITE', 'QTE', 'PRIX TTC'],
   ent: ['LIEU DE STOCK', 'DATE', 'N° BL', 'FOURNISSEUR', 'NOM ARTICLE', 'UNITE', 'QUNTITE', 'PRIX TTC'],
   trf: ['DATE', 'N° BON', 'LIEU DEPART', 'LIEU ARRIVEE', 'NOM ARTICLE', 'UNITE', 'QUNTITE'],
+  // Nouveau fichier : feuille BONS DE TRANSFERT SANS colonne UNITE (qte en index 5)
+  trfNoUnite: ['DATE', 'N° BON', 'LIEU DEPART', 'LIEU ARRIVEE', 'NOM ARTICLE', 'QUNTITE'],
   cons: ['DATE', 'N° BON', 'LIEU DEPART', 'PARCELLE', 'CODE', 'NOM ARTICLE', 'UNITE', 'QUNTITE'],
   sor: ['LIEU', 'DATE', 'N° BON', 'DESTINATION', 'CODE', 'NOM ARTICLE', 'UNITE', 'QUNTITE', 'MOTIF'],
 }
@@ -127,6 +129,54 @@ test('parseWorkbook: validation vs stock réel (matches/mismatches)', () => {
   assert.ok(gz, 'écart GZ F5 détecté')
   assert.equal(gz.computed, 40)
   assert.equal(gz.reel, 38)
+})
+
+test('parseWorkbook: transfert SANS colonne UNITE (nouveau fichier) → qte lue en index 5', () => {
+  const buf = makeWorkbook({
+    [SHEETS.inventaire]: [H.inv,
+      ['', 'F-01', 'AMMONITRATE (KG)', 'KG', 100, 12],
+      ['', 'F-05', 'AMMONITRATE (KG)', 'KG', 0, 12],
+    ],
+    [SHEETS.entrees]: [H.ent],
+    // Header SANS UNITE : ['DATE','N° BON','DEPART','ARRIVEE','NOM ARTICLE','QUNTITE']
+    [SHEETS.transferts]: [H.trfNoUnite,
+      ['2026-06-03', '1246', 'F-01', 'F-05', 'AMMONITRATE (KG)', 20],
+    ],
+    [SHEETS.consommations]: [H.cons],
+    [SHEETS.sorties]: [H.sor],
+    [SHEETS.stockReel]: [['x'], [], ['ARTICLE']],
+  })
+  const plan = parseWorkbook(buf, XLSX)
+  assert.equal(plan.counts.transferts, 1, '1 transfert parsé malgré absence de colonne UNITE')
+  const transf = plan.movements.find(m => m.type === 'transfert')
+  assert.ok(transf, 'mouvement transfert présent')
+  assert.equal(transf.items.length, 1)
+  assert.equal(transf.items[0].quantite, 20, 'quantité lue en index 5 (pas filtrée à 0)')
+  assert.equal(transf.items[0].unite, 'kg', 'unité par défaut kg quand colonne absente')
+  // delta : −source +dest
+  const td = movementDelta(transf)
+  assert.equal(td.length, 2)
+})
+
+test('parseWorkbook: transfert AVEC colonne UNITE (ancien fichier) → qte en index 6, unité préservée', () => {
+  const buf = makeWorkbook({
+    [SHEETS.inventaire]: [H.inv,
+      ['', 'F-01', 'GZ (L)', 'L', 100, 8],
+      ['', 'F-05', 'GZ (L)', 'L', 0, 8],
+    ],
+    [SHEETS.entrees]: [H.ent],
+    [SHEETS.transferts]: [H.trf,
+      ['2026-06-03', '1246', 'F-01', 'F-05', 'GZ (L)', 'L', 15],
+    ],
+    [SHEETS.consommations]: [H.cons],
+    [SHEETS.sorties]: [H.sor],
+    [SHEETS.stockReel]: [['x'], [], ['ARTICLE']],
+  })
+  const plan = parseWorkbook(buf, XLSX)
+  assert.equal(plan.counts.transferts, 1)
+  const transf = plan.movements.find(m => m.type === 'transfert')
+  assert.equal(transf.items[0].quantite, 15, 'quantité lue en index 6 (layout legacy)')
+  assert.equal(transf.items[0].unite, 'L', 'unité explicite préservée')
 })
 
 test('guard: classeur vide → hardBlock', () => {
