@@ -8334,6 +8334,14 @@
             const [histOffset, setHistOffset] = useState(0); // 0 = fenêtre la plus récente
             const [varieteFilter, setVarieteFilter] = useState('');
             const [cycleSelected, setCycleSelected] = useState(getCycle(new Date().toISOString().slice(0, 10)));
+            // Modèle paie unifié : registre ouvriers + barèmes (lecture seule client, même source que PaieTab).
+            // Sert à remplacer le forfait charges 40 DH par le COÛT TOTAL EMPLOYEUR réel
+            // (brut + 26% charges patronales pour les déclarés) via window.PaieUtils.computePayslip.
+            const [ouvriersRegistry, setOuvriersRegistry] = useState({}); // numKey(matricule) → {declare, baselineJours, primeFonctionJournaliere, ...}
+            const [paieBaremes, setPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            // Transport Fruits (pointage_divers, fonction === 'TRANSPORT FRUIT') par date.
+            // Map { dateISO → montant total TRANSPORT FRUIT }. Chargé pour les dates affichées.
+            const [transportFruitByDate, setTransportFruitByDate] = useState({});
 
             const isMyrtille = (v) => /myrtille|blue|corina|corrina|cascade|breeze/i.test(v || '');
             const calcPrime = data.calcPrime || ((kg, variete, date) => { const k = kg || 0; if (isMyrtille(variete)) { const seuil = /breeze/i.test(variete || '') ? 25 : /cascade/i.test(variete || '') ? ((date || '') >= '2026-04-25' ? 30 : 25) : 30; return k > seuil ? Math.round((k - seuil) * 2.5 * 10) / 10 : 0; } if (k < 20) return 0; if (k < 25) return 20; if (k < 30) return 40; if (k < 40) return Math.round((60 + (k - 30) * 3) * 10) / 10; return Math.round((90 + (k - 40) * 4) * 10) / 10; });
@@ -8389,6 +8397,79 @@
                 return (np && np.variete) || '';
             };
 
+            // ouvriers_registry est keyé par matricule NUMÉRIQUE (ex. "10764") alors que le
+            // pointage récolte utilise des matricules À LETTRES (ex. "MMG10764"). numKey extrait
+            // la clé numérique canonique pour faire correspondre les deux (même logique que PaieTab).
+            const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
+
+            // DÉCOMPOSITION COÛT (décision Omar 2026-06) — modèle SMAG théorique, source = computePayslip.
+            // Pour UN ouvrier-JOUR de récolte, retourne la décomposition AFFICHÉE { salaire, prime, charges }
+            // dérivée du modèle unifié window.PaieUtils.computePayslip. r.cout (BEE ONE) n'est PLUS la base
+            // du coût (il s'annulait dans l'ancienne astuce, ce qui rendait la barre « Salaire » trompeuse).
+            //
+            // Mapping composantes (déclaré) :
+            //   salaire  = paie.base + paie.anciennete           (SMAG brut journalier + montant ancienneté)
+            //   prime    = paie.primeFonction + primeRécolteDuJour
+            //   charges  = paie.chargesPatronales                (26% patronaux réels)
+            //   → salaire + prime + charges = base + anciennete + primeFonction + primeRécolte + chargesPat
+            //     = brut + chargesPat = coutEmployeur  (feries=0, primesOpt=primeRécolte). Le TOTAL
+            //     (avec transport ajouté par l'appelant) = coutEmployeur + transport, INCHANGÉ.
+            //
+            // Non-déclaré : pas de CNSS patronale ni d'ancienneté ; la prime de récolte n'entre PAS dans
+            //   coutEmployeur (modèle paie). Pour garder la somme = coutEmployeur (= base + primeFonction) :
+            //     salaire = paie.base ; prime = paie.primeFonction ; charges = 0.
+            //   HYPOTHÈSE : la prime de récolte des non-déclarés n'est pas valorisée dans le coût employeur
+            //   (cohérent avec le modèle paie et l'ancien total où r.cout s'annulait). À revoir si Omar
+            //   veut compter la prime récolte des non-déclarés.
+            //
+            // Fallback gracieux (AUCUN NaN) : si computePayslip absent OU ouvrier sans registre → ancien
+            //   calcul (salaire = r.cout legacy, prime récolte, charges = forfait CHARGES_SOCIALES 40 DH).
+            // Granularité : appelé par ouvrier-JOUR (jT:1). En mode période/quinzaine, on somme jour par jour.
+            const decomposeCoutJour = (matricule, salaireLegacy, primeRecolte, jourISO) => {
+                const PU = (typeof window !== 'undefined' && window.PaieUtils) ? window.PaieUtils : null;
+                const reg = ouvriersRegistry[numKey(matricule)];
+                const sal = Number(salaireLegacy) || 0;
+                const pr = Number(primeRecolte) || 0;
+                if (!PU || !PU.computePayslip || !reg) {
+                    // Fallback historique : r.cout en base, prime récolte, charges forfaitaires.
+                    return { salaire: sal, prime: pr, charges: CHARGES_SOCIALES };
+                }
+                const declare = !!reg.declare;
+                const primeFonctionJour = Number(reg.primeFonctionJournaliere || 0);
+                // Ancienneté : on utilise baselineJours du registre (sans scan pointage distinct —
+                // hypothèse documentée : CoutRecolteTab n'effectue pas le scan sql_mirror_pointage
+                // coûteux de PaieTab). Taux de palier résolu via trouverPalierAnciennete.
+                const anciennete = Number(reg.baselineJours || 0);
+                const __pal = (PU.trouverPalierAnciennete)
+                    ? PU.trouverPalierAnciennete(anciennete, paieBaremes.paliers || [])
+                    : { pourcentage: 0 };
+                const ancienneteTaux = declare ? ((__pal.pourcentage || 0) / 100) : 0;
+                const __smag = (PU.resolveSmagForDate)
+                    ? PU.resolveSmagForDate(paieBaremes, jourISO)
+                    : { smagBrutJournalier: paieBaremes.smagBrutJournalier || 0, smagNetJournalier: paieBaremes.smagNetJournalier || 0 };
+                // Prime récolte intégrée au brut imposable (primesOptionnelles) pour les déclarés
+                // (cohérent avec la popup PaieTab) ; hors brut pour les non-déclarés.
+                const primesOptionnelles = declare && pr > 0 ? pr : 0;
+                const paie = PU.computePayslip({
+                    declare,
+                    smagBrut: __smag.smagBrutJournalier,
+                    smagNet: __smag.smagNetJournalier,
+                    jT: 1, jF: 0,
+                    ancienneteTaux,
+                    primeFonctionJour,
+                    primesOptionnelles,
+                    baremes: paieBaremes,
+                });
+                const base = Number(paie && paie.base) || 0;
+                const anc = Number(paie && paie.anciennete) || 0;
+                const primeFonction = Number(paie && paie.primeFonction) || 0;
+                const chargesPat = Number(paie && paie.chargesPatronales) || 0;
+                // primeRécolte comptée dans le coût uniquement pour les déclarés (intégrée au brut →
+                // coutEmployeur). Pour les non-déclarés, elle est hors coutEmployeur (charges=0).
+                const primeAffichee = declare ? (primeFonction + pr) : primeFonction;
+                return { salaire: base + anc, prime: primeAffichee, charges: chargesPat };
+            };
+
             const loadData = (date) => {
                 const dq = date ? `&date=${date}` : '';
                 fetch(`/api/pointage-rh?action=recolte${dq}`).then(r => r.json()).then(json => {
@@ -8406,7 +8487,40 @@
                 }).catch(err => console.warn(err)).finally(() => setEquipeLoading(false));
             }, []);
 
+            // Charge (une fois) le registre ouvriers + les barèmes paie pour le COÛT TOTAL EMPLOYEUR.
+            // Même source que PaieTab : ouvriers_registry (keyé matricule numérique) + app_settings/paie_baremes.
+            // Lecture seule client (Firestore rules) ; aucun write. Échec gracieux → fallback forfait 40 DH.
+            React.useEffect(() => {
+                if (typeof firebase === 'undefined' || !firebase.firestore) return;
+                const db = firebase.firestore();
+                let cancelled = false;
+                db.collection('app_settings').doc('paie_baremes').get()
+                    .then(doc => { if (!cancelled && doc.exists) setPaieBaremes(prev => ({ ...prev, ...doc.data() })); })
+                    .catch(e => console.warn('cout-recolte paie_baremes load:', e));
+                db.collection('ouvriers_registry').get()
+                    .then(snap => {
+                        if (cancelled) return;
+                        const reg = {};
+                        snap.forEach(d => { reg[d.id] = { matricule: d.id, ...d.data() }; });
+                        setOuvriersRegistry(reg);
+                    })
+                    .catch(e => console.warn('cout-recolte ouvriers_registry load:', e));
+                return () => { cancelled = true; };
+            }, []);
+
             const handleDateChange = (d) => { setSelectedDate(d); setLoading(true); loadData(d); };
+
+            // ── KPI Transport fruits / kg exporté ─────────────────────────────────────
+            // Source coût : pointage_divers/{date}.entries où fonction === 'TRANSPORT FRUIT'
+            //   via /api/validation?action=divers-entries&date=<d> (même endpoint que PaieTab).
+            // On charge les dates affichables (fenêtre la plus large : histRange jours récoltés
+            // les plus récents + la date sélectionnée), puis on somme côté KPI selon le mode.
+            // NB : kg EXPORTÉ n'est PAS chargé par cet onglet (le coût récolte vient de l'API
+            //   recolte = kg RÉCOLTÉS, pas exportés). Voir le rendu KPI : fallback '—' tant que
+            //   la source kg exporté n'est pas branchée (signalé à l'architecte).
+            // NB : la déclaration tfDatesKey (useMemo) + son useEffect sont placés APRÈS
+            //   recolteDatesDispo (ci-dessous) pour éviter une TDZ (lecture d'une const non
+            //   encore initialisée pendant le render). Voir bloc « tfDatesKey » plus bas.
 
             // La récolte du jour est souvent saisie/synchronisée avec 1 à 2 jours de retard.
             // "Aujourd'hui" renvoie alors 0 ouvrier récolte → KPIs et tableau vides (faux "écran cassé").
@@ -8427,6 +8541,46 @@
                 if (latest) { setAutoFellBack(true); handleDateChange(latest); }
             }, [viewMode, loading, equipeLoading, workers, recolteDatesDispo, selectedDate, autoFellBack]);
 
+            // ── KPI Transport fruits : dates à charger (placé APRÈS recolteDatesDispo — TDZ) ──
+            // tfDatesKey lit recolteDatesDispo : déclaré ici (et non plus haut) car le useMemo
+            // s'exécute pendant le render ; placé avant recolteDatesDispo il levait
+            // ReferenceError « Cannot access 'recolteDatesDispo' before initialization ».
+            const tfDatesKey = React.useMemo(() => {
+                const recent = recolteDatesDispo.slice(0, Math.max(90, histRange));
+                const set = new Set(recent);
+                if (selectedDate) set.add(selectedDate);
+                return [...set].sort().join(',');
+            }, [recolteDatesDispo, histRange, selectedDate]);
+            React.useEffect(() => {
+                const dates = tfDatesKey ? tfDatesKey.split(',').filter(Boolean) : [];
+                if (!dates.length) { setTransportFruitByDate({}); return; }
+                let cancelled = false;
+                // Ne (re)fetch que les dates absentes du cache pour limiter les requêtes.
+                const missing = dates.filter(d => transportFruitByDate[d] === undefined);
+                if (!missing.length) return;
+                Promise.all(missing.map(d =>
+                    fetch('/api/validation?action=divers-entries&date=' + d)
+                        .then(r => r.json())
+                        .then(json => {
+                            const entries = (json && json.success && json.data && json.data.entries) || [];
+                            const total = entries
+                                .filter(e => String(e.fonction || '').toUpperCase().trim() === 'TRANSPORT FRUIT')
+                                .reduce((s, e) => s + (Number(e.montant) || 0), 0);
+                            return { d, total };
+                        })
+                        .catch(() => ({ d, total: 0 }))
+                )).then(results => {
+                    if (cancelled) return;
+                    setTransportFruitByDate(prev => {
+                        const next = { ...prev };
+                        results.forEach(({ d, total }) => { next[d] = total; });
+                        return next;
+                    });
+                });
+                return () => { cancelled = true; };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [tfDatesKey]);
+
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement coût récolte...</div></div>;
 
             // ---- JOUR mode: use workers from recolte API ----
@@ -8435,10 +8589,13 @@
                 const isMyrt = /myrtille/i.test(culture);
                 const kg = w.quantite || 0;
                 const prefix = getEquipePrefix(w.matricule);
-                const salaire = w.cout || 0;
                 const transport = getTransport(prefix, w.periode);
-                const prime = calcPrime(kg, isMyrt ? 'myrtille' : w.variete, w.jour);
-                const charges = CHARGES_SOCIALES;
+                const primeRecolte = calcPrime(kg, isMyrt ? 'myrtille' : w.variete, w.jour);
+                // Décomposition SMAG théorique (computePayslip) — r.cout (BEE ONE) n'est plus la base.
+                const dec = decomposeCoutJour(w.matricule, w.cout || 0, primeRecolte, w.jour);
+                const salaire = dec.salaire;
+                const prime = dec.prime;
+                const charges = dec.charges;
                 const coutTotal = salaire + transport + prime + charges;
                 const dhParKg = kg > 0 ? Math.round(coutTotal / kg * 100) / 100 : null;
                 return { ...w, culture, kg, salaire, transport, prime, charges, coutTotal, dhParKg, prefix, equipe: getEquipeName(prefix), isLogistique: logistiqueOps.test(w.operation), jours: 1 };
@@ -8464,8 +8621,9 @@
                     const culture = d.culture || resolveCulture(d);
                     const isMyrt = /myrtille/i.test(culture);
                     const prefix = getEquipePrefix(d.matricule);
-                    const prime = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
-                    return { ...d, culture, prefix, transport: getTransport(prefix, qFilter), prime, charges: CHARGES_SOCIALES };
+                    const primeRecolte = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
+                    const dec = decomposeCoutJour(d.matricule, d.salaire, primeRecolte, d.jour);
+                    return { ...d, culture, prefix, transport: getTransport(prefix, qFilter), salaire: dec.salaire, prime: dec.prime, charges: dec.charges };
                 });
                 // Aggregate by worker across days
                 const byWorker = {};
@@ -8518,8 +8676,9 @@
                     const culture = d.culture || resolveCulture(d);
                     const isMyrt = /myrtille/i.test(culture);
                     const prefix = getEquipePrefix(d.matricule);
-                    const prime = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
-                    return { ...d, culture, prefix, transport: getTransport(prefix, qFilterLog), prime, charges: CHARGES_SOCIALES };
+                    const primeRecolte = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
+                    const dec = decomposeCoutJour(d.matricule, d.salaire, primeRecolte, d.jour);
+                    return { ...d, culture, prefix, transport: getTransport(prefix, qFilterLog), salaire: dec.salaire, prime: dec.prime, charges: dec.charges };
                 });
                 const logByWorker = {};
                 logDaily.forEach(d => {
@@ -8634,10 +8793,12 @@
                         const culture = w.culture || resolveCulture(w);
                         const isMyrt = /myrtille/i.test(culture);
                         const prefix = getEquipePrefix(w.matricule);
-                        tSalaire += w.salaire;
+                        const wPrime = calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour);
+                        const dec = decomposeCoutJour(w.matricule, w.salaire, wPrime, w.jour);
+                        tSalaire += dec.salaire;
                         tTransport += getTransport(prefix, dayPeriode);
-                        tPrime += calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour);
-                        tCharges += CHARGES_SOCIALES;
+                        tPrime += dec.prime;
+                        tCharges += dec.charges;
                         tKg += w.kg;
                     });
                     return { salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, kg: tKg, nbOuvJour: wList.length, matricules: wList.map(w => w.matricule) };
@@ -8687,6 +8848,8 @@
                     pctSalaire: pctSal,
                     // Dénominateur réel des moyennes/jour (exclut un aujourd'hui vide)
                     nbJours: recAgg.nbJoursAvecDonnees,
+                    // Dates de la fenêtre (pour sommer le coût Transport fruits sur la même plage)
+                    windowDates: windowDates,
                 };
             })();
 
@@ -8718,6 +8881,32 @@
             // des coûts mais kg=0 → DH/kg en tirets + graphe vide = faux « écran cassé ». On le
             // signale explicitement au lieu de laisser des tirets muets.
             const recolteKgEnAttente = (kpiCout || 0) > 0 && (kpiTotalKg || 0) <= 0;
+
+            // ── KPI Transport fruits / kg exporté ─────────────────────────────────────
+            // Coût Transport fruits = somme des montants pointage_divers (fonction TRANSPORT FRUIT)
+            // sur la plage affichée : fenêtre période (windowDates) quand le graphe est visible,
+            // sinon la date sélectionnée/repli du jour. Le coût est en DH (TOTAL sur la plage).
+            const tfTotalCost = (() => {
+                let dates;
+                if (userPeriodKpi && periodKpi && Array.isArray(periodKpi.windowDates)) {
+                    dates = periodKpi.windowDates;
+                } else {
+                    const todayStr = new Date().toISOString().slice(0, 10);
+                    dates = [selectedDate || todayStr];
+                }
+                let sum = 0;
+                let anyLoaded = false;
+                dates.forEach(d => {
+                    if (transportFruitByDate[d] !== undefined) { anyLoaded = true; sum += transportFruitByDate[d]; }
+                });
+                return anyLoaded ? sum : null; // null = données pas (encore) chargées
+            })();
+            // kg EXPORTÉ : non disponible dans cet onglet (le coût récolte vient de kg RÉCOLTÉS,
+            // pas exportés). Tant que la source n'est pas branchée, le ratio reste '—'.
+            const tfKgExporte = null;
+            const tfDhParKgExport = (tfTotalCost !== null && tfKgExporte && tfKgExporte > 0)
+                ? Math.round(tfTotalCost / tfKgExporte * 100) / 100
+                : null;
 
             // Aggregation par équipe
             const equipeAgg = {};
@@ -8796,12 +8985,14 @@
                 if (!cycleVarAgg[key]) cycleVarAgg[key] = { variete: key, kg: 0, joursOuv: 0, salaire: 0, transport: 0, prime: 0, charges: 0 };
                 cycleVarAgg[key].kg += d.kg;
                 cycleVarAgg[key].joursOuv += 1;
-                cycleVarAgg[key].salaire += d.salaire;
                 const prefix = getEquipePrefix(d.matricule);
                 cycleVarAgg[key].transport += getTransport(prefix);
                 const isMyrt = isMyrtille(d.variete);
-                cycleVarAgg[key].prime += calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
-                cycleVarAgg[key].charges += CHARGES_SOCIALES;
+                const dPrime = calcPrime(d.kg, isMyrt ? 'myrtille' : d.variete, d.jour);
+                const dec = decomposeCoutJour(d.matricule, d.salaire, dPrime, d.jour);
+                cycleVarAgg[key].salaire += dec.salaire;
+                cycleVarAgg[key].prime += dec.prime;
+                cycleVarAgg[key].charges += dec.charges;
             });
             const cycleVarStats = Object.values(cycleVarAgg).map(v => {
                 const coutTotal = v.salaire + v.transport + v.prime + v.charges;
@@ -8843,11 +9034,18 @@
             let cycleLogSalaire = 0, cycleLogTransport = 0, cycleLogCharges = 0;
             Object.values(cycleLogByWD).forEach(d => {
                 const t = getTransport(getEquipePrefix(d.matricule));
-                cycleLogSalaire += d.salaire;
+                // Logistique : pas de prime de récolte (primeRecolte=0). La décomposition SMAG
+                // donne salaire = base+ancienneté, prime = primeFonction, charges = chargesPat.
+                // On regroupe salaire+prime(fonction) dans la composante « salaire » logistique pour
+                // conserver le total = coutEmployeur (cette vue n'expose pas de colonne « prime »).
+                const dec = decomposeCoutJour(d.matricule, d.salaire, 0, d.jour);
+                const dSalaire = dec.salaire + dec.prime;
+                const dCharges = dec.charges;
+                cycleLogSalaire += dSalaire;
                 cycleLogTransport += t;
-                cycleLogCharges += CHARGES_SOCIALES;
+                cycleLogCharges += dCharges;
                 const v = d.variete || 'N/A';
-                cycleLogByVariete[v] = (cycleLogByVariete[v] || 0) + d.salaire + t + CHARGES_SOCIALES;
+                cycleLogByVariete[v] = (cycleLogByVariete[v] || 0) + dSalaire + t + dCharges;
             });
             const cycleLogCout = cycleLogSalaire + cycleLogTransport + cycleLogCharges;
             const cycleDhParKgLog = cycleTotalKg > 0 ? +(cycleLogCout / cycleTotalKg).toFixed(2) : 0;
@@ -8935,11 +9133,18 @@
                     <div className="kpi-grid">
                         <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCout)} label={kpiCoutLabel} subItems={[{value: fmt(kpiSalaire), label: 'Salaire'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges'}]} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCout)} label={kpiCoutLabel} subItems={[{value: fmt(kpiSalaire), label: 'Salaire de base'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges patronales'}]} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKg)} label={kpiKgLabel} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-user" iconClass="blue" value={fmt(kpiCoutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
                         <KPICard icon="fa-users" iconClass="green" value={kpiNbOuvriers} label="Ouvriers Récolte" />
                         <KPICard icon="fa-chart-pie" iconClass="purple" value={kpiPctSalaire + '%'} label="Salaire dans Coût" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-truck-fast" iconClass="orange"
+                            value={tfDhParKgExport !== null ? tfDhParKgExport.toFixed(2).replace('.', ',') + ' DH' : '—'}
+                            label="Transport fruits / kg exporté"
+                            subItems={[
+                                {value: tfTotalCost !== null ? fmt(tfTotalCost) : '—', label: 'Coût transport'},
+                                {value: tfKgExporte ? fmt(tfKgExporte) : '—', label: 'Kg exporté'}
+                            ]} />
                     </div>
 
                     {showTrend && (() => {
@@ -8985,10 +9190,12 @@
                                 const culture = w.culture || resolveCulture(w);
                                 const isMyrt = /myrtille/i.test(culture);
                                 const prefix = getEquipePrefix(w.matricule);
-                                tSalaire += w.salaire;
+                                const wPrime = calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour);
+                                const dec = decomposeCoutJour(w.matricule, w.salaire, wPrime, w.jour);
+                                tSalaire += dec.salaire;
                                 tTransport += getTransport(prefix, dayPeriode);
-                                tPrime += calcPrime(w.kg, isMyrt ? 'myrtille' : w.variete, w.jour);
-                                tCharges += CHARGES_SOCIALES;
+                                tPrime += dec.prime;
+                                tCharges += dec.charges;
                                 tKg += w.kg;
                             });
                             return { salaire: tSalaire, transport: tTransport, prime: tPrime, charges: tCharges, cout: tSalaire + tTransport + tPrime + tCharges, kg: tKg, nb: wList.length };
@@ -9172,10 +9379,10 @@
                                         </div>
                                         )}
                                         <div style={{display:'flex',justifyContent:'center',gap:16,marginTop:14,fontSize:10,color:'var(--gray-600)',flexWrap:'wrap'}}>
-                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.salaire,marginRight:4,verticalAlign:'middle'}}></span>Salaire de Base</span>
+                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.salaire,marginRight:4,verticalAlign:'middle'}}></span>Salaire de base (SMAG + ancienneté)</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.transport,marginRight:4,verticalAlign:'middle'}}></span>Transport</span>
-                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.prime,marginRight:4,verticalAlign:'middle'}}></span>Prime Récolte</span>
-                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges Sociales (40 DH)</span>
+                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.prime,marginRight:4,verticalAlign:'middle'}}></span>Prime (fonction + récolte)</span>
+                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges patronales (26%)</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:LOG_HATCH,marginRight:4,verticalAlign:'middle'}}></span>Part Logistique</span>
                                             {hasKgHa && <span><span style={{display:'inline-block',width:14,height:3,borderRadius:2,background:KGHA_COLOR,marginRight:4,verticalAlign:'middle'}}></span>Volume Kg/ha (axe droit)</span>}
                                         </div>
