@@ -50,11 +50,14 @@
    */
   const PAIE_BAREMES_DEFAULT = {
     smagBrutJournalier: 88.58,
-    smagNetJournalier: 82.61,
+    smagNetJournalier: 90.88,
     joursParMois: 26,
     heuresNormalesParJour: 8,
     tauxChargesPatronales: 0.26,
     tauxCotisationsSalariales: 0.0674,
+    // Modèle paie complet validé Omar 2026-06 : retenues salariales détaillées (déclaré).
+    tauxCnssSalariale: 0.0448,
+    tauxAmo: 0.0226,
     paliers: [
       { seuilJours: 624, pourcentage: 5, label: '≥ 2 ans' },
       { seuilJours: 1560, pourcentage: 10, label: '≥ 5 ans' },
@@ -291,6 +294,131 @@
     };
   }
 
+  /**
+   * Modèle de paie COMPLET — validé Omar 2026-06 contre le fichier Excel de référence.
+   *
+   * Fonction pure : retourne TOUT le breakdown en nombres NON arrondis (l'AFFICHAGE
+   * arrondit à 2 décimales), plus `netArrondi` (entier, arrondi au plus proche).
+   * Aucune lecture Firestore, aucun DOM, aucun formatage.
+   *
+   * DÉCLARÉ (declare = true) :
+   *   base          = smagBrut × jT
+   *   feries        = smagBrut × jF
+   *   anciennete    = (base + feries) × ancienneteTaux        (ex 0.05, 0.10…)
+   *   primeFonction = primeFonctionJour × (jT + jF)            (interprété BRUT)
+   *   primesOpt     = somme(primesOptionnelles)                (def 0)
+   *   BRUT          = base + feries + anciennete + primeFonction + primesOpt
+   *   cnss          = BRUT × tauxCnssSalariale  (def 0.0448)
+   *   amo           = BRUT × tauxAmo            (def 0.0226)
+   *   NET           = BRUT − cnss − amo
+   *   chargesPat    = BRUT × tauxChargesPatronales (def 0.26)
+   *   coutEmployeur = BRUT + chargesPat          (transport EXCLU, séparé)
+   *
+   * NON DÉCLARÉ (declare = false) :
+   *   base          = smagNet × jT
+   *   primeFonction = primeFonctionJour × jT                   (interprété NET)
+   *   pas d'ancienneté, pas de fériés, pas de retenue, pas de charge patronale
+   *   BRUT = NET = coutEmployeur = base + primeFonction
+   *
+   * Le transport est séparé dans les deux cas (jamais inclus dans ces montants).
+   * netArrondi = Math.round(NET) (au plus proche, validé Omar — PAS floor).
+   *
+   * @param {{
+   *   declare: boolean,
+   *   smagBrut?: number,
+   *   smagNet?: number,
+   *   jT?: number,
+   *   jF?: number,
+   *   ancienneteTaux?: number,
+   *   primeFonctionJour?: number,
+   *   primesOptionnelles?: number | Array<number> | Object<string, number>,
+   *   baremes?: object
+   * }} args
+   * @returns {{
+   *   declare: boolean,
+   *   smagBase: number, jT: number, jF: number,
+   *   base: number, feries: number,
+   *   ancienneteTaux: number, anciennete: number,
+   *   primeFonctionJour: number, primeFonction: number,
+   *   primesOptionnelles: number,
+   *   brut: number,
+   *   tauxCnss: number, cnss: number,
+   *   tauxAmo: number, amo: number,
+   *   net: number,
+   *   tauxChargesPatronales: number, chargesPatronales: number,
+   *   coutEmployeur: number,
+   *   netArrondi: number
+   * }}
+   */
+  function computePayslip({ declare, smagBrut, smagNet, jT, jF, ancienneteTaux, primeFonctionJour, primesOptionnelles, baremes }) {
+    const b = { ...PAIE_BAREMES_DEFAULT, ...(baremes || {}) };
+    const jTn = Number(jT) || 0;
+    const jFn = Number(jF) || 0;
+    const pfJour = Number(primeFonctionJour) || 0;
+
+    // Somme des primes optionnelles, tolérant nombre | tableau | objet de montants.
+    let primesOpt = 0;
+    if (Array.isArray(primesOptionnelles)) {
+      primesOpt = primesOptionnelles.reduce((s, v) => s + (Number(v) || 0), 0);
+    } else if (primesOptionnelles && typeof primesOptionnelles === 'object') {
+      primesOpt = Object.keys(primesOptionnelles).reduce((s, k) => s + (Number(primesOptionnelles[k]) || 0), 0);
+    } else {
+      primesOpt = Number(primesOptionnelles) || 0;
+    }
+
+    if (!declare) {
+      const smagBase = smagNet != null ? (Number(smagNet) || 0) : (Number(b.smagNetJournalier) || 0);
+      const base = smagBase * jTn;
+      const primeFonction = pfJour * jTn;
+      const net = base + primeFonction;
+      return {
+        declare: false,
+        smagBase, jT: jTn, jF: 0,
+        base, feries: 0,
+        ancienneteTaux: 0, anciennete: 0,
+        primeFonctionJour: pfJour, primeFonction,
+        primesOptionnelles: primesOpt,
+        brut: net,
+        tauxCnss: 0, cnss: 0,
+        tauxAmo: 0, amo: 0,
+        net,
+        tauxChargesPatronales: 0, chargesPatronales: 0,
+        coutEmployeur: net,
+        netArrondi: Math.round(net),
+      };
+    }
+
+    const smagBase = smagBrut != null ? (Number(smagBrut) || 0) : (Number(b.smagBrutJournalier) || 0);
+    const ancTaux = Number(ancienneteTaux) || 0;
+    const base = smagBase * jTn;
+    const feries = smagBase * jFn;
+    const anciennete = (base + feries) * ancTaux;
+    const primeFonction = pfJour * (jTn + jFn);
+    const brut = base + feries + anciennete + primeFonction + primesOpt;
+    const tauxCnss = Number(b.tauxCnssSalariale) || 0;
+    const tauxAmo = Number(b.tauxAmo) || 0;
+    const cnss = brut * tauxCnss;
+    const amo = brut * tauxAmo;
+    const net = brut - cnss - amo;
+    const tauxChargesPatronales = Number(b.tauxChargesPatronales) || 0;
+    const chargesPatronales = brut * tauxChargesPatronales;
+    return {
+      declare: true,
+      smagBase, jT: jTn, jF: jFn,
+      base, feries,
+      ancienneteTaux: ancTaux, anciennete,
+      primeFonctionJour: pfJour, primeFonction,
+      primesOptionnelles: primesOpt,
+      brut,
+      tauxCnss, cnss,
+      tauxAmo, amo,
+      net,
+      tauxChargesPatronales, chargesPatronales,
+      coutEmployeur: brut + chargesPatronales,
+      netArrondi: Math.round(net),
+    };
+  }
+
   // ============================================================================
   // UMD-style export (browser global + CommonJS for node:test)
   // ============================================================================
@@ -301,6 +429,7 @@
     calculerPaieOuvrier,
     resolveSmagForDate,
     computeWorkerPaie,
+    computePayslip,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = __paieUtilsApi;

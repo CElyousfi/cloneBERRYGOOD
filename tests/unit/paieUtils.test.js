@@ -10,6 +10,7 @@ const {
   calculerPaieOuvrier,
   resolveSmagForDate,
   computeWorkerPaie,
+  computePayslip,
 } = PaieUtils;
 
 const close = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
@@ -137,7 +138,7 @@ test('calculerPaieOuvrier: non-déclaré AVEC prime fonction → brut = net = (s
 test('resolveSmagForDate: no history → flat fields', () => {
   const r = resolveSmagForDate(PAIE_BAREMES_DEFAULT, '2026-06-01');
   assert.strictEqual(r.smagBrutJournalier, 88.58);
-  assert.strictEqual(r.smagNetJournalier, 82.61);
+  assert.strictEqual(r.smagNetJournalier, 90.88);
 });
 
 test('resolveSmagForDate: no dateISO → flat fields even with history', () => {
@@ -489,4 +490,74 @@ test('computeWorkerPaie: déclaré vs non-déclaré — même base brut, même n
   // Le coût employeur diffère exactement de la CNSS patronale
   assert.ok(close(dec.coutTotalEmployeur - non.coutTotalEmployeur, dec.chargesPatronales));
   assert.ok(close(non.coutTotalEmployeur, non.net));
+});
+
+// ---------------------------------------------------------------------------
+// computePayslip — MODÈLE COMPLET validé Omar 2026-06 (Excel de référence).
+// 3 exemples de validation : montants intermédiaires à 0.01 près, netArrondi exact.
+// ---------------------------------------------------------------------------
+const close2 = (a, b, eps = 0.01) => Math.abs(a - b) <= eps;
+
+test('computePayslip EX1 — Déclaré 5% : BRUT=122.82, NET≈114.54, netArrondi=115', () => {
+  const r = computePayslip({
+    declare: true, smagBrut: 97.44, jT: 1, jF: 0,
+    ancienneteTaux: 0.05, primeFonctionJour: 20.51,
+  });
+  assert.ok(close2(r.brut, 122.82), `brut=${r.brut}`);
+  assert.ok(close2(r.cnss, 5.50), `cnss=${r.cnss}`);
+  assert.ok(close2(r.amo, 2.78), `amo=${r.amo}`);
+  assert.ok(close2(r.net, 114.54), `net=${r.net}`);
+  assert.strictEqual(r.netArrondi, 115);
+  assert.ok(close2(r.chargesPatronales, 31.93), `chargesPat=${r.chargesPatronales}`);
+  assert.ok(close2(r.coutEmployeur, 154.76), `coutEmployeur=${r.coutEmployeur}`);
+});
+
+test('computePayslip EX2 — Déclaré 10% avec férié : BRUT=233.946, NET=218.178, netArrondi=218', () => {
+  const r = computePayslip({
+    declare: true, smagBrut: 97.44, jT: 1, jF: 1,
+    ancienneteTaux: 0.10, primeFonctionJour: 9.789,
+  });
+  assert.ok(close2(r.brut, 233.946), `brut=${r.brut}`);
+  assert.ok(close2(r.cnss, 10.48), `cnss=${r.cnss}`);
+  assert.ok(close2(r.amo, 5.29), `amo=${r.amo}`);
+  assert.ok(close2(r.net, 218.178), `net=${r.net}`);
+  assert.strictEqual(r.netArrondi, 218);
+  assert.ok(close2(r.coutEmployeur, 294.77), `coutEmployeur=${r.coutEmployeur}`);
+});
+
+test('computePayslip EX3 — Non déclaré : BRUT=NET=coutEmployeur=100, netArrondi=100', () => {
+  const r = computePayslip({
+    declare: false, smagNet: 90.88, jT: 1, primeFonctionJour: 9.12,
+  });
+  assert.ok(close2(r.brut, 100), `brut=${r.brut}`);
+  assert.ok(close2(r.net, 100), `net=${r.net}`);
+  assert.ok(close2(r.coutEmployeur, 100), `coutEmployeur=${r.coutEmployeur}`);
+  assert.strictEqual(r.brut, r.net);
+  assert.strictEqual(r.net, r.coutEmployeur);
+  assert.strictEqual(r.cnss, 0);
+  assert.strictEqual(r.amo, 0);
+  assert.strictEqual(r.chargesPatronales, 0);
+  assert.strictEqual(r.netArrondi, 100);
+});
+
+test('computePayslip: primes optionnelles (nombre, tableau, objet) sommées dans le brut', () => {
+  const baseArgs = { declare: true, smagBrut: 97.44, jT: 1, jF: 0, ancienneteTaux: 0, primeFonctionJour: 0 };
+  const base = computePayslip(baseArgs).brut;
+  assert.ok(close2(computePayslip({ ...baseArgs, primesOptionnelles: 50 }).brut, base + 50));
+  assert.ok(close2(computePayslip({ ...baseArgs, primesOptionnelles: [10, 20, 5] }).brut, base + 35));
+  assert.ok(close2(computePayslip({ ...baseArgs, primesOptionnelles: { rendement: 12, caporal: 8 } }).brut, base + 20));
+});
+
+test('computePayslip: défauts SMAG depuis baremes quand smagBrut/smagNet absents', () => {
+  const dec = computePayslip({ declare: true, jT: 1, ancienneteTaux: 0, primeFonctionJour: 0 });
+  assert.ok(close2(dec.base, PAIE_BAREMES_DEFAULT.smagBrutJournalier));
+  const non = computePayslip({ declare: false, jT: 1, primeFonctionJour: 0 });
+  assert.ok(close2(non.base, PAIE_BAREMES_DEFAULT.smagNetJournalier));
+});
+
+test('computePayslip: args vides → pas de crash, zéros', () => {
+  const r = computePayslip({});
+  assert.strictEqual(r.brut, 0);
+  assert.strictEqual(r.net, 0);
+  assert.strictEqual(r.netArrondi, 0);
 });
