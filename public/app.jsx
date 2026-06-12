@@ -23755,6 +23755,42 @@ ${rejetHtml}
                     e.displayMat = mat; // matricule pointage lisible prioritaire
                     if (e.registryKey == null && registry[canon]) e.registryKey = canon;
                 });
+                // Jours fériés de la config primes (mêmes données que la popup ouvrier).
+                // Set des dates fériées ISO pour compter, par ouvrier, les jours pointés
+                // tombant un férié SUR LA PÉRIODE.
+                const feriesSet = new Set(
+                    (((data && data.primesConfig && data.primesConfig.joursFeries) || [])
+                        .map(jf => jf && jf.date)
+                        .filter(Boolean))
+                );
+                // SMAG daté résolu à la fin de période (borne la plus représentative de la
+                // quinzaine). Cohérent avec computeWorkerPaie qui résout le SMAG par date.
+                const smag = (window.PaieUtils && window.PaieUtils.resolveSmagForDate)
+                    ? window.PaieUtils.resolveSmagForDate(baremes, periodEnd)
+                    : { smagBrutJournalier: baremes.smagBrutJournalier || 0, smagNetJournalier: baremes.smagNetJournalier || 0 };
+                // Fallback gracieux si window.PaieUtils.computePayslip absent : on retombe
+                // sur l'ancien modèle simplifié (net = brut, sans retenue) plutôt qu'un crash.
+                const computePaie = (args) => {
+                    if (window.PaieUtils && window.PaieUtils.computePayslip) {
+                        const p = window.PaieUtils.computePayslip(args);
+                        return {
+                            brut: p.brut, net: p.net, netArrondi: p.netArrondi,
+                            cnss: p.cnss, amo: p.amo, retenues: (p.cnss || 0) + (p.amo || 0),
+                            prime: p.anciennete, primeFonction: p.primeFonction,
+                            chargesPatronales: p.chargesPatronales, coutEmployeur: p.coutEmployeur,
+                            palier: args.__palier, pourcentage: args.__pourcentage,
+                        };
+                    }
+                    const legacy = calculerPaieOuvrier({ declare: args.declare, joursTravailles: args.jT,
+                        anciennete: args.__anciennete, baremes: args.baremes, primeFonctionJour: args.primeFonctionJour });
+                    return {
+                        brut: legacy.brut, net: legacy.net, netArrondi: Math.round(legacy.net || 0),
+                        cnss: 0, amo: 0, retenues: 0,
+                        prime: legacy.prime, primeFonction: 0,
+                        chargesPatronales: legacy.chargesPatronales, coutEmployeur: legacy.coutEmployeur,
+                        palier: legacy.palier, pourcentage: legacy.pourcentage,
+                    };
+                };
                 const list = [];
                 byCanon.forEach((e, canon) => {
                     // Lookup registre normalisé : la clé registre est numérique (canon).
@@ -23765,21 +23801,46 @@ ${rejetHtml}
                     const baselineJours = Number(r.baselineJours || 0);
                     let joursDepuisBaseline = 0;
                     let joursPeriode = 0;
+                    let joursFeriesPeriode = 0;
                     pt.joursPointes.forEach(dISO => {
                         if (!baselineDate || dISO >= baselineDate) joursDepuisBaseline++;
-                        if (dISO >= periodStart && dISO <= periodEnd) joursPeriode++;
+                        if (dISO >= periodStart && dISO <= periodEnd) {
+                            joursPeriode++;
+                            if (feriesSet.has(dISO)) joursFeriesPeriode++;
+                        }
                     });
                     const anciennete = baselineJours + joursDepuisBaseline;
                     const declare = !!r.declare;
-                    const paie = calculerPaieOuvrier({ declare, joursTravailles: joursPeriode, anciennete, baremes,
-                        primeFonctionJour: Number(r.primeFonctionJournaliere || 0) });
+                    // Taux d'ancienneté (palier %) résolu pour le nouveau modèle computePayslip,
+                    // qui attend ancienneteTaux (fraction), pas le nombre de jours.
+                    const __pal = (window.PaieUtils && window.PaieUtils.trouverPalierAnciennete)
+                        ? window.PaieUtils.trouverPalierAnciennete(anciennete, baremes.paliers || [])
+                        : { palier: '—', pourcentage: 0 };
+                    const ancienneteTaux = declare ? ((__pal.pourcentage || 0) / 100) : 0;
+                    const primeFonctionJour = Number(r.primeFonctionJournaliere || 0);
+                    // jF = jours fériés pointés (déclarés uniquement) — le férié majore la base
+                    // SMAG et l'ancienneté dans computePayslip. Les jT excluent ces jours fériés
+                    // (jours ordinaires) pour ne pas les compter deux fois.
+                    const jF = declare ? joursFeriesPeriode : 0;
+                    const jT = joursPeriode - jF;
+                    const paie = computePaie({
+                        declare,
+                        smagBrut: smag.smagBrutJournalier,
+                        smagNet: smag.smagNetJournalier,
+                        jT, jF, ancienneteTaux, primeFonctionJour,
+                        baremes,
+                        __anciennete: anciennete,
+                        __palier: declare ? __pal.palier : '—',
+                        __pourcentage: declare ? (__pal.pourcentage || 0) : 0,
+                    });
                     list.push({ matricule, nom: r.nom || pt.nom || '', declare,
-                        primeFonctionJournaliere: Number(r.primeFonctionJournaliere || 0),
-                        baselineJours, baselineDate, joursDepuisBaseline, anciennete, joursPeriode, paie });
+                        primeFonctionJournaliere: primeFonctionJour,
+                        baselineJours, baselineDate, joursDepuisBaseline, anciennete,
+                        joursPeriode, joursFeriesPeriode, paie });
                 });
                 list.sort((a, b) => (b.paie.coutEmployeur || 0) - (a.paie.coutEmployeur || 0));
                 return list;
-            }, [registry, pointageMap, baremes, periodStart, periodEnd]);
+            }, [registry, pointageMap, baremes, periodStart, periodEnd, data]);
 
             const filteredRows = useMemo(() => {
                 const q = search.trim().toLowerCase();
@@ -23793,13 +23854,14 @@ ${rejetHtml}
 
             const totals = useMemo(() => filteredRows.reduce((acc, r) => {
                 acc.net += r.paie.net || 0;
+                acc.netArrondi += r.paie.netArrondi || 0;
                 acc.brut += r.paie.brut || 0;
                 acc.prime += r.paie.prime || 0;
+                acc.retenues += r.paie.retenues || 0;
                 acc.charges += r.paie.chargesPatronales || 0;
-                acc.cotis += r.paie.cotisationsSalariales || 0;
                 acc.cout += r.paie.coutEmployeur || 0;
                 return acc;
-            }, { net: 0, brut: 0, prime: 0, charges: 0, cotis: 0, cout: 0 }), [filteredRows]);
+            }, { net: 0, netArrondi: 0, brut: 0, prime: 0, retenues: 0, charges: 0, cout: 0 }), [filteredRows]);
 
             // ouvriers_registry est keyé NUMÉRIQUE (doc.id) alors que les matricules de
             // pointage sont À LETTRES. numKey extrait la clé numérique canonique : on
@@ -24021,8 +24083,9 @@ ${rejetHtml}
                                             <th>Palier</th>
                                             <th style={{textAlign:'right'}}>Jours période</th>
                                             <th style={{textAlign:'right'}}>Brut</th>
-                                            <th style={{textAlign:'right'}}>Prime</th>
-                                            <th style={{textAlign:'right', background:'rgba(46,204,113,0.08)'}}>Net à virer</th>
+                                            <th style={{textAlign:'right'}}>Prime anc.</th>
+                                            <th style={{textAlign:'right'}}>Retenues (CNSS+AMO)</th>
+                                            <th style={{textAlign:'right', background:'rgba(46,204,113,0.08)'}}>Net à payer</th>
                                             <th style={{textAlign:'right'}}>Charges patr.</th>
                                             <th style={{textAlign:'right', background:'rgba(139,34,82,0.08)'}}>Coût employeur</th>
                                         </tr>
@@ -24048,21 +24111,23 @@ ${rejetHtml}
                                                 <td style={{textAlign:'right'}}>{fmtInt(r.joursPeriode)}</td>
                                                 <td style={{textAlign:'right'}}>{fmt(r.paie.brut)}</td>
                                                 <td style={{textAlign:'right', color: r.paie.prime > 0 ? 'var(--berry)' : 'var(--gray-300)'}}>{fmt(r.paie.prime)}</td>
-                                                <td style={{textAlign:'right', fontWeight:700, background:'rgba(46,204,113,0.08)'}}>{fmt(r.paie.net)}</td>
+                                                <td style={{textAlign:'right', color: r.paie.retenues > 0 ? 'var(--red)' : 'var(--gray-300)'}}>{r.paie.retenues > 0 ? '-' : ''}{fmt(r.paie.retenues)}</td>
+                                                <td style={{textAlign:'right', fontWeight:700, background:'rgba(46,204,113,0.08)'}} title={`Net exact : ${fmt(r.paie.net)} DH`}>{fmtInt(r.paie.netArrondi)}</td>
                                                 <td style={{textAlign:'right', color:'var(--gray-500)'}}>{fmt(r.paie.chargesPatronales)}</td>
                                                 <td style={{textAlign:'right', fontWeight:700, background:'rgba(139,34,82,0.08)'}}>{fmt(r.paie.coutEmployeur)}</td>
                                             </tr>
                                         ))}
                                         {filteredRows.length === 0 && (
-                                            <tr><td colSpan={15} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
+                                            <tr><td colSpan={16} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
                                         )}
                                     </tbody>
                                     <tfoot>
                                         <tr style={{fontWeight:700, background:'var(--gray-50)'}}>
-                                            <td colSpan={9} style={{textAlign:'right'}}>Totaux ({filteredRows.length} ouvrier{filteredRows.length > 1 ? 's' : ''})</td>
+                                            <td colSpan={10} style={{textAlign:'right'}}>Totaux ({filteredRows.length} ouvrier{filteredRows.length > 1 ? 's' : ''})</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.brut)}</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.prime)}</td>
-                                            <td style={{textAlign:'right', background:'rgba(46,204,113,0.15)'}}>{fmt(totals.net)}</td>
+                                            <td style={{textAlign:'right', color: totals.retenues > 0 ? 'var(--red)' : 'inherit'}}>{totals.retenues > 0 ? '-' : ''}{fmt(totals.retenues)}</td>
+                                            <td style={{textAlign:'right', background:'rgba(46,204,113,0.15)'}} title={`Net exact : ${fmt(totals.net)} DH`}>{fmtInt(totals.netArrondi)}</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.charges)}</td>
                                             <td style={{textAlign:'right', background:'rgba(139,34,82,0.15)'}}>{fmt(totals.cout)}</td>
                                         </tr>
@@ -24073,11 +24138,11 @@ ${rejetHtml}
 
                         <div style={{marginTop:10, fontSize:10, color:'var(--gray-400)', lineHeight:1.5}}>
                             <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>
-                            <strong>Non déclarés</strong> : Brut = SMAG brut × jours pointés — pas de charges, pas de prime d'ancienneté. Net à virer = Brut. Coût employeur = Brut.
+                            <strong>Non déclarés</strong> : Brut = SMAG net × jours pointés (+ prime fonction) — aucune retenue, aucune charge, pas de prime d'ancienneté. Net à payer = Brut. Coût employeur = Brut.
                             <br />
-                            <strong>Déclarés</strong> : Brut = SMAG brut × jours + prime ancienneté ; Net à virer = Brut (aucune retenue salariale) ; Coût employeur = Brut + charges patronales (CNSS, à la charge de la société).
+                            <strong>Déclarés</strong> : Brut = SMAG brut × (jours + fériés) + prime ancienneté + prime fonction ; Retenues = CNSS (4,48 %) + AMO (2,26 %) sur le brut ; Net à payer = Brut − retenues (arrondi au plus proche) ; Coût employeur = Brut + charges patronales (26 %), transport exclu.
                             <br />
-                            Les barèmes (SMAG, taux, paliers) sont éditables dans <em>Paramètres</em> et appliqués en temps réel.
+                            SMAG résolu à la <strong>date de fin de période</strong> (barème daté). Jours fériés comptés sur la période depuis la config des primes. Les barèmes (SMAG, taux, paliers) sont éditables dans <em>Paramètres</em> et appliqués en temps réel.
                         </div>
                     </Panel>
                 </div>
