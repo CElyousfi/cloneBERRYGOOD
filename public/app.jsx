@@ -6681,7 +6681,7 @@
                                                     </tr>
                                                     {isExpanded && o.ouvriers.sort((a, b) => (a.nom || '').localeCompare(b.nom || '')).map((r, j) => (
                                                         <tr key={i + '-' + j} style={{background:'var(--gray-50)',fontSize:11}}>
-                                                            <td style={{paddingLeft:24}}><span style={{fontFamily:'monospace',fontSize:10,color:'var(--gray-400)',marginRight:6}}>{r.matricule}</span><WorkerLink matricule={r.matricule} nom={r.nom} /></td>
+                                                            <td style={{paddingLeft:24}}><span title={isDeclareForMat(r.matricule) ? 'Déclaré' : 'Non déclaré'} style={{marginRight:6}}>{isDeclareForMat(r.matricule) ? '🟢' : '🔴'}</span><span style={{fontFamily:'monospace',fontSize:10,color:'var(--gray-400)',marginRight:6}}>{r.matricule}</span><WorkerLink matricule={r.matricule} nom={r.nom} /></td>
                                                             <td style={{textAlign:'center',color:'var(--gray-500)'}}>{r.heures}h</td>
                                                             {!isCaporal && <td style={{textAlign:'right',fontWeight:600}}>{Math.round(r.cout)}</td>}
                                                             <td></td>
