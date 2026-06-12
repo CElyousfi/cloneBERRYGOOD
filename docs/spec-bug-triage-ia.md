@@ -77,7 +77,7 @@ Champs tous requis ; `duplicateOf` = `null` si `isDuplicate=false`.
 - Update `bug_reports/{id}` : `{ severity, module, summary, suggestedAction, isDuplicate, duplicateOf, status:"qualified", triaged_at, triaged_model:"claude-sonnet-4-6" }`.
 - **Si `severity === "critical"`** → WhatsApp immédiat à Omar (même pattern que les alertes existantes, cf. `notifyOmar.js` / endpoint WhatsApp) :
   `🔴 BUG CRITIQUE — [module] : [summary]. Signalé par [reporter]. Réf #[id].`
-- (Optionnel à trancher) alerter aussi sur `high` ? Par défaut : non (seulement critical en WhatsApp).
+- **DÉCISION Omar 2026-06-12 : WhatsApp sur `critical` ET `high`.** (medium/low → vue admin seulement.)
 
 ## 7. Config Claude API
 - **Clé API Anthropic DÉDIÉE** (≠ clé chat claude.ai) créée sur console.anthropic.com, stockée dans **Secret Manager** (Firebase functions secret `ANTHROPIC_API_KEY_TRIAGE`), jamais en clair ni dans le repo.
