@@ -13,7 +13,12 @@
  *   8. Validate vs Stock Reel (31/03/2026)
  *
  * Usage:
- *   GOOGLE_APPLICATION_CREDENTIALS=... node scripts/import-stock-caneva.js [--dry-run] [--clean]
+ *   GOOGLE_APPLICATION_CREDENTIALS=... node scripts/import-stock-caneva.js [--dry-run] [--clean] [--file=<path>]
+ *
+ * The Excel path defaults to the latest CANEVA file at repo root. Pass --file=<path>
+ * (or a positional non-flag argument) to point at a different workbook. The
+ * "STOCK REEL A 31.03.2026" sheet is optional: when absent, Phase 8 (reconciliation)
+ * is skipped cleanly and the rest of the pipeline runs normally.
  */
 
 const path = require("path");
@@ -32,6 +37,24 @@ const db = admin.firestore();
 const DRY_RUN = process.argv.includes("--dry-run");
 const CLEAN = process.argv.includes("--clean");
 const IMPORT_SOURCE = "CANEVA_STOCK_BGF";
+
+// Default workbook (the system adapts to the file, the file is not reformatted).
+const DEFAULT_EXCEL_FILE = "CANEVA STOCK BGF POUR SMARTBERRY 5-30-2026.xlsx";
+
+// Resolve the Excel path: --file=<path>, or first positional non-flag arg, else default.
+function resolveExcelPath() {
+  const args = process.argv.slice(2);
+  const fileFlag = args.find(a => a.startsWith("--file="));
+  if (fileFlag) {
+    const p = fileFlag.slice("--file=".length).trim();
+    return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
+  }
+  const positional = args.find(a => !a.startsWith("--"));
+  if (positional) {
+    return path.isAbsolute(positional) ? positional : path.join(process.cwd(), positional);
+  }
+  return path.join(__dirname, "..", DEFAULT_EXCEL_FILE);
+}
 const IMPORT_TIMESTAMP = Date.now();
 
 // ============================================================
@@ -370,18 +393,24 @@ async function main() {
 
   // --- PHASE 1: Parse Excel ---
   console.log("Phase 1: Parsing Excel...");
-  const EXCEL_PATH = path.join(__dirname, "..", "CANEVA STOCK BGF POUR SMARTBERRY AVEC PRIX 290426.xlsx");
+  const EXCEL_PATH = resolveExcelPath();
   if (!fs.existsSync(EXCEL_PATH)) {
     console.error(`File not found: ${EXCEL_PATH}`);
+    console.error(`Pass --file=<path> to point at the workbook (default: ${DEFAULT_EXCEL_FILE}).`);
     process.exit(1);
   }
+  console.log(`  File: ${EXCEL_PATH}`);
 
   const wb = XLSX.readFile(EXCEL_PATH, { cellDates: true });
   console.log("  Sheet names:", wb.SheetNames);
 
-  function parseSheet(name) {
+  // optional=true silences the "not found" log for sheets that may legitimately be absent.
+  function parseSheet(name, optional) {
     const ws = wb.Sheets[name];
-    if (!ws) { console.error(`Sheet "${name}" not found`); return []; }
+    if (!ws) {
+      if (!optional) console.error(`Sheet "${name}" not found`);
+      return [];
+    }
     return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
   }
 
@@ -390,14 +419,28 @@ async function main() {
   const rawTransferts = parseSheet("BONS DE TRANSFERT").slice(1).filter(r => r[4] && String(r[4]).trim());
   const rawConsommations = parseSheet("BONS CONSOMMATION").slice(1).filter(r => r[5] && String(r[5]).trim());
   const rawSorties = parseSheet("BONS SORTIE").slice(1).filter(r => r[5] && String(r[5]).trim());
-  const rawStockReel = parseSheet("STOCK REEL A 31.03.2026").slice(3).filter(r => r[0] && String(r[0]).trim());
+  const STOCK_REEL_SHEET = "STOCK REEL A 31.03.2026";
+  const hasStockReel = !!wb.Sheets[STOCK_REEL_SHEET];
+  const rawStockReel = hasStockReel
+    ? parseSheet(STOCK_REEL_SHEET, true).slice(3).filter(r => r[0] && String(r[0]).trim())
+    : [];
+
+  // The TRANSFERT sheet exists in two layouts: with or without a UNITE column.
+  //   layout A (legacy): DATE, BON, DEPART, ARRIVEE, NOM ARTICLE, UNITE, QUNTITE
+  //   layout B (new):    DATE, BON, DEPART, ARRIVEE, NOM ARTICLE, QUNTITE
+  // Detect from the header so the right column indexes are used for each file.
+  const rawTransfertHeader = parseSheet("BONS DE TRANSFERT")[0] || [];
+  const transfertHasUnite = String(rawTransfertHeader[5] || "").trim().toUpperCase() === "UNITE";
+  const TRANSFERT_COLS = transfertHasUnite
+    ? { unite: 5, qte: 6 }
+    : { unite: null, qte: 5 };
 
   console.log(`  Inventaire: ${rawInventaire.length} rows`);
   console.log(`  Bons Entree: ${rawEntrees.length} rows`);
-  console.log(`  Bons Transfert: ${rawTransferts.length} rows`);
+  console.log(`  Bons Transfert: ${rawTransferts.length} rows (layout ${transfertHasUnite ? "avec UNITE" : "sans UNITE"})`);
   console.log(`  Bons Consommation: ${rawConsommations.length} rows`);
   console.log(`  Bons Sortie: ${rawSorties.length} rows`);
-  console.log(`  Stock Reel: ${rawStockReel.length} rows`);
+  console.log(`  Stock Reel: ${hasStockReel ? rawStockReel.length + " rows" : "feuille absente"}`);
   console.log("");
 
   // --- PHASE 0: Clean if requested ---
@@ -591,7 +634,9 @@ async function main() {
   console.log("Phase 5: Importing Bons de Transfert...");
 
   // Group by (date, bt_number, depart, arrivee)
-  // New file columns: [0]=DATE, [1]=BON, [2]=DEPART, [3]=ARRIVEE, [4]=NOM ARTICLE, [5]=UNITE, [6]=QUANTITE
+  // Columns: [0]=DATE, [1]=BON, [2]=DEPART, [3]=ARRIVEE, [4]=NOM ARTICLE, then either
+  //   [5]=UNITE, [6]=QUANTITE (legacy) or [5]=QUANTITE (new, no UNITE column).
+  // TRANSFERT_COLS resolves the right indexes from the header (see Phase 1).
   const transfertGroups = new Map();
   for (const row of rawTransferts) {
     const date = toISO(row[0]);
@@ -599,8 +644,8 @@ async function main() {
     const depart = String(row[2] || "").trim();
     const arrivee = String(row[3] || "").trim();
     const { ref: artRef, nom: artNom } = resolveArticle(row[4]);
-    const unite = String(row[5] || "kg").trim();
-    const qte = parseFloat(row[6]) || 0;
+    const unite = TRANSFERT_COLS.unite !== null ? String(row[TRANSFERT_COLS.unite] || "kg").trim() : "kg";
+    const qte = parseFloat(row[TRANSFERT_COLS.qte]) || 0;
     if (!artRef || qte === 0 || !depart) continue;
 
     const key = `${date}|${bt}|${depart}|${arrivee}`;
@@ -807,6 +852,15 @@ async function main() {
   // --- PHASE 8: Validation vs Stock Reel ---
   console.log("Phase 8: Validation vs Stock Reel (31/03/2026)...");
 
+  let matchCount = 0;
+  let mismatchCount = 0;
+  const mismatches = [];
+
+  if (!hasStockReel || rawStockReel.length === 0) {
+    console.log("  ignorée (pas de feuille STOCK REEL dans ce fichier — réconciliation non disponible)");
+    console.log("");
+  } else {
+
   // Read computed balances from Firestore
   const balSnap = DRY_RUN ? { docs: [] } : await db.collection("stock_balances").get();
   const computed = {};
@@ -820,9 +874,6 @@ async function main() {
 
   // Parse stock reel from Excel (col 0=article, 1=F01, 2=F02, 3=F05, 4=total)
   const REEL_FARM_MAP = { 1: "F1", 2: "F2", 3: "F5" };
-  let matchCount = 0;
-  let mismatchCount = 0;
-  const mismatches = [];
 
   for (const row of rawStockReel) {
     const articleName = String(row[0] || "").trim();
@@ -855,6 +906,8 @@ async function main() {
     }
     if (mismatches.length > 30) console.log(`    ... and ${mismatches.length - 30} more`);
   }
+  console.log("");
+  } // end Phase 8 (has stock reel)
 
   // --- PHASE 8b: Update article prices in catalog ---
   console.log("Phase 8b: Updating article prices in catalog...");
@@ -1057,7 +1110,7 @@ async function main() {
   console.log(`  Consommations (BCS): ${consoGroups.size}`);
   console.log(`  Sorties (BS): ${sortieGroups.size}`);
   console.log(`  Total movements: ${entreeGroups.size + transfertGroups.size + consoGroups.size + sortieGroups.size}`);
-  console.log(`  Validation: ${matchCount} OK, ${mismatchCount} ecarts`);
+  console.log(`  Validation: ${hasStockReel ? `${matchCount} OK, ${mismatchCount} ecarts` : "ignorée (pas de feuille STOCK REEL)"}`);
   console.log(`  Coûts par variété: Engrais=${Math.round(totalEngrais).toLocaleString()} DH, Pesticides=${Math.round(totalPesticides).toLocaleString()} DH`);
   if (DRY_RUN) console.log("\n  *** DRY RUN - no data was written to Firestore ***");
   console.log("");
