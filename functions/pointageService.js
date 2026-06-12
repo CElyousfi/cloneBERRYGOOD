@@ -1825,7 +1825,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
           // Enrich with production data (Tracabilite_recolte) — more accurate kg.
           // Le kg de récolte vient UNIQUEMENT d'ici (quantiteToKg=0 sur l'opération « Récolte »).
-          // ⚠️ Historique : on lisait les ~16 docs prod SÉQUENTIELLEMENT (un get() par date, chacun
+          // ⚠️ Historique : on lisait les ~60-90 docs prod (6 quinzaines) SÉQUENTIELLEMENT (un get() par date, chacun
           // dans un try/catch). Un échec transitoire Firestore (deadline/contention) faisait sauter
           // l'enrichissement → kg=0 sur TOUTES les dates → payload dégradée servie au DG (KPIs DH/kg
           // en tirets + graphe vide = faux « écran cassé », intermittent ~50/50 à froid).
