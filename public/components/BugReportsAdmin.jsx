@@ -27,8 +27,31 @@
 
   var STATUS_META = {
     nouveau: { label: 'Nouveau', color: '#b3261e', bg: '#fce8e6' },
+    qualified: { label: 'Qualifié', color: '#1a73e8', bg: '#e8f0fe' },
     en_cours: { label: 'En cours', color: '#b06000', bg: '#fef3e0' },
     resolu: { label: 'Résolu', color: '#137333', bg: '#e6f4ea' }
+  };
+
+  // Sévérités posées par le triage IA. critical=rouge, high=orange,
+  // medium=jaune, low=gris.
+  var SEVERITY_META = {
+    critical: { label: 'Critique', color: '#fff', bg: '#b3261e' },
+    high: { label: 'Important', color: '#fff', bg: '#e8710a' },
+    medium: { label: 'Moyen', color: '#5f4400', bg: '#fde293' },
+    low: { label: 'Mineur', color: '#fff', bg: '#9aa0a6' }
+  };
+
+  // Libellés FR des modules (enum du triage).
+  var MODULE_LABELS = {
+    pointage: 'Pointage',
+    paie: 'Paie',
+    stock: 'Stock',
+    cout_recolte: 'Coût récolte',
+    agronomie: 'Agronomie',
+    equipes: 'Équipes',
+    quinzaine: 'Quinzaine',
+    dashboard: 'Dashboard',
+    autre: 'Autre'
   };
 
   function profileIdOf(p) {
@@ -71,6 +94,26 @@
     );
   }
 
+  function SeverityBadge(props) {
+    var meta = SEVERITY_META[props.severity];
+    if (!meta) return null;
+    return React.createElement(
+      'span',
+      {
+        style: {
+          display: 'inline-block',
+          padding: '2px 10px',
+          borderRadius: '999px',
+          fontSize: '12px',
+          fontWeight: 700,
+          color: meta.color,
+          background: meta.bg
+        }
+      },
+      meta.label
+    );
+  }
+
   function BugReportsAdminComponent(props) {
     var profileId = profileIdOf(props.currentProfile);
     var isAdmin = ADMIN_PROFILES.indexOf(profileId) >= 0;
@@ -90,6 +133,15 @@
     var filterState = useState('tous');
     var filter = filterState[0];
     var setFilter = filterState[1];
+
+    // Filtres client (severity / module) appliqués en mémoire sur la liste reçue.
+    var severityFilterState = useState('tous');
+    var severityFilter = severityFilterState[0];
+    var setSeverityFilter = severityFilterState[1];
+
+    var moduleFilterState = useState('tous');
+    var moduleFilter = moduleFilterState[0];
+    var setModuleFilter = moduleFilterState[1];
 
     var updatingState = useState(null); // id en cours de mise à jour
     var updating = updatingState[0];
@@ -159,38 +211,85 @@
       );
     }
 
-    var filters = [
+    // Liste filtrée côté client (severity / module). Le statut est déjà filtré
+    // côté serveur via `filter`.
+    var visibleBugs = bugs.filter(function (bug) {
+      if (severityFilter !== 'tous' && bug.severity !== severityFilter) return false;
+      if (moduleFilter !== 'tous' && bug.module !== moduleFilter) return false;
+      return true;
+    });
+
+    // Compteur « haute priorité » : qualifiés ET severity in [critical, high].
+    var highPriorityCount = bugs.filter(function (bug) {
+      return bug.status === 'qualified' && (bug.severity === 'critical' || bug.severity === 'high');
+    }).length;
+
+    function pill(value, label, current, onPick, accent) {
+      var active = current === value;
+      var col = accent || 'var(--berry, #b3261e)';
+      return React.createElement(
+        'button',
+        {
+          key: value,
+          type: 'button',
+          onClick: function () { onPick(value); },
+          style: {
+            padding: '6px 14px',
+            borderRadius: '999px',
+            border: '1px solid ' + (active ? col : '#ccc'),
+            background: active ? col : '#fff',
+            color: active ? '#fff' : '#444',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer'
+          }
+        },
+        label
+      );
+    }
+
+    var statusFilters = [
       ['tous', 'Tous'],
       ['nouveau', 'Nouveau'],
+      ['qualified', 'Qualifié'],
       ['en_cours', 'En cours'],
       ['resolu', 'Résolu']
     ];
+    var severityFilters = [
+      ['tous', 'Toutes sévérités'],
+      ['critical', 'Critique'],
+      ['high', 'Important'],
+      ['medium', 'Moyen'],
+      ['low', 'Mineur']
+    ];
+    var moduleFilters = [['tous', 'Tous modules']].concat(
+      Object.keys(MODULE_LABELS).map(function (k) { return [k, MODULE_LABELS[k]]; })
+    );
 
     var filterBar = React.createElement(
       'div',
-      { style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' } },
-      filters.map(function (f) {
-        var active = filter === f[0];
-        return React.createElement(
-          'button',
-          {
-            key: f[0],
-            type: 'button',
-            onClick: function () { setFilter(f[0]); },
-            style: {
-              padding: '6px 14px',
-              borderRadius: '999px',
-              border: '1px solid ' + (active ? 'var(--berry, #b3261e)' : '#ccc'),
-              background: active ? 'var(--berry, #b3261e)' : '#fff',
-              color: active ? '#fff' : '#444',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }
-          },
-          f[1]
-        );
-      })
+      { style: { display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' } },
+      React.createElement(
+        'div',
+        { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+        statusFilters.map(function (f) {
+          return pill(f[0], f[1], filter, setFilter, null);
+        })
+      ),
+      React.createElement(
+        'div',
+        { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+        severityFilters.map(function (f) {
+          return pill(f[0], f[1], severityFilter, setSeverityFilter, '#1a73e8');
+        })
+      ),
+      React.createElement(
+        'div',
+        { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+        moduleFilters.map(function (f) {
+          return pill(f[0], f[1], moduleFilter, setModuleFilter, '#5f6368');
+        })
+      )
     );
 
     var content;
@@ -211,23 +310,31 @@
           'Réessayer'
         )
       );
-    } else if (!bugs.length) {
+    } else if (!visibleBugs.length) {
       content = React.createElement('div', { style: { padding: '24px', color: '#888', fontSize: '14px' } }, 'Aucun signalement.');
     } else {
       content = React.createElement(
         'div',
         { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
-        bugs.map(function (bug) {
+        visibleBugs.map(function (bug) {
           var reporterName = (bug.reporter && bug.reporter.name) || '?';
           var reporterProfile = (bug.reporter && bug.reporter.profileId) || '';
           var device = bug.device || {};
-          var rows = [
+          var moduleLabel = bug.module ? (MODULE_LABELS[bug.module] || bug.module) : null;
+          var rows = [];
+          if (moduleLabel) rows.push(['Module', moduleLabel]);
+          if (bug.summary) rows.push(['Résumé IA', bug.summary]);
+          if (bug.suggestedAction) rows.push(['Piste', bug.suggestedAction]);
+          if (bug.isDuplicate) {
+            rows.push(['Doublon de', bug.duplicateOf ? ('#' + String(bug.duplicateOf).slice(0, 8)) : 'oui']);
+          }
+          rows = rows.concat([
             ['Signalé par', reporterName + (reporterProfile ? ' (' + reporterProfile + ')' : '')],
             ['Écran', bug.screen || '—'],
             ['Date', formatDate(bug.created_at)],
             ['Navigateur', device.userAgent || '—'],
             ['Écran (px)', device.viewport || '—']
-          ];
+          ]);
 
           var photoThumb = bug.photo_url
             ? React.createElement('img', {
@@ -291,7 +398,12 @@
                 'div',
                 { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' } },
                 React.createElement('div', { style: { fontSize: '14px', fontWeight: 600, color: '#222', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, bug.description || '(sans description)'),
-                React.createElement(StatusBadge, { status: bug.status })
+                React.createElement(
+                  'div',
+                  { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', flexShrink: 0 } },
+                  React.createElement(SeverityBadge, { severity: bug.severity }),
+                  React.createElement(StatusBadge, { status: bug.status })
+                )
               ),
               React.createElement(
                 'div',
@@ -335,7 +447,24 @@
     return React.createElement(
       'div',
       { style: { padding: '16px', maxWidth: '900px' } },
-      React.createElement('div', { style: { fontSize: '18px', fontWeight: 700, marginBottom: '14px' } }, '🐛 Bugs signalés'),
+      React.createElement(
+        'div',
+        { style: { display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '14px' } },
+        React.createElement('span', { style: { fontSize: '18px', fontWeight: 700 } }, '🐛 Bugs signalés'),
+        highPriorityCount > 0
+          ? React.createElement(
+              'span',
+              {
+                title: 'Bugs qualifiés en sévérité critique ou importante',
+                style: {
+                  display: 'inline-block', padding: '2px 10px', borderRadius: '999px',
+                  fontSize: '12px', fontWeight: 700, color: '#fff', background: '#b3261e'
+                }
+              },
+              highPriorityCount + ' haute priorité'
+            )
+          : null
+      ),
       filterBar,
       content,
       zoomOverlay
