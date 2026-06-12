@@ -1782,9 +1782,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
-          // Load les 6 quinzaines disponibles (~90 jours) pour couvrir la fenêtre 90j du chart Coût Récolte.
-          // Auparavant 4 quinzaines (~60j) ; étendu à 6 pour le bouton "90 j".
-          const targetPeriodes = periodes.slice(0, 6);
+          // Charger 3 quinzaines (~45 jours) : couvre la fenêtre 30j par défaut du chart Coût
+          // Récolte avec buffer. ⚠️ Borné à 3 (et non 6) depuis que meta.periodes liste TOUTES
+          // les quinzaines du mirror (fix quinzaines 21/22) : slice(0,6) chargeait alors ~6
+          // quinzaines (~12k lignes) → recolte-equipes lent (~10s) et Coût Récolte dégradé.
+          // Les vues 60/90j montrent au plus ces 3 quinzaines (acceptable : la nav longue
+          // n'était de toute façon pas alimentée avant, periodes ne contenant qu'1 quinzaine).
+          const targetPeriodes = periodes.slice(0, 3);
           const allRows = [];
           for (const p of targetPeriodes) {
             const pRows = await getPointageRowsForPeriode(p);
