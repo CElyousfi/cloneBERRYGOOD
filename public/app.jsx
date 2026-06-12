@@ -8639,6 +8639,12 @@
             // Libellés des cartes : en vue période ils deviennent des « moyennes / jour ».
             const kpiCoutLabel = userPeriodKpi ? 'Coût moyen / jour' : 'Coût Total (DH)';
             const kpiKgLabel = userPeriodKpi ? 'Kg moyen / jour' : 'Total Kg';
+            // Le kg de récolte provient UNIQUEMENT de l'enrichissement prod (Traçabilité récolte) :
+            // le pointage seul ne porte pas le poids (quantiteToKg=0 sur l'opération « Récolte »).
+            // Quand la prod n'est pas encore synchronisée (J+1/J+2) pour les jours affichés, on a
+            // des coûts mais kg=0 → DH/kg en tirets + graphe vide = faux « écran cassé ». On le
+            // signale explicitement au lieu de laisser des tirets muets.
+            const recolteKgEnAttente = (kpiCout || 0) > 0 && (kpiTotalKg || 0) <= 0;
 
             // Aggregation par équipe
             const equipeAgg = {};
@@ -8847,6 +8853,12 @@
                             <i className="fa-solid fa-calendar-day" style={{marginRight:4}}></i>Indicateurs : {kpiPeriodLabel}
                         </span>
                     </div>
+                    {recolteKgEnAttente && (
+                    <div style={{display:'flex',alignItems:'flex-start',gap:8,background:'#fffbeb',border:'1px solid #fcd34d',borderRadius:10,padding:'10px 12px',marginBottom:10,color:'#92400e',fontSize:12,lineHeight:1.4}}>
+                        <i className="fa-solid fa-clock-rotate-left" style={{marginTop:2}}></i>
+                        <span>Les <b>kg de récolte</b> ne sont pas encore synchronisés pour cette période (données de traçabilité prod en J+1/J+2). Les <b>coûts</b> sont disponibles ; les ratios <b>DH/kg</b> et le graphique s'afficheront dès la synchronisation. Sélectionne une journée plus ancienne pour voir le détail déjà consolidé.</span>
+                    </div>
+                    )}
                     <div className="kpi-grid">
                         <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
