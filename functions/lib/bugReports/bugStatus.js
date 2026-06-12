@@ -7,8 +7,14 @@
  * Aucune I/O — testables en isolation (node:test).
  */
 
-// Statuts autorisés pour un signalement de bug.
+// Statuts cibles autorisés pour une transition manuelle (vue admin).
+// 'nouveau' (par défaut à la création), 'qualified' (posé par le triage IA),
+// et 'new' (alias toléré historiquement) ne sont PAS des cibles manuelles.
 const BUG_STATUSES = ['nouveau', 'en_cours', 'resolu'];
+
+// Statuts pouvant exister sur un doc et donc filtrables côté liste admin.
+// Inclut 'qualified' (posé automatiquement par le trigger de triage IA).
+const FILTERABLE_STATUSES = ['nouveau', 'qualified', 'en_cours', 'resolu'];
 
 // Profils autorisés à consulter / modifier les signalements (vue admin).
 // resp RH = profil 'rh' dans cette codebase (cf. NAV_ITEMS_RH).
@@ -21,6 +27,16 @@ const ADMIN_PROFILES = ['dg', 'rh'];
  */
 function isValidStatus(status) {
   return typeof status === 'string' && BUG_STATUSES.indexOf(status) >= 0;
+}
+
+/**
+ * Vérifie qu'un statut peut servir de filtre côté liste admin
+ * (inclut 'qualified', posé par le triage IA).
+ * @param {any} status
+ * @returns {boolean}
+ */
+function isFilterableStatus(status) {
+  return typeof status === 'string' && FILTERABLE_STATUSES.indexOf(status) >= 0;
 }
 
 /**
@@ -73,8 +89,10 @@ function sortReportsByCreatedDesc(reports) {
 
 module.exports = {
   BUG_STATUSES,
+  FILTERABLE_STATUSES,
   ADMIN_PROFILES,
   isValidStatus,
+  isFilterableStatus,
   isAdminProfile,
   validateStatusUpdate,
   sortReportsByCreatedDesc,
