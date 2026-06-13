@@ -8612,9 +8612,27 @@
             let enriched;
             let isQuinzaineMode = viewMode === 'quinzaine';
 
+            // [DG fix] Le backend recolte-equipes ne charge que ~3 quinzaines, mais
+            // equipePeriodes (meta.periodes) les liste TOUTES. Sélectionner une quinzaine
+            // sans données ne changeait rien (aucune ligne). On ne propose donc QUE les
+            // quinzaines réellement présentes dans equipeRows.
+            // Calcul direct (PAS de hook) : placé après le early-return `if (loading)`.
+            // Un useMemo ici violerait les Rules of Hooks (crash au passage loading→false).
+            // Le calcul est léger (filter/Set sur equipeRows).
+            const periodesAvecDonnees = (equipePeriodes.length > 0)
+                ? equipePeriodes.filter(p => equipeRows.some(r => r.periode === p))
+                // Fallback : equipePeriodes vide mais des lignes existent → dériver l'ordre
+                // des periodes distinctes depuis equipeRows triées desc.
+                : [...new Set(equipeRows.map(r => r.periode).filter(Boolean))].sort().reverse();
+            // Quinzaine effective = selectedQuinz si elle a des données, sinon la 1re dispo.
+            // Ne touche pas le state selectedQuinz, juste l'effectif d'affichage/calcul.
+            const effectiveQuinz = (selectedQuinz && periodesAvecDonnees.includes(selectedQuinz))
+                ? selectedQuinz
+                : (periodesAvecDonnees[0] || '');
+
             if (isQuinzaineMode && equipeRows.length > 0) {
                 // Quinzaine mode: aggregate equipeRows by worker, compute primes per day then sum
-                const qFilter = selectedQuinz || (equipePeriodes.length > 0 ? equipePeriodes[0] : '');
+                const qFilter = effectiveQuinz;
                 const filteredRows = equipeRows.filter(r => r.periode === qFilter && !logistiqueOps.test(r.operation));
                 // Group by matricule+jour to compute daily prime
                 const byWorkerDay = {};
@@ -8671,7 +8689,7 @@
             // Réutilise les mêmes filtres ferme/culture/variété sur les lignes logistique pour calculer le coût logistique/Kg récolté.
             let logEnriched;
             if (isQuinzaineMode && equipeRows.length > 0) {
-                const qFilterLog = selectedQuinz || (equipePeriodes.length > 0 ? equipePeriodes[0] : '');
+                const qFilterLog = effectiveQuinz;
                 const filteredLogRows = equipeRows.filter(r => r.periode === qFilterLog && logistiqueOps.test(r.operation || ''));
                 const logByWorkerDay = {};
                 filteredLogRows.forEach(r => {
@@ -8837,7 +8855,13 @@
                 });
                 const recAgg = RK.aggregatePeriodKpis(recSeries);
                 const logAgg = RK.aggregatePeriodKpis(logSeries);
-                const net = RK.computeNetDhParKg(recAgg.totalCout, logAgg.totalCout, recAgg.totalKg);
+                // BUG #pMBZlx03 : DH/kg de période = moyenne sur les JOURS DE
+                // PRODUCTION (kg récolté > 0) uniquement. On exclut les journées
+                // « cost-only » (ouvriers payés un jour sans récolte enrichie)
+                // qui, sinon, gonflent le numérateur sans kg au dénominateur et
+                // font exploser le ratio (~190 DH absurde). Le coût logistique
+                // est aligné par index sur les mêmes jours de production récolte.
+                const net = RK.computeNetDhParKgProd(recSeries, logSeries);
                 const pctSal = recAgg.totalCout > 0 ? Math.round(recAgg.totalSalaire / recAgg.totalCout * 100) : 0;
                 return {
                     // Sommes (conservées pour info / cohérence interne)
@@ -8848,8 +8872,10 @@
                     coutMoyenJour: recAgg.coutMoyenJour, kgMoyenJour: recAgg.kgMoyenJour,
                     salaireMoyenJour: recAgg.salaireMoyenJour, transportMoyenJour: recAgg.transportMoyenJour,
                     primeMoyenJour: recAgg.primeMoyenJour, chargesMoyenJour: recAgg.chargesMoyenJour,
-                    // DH/kg = moyennes PONDÉRÉES (somme coûts ÷ somme kg)
-                    dhParKgGlobal: recAgg.dhParKgBrut,
+                    // DH/kg = moyennes PONDÉRÉES sur les JOURS DE PRODUCTION (kg>0)
+                    // uniquement (BUG #pMBZlx03) : les journées cost-only sans kg
+                    // sont exclues du numérateur ET du dénominateur.
+                    dhParKgGlobal: recAgg.dhParKgBrutProd,
                     dhParKgLog: net.dhParKgLog, dhParKgNet: net.dhParKgNet,
                     nbOuvriers: Object.keys(ouvKeys).length,
                     coutMoyenOuvrierJour: recAgg.coutMoyenOuvrierJour,
@@ -8883,6 +8909,37 @@
             // Libellés des cartes : en vue période ils deviennent des « moyennes / jour ».
             const kpiCoutLabel = userPeriodKpi ? 'Coût moyen / jour' : 'Coût Total (DH)';
             const kpiKgLabel = userPeriodKpi ? 'Kg moyen / jour' : 'Total Kg';
+
+            // ── Mode QUINZAINE : Coût Total + Total Kg en MOYENNE / jour ──────────────────
+            // Demande DG : « quand on clique sur une quinzaine, afficher la moyenne des KPIs ».
+            // On ne touche QUE les 2 cartes Coût Total et Total Kg (les autres KPI — DH/kg,
+            // coût moyen/ouvrier, %, ouvriers — sont déjà des moyennes/ratios corrects).
+            // nbJoursQuinz = nombre de JOURS DISTINCTS avec données (kg>0 OU coût>0) dans la
+            // quinzaine sélectionnée, en réappliquant EXACTEMENT les mêmes filtres que `enriched`
+            // (ferme/sous-ferme/culture/variété, lignes récolte non logistiques). Calculé sur
+            // les lignes brutes `equipeRows` car `allFiltered` est agrégé par ouvrier (perd `jour`).
+            let nbJoursQuinz = 0;
+            if (isQuinzaineMode) {
+                const qFilterKpi = effectiveQuinz;
+                const quinzDays = new Set();
+                equipeRows.forEach(r => {
+                    if (r.periode !== qFilterKpi) return;
+                    if (logistiqueOps.test(r.operation || '')) return;
+                    if (fermeFilter && r.ferme !== fermeFilter) return;
+                    if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return;
+                    if (cultureFilter && (/myrtille/i.test(r.culture || resolveCulture(r)) !== (cultureFilter === 'Myrtille'))) return;
+                    if (varieteFilter && resolveVariete(r) !== varieteFilter) return;
+                    if ((r.kg || 0) > 0 || (r.cout || 0) > 0) quinzDays.add(r.jour);
+                });
+                nbJoursQuinz = quinzDays.size;
+            }
+            // Valeurs/labels d'AFFICHAGE des 2 cartes. Dérivées (ne remplacent pas kpiCout/kpiTotalKg
+            // utilisés ailleurs : recolteKgEnAttente, graphe). En mode jour ou si nbJoursQuinz===0
+            // (garde-fou division par zéro) → comportement inchangé.
+            const kpiCoutDisplay = (isQuinzaineMode && nbJoursQuinz > 0) ? Math.round(totalCout / nbJoursQuinz) : kpiCout;
+            const kpiTotalKgDisplay = (isQuinzaineMode && nbJoursQuinz > 0) ? Math.round(totalKg / nbJoursQuinz * 10) / 10 : kpiTotalKg;
+            const kpiCoutLabelDisplay = (isQuinzaineMode && nbJoursQuinz > 0) ? 'Coût moyen / jour' : kpiCoutLabel;
+            const kpiKgLabelDisplay = (isQuinzaineMode && nbJoursQuinz > 0) ? 'Kg moyen / jour' : kpiKgLabel;
             // Le kg de récolte provient UNIQUEMENT de l'enrichissement prod (Traçabilité récolte) :
             // le pointage seul ne porte pas le poids (quantiteToKg=0 sur l'opération « Récolte »).
             // Quand la prod n'est pas encore synchronisée (J+1/J+2) pour les jours affichés, on a
@@ -9088,9 +9145,9 @@
                             <i className="fa-solid fa-circle-info"></i>Récolte du jour pas encore saisie — dernière journée affichée
                         </span>
                         )}
-                        {isQuinzaineMode && equipePeriodes.length > 0 && (
-                        <select value={selectedQuinz || equipePeriodes[0]} onChange={e => setSelectedQuinz(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {equipePeriodes.map(p => <option key={p} value={p}>{p}</option>)}
+                        {isQuinzaineMode && periodesAvecDonnees.length > 0 && (
+                        <select value={effectiveQuinz} onChange={e => setSelectedQuinz(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
+                            {periodesAvecDonnees.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
                         )}
                         <div style={{display:'flex',gap:4}}>
@@ -9141,8 +9198,8 @@
                     <div className="kpi-grid">
                         <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCout)} label={kpiCoutLabel} subItems={[{value: fmt(kpiSalaire), label: 'Salaire de base'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges patronales'}]} onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKg)} label={kpiKgLabel} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCoutDisplay)} label={kpiCoutLabelDisplay} subItems={[{value: fmt(kpiSalaire), label: 'Salaire de base'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges patronales'}]} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKgDisplay)} label={kpiKgLabelDisplay} onClick={() => setShowTrend(!showTrend)} />
                         <KPICard icon="fa-user" iconClass="blue" value={fmt(kpiCoutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
                         <KPICard icon="fa-users" iconClass="green" value={kpiNbOuvriers} label="Ouvriers Récolte" />
                         <KPICard icon="fa-chart-pie" iconClass="purple" value={kpiPctSalaire + '%'} label="Salaire dans Coût" onClick={() => setShowTrend(!showTrend)} />

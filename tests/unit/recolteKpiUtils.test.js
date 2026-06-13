@@ -5,6 +5,7 @@ const assert = require('node:assert');
 const {
   aggregatePeriodKpis,
   computeNetDhParKg,
+  computeNetDhParKgProd,
   distinctOuvriersFromRows,
 } = require('../../public/lib/recolteKpiUtils.js');
 
@@ -126,6 +127,81 @@ test('computeNetDhParKg additionne récolte + logistique sur kg récolté', () =
   const empty = computeNetDhParKg(100, 50, 0);
   assert.strictEqual(empty.dhParKgLog, null);
   assert.strictEqual(empty.dhParKgNet, null);
+});
+
+// ── BUG #pMBZlx03 : DH/kg période = moyenne sur les jours de production ──────
+test('dhParKgBrutProd exclut les journées cost-only (kg=0) du ratio', () => {
+  // J1 {cout 1000, kg 100}, J2 {cout 1000, kg 100}, J3 {cout 1000, kg 0}.
+  // Avant fix (toutes journées) : dhParKgBrut = 3000/200 = 15.
+  // Après fix (jours kg>0 only) : dhParKgBrutProd = 2000/200 = 10.
+  const series = [
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 100 },
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 100 },
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 0 }, // jour cost-only
+  ];
+  const r = aggregatePeriodKpis(series);
+  assert.strictEqual(r.dhParKgBrut, 15); // champ historique inchangé
+  assert.strictEqual(r.dhParKgBrutProd, 10); // jours de production seulement
+  assert.strictEqual(r.totalCoutProd, 2000);
+  assert.strictEqual(r.totalKgProd, 200);
+});
+
+test('cas extrême : 1 jour productif + N jours cost-only → dh/kg non gonflé', () => {
+  const series = [
+    { salaire: 500, transport: 0, prime: 0, charges: 0, kg: 50 }, // seul jour productif
+    { salaire: 800, transport: 0, prime: 0, charges: 0, kg: 0 },
+    { salaire: 800, transport: 0, prime: 0, charges: 0, kg: 0 },
+    { salaire: 800, transport: 0, prime: 0, charges: 0, kg: 0 },
+  ];
+  const r = aggregatePeriodKpis(series);
+  // dh/kg = coût du seul jour productif / son kg = 500/50 = 10 (pas 2900/50=58).
+  assert.strictEqual(r.dhParKgBrutProd, 10);
+});
+
+test('dhParKgBrutProd = null si aucun jour de production', () => {
+  const series = [
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 0 },
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 0 },
+  ];
+  const r = aggregatePeriodKpis(series);
+  assert.strictEqual(r.dhParKgBrutProd, null);
+  assert.strictEqual(r.totalKgProd, 0);
+});
+
+test('computeNetDhParKgProd exclut les journées kg=0 (récolte + log)', () => {
+  // J1 récolte {cout 1000, kg 100} + log {cout 200} → jour productif.
+  // J2 récolte {cout 1000, kg 100} + log {cout 200} → jour productif.
+  // J3 récolte {cout 1000, kg 0}   + log {cout 999} → exclu (kg=0).
+  const recSeries = [
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 100 },
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 100 },
+    { salaire: 1000, transport: 0, prime: 0, charges: 0, kg: 0 },
+  ];
+  const logSeries = [
+    { salaire: 200, transport: 0, prime: 0, charges: 0, kg: 0 },
+    { salaire: 200, transport: 0, prime: 0, charges: 0, kg: 0 },
+    { salaire: 999, transport: 0, prime: 0, charges: 0, kg: 0 },
+  ];
+  const r = computeNetDhParKgProd(recSeries, logSeries);
+  // kg prod = 200 ; coût récolte prod = 2000 ; coût log prod = 400 (J3 exclu).
+  assert.strictEqual(r.totalKgProd, 200);
+  assert.strictEqual(r.totalCoutRecolteProd, 2000);
+  assert.strictEqual(r.totalLogCoutProd, 400);
+  assert.strictEqual(r.dhParKgLog, 2); // 400/200
+  assert.strictEqual(r.dhParKgNet, 12); // (2000+400)/200
+});
+
+test('computeNetDhParKgProd → null si aucun jour de production / séries vides', () => {
+  const r = computeNetDhParKgProd(
+    [{ salaire: 1000, kg: 0 }],
+    [{ salaire: 200, kg: 0 }]
+  );
+  assert.strictEqual(r.dhParKgLog, null);
+  assert.strictEqual(r.dhParKgNet, null);
+  const empty = computeNetDhParKgProd([], []);
+  assert.strictEqual(empty.dhParKgNet, null);
+  const nulls = computeNetDhParKgProd(null, null);
+  assert.strictEqual(nulls.dhParKgNet, null);
 });
 
 test('distinctOuvriersFromRows compte les matricules uniques (case-insensitive)', () => {
