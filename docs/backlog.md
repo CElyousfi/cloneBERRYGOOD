@@ -5,6 +5,19 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] BUG (non-gated) — Jour férié rattaché à la mauvaise quinzaine (frontière 15/16)
+Signalé par le DG (2026-06-13). Prime Jour Férié : le 1er Moharram (2026-06-16)
+apparaît dans la **Quinzaine 23 (1–15 juin)** alors qu'il appartient à la Q24 (16–30).
+Cause : `pointageService.js` (~l.290-308) dérive la quinzaine du férié via
+`dateToPeriode[date]` puis, si absente (férié futur sans pointage), via une recherche
+« nearby » ±3 jours qui **traverse la frontière de quinzaine** et retombe sur des dates
+Q23. Fix : rattacher le férié à la quinzaine qui le **contient au calendrier**
+(jours 1–15 = 1re quinzaine du mois, 16–fin = 2e), jamais à une voisine. Un férié dont
+la quinzaine n'a pas encore de données n'est crédité à personne (n'apparaît nulle part)
+jusqu'à l'arrivée du pointage de cette quinzaine. Non-gated (deploy functions gated).
+
+---
+
 ## [x] 2. URGENT — Bug menu « Historique Irrigation » dupliqué
 Corrigé : `baseNavItems.push()` mutait une constante NAV_ITEMS partagée à chaque
 re-render → ~12 doublons. Fix = copie fraîche (spread). QA APPROUVÉ, 224/224.
