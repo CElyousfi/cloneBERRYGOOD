@@ -5804,21 +5804,6 @@ exports.validation = functions
         return res.json({ success: true, data: doc.exists ? doc.data() : { date, entries: [], totalMontant: 0 } });
       }
 
-      // GET: exported kg for one date (pfq_interne, typeVente Export).
-      // Sert le KPI « Transport fruits / kg exporté » de l'onglet Coût récolte.
-      // Le front fetch par date (calqué sur divers-entries / transportFruitByDate).
-      if (action === "export-kg-by-date") {
-        const date = req.query.date;
-        if (!date) return res.status(400).json({ success: false, error: "date required" });
-        const { sumExportKgForDocs } = require("./lib/productionEstimation");
-        const cached = await withCache("export_kg_" + date, 5 * 60 * 1000, async () => {
-          const snap = await db_firestore.collection("pfq_interne").where("date", "==", date).get();
-          const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-          return { success: true, date, kgExport: sumExportKgForDocs(docs) };
-        });
-        return res.json(cached);
-      }
-
       // GET: divers entries for a whole quinzaine (vue quinzaine + carte récap)
       if (action === "divers-entries-range") {
         const meta = await getPointageMeta();
