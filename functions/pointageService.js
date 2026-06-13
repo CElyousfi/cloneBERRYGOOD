@@ -232,6 +232,47 @@ async function getJoursFeries() {
 }
 
 /**
+ * Clé de demi-mois calendaire pour une date ISO (YYYY-MM-DD).
+ * Jours 1–15 → 1re quinzaine (H1), 16–fin → 2e quinzaine (H2).
+ * @param {string} ds - date ISO 'YYYY-MM-DD'
+ * @returns {string} ex. '2026-06-H1'
+ */
+function halfKey(ds) {
+  return ds.slice(0, 7) + (parseInt(ds.slice(8, 10), 10) <= 15 ? '-H1' : '-H2');
+}
+
+/**
+ * Construit la map demi-mois calendaire → période depuis dateToPeriode.
+ * Permet de rattacher un férié à la quinzaine qui le CONTIENT au calendrier,
+ * sans déborder sur une date voisine d'une autre quinzaine.
+ * @param {Object<string,string>} dateToPeriode - { 'YYYY-MM-DD': 'Quinzaine N' }
+ * @returns {Object<string,string>} { '2026-06-H1': 'Quinzaine 23', ... }
+ */
+function buildHalfToPeriode(dateToPeriode) {
+  const halfToPeriode = {};
+  for (const d of Object.keys(dateToPeriode)) {
+    const p = dateToPeriode[d];
+    if (!p) continue;
+    const k = halfKey(d);
+    // 1re période rencontrée pour cette demi-mois (les quinzaines étant calendaires,
+    // une demi-mois ne devrait correspondre qu'à une seule période).
+    if (!(k in halfToPeriode)) halfToPeriode[k] = p;
+  }
+  return halfToPeriode;
+}
+
+/**
+ * Résout la période d'un férié via sa quinzaine calendaire.
+ * @param {Object<string,string>} halfToPeriode
+ * @param {string} dateStr - date ISO du férié 'YYYY-MM-DD'
+ * @returns {string|undefined} période ('Quinzaine N') ou undefined si la quinzaine
+ *   du férié n'a pas encore de données.
+ */
+function resolveHolidayPeriode(halfToPeriode, dateStr) {
+  return halfToPeriode[halfKey(dateStr)];
+}
+
+/**
  * Compute chargement/conditionnement worker-day details from raw pointage rows.
  * Returns pre-calculated data so frontend doesn't need to filter on Operation.
  * @param {Array} allRows
@@ -269,6 +310,8 @@ function computeChargCond(allRows, holidays) {
     const p = (r.Periode_paie || "").trim();
     if (d && p) dateToPeriode[d] = p;
   }
+  // Map demi-mois calendaire → période (rattachement férié par quinzaine, sans débordement voisin).
+  const halfToPeriode = buildHalfToPeriode(dateToPeriode);
 
   // Build worker-per-period map with average daily cost
   const workerPeriod = {}; // "periode|mat" -> { mat, nom, periode, ferme, jours: Set, totalCout, coutCount }
@@ -293,20 +336,11 @@ function computeChargCond(allRows, holidays) {
     // Aïd = 2 jours fériés légaux, mais la prime ne compte QUE le 1er jour.
     // On ignore donc les entrées « (2e jour) » (et tout flag compteurPrime:false).
     if (/\(2e\s*jour\)/i.test(jf.label || '') || jf.compteurPrime === false) continue;
-    // Determine which periode this holiday belongs to
-    let holidayPeriode = dateToPeriode[jf.date];
-    if (!holidayPeriode) {
-      // Holiday date has no data (workers were off). Scan nearby dates to find the right period.
-      const hDate = new Date(jf.date + 'T12:00:00');
-      for (let offset = -3; offset <= 3; offset++) {
-        if (offset === 0) continue;
-        const nearby = new Date(hDate);
-        nearby.setDate(nearby.getDate() + offset);
-        const nearbyStr = nearby.toISOString().slice(0, 10);
-        if (dateToPeriode[nearbyStr]) { holidayPeriode = dateToPeriode[nearbyStr]; break; }
-      }
-    }
-    if (!holidayPeriode) continue; // Holiday not in any loaded period
+    // Rattachement par quinzaine CALENDAIRE (1–15 / 16–fin) : le férié appartient à la
+    // quinzaine qui le contient au calendrier. Si cette quinzaine n'a pas encore de
+    // données (ex. férié futur), le férié n'est crédité à personne (continue).
+    const holidayPeriode = resolveHolidayPeriode(halfToPeriode, jf.date);
+    if (!holidayPeriode) continue; // Quinzaine du férié sans données chargées
 
     // All workers active in this period are eligible for 1 jour sup
     for (const [, wp] of Object.entries(workerPeriod)) {
@@ -674,6 +708,9 @@ exports.deriveFerme = deriveFerme;
 exports.getJoursFeries = getJoursFeries;
 exports.JOURS_FERIES_FALLBACK = JOURS_FERIES_FALLBACK;
 exports.computeChargCond = computeChargCond;
+exports.halfKey = halfKey;
+exports.buildHalfToPeriode = buildHalfToPeriode;
+exports.resolveHolidayPeriode = resolveHolidayPeriode;
 
 // =============================================
 // Cache Warmer — pre-populates api_cache for pointage endpoints
