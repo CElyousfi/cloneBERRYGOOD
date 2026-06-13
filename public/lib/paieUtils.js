@@ -53,7 +53,7 @@
     smagNetJournalier: 90.88,
     joursParMois: 26,
     heuresNormalesParJour: 8,
-    tauxChargesPatronales: 0.26,
+    tauxChargesPatronales: 0.1926,
     tauxCotisationsSalariales: 0.0674,
     // Modèle paie complet validé Omar 2026-06 : retenues salariales détaillées (déclaré).
     tauxCnssSalariale: 0.0448,

@@ -68,9 +68,9 @@ test('calculerPaieOuvrier: déclaré sans ancienneté → net = brut (0 retenue)
   assert.ok(close(r.brut, brutBase));
   assert.ok(close(r.prime, 0));
   assert.strictEqual(r.cotisationsSalariales, 0);
-  assert.ok(close(r.chargesPatronales, brutBase * 0.26));
+  assert.ok(close(r.chargesPatronales, brutBase * 0.1926));
   assert.ok(close(r.net, brutBase));
-  assert.ok(close(r.coutEmployeur, brutBase + brutBase * 0.26));
+  assert.ok(close(r.coutEmployeur, brutBase + brutBase * 0.1926));
 });
 
 test('calculerPaieOuvrier: déclaré avec prime ancienneté 10% → net = brut, coût = brut + CNSS', () => {
@@ -82,7 +82,7 @@ test('calculerPaieOuvrier: déclaré avec prime ancienneté 10% → net = brut, 
   assert.ok(close(r.brut, brut));
   assert.strictEqual(r.cotisationsSalariales, 0);
   assert.ok(close(r.net, brut));
-  assert.ok(close(r.coutEmployeur, brut + brut * 0.26));
+  assert.ok(close(r.coutEmployeur, brut + brut * 0.1926));
 });
 
 test('calculerPaieOuvrier: comparatif déclaré vs non-déclaré — même base brut, même net, seul le coût employeur diffère (CNSS patronale)', () => {
@@ -97,8 +97,8 @@ test('calculerPaieOuvrier: comparatif déclaré vs non-déclaré — même base 
   assert.strictEqual(decl.cotisationsSalariales, 0);
   // Seul le coût employeur diffère, exactement de la CNSS patronale.
   assert.strictEqual(nonDecl.chargesPatronales, 0);
-  assert.ok(close(decl.chargesPatronales, decl.brut * 0.26));
-  assert.ok(close(decl.coutEmployeur - nonDecl.coutEmployeur, decl.brut * 0.26));
+  assert.ok(close(decl.chargesPatronales, decl.brut * 0.1926));
+  assert.ok(close(decl.coutEmployeur - nonDecl.coutEmployeur, decl.brut * 0.1926));
 });
 
 // calculerPaieOuvrier — prime de fonction (primeFonctionJour), rétro-compatible.
@@ -118,7 +118,7 @@ test('calculerPaieOuvrier: déclaré ancienneté 10% AVEC prime fonction → bru
   assert.ok(close(r.brut, base * 1.10));
   assert.ok(close(r.prime, prime));
   assert.ok(close(r.net, brut));
-  assert.ok(close(r.coutEmployeur, brut + brut * 0.26));
+  assert.ok(close(r.coutEmployeur, brut + brut * 0.1926));
 });
 
 test('calculerPaieOuvrier: non-déclaré AVEC prime fonction → brut = net = (smag + prime)×jours, pas d\'ancienneté ni CNSS', () => {
@@ -188,10 +188,10 @@ test('computeWorkerPaie: declared, prime fonction dans le brut, CNSS patronale s
   // Aucune retenue salariale (modèle Omar 2026-06)
   assert.strictEqual(r.cotisationsSalariales, 0);
   // CNSS patronale calculée sur le brut INCLUANT prime de fonction
-  assert.ok(close(r.chargesPatronales, brut * 0.26));
+  assert.ok(close(r.chargesPatronales, brut * 0.1926));
   // Net ouvrier = brut (pas de retenue), CNSS patronale uniquement dans le coût employeur
   assert.ok(close(r.net, brut));
-  assert.ok(close(r.coutEmployeur, brut + brut * 0.26));
+  assert.ok(close(r.coutEmployeur, brut + brut * 0.1926));
 });
 
 test('computeWorkerPaie: prime transport is NOT taxed (added to net & cost only)', () => {
@@ -264,7 +264,7 @@ test('computeWorkerPaie: declared with seniority + prime fonction + transport co
   assert.ok(close(r.primeFonction, primeFonction));
   assert.ok(close(r.brut, brut));
   assert.strictEqual(r.anciennetePourcent, 10);
-  assert.ok(close(r.coutEmployeur, brut + brut * 0.26 + 30));
+  assert.ok(close(r.coutEmployeur, brut + brut * 0.1926 + 30));
 });
 
 test('computeWorkerPaie: prime fonction × (1 + ancienneté%) — l\'ancienneté s\'applique AUSSI sur la prime de fonction', () => {
@@ -285,7 +285,7 @@ test('computeWorkerPaie: prime fonction × (1 + ancienneté%) — l\'ancienneté
   // La part d'ancienneté incrémentale due à la prime de fonction = primeFonction × pct.
   assert.ok(close(r.primeAnciennete - smagBaseTotal * 0.05, primeFonction * 0.05));
   assert.ok(close(r.brut, baseAnc + primeAnc));
-  assert.ok(close(r.coutEmployeur, r.brut * 1.26));
+  assert.ok(close(r.coutEmployeur, r.brut * 1.1926));
 });
 
 test('computeWorkerPaie: ancienneté 0 → prime fonction ajoutée telle quelle (pas multipliée)', () => {
@@ -367,7 +367,7 @@ test('computeWorkerPaie: HS incluses dans le brut → charges sur brut+HS', () =
   const montantHS = 4 * TAUX_H_DECLARE * 1.25;
   assert.ok(close(withHS.brut, noHS.brut + montantHS));
   // CNSS patronale calculée sur le brut majoré des HS ; aucune retenue salariale
-  assert.ok(close(withHS.chargesPatronales, withHS.brut * 0.26));
+  assert.ok(close(withHS.chargesPatronales, withHS.brut * 0.1926));
   assert.strictEqual(withHS.cotisationsSalariales, 0);
   assert.ok(withHS.chargesPatronales > noHS.chargesPatronales);
 });
@@ -444,7 +444,7 @@ test('computeWorkerPaie: rétrocompat — hs/récolte absents → comportement P
   assert.ok(close(r.brut, brut));
   assert.strictEqual(r.primeRecolte, 0);
   // coût total = brut + charges + transport (pas de récolte)
-  assert.ok(close(r.coutTotalEmployeur, brut + brut * 0.26 + 30));
+  assert.ok(close(r.coutTotalEmployeur, brut + brut * 0.1926 + 30));
 });
 
 // ---------------------------------------------------------------------------
@@ -485,7 +485,7 @@ test('computeWorkerPaie: déclaré vs non-déclaré — même base brut, même n
   // Seul le déclaré porte la CNSS patronale → seul son coût employeur la contient
   assert.ok(dec.chargesPatronales > 0);
   assert.strictEqual(non.chargesPatronales, 0);
-  assert.ok(close(dec.chargesPatronales, dec.brut * 0.26));
+  assert.ok(close(dec.chargesPatronales, dec.brut * 0.1926));
 
   // Le coût employeur diffère exactement de la CNSS patronale
   assert.ok(close(dec.coutTotalEmployeur - non.coutTotalEmployeur, dec.chargesPatronales));
@@ -508,8 +508,8 @@ test('computePayslip EX1 — Déclaré 5% : BRUT=122.82, NET≈114.54, netArrond
   assert.ok(close2(r.amo, 2.78), `amo=${r.amo}`);
   assert.ok(close2(r.net, 114.54), `net=${r.net}`);
   assert.strictEqual(r.netArrondi, 115);
-  assert.ok(close2(r.chargesPatronales, 31.93), `chargesPat=${r.chargesPatronales}`);
-  assert.ok(close2(r.coutEmployeur, 154.76), `coutEmployeur=${r.coutEmployeur}`);
+  assert.ok(close2(r.chargesPatronales, 23.66), `chargesPat=${r.chargesPatronales}`);
+  assert.ok(close2(r.coutEmployeur, 146.48), `coutEmployeur=${r.coutEmployeur}`);
 });
 
 test('computePayslip EX2 — Déclaré 10% avec férié : BRUT=233.946, NET=218.178, netArrondi=218', () => {
@@ -522,7 +522,7 @@ test('computePayslip EX2 — Déclaré 10% avec férié : BRUT=233.946, NET=218.
   assert.ok(close2(r.amo, 5.29), `amo=${r.amo}`);
   assert.ok(close2(r.net, 218.178), `net=${r.net}`);
   assert.strictEqual(r.netArrondi, 218);
-  assert.ok(close2(r.coutEmployeur, 294.77), `coutEmployeur=${r.coutEmployeur}`);
+  assert.ok(close2(r.coutEmployeur, 279.00), `coutEmployeur=${r.coutEmployeur}`);
 });
 
 test('computePayslip EX3 — Non déclaré : BRUT=NET=coutEmployeur=100, netArrondi=100', () => {
