@@ -6073,6 +6073,7 @@
                     <div className="kpi-grid">
                         {pointage.map(p => (
                             <KPICard key={p.ferme} icon="fa-user-check" iconClass={p.ferme === 'F1' ? 'berry' : (p.ferme === 'F5' ? 'green' : 'orange')} value={p.total} label={`Pointage ${p.ferme}`} change={p.diff}
+                                onClick={() => setPointagePopup({ ferme: p.ferme, type: 'all', title: `Pointage ${p.ferme}` })}
                                 subItems={[
                                     { value: p.recolte, label: 'Récolte', onClick: () => setPointagePopup({ ferme: p.ferme, type: 'recolte', title: `Récolte — ${p.ferme}` }) },
                                     { value: p.horsRecolte, label: 'Hors Récolte', onClick: () => setPointagePopup({ ferme: p.ferme, type: 'horsRecolte', title: `Hors Récolte — ${p.ferme}` }) },
@@ -6080,13 +6081,14 @@
                                 ]}
                             />
                         ))}
-                        {!isCaporal && <KPICard icon="fa-coins" iconClass="orange" value={totalCout.toLocaleString('fr-FR')} label="Coût Total (DH)" />}
+                        {!isCaporal && <KPICard icon="fa-coins" iconClass="orange" value={totalCout.toLocaleString('fr-FR')} label="Coût Total (DH)"
+                            onClick={() => setPointagePopup({ ferme: farmFilter || null, type: 'all', title: farmFilter ? `Coût Total — ${farmFilter}` : 'Coût Total — Toutes Fermes' })} />}
                     </div>
 
                     {/* Popup breakdown KPI : ouvriers d'une ferme par type (récolte / hors récolte / poste fixe) */}
                     {pointagePopup && (() => {
                         const popRawRows = detailRows
-                            .filter(r => r.ferme === pointagePopup.ferme && matchSub(r) && r.type === pointagePopup.type);
+                            .filter(r => (!pointagePopup.ferme || r.ferme === pointagePopup.ferme) && matchSub(r) && (pointagePopup.type === 'all' || r.type === pointagePopup.type));
                         // Totaux globaux calculés sur les lignes BRUTES (1 enregistrement = 1 parcelle/opération)
                         // → garantit que l'agrégation par ouvrier ne change aucun montant ni effectif.
                         const popTotalCout = popRawRows.reduce((s, r) => s + (r.cout || 0), 0);
@@ -6707,6 +6709,9 @@
                     {/* Popup détail ouvrier */}
                     {workerPopup && (() => {
                         const r = workerPopup;
+                        // Heures d'entrée/sortie badgeuse BEE ONE (collection prod_presence,
+                        // indexée par matricule via presenceByMat). '—' si absent (fallback gracieux).
+                        const pres = lookupPresence(r.matricule);
                         const primeRecolte = r.type === 'recolte' ? calcPrime(r.quantite, r.variete, r.jour) : 0;
                         const hs25 = r.hs25 || 0, hs50 = r.hs50 || 0, hs100 = r.hs100 || 0;
                         // Modèle paie complet (source unique window.PaieUtils). Cas défensif : ouvrier
@@ -6801,6 +6806,8 @@
                                                 ['Variété', r.variete || '-'],
                                                 ['Journées', r.jours],
                                                 ['Heures', `${r.heures}h`],
+                                                ['Entrée', <span style={{fontFamily:'monospace', color: pres && pres.heureEntree ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureEntree) || '—'}</span>],
+                                                ['Sortie', <span style={{fontFamily:'monospace', color: pres && pres.heureSortie ? 'var(--gray-700)' : 'var(--gray-400)'}}>{(pres && pres.heureSortie) || '—'}</span>],
                                                 ['Quantité (kg)', r.quantite ? `${r.quantite} kg` : '-'],
                                             ].map(([label, val], i) => (
                                                 <tr key={i} style={{borderBottom:'1px solid var(--gray-100)'}}>
