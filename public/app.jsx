@@ -6905,7 +6905,7 @@
                                                 {/* Charges patronales (déclaré uniquement) */}
                                                 {declare && (
                                                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Charges patronales ({Math.round(paie.tauxChargesPatronales * 100)}%)</span>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>Charges patronales ({(paie.tauxChargesPatronales * 100).toFixed(2).replace(".", ",")}%)</span>
                                                     <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{f2(paie.chargesPatronales)}</span>
                                                 </div>
                                                 )}
@@ -9396,7 +9396,7 @@
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.salaire,marginRight:4,verticalAlign:'middle'}}></span>Salaire de base (SMAG + ancienneté)</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.transport,marginRight:4,verticalAlign:'middle'}}></span>Transport</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.prime,marginRight:4,verticalAlign:'middle'}}></span>Prime (fonction + récolte)</span>
-                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges patronales (26%)</span>
+                                            <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:COLORS.charges,marginRight:4,verticalAlign:'middle'}}></span>Charges patronales (19,26%)</span>
                                             <span><span style={{display:'inline-block',width:10,height:10,borderRadius:2,background:LOG_HATCH,marginRight:4,verticalAlign:'middle'}}></span>Part Logistique</span>
                                             {hasKgHa && <span><span style={{display:'inline-block',width:14,height:3,borderRadius:2,background:KGHA_COLOR,marginRight:4,verticalAlign:'middle'}}></span>Volume Kg/ha (axe droit)</span>}
                                         </div>
@@ -23686,7 +23686,7 @@ ${rejetHtml}
             smagBrutJournalier: 88.58,
             smagNetJournalier: 82.61,
             joursParMois: 26,
-            tauxChargesPatronales: 0.26,
+            tauxChargesPatronales: 0.1926,
             tauxCotisationsSalariales: 0.0674,
             paliers: [
                 { seuilJours: 624,  pourcentage: 5,  label: '≥ 2 ans' },
