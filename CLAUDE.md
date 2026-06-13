@@ -376,3 +376,22 @@ Le triage IA doit distinguer :
 une **modification de fonctionnalité** (gated) : valider avec Omar AVANT, ne pas
 l'appliquer en autonome (cf. revert du rename « Poste Fixe → Ouvrier Avocatier »
 le 2026-06-12, refusé par Omar).
+## Workflow GATED révisé (specs async) — les items gated ne bloquent JAMAIS l'archi
+
+Un item GATED ne met plus l'archi en attente. Nouveau cycle :
+
+1. **QUALIFICATION (autonome)** : l'archi analyse et écrit un spec complet dans
+   `docs/spec-<item>.md`. Le fichier DOIT être AUTOSUFFISANT : contexte, analyse,
+   plan d'implémentation détaillé, validation croisée (ex. exemples chiffrés),
+   risques, edge cases, fichiers/fonctions concernés. Un autre archi — ou le même
+   dans une nouvelle session — doit pouvoir implémenter SANS re-analyser.
+2. **NOTIFICATION** : signaler à Omar « Spec prêt : `docs/spec-<item>.md` », puis
+   passer immédiatement à l'item suivant (ne pas attendre).
+3. **IMPLÉMENTATION** : quand Omar dit « GO spec-<item> » → lire le fichier, coder,
+   déployer. Le spec a déjà toutes les réponses (pas de nouvelle question).
+
+Principe : **l'archi ne s'arrête jamais**. Les specs `docs/spec-*.md` sont la file
+d'attente asynchrone d'Omar — il valide quand il veut, dans l'ordre qu'il veut.
+S'applique aux points GATED (migration/suppression Firestore, déploiement prod,
+changement de logique métier, nouvelle feature) : produire le spec d'abord, exécuter
+sur GO.
