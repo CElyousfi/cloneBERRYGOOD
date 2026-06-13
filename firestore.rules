@@ -279,5 +279,19 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
+    // Mapping parcelles de consommation — lecture toute auth, écriture via Cloud Function (mappingConsoManagement)
+    match /parcelles_consommation/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /mapping_campagne/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+    match /parcelles_culturales_charge/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
