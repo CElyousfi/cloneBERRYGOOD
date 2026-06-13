@@ -333,3 +333,54 @@ test('BUDGET_BGF: contains all 6 cycle-2 varieties', () => {
     assert.ok(BUDGET_BGF[v].total > 0, `Zero budget for ${v}`);
   });
 });
+
+// ---------------------------------------------------------------------------
+// sumExportKgForDocs — KPI Transport fruits / kg exporté
+// ---------------------------------------------------------------------------
+
+test('sumExportKgForDocs: sums only Export-canonical typeVente', () => {
+  const docs = [
+    { typeVente: 'EXP', poidsLot: 100 },
+    { typeVente: "Driscoll's", poidsLot: 50 },
+    { typeVente: 'Export', poidsLot: 25 },
+    { typeVente: 'ECRT', poidsLot: 999 },        // Marché Local → exclu
+    { typeVente: 'Autre', poidsLot: 999 },        // exclu
+  ];
+  assert.equal(P.sumExportKgForDocs(docs), 175);
+});
+
+test('sumExportKgForDocs: missing/invalid poidsLot counts as 0', () => {
+  const docs = [
+    { typeVente: 'EXP' },                          // pas de poidsLot
+    { typeVente: 'EXP', poidsLot: null },
+    { typeVente: 'EXP', poidsLot: 'abc' },
+    { typeVente: 'EXP', poidsLot: -10 },           // négatif ignoré
+    { typeVente: 'EXP', poidsLot: '40.5' },        // string numérique OK
+  ];
+  assert.equal(P.sumExportKgForDocs(docs), 40.5);
+});
+
+test('sumExportKgForDocs: excludes rejected bons', () => {
+  const docs = [
+    { typeVente: 'EXP', poidsLot: 100, status: 'rejete_qualite' },
+    { typeVente: 'EXP', poidsLot: 30, status: 'rejete_chef' },
+    { typeVente: 'EXP', poidsLot: 70, status: 'valide' },
+  ];
+  assert.equal(P.sumExportKgForDocs(docs), 70);
+});
+
+test('sumExportKgForDocs: non-array / empty → 0', () => {
+  assert.equal(P.sumExportKgForDocs(null), 0);
+  assert.equal(P.sumExportKgForDocs(undefined), 0);
+  assert.equal(P.sumExportKgForDocs([]), 0);
+  assert.equal(P.sumExportKgForDocs([null, undefined]), 0);
+});
+
+test('canonicalTypeVente: maps aliases', () => {
+  assert.equal(P.canonicalTypeVente('EXP'), 'Export');
+  assert.equal(P.canonicalTypeVente("Driscoll's"), 'Export');
+  assert.equal(P.canonicalTypeVente('Export'), 'Export');
+  assert.equal(P.canonicalTypeVente('ECRT'), 'Marché Local');
+  assert.equal(P.canonicalTypeVente(''), '');
+  assert.equal(P.canonicalTypeVente(undefined), '');
+});

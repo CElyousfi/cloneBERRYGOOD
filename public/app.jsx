@@ -8350,6 +8350,9 @@
             // Transport Fruits (pointage_divers, fonction === 'TRANSPORT FRUIT') par date.
             // Map { dateISO → montant total TRANSPORT FRUIT }. Chargé pour les dates affichées.
             const [transportFruitByDate, setTransportFruitByDate] = useState({});
+            // kg EXPORTÉ (pfq_interne, typeVente Export) par date. Map { dateISO → kgExport }.
+            // Chargé pour les mêmes dates que transportFruitByDate (tfDatesKey).
+            const [kgExporteByDate, setKgExporteByDate] = useState({});
 
             const isMyrtille = (v) => /myrtille|blue|corina|corrina|cascade|breeze/i.test(v || '');
             const calcPrime = data.calcPrime || ((kg, variete, date) => { const k = kg || 0; if (isMyrtille(variete)) { const seuil = /breeze/i.test(variete || '') ? 25 : /cascade/i.test(variete || '') ? ((date || '') >= '2026-04-25' ? 30 : 25) : 30; return k > seuil ? Math.round((k - seuil) * 2.5 * 10) / 10 : 0; } if (k < 20) return 0; if (k < 25) return 20; if (k < 30) return 40; if (k < 40) return Math.round((60 + (k - 30) * 3) * 10) / 10; return Math.round((90 + (k - 40) * 4) * 10) / 10; });
@@ -8582,6 +8585,32 @@
                     setTransportFruitByDate(prev => {
                         const next = { ...prev };
                         results.forEach(({ d, total }) => { next[d] = total; });
+                        return next;
+                    });
+                });
+                return () => { cancelled = true; };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [tfDatesKey]);
+
+            // ── KPI Transport fruits : kg EXPORTÉ par date (pfq_interne, typeVente Export) ──
+            // Calqué EXACTEMENT sur le useEffect transportFruitByDate (mêmes dates tfDatesKey).
+            // Placé AVANT l'early-return `if (loading)` → aucun hook après early-return.
+            React.useEffect(() => {
+                const dates = tfDatesKey ? tfDatesKey.split(',').filter(Boolean) : [];
+                if (!dates.length) { setKgExporteByDate({}); return; }
+                let cancelled = false;
+                const missing = dates.filter(d => kgExporteByDate[d] === undefined);
+                if (!missing.length) return;
+                Promise.all(missing.map(d =>
+                    fetch('/api/validation?action=export-kg-by-date&date=' + d)
+                        .then(r => r.json())
+                        .then(json => ({ d, kg: (json && json.success) ? (Number(json.kgExport) || 0) : 0 }))
+                        .catch(() => ({ d, kg: 0 }))
+                )).then(results => {
+                    if (cancelled) return;
+                    setKgExporteByDate(prev => {
+                        const next = { ...prev };
+                        results.forEach(({ d, kg }) => { next[d] = kg; });
                         return next;
                     });
                 });
@@ -8832,6 +8861,8 @@
                 const recSeries = [];
                 const logSeries = [];
                 const ouvKeys = {};
+                // kg RÉCOLTÉ par date (pour estimer le kg exporté des jours non liquidés)
+                const kgByDate = {};
                 windowDates.forEach(date => {
                     // Jour sélectionné/aujourd'hui en mode Jour → reprendre les totaux du KPI jour
                     if (!isQuinzaineMode && date === recolteDate) {
@@ -8842,6 +8873,7 @@
                         if (todayEmpty) return;
                         recSeries.push({ salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, kg: totalKg, nbOuvJour: nbOuvriers });
                         logSeries.push({ salaire: logSalaire, transport: logTransport, prime: logPrime, charges: logCharges, kg: 0, nbOuvJour: 0 });
+                        kgByDate[date] = (kgByDate[date] || 0) + (totalKg || 0);
                         allFiltered.forEach(r => { const key = (r.matricule || r.nom || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
                         return;
                     }
@@ -8851,6 +8883,7 @@
                     const aLog = aggregateRows(dayLog);
                     recSeries.push(aRec);
                     logSeries.push(aLog);
+                    kgByDate[date] = (kgByDate[date] || 0) + (aRec.kg || 0);
                     aRec.matricules.forEach(m => { const key = (m || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
                 });
                 const recAgg = RK.aggregatePeriodKpis(recSeries);
@@ -8884,6 +8917,8 @@
                     nbJours: recAgg.nbJoursAvecDonnees,
                     // Dates de la fenêtre (pour sommer le coût Transport fruits sur la même plage)
                     windowDates: windowDates,
+                    // kg RÉCOLTÉ par date (estimation kg exporté des jours non liquidés)
+                    kgByDate: kgByDate,
                 };
             })();
 
@@ -8951,24 +8986,47 @@
             // Coût Transport fruits = somme des montants pointage_divers (fonction TRANSPORT FRUIT)
             // sur la plage affichée : fenêtre période (windowDates) quand le graphe est visible,
             // sinon la date sélectionnée/repli du jour. Le coût est en DH (TOTAL sur la plage).
+            // Plage de dates PARTAGÉE par tfTotalCost ET tfKgExporte → alignement garanti :
+            // fenêtre période (windowDates) quand le graphe est visible, sinon date du jour.
+            const tfDates = (userPeriodKpi && periodKpi && Array.isArray(periodKpi.windowDates))
+                ? periodKpi.windowDates
+                : [selectedDate || new Date().toISOString().slice(0, 10)];
             const tfTotalCost = (() => {
-                let dates;
-                if (userPeriodKpi && periodKpi && Array.isArray(periodKpi.windowDates)) {
-                    dates = periodKpi.windowDates;
-                } else {
-                    const todayStr = new Date().toISOString().slice(0, 10);
-                    dates = [selectedDate || todayStr];
-                }
                 let sum = 0;
                 let anyLoaded = false;
-                dates.forEach(d => {
+                tfDates.forEach(d => {
                     if (transportFruitByDate[d] !== undefined) { anyLoaded = true; sum += transportFruitByDate[d]; }
                 });
                 return anyLoaded ? sum : null; // null = données pas (encore) chargées
             })();
-            // kg EXPORTÉ : non disponible dans cet onglet (le coût récolte vient de kg RÉCOLTÉS,
-            // pas exportés). Tant que la source n'est pas branchée, le ratio reste '—'.
-            const tfKgExporte = null;
+            // kg EXPORTÉ sur la plage = kg RÉEL (pfq_interne liquidé) + ESTIMATION des jours
+            // non encore liquidés. Sémantique : pour un jour sans liquidation export mais
+            // avec du kg récolté, on estime kg_exporté ≈ kg_récolté × tauxExport, où
+            // tauxExport = Σ(kg exporté réel) / Σ(kg récolté) sur les jours liquidés de la
+            // période. Sans aucun jour liquidé (taux indéterminé) → pas d'estimation.
+            const tfKgExporteResult = (() => {
+                const kgRecByDate = (periodKpi && periodKpi.kgByDate) || {};
+                let kgReel = 0;          // Σ kg exporté réel (jours liquidés chargés)
+                let recoltLiq = 0;        // Σ kg récolté sur ces mêmes jours liquidés
+                let recoltNonLiq = 0;     // Σ kg récolté sur jours non liquidés
+                tfDates.forEach(d => {
+                    const exp = kgExporteByDate[d];
+                    const rec = kgRecByDate[d] || 0;
+                    if (exp !== undefined && exp > 0) {
+                        kgReel += exp;
+                        recoltLiq += rec;
+                    } else {
+                        // jour non liquidé (export 0/undefined) mais potentiellement récolté
+                        recoltNonLiq += rec;
+                    }
+                });
+                const tauxExport = recoltLiq > 0 ? kgReel / recoltLiq : null;
+                const kgEstime = (tauxExport !== null) ? recoltNonLiq * tauxExport : 0;
+                const total = kgReel + kgEstime;
+                return { total: total > 0 ? Math.round(total) : null, estime: kgEstime > 0 };
+            })();
+            const tfKgExporte = tfKgExporteResult.total; // null → KPI '—'
+            const tfKgExporteEstime = tfKgExporteResult.estime; // true si la valeur inclut une part estimée
             const tfDhParKgExport = (tfTotalCost !== null && tfKgExporte && tfKgExporte > 0)
                 ? Math.round(tfTotalCost / tfKgExporte * 100) / 100
                 : null;
@@ -9208,7 +9266,7 @@
                             label="Transport fruits / kg exporté"
                             subItems={[
                                 {value: tfTotalCost !== null ? fmt(tfTotalCost) : '—', label: 'Coût transport'},
-                                {value: tfKgExporte ? fmt(tfKgExporte) : '—', label: 'Kg exporté'}
+                                {value: tfKgExporte ? fmt(tfKgExporte) : '—', label: tfKgExporteEstime ? 'Kg exporté (réel + estimé)' : 'Kg exporté'}
                             ]} />
                     </div>
 

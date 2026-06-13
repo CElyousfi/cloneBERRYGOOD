@@ -129,6 +129,40 @@ function normalizeBon(b) {
 }
 
 /**
+ * Map a raw pfq_interne `typeVente` to the unified canonical value.
+ * Mirrors `normalizeBon` (Driscoll's / EXP → Export, ECRT → Marché Local).
+ * @param {string} rawType
+ * @returns {string}
+ */
+function canonicalTypeVente(rawType) {
+  const t = rawType || '';
+  return (t === "Driscoll's" || t === 'EXP') ? 'Export'
+    : t === 'ECRT' ? 'Marché Local'
+    : t || '';
+}
+
+/**
+ * Pure helper: sum the exported kg (poidsLot) across raw pfq_interne docs.
+ * Only docs whose canonical typeVente === 'Export' are counted. Rejected bons
+ * (status rejete_qualite / rejete_chef) are excluded. Missing/invalid poidsLot
+ * counts as 0.
+ * @param {Array<object>} docs - Raw pfq_interne docs
+ * @returns {number} total exported kg
+ */
+function sumExportKgForDocs(docs) {
+  if (!Array.isArray(docs)) return 0;
+  let sum = 0;
+  for (const b of docs) {
+    if (!b) continue;
+    if (b.status === 'rejete_qualite' || b.status === 'rejete_chef') continue;
+    if (canonicalTypeVente(b.typeVente) !== 'Export') continue;
+    const kg = parseFloat(b.poidsLot);
+    if (Number.isFinite(kg) && kg > 0) sum += kg;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+/**
  * Parse an expedition's date string (MM/DD/YYYY — Driscoll's US format — or
  * YYYY-MM-DD ISO) to YYYY-MM-DD.
  * Mirrors the frontend parser at public/app.jsx:13975 which does
@@ -416,6 +450,8 @@ module.exports = {
   splitVariety,
   applyVarietyMapping,
   parseExpDateISO,
+  canonicalTypeVente,
+  sumExportKgForDocs,
   normalizeBon,
   buildMappedWithEstimation,
   computeCycle2Stats,
