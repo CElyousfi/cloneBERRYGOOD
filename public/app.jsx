@@ -25543,6 +25543,8 @@ ${rejetHtml}
                             );
                         })()}
                     </Panel>
+
+                    <BaremesPaiePanel />
                 </div>
             );
         }
@@ -25748,8 +25750,6 @@ ${rejetHtml}
                         </table>
                         )}
                     </Panel>
-
-                    <BaremesPaiePanel />
                 </div>
             );
         }
