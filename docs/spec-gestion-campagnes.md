@@ -333,3 +333,75 @@ Chaque modification → audit log + alerte 9.4.
 1. Niveau du cutoff au lancement : **variété seule** (simple) ou **variété × ferme/parcelle** (fin) ?
 2. CPC de MIA : `S9_MIA` ? (à confirmer agronomie).
 3. Verrouillage des cutoffs sur une campagne archivée : warning seul, ou interdiction ?
+
+---
+
+## 10. MODÈLE FINAL VALIDÉ (Omar 2026-06-14) — fait foi, supersede les points ouverts de §9
+
+### 10.1 Cutoff par PARCELLE (clé = variété + parcelle)
+- **Clé du cutoff = la parcelle** (granularité fine, pas la variété globale). Une parcelle =
+  une ligne `Parcelle_Culturale` BEE ONE.
+- **Défaut : 30 juin** (frontière fiscale). **Surchargeable par parcelle** : une date unique
+  `cutoff_campagne` + `campagne_cible`.
+- **Affecte les CHARGES uniquement, JAMAIS la récolte.** Justification : au moment du cutoff
+  (établissement), la parcelle ne produit pas encore → il n'y a **pas de récolte au cutoff**. La
+  récolte arrive plus tard et tombe naturellement dans la bonne campagne par date.
+- **TOUTES les charges** concernées : main d'œuvre (MO), stock (intrants), transport, etc.
+- Résolution : `campagneDeCharge({ parcelle, date })` =
+  `si cutoff(parcelle) défini ET date >= cutoff_campagne → campagne_cible ; sinon campagneOf(date)`.
+  (Plus de niveau variété-global : **la clé est la parcelle**, donc « Maravilla Long Cane F1 vs F5 »
+  = deux parcelles, deux cutoffs possibles — naturellement géré.)
+
+### 10.2 Bi-cycle = parcelles DISTINCTES (pas de notion "cycle" dans le modèle)
+- Primocane (cycle 1) et Floricane (cycle 2) sont **deux `Parcelle_Culturale` séparées** dans BEE ONE.
+- Chaque parcelle porte **SA superficie** (→ coût/ha correct par cycle), **SON cutoff**, **SA campagne**.
+- Conséquence : **on n'a pas besoin d'une dimension `cycle`** — *la parcelle EST le cycle*. Le modèle
+  campagne raisonne uniquement par parcelle. (Simplifie : pas de logique C1/C2 à scoper par campagne.)
+
+### 10.3 Recalcul rétroactif si changement de cutoff — APERÇU + validation (jamais silencieux)
+- La campagne d'une charge **n'est jamais stockée** : dérivée à la consolidation via `campagneDeCharge`.
+- Changer un cutoff de parcelle → **APERÇU avant/après obligatoire** : « X charges, Y DH passent de
+  <campagne A> à <campagne B> ». **Omar valide explicitement** avant application. **Jamais de bascule
+  silencieuse.** Après validation : audit log + invalidation des caches CPC concernés.
+
+### 10.4 CPC "EN CONSTRUCTION" — campagne future consultable dès maintenant
+- La campagne **2026-2027 est consultable immédiatement** (avant son démarrage officiel).
+- Indicateur dédié : **« Charges pré-campagne engagées : X DH »** = suivi **temps réel de
+  l'investissement d'établissement** (MIA et autres parcelles déjà en cutoff 2026-2027).
+- Les charges pré-campagne (avant production) s'accumulent dans le CPC 2026-2027 « en construction »,
+  isolées de 2025-2026.
+
+### 10.5 Sélecteur campagne GLOBAL — cohérent avec les cutoffs
+- État app « campagne sélectionnée » (défaut = campagne du jour), propagé à tous les écrans.
+- **2025-2026** → ne montre **PAS** MIA ni les parcelles dont le cutoff/campagne = 2026-2027.
+- **2026-2027** → montre MIA + les charges pré-campagne engagées.
+- La **visibilité** d'une parcelle dans une campagne dérive de son affectation (cutoff → campagne_cible
+  pour les nouvelles ; date sinon). Le champ `parcelles_consommation.campagnes[]` (8.4) est la forme
+  matérialisée de cette visibilité côté magasinier ; il doit rester **cohérent avec les cutoffs**
+  (idéalement dérivé d'eux, pas saisi en double).
+
+### 10.6 Détection auto nouvelles parcelles BEE ONE (confirme §8.3)
+- Nouvelle parcelle inconnue (absente du mapping de résolution CPC) → **flaggée « à mapper »** dans
+  `parcelles_a_mapper` + **alerte** Omar (WhatsApp/in-app).
+- Ses charges **en attente** dans un CPC **`NON_AFFECTE`** : ni perdues, ni mélangées. Omar mappe →
+  bascule au bon CPC.
+
+### 10.7 Interface Paramètres — Cutoffs par parcelle
+- Écran (onglet Paramètres) : tableau **Parcelle | Ferme | Cutoff défaut (30 juin) | Cutoff perso |
+  Campagne cible**, modifiable par Omar à tout moment.
+- Écriture via Cloud Function (gouvernance : pas d'écriture client sur `config/`). Chaque modif →
+  aperçu 10.3 + audit log.
+
+### 10.8 Plan d'implémentation (Phase 0+1, sur GO Omar)
+- **Phase 0** : `campagneDeCharge({parcelle,date})` + `campagneOf(date)` en util partagé front+back
+  (lit `config/campagne_cutoffs`). État « campagne sélectionnée » global (défaut = campagne du jour).
+- **Phase 1a (milestone, déjà en preview)** : sélecteur magasinier filtré par campagne (visibilité).
+- **Phase 1b** : 
+  - Collection `config/campagne_cutoffs` + écran Paramètres (CRUD via CF, aperçu avant/après).
+  - Sélecteur campagne **global** (Coût Récolte borné, CampagneTab, Mapping).
+  - CPC « en construction » 2026-2027 + indicateur charges pré-campagne.
+- **Phase 1c** : détection auto BEE ONE (job scan + `parcelles_a_mapper` + notif + bucket `NON_AFFECTE`).
+- **Phase 2** : rituel d'ouverture campagne (report pérennes, archivage/verrou 25-26), tag campagne liquidations.
+
+> Note : §9 (cutoff par variété, cutoff sur récolte aussi) est **superseded** par §10
+> (cutoff par parcelle, charges uniquement). §10 fait foi.
