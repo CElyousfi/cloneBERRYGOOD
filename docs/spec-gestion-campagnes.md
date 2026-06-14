@@ -504,3 +504,22 @@ physique** :
 - Resolver CPC : router vers `<cpc>_<phase>` par date ; **garantir l'immuabilité** des buckets passés.
 - Consolidation/affichage CPC : exposer Primo **et** Flori séparément, toujours, toutes campagnes
   (vue rentabilité par cycle).
+
+### 11.10 Validation du modèle §11 contre `docs/Parcelles_2026-2027_BGF.xlsx` (lu 2026-06-14)
+Le modèle PHASE est **confirmé par l'Excel** (3 feuilles : Parcelles / Récap superficies / À valider).
+Précisions tirées de la donnée :
+- **CPC par phase explicites** (colonnes « CPC Primocane » / « CPC Floricane ») :
+  - Avocat (phase unique) : `F2_HASS … F6_HASS` (CPC Flori vide).
+  - Maravilla LC : `F1_MARAVILLA_LC_PRIMO` / `F1_MARAVILLA_LC_FLORI` (2→4 ha).
+  - Maravilla GC : `F1_MARAVILLA_GC_PRIMO` / `F1_MARAVILLA_GC_FLORI` (2,5→5 ha).
+  - **MIA** : **`F5_MIA_PRIMO` / `F5_MIA_FLORI`** (TP, cutoff Primo **mai 2026**) → **résout la question
+    « CPC de MIA »** : ce n'est pas un `S9_MIA` unique, mais **deux buckets datés par phase**.
+  - Yasmin : `F5_YASMIN_PRIMO` / `F5_YASMIN_FLORI` (TP, cutoff Primo mai 2026).
+  - Myrtille C1/C2 (phase unique) : `F5_BREEZE_C1`, `F5_BREEZE_C2`, `F5_CASCADE_C1`, `F5_CASCADE_C2`, `F5_CORINA_C2`.
+- **Colonne `Cutoff charges`** par parcelle : « 30 juin » par défaut ; « Primo: mai 2026 / Flori: 1er janv »
+  pour les TP (MIA, Yasmin) → aligne §10 (cutoff campagne) + §11 (bascule phase).
+- **À corriger à la validation équipe** : la feuille tague **Yasmin en `Culture=Myrtille`** alors que
+  c'est une **framboise (TP)** — coquille à confirmer/corriger (feuille « À valider »). Le Récap compte
+  d'ailleurs Yasmin séparément (« Myrtille (Yasmin TP) »).
+- **Seed gated** : on seed le référentiel 2026-2027 **uniquement** depuis la version de l'Excel
+  validée par l'équipe (colonnes « ✅ Validé ? » + « Date bascule confirmée » remplies).
