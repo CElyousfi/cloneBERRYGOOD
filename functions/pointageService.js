@@ -711,10 +711,193 @@ exports.computeChargCond = computeChargCond;
 exports.halfKey = halfKey;
 exports.buildHalfToPeriode = buildHalfToPeriode;
 exports.resolveHolidayPeriode = resolveHolidayPeriode;
+exports.shouldCacheRecolteEquipes = shouldCacheRecolteEquipes;
+exports.computeRecolteEquipesPayload = computeRecolteEquipesPayload;
 
 // =============================================
 // Cache Warmer — pre-populates api_cache for pointage endpoints
 // Reads from Firestore mirror only (GCP→GCP, zero farm network impact)
+// =============================================
+// Recolte-equipes — shared compute + cache guard
+// =============================================
+// shouldCacheRecolteEquipes : refuse le cache si la majorité des dates n'ont aucun kg>0.
+// some() était trop laxiste : 5 dates anciennes OK + 25 dates récentes à kg=0 passait → cache servi 5 min avec chart vide.
+// Heuristique : >= 70% des dates doivent avoir au moins une ligne kg>0.
+function shouldCacheRecolteEquipes(r) {
+  if (!r || !r.success || !Array.isArray(r.rows) || r.rows.length === 0) return true;
+  const byDate = {};
+  r.rows.forEach(row => {
+    const d = row.jour;
+    if (!byDate[d]) byDate[d] = { total: 0, withKg: 0 };
+    byDate[d].total++;
+    if ((row.kg || 0) > 0) byDate[d].withKg++;
+  });
+  const dates = Object.keys(byDate);
+  if (dates.length === 0) return true;
+  const goodDates = dates.filter(d => byDate[d].withKg > 0).length;
+  return (goodDates / dates.length) >= 0.7;
+}
+
+// computeRecolteEquipesPayload : calcul COMPLET du payload recolte-equipes.
+// Lignes brutes du mirror (8. Récolte) → groupement matricule/jour → variété dominante
+// → ENRICHISSEMENT kg depuis prod_tracabilite_recolte (getAll chunké, 3 retries) → ajout
+// des ouvriers prod manquants. Le kg de récolte vient UNIQUEMENT de l'enrichissement prod
+// (quantiteToKg=0 sur l'opération « Récolte »). Source de vérité unique partagée entre le
+// serving path et le warm path → plus de divergence (warm cachait un payload kg=0).
+// nQuinz : nombre de quinzaines chargées depuis meta.periodes (slice(0, nQuinz)). 3 partout.
+async function computeRecolteEquipesPayload(nQuinz) {
+  if (USE_MIRROR) {
+    const meta = await getPointageMeta();
+    const periodes = meta?.periodes || [];
+    // Charger nQuinz quinzaines (~45 jours pour 3) : couvre la fenêtre 30j par défaut du chart
+    // Coût Récolte avec buffer. ⚠️ Borné depuis que meta.periodes liste TOUTES les quinzaines
+    // du mirror (fix quinzaines 21/22) : slice(0,6) chargeait ~6 quinzaines (~12k lignes)
+    // → recolte-equipes lent (~10s) et Coût Récolte dégradé.
+    const targetPeriodes = periodes.slice(0, nQuinz);
+    const allRows = [];
+    for (const p of targetPeriodes) {
+      const pRows = await getPointageRowsForPeriode(p);
+      allRows.push(...pRows);
+    }
+    const recolteRows = allRows.filter(r => r.Operation_Famille === "8. Récolte");
+    const rawRows = recolteRows.map(r => ({
+      matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
+      jour: r.DateStr, periode: r.Periode_paie,
+      kg: quantiteToKg(r.Quantite_unite, r.Operation),
+      heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0),
+      ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+      variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale),
+      culture: (r.Culture || "").trim(),
+      parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim(),
+    }));
+    // Agréger par ouvrier+jour (un ouvrier peut avoir plusieurs variétés/parcelles le même jour)
+    const grouped = {};
+    for (const r of rawRows) {
+      const key = `${r.matricule}|${r.jour}`;
+      if (!grouped[key]) {
+        grouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
+      } else {
+        grouped[key].kg += r.kg;
+        grouped[key].heures += r.heures;
+        grouped[key].cout += r.cout;
+        const v = r.variete || 'Autre';
+        grouped[key].kgByVariete[v] = (grouped[key].kgByVariete[v] || 0) + r.kg;
+      }
+    }
+    // Déterminer variété dominante pour chaque jour
+    let rows = Object.values(grouped).map(r => {
+      const bestVariete = Object.entries(r.kgByVariete)
+        .sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
+      delete r.kgByVariete;
+      return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
+    });
+
+    // Enrich with production data (Tracabilite_recolte) — more accurate kg.
+    // Le kg de récolte vient UNIQUEMENT d'ici (quantiteToKg=0 sur l'opération « Récolte »).
+    // ⚠️ Historique : on lisait les ~60-90 docs prod SÉQUENTIELLEMENT (un get() par date). Un échec
+    // transitoire Firestore faisait sauter l'enrichissement → kg=0 sur TOUTES les dates → payload
+    // dégradée servie au DG. Parade : getAll() chunké en lots de 10 (+ 3 retries/lot).
+    const prodDates = [...new Set(rows.map(r => r.jour))].sort();
+    let enrichedCount = 0, addedCount = 0;
+    const perDateStats = [];
+    const prodByDate = {};
+    let getAllFailedChunks = 0;
+    if (prodDates.length > 0) {
+      const CHUNK = 10;
+      for (let i = 0; i < prodDates.length; i += CHUNK) {
+        const chunkRefs = prodDates.slice(i, i + CHUNK)
+          .map(d => db_firestore.collection("prod_tracabilite_recolte").doc(d));
+        let docs = null;
+        for (let attempt = 0; attempt < 3 && docs === null; attempt++) {
+          try {
+            docs = await db_firestore.getAll(...chunkRefs);
+          } catch (chunkErr) {
+            if (attempt === 2) {
+              getAllFailedChunks++;
+              console.error(`[recolte-equipes] getAll lot ${i / CHUNK} échoué 3x (${chunkErr.message})`);
+              docs = [];
+            }
+          }
+        }
+        docs.forEach(doc => { if (doc && doc.exists) prodByDate[doc.id] = doc.data(); });
+      }
+      if (getAllFailedChunks > 0) console.warn(`[recolte-equipes] ${getAllFailedChunks} lot(s) getAll en échec → enrichissement partiel`);
+    }
+    for (const date of prodDates) {
+      try {
+        const prodData = prodByDate[date];
+        if (!prodData) { perDateStats.push(`${date}:noDoc`); continue; }
+        const prodRows = prodData.rows || [];
+        if (prodRows.length === 0) { perDateStats.push(`${date}:emptyRows`); continue; }
+        const prodMap = {};
+        prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
+        // Override kg for existing worker-days
+        let perDateEnriched = 0;
+        rows.forEach(r => {
+          if (r.jour !== date) return;
+          const prod = prodMap[(r.matricule || "").toUpperCase()];
+          if (prod) {
+            r.kg = prod.totalKg;
+            r.variete = prod.variete || r.variete;
+            enrichedCount++;
+            perDateEnriched++;
+          }
+        });
+        // Add workers in prod but missing from pointage for this date
+        const existingMats = new Set(rows.filter(r => r.jour === date).map(r => (r.matricule || "").toUpperCase()));
+        const periode = rows.find(r => r.jour === date)?.periode || (targetPeriodes && targetPeriodes[0]) || "";
+        let perDateAdded = 0;
+        prodRows.forEach(pr => {
+          if (!existingMats.has((pr.matricule || "").toUpperCase()) && pr.totalKg > 0) {
+            rows.push({
+              matricule: pr.matricule, nom: pr.nom, jour: date, periode,
+              kg: pr.totalKg, heures: 0, cout: 0,
+              ferme: deriveFerme(pr.refParcelle, ""), variete: pr.variete || "",
+              culture: "", parcelle: pr.refParcelle || "", operation: "Récolte (prod)",
+            });
+            addedCount++;
+            perDateAdded++;
+          }
+        });
+        perDateStats.push(`${date}:e${perDateEnriched}/a${perDateAdded}/prodRows${prodRows.length}`);
+      } catch (dateErr) {
+        perDateStats.push(`${date}:ERR(${dateErr.message})`);
+        console.warn(`[recolte-equipes] enrichment failed for ${date}:`, dateErr.message);
+      }
+    }
+    console.log(`[recolte-equipes] Prod enrichment: ${enrichedCount} overridden, ${addedCount} added, ${prodDates.length} dates checked. Per-date: ${perDateStats.join(' | ')}`);
+
+    return { success: true, periodes, rows };
+  }
+  // SQL fallback
+  const db = await getPool();
+  const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
+  const periodes = periodesRes.recordset.map(r => r.Periode_paie);
+  const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Quantite_unite, Nombre_Hr, Cout, Ref_parcelle, Parcelle_Culturale, Variete, Culture, Operation FROM BR_Pointage WHERE Operation_Famille = N'8. Récolte' ORDER BY jour DESC`);
+  const sqlRawRows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, kg: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale), culture: (r.Culture || "").trim(), parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim() }));
+  // Agréger par ouvrier+jour
+  const sqlGrouped = {};
+  for (const r of sqlRawRows) {
+    const key = `${r.matricule}|${r.jour}`;
+    if (!sqlGrouped[key]) {
+      sqlGrouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
+    } else {
+      sqlGrouped[key].kg += r.kg;
+      sqlGrouped[key].heures += r.heures;
+      sqlGrouped[key].cout += r.cout;
+      const v = r.variete || 'Autre';
+      sqlGrouped[key].kgByVariete[v] = (sqlGrouped[key].kgByVariete[v] || 0) + r.kg;
+    }
+  }
+  const rows = Object.values(sqlGrouped).map(r => {
+    const bestVariete = Object.entries(r.kgByVariete)
+      .sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
+    delete r.kgByVariete;
+    return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
+  });
+  return { success: true, periodes, rows };
+}
+
 // =============================================
 async function warmAllPointageCaches() {
   if (!USE_MIRROR) {
@@ -922,43 +1105,12 @@ async function warmAllPointageCaches() {
   } catch (e) { results.push(`quinzaine-alertes:${e.message}`); }
 
   // 5. Recolte-equipes
+  // ⚠️ Anti-divergence (régression rCbmEuXS) : le warm DOIT enrichir kg depuis prod_tracabilite_recolte
+  // ET appliquer shouldCacheRecolteEquipes, comme le serving. Auparavant le warm cachait un payload
+  // brut (kg=0 car quantiteToKg=0 sur « Récolte ») sans garde-fou → graphe Coût Récolte vide servi 5 min.
+  // TTL=0 force le recalcul ; shouldCacheRecolteEquipes empêche d'écrire un payload dégradé.
   try {
-    await withCache("pointage_recolte_equipes", 0, async () => {
-      const targetPeriodes = periodes.slice(0, 2);
-      const allRows = [];
-      for (const p of targetPeriodes) { allRows.push(...await getPointageRowsForPeriode(p)); }
-      const recolteRows = allRows.filter(r => r.Operation_Famille === "8. Récolte");
-      const rawRows = recolteRows.map(r => ({
-        matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
-        jour: r.DateStr, periode: r.Periode_paie,
-        kg: quantiteToKg(r.Quantite_unite, r.Operation),
-        heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0),
-        ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-        variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale),
-        culture: (r.Culture || "").trim(),
-        parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim(),
-      }));
-      // Agréger par ouvrier+jour (multi-variétés/parcelles le même jour)
-      const grouped = {};
-      for (const r of rawRows) {
-        const key = `${r.matricule}|${r.jour}`;
-        if (!grouped[key]) {
-          grouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
-        } else {
-          grouped[key].kg += r.kg;
-          grouped[key].heures += r.heures;
-          grouped[key].cout += r.cout;
-          const v = r.variete || 'Autre';
-          grouped[key].kgByVariete[v] = (grouped[key].kgByVariete[v] || 0) + r.kg;
-        }
-      }
-      const rows = Object.values(grouped).map(r => {
-        const bestVariete = Object.entries(r.kgByVariete).sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
-        delete r.kgByVariete;
-        return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
-      });
-      return { success: true, periodes, rows };
-    });
+    await withCache("pointage_recolte_equipes", 0, () => computeRecolteEquipesPayload(3), shouldCacheRecolteEquipes);
     results.push("recolte-equipes:ok");
   } catch (e) { results.push(`recolte-equipes:${e.message}`); }
 
@@ -1798,182 +1950,14 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ RECOLTE-EQUIPES: harvest per worker per day for team tracking ------
       if (action === "recolte-equipes") {
-        // shouldCache : refuse le cache si la majorité des dates n'ont aucun kg>0.
-        // some() était trop laxiste : 5 dates anciennes OK + 25 dates récentes à kg=0 passait → cache servi 5 min avec chart vide.
-        // Heuristique : >= 70% des dates doivent avoir au moins une ligne kg>0.
-        const shouldCacheRecolteEquipes = (r) => {
-          if (!r || !r.success || !Array.isArray(r.rows) || r.rows.length === 0) return true;
-          const byDate = {};
-          r.rows.forEach(row => {
-            const d = row.jour;
-            if (!byDate[d]) byDate[d] = { total: 0, withKg: 0 };
-            byDate[d].total++;
-            if ((row.kg || 0) > 0) byDate[d].withKg++;
-          });
-          const dates = Object.keys(byDate);
-          if (dates.length === 0) return true;
-          const goodDates = dates.filter(d => byDate[d].withKg > 0).length;
-          return (goodDates / dates.length) >= 0.7;
-        };
-        const cached = await withCache("pointage_recolte_equipes", 5 * 60 * 1000, async () => {
-        if (USE_MIRROR) {
-          const meta = await getPointageMeta();
-          const periodes = meta?.periodes || [];
-          // Charger 3 quinzaines (~45 jours) : couvre la fenêtre 30j par défaut du chart Coût
-          // Récolte avec buffer. ⚠️ Borné à 3 (et non 6) depuis que meta.periodes liste TOUTES
-          // les quinzaines du mirror (fix quinzaines 21/22) : slice(0,6) chargeait alors ~6
-          // quinzaines (~12k lignes) → recolte-equipes lent (~10s) et Coût Récolte dégradé.
-          // Les vues 60/90j montrent au plus ces 3 quinzaines (acceptable : la nav longue
-          // n'était de toute façon pas alimentée avant, periodes ne contenant qu'1 quinzaine).
-          const targetPeriodes = periodes.slice(0, 3);
-          const allRows = [];
-          for (const p of targetPeriodes) {
-            const pRows = await getPointageRowsForPeriode(p);
-            allRows.push(...pRows);
-          }
-          const recolteRows = allRows.filter(r => r.Operation_Famille === "8. Récolte");
-          const rawRows = recolteRows.map(r => ({
-            matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(),
-            jour: r.DateStr, periode: r.Periode_paie,
-            kg: quantiteToKg(r.Quantite_unite, r.Operation),
-            heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0),
-            ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-            variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale),
-            culture: (r.Culture || "").trim(),
-            parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim(),
-          }));
-          // Agréger par ouvrier+jour (un ouvrier peut avoir plusieurs variétés/parcelles le même jour)
-          const grouped = {};
-          for (const r of rawRows) {
-            const key = `${r.matricule}|${r.jour}`;
-            if (!grouped[key]) {
-              grouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
-            } else {
-              grouped[key].kg += r.kg;
-              grouped[key].heures += r.heures;
-              grouped[key].cout += r.cout;
-              const v = r.variete || 'Autre';
-              grouped[key].kgByVariete[v] = (grouped[key].kgByVariete[v] || 0) + r.kg;
-            }
-          }
-          // Déterminer variété dominante pour chaque jour
-          let rows = Object.values(grouped).map(r => {
-            const bestVariete = Object.entries(r.kgByVariete)
-              .sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
-            delete r.kgByVariete;
-            return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
-          });
-
-          // Enrich with production data (Tracabilite_recolte) — more accurate kg.
-          // Le kg de récolte vient UNIQUEMENT d'ici (quantiteToKg=0 sur l'opération « Récolte »).
-          // ⚠️ Historique : on lisait les ~60-90 docs prod (6 quinzaines) SÉQUENTIELLEMENT (un get() par date, chacun
-          // dans un try/catch). Un échec transitoire Firestore (deadline/contention) faisait sauter
-          // l'enrichissement → kg=0 sur TOUTES les dates → payload dégradée servie au DG (KPIs DH/kg
-          // en tirets + graphe vide = faux « écran cassé », intermittent ~50/50 à froid).
-          // Parade : 1 SEUL getAll() batché (+ 1 retry) au lieu de N gets séquentiels → fiable.
-          const prodDates = [...new Set(rows.map(r => r.jour))].sort();
-          let enrichedCount = 0, addedCount = 0;
-          const perDateStats = [];
-          const prodByDate = {};
-          let getAllFailedChunks = 0;
-          if (prodDates.length > 0) {
-            // ⚠️ Fiabilité : les docs prod_tracabilite portent de gros tableaux `rows`.
-            // Un seul getAll sur ~40 docs volumineux échoue par intermittence (deadline/taille)
-            // → enrichissement kg sauté → payload dégradée (kg=0) → graphe Coût Récolte vide.
-            // Parade : CHUNKER en lots de 10 docs, avec 3 tentatives par lot.
-            const CHUNK = 10;
-            for (let i = 0; i < prodDates.length; i += CHUNK) {
-              const chunkRefs = prodDates.slice(i, i + CHUNK)
-                .map(d => db_firestore.collection("prod_tracabilite_recolte").doc(d));
-              let docs = null;
-              for (let attempt = 0; attempt < 3 && docs === null; attempt++) {
-                try {
-                  docs = await db_firestore.getAll(...chunkRefs);
-                } catch (chunkErr) {
-                  if (attempt === 2) {
-                    getAllFailedChunks++;
-                    console.error(`[recolte-equipes] getAll lot ${i / CHUNK} échoué 3x (${chunkErr.message})`);
-                    docs = [];
-                  }
-                }
-              }
-              docs.forEach(doc => { if (doc && doc.exists) prodByDate[doc.id] = doc.data(); });
-            }
-            if (getAllFailedChunks > 0) console.warn(`[recolte-equipes] ${getAllFailedChunks} lot(s) getAll en échec → enrichissement partiel`);
-          }
-          for (const date of prodDates) {
-            try {
-              const prodData = prodByDate[date];
-              if (!prodData) { perDateStats.push(`${date}:noDoc`); continue; }
-              const prodRows = prodData.rows || [];
-              if (prodRows.length === 0) { perDateStats.push(`${date}:emptyRows`); continue; }
-              const prodMap = {};
-              prodRows.forEach(r => { prodMap[(r.matricule || "").toUpperCase()] = r; });
-              // Override kg for existing worker-days
-              let perDateEnriched = 0;
-              rows.forEach(r => {
-                if (r.jour !== date) return;
-                const prod = prodMap[(r.matricule || "").toUpperCase()];
-                if (prod) {
-                  r.kg = prod.totalKg;
-                  r.variete = prod.variete || r.variete;
-                  enrichedCount++;
-                  perDateEnriched++;
-                }
-              });
-              // Add workers in prod but missing from pointage for this date
-              const existingMats = new Set(rows.filter(r => r.jour === date).map(r => (r.matricule || "").toUpperCase()));
-              const periode = rows.find(r => r.jour === date)?.periode || (targetPeriodes && targetPeriodes[0]) || "";
-              let perDateAdded = 0;
-              prodRows.forEach(pr => {
-                if (!existingMats.has((pr.matricule || "").toUpperCase()) && pr.totalKg > 0) {
-                  rows.push({
-                    matricule: pr.matricule, nom: pr.nom, jour: date, periode,
-                    kg: pr.totalKg, heures: 0, cout: 0,
-                    ferme: deriveFerme(pr.refParcelle, ""), variete: pr.variete || "",
-                    culture: "", parcelle: pr.refParcelle || "", operation: "Récolte (prod)",
-                  });
-                  addedCount++;
-                  perDateAdded++;
-                }
-              });
-              perDateStats.push(`${date}:e${perDateEnriched}/a${perDateAdded}/prodRows${prodRows.length}`);
-            } catch (dateErr) {
-              perDateStats.push(`${date}:ERR(${dateErr.message})`);
-              console.warn(`[recolte-equipes] enrichment failed for ${date}:`, dateErr.message);
-            }
-          }
-          console.log(`[recolte-equipes] Prod enrichment: ${enrichedCount} overridden, ${addedCount} added, ${prodDates.length} dates checked. Per-date: ${perDateStats.join(' | ')}`);
-
-          return { success: true, periodes, rows };
-        }
-        // SQL fallback
-        const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
-        const periodes = periodesRes.recordset.map(r => r.Periode_paie);
-        const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Quantite_unite, Nombre_Hr, Cout, Ref_parcelle, Parcelle_Culturale, Variete, Culture, Operation FROM BR_Pointage WHERE Operation_Famille = N'8. Récolte' ORDER BY jour DESC`);
-        const sqlRawRows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, kg: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale), culture: (r.Culture || "").trim(), parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim() }));
-        // Agréger par ouvrier+jour
-        const sqlGrouped = {};
-        for (const r of sqlRawRows) {
-          const key = `${r.matricule}|${r.jour}`;
-          if (!sqlGrouped[key]) {
-            sqlGrouped[key] = { ...r, kgByVariete: { [r.variete]: r.kg } };
-          } else {
-            sqlGrouped[key].kg += r.kg;
-            sqlGrouped[key].heures += r.heures;
-            sqlGrouped[key].cout += r.cout;
-            const v = r.variete || 'Autre';
-            sqlGrouped[key].kgByVariete[v] = (sqlGrouped[key].kgByVariete[v] || 0) + r.kg;
-          }
-        }
-        const rows = Object.values(sqlGrouped).map(r => {
-          const bestVariete = Object.entries(r.kgByVariete)
-            .sort((a, b) => b[1] - a[1])[0]?.[0] || r.variete;
-          delete r.kgByVariete;
-          return { ...r, variete: bestVariete, kg: Math.round(r.kg * 10) / 10 };
-        });
-        return { success: true, periodes, rows };
-        }, shouldCacheRecolteEquipes); // end withCache
+        // Calcul + cache via la fonction partagée (même logique serving + warm).
+        // 3 quinzaines, enrichissement prod, garde-fou shouldCacheRecolteEquipes.
+        const cached = await withCache(
+          "pointage_recolte_equipes",
+          5 * 60 * 1000,
+          () => computeRecolteEquipesPayload(3),
+          shouldCacheRecolteEquipes
+        );
         return res.json(cached);
       }
 
