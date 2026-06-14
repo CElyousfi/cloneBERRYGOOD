@@ -53212,6 +53212,7 @@ ${rejetHtml}
             const [createArticleLineIdx, setCreateArticleLineIdx] = useState(null);
             const canCreateArticle = currentProfile === 'achats' || currentProfile === 'dg';
             const [parcelles, setParcelles] = useState([]);
+            const [parcellesConso, setParcellesConso] = useState([]);
             const FARMS = ['F1', 'F5'];
             const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
@@ -53251,6 +53252,23 @@ ${rejetHtml}
             useEffect(() => { cachedFetch('/api/stock?action=stock-levels').then(json => { if (json.success) setStocks(json.stocks || []); }).catch(() => {}); }, []);
             useEffect(() => { fetch('/api/stock?action=list-articles').then(r=>r.json()).then(j=>{ if(j.success) { const seen = new Set(); setCatalogueArticles((j.articles||[]).filter(a => { if(seen.has(a.nom)) return false; seen.add(a.nom); return true; })); } }).catch(()=>{}); }, []);
             useEffect(() => { cachedFetch('/api/parcelles').then(json => { if (json.success) setParcelles(json.parcelles || []); }).catch(() => {}); }, []);
+            // Liste curée du magasinier (parcelles_consommation) — temps réel, S8 fusionné + S9-MIA présent
+            useEffect(() => {
+                const db = firebase.firestore();
+                const unsub = db.collection('parcelles_consommation').onSnapshot(
+                    snap => setParcellesConso(snap.docs.map(d => d.data())),
+                    () => {}
+                );
+                return unsub;
+            }, []);
+            // famille (doc conso) -> culture affichée sur l'item BC
+            const bcFamilleToCulture = (famille) => {
+                const f = (famille || '').toLowerCase();
+                if (f.indexOf('avocat') !== -1) return 'Avocatier';
+                if (f.indexOf('frambois') !== -1) return 'Framboise';
+                if (f.indexOf('myrtille') !== -1) return 'Myrtille';
+                return '';
+            };
 
             const catalogUnit = (article) => { const a = catalogueArticles.find(x => (x.nom||'').toLowerCase() === (article||'').toLowerCase()); return a && a.unite ? (a.unite || '').toLowerCase() : null; };
             const suggestRef = (nom) => 'ART-' + (nom || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
@@ -53285,10 +53303,16 @@ ${rejetHtml}
             };
 
             const filteredParcelles = parcelles;
-            const selectParcelleForItem = (idx, parcName) => {
-                const parc = parcelles.find(p => p.Parcelle_Physique === parcName);
+            const useConsoSelector = currentProfile === 'magasinier' && parcellesConso.length > 0;
+            const selectParcelleForItem = (idx, val) => {
                 const items = [...form.items];
-                items[idx] = { ...items[idx], parcelle: parcName, culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
+                const conso = parcellesConso.find(c => c.libelle === val);
+                if (conso) {
+                    items[idx] = { ...items[idx], parcelle: val, culture: bcFamilleToCulture(conso.famille), ferme: conso.ferme || '' };
+                } else {
+                    const parc = parcelles.find(p => p.Parcelle_Physique === val);
+                    items[idx] = { ...items[idx], parcelle: val, culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
+                }
                 setForm({ ...form, items });
             };
 
@@ -53443,7 +53467,15 @@ ${rejetHtml}
                                             <td>
                                                 <select value={it.parcelle} onChange={e => selectParcelleForItem(idx, e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}}>
                                                     <option value="">-- Parcelle --</option>
-                                                    {filteredParcelles.map(p => <option key={p.Parcelle_Physique} value={p.Parcelle_Physique}>{p.Parcelle_Physique} — {p.Culture || '?'}</option>)}
+                                                    {useConsoSelector ? (
+                                                        <React.Fragment>
+                                                            <optgroup label="Mes parcelles">
+                                                                {parcellesConso.map(c => <option key={'conso-' + c.libelle} value={c.libelle}>{c.libelle}</option>)}
+                                                            </optgroup>
+                                                        </React.Fragment>
+                                                    ) : (
+                                                        filteredParcelles.map(p => <option key={p.Parcelle_Physique} value={p.Parcelle_Physique}>{p.Parcelle_Physique} — {p.Culture || '?'}</option>)
+                                                    )}
                                                 </select>
                                                 {it.ferme && <div style={{fontSize:10,color:'#888',marginTop:2}}>{it.ferme} — {it.culture}</div>}
                                             </td>
