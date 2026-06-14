@@ -405,3 +405,16 @@ Chaque modification → audit log + alerte 9.4.
 
 > Note : §9 (cutoff par variété, cutoff sur récolte aussi) est **superseded** par §10
 > (cutoff par parcelle, charges uniquement). §10 fait foi.
+
+### 10.9 Timing du défaut & fenêtre pré-campagne (précision Omar 2026-06-14)
+- **Défaut = `campagneOf(today)`** (jamais en dur). **Bascule automatique le 1er juillet** :
+  le 2026-07-01, `campagneOf(today)` passe à `2026-2027` → le sélecteur pointe par défaut dessus.
+- **Fenêtre pré-campagne (dès mai)** : la campagne **suivante** (N+1) devient **DISPONIBLE** dans le
+  sélecteur **~2 mois avant le 1er juillet** (dès mai), pour saisir les **charges d'établissement**,
+  tout en restant **NON-défaut** jusqu'au 1er juillet. Concrètement, N+1 apparaît dès qu'une
+  parcelle/cutoff la cible (ex. cutoff MIA mai 2026 → `2026-2027` visible dès mai 2026 ; à partir de
+  mai 2027 → `2027-2028` émerge de la même façon).
+- **« Créer » une campagne** n'est pas un acte manuel : elle **émerge** des cutoffs / de la détection
+  auto BEE ONE (§10.6) dès que ses 1ères charges d'établissement arrivent. Pas de seed vide à l'avance.
+- Liste des options du sélecteur = `{ campagnes ayant des données } ∪ { campagne du jour } ∪
+  { campagne suivante si on est dans la fenêtre pré-campagne (≥ 1er mai) }`, triée.
