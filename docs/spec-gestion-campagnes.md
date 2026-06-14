@@ -418,3 +418,89 @@ Chaque modification → audit log + alerte 9.4.
   auto BEE ONE (§10.6) dès que ses 1ères charges d'établissement arrivent. Pas de seed vide à l'avance.
 - Liste des options du sélecteur = `{ campagnes ayant des données } ∪ { campagne du jour } ∪
   { campagne suivante si on est dans la fenêtre pré-campagne (≥ 1er mai) }`, triée.
+
+---
+
+## 11. MODÈLE PHASE — bi-cycle framboise (RAFFINEMENT MAJEUR, Omar 2026-06-14)
+
+> **Supersede §10.2.** Le bi-cycle framboise n'est **PAS** deux parcelles séparées : c'est **UNE
+> parcelle physique avec DEUX phases temporelles datées** (Primocane / Floricane).
+> Référentiel 2026-2027 : `docs/Parcelles_2026-2027_BGF.xlsx` (14 parcelles physiques).
+
+### 11.1 Principe — une parcelle, deux phases datées
+- **Primocane** : phase active **AVANT** le 1er janvier.
+- **Floricane** : phase active **À PARTIR DU** 1er janvier.
+- **Bascule automatique au 1er janvier**, **date configurable par parcelle** (`bascule_date`).
+- `phaseDeCharge({ parcelle, date })` = `date < bascule_date ? 'primocane' : 'floricane'`.
+
+### 11.2 La bascule change 3 choses d'un coup (sur une même parcelle physique)
+| | Avant bascule (Primocane) | Après bascule (Floricane) |
+|---|---|---|
+| **Libellé** | « X Primocane » | « X Floricane » |
+| **Superficie** | ex. Maravilla GC **2,5 ha** | ex. **5 ha** |
+| **Bucket CPC** | `<CPC>_PRIMO` | `<CPC>_FLORI` |
+
+### 11.3 Affichage magasinier (et sélecteurs) — phase active uniquement
+- Ne montre **QUE la phase active** à la date courante. Primocane **caché après** le 1er janvier,
+  Floricane **caché avant**. Le magasinier ne voit **jamais** 2 phases (suivi simplifié).
+
+### 11.4 CONSERVATION HISTORIQUE — NON NÉGOCIABLE ⚠️
+- L'affichage ne montre qu'une phase, **mais les DONNÉES DES DEUX PHASES sont conservées EN
+  PERMANENCE**. Les **deux buckets CPC** (`_PRIMO` et `_FLORI`) **coexistent toujours**.
+- Les charges **Primocane** (avant 1er janv) restent dans le bucket **Primo POUR TOUJOURS**, même
+  quand l'affichage passe en Floricane. **Aucune donnée écrasée à la bascule.**
+- La bascule change **l'AFFICHAGE** et le **ROUTAGE des NOUVELLES charges** — **jamais l'historique
+  existant**.
+- On peut consulter la **rentabilité des DEUX cycles à tout moment**, indépendamment de la phase
+  affichée. L'historique **survit aux campagnes** (CPC Primo/Flori 2026-2027 consultable en 2027-2028
+  → comparaison inter-campagnes).
+- **Implémentation garante** : le bucket CPC d'une charge est **dérivé de SA date** via
+  `phaseDeCharge(parcelle, charge.date)` — déterministe, immuable. Une charge ne « migre » jamais de
+  bucket : sa date fige sa phase. La bascule ne fait que (a) changer la phase affichée et (b) router
+  les nouvelles charges (dont la date est ≥ bascule) vers `_FLORI`. **Rien n'est recalculé ni effacé
+  rétroactivement sur les charges passées.**
+
+### 11.5 Cutoff CAMPAGNE vs bascule PHASE — deux routages distincts
+Deux dérivations date→dimension **indépendantes**, sur la même parcelle :
+- `campagneDeCharge(parcelle, date)` (§10) : **quelle campagne** (cutoff, défaut 30 juin).
+- `phaseDeCharge(parcelle, date)` (§11) : **quelle phase** (bascule, défaut 1er janvier).
+- Une charge → **(campagne, phase)** → bucket CPC `<cpc>_<phase>` **dans** cette campagne.
+- Exemple TP (MIA, Yasmin) : cutoff campagne avancé **mai 2026** (charges d'établissement →
+  **2026-2027**) ; Floricane démarre **1er janvier 2027**. **Les deux phases → campagne 2026-2027.**
+
+### 11.6 Cultures SANS phase
+- **Avocat** (pérenne) : **phase unique**, pas de Primo/Flori, pas de bascule.
+- **Myrtille C1/C2** : **années de production** (1re / 2e), **PAS** des phases intra-annuelles →
+  **parcelles distinctes**, **pas de bascule** au 1er janvier.
+
+### 11.7 Modèle de données proposé (référentiel parcelle 2026-2027)
+Collection `parcelles_culturales_ref` (ou extension du référentiel existant), **une doc par parcelle
+physique** :
+```
+{
+  id, libelle_base, ferme, culture, variete,
+  campagne: "2026-2027",
+  cutoff_campagne?: "2026-05-01",       // §10, optionnel (TP établissement)
+  phase: {                               // présent si bi-cycle framboise, absent sinon
+    bascule_date: "2027-01-01",
+    primocane:  { libelle, superficie_ha, cpc_bucket },
+    floricane:  { libelle, superficie_ha, cpc_bucket }
+  } | null,                              // null = culture sans phase (avocat, myrtille)
+  superficie_ha?                          // si pas de phase (avocat/myrtille)
+}
+```
+- Résolution d'une charge `(parcelle, date)` → `campagne = campagneDeCharge`, `phase =
+  phase ? phaseDeCharge : 'unique'`, `cpc_bucket = phase.<phase>.cpc_bucket || cpc_base`.
+
+### 11.8 Les 14 parcelles 2026-2027 (détail dans l'Excel — à valider équipe)
+- **Avocat (5)** : F2–F6 Hass, 30,5 ha total, **phase unique**.
+- **Framboise (4 bi-cycle)** : Maravilla LC (2→4 ha), Maravilla GC (2,5→5 ha), MIA (0,6→0,6 ha, TP),
+  Yasmin (2,3→2,3 ha, TP). *(superficie Primocane→Floricane)*
+- **Myrtille (5)** : Breeze C1/C2, Cascade C1/C2, Corina C2 — **parcelles distinctes, pas de bascule**.
+
+### 11.9 Impacts implémentation (à intégrer en Phase 0+1)
+- `phaseDeCharge` partagé front+back (à côté de `campagneDeCharge`).
+- Sélecteurs (magasinier + récolte) : afficher la phase active uniquement.
+- Resolver CPC : router vers `<cpc>_<phase>` par date ; **garantir l'immuabilité** des buckets passés.
+- Consolidation/affichage CPC : exposer Primo **et** Flori séparément, toujours, toutes campagnes
+  (vue rentabilité par cycle).
