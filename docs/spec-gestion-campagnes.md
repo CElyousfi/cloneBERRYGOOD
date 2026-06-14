@@ -263,3 +263,73 @@ bascule. **Zéro perte, zéro mélange, zéro casse.**
   - Démo sur MIA (simulée si pas encore en BEE ONE) : détectée → flaggée → coûts en NON_AFFECTE.
 - **Phase 1b** : sélecteur campagne **global** (Coût Récolte borné, CampagneTab, Mapping).
 - **Phase 2+** : unifier les résolveurs récolte/stock (8.5), rituel d'ouverture, tag campagne liquidations.
+
+---
+
+## 9. MODÈLE D'AFFECTATION CAMPAGNE — cutoff par variété (validé Omar 2026-06-14)
+
+Remplace la frontière fiscale fixe (30 juin) par un **cutoff campagne PAR VARIÉTÉ, modifiable**.
+
+### 9.1 Principe & structure
+- **Défaut** : 30 juin (frontière fiscale standard) → `campagneOf(date)` inchangé.
+- **Surcharge** : une variété peut avoir un cutoff antérieur (ex. MIA démarre mai 2026 → ses charges
+  basculent sur 2026-2027 avant le 30 juin).
+- Config Firestore `config/campagne_cutoffs` (ou champ sur un futur référentiel variété) :
+  ```
+  { variete: "MIA",  cutoff_campagne: "2026-05-01", campagne_cible: "2026-2027" }
+  { variete: "Maravilla Green Cane", cutoff_campagne: "…", campagne_cible: "…" }
+  ```
+
+### 9.2 Règle de résolution (le plus spécifique gagne)
+Nouvelle fonction `campagneOfCharge({ date, variete, ferme/parcelle })` :
+1. **Cutoff le plus spécifique applicable** (voir 9.3) avec `date >= cutoff_campagne` → `campagne_cible`.
+2. **Sinon** → dérivation standard `campagneOf(date)` (30 juin).
+La dérivation par date reste le **socle** ; le cutoff est une surcharge ciblée.
+
+### 9.3 Réponse — variété GLOBALE vs variété × parcelle ?
+**Recommandation : supporter les DEUX niveaux, le plus spécifique gagne.**
+Ordre de résolution d'un cutoff pour une charge `(variete, ferme, parcelle, date)` :
+`cutoff(variete + parcelle)` > `cutoff(variete + ferme)` > `cutoff(variete)` > défaut 30 juin.
+- Ça couvre ton cas « Maravilla Long Cane F1 vs F5 cutoffs différents » (clé `variete+ferme`).
+- Si tu veux rester simple au début : ne gérer que `variete` (global), et ajouter la dimension
+  `+ferme/parcelle` plus tard. **À trancher** (voir 9.6).
+
+### 9.4 Réponse — changement de cutoff RÉTROACTIF, charges déjà imputées ?
+**Principe clé : la campagne d'une charge n'est JAMAIS stockée sur la charge — elle est DÉRIVÉE
+à la consolidation** (le resolver lit `stock_movements`/récolte et calcule `campagneOfCharge`).
+Donc :
+- Changer un cutoff → **recalcul automatique** à la prochaine consolidation CPC / au prochain
+  affichage. **Aucune migration de données** (rien à réécrire sur les mouvements).
+- ⚠️ **Effet de bord** : des charges déjà **consolidées/communiquées** (CPC d'une campagne déjà
+  figée, reporting envoyé) peuvent basculer. → ajouter (a) un **audit log** de tout changement de
+  cutoff `{variete, ancien, nouveau, par, le}`, (b) une **alerte** « N charges (M DH) basculées de
+  <campagne A> vers <campagne B> » au moment du changement, (c) **invalider les caches CPC**
+  matérialisés concernés. Une campagne **figée/archivée** (rituel 8.5) devrait **verrouiller** ses
+  cutoffs (changement → warning explicite « campagne clôturée »).
+
+### 9.5 Réponse — cutoff sur charges (CPC) SEULEMENT ou aussi récolte (Coût Récolte) ?
+**Les DEUX, via une source de vérité unique.** `campagneOfCharge` est utilisée par :
+- le **resolver CPC** (attribution des charges stock au CPC d'une campagne),
+- le **bornage Coût Récolte** (les kg/coûts récolte d'une parcelle MIA en mai-juin 2026 comptent en
+  2026-2027, pas en 2025-2026).
+Sinon incohérence : la récolte MIA serait en 25-26 et ses charges en 26-27. **Une seule fonction**
+partagée front+back garantit que récolte et charges d'une même variété tombent dans la même campagne.
+
+### 9.6 Interface (Paramètres)
+Écran « Cutoffs campagne » (onglet Paramètres RH, à côté des barèmes) : tableau
+**Variété | (Ferme/Parcelle si niveau fin) | Cutoff défaut (30 juin) | Cutoff personnalisé | Campagne cible**,
+modifiable. Écriture via Cloud Function (gouvernance : pas d'écriture client directe sur `config/`).
+Chaque modification → audit log + alerte 9.4.
+
+### 9.7 Articulation avec le reste du spec
+- `campagneOfCharge` **remplace/enveloppe** `campagneOf` partout où on attribue une charge/récolte à
+  une campagne (resolver, bornage Coût Récolte, détection 8.3 pour dater la 1ère apparition d'une
+  variété).
+- Le champ `parcelles_consommation.campagnes[]` (8.4) reste la **visibilité** du sélecteur magasinier
+  (UX) ; il PEUT être dérivé des cutoffs plus tard, mais les deux concepts sont distincts :
+  *cutoff = à quelle campagne appartient une charge ; campagnes[] = dans quel sélecteur la parcelle est visible.*
+
+### 9.8 Points encore à trancher (9.6)
+1. Niveau du cutoff au lancement : **variété seule** (simple) ou **variété × ferme/parcelle** (fin) ?
+2. CPC de MIA : `S9_MIA` ? (à confirmer agronomie).
+3. Verrouillage des cutoffs sur une campagne archivée : warning seul, ou interdiction ?
