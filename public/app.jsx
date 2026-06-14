@@ -8831,6 +8831,10 @@
                 const recSeries = [];
                 const logSeries = [];
                 const ouvKeys = {};
+                // kgByDate : dateISO → kg récolté du jour. Sert à restreindre le coût
+                // Transport fruits aux JOURS DE PRODUCTION (kg>0) pour aligner numérateur
+                // et dénominateur du KPI « Transport fruits / kg récolté ».
+                const kgByDate = {};
                 windowDates.forEach(date => {
                     // Jour sélectionné/aujourd'hui en mode Jour → reprendre les totaux du KPI jour
                     if (!isQuinzaineMode && date === recolteDate) {
@@ -8841,6 +8845,7 @@
                         if (todayEmpty) return;
                         recSeries.push({ salaire: totalSalaire, transport: totalTransport, prime: totalPrime, charges: totalCharges, kg: totalKg, nbOuvJour: nbOuvriers });
                         logSeries.push({ salaire: logSalaire, transport: logTransport, prime: logPrime, charges: logCharges, kg: 0, nbOuvJour: 0 });
+                        kgByDate[date] = totalKg;
                         allFiltered.forEach(r => { const key = (r.matricule || r.nom || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
                         return;
                     }
@@ -8850,6 +8855,7 @@
                     const aLog = aggregateRows(dayLog);
                     recSeries.push(aRec);
                     logSeries.push(aLog);
+                    kgByDate[date] = aRec.kg;
                     aRec.matricules.forEach(m => { const key = (m || '').toString().toUpperCase().trim(); if (key) ouvKeys[key] = true; });
                 });
                 const recAgg = RK.aggregatePeriodKpis(recSeries);
@@ -8883,6 +8889,9 @@
                     nbJours: recAgg.nbJoursAvecDonnees,
                     // Dates de la fenêtre (pour sommer le coût Transport fruits sur la même plage)
                     windowDates: windowDates,
+                    // Kg récolté par jour (dateISO → kg) : restreint le coût Transport fruits
+                    // aux jours de production (kg>0) pour aligner numérateur et dénominateur.
+                    kgByDate: kgByDate,
                 };
             })();
 
@@ -8956,10 +8965,19 @@
             const tfDates = (userPeriodKpi && periodKpi && Array.isArray(periodKpi.windowDates))
                 ? periodKpi.windowDates
                 : [selectedDate || new Date().toISOString().slice(0, 10)];
+            // Jour de production = jour où du kg a été récolté (kg>0). On ne somme le
+            // transport fruit QUE sur ces jours, pour aligner exactement le numérateur sur
+            // le dénominateur tfKgRecolte (qui ne compte que le kg). Sinon, additionner le
+            // transport sur ~30 j (presque chaque jour) face à un kg figé sur 1 seul jour
+            // gonflait le ratio (ex. 19 600/590 = 33,25 au lieu de 750/590 = 1,27).
+            const isProductionDay = (d) => userPeriodKpi && periodKpi
+                ? (periodKpi.kgByDate[d] || 0) > 0   // vue période : kg récolté du jour
+                : (totalKg || 0) > 0;                // mode jour : kg récolté du jour sélectionné
             const tfTotalCost = (() => {
                 let sum = 0;
                 let anyLoaded = false;
                 tfDates.forEach(d => {
+                    if (!isProductionDay(d)) return; // ignorer les jours sans récolte (kg=0)
                     if (transportFruitByDate[d] !== undefined) { anyLoaded = true; sum += transportFruitByDate[d]; }
                 });
                 return anyLoaded ? sum : null; // null = données pas (encore) chargées
@@ -9192,13 +9210,13 @@
                     </div>
                     )}
                     <div className="kpi-grid">
-                        <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCoutDisplay)} label={kpiCoutLabelDisplay} subItems={[{value: fmt(kpiSalaire), label: 'Salaire de base'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges patronales'}]} onClick={() => setShowTrend(!showTrend)} />
-                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKgDisplay)} label={kpiKgLabelDisplay} onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-coins" iconClass="purple" value={kpiDhParKgNet !== null ? kpiDhParKgNet.toFixed(2) + ' DH' : '-'} label="Coût Net (Récolte + Logistique)" subItems={[{value: kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) : '-', label: 'Récolte'}, {value: kpiDhParKgLog !== null ? kpiDhParKgLog.toFixed(2) : '-', label: 'Logistique'}]} />
+                        <KPICard icon="fa-divide" iconClass="berry" value={kpiDhParKgGlobal !== null ? kpiDhParKgGlobal.toFixed(2) + ' DH' : '-'} label="Coût Brut (Hors logistique)" />
+                        <KPICard icon="fa-coins" iconClass="orange" value={fmt(kpiCoutDisplay)} label={kpiCoutLabelDisplay} subItems={[{value: fmt(kpiSalaire), label: 'Salaire de base'}, {value: fmt(kpiTransport), label: 'Transport'}, {value: fmt(kpiPrime), label: 'Prime'}, {value: fmt(kpiCharges), label: 'Charges patronales'}]} />
+                        <KPICard icon="fa-basket-shopping" iconClass="green" value={fmt(kpiTotalKgDisplay)} label={kpiKgLabelDisplay} />
                         <KPICard icon="fa-user" iconClass="blue" value={fmt(kpiCoutMoyenOuvrierJour) + ' DH'} label="Coût Moyen / Ouvrier / Jour" />
                         <KPICard icon="fa-users" iconClass="green" value={kpiNbOuvriers} label="Ouvriers Récolte" />
-                        <KPICard icon="fa-chart-pie" iconClass="purple" value={kpiPctSalaire + '%'} label="Salaire dans Coût" onClick={() => setShowTrend(!showTrend)} />
+                        <KPICard icon="fa-chart-pie" iconClass="purple" value={kpiPctSalaire + '%'} label="Salaire dans Coût" />
                         <KPICard icon="fa-truck-fast" iconClass="orange"
                             value={tfDhParKg !== null ? tfDhParKg.toFixed(2).replace('.', ',') + ' DH' : '—'}
                             label="Transport fruits / kg récolté"
@@ -9370,7 +9388,6 @@
                                                 <button key={r} onClick={() => { setHistRange(r); setHistOffset(0); }} style={{padding:'4px 10px',border:'1px solid var(--gray-200)',borderLeft:ri===0?'1px solid var(--gray-200)':'none',borderRadius:ri===0?'6px 0 0 6px':(ri===arr.length-1?'0 6px 6px 0':0),fontSize:11,fontWeight:600,background:histRange===r?'var(--berry)':'white',color:histRange===r?'white':'var(--gray-600)',cursor:'pointer'}}>{r} j</button>
                                             ))}
                                         </div>
-                                        <button onClick={() => setShowTrend(false)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:16,marginLeft:4}}><i className="fa-solid fa-xmark"></i></button>
                                     </div>
                                 </div>
                                 {trendData.length === 0 ? (
