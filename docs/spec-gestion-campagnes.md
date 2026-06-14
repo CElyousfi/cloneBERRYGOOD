@@ -175,3 +175,91 @@ Le déblocage minimal propre = **Phase 0 + Phase 1** : sélecteur campagne + `pa
 scopées par campagne, puis créer MIA en `campagnes: ['2026-2027']` avec son CPC (décision Q6.3).
 Tant que ce n'est pas fait, MIA reste **sélectionnable mais non mappée** (statut `a_creer`, conso
 en `nonResolu`) — sans polluer la campagne courante.
+
+---
+
+## 8. ADDENDUM — précisions Omar (2026-06-14)
+
+### 8.1 MIA arrive AUTOMATIQUEMENT de BEE ONE (pas de saisie manuelle)
+Dès qu'il y a du pointage/récolte sur une parcelle MIA dans BR_Pointage, elle apparaît dans
+`sql_mirror_pointage/{date}.rows[].Parcelle_Culturale` avec sa date. `campagneOf(date)` dérive
+2026-2027 si la date ≥ 2026-07-01. **Le système ne doit donc pas attendre une saisie : il doit
+DÉTECTER les nouvelles parcelles inconnues qui arrivent du mirror.** (Le `parcelles_consommation`
+côté magasinier reste, lui, une liste curée manuelle — voir 8.4.)
+
+### 8.2 Modèle PARCELLES × PROFIL (état actuel)
+Deux dimensions parcelle COEXISTENT, scopées différemment selon le profil :
+
+| Profil | Dimension parcelle | Scoping actuel | Source |
+|---|---|---|---|
+| **Magasinier** | `parcelles_consommation` (sa liste curée) | les 19 (filtre campagne ajouté en cours) | Firestore `parcelles_consommation` |
+| **Stationnaire fX** | récolte/irrigation de SA ferme | `farm` du profil (`stationnaire_f1`→F1, `_f5`→F5, `_avo`→F2 + switchableFarms F2/F3/F4/F6/BAHIA) | parcelles BEE ONE filtrées ferme |
+| **Chef fX** | parcelles de SA ferme | `farmFilter = profileData.farm` ([app.jsx:3005](../public/app.jsx#L3005), `&ferme=${farmFilter}`) | `parcelleConfig[ferme]` / `/api/parcelles?ferme=` |
+| **DG / RH / Dir. Technique** | toutes | aucun filtre (dt: switchableFarms = toutes) | tout |
+
+**Constat clé** : la dimension parcelle du **récolte/pointage** (stationnaire, chef, DG) vient
+**directement de BEE ONE** (`Parcelle_Culturale`, filtrée par ferme via le profil). La dimension
+**stock/consommation** (magasinier) est `parcelles_consommation` (curée). Ce sont **deux référentiels
+distincts** qui doivent tous deux être campagne-aware.
+
+→ **MIA (S9 F5, framboise)** apparaîtra donc **automatiquement** chez : **Stationnaire F5, Chef F5,
+DG/RH** (côté récolte BEE ONE, dès le pointage), ET dans la liste **Magasinier** (côté stock conso,
+scopée 2026-2027). Le spec doit garantir qu'elle apparaisse **au bon endroit, à la bonne campagne**.
+
+### 8.3 MÉCANISME DE DÉTECTION des nouvelles parcelles BEE ONE non mappées (cœur de la transition)
+Au lieu d'un mapping 100 % statique, on ajoute une **détection automatique** :
+
+1. **Scan** (job planifié, ex. après chaque sync mirror) : extraire les `Parcelle_Culturale`
+   distinctes du mirror, avec leur 1ère date vue → `campagneOf(date)`.
+2. **Diff vs le référentiel de résolution CPC** : une parcelle est « inconnue » si elle ne résout
+   pas vers un CPC. ⚠️ **Important** (corrige mon 1er test) : il y a DEUX résolveurs selon le
+   domaine — **stock** via `PARCELLE_TO_CPC`/`PARCELLE_MAP` (canevas), **récolte** via
+   `normalizeParcelle`/`DESIGNATION_MAP` (app.jsx ~2561). La détection doit tourner contre le
+   résolveur de la consolidation CPC visée (à **unifier** — voir 8.5). *(Mon scan brut a trouvé 24/28
+   `Parcelle_Culturale` absentes de la table STOCK canevas — normal, le canevas est un sous-ensemble
+   curé ; ça illustre justement pourquoi il faut le BON référentiel de résolution, pas un comptage
+   naïf.)*
+3. **File d'attente** : écrire les inconnues dans une collection `parcelles_a_mapper`
+   `{ parcelle, campagne, premiere_date, ferme, variete, culture, statut:'a_mapper', detecte_le }`.
+4. **Notification** : WhatsApp/in-app à Omar : « Nouvelle parcelle détectée : <parcelle>, campagne
+   <X>, à mapper vers un CPC » (réutiliser `functions/notifyOmar.js`).
+5. **CPC "NON AFFECTÉ"** : tant qu'une parcelle est `a_mapper`, ses coûts vont dans un bucket CPC
+   dédié `NON_AFFECTE` (ni perdus, ni mélangés à un autre CPC). Le resolver route `cpcResolver(p)===null`
+   → `NON_AFFECTE` (au lieu de l'ignorer/`nonResolu`). Omar mappe → les coûts basculent au bon CPC.
+
+→ **Résultat** : quand MIA arrive (2026-2027), elle est **auto-détectée**, **flaggée**, Omar reçoit
+l'alerte, ses coûts sont **isolés en NON_AFFECTE**, et un simple mapping (Omar décide `S9_MIA`) les
+bascule. **Zéro perte, zéro mélange, zéro casse.**
+
+### 8.4 MIA dans `parcelles_consommation` (magasinier) — scoping campagne
+- MIA reste dans `parcelles_consommation` (déjà : doc `c4` « S9 - MIA F5 », champ
+  **`campagnes: ['2026-2027']`** écrit le 2026-06-14). Pas stationnaire.
+- **DÉCISION (réponse à ta question)** : le sélecteur magasinier **filtre par campagne active**
+  (`(c.campagnes||[]).includes(campagneSélectionnée)`, défaut = `campagneOf(today)`).
+  - En **2025-2026** → les 18 (MIA cachée). En **2026-2027** → MIA + pérennes reportées, sans les
+    parcelles disparues. C'est ton modèle « il voit les parcelles de cette campagne ».
+  - Option « anticipation » possible : un toggle « voir campagne suivante » si le magasinier doit
+    saisir des consos d'établissement avant le 1/7 — à décider (sinon: ajouter `'2025-2026'` au tableau
+    `campagnes` de MIA pour la rendre visible en établissement, grâce au modèle multi).
+- **Pérennes (avocat, myrtille)** : `campagnes: []` multi → au rituel d'ouverture 2026-2027, on
+  **ajoute** `'2026-2027'` à leur tableau (pas de duplication).
+
+### 8.5 Rituel de transition (1er juillet) — ce que ça doit faire
+- **Bascule par défaut** : `campagneOf(today)` passe à 2026-2027 le 1/7 → le sélecteur global pointe
+  par défaut sur la nouvelle, **les deux restent consultables** via le dropdown.
+- **Ouverture campagne N+1** (script outillé) : (a) ajouter `'2026-2027'` aux `campagnes` des
+  parcelles pérennes encore actives ; (b) la détection 8.3 remonte automatiquement les nouvelles
+  (MIA) en `parcelles_a_mapper` ; (c) `mapping_campagne` 2026-2027 se construit au fil des mappings
+  validés ; (d) figer/archiver 2025-2026 (lecture seule). **Aucune copie aveugle** : on reporte
+  explicitement ce qui continue, on détecte ce qui est nouveau.
+- **Bornage analyses** : Coût Récolte (et toute fenêtre temporelle) est **borné à la campagne
+  sélectionnée** — jamais de fenêtre 60/90j à cheval juin/juillet additionnant 2 campagnes.
+
+### 8.6 Plan révisé (Phase 0+1 — GO Omar)
+- **Phase 0** : `campagneOf` util partagé front+back ; état « campagne sélectionnée » (défaut today).
+- **Phase 1a (milestone à montrer AVANT le sélecteur global)** :
+  - `parcelles_consommation.campagnes[]` (fait) + sélecteur magasinier **filtré par campagne**.
+  - **Détection 8.3** : job de scan + collection `parcelles_a_mapper` + notif + bucket `NON_AFFECTE`.
+  - Démo sur MIA (simulée si pas encore en BEE ONE) : détectée → flaggée → coûts en NON_AFFECTE.
+- **Phase 1b** : sélecteur campagne **global** (Coût Récolte borné, CampagneTab, Mapping).
+- **Phase 2+** : unifier les résolveurs récolte/stock (8.5), rituel d'ouverture, tag campagne liquidations.
