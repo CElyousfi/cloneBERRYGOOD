@@ -48505,6 +48505,11 @@ ${rejetHtml}
             const [articleInfo, setArticleInfo] = useState(null);
             const [loadingHistory, setLoadingHistory] = useState(false);
             const [filterLieu, setFilterLieu] = useState('');
+            const [dateFrom, setDateFrom] = useState('');
+            const [dateTo, setDateTo] = useState('');
+            const [filterNum, setFilterNum] = useState('');
+            const [filterType, setFilterType] = useState('');
+            const [onlyNegCumul, setOnlyNegCumul] = useState(false);
 
             // Liste distincte d'articles depuis les soldes officiels
             useEffect(() => {
@@ -48534,6 +48539,7 @@ ${rejetHtml}
                 if (!selectedArticle) { setEntries([]); setSoldes([]); setSoldeGlobal(0); setMovementsMap({}); setArticleInfo(null); return; }
                 setLoadingHistory(true);
                 setFilterLieu('');
+                setDateFrom(''); setDateTo(''); setFilterNum(''); setFilterType(''); setOnlyNegCumul(false);
                 fetch('/api/stock?action=get-article-history&article=' + encodeURIComponent(selectedArticle))
                     .then(r => r.json())
                     .then(json => {
@@ -48554,7 +48560,17 @@ ${rejetHtml}
             const typeLabel = (t) => ({ reception: 'Réception', sortie: 'Sortie', consommation: 'Consommation', transfert: 'Transfert', inventaire: 'Inventaire' }[t] || (t || ''));
             const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
             const lieuxPresents = [...new Set(entries.map(e => e.lieu_id))].sort();
-            const visibleEntries = filterLieu ? entries.filter(e => e.lieu_id === filterLieu) : entries;
+            const numQuery = (filterNum || '').trim().toLowerCase();
+            const visibleEntries = entries.filter(e => {
+                if (filterLieu && e.lieu_id !== filterLieu) return false;
+                if (dateFrom && !(e.date >= dateFrom)) return false;
+                if (dateTo && !(e.date <= dateTo)) return false;
+                if (numQuery && !(e.numero || '').toLowerCase().includes(numQuery)) return false;
+                if (filterType && e.type !== filterType) return false;
+                if (onlyNegCumul && !(Number(e.cumul_apres) < 0 || Number(e.cumul_global_apres) < 0)) return false;
+                return true;
+            });
+            const anyFilterActive = !!(filterLieu || dateFrom || dateTo || numQuery || filterType || onlyNegCumul);
 
             return (
                 <div className="fade-in">
@@ -48612,8 +48628,23 @@ ${rejetHtml}
                                 </div>
                             )}
 
+                            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:12,alignItems:'center'}}>
+                                <span style={{fontSize:11,color:'#888'}}>Du</span>
+                                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} style={{padding:'4px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:11}} />
+                                <span style={{fontSize:11,color:'#888'}}>Au</span>
+                                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} style={{padding:'4px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:11}} />
+                                <input type="text" value={filterNum} onChange={e => setFilterNum(e.target.value)} placeholder="N° bon…" style={{padding:'4px 10px',borderRadius:8,border:'1px solid #ddd',fontSize:11,width:120}} />
+                                <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid #ddd',fontSize:11}}>
+                                    <option value="">Tous types</option>
+                                    {['reception','sortie','consommation','transfert','inventaire'].map(t => (
+                                        <option key={t} value={t}>{typeLabel(t)}</option>
+                                    ))}
+                                </select>
+                                <button onClick={() => setOnlyNegCumul(v => !v)} style={{padding:'4px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:11,cursor:'pointer',background: onlyNegCumul ? 'var(--berry)' : '#f5f5f5', color: onlyNegCumul ? '#fff' : '#333'}}>Cumul négatif</button>
+                            </div>
+
                             {visibleEntries.length === 0 && (
-                                <div style={{textAlign:'center',padding:32,color:'#999'}}>Aucun mouvement pour cet article{filterLieu ? ' sur ce lieu' : ''}.</div>
+                                <div style={{textAlign:'center',padding:32,color:'#999'}}>{anyFilterActive ? 'Aucun mouvement pour ces filtres.' : 'Aucun mouvement pour cet article.'}</div>
                             )}
 
                             {visibleEntries.length > 0 && (
