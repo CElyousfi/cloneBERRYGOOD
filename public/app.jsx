@@ -48542,6 +48542,7 @@ ${rejetHtml}
                             });
                             list.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }));
                             setArticles(list);
+                            setSelectedArticle(prev => (!prev && list.length > 0) ? list[0].ref : prev);
                         }
                     })
                     .catch(err => console.warn('Articles error:', err))
@@ -48552,8 +48553,6 @@ ${rejetHtml}
             useEffect(() => {
                 if (!selectedArticle) { setEntries([]); setSoldes([]); setSoldeGlobal(0); setMovementsMap({}); setArticleInfo(null); return; }
                 setLoadingHistory(true);
-                setFilterLieu('');
-                setDateFrom(''); setDateTo(''); setFilterNum(''); setFilterType(''); setOnlyNegCumul(false);
                 fetch('/api/stock?action=get-article-history&article=' + encodeURIComponent(selectedArticle))
                     .then(r => r.json())
                     .then(json => {
@@ -48585,12 +48584,20 @@ ${rejetHtml}
                 return true;
             });
             const anyFilterActive = !!(filterLieu || dateFrom || dateTo || numQuery || filterType || onlyNegCumul);
+            const curIdx = articles.findIndex(a => a.ref === selectedArticle);
+            const navDisabled = loadingArticles || articles.length <= 1;
+            const gotoPrev = () => { if (articles.length > 0) setSelectedArticle(articles[(curIdx - 1 + articles.length) % articles.length].ref); };
+            const gotoNext = () => { if (articles.length > 0) setSelectedArticle(articles[(curIdx + 1) % articles.length].ref); };
+            const arrowStyle = (disabled) => ({ width:30, height:30, borderRadius:8, border:'1px solid #ddd', background:'#f5f5f5', cursor: disabled ? 'default' : 'pointer', fontSize:13, color:'var(--berry)', opacity: disabled ? 0.4 : 1, display:'flex', alignItems:'center', justifyContent:'center', padding:0 });
 
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
                         <h3 style={{margin:0}}><i className="fa-solid fa-file-invoice" style={{marginRight:8,color:'var(--berry)'}}></i>Fiche de Stock</h3>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                            <button onClick={gotoPrev} disabled={navDisabled} title="Article précédent" style={arrowStyle(navDisabled)}>◀</button>
+                            {selectedArticle && curIdx >= 0 && <span style={{fontSize:12,color:'#888',minWidth:48,textAlign:'center'}}>{curIdx + 1}/{articles.length}</span>}
+                            <button onClick={gotoNext} disabled={navDisabled} title="Article suivant" style={arrowStyle(navDisabled)}>▶</button>
                             <input list="fiche-stock-articles" value={selectedArticle} onChange={e => setSelectedArticle(e.target.value)}
                                 placeholder={loadingArticles ? 'Chargement...' : 'Choisir un article...'}
                                 disabled={loadingArticles}
