@@ -53673,6 +53673,7 @@ ${rejetHtml}
                         numero: m.numero,
                         date: m.date,
                         ferme: m.ferme,
+                        lieu_source: m.lieu_source || null,
                         items: (m.items || []).map(i => ({ article: i.article_nom || i.article_ref, quantite: i.quantite, unite: i.unite, parcelle: m.lieu_destination?.id || '', ferme: m.ferme })),
                         created_by: m.created_by || {},
                         _isImport: (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva',
@@ -53812,8 +53813,13 @@ ${rejetHtml}
                 const va = sortValueBC(a, sortField), vb = sortValueBC(b, sortField);
                 if (va < vb) return sortDir === 'asc' ? -1 : 1;
                 if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                // Tie-break par numéro pour garder les lignes d'un même bon groupées
+                const na = a.numero || '', nb = b.numero || '';
+                if (na < nb) return sortDir === 'asc' ? -1 : 1;
+                if (na > nb) return sortDir === 'asc' ? 1 : -1;
                 return 0;
             });
+            const lieuSourceOf = (bc) => (bc.lieu_source && bc.lieu_source.id) || bc.lieu_source_id || '—';
             const toggleSort = (field) => {
                 if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
                 else { setSortField(field); setSortDir('asc'); }
@@ -53881,27 +53887,40 @@ ${rejetHtml}
                     </div>
                     <div className="table-responsive"><table className="data-table">
                         <thead><tr>
-                            <th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('numero')}>N° bon{sortArrow('numero')}</th>
                             <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('parcelles')}>Parcelles{sortArrow('parcelles')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('fermes')}>Fermes{sortArrow('fermes')}</th>
-                            <th>Articles</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Cree par{sortArrow('cree_par')}</th>
+                            <th>Lieu (départ)</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('parcelles')}>Parcelle/Destination{sortArrow('parcelles')}</th>
+                            <th>Article</th>
+                            <th>Unité</th>
+                            <th style={{textAlign:'right'}}>Quantité</th>
                         </tr></thead>
                         <tbody>
-                            {filteredBcs.map((bc) => { const parcelles_list = [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))]; const fermes_list = [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))]; return (
-                                <tr key={bc.id} onClick={() => setDetailBc(bc)} style={{cursor:'pointer'}}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
-                                    <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{bc.numero}</td>
-                                    <td style={{fontSize:12}}>{bc.date || '—'}</td>
-                                    <td style={{fontWeight:600,fontSize:12}}>{parcelles_list.length > 0 ? parcelles_list.join(', ') : (bc.parcelle || '—')}</td>
-                                    <td>{fermes_list.length > 0 ? fermes_list.map(f => <span key={f} className="status-badge" style={{background: f==='F1' ? 'rgba(139,34,82,0.1)' : f==='F5' ? 'rgba(45,139,78,0.1)' : 'rgba(212,168,71,0.1)', color: f==='F1' ? 'var(--berry)' : f==='F5' ? 'var(--green)' : 'var(--gold)', fontSize:10, marginRight:4}}>{f}</span>) : (bc.ferme ? <span className="status-badge" style={{fontSize:10}}>{bc.ferme}</span> : '—')}</td>
-                                    <td style={{fontSize:11}}>{(bc.items||[]).map(i => i.article + ' (' + i.quantite + ' ' + (i.unite||'') + ')' + (i.parcelle ? ' → ' + i.parcelle : '')).join(', ')}</td>
-                                    <td style={{fontSize:11}}>{bc.created_by?.name || '—'}</td>
-                                </tr>
-                            ); })}
-                            {filteredBcs.length === 0 && <tr><td colSpan="6" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de consommation {label.toLowerCase()}.</td></tr>}
+                            {filteredBcs.map((bc) => {
+                                const lieuDepart = lieuSourceOf(bc);
+                                const items = (bc.items && bc.items.length) ? bc.items : [null];
+                                return items.map((item, itemIndex) => {
+                                    const isFirst = itemIndex === 0;
+                                    const rowStyle = {
+                                        cursor: 'pointer',
+                                        borderTop: isFirst ? '2px solid #e0e0e0' : '1px solid #f3f3f3',
+                                    };
+                                    return (
+                                        <tr key={bc.id + '_' + itemIndex} onClick={() => setDetailBc(bc)} style={rowStyle}
+                                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                                            <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{isFirst ? bc.numero : ''}</td>
+                                            <td style={{fontSize:12}}>{isFirst ? (bc.date || '—') : ''}</td>
+                                            <td style={{fontSize:12}}>{isFirst ? lieuDepart : ''}</td>
+                                            <td style={{fontWeight:600,fontSize:12}}>{item ? (item.parcelle || bc.parcelle || '—') : (bc.parcelle || '—')}</td>
+                                            <td style={{fontSize:12}}>{item ? (item.article || '—') : '—'}</td>
+                                            <td style={{fontSize:12}}>{item ? (item.unite || '—') : '—'}</td>
+                                            <td style={{fontSize:12,textAlign:'right'}}>{item && item.quantite != null ? item.quantite : '—'}</td>
+                                        </tr>
+                                    );
+                                });
+                            })}
+                            {filteredBcs.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de consommation {label.toLowerCase()}.</td></tr>}
                         </tbody>
                     </table></div>
 
