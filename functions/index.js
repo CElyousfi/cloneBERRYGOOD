@@ -10239,6 +10239,87 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         return res.json({ success: true, balances, count: balances.length, date });
       }
 
+      // --- GET ARTICLE HISTORY (grand livre de stock par article) ---
+      // Lecture seule. Reproduit EXACTEMENT les exclusions de get-balances-at-date
+      // pour garantir la cohérence du cumul avec les soldes officiels.
+      if (action === "get-article-history") {
+        const articleParam = (req.query.article || "").trim();
+        const filterLieuId = req.query.lieu_id || null;
+        if (!articleParam) return res.status(400).json({ success: false, error: "article requis (article_ref ou article_nom)" });
+        const articleLc = articleParam.toLowerCase();
+
+        const snap = await db_firestore.collection("stock_movements").get();
+
+        const rawEntries = [];
+        let resolvedRef = "";
+        let resolvedNom = "";
+        let resolvedUnite = "";
+
+        for (const doc of snap.docs) {
+          const m = doc.data();
+          if (stockMovementGuard.isDeletedMovement(m)) continue; // exclusion défensive soft-delete
+          const needsMulti = m.type === "reception" || m.type === "sortie";
+          if (needsMulti && m.status !== "valide_chef") continue;
+          if (!m.status) continue;
+
+          for (const item of (m.items || [])) {
+            const ref = item.article_ref || "";
+            const nom = item.article_nom || "";
+            const qty = parseFloat(item.quantite) || 0;
+            const unite = item.unite || "kg";
+            if (qty <= 0) continue;
+            // Match insensible à la casse sur article_ref OU article_nom
+            const matches = (ref && ref.toLowerCase() === articleLc) || (nom && nom.toLowerCase() === articleLc);
+            if (!matches) continue;
+            if (!resolvedRef) { resolvedRef = ref; resolvedNom = nom; resolvedUnite = unite; }
+
+            if (m.lieu_source && m.lieu_source.id) {
+              rawEntries.push({
+                date: m.date, numero: m.numero || "", type: m.type,
+                lieu_type: m.lieu_source.type, lieu_id: m.lieu_source.id,
+                sens: "sortie", quantite: -qty, unite, status: m.status, movementId: doc.id,
+              });
+            }
+            if (m.lieu_destination && m.lieu_destination.id && m.lieu_destination.type !== "parcelle") {
+              rawEntries.push({
+                date: m.date, numero: m.numero || "", type: m.type,
+                lieu_type: m.lieu_destination.type, lieu_id: m.lieu_destination.id,
+                sens: "entree", quantite: qty, unite, status: m.status, movementId: doc.id,
+              });
+            }
+          }
+        }
+
+        // Tri par date asc puis numero pour stabilité
+        rawEntries.sort((a, b) => {
+          if (a.date !== b.date) return (a.date || "") < (b.date || "") ? -1 : 1;
+          return (a.numero || "").localeCompare(b.numero || "");
+        });
+
+        // Cumul par (lieu_type|lieu_id)
+        const cumul = {};
+        const entries = rawEntries.map((e) => {
+          const lieuKey = `${e.lieu_type}|${e.lieu_id}`;
+          cumul[lieuKey] = (cumul[lieuKey] || 0) + e.quantite;
+          return { ...e, quantite: Math.round(e.quantite * 100) / 100, cumul_apres: Math.round(cumul[lieuKey] * 100) / 100 };
+        });
+
+        const soldes_par_lieu = Object.keys(cumul).map((k) => {
+          const [lieu_type, lieu_id] = k.split("|");
+          return { lieu_type, lieu_id, balance: Math.round(cumul[k] * 100) / 100 };
+        }).filter(s => Math.abs(s.balance) >= 0.01);
+
+        const filteredEntries = filterLieuId ? entries.filter(e => e.lieu_id === filterLieuId) : entries;
+
+        return res.json({
+          success: true,
+          article: { ref: resolvedRef || articleParam, nom: resolvedNom || articleParam, unite: resolvedUnite || "kg" },
+          entries: filteredEntries,
+          soldes_par_lieu,
+          count: filteredEntries.length,
+        });
+      }
+
       // --- GET STOCK LOCATIONS CONFIG ---
       if (action === "get-locations") {
         const snap = await db_firestore.collection("stock_config").doc("locations").get();

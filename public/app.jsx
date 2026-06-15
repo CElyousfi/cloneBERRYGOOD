@@ -470,6 +470,7 @@
             { id: 'mag_bc', label: 'Bons Consommation', icon: 'fa-flask' },
             { id: 'mag_sortie', label: 'Sorties de Stock', icon: 'fa-arrow-right-from-bracket' },
             { id: 'mag_stock_intrants', label: 'Soldes Stock', icon: 'fa-warehouse' },
+            { id: 'mag_fiche_stock', label: 'Fiche de Stock', icon: 'fa-file-invoice' },
             { id: 'mag_inventaire', label: 'Inventaire', icon: 'fa-clipboard-list' },
             { id: 'mag_mouvements', label: 'Historique', icon: 'fa-clock-rotate-left' },
             { id: 'mag_mapping_conso', label: 'Mapping Parcelles Conso', icon: 'fa-link' },
@@ -48492,6 +48493,142 @@ ${rejetHtml}
         }
 
         // ===================== MAGASINIER: SOLDES STOCK TAB =====================
+        function MagFicheStockTab() {
+            const [articles, setArticles] = useState([]);
+            const [loadingArticles, setLoadingArticles] = useState(true);
+            const [selectedArticle, setSelectedArticle] = useState('');
+            const [entries, setEntries] = useState([]);
+            const [soldes, setSoldes] = useState([]);
+            const [articleInfo, setArticleInfo] = useState(null);
+            const [loadingHistory, setLoadingHistory] = useState(false);
+            const [filterLieu, setFilterLieu] = useState('');
+
+            // Liste distincte d'articles depuis les soldes officiels
+            useEffect(() => {
+                setLoadingArticles(true);
+                fetch('/api/stock?action=get-balances')
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.success) {
+                            const seen = {};
+                            const list = [];
+                            (json.balances || []).forEach(b => {
+                                const ref = b.article_ref || b.article_nom;
+                                if (!ref || seen[ref]) return;
+                                seen[ref] = true;
+                                list.push({ ref, label: b.article_nom || b.article_ref });
+                            });
+                            list.sort((a, b) => a.label.localeCompare(b.label, 'fr', { sensitivity: 'base' }));
+                            setArticles(list);
+                        }
+                    })
+                    .catch(err => console.warn('Articles error:', err))
+                    .finally(() => setLoadingArticles(false));
+            }, []);
+
+            // Historique du grand livre pour l'article sélectionné
+            useEffect(() => {
+                if (!selectedArticle) { setEntries([]); setSoldes([]); setArticleInfo(null); return; }
+                setLoadingHistory(true);
+                setFilterLieu('');
+                fetch('/api/stock?action=get-article-history&article=' + encodeURIComponent(selectedArticle))
+                    .then(r => r.json())
+                    .then(json => {
+                        if (json.success) {
+                            setEntries(json.entries || []);
+                            setSoldes(json.soldes_par_lieu || []);
+                            setArticleInfo(json.article || null);
+                        } else {
+                            setEntries([]); setSoldes([]); setArticleInfo(null);
+                        }
+                    })
+                    .catch(err => console.warn('Article history error:', err))
+                    .finally(() => setLoadingHistory(false));
+            }, [selectedArticle]);
+
+            const typeLabel = (t) => ({ reception: 'Réception', sortie: 'Sortie', consommation: 'Consommation', transfert: 'Transfert', inventaire: 'Inventaire' }[t] || (t || ''));
+            const fmt = (n) => (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+            const lieuxPresents = [...new Set(entries.map(e => e.lieu_id))].sort();
+            const visibleEntries = filterLieu ? entries.filter(e => e.lieu_id === filterLieu) : entries;
+
+            return (
+                <div className="fade-in">
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-file-invoice" style={{marginRight:8,color:'var(--berry)'}}></i>Fiche de Stock</h3>
+                        <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
+                            <input list="fiche-stock-articles" value={selectedArticle} onChange={e => setSelectedArticle(e.target.value)}
+                                placeholder={loadingArticles ? 'Chargement...' : 'Choisir un article...'}
+                                disabled={loadingArticles}
+                                style={{padding:'6px 14px',borderRadius:8,border:'1px solid #ddd',fontSize:12,width:280}} />
+                            <datalist id="fiche-stock-articles">
+                                {articles.map(a => <option key={a.ref} value={a.ref}>{a.label}</option>)}
+                            </datalist>
+                            {selectedArticle && <button onClick={() => setSelectedArticle('')} style={{padding:'6px 10px',borderRadius:8,border:'1px solid #ddd',fontSize:11,cursor:'pointer',background:'#f5f5f5'}}>Effacer</button>}
+                        </div>
+                    </div>
+
+                    {!selectedArticle && (
+                        <div style={{textAlign:'center',padding:48,color:'#999'}}>
+                            <i className="fa-solid fa-file-invoice" style={{fontSize:40,opacity:0.3,marginBottom:12,display:'block'}}></i>
+                            Sélectionnez un article pour consulter son grand livre de stock.
+                        </div>
+                    )}
+
+                    {selectedArticle && loadingHistory && (
+                        <div style={{textAlign:'center',padding:60}}><i className="fa-solid fa-spinner fa-spin" style={{fontSize:32,color:'var(--berry)'}}></i></div>
+                    )}
+
+                    {selectedArticle && !loadingHistory && (
+                        <React.Fragment>
+                            <div style={{marginBottom:16}}>
+                                <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>{articleInfo ? (articleInfo.nom || articleInfo.ref) : selectedArticle}</div>
+                                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                                    {soldes.length === 0 && <span style={{color:'#999',fontSize:12}}>Aucun solde.</span>}
+                                    {soldes.map((s, i) => (
+                                        <span key={i} className="status-badge" style={{background: s.balance > 0 ? 'rgba(46,204,113,0.12)' : 'rgba(231,76,60,0.12)', color: s.balance > 0 ? 'var(--green,#27ae60)' : 'var(--red)', fontSize:12, fontWeight:700}}>
+                                            {s.lieu_id} : {fmt(s.balance)} {articleInfo ? articleInfo.unite : ''}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {lieuxPresents.length > 1 && (
+                                <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:12,alignItems:'center'}}>
+                                    <button onClick={() => setFilterLieu('')} style={{padding:'4px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:11,cursor:'pointer',background: filterLieu === '' ? 'var(--berry)' : '#f5f5f5', color: filterLieu === '' ? '#fff' : '#333'}}>Tous</button>
+                                    {lieuxPresents.map(l => (
+                                        <button key={l} onClick={() => setFilterLieu(l)} style={{padding:'4px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:11,cursor:'pointer',background: filterLieu === l ? 'var(--berry)' : '#f5f5f5', color: filterLieu === l ? '#fff' : '#333'}}>{l}</button>
+                                    ))}
+                                </div>
+                            )}
+
+                            {visibleEntries.length === 0 && (
+                                <div style={{textAlign:'center',padding:32,color:'#999'}}>Aucun mouvement pour cet article{filterLieu ? ' sur ce lieu' : ''}.</div>
+                            )}
+
+                            {visibleEntries.length > 0 && (
+                                <div className="table-responsive"><table className="data-table">
+                                    <thead><tr><th>Date</th><th>N°</th><th>Type</th><th>Lieu</th><th>Sens</th><th style={{textAlign:'right'}}>Quantité</th><th style={{textAlign:'right'}}>Cumul</th></tr></thead>
+                                    <tbody>
+                                        {visibleEntries.map((e, i) => (
+                                            <tr key={i}>
+                                                <td style={{fontSize:11}}>{e.date}</td>
+                                                <td style={{fontSize:11}}>{e.numero}</td>
+                                                <td style={{fontSize:11}}>{typeLabel(e.type)}</td>
+                                                <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{e.lieu_id}</span></td>
+                                                <td style={{fontSize:11,fontWeight:600,color: e.sens === 'entree' ? 'var(--green,#27ae60)' : 'var(--red)'}}>{e.sens === 'entree' ? 'Entrée' : 'Sortie'}</td>
+                                                <td style={{textAlign:'right',fontWeight:700,color: e.quantite >= 0 ? 'var(--green,#27ae60)' : 'var(--red)'}}>{e.quantite >= 0 ? '+' : ''}{fmt(e.quantite)} {e.unite}</td>
+                                                <td style={{textAlign:'right',fontWeight:700}}>{fmt(e.cumul_apres)} {e.unite}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table></div>
+                            )}
+                        </React.Fragment>
+                    )}
+                </div>
+            );
+        }
+
         function MagStockIntrantsTab() {
             const [balances, setBalances] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -64686,7 +64823,7 @@ ${rejetHtml}
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'validation_pointage', 'recolte', 'cout_recolte', 'hors_recolte', 'quinzaine', 'primes', 'rh_equipes', 'paie', 'evolution'];
                                         const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_suivi_calibre', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
                                         const webScrapeTabs = ['fin_telecom'];
-                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_receptions_valoriser', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_mouvements', 'mag_mapping_conso', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'agro_growth', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
+                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_receptions_valoriser', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_fiche_stock', 'mag_mouvements', 'mag_mapping_conso', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'agro_growth', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
@@ -64797,6 +64934,7 @@ ${rejetHtml}
                                 {renderTab('mag_transfert', MagTransfertTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Transfert')}
                                 {renderTab('mag_sortie', MagSortieTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Sortie')}
                                 {renderTab('mag_stock_intrants', MagStockIntrantsTab, {}, 'Stock Intrants')}
+                                {renderTab('mag_fiche_stock', MagFicheStockTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Fiche de Stock')}
                                 {renderTab('mag_inventaire', MagInventaireTab, { currentProfile }, 'Inventaire')}
                                 {renderTab('mag_mouvements', MagMouvementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Mouvements')}
                                 {renderTab('mag_mapping_conso', MagMappingConsoTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Mapping Parcelles Conso')}
