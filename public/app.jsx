@@ -47877,6 +47877,10 @@ ${rejetHtml}
                 const va = sortValue(a, sortField), vb = sortValue(b, sortField);
                 if (va < vb) return sortDir === 'asc' ? -1 : 1;
                 if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                // Tie-break par numéro pour garder les lignes d'un même bon groupées
+                const na = a.numero || '', nb = b.numero || '';
+                if (na < nb) return sortDir === 'asc' ? -1 : 1;
+                if (na > nb) return sortDir === 'asc' ? 1 : -1;
                 return 0;
             });
             const toggleSort = (field) => {
@@ -47988,29 +47992,39 @@ ${rejetHtml}
                         <thead><tr>
                             <th style={sortThStyle} onClick={() => toggleSort('numero')}>N° BR{sortArrow('numero')}</th>
                             <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('magasin')}>Magasin{sortArrow('magasin')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('ref_bl')}>Réf BL{sortArrow('ref_bl')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th>
-                            <th>Articles</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Créé par{sortArrow('cree_par')}</th>
+                            <th style={sortThStyle} onClick={() => toggleSort('magasin')}>Lieu (dest.){sortArrow('magasin')}</th>
+                            <th>Fournisseur</th>
+                            <th>Article</th>
+                            <th>Unité</th>
+                            <th style={{textAlign:'right'}}>Quantité</th>
                         </tr></thead>
                         <tbody>
-                            {filtered.map((r) => (
-                                <tr key={r.id} onClick={() => setDetailReception(r)} style={{cursor:'pointer'}}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
-                                    <td style={{fontWeight:700,color:'var(--berry)'}}>{r.numero}</td>
-                                    <td>{r.date}</td>
-                                    <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{r.lieu_destination?.id || r.ferme || '—'}</span></td>
-                                    <td style={{fontSize:11}}>{r.ref_bl_fournisseur || '—'}</td>
-                                    <td style={{fontSize:11}}>{typeLabel(r)}</td>
-                                    <td style={{fontSize:11}}>{(r.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
-                                    <td><span className={'status-badge ' + statusClass(r.status, r)}>{statusLabel(r.status, r)}</span></td>
-                                    <td style={{fontSize:11}}>{r.created_by?.name || '—'}</td>
-                                </tr>
-                            ))}
-                            {filtered.length === 0 && <tr><td colSpan={8} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de réception trouvé.</td></tr>}
+                            {filtered.map((r) => {
+                                const lieuDest = r.lieu_destination?.id || r.ferme || '—';
+                                const fournisseur = r.fournisseur_nom || '—';
+                                const items = (r.items && r.items.length) ? r.items : [null];
+                                return items.map((item, itemIndex) => {
+                                    const isFirst = itemIndex === 0;
+                                    const rowStyle = {
+                                        cursor: 'pointer',
+                                        borderTop: isFirst ? '2px solid #e0e0e0' : '1px solid #f3f3f3',
+                                    };
+                                    return (
+                                        <tr key={r.id + '_' + itemIndex} onClick={() => setDetailReception(r)} style={rowStyle}
+                                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                                            <td style={{fontWeight:700,color:'var(--berry)'}}>{isFirst ? r.numero : ''}</td>
+                                            <td>{isFirst ? (r.date || '—') : ''}</td>
+                                            <td>{isFirst ? <span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{lieuDest}</span> : ''}</td>
+                                            <td style={{fontSize:11}}>{isFirst ? fournisseur : ''}</td>
+                                            <td style={{fontSize:11}}>{item ? (item.article_nom || item.article_ref || item.article || '—') : '—'}</td>
+                                            <td style={{fontSize:11}}>{item ? (item.unite || '—') : '—'}</td>
+                                            <td style={{fontSize:11,textAlign:'right'}}>{item && item.quantite != null ? item.quantite : '—'}</td>
+                                        </tr>
+                                    );
+                                });
+                            })}
+                            {filtered.length === 0 && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de réception trouvé.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -54251,6 +54265,10 @@ ${rejetHtml}
                 const va = sortValueBT(a, sortField), vb = sortValueBT(b, sortField);
                 if (va < vb) return sortDir === 'asc' ? -1 : 1;
                 if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                // Tie-break par numéro pour garder les lignes d'un même bon groupées
+                const na = a.numero || '', nb = b.numero || '';
+                if (na < nb) return sortDir === 'asc' ? -1 : 1;
+                if (na > nb) return sortDir === 'asc' ? 1 : -1;
                 return 0;
             });
             const toggleSort = (field) => {
@@ -54319,24 +54337,36 @@ ${rejetHtml}
                             <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
                             <th style={sortThStyle} onClick={() => toggleSort('depart')}>Départ{sortArrow('depart')}</th>
                             <th style={sortThStyle} onClick={() => toggleSort('arrivee')}>Arrivée{sortArrow('arrivee')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('ref_bon')}>Réf bon{sortArrow('ref_bon')}</th>
-                            <th>Articles</th>
-                            <th>Statut</th>
+                            <th>Article</th>
+                            <th>Unité</th>
+                            <th style={{textAlign:'right'}}>Quantité</th>
                         </tr></thead>
                         <tbody>
-                            {filteredTransferts.map((t) => (
-                                <tr key={t.id} onClick={() => setDetailTransfert(t)} style={{cursor:'pointer'}}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(45,80,139,0.04)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
-                                    <td style={{fontWeight:700,color:'var(--blue)'}}>{t.numero}</td>
-                                    <td>{t.date}</td>
-                                    <td><span className="status-badge" style={{background:'rgba(231,76,60,0.1)',color:'var(--red)',fontSize:10}}>{t.lieu_source?.id || '—'}</span></td>
-                                    <td><span className="status-badge" style={{background:'rgba(45,139,78,0.1)',color:'var(--green)',fontSize:10}}>{t.lieu_destination?.id || '—'}</span></td>
-                                    <td>{t.ref_bon_physique || '—'}</td>
-                                    <td style={{fontSize:11}}>{(t.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
-                                    <td><span className="status-badge valide">Validé</span></td>
-                                </tr>
-                            ))}
+                            {filteredTransferts.map((t) => {
+                                const depart = t.lieu_source?.id || '—';
+                                const arrivee = t.lieu_destination?.id || '—';
+                                const items = (t.items && t.items.length) ? t.items : [null];
+                                return items.map((item, itemIndex) => {
+                                    const isFirst = itemIndex === 0;
+                                    const rowStyle = {
+                                        cursor: 'pointer',
+                                        borderTop: isFirst ? '2px solid #e0e0e0' : '1px solid #f3f3f3',
+                                    };
+                                    return (
+                                        <tr key={t.id + '_' + itemIndex} onClick={() => setDetailTransfert(t)} style={rowStyle}
+                                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(45,80,139,0.04)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                                            <td style={{fontWeight:700,color:'var(--blue)'}}>{isFirst ? t.numero : ''}</td>
+                                            <td>{isFirst ? (t.date || '—') : ''}</td>
+                                            <td>{isFirst ? <span className="status-badge" style={{background:'rgba(231,76,60,0.1)',color:'var(--red)',fontSize:10}}>{depart}</span> : ''}</td>
+                                            <td>{isFirst ? <span className="status-badge" style={{background:'rgba(45,139,78,0.1)',color:'var(--green)',fontSize:10}}>{arrivee}</span> : ''}</td>
+                                            <td style={{fontSize:11}}>{item ? (item.article_nom || item.article_ref || item.article || '—') : '—'}</td>
+                                            <td style={{fontSize:11}}>{item ? (item.unite || '—') : '—'}</td>
+                                            <td style={{fontSize:11,textAlign:'right'}}>{item && item.quantite != null ? item.quantite : '—'}</td>
+                                        </tr>
+                                    );
+                                });
+                            })}
                             {filteredTransferts.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun transfert enregistré.</td></tr>}
                         </tbody>
                     </table></div>
@@ -54738,6 +54768,10 @@ ${rejetHtml}
                 const va = sortValueBS(a, sortField), vb = sortValueBS(b, sortField);
                 if (va < vb) return sortDir === 'asc' ? -1 : 1;
                 if (va > vb) return sortDir === 'asc' ? 1 : -1;
+                // Tie-break par numéro pour garder les lignes d'un même bon groupées
+                const na = a.numero || '', nb = b.numero || '';
+                if (na < nb) return sortDir === 'asc' ? -1 : 1;
+                if (na > nb) return sortDir === 'asc' ? 1 : -1;
                 return 0;
             });
             const toggleSort = (field) => {
@@ -54809,24 +54843,36 @@ ${rejetHtml}
                             <th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th>
                             <th style={sortThStyle} onClick={() => toggleSort('depart')}>Départ{sortArrow('depart')}</th>
                             <th style={sortThStyle} onClick={() => toggleSort('destination')}>Destination{sortArrow('destination')}</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th>
-                            <th>Articles</th>
-                            <th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th>
+                            <th>Article</th>
+                            <th>Unité</th>
+                            <th style={{textAlign:'right'}}>Quantité</th>
                         </tr></thead>
                         <tbody>
-                            {filteredSorties.map((s) => (
-                                <tr key={s.id} onClick={() => setDetailSortie(s)} style={{cursor:'pointer'}}
-                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(231,76,60,0.04)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
-                                    <td style={{fontWeight:700,color:'var(--red)'}}>{s.numero}</td>
-                                    <td>{s.date}</td>
-                                    <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{s.lieu_source?.id || s.ferme}</span></td>
-                                    <td style={{fontSize:11}}>{(typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination && s.lieu_destination.id)) || '—'}</td>
-                                    <td style={{fontSize:11,fontWeight:600}}>{sortieTypeLabel(s.sortie_type)}</td>
-                                    <td style={{fontSize:11}}>{(s.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
-                                    <td><span className={'status-badge ' + statusClass(s.status)}>{statusLabel(s.status)}</span></td>
-                                </tr>
-                            ))}
+                            {filteredSorties.map((s) => {
+                                const depart = s.lieu_source?.id || s.ferme || '—';
+                                const destination = (typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination?.id || s.beneficiaire)) || '—';
+                                const items = (s.items && s.items.length) ? s.items : [null];
+                                return items.map((item, itemIndex) => {
+                                    const isFirst = itemIndex === 0;
+                                    const rowStyle = {
+                                        cursor: 'pointer',
+                                        borderTop: isFirst ? '2px solid #e0e0e0' : '1px solid #f3f3f3',
+                                    };
+                                    return (
+                                        <tr key={s.id + '_' + itemIndex} onClick={() => setDetailSortie(s)} style={rowStyle}
+                                            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(231,76,60,0.04)'; }}
+                                            onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
+                                            <td style={{fontWeight:700,color:'var(--red)'}}>{isFirst ? s.numero : ''}</td>
+                                            <td>{isFirst ? (s.date || '—') : ''}</td>
+                                            <td>{isFirst ? <span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{depart}</span> : ''}</td>
+                                            <td style={{fontSize:11}}>{isFirst ? destination : ''}</td>
+                                            <td style={{fontSize:11}}>{item ? (item.article_nom || item.article_ref || item.article || '—') : '—'}</td>
+                                            <td style={{fontSize:11}}>{item ? (item.unite || '—') : '—'}</td>
+                                            <td style={{fontSize:11,textAlign:'right'}}>{item && item.quantite != null ? item.quantite : '—'}</td>
+                                        </tr>
+                                    );
+                                });
+                            })}
                             {filteredSorties.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune sortie enregistrée.</td></tr>}
                         </tbody>
                     </table></div>
