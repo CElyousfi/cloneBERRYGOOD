@@ -48811,15 +48811,30 @@ ${rejetHtml}
             const [filterDate, setFilterDate] = useState('');
 
             useEffect(() => {
-                setLoading(true);
-                const url = filterDate
-                    ? `/api/stock?action=get-balances-at-date&date=${filterDate}`
-                    : '/api/stock?action=get-balances';
-                fetch(url)
-                    .then(r => r.json())
-                    .then(json => { if (json.success) setBalances(json.balances || []); })
-                    .catch(err => console.warn('Balances error:', err))
-                    .finally(() => setLoading(false));
+                const valid = !filterDate || /^\d{4}-\d{2}-\d{2}$/.test(filterDate);
+                let yearOk = true;
+                if (filterDate) { const y = parseInt(filterDate.slice(0, 4), 10); yearOk = y >= 1900 && y <= 2200; }
+                if (!valid || !yearOk) return; // date partielle pendant la frappe → on ignore
+                const controller = new AbortController();
+                const t = setTimeout(() => {
+                    setLoading(true);
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const useMaterialized = !filterDate || filterDate >= todayStr;
+                    const url = useMaterialized
+                        ? '/api/stock?action=get-balances'
+                        : `/api/stock?action=get-balances-at-date&date=${filterDate}`;
+                    fetch(url, { signal: controller.signal })
+                        .then(r => r.json())
+                        .then(json => {
+                            if (json.success) {
+                                const list = json.balances || [];
+                                setBalances(useMaterialized ? list.filter(b => Math.abs(Number(b.balance) || 0) >= 0.01) : list);
+                            }
+                        })
+                        .catch(err => { if (err && err.name === 'AbortError') return; console.warn('Balances error:', err); })
+                        .finally(() => setLoading(false));
+                }, 400);
+                return () => { clearTimeout(t); controller.abort(); };
             }, [filterDate]);
 
             let filtered = balances;
@@ -48837,7 +48852,7 @@ ${rejetHtml}
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-warehouse" style={{marginRight:8,color:'var(--berry)'}}></i>Soldes Stock {filterDate ? `au ${new Date(filterDate+'T12:00').toLocaleDateString('fr-FR')}` : '(actuel)'} ({filtered.length})</h3>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-warehouse" style={{marginRight:8,color:'var(--berry)'}}></i>Soldes Stock {filterDate && /^\d{4}-\d{2}-\d{2}$/.test(filterDate) ? `au ${new Date(filterDate+'T12:00').toLocaleDateString('fr-FR')}` : '(actuel)'} ({filtered.length})</h3>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
                                 style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
@@ -48944,14 +48959,29 @@ ${rejetHtml}
             }, []);
 
             useEffect(() => {
-                setLoading(true);
-                const url = filterDate
-                    ? `/api/stock?action=get-balances-at-date&date=${filterDate}`
-                    : '/api/stock?action=get-balances';
-                fetch(url).then(r => r.json())
-                    .then(json => { if (json.success) setBalances(json.balances || []); })
-                    .catch(err => console.warn('Balances error:', err))
-                    .finally(() => setLoading(false));
+                const valid = !filterDate || /^\d{4}-\d{2}-\d{2}$/.test(filterDate);
+                let yearOk = true;
+                if (filterDate) { const y = parseInt(filterDate.slice(0, 4), 10); yearOk = y >= 1900 && y <= 2200; }
+                if (!valid || !yearOk) return; // date partielle pendant la frappe → on ignore
+                const controller = new AbortController();
+                const t = setTimeout(() => {
+                    setLoading(true);
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const useMaterialized = !filterDate || filterDate >= todayStr;
+                    const url = useMaterialized
+                        ? '/api/stock?action=get-balances'
+                        : `/api/stock?action=get-balances-at-date&date=${filterDate}`;
+                    fetch(url, { signal: controller.signal }).then(r => r.json())
+                        .then(json => {
+                            if (json.success) {
+                                const list = json.balances || [];
+                                setBalances(useMaterialized ? list.filter(b => Math.abs(Number(b.balance) || 0) >= 0.01) : list);
+                            }
+                        })
+                        .catch(err => { if (err && err.name === 'AbortError') return; console.warn('Balances error:', err); })
+                        .finally(() => setLoading(false));
+                }, 400);
+                return () => { clearTimeout(t); controller.abort(); };
             }, [filterDate]);
 
             const toggleLieu = (lieu) => {
@@ -48981,7 +49011,7 @@ ${rejetHtml}
             return (
                 <div>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-clipboard-list" style={{marginRight:8,color:'var(--berry)'}}></i>Inventaire {filterDate ? `au ${new Date(filterDate+'T12:00').toLocaleDateString('fr-FR')}` : '(actuel)'} ({filtered.length})</h3>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-clipboard-list" style={{marginRight:8,color:'var(--berry)'}}></i>Inventaire {filterDate && /^\d{4}-\d{2}-\d{2}$/.test(filterDate) ? `au ${new Date(filterDate+'T12:00').toLocaleDateString('fr-FR')}` : '(actuel)'} ({filtered.length})</h3>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
                                 style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
@@ -65069,7 +65099,7 @@ ${rejetHtml}
                                         const sqlTabs = ['agro_irrigation', 'agro_parcelles', 'dashboard', 'pointage', 'validation_pointage', 'recolte', 'cout_recolte', 'hors_recolte', 'quinzaine', 'primes', 'rh_equipes', 'paie', 'evolution'];
                                         const firebaseTabs = ['qualite_expeditions', 'qualite_liquidations', 'qualite_historique', 'qualite_brix', 'qualite_inspections', 'qualite_production', 'chef_production', 'qualite_dashboard', 'qualite_ecarts', 'qualite_pfq_interne', 'qualite_suivi_calibre', 'qualite_bons_apport', 'fin_carburant', 'fin_liquidations'];
                                         const webScrapeTabs = ['fin_telecom'];
-                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_receptions_valoriser', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_fiche_stock', 'mag_mouvements', 'mag_mapping_conso', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'agro_growth', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
+                                        const firestoreTabs = ['dg_validations', 'dg_adoption', 'dg_tasks', 'dg_cr_reunions', 'dg_parametres', 'dg_signature', 'caporal_suivi', 'caporal_saisie', 'caporal_tunnels', 'caporal_historique', 'hors_recolte_suivi', 'chef_suivi_caporal', 'achats_dashboard', 'achats_da', 'achats_bdc', 'achats_receptions_valoriser', 'achats_factures', 'achats_paiements', 'achats_fournisseurs', 'achats_catalogue', 'achats_analyses_foliaires', 'achats_scan_factures', 'achats_scan_bl', 'achats_bon_apport', 'achats_rapprochement', 'achats_consultation', 'achats_vente_plastique', 'fin_dashboard', 'fin_ca', 'fin_stock', 'fin_bdc', 'fin_factures', 'fin_paiements', 'fin_virements', 'fin_codes_analytiques', 'fin_delete_articles', 'fin_marche_local', 'fin_budget', 'mag_dashboard', 'mag_bdc_reception', 'mag_reception', 'mag_transfert', 'mag_sortie', 'mag_stock_intrants', 'mag_inventaire', 'mag_fiche_stock', 'mag_mouvements', 'mag_mapping_conso', 'suivi_pointage', 'pointage_divers', 'dqr_daily', 'qualite_validation_bons', 'chef_validation_bons', 'qualite_reconciliation', 'qualite_marche_local', 'sec_registre', 'sec_scan', 'sec_envois_wa', 'sec_incidents', 'sec_tunnels', 'station_saisie', 'station_historique', 'station_scan', 'station_analyse', 'station_intelligence', 'agro_phyto', 'agro_harvest', 'agro_farmroad', 'agro_avancement', 'agro_growth', 'chef_da', 'chef_tracking', 'chef_validations', 'mag_bc', 'mag_bc_engrais', 'mag_bc_phyto'];
                                         if (sqlTabs.includes(currentTab)) {
                                             return React.createElement('div', { className:'refresh-indicator', style:{background:'#d4edda', padding:'4px 12px', borderRadius:12} },
                                                 React.createElement('i', { className:'fa-solid fa-database', style:{color:'#155724', marginRight:6, fontSize:11} }),
