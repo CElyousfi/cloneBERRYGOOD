@@ -73,3 +73,59 @@ FERTICOL (périmé→0), FOLICIST, JOKER, KRISANT, NATURALIS, SEACTIV GENAKTIS 3
 > Lien : la reconstruction du stock (`spec-reconstruction-stock.md`) a importé les **quantités** ;
 > les **prix** ont été ajoutés séparément (FILL-ONLY catalogue, 2026-06-15). Le PMP est la couche
 > comptable au-dessus, à fiabiliser une fois les unités des bons d'entrée normalisées.
+
+---
+
+## 8. État réel (mise à jour 2026-06-16)
+- **Phase 0 (normalisation)** : LIVRÉE. Bug DH/tonne isolé (SULFATE DE MAGNESIE : 8 entrées à 2708/t,
+  ÷1000 → 2,7/kg). Parser robuste (`"2,708,33"`, `" DH"`, `"PERIMI"`→0) + ÷1000 si prix > 100× ancre.
+- **Phase 1 (exploration sources)** : LIVRÉE (voir §9).
+- **Phase 2 (calcul + écriture)** : LIVRÉE EN PROD. Module pur `functions/lib/stock/valuationPMP.js`
+  (parsePrice / normalizePrice / `SOURCE_PRIORITY` / resolveAcquisitionPrice / computePMP pondéré),
+  scripts `compute-pmp-apercu.js` + `apply-pmp-catalogue.js`. Champ **`prix_pmp` + `prix_pmp_source`**
+  écrit sur `articles_catalog` (sans toucher `prix_ttc` FILL-ONLY). Frontend `InventaireStockView`
+  valorise `prix_pmp > prix_ttc` avec **matching canonicalisé** (`canonArt`) + colonne **Source**
+  (badge PMP/Catalogue/— + tooltip bon_entree/inventaire). **Valeur stock : 1 113 795 DH**, 2 articles
+  sans prix (FERTICOL périmé, SEACTIV GENAKTIS 3 → 0).
+- **Source PMP actuelle = grand livre** (bons d'entrée + inventaire 30/06), 100 % de couverture.
+- **Hiérarchie de sources** (la plus fiable gagne, déjà codée, extensible sans refactor) :
+  `facture (P3) > bon_commande > bee_one_achat (futur) > bon_entree (grand livre) > inventaire`.
+
+## 9. Sources externes explorées (read-only, 2026-06-16) — ne PAS brancher maintenant
+
+### 9.1 Couverture par source (articles en stock = 96)
+| Source | Couverture | Verdict |
+|---|---|---|
+| `purchase_orders` (BDC app Firestore) | 15 % (41 BDC, tous 2026) | trop récent/épars |
+| `invoices` (factures app) | ~1 doc | quasi vide → **vraie source future (P3)** |
+| **`BR_Achat` (BEE ONE SQL)** | **~10 %** | voir §9.2 |
+| **Grand livre (entrées + inventaire)** | **100 %** | **source PMP retenue** |
+
+### 9.2 `BR_Achat` (table achat BEE ONE, `BR_BERRY_GOOD` SQL Server) — slot futur `bee_one_achat`
+Colonnes : `Article, Quantite, Cout, Fournisseur, Periode_Date, Periode_Campagne, Article_Categorie, Unite, Ferme`.
+Table **plate** (pas d'en-tête/lignes), pas de statut, pas de lien réception/facture.
+
+**PIÈGES IDENTIFIÉS (à connaître avant tout usage futur) :**
+1. **Duplication ×80** : 60 397 lignes brutes → **760 distinctes** (sur date+article+qté+cout+fournisseur+ferme).
+   → **DÉDUPLIQUER obligatoirement** avant tout calcul (sinon Σcout gonflé : ex. TIMAC AGRO MAROC
+   affiche 66 M DH faux).
+2. **`Cout` quasi vide** : la plupart des fournisseurs ont Σcout=0 ; seulement **13 / 105 articles** ont
+   un Cout>0 ; achats propres = **19 lignes, 11 articles, tous Feb-Avril 2026** (récent). PU réalistes
+   là où présents (Nitrate Potasse 14,16 · Acide Nitrique 7,32 · Rhizo Bore 9,56).
+3. **Lignes `Fournisseur=INVENTAIRE`/`STOCK INITIAL`/`INV-%`/`F-0X`** : Cout=0, ouverture/interne →
+   **EXCLURE** des achats.
+4. **Matching faible (2 %)** avec le grand livre (7/318 par article+qté) — variantes de nom + qtés agrégées.
+
+### 9.3 ⚠️ RÈGLE ANTI-DOUBLE-COMPTAGE (CRITIQUE — pour toute session future)
+`BR_Achat` enregistre les **MÊMES événements économiques** que les bons d'entrée du grand livre
+(= entrées de stock / achats). **NE JAMAIS** ajouter `BR_Achat` comme **acquisitions supplémentaires**
+dans le CMUP → cela **double-compterait les quantités** et fausserait le PMP.
+**`BR_Achat` ne peut fournir QUE du PRIX** (`Cout/Quantite`), appliqué à une **acquisition DÉJÀ connue**
+du grand livre, **matchée** sur `canon(Article)` + `Periode_Date` + `Quantite` (+ Fournisseur). Le slot
+`bee_one_achat` de la hiérarchie sert UNIQUEMENT à **raffiner le prix** d'une acquisition existante,
+**jamais à créer une acquisition/quantité**.
+
+### 9.4 Verdict
+`BR_Achat` = **appoint marginal futur** (~11 articles récents), **PAS prioritaire**. La vraie source de
+raffinement comptable = les **FACTURES** (`invoices`/`invoice_scans`, Phase 3), pas `BR_Achat`. On
+**ne branche rien** maintenant ; le grand livre suffit (100 %, en prod).
