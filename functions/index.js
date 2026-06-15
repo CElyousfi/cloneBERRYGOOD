@@ -10248,9 +10248,17 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         if (!articleParam) return res.status(400).json({ success: false, error: "article requis (article_ref ou article_nom)" });
         const articleLc = articleParam.toLowerCase();
 
+        // LIEUX DE STOCK = lieux internes qui détiennent NOTRE stock.
+        // Magasins (F1/F2/F5/F6) + stations portent du stock. Toute autre
+        // destination (fournisseur, externe, parcelle, rebut, null) n'est PAS
+        // un lieu de stock → une sortie/conso vers elle réduit bien le stock global.
+        const STOCK_LIEU_TYPES = ["magasin", "station"];
+        const isStockLieu = (lieu) => !!(lieu && typeof lieu === "object" && lieu.id && STOCK_LIEU_TYPES.includes(lieu.type));
+
         const snap = await db_firestore.collection("stock_movements").get();
 
         const rawEntries = [];
+        const movements = {}; // { [movementId]: détail du bon } pour le popup front
         let resolvedRef = "";
         let resolvedNom = "";
         let resolvedUnite = "";
@@ -10262,6 +10270,7 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           if (needsMulti && m.status !== "valide_chef") continue;
           if (!m.status) continue;
 
+          let matchedThisMov = false;
           for (const item of (m.items || [])) {
             const ref = item.article_ref || "";
             const nom = item.article_nom || "";
@@ -10272,15 +10281,19 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
             const matches = (ref && ref.toLowerCase() === articleLc) || (nom && nom.toLowerCase() === articleLc);
             if (!matches) continue;
             if (!resolvedRef) { resolvedRef = ref; resolvedNom = nom; resolvedUnite = unite; }
+            matchedThisMov = true;
 
-            if (m.lieu_source && m.lieu_source.id) {
+            // N'impacter le grand livre QUE pour les LIEUX DE STOCK.
+            // lieu_source de stock → sortie (-qty). lieu_destination de stock → entrée (+qty).
+            // Destinations non-stock (fournisseur, parcelle, rebut, externe, null) ignorées.
+            if (isStockLieu(m.lieu_source)) {
               rawEntries.push({
                 date: m.date, numero: m.numero || "", type: m.type,
                 lieu_type: m.lieu_source.type, lieu_id: m.lieu_source.id,
                 sens: "sortie", quantite: -qty, unite, status: m.status, movementId: doc.id,
               });
             }
-            if (m.lieu_destination && m.lieu_destination.id && m.lieu_destination.type !== "parcelle") {
+            if (isStockLieu(m.lieu_destination)) {
               rawEntries.push({
                 date: m.date, numero: m.numero || "", type: m.type,
                 lieu_type: m.lieu_destination.type, lieu_id: m.lieu_destination.id,
@@ -10288,26 +10301,49 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
               });
             }
           }
+
+          // Conserver le détail du bon (dédupliqué par id) pour le popup front.
+          if (matchedThisMov && !movements[doc.id]) {
+            movements[doc.id] = {
+              numero: m.numero || "", type: m.type, date: m.date,
+              lieu_source: m.lieu_source || null, lieu_destination: m.lieu_destination || null,
+              ref_bl_fournisseur: m.ref_bl_fournisseur || null, fournisseur_nom: m.fournisseur_nom || null,
+              sortie_type: m.sortie_type || null, beneficiaire: m.beneficiaire || null,
+              motif_rebut: m.motif_rebut || null, items: m.items || [], status: m.status,
+              created_by: m.created_by || null, created_at: m.created_at || null,
+              scan_url: m.scan_url || null, validations: m.validations || null,
+            };
+          }
         }
 
-        // Tri par date asc puis numero pour stabilité
+        // Tri par date asc puis numero pour stabilité (cumul global cohérent)
         rawEntries.sort((a, b) => {
           if (a.date !== b.date) return (a.date || "") < (b.date || "") ? -1 : 1;
           return (a.numero || "").localeCompare(b.numero || "");
         });
 
-        // Cumul par (lieu_type|lieu_id)
+        // Cumul par (lieu_type|lieu_id) + cumul GLOBAL (Σ sur tous les lieux de stock)
         const cumul = {};
+        let cumulGlobal = 0;
         const entries = rawEntries.map((e) => {
           const lieuKey = `${e.lieu_type}|${e.lieu_id}`;
           cumul[lieuKey] = (cumul[lieuKey] || 0) + e.quantite;
-          return { ...e, quantite: Math.round(e.quantite * 100) / 100, cumul_apres: Math.round(cumul[lieuKey] * 100) / 100 };
+          cumulGlobal += e.quantite;
+          return {
+            ...e,
+            quantite: Math.round(e.quantite * 100) / 100,
+            cumul_apres: Math.round(cumul[lieuKey] * 100) / 100,
+            cumul_global_apres: Math.round(cumulGlobal * 100) / 100,
+          };
         });
 
         const soldes_par_lieu = Object.keys(cumul).map((k) => {
           const [lieu_type, lieu_id] = k.split("|");
           return { lieu_type, lieu_id, balance: Math.round(cumul[k] * 100) / 100 };
         }).filter(s => Math.abs(s.balance) >= 0.01);
+
+        // Stock global = somme des soldes des lieux de stock
+        const solde_global = Math.round(soldes_par_lieu.reduce((s, b) => s + b.balance, 0) * 100) / 100;
 
         const filteredEntries = filterLieuId ? entries.filter(e => e.lieu_id === filterLieuId) : entries;
 
@@ -10316,6 +10352,8 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           article: { ref: resolvedRef || articleParam, nom: resolvedNom || articleParam, unite: resolvedUnite || "kg" },
           entries: filteredEntries,
           soldes_par_lieu,
+          solde_global,
+          movements,
           count: filteredEntries.length,
         });
       }
