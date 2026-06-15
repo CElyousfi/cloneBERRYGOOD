@@ -54993,6 +54993,8 @@ ${rejetHtml}
 
             const [hideImports, setHideImports] = useState(false);
             const [query, setQuery] = useState('');
+            const [sortField, setSortField] = useState('date');
+            const [sortDir, setSortDir] = useState('desc');
             const [editMov, setEditMov] = useState(null); // mouvement en cours d'édition
             const [detailMouvement, setDetailMouvement] = useState(null); // mouvement affiché en lecture seule (popup détail)
             const [editItems, setEditItems] = useState([]);
@@ -55121,6 +55123,26 @@ ${rejetHtml}
                 }).catch(() => alert('Erreur réseau'));
             };
 
+            const toggleSort = (field) => {
+                if (sortField === field) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+                else { setSortField(field); setSortDir('asc'); }
+            };
+            const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+            const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
+            const getSortVal = (m) => {
+                switch (sortField) {
+                    case 'numero': return (m.numero || '').toLowerCase();
+                    case 'type': return (m.type || '').toLowerCase();
+                    case 'source': return (m.lieu_source?.id || '').toLowerCase();
+                    case 'destination': return (m.lieu_destination?.id || '').toLowerCase();
+                    case 'article': return ((m.items && m.items[0] && (m.items[0].article_nom || m.items[0].article_ref)) || '').toLowerCase();
+                    case 'statut': return (m.status || '').toLowerCase();
+                    case 'cree_par': return (m.created_by?.name || '').toLowerCase();
+                    case 'date':
+                    default: return m.date || '';
+                }
+            };
+
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
             return (
@@ -55157,9 +55179,9 @@ ${rejetHtml}
                     </div>
 
                     <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                        <thead><tr><th>N°</th><th>Type</th><th>Date</th><th>Source</th><th>Destination</th><th>Articles</th><th>Statut</th><th>Créé par</th>{showActionsCol && <th>Actions</th>}</tr></thead>
+                        <thead><tr><th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th><th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th><th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th><th style={sortThStyle} onClick={() => toggleSort('source')}>Source{sortArrow('source')}</th><th style={sortThStyle} onClick={() => toggleSort('destination')}>Destination{sortArrow('destination')}</th><th style={sortThStyle} onClick={() => toggleSort('article')}>Articles{sortArrow('article')}</th><th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th><th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Créé par{sortArrow('cree_par')}</th>{showActionsCol && <th>Actions</th>}</tr></thead>
                         <tbody>
-                            {movements.filter(m => !hideImports || !isImport(m)).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.lieu_source?.id||'').toLowerCase().includes(q) || (m.lieu_destination?.id||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((m) => (
+                            {movements.filter(m => !hideImports || !isImport(m)).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.lieu_source?.id||'').toLowerCase().includes(q) || (m.lieu_destination?.id||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).slice().sort((a, b) => { const va = getSortVal(a), vb = getSortVal(b); const c = va < vb ? -1 : va > vb ? 1 : 0; return sortDir === 'asc' ? c : -c; }).map((m) => (
                                 <tr key={m.id} onClick={() => setDetailMouvement(m)} style={{cursor:'pointer'}} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }} onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                                     <td style={{fontWeight:700,color: typeColors[m.type] || '#666'}}>{m.numero}</td>
                                     <td><span style={{color: typeColors[m.type] || '#666',fontWeight:600,fontSize:11}}>{typeLabels[m.type] || m.type}</span></td>
