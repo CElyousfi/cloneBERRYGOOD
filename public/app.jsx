@@ -53856,6 +53856,7 @@ ${rejetHtml}
             const [dateTo, setDateTo] = useState('');
             const [sortField, setSortField] = useState('date');
             const [sortDir, setSortDir] = useState('desc');
+            const [detailTransfert, setDetailTransfert] = useState(null);
             const isImportBT = (t) => (t.numero || '').startsWith('IMP-') || t.created_by?.userId === 'import_caneva';
             const emptyItem = { article: '', quantite: '', unite: 'kg' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], ref_bon_physique: '', magasin_depart: 'F1', magasin_arrivee: 'F5', items: [{ ...emptyItem }] });
@@ -53944,10 +53945,43 @@ ${rejetHtml}
             const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
             const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
 
+            const exportTransfertsExcel = () => {
+                if (!filteredTransferts.length) { alert('Aucun bon à exporter'); return; }
+                const aoa = [['N° BT', 'Date', 'Départ', 'Arrivée', 'Réf bon', 'Article', 'Quantité', 'Unité', 'Statut', 'Créé par']];
+                filteredTransferts.forEach(t => {
+                    const base = [
+                        t.numero || '',
+                        t.date || '',
+                        t.lieu_source?.id || '',
+                        t.lieu_destination?.id || '',
+                        t.ref_bon_physique || '',
+                    ];
+                    const tail = [isImportBT(t) ? 'Importé' : 'Validé', t.created_by?.name || ''];
+                    const items = t.items || [];
+                    if (!items.length) {
+                        aoa.push([...base, '', '', '', ...tail]);
+                    } else {
+                        items.forEach(i => {
+                            aoa.push([...base, i.article_nom || i.article_ref || '', i.quantite != null ? i.quantite : '', i.unite || '', ...tail]);
+                        });
+                    }
+                });
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Bons de Transfert');
+                XLSX.writeFile(wb, `Bons_Transfert_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            };
+
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-right-left" style={{marginRight:8,color:'var(--blue)'}}></i>Transferts Inter-Fermes ({filteredTransferts.length})</h3>
+                        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                            <h3 style={{margin:0}}><i className="fa-solid fa-right-left" style={{marginRight:8,color:'var(--blue)'}}></i>Transferts Inter-Fermes ({filteredTransferts.length})</h3>
+                            <button onClick={exportTransfertsExcel} title="Exporter la liste filtrée en Excel"
+                                style={{background:'#1d6f42',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>
+                                <i className="fa-solid fa-file-excel" style={{marginRight:6}}></i>Export Excel
+                            </button>
+                        </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
                             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
@@ -53976,7 +54010,9 @@ ${rejetHtml}
                         </tr></thead>
                         <tbody>
                             {filteredTransferts.map((t) => (
-                                <tr key={t.id}>
+                                <tr key={t.id} onClick={() => setDetailTransfert(t)} style={{cursor:'pointer'}}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(45,80,139,0.04)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                                     <td style={{fontWeight:700,color:'var(--blue)'}}>{t.numero}</td>
                                     <td>{t.date}</td>
                                     <td><span className="status-badge" style={{background:'rgba(231,76,60,0.1)',color:'var(--red)',fontSize:10}}>{t.lieu_source?.id || '—'}</span></td>
@@ -54038,6 +54074,105 @@ ${rejetHtml}
                             </div>
                         </div>
                     )}
+
+                    {detailTransfert && (() => {
+                        const t = detailTransfert;
+                        const fmtTs = (v) => {
+                            if (!v) return null;
+                            try {
+                                if (typeof v === 'string') return v.length > 10 ? new Date(v).toLocaleString('fr-FR') : v;
+                                if (v.seconds != null) return new Date(v.seconds * 1000).toLocaleString('fr-FR');
+                                if (v._seconds != null) return new Date(v._seconds * 1000).toLocaleString('fr-FR');
+                                if (v instanceof Date) return v.toLocaleString('fr-FR');
+                            } catch (e) { return null; }
+                            return null;
+                        };
+                        const items = t.items || [];
+                        const hasParcelle = items.some(i => i.parcelle || i.parcelle_nom);
+                        const scan = t.scan_url || '';
+                        const isHttpScan = /^https?:\/\//i.test(scan);
+                        const isImgScan = isHttpScan && /\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(scan);
+                        const infoRow = (label, value) => value == null || value === '' ? null : (
+                            <div style={{display:'flex',gap:8,padding:'3px 0'}}>
+                                <span style={{minWidth:140,color:'var(--gray-400)',fontSize:12}}>{label}</span>
+                                <span style={{fontSize:12,fontWeight:600,color:'#1e293b'}}>{value}</span>
+                            </div>
+                        );
+                        return (
+                            <div onClick={() => setDetailTransfert(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                                <div onClick={e => e.stopPropagation()} style={{background:'#fff',borderRadius:12,maxWidth:640,width:'100%',maxHeight:'85vh',overflow:'auto',padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,gap:12}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                            <h3 style={{margin:0,color:'var(--blue)'}}><i className="fa-solid fa-right-left" style={{marginRight:8}}></i>Bon de Transfert {t.numero || ''}</h3>
+                                            <span className={'status-badge ' + (isImportBT(t) ? 'valide' : 'valide')}>{isImportBT(t) ? 'Importé' : 'Validé'}</span>
+                                        </div>
+                                        <button onClick={() => setDetailTransfert(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                    </div>
+
+                                    <div style={{marginBottom:16}}>
+                                        {infoRow('Date', t.date)}
+                                        {infoRow('Départ', t.lieu_source?.id)}
+                                        {infoRow('Arrivée', t.lieu_destination?.id)}
+                                        {infoRow('Réf bon physique', t.ref_bon_physique)}
+                                        {infoRow('Créé par', t.created_by?.name)}
+                                        {infoRow('Créé le', fmtTs(t.created_at))}
+                                    </div>
+
+                                    {items.length > 0 && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Articles</h4>
+                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                                <thead><tr style={{background:'#f8f8f8',textAlign:'left'}}>
+                                                    <th style={{padding:'6px 8px'}}>Article</th>
+                                                    <th style={{padding:'6px 8px',textAlign:'right'}}>Quantité</th>
+                                                    <th style={{padding:'6px 8px'}}>Unité</th>
+                                                    {hasParcelle && <th style={{padding:'6px 8px'}}>Parcelle</th>}
+                                                </tr></thead>
+                                                <tbody>
+                                                    {items.map((i, idx) => (
+                                                        <tr key={idx} style={{borderBottom:'1px solid #f0f0f0'}}>
+                                                            <td style={{padding:'6px 8px'}}>{i.article_nom || i.article_ref || '—'}</td>
+                                                            <td style={{padding:'6px 8px',textAlign:'right'}}>{i.quantite != null ? i.quantite : '—'}</td>
+                                                            <td style={{padding:'6px 8px'}}>{i.unite || '—'}</td>
+                                                            {hasParcelle && <td style={{padding:'6px 8px'}}>{i.parcelle_nom || i.parcelle || '—'}</td>}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+
+                                    {scan && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Scan du bon</h4>
+                                            {isImgScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer">
+                                                    <img src={scan} alt="Scan du bon" style={{maxWidth:'100%',maxHeight:280,borderRadius:8,border:'1px solid #eee',cursor:'zoom-in'}} />
+                                                </a>
+                                            ) : isHttpScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)',fontSize:12}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Voir le scan</a>
+                                            ) : (
+                                                <span style={{fontSize:12,color:'var(--gray-400)'}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Scan disponible (stockage interne)</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(t.history) && t.history.length > 0 && (
+                                        <div>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Historique</h4>
+                                            <ul style={{margin:0,paddingLeft:18,fontSize:12}}>
+                                                {t.history.map((h, idx) => (
+                                                    <li key={idx} style={{padding:'2px 0'}}>
+                                                        {h.action || '—'}{(h.by && (h.by.name || h.by)) ? ' — ' + (h.by.name || h.by) : ''}{fmtTs(h.at) ? ' — ' + fmtTs(h.at) : ''}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         }
@@ -54191,6 +54326,7 @@ ${rejetHtml}
             const [dateTo, setDateTo] = useState('');
             const [sortField, setSortField] = useState('date');
             const [sortDir, setSortDir] = useState('desc');
+            const [detailSortie, setDetailSortie] = useState(null);
             const isImportBS = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
             const emptyItem = { article: '', quantite: '', unite: 'kg' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_depart_type: 'magasin', lieu_depart_id: 'F1', lieu_destination: '', sortie_type: 'retour_fournisseur', beneficiaire: '', motif_rebut: '', items: [{ ...emptyItem }] });
@@ -54295,11 +54431,47 @@ ${rejetHtml}
             };
             const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
             const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
+            const bsDestination = (s) => typeof s.lieu_destination === 'string' ? s.lieu_destination : (s.lieu_destination && s.lieu_destination.id) || '';
+
+            const exportSortiesExcel = () => {
+                if (!filteredSorties.length) { alert('Aucun bon à exporter'); return; }
+                const aoa = [['N° BS', 'Date', 'Départ', 'Type sortie', 'Destination', 'Bénéficiaire', 'Motif', 'Article', 'Quantité', 'Unité', 'Statut', 'Créé par']];
+                filteredSorties.forEach(s => {
+                    const base = [
+                        s.numero || '',
+                        s.date || '',
+                        s.lieu_source?.id || s.ferme || '',
+                        sortieTypeLabel(s.sortie_type),
+                        bsDestination(s),
+                        s.beneficiaire || '',
+                        s.motif_rebut || '',
+                    ];
+                    const tail = [statusLabel(s.status), s.created_by?.name || ''];
+                    const items = s.items || [];
+                    if (!items.length) {
+                        aoa.push([...base, '', '', '', ...tail]);
+                    } else {
+                        items.forEach(i => {
+                            aoa.push([...base, i.article_nom || i.article_ref || '', i.quantite != null ? i.quantite : '', i.unite || '', ...tail]);
+                        });
+                    }
+                });
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Bons de Sortie');
+                XLSX.writeFile(wb, `Bons_Sortie_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            };
 
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8,color:'var(--red)'}}></i>Sorties de Stock ({filteredSorties.length})</h3>
+                        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                            <h3 style={{margin:0}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8,color:'var(--red)'}}></i>Sorties de Stock ({filteredSorties.length})</h3>
+                            <button onClick={exportSortiesExcel} title="Exporter la liste filtrée en Excel"
+                                style={{background:'#1d6f42',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>
+                                <i className="fa-solid fa-file-excel" style={{marginRight:6}}></i>Export Excel
+                            </button>
+                        </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, lieu…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
                             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
@@ -54328,7 +54500,9 @@ ${rejetHtml}
                         </tr></thead>
                         <tbody>
                             {filteredSorties.map((s) => (
-                                <tr key={s.id}>
+                                <tr key={s.id} onClick={() => setDetailSortie(s)} style={{cursor:'pointer'}}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(231,76,60,0.04)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                                     <td style={{fontWeight:700,color:'var(--red)'}}>{s.numero}</td>
                                     <td>{s.date}</td>
                                     <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{s.lieu_source?.id || s.ferme}</span></td>
@@ -54417,6 +54591,125 @@ ${rejetHtml}
                             </div>
                         </div>
                     )}
+
+                    {detailSortie && (() => {
+                        const s = detailSortie;
+                        const fmtTs = (v) => {
+                            if (!v) return null;
+                            try {
+                                if (typeof v === 'string') return v.length > 10 ? new Date(v).toLocaleString('fr-FR') : v;
+                                if (v.seconds != null) return new Date(v.seconds * 1000).toLocaleString('fr-FR');
+                                if (v._seconds != null) return new Date(v._seconds * 1000).toLocaleString('fr-FR');
+                                if (v instanceof Date) return v.toLocaleString('fr-FR');
+                            } catch (e) { return null; }
+                            return null;
+                        };
+                        const items = s.items || [];
+                        const hasParcelle = items.some(i => i.parcelle || i.parcelle_nom);
+                        const scan = s.scan_url || '';
+                        const isHttpScan = /^https?:\/\//i.test(scan);
+                        const isImgScan = isHttpScan && /\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(scan);
+                        const justif = s.justificatif_url || '';
+                        const isHttpJustif = /^https?:\/\//i.test(justif);
+                        const isImgJustif = isHttpJustif && /\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(justif);
+                        const infoRow = (label, value) => value == null || value === '' ? null : (
+                            <div style={{display:'flex',gap:8,padding:'3px 0'}}>
+                                <span style={{minWidth:140,color:'var(--gray-400)',fontSize:12}}>{label}</span>
+                                <span style={{fontSize:12,fontWeight:600,color:'#1e293b'}}>{value}</span>
+                            </div>
+                        );
+                        return (
+                            <div onClick={() => setDetailSortie(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                                <div onClick={e => e.stopPropagation()} style={{background:'#fff',borderRadius:12,maxWidth:640,width:'100%',maxHeight:'85vh',overflow:'auto',padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,gap:12}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                            <h3 style={{margin:0,color:'var(--red)'}}><i className="fa-solid fa-arrow-right-from-bracket" style={{marginRight:8}}></i>Bon de Sortie {s.numero || ''}</h3>
+                                            <span className={'status-badge ' + statusClass(s.status)}>{statusLabel(s.status)}</span>
+                                        </div>
+                                        <button onClick={() => setDetailSortie(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                    </div>
+
+                                    <div style={{marginBottom:16}}>
+                                        {infoRow('Date', s.date)}
+                                        {infoRow('Départ', s.lieu_source?.id || s.ferme)}
+                                        {infoRow('Type de sortie', sortieTypeLabel(s.sortie_type))}
+                                        {infoRow('Destination', bsDestination(s))}
+                                        {infoRow('Bénéficiaire', s.beneficiaire)}
+                                        {infoRow('Motif', s.motif_rebut)}
+                                        {infoRow('Créé par', s.created_by?.name)}
+                                        {infoRow('Créé le', fmtTs(s.created_at))}
+                                    </div>
+
+                                    {items.length > 0 && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Articles</h4>
+                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                                <thead><tr style={{background:'#f8f8f8',textAlign:'left'}}>
+                                                    <th style={{padding:'6px 8px'}}>Article</th>
+                                                    <th style={{padding:'6px 8px',textAlign:'right'}}>Quantité</th>
+                                                    <th style={{padding:'6px 8px'}}>Unité</th>
+                                                    {hasParcelle && <th style={{padding:'6px 8px'}}>Parcelle</th>}
+                                                </tr></thead>
+                                                <tbody>
+                                                    {items.map((i, idx) => (
+                                                        <tr key={idx} style={{borderBottom:'1px solid #f0f0f0'}}>
+                                                            <td style={{padding:'6px 8px'}}>{i.article_nom || i.article_ref || '—'}</td>
+                                                            <td style={{padding:'6px 8px',textAlign:'right'}}>{i.quantite != null ? i.quantite : '—'}</td>
+                                                            <td style={{padding:'6px 8px'}}>{i.unite || '—'}</td>
+                                                            {hasParcelle && <td style={{padding:'6px 8px'}}>{i.parcelle_nom || i.parcelle || '—'}</td>}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+
+                                    {scan && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Scan du bon</h4>
+                                            {isImgScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer">
+                                                    <img src={scan} alt="Scan du bon" style={{maxWidth:'100%',maxHeight:280,borderRadius:8,border:'1px solid #eee',cursor:'zoom-in'}} />
+                                                </a>
+                                            ) : isHttpScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)',fontSize:12}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Voir le scan</a>
+                                            ) : (
+                                                <span style={{fontSize:12,color:'var(--gray-400)'}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Scan disponible (stockage interne)</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {justif && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Justificatif</h4>
+                                            {isImgJustif ? (
+                                                <a href={justif} target="_blank" rel="noopener noreferrer">
+                                                    <img src={justif} alt="Justificatif" style={{maxWidth:'100%',maxHeight:280,borderRadius:8,border:'1px solid #eee',cursor:'zoom-in'}} />
+                                                </a>
+                                            ) : isHttpJustif ? (
+                                                <a href={justif} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)',fontSize:12}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Voir le justificatif</a>
+                                            ) : (
+                                                <span style={{fontSize:12,color:'var(--gray-400)'}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Justificatif disponible (stockage interne)</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(s.history) && s.history.length > 0 && (
+                                        <div>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Historique</h4>
+                                            <ul style={{margin:0,paddingLeft:18,fontSize:12}}>
+                                                {s.history.map((h, idx) => (
+                                                    <li key={idx} style={{padding:'2px 0'}}>
+                                                        {h.action || '—'}{(h.by && (h.by.name || h.by)) ? ' — ' + (h.by.name || h.by) : ''}{fmtTs(h.at) ? ' — ' + fmtTs(h.at) : ''}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         }
