@@ -48944,6 +48944,16 @@ ${rejetHtml}
             const [showLocFilter, setShowLocFilter] = useState(false);
             const [priceMap, setPriceMap] = useState({});
 
+            // Canonicalisation identique au backend (scripts/reconstruct-stock.js) :
+            // les soldes (stock_balances) sont canonicalisés (suffixe d'unité retiré),
+            // alors que le catalogue garde souvent "NOM (KG)". On aligne les deux côtés.
+            const canonArt = (a) => {
+                let s = (a == null ? '' : String(a)).toUpperCase().trim();
+                s = s.replace(/\s+/g, ' ');
+                s = s.replace(/\s*\((L|KG|G|ML|UNITE|U)\)\s*$/, '');
+                return s.trim();
+            };
+
             useEffect(() => {
                 fetch('/api/stock?action=get-locations').then(r => r.json())
                     .then(json => { if (json.success) setLocations(json.locations || { magasins: [], stations: [] }); })
@@ -48956,9 +48966,20 @@ ${rejetHtml}
                         if (j.success) {
                             const map = {};
                             (j.articles || []).forEach(a => {
-                                const prix = parseFloat(a.prix_ttc) || parseFloat(a.prix_ht) || parseFloat(a.prix_ref) || 0;
-                                if (a.nom) map[a.nom.toLowerCase()] = prix;
-                                if (a.reference) map[a.reference.toLowerCase()] = prix;
+                                const pmp = parseFloat(a.prix_pmp) || 0;
+                                const catalogue = parseFloat(a.prix_ttc) || parseFloat(a.prix_ht) || parseFloat(a.prix_ref) || 0;
+                                let entry;
+                                if (pmp > 0) entry = { prix: pmp, source: 'PMP' };
+                                else if (catalogue > 0) entry = { prix: catalogue, source: 'Catalogue' };
+                                else entry = { prix: 0, source: '—' };
+                                // En cas de collision sur une même clé canon, garder l'entrée avec prix>0.
+                                const put = (k) => {
+                                    if (!k) return;
+                                    const existing = map[k];
+                                    if (!existing || (existing.prix <= 0 && entry.prix > 0)) map[k] = entry;
+                                };
+                                put(canonArt(a.nom));
+                                put(canonArt(a.reference));
                             });
                             setPriceMap(map);
                         }
@@ -48996,14 +49017,12 @@ ${rejetHtml}
             };
 
             const getPrix = (b) => {
-                const nomKey = (b.article_nom || '').toLowerCase();
-                const refKey = (b.article_ref || '').toLowerCase();
-                return priceMap[nomKey] || priceMap[refKey] || 0;
+                return priceMap[canonArt(b.article_nom)] || priceMap[canonArt(b.article_ref)] || { prix: 0, source: '—' };
             };
 
             let filtered = balances.map(b => {
-                const prix = getPrix(b);
-                return { ...b, prix_unitaire: prix, prix_total: (b.balance || 0) * prix };
+                const p = getPrix(b);
+                return { ...b, prix_unitaire: p.prix, prix_source: p.source, prix_total: (b.balance || 0) * p.prix };
             });
             if (selectedLieux.length > 0) filtered = filtered.filter(b => selectedLieux.includes(b.lieu_id));
             if (search) filtered = filtered.filter(b => (b.article_nom || b.article_ref || '').toLowerCase().includes(search.toLowerCase()));
@@ -49012,13 +49031,19 @@ ${rejetHtml}
             const totalAlerte = filtered.filter(b => b.seuil_alerte && b.balance <= b.seuil_alerte && b.balance > 0).length;
             const totalRupture = filtered.filter(b => b.balance <= 0).length;
             const valeurStock = filtered.reduce((s, b) => s + (b.prix_total > 0 ? b.prix_total : 0), 0);
+            const nbPmp = filtered.filter(b => b.prix_source === 'PMP').length;
+            const nbCatalogue = filtered.filter(b => b.prix_source === 'Catalogue').length;
+            const nbSansPrix = filtered.filter(b => !b.prix_source || b.prix_source === '—').length;
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
             return (
                 <div>
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-clipboard-list" style={{marginRight:8,color:'var(--berry)'}}></i>Inventaire {filterDate && /^\d{4}-\d{2}-\d{2}$/.test(filterDate) ? `au ${new Date(filterDate+'T12:00').toLocaleDateString('fr-FR')}` : '(actuel)'} ({filtered.length})</h3>
+                        <div>
+                            <h3 style={{margin:0}}><i className="fa-solid fa-clipboard-list" style={{marginRight:8,color:'var(--berry)'}}></i>Inventaire {filterDate && /^\d{4}-\d{2}-\d{2}$/.test(filterDate) ? `au ${new Date(filterDate+'T12:00').toLocaleDateString('fr-FR')}` : '(actuel)'} ({filtered.length})</h3>
+                            <div style={{fontSize:11,color:'#888',marginTop:4}}>Valorisation — PMP: {nbPmp} · Catalogue: {nbCatalogue} · sans prix: {nbSansPrix}</div>
+                        </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)}
                                 style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
@@ -49064,7 +49089,7 @@ ${rejetHtml}
                     </div>
 
                     <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>Lieu</th><th>Type</th><th>Article</th><th>Unité</th><th>Solde</th><th>Prix Unit. (DH)</th><th>Prix Total (DH)</th><th>Statut</th></tr></thead>
+                        <thead><tr><th>Lieu</th><th>Type</th><th>Article</th><th>Unité</th><th>Solde</th><th>Prix Unit. (DH)</th><th>Source</th><th>Prix Total (DH)</th><th>Statut</th></tr></thead>
                         <tbody>
                             {filtered.map((b, i) => (
                                 <tr key={i}>
@@ -49074,6 +49099,18 @@ ${rejetHtml}
                                     <td>{b.unite}</td>
                                     <td style={{fontWeight:700,fontSize:14}}>{(b.balance || 0).toLocaleString('fr-FR', {minimumFractionDigits:1})}</td>
                                     <td style={{textAlign:'right',color: b.prix_unitaire > 0 ? '#333' : '#bbb'}}>{b.prix_unitaire > 0 ? b.prix_unitaire.toFixed(2) : '—'}</td>
+                                    <td style={{textAlign:'center'}}>
+                                        {(() => {
+                                            const src = b.prix_source || '—';
+                                            const styleMap = {
+                                                'PMP': { bg:'rgba(39,174,96,0.12)', col:'#1e8449' },
+                                                'Catalogue': { bg:'rgba(0,0,0,0.06)', col:'#666' },
+                                                '—': { bg:'rgba(231,76,60,0.10)', col:'#c0392b' }
+                                            };
+                                            const st = styleMap[src] || styleMap['—'];
+                                            return <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:10,background:st.bg,color:st.col}}>{src}</span>;
+                                        })()}
+                                    </td>
                                     <td style={{textAlign:'right',fontWeight:700,color: b.prix_total > 0 ? 'var(--berry)' : '#bbb'}}>{b.prix_total > 0 ? b.prix_total.toLocaleString('fr-FR', {maximumFractionDigits:2}) : '—'}</td>
                                     <td>
                                         {b.balance <= 0 ? <span className="status-badge rejete">Rupture</span>
@@ -49082,7 +49119,7 @@ ${rejetHtml}
                                     </td>
                                 </tr>
                             ))}
-                            {filtered.length === 0 && <tr><td colSpan="8" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun résultat pour les critères sélectionnés.</td></tr>}
+                            {filtered.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun résultat pour les critères sélectionnés.</td></tr>}
                         </tbody>
                     </table></div>
                 </div>
