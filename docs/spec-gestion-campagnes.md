@@ -523,3 +523,44 @@ Précisions tirées de la donnée :
   d'ailleurs Yasmin séparément (« Myrtille (Yasmin TP) »).
 - **Seed gated** : on seed le référentiel 2026-2027 **uniquement** depuis la version de l'Excel
   validée par l'équipe (colonnes « ✅ Validé ? » + « Date bascule confirmée » remplies).
+
+---
+
+## 12. COMPOSITION campagne × phase + fenêtre du cutoff (précision Omar 2026-06-15)
+
+### 12.1 Les deux routages se composent orthogonalement
+Une charge `(parcelle, date)` produit **deux dimensions indépendantes** :
+- `phaseDeCharge(parcelle, date)` → **bucket** `_PRIMO`/`_FLORI` (identité du cycle, **stable**).
+- `campagneDeCharge(parcelle, date)` → **année fiscale** (scoping orthogonal).
+**Le CPC est keyé par la PAIRE `(campagne, bucket)`**, jamais collapsée. Le bucket n'est **PAS**
+préfixé par campagne (pas de `..._2026_2027`) → on garde la comparaison « même cycle, années
+différentes » (§11.4). La traçabilité vient de la **paire**.
+
+Exemples MIA (bucket Floricane `F5_MIA_FLORI`) :
+| Date charge | phaseDeCharge | campagneDeCharge | Résultat (campagne, bucket) |
+|---|---|---|---|
+| 15 jan 2027 | Floricane | 2026-2027 | `(2026-2027, F5_MIA_FLORI)` |
+| 10 jul 2027 | Floricane | 2027-2028 | `(2027-2028, F5_MIA_FLORI)` |
+→ **Même bucket, deux agrégats CPC distincts** (séparés par la campagne). Voulu : permet la
+rentabilité « Floricane MIA 2026-2027 vs 2027-2028 ».
+
+### 12.2 Fenêtre du cutoff — il tire le DÉBUT, pas la fin (corrige §10)
+Le cutoff campagne est un **démarrage anticipé** de la campagne cible, **borné à la fenêtre de cette
+campagne** — **pas** un rattachement permanent :
+```
+campagneDeCharge(parcelle, date):
+  si cutoff_campagne défini ET cutoff_date <= date <= fin(campagne_cible):  → campagne_cible
+  sinon:                                                                    → campagneOf(date)   // 30 juin
+```
+avec `fin("AAAA-BBBB") = "BBBB-06-30"`.
+Vérification MIA (cutoff 2026-05-01 → cible 2026-2027) :
+- `< 2026-05-01` → standard (2025-2026) · `[2026-05-01 .. 2027-06-30]` → **2026-2027** ·
+  `>= 2027-07-01` → standard (2027-2028).
+→ Le cutoff déplace le **début** (mai au lieu de juillet) ; la **fin reste le 30 juin** de la cible.
+Sans ce bornage, une parcelle resterait collée à sa campagne cible pour toujours (bug).
+
+### 12.3 Conséquence pour le modèle de données / la consolidation
+- Stockage/consolidation CPC : agrégats keyés `{campagne}__{cpc_bucket}` (clé composite). Un même
+  `cpc_bucket` peut exister sous plusieurs campagnes.
+- `campagneDeCharge` et `phaseDeCharge` sont **deux fonctions pures partagées** front+back, appliquées
+  à la **date** de chaque charge → déterministe, immuable (cohérent avec la conservation §11.4).
