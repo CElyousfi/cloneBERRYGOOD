@@ -47747,6 +47747,7 @@ ${rejetHtml}
             const [sortDir, setSortDir] = useState('desc');
             const [subTab, setSubTab] = useState('liste');
             const [canevaPending, setCanevaPending] = useState(0);
+            const [detailReception, setDetailReception] = useState(null);
             const MAGASINS_BR = ['F1', 'F2', 'F5', 'F6'];
             const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
             const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
@@ -47995,7 +47996,9 @@ ${rejetHtml}
                         </tr></thead>
                         <tbody>
                             {filtered.map((r) => (
-                                <tr key={r.id}>
+                                <tr key={r.id} onClick={() => setDetailReception(r)} style={{cursor:'pointer'}}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                                     <td style={{fontWeight:700,color:'var(--berry)'}}>{r.numero}</td>
                                     <td>{r.date}</td>
                                     <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{r.lieu_destination?.id || r.ferme || '—'}</span></td>
@@ -48072,6 +48075,131 @@ ${rejetHtml}
                             </div>
                         </div>
                     )}
+
+                    {detailReception && (() => {
+                        const r = detailReception;
+                        const fmtTs = (v) => {
+                            if (!v) return null;
+                            try {
+                                if (typeof v === 'string') return v.length > 10 ? new Date(v).toLocaleString('fr-FR') : v;
+                                if (v.seconds != null) return new Date(v.seconds * 1000).toLocaleString('fr-FR');
+                                if (v._seconds != null) return new Date(v._seconds * 1000).toLocaleString('fr-FR');
+                                if (v instanceof Date) return v.toLocaleString('fr-FR');
+                            } catch (e) { return null; }
+                            return null;
+                        };
+                        const items = r.items || [];
+                        const hasPrix = items.some(i => i.prix_unitaire != null);
+                        const hasMontant = items.some(i => i.montant_ttc != null);
+                        const totalTtc = items.reduce((s, i) => s + (typeof i.montant_ttc === 'number' ? i.montant_ttc : 0), 0);
+                        const valEntries = r.validations && typeof r.validations === 'object' ? Object.entries(r.validations) : [];
+                        const scan = r.scan_url || '';
+                        const isHttpScan = /^https?:\/\//i.test(scan);
+                        const isImgScan = isHttpScan && /\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(scan);
+                        const infoRow = (label, value) => value == null || value === '' ? null : (
+                            <div style={{display:'flex',gap:8,padding:'3px 0'}}>
+                                <span style={{minWidth:140,color:'var(--gray-400)',fontSize:12}}>{label}</span>
+                                <span style={{fontSize:12,fontWeight:600,color:'#1e293b'}}>{value}</span>
+                            </div>
+                        );
+                        return (
+                            <div onClick={() => setDetailReception(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                                <div onClick={e => e.stopPropagation()} style={{background:'#fff',borderRadius:12,maxWidth:640,width:'100%',maxHeight:'85vh',overflow:'auto',padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,gap:12}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                            <h3 style={{margin:0,color:'var(--berry)'}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8}}></i>Bon de Réception {r.numero || ''}</h3>
+                                            <span className={'status-badge ' + statusClass(r.status, r)}>{statusLabel(r.status, r)}</span>
+                                        </div>
+                                        <button onClick={() => setDetailReception(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                    </div>
+
+                                    <div style={{marginBottom:16}}>
+                                        {infoRow('Date', r.date)}
+                                        {infoRow('Magasin', r.lieu_destination?.id || r.ferme)}
+                                        {infoRow('Type', typeLabel(r))}
+                                        {infoRow('Réf BL fournisseur', r.ref_bl_fournisseur)}
+                                        {infoRow('Fournisseur', r.fournisseur_nom)}
+                                        {infoRow('Motif', r.reception_libre_motif || r.motif)}
+                                        {infoRow('Créé par', r.created_by?.name)}
+                                        {infoRow('Créé le', fmtTs(r.created_at))}
+                                    </div>
+
+                                    {items.length > 0 && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Articles</h4>
+                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                                <thead><tr style={{background:'#f8f8f8',textAlign:'left'}}>
+                                                    <th style={{padding:'6px 8px'}}>Article</th>
+                                                    <th style={{padding:'6px 8px',textAlign:'right'}}>Quantité</th>
+                                                    <th style={{padding:'6px 8px'}}>Unité</th>
+                                                    {hasPrix && <th style={{padding:'6px 8px',textAlign:'right'}}>Prix unit.</th>}
+                                                    {hasMontant && <th style={{padding:'6px 8px',textAlign:'right'}}>Montant TTC</th>}
+                                                </tr></thead>
+                                                <tbody>
+                                                    {items.map((i, idx) => (
+                                                        <tr key={idx} style={{borderBottom:'1px solid #f0f0f0'}}>
+                                                            <td style={{padding:'6px 8px'}}>{i.article_nom || i.article_ref || '—'}</td>
+                                                            <td style={{padding:'6px 8px',textAlign:'right'}}>{i.quantite != null ? i.quantite : '—'}</td>
+                                                            <td style={{padding:'6px 8px'}}>{i.unite || '—'}</td>
+                                                            {hasPrix && <td style={{padding:'6px 8px',textAlign:'right'}}>{i.prix_unitaire != null ? i.prix_unitaire : '—'}</td>}
+                                                            {hasMontant && <td style={{padding:'6px 8px',textAlign:'right'}}>{i.montant_ttc != null ? i.montant_ttc : '—'}</td>}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                                {hasMontant && (
+                                                    <tfoot><tr style={{fontWeight:700}}>
+                                                        <td style={{padding:'6px 8px'}} colSpan={hasPrix ? 4 : 3}>Total</td>
+                                                        <td style={{padding:'6px 8px',textAlign:'right'}}>{totalTtc.toLocaleString('fr-FR')}</td>
+                                                    </tr></tfoot>
+                                                )}
+                                            </table>
+                                        </div>
+                                    )}
+
+                                    {valEntries.length > 0 && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Validations</h4>
+                                            <ul style={{margin:0,paddingLeft:18,fontSize:12}}>
+                                                {valEntries.map(([role, v]) => (
+                                                    <li key={role} style={{padding:'2px 0'}}>
+                                                        <strong>{role}</strong> : {(v && v.name) || (v && v.by) || '—'}{v && fmtTs(v.at) ? ' le ' + fmtTs(v.at) : ''}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {scan && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Scan du bon</h4>
+                                            {isImgScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer">
+                                                    <img src={scan} alt="Scan du bon" style={{maxWidth:'100%',maxHeight:280,borderRadius:8,border:'1px solid #eee',cursor:'zoom-in'}} />
+                                                </a>
+                                            ) : isHttpScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)',fontSize:12}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Voir le scan</a>
+                                            ) : (
+                                                <span style={{fontSize:12,color:'var(--gray-400)'}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Scan disponible (stockage interne)</span>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(r.history) && r.history.length > 0 && (
+                                        <div>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Historique</h4>
+                                            <ul style={{margin:0,paddingLeft:18,fontSize:12}}>
+                                                {r.history.map((h, idx) => (
+                                                    <li key={idx} style={{padding:'2px 0'}}>
+                                                        {h.action || '—'}{(h.by && (h.by.name || h.by)) ? ' — ' + (h.by.name || h.by) : ''}{fmtTs(h.at) ? ' — ' + fmtTs(h.at) : ''}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         }
