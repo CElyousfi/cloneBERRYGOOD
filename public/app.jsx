@@ -48969,7 +48969,7 @@ ${rejetHtml}
                                 const pmp = parseFloat(a.prix_pmp) || 0;
                                 const catalogue = parseFloat(a.prix_ttc) || parseFloat(a.prix_ht) || parseFloat(a.prix_ref) || 0;
                                 let entry;
-                                if (pmp > 0) entry = { prix: pmp, source: 'PMP' };
+                                if (pmp > 0) entry = { prix: pmp, source: 'PMP', pmpSource: a.prix_pmp_source || null };
                                 else if (catalogue > 0) entry = { prix: catalogue, source: 'Catalogue' };
                                 else entry = { prix: 0, source: '—' };
                                 // En cas de collision sur une même clé canon, garder l'entrée avec prix>0.
@@ -49017,12 +49017,13 @@ ${rejetHtml}
             };
 
             const getPrix = (b) => {
-                return priceMap[canonArt(b.article_nom)] || priceMap[canonArt(b.article_ref)] || { prix: 0, source: '—' };
+                const p = priceMap[canonArt(b.article_nom)] || priceMap[canonArt(b.article_ref)] || { prix: 0, source: '—' };
+                return { prix: p.prix, source: p.source, pmpSource: p.pmpSource || null };
             };
 
             let filtered = balances.map(b => {
                 const p = getPrix(b);
-                return { ...b, prix_unitaire: p.prix, prix_source: p.source, prix_total: (b.balance || 0) * p.prix };
+                return { ...b, prix_unitaire: p.prix, prix_source: p.source, prix_pmp_source: p.pmpSource, prix_total: (b.balance || 0) * p.prix };
             });
             if (selectedLieux.length > 0) filtered = filtered.filter(b => selectedLieux.includes(b.lieu_id));
             if (search) filtered = filtered.filter(b => (b.article_nom || b.article_ref || '').toLowerCase().includes(search.toLowerCase()));
@@ -49108,7 +49109,18 @@ ${rejetHtml}
                                                 '—': { bg:'rgba(231,76,60,0.10)', col:'#c0392b' }
                                             };
                                             const st = styleMap[src] || styleMap['—'];
-                                            return <span style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:10,background:st.bg,color:st.col}}>{src}</span>;
+                                            let title = src === 'PMP' ? 'PMP' : src;
+                                            let dot = null;
+                                            if (src === 'PMP') {
+                                                if (b.prix_pmp_source === 'bon_entree') {
+                                                    title = "PMP — prix d'un bon d'entrée réel (fiable)";
+                                                    dot = '#1e8449';
+                                                } else if (b.prix_pmp_source === 'inventaire') {
+                                                    title = "PMP — prix de l'inventaire d'ouverture 30/06 (snapshot)";
+                                                    dot = '#b9770e';
+                                                }
+                                            }
+                                            return <span title={title} style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:10,background:st.bg,color:st.col,cursor: src === 'PMP' ? 'help' : 'default'}}>{src}{dot && <span style={{marginLeft:4,color:dot}}>•</span>}</span>;
                                         })()}
                                     </td>
                                     <td style={{textAlign:'right',fontWeight:700,color: b.prix_total > 0 ? 'var(--berry)' : '#bbb'}}>{b.prix_total > 0 ? b.prix_total.toLocaleString('fr-FR', {maximumFractionDigits:2}) : '—'}</td>
