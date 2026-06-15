@@ -32,29 +32,13 @@
  *   répartitions 1:N incluses (Σ des parts == charge d'origine).
  */
 
+// Source unique de vérité campagne (année fiscale Juillet→Juin) : module partagé
+// front+back public/lib/campagneUtils.js. Factorise l'ancien `campagneOf` inline.
+const { campagneOf } = require('../../../public/lib/campagneUtils')
+
 const COVERED = new Set(['matched', 'alias_valide', 'creee'])
 const NON_TRANCHE = new Set(['alias_propose', 'a_creer', 'hors_propose'])
 const HORS_PERIMETRE = new Set(['hors_confirme'])
-
-/**
- * Détermine la campagne (année fiscale Juillet N → Juin N+1) d'une date
- * 'YYYY-MM-DD'. Convention reprise de pointageService.js (action
- * `campagne-mo-variete`, `today.getMonth() >= 6` → Juillet).
- *
- * HYPOTHÈSE : campagne = Juillet N → Juin N+1, label `${N}-${N+1}`.
- *
- * @param {string} dateStr  date 'YYYY-MM-DD'
- * @returns {string|null} libellé de campagne ou null si date invalide
- */
-function campagneOf(dateStr) {
-  if (!dateStr || typeof dateStr !== 'string') return null
-  const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!m) return null
-  const year = parseInt(m[1], 10)
-  const month = parseInt(m[2], 10) // 1-12
-  const startYear = month >= 7 ? year : year - 1
-  return `${startYear}-${startYear + 1}`
-}
 
 /**
  * @param {*} mov mouvement de stock

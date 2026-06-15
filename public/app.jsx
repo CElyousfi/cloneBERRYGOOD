@@ -53220,6 +53220,11 @@ ${rejetHtml}
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] });
             const [scanFileBC, setScanFileBC] = useState(null);
             const [scanPreviewBC, setScanPreviewBC] = useState(null);
+            // Campagne (année fiscale Juillet→Juin) : '2025-2026', etc.
+            // Source unique : window.CampagneUtils (lib/campagneUtils.js). Fallback
+            // défensif si le lib n'est pas encore chargé (renvoie '' comme l'ancien helper).
+            const bcCampagneOf = (dateStr) => (window.CampagneUtils ? (window.CampagneUtils.campagneOf(dateStr) || '') : (() => { const m = (dateStr || '').match(/^(\d{4})-(\d{2})/); if (!m) return ''; const y = +m[1], mo = +m[2]; const start = mo >= 7 ? y : y - 1; return start + '-' + (start + 1); })());
+            const [bcCampagne, setBcCampagne] = useState(() => bcCampagneOf(new Date().toISOString().slice(0, 10)));
 
             const [query, setQuery] = useState('');
             const [filterSource, setFilterSource] = useState('');
@@ -53304,6 +53309,11 @@ ${rejetHtml}
 
             const filteredParcelles = parcelles;
             const useConsoSelector = currentProfile === 'magasinier' && parcellesConso.length > 0;
+            // Campagnes disponibles (calcul de render, pas un hook). Fallback = campagne du jour.
+            const bcCampagneToday = bcCampagneOf(new Date().toISOString().slice(0, 10));
+            const bcCampagnesDispo = (() => { const s = [...new Set(parcellesConso.flatMap(c => c.campagnes || []))].sort(); return s.length ? s : [bcCampagneToday]; })();
+            // Parcelle sans champ campagnes → traitée comme campagne courante (fallback sûr).
+            const consoForCampagne = parcellesConso.filter(c => { const cc = (c.campagnes && c.campagnes.length) ? c.campagnes : [bcCampagneToday]; return cc.includes(bcCampagne); });
             const selectParcelleForItem = (idx, val) => {
                 const items = [...form.items];
                 const conso = parcellesConso.find(c => c.libelle === val);
@@ -53444,6 +53454,12 @@ ${rejetHtml}
                                         </div></div>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date</label>
                                         <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    {useConsoSelector && (
+                                        <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Campagne</label>
+                                            <select value={bcCampagne} onChange={e => setBcCampagne(e.target.value)} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                                {bcCampagnesDispo.map(c => <option key={'camp-' + c} value={c}>{c}</option>)}
+                                            </select></div>
+                                    )}
                                 </div>
                                 <div style={{marginBottom:16}}>
                                     <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Scanner le bon de consommation</label>
@@ -53470,7 +53486,7 @@ ${rejetHtml}
                                                     {useConsoSelector ? (
                                                         <React.Fragment>
                                                             <optgroup label="Mes parcelles">
-                                                                {parcellesConso.map(c => <option key={'conso-' + c.libelle} value={c.libelle}>{c.libelle}</option>)}
+                                                                {consoForCampagne.map(c => <option key={'conso-' + c.libelle} value={c.libelle}>{c.libelle}</option>)}
                                                             </optgroup>
                                                         </React.Fragment>
                                                     ) : (
