@@ -53393,6 +53393,7 @@ ${rejetHtml}
             const [dateTo, setDateTo] = useState('');
             const [sortField, setSortField] = useState('date');
             const [sortDir, setSortDir] = useState('desc');
+            const [detailBc, setDetailBc] = useState(null);
             const isImportBC = (bc) => bc._isImport || (bc.numero || '').startsWith('IMP-') || bc.created_by?.userId === 'import_caneva';
             const loadBcs = () => {
                 Promise.all([
@@ -53555,10 +53556,48 @@ ${rejetHtml}
             const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
             const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
 
+            const exportBcExcel = () => {
+                if (!filteredBcs.length) { alert('Aucun bon à exporter'); return; }
+                const aoa = [['N° Bon', 'Date', 'Lieu départ', 'Ferme', 'Parcelle', 'Article', 'Quantité', 'Unité', 'Culture', 'Créé par']];
+                filteredBcs.forEach(bc => {
+                    const lieuDepart = bc.lieu_source?.id || bc.lieu_source_id || '—';
+                    const creePar = bc.created_by?.name || '';
+                    const items = bc.items || [];
+                    if (!items.length) {
+                        aoa.push([bc.numero || '', bc.date || '', lieuDepart, bc.ferme || '', '', '', '', '', '', creePar]);
+                    } else {
+                        items.forEach(i => {
+                            aoa.push([
+                                bc.numero || '',
+                                bc.date || '',
+                                lieuDepart,
+                                i.ferme || bc.ferme || '',
+                                i.parcelle || '',
+                                i.article || '',
+                                i.quantite != null ? i.quantite : '',
+                                i.unite || '',
+                                i.culture || '',
+                                creePar,
+                            ]);
+                        });
+                    }
+                });
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Bons de Consommation');
+                XLSX.writeFile(wb, 'Bons_Consommation_' + new Date().toISOString().slice(0, 10) + '.xlsx');
+            };
+
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bons de Consommation {label} ({filteredBcs.length})</h3>
+                        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                            <h3 style={{margin:0}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bons de Consommation {label} ({filteredBcs.length})</h3>
+                            <button onClick={exportBcExcel} title="Exporter la liste filtrée en Excel"
+                                style={{background:'#1d6f42',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>
+                                <i className="fa-solid fa-file-excel" style={{marginRight:6}}></i>Export Excel
+                            </button>
+                        </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, parcelle…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
                             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
@@ -53586,7 +53625,9 @@ ${rejetHtml}
                         </tr></thead>
                         <tbody>
                             {filteredBcs.map((bc) => { const parcelles_list = [...new Set((bc.items||[]).map(i => i.parcelle).filter(Boolean))]; const fermes_list = [...new Set((bc.items||[]).map(i => i.ferme).filter(Boolean))]; return (
-                                <tr key={bc.id}>
+                                <tr key={bc.id} onClick={() => setDetailBc(bc)} style={{cursor:'pointer'}}
+                                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{bc.numero}</td>
                                     <td style={{fontSize:12}}>{bc.date || '—'}</td>
                                     <td style={{fontWeight:600,fontSize:12}}>{parcelles_list.length > 0 ? parcelles_list.join(', ') : (bc.parcelle || '—')}</td>
@@ -53703,6 +53744,99 @@ ${rejetHtml}
                             </div>
                         </div>
                     )}
+
+                    {detailBc && (() => {
+                        const bc = detailBc;
+                        const fmtTs = (v) => {
+                            if (!v) return null;
+                            try {
+                                if (typeof v === 'string') return v.length > 10 ? new Date(v).toLocaleString('fr-FR') : v;
+                                if (v.seconds != null) return new Date(v.seconds * 1000).toLocaleString('fr-FR');
+                                if (v._seconds != null) return new Date(v._seconds * 1000).toLocaleString('fr-FR');
+                                if (v instanceof Date) return v.toLocaleString('fr-FR');
+                            } catch (e) { return null; }
+                            return null;
+                        };
+                        const items = bc.items || [];
+                        const hasParcelle = items.some(i => i.parcelle);
+                        const hasCulture = items.some(i => i.culture);
+                        const scan = bc.scan_url || '';
+                        const isHttpScan = /^https?:\/\//i.test(scan);
+                        const isImgScan = isHttpScan && /\.(png|jpe?g|gif|webp|bmp)(\?|$)/i.test(scan);
+                        const isGsScan = /^gs:\/\//i.test(scan);
+                        const infoRow = (lbl, value) => value == null || value === '' ? null : (
+                            <div style={{display:'flex',gap:8,padding:'3px 0'}}>
+                                <span style={{minWidth:140,color:'var(--gray-400)',fontSize:12}}>{lbl}</span>
+                                <span style={{fontSize:12,fontWeight:600,color:'#1e293b'}}>{value}</span>
+                            </div>
+                        );
+                        return (
+                            <div onClick={() => setDetailBc(null)} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+                                <div onClick={e => e.stopPropagation()} style={{background:'#fff',borderRadius:12,maxWidth:640,width:'100%',maxHeight:'85vh',overflow:'auto',padding:24,boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}>
+                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16,gap:12}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+                                            <h3 style={{margin:0,color:'var(--berry)'}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Bon de Consommation {bc.numero || ''}</h3>
+                                            {bc.status && <span className="status-badge" style={{fontSize:10}}>{bc.status}</span>}
+                                        </div>
+                                        <button onClick={() => setDetailBc(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                    </div>
+
+                                    <div style={{marginBottom:16}}>
+                                        {infoRow('Date', bc.date)}
+                                        {infoRow('Lieu départ', bc.lieu_source?.id || bc.lieu_source_id)}
+                                        {infoRow('Ferme', bc.ferme)}
+                                        {infoRow('Type', bc.type)}
+                                        {infoRow('Créé par', bc.created_by?.name)}
+                                        {infoRow('Créé le', fmtTs(bc.created_at))}
+                                        {infoRow('Autorisé par', bc.authorized_by?.name)}
+                                    </div>
+
+                                    {items.length > 0 && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Articles</h4>
+                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                                <thead><tr style={{background:'#f8f8f8',textAlign:'left'}}>
+                                                    <th style={{padding:'6px 8px'}}>Article</th>
+                                                    <th style={{padding:'6px 8px',textAlign:'right'}}>Quantité</th>
+                                                    <th style={{padding:'6px 8px'}}>Unité</th>
+                                                    {hasParcelle && <th style={{padding:'6px 8px'}}>Parcelle</th>}
+                                                    {hasCulture && <th style={{padding:'6px 8px'}}>Culture</th>}
+                                                </tr></thead>
+                                                <tbody>
+                                                    {items.map((i, idx) => (
+                                                        <tr key={idx} style={{borderBottom:'1px solid #f0f0f0'}}>
+                                                            <td style={{padding:'6px 8px'}}>{i.article || '—'}</td>
+                                                            <td style={{padding:'6px 8px',textAlign:'right'}}>{i.quantite != null ? i.quantite : '—'}</td>
+                                                            <td style={{padding:'6px 8px'}}>{i.unite || '—'}</td>
+                                                            {hasParcelle && <td style={{padding:'6px 8px'}}>{i.parcelle || '—'}</td>}
+                                                            {hasCulture && <td style={{padding:'6px 8px'}}>{i.culture || '—'}</td>}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+
+                                    {scan && (
+                                        <div style={{marginBottom:16}}>
+                                            <h4 style={{fontSize:13,margin:'0 0 8px'}}>Scan du bon</h4>
+                                            {isImgScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer">
+                                                    <img src={scan} alt="Scan du bon" style={{maxWidth:'100%',maxHeight:280,borderRadius:8,border:'1px solid #eee',cursor:'zoom-in'}} />
+                                                </a>
+                                            ) : isHttpScan ? (
+                                                <a href={scan} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)',fontSize:12}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Voir le scan</a>
+                                            ) : isGsScan ? (
+                                                <span style={{fontSize:12,color:'var(--gray-400)'}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Scan disponible (stockage interne)</span>
+                                            ) : (
+                                                <span style={{fontSize:12,color:'var(--gray-400)'}}><i className="fa-solid fa-paperclip" style={{marginRight:6}}></i>Scan disponible</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         }
