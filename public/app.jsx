@@ -47884,6 +47884,33 @@ ${rejetHtml}
             const sortArrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
             const sortThStyle = { cursor: 'pointer', userSelect: 'none' };
 
+            const exportReceptionsExcel = () => {
+                if (!filtered.length) { alert('Aucun bon à exporter'); return; }
+                const aoa = [['N° BR', 'Date', 'Magasin', 'Réf BL', 'Type', 'Article', 'Quantité', 'Unité', 'Statut', 'Créé par']];
+                filtered.forEach(r => {
+                    const base = [
+                        r.numero || '',
+                        r.date || '',
+                        r.lieu_destination?.id || r.ferme || '',
+                        r.ref_bl_fournisseur || '',
+                        typeLabel(r),
+                    ];
+                    const tail = [statusLabel(r.status, r), r.created_by?.name || ''];
+                    const items = r.items || [];
+                    if (!items.length) {
+                        aoa.push([...base, '', '', '', ...tail]);
+                    } else {
+                        items.forEach(i => {
+                            aoa.push([...base, i.article_nom || i.article_ref || '', i.quantite != null ? i.quantite : '', i.unite || '', ...tail]);
+                        });
+                    }
+                });
+                const ws = XLSX.utils.aoa_to_sheet(aoa);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Bons de Réception');
+                XLSX.writeFile(wb, `Bons_Reception_${new Date().toISOString().slice(0, 10)}.xlsx`);
+            };
+
             const typeLabel = (r) => {
                 if (isImport(r)) return 'Import';
                 if (r.reception_libre && r.single_validation) return 'Entrée libre';
@@ -47919,7 +47946,13 @@ ${rejetHtml}
                 <div className="fade-in">
                     {tabBar}
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8,color:'var(--berry)'}}></i>Bons de Réception ({filtered.length})</h3>
+                        <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                            <h3 style={{margin:0}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8,color:'var(--berry)'}}></i>Bons de Réception ({filtered.length})</h3>
+                            <button onClick={exportReceptionsExcel} title="Exporter la liste filtrée en Excel"
+                                style={{background:'#1d6f42',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',cursor:'pointer',fontWeight:600,fontSize:12}}>
+                                <i className="fa-solid fa-file-excel" style={{marginRight:6}}></i>Export Excel
+                            </button>
+                        </div>
                         <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                             <input type="search" placeholder="Rechercher (n°, article, fournisseur, motif…)" value={query} onChange={e => setQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
                             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} title="Date début" style={{padding:'6px 8px',borderRadius:8,border:'1px solid #ddd',fontSize:12}} />
