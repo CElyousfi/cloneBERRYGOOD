@@ -75,6 +75,99 @@
     return m[3] + '/' + m[2] + '/' + m[1];
   }
 
+  // Nettoie un fragment pour un nom de fichier (caractères interdits Excel/FS).
+  function IMP_sanitizeName(s) {
+    return String(s || '')
+      .replace(/[/\\:*?[\]]/g, '_')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'NA';
+  }
+
+  // Génère et télécharge un .xlsx reproduisant la structure du popup.
+  // rows : array recalculé (date, type, numero, lieu_id, quantite, solde_courant)
+  function IMP_exportExcel(opts) {
+    var XLSX = window.XLSX;
+    if (!XLSX) return;
+    var rows = opts.rows || [];
+    var articleNom = opts.articleNom || '';
+    var lieuId = opts.lieuId || '';
+    var unite = opts.unite || '';
+    var dateInventaire = opts.dateInventaire || '';
+    var soldeFinal = opts.soldeFinal || 0;
+    var ecart = opts.ecart;
+
+    var sub = articleNom
+      + (lieuId ? ' · ' + lieuId : '')
+      + (unite ? ' · ' + unite : '')
+      + (dateInventaire ? ' · solde au ' + IMP_fmtDateFr(dateInventaire) : '');
+
+    var aoa = [];
+    aoa.push(['Détail des mouvements']);
+    aoa.push([sub]);
+    aoa.push([]);
+    aoa.push(['Date', 'Type', 'Lieu', 'Quantité', 'Solde courant']);
+
+    rows.forEach(function (r) {
+      var typeLbl = IMP_typeLabel(r.type) + (r.numero ? ' · ' + r.numero : '');
+      aoa.push([
+        IMP_fmtDateFr(r.date),
+        typeLbl,
+        r.lieu_id || '—',
+        r.quantite,        // Number (signé +/−)
+        r.solde_courant,   // Number
+      ]);
+    });
+
+    aoa.push([]);
+    aoa.push([
+      rows.length + ' mouvements',
+      '',
+      '',
+      '',
+      'Solde final : ' + IMP_fmtNum(soldeFinal, 2) + (unite ? ' ' + unite : ''),
+    ]);
+
+    // Ligne « écart inventaire » — même condition que l'affichage du popup
+    // (cf. rendu footer : ecart != null && Math.abs(ecart) >= 0.01).
+    if (ecart != null && Math.abs(ecart) >= 0.01) {
+      aoa.push(['Écart inventaire', '', '', '', IMP_fmtNum(ecart, 2)]);
+    }
+
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [
+      { wch: 12 }, // Date
+      { wch: 32 }, // Type
+      { wch: 8 },  // Lieu
+      { wch: 12 }, // Quantité
+      { wch: 14 }, // Solde courant
+    ];
+    // Fusion titre + sous-titre sur la largeur (5 colonnes).
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+    ];
+    // Format numérique sur les colonnes Quantité (D) et Solde courant (E) des
+    // lignes de données. Les données commencent à la ligne d'index 4 (5e ligne).
+    var firstDataRow = 4;
+    for (var i = 0; i < rows.length; i++) {
+      var rIdx = firstDataRow + i;
+      var qAddr = XLSX.utils.encode_cell({ r: rIdx, c: 3 });
+      var sAddr = XLSX.utils.encode_cell({ r: rIdx, c: 4 });
+      if (ws[qAddr]) { ws[qAddr].t = 'n'; ws[qAddr].z = '#,##0.00'; }
+      if (ws[sAddr]) { ws[sAddr].t = 'n'; ws[sAddr].z = '#,##0.00'; }
+    }
+
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Mouvements');
+
+    var fname = 'Mouvements_' + IMP_sanitizeName(articleNom)
+      + '_' + IMP_sanitizeName(lieuId)
+      + '_' + IMP_fmtDateFr(dateInventaire).replace(/\//g, '-')
+      + '.xlsx';
+    XLSX.writeFile(wb, fname);
+  }
+
   function IMP_Th(props) {
     return React.createElement('th', {
       style: { textAlign: props.align || 'left', fontSize: 10, fontWeight: 600, color: IMP_C.textTertiary, padding: '6px 8px', borderBottom: '1px solid ' + IMP_C.border, textTransform: 'uppercase', letterSpacing: '0.03em', position: 'sticky', top: 0, background: IMP_C.surface2 },
@@ -212,11 +305,36 @@
             React.createElement('div', { style: { fontSize: 15, fontWeight: 800, color: IMP_C.textPrimary } }, 'Détail des mouvements'),
             React.createElement('div', { style: { fontSize: 12, color: IMP_C.textSecondary, marginTop: 2 } }, headerSub)
           ),
-          React.createElement('button', {
-            onClick: onClose,
-            style: { border: 'none', background: 'transparent', fontSize: 22, lineHeight: 1, color: IMP_C.textTertiary, cursor: 'pointer', padding: 4 },
-            'aria-label': 'Fermer',
-          }, '×')
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement('button', {
+              onClick: function () {
+                if (!window.XLSX || rows.length === 0) return;
+                IMP_exportExcel({
+                  rows: rows,
+                  articleNom: articleNom,
+                  lieuId: lieuId,
+                  unite: resolvedUnite,
+                  dateInventaire: dateInventaire,
+                  soldeFinal: soldeFinal,
+                  ecart: ecart,
+                });
+              },
+              disabled: rows.length === 0,
+              style: {
+                border: '1px solid ' + IMP_C.green,
+                background: rows.length === 0 ? IMP_C.surface2 : IMP_C.green,
+                color: rows.length === 0 ? IMP_C.textTertiary : '#fff',
+                fontSize: 12, fontWeight: 700, borderRadius: 8,
+                padding: '7px 12px', cursor: rows.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: rows.length === 0 ? 0.6 : 1, whiteSpace: 'nowrap',
+              },
+            }, 'Exporter Excel'),
+            React.createElement('button', {
+              onClick: onClose,
+              style: { border: 'none', background: 'transparent', fontSize: 22, lineHeight: 1, color: IMP_C.textTertiary, cursor: 'pointer', padding: 4 },
+              'aria-label': 'Fermer',
+            }, '×')
+          )
         ),
         body,
         footer
