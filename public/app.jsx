@@ -576,6 +576,7 @@
             { id: 'achats_vente_plastique', label: 'Vente Plastique', icon: 'fa-recycle' },
             { id: 'mag_stock_intrants', label: 'Soldes Stock', icon: 'fa-warehouse' },
             { id: 'mag_inventaire', label: 'Inventaire', icon: 'fa-clipboard-list' },
+            { id: 'mag_fiche_stock', label: 'Fiche de Stock', icon: 'fa-file-invoice' },
             { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
             { id: 'mag_reception', label: 'Bons de Réception', icon: 'fa-truck-ramp-box' },
             { id: 'dqr_daily', label: 'DQR Journalier', icon: 'fa-clipboard-list' },
