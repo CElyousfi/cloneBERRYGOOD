@@ -94,6 +94,30 @@ valider magasinier** (mon auto-match collapse les familles KSC*/RHIZO*/NITRATE* 
 La désignation est sûre ; seule la **cible stock** demande l'œil du magasinier — **une seule fois par
 code**, ensuite définitif.
 
+## 4bis. Statut `hors_campagne` (articles de campagne antérieure)
+Certains codes TIMAC ne sont facturés **que sur des campagnes passées** (dernière facture < cutoff
+campagne courante 2025-07-01) → normal qu'ils soient absents du stock 2025-2026.
+**Règle : `dernière facture < cutoff campagne → statut hors_campagne`.** Le mapping code→stock est
+**conservé** (pas supprimé), juste marqué **inactif cette campagne** ; **réactivable** automatiquement
+si l'article est refacturé en 2026-2027.
+
+8 codes `hors_campagne` (dernière facture avant 07/2025) : `0033 CO-ACTYL H` (20/06/2025) ·
+`0072 SEACTIV ELITE` (27/05/2025) · `0218 EUROFERTIL` (10/2024) · `0316 MAXIFRUIT 5L` (02/2024) ·
+`0422 MAXIFRUIT 10L` (03/2025) · `0327 TIMASOL PHOSCAL` (03/2025) · `0353 FERTIACTYL STARTER`
+(02/2025) · `0482 EXCELIS N` (06/2024).
+
+Cibles confirmées (facturées en campagne courante, présentes en stock sous nom court) :
+`0046 FERTIACTYL GZ → GZ` · `0260 UREE 46 → URÉE 46%`.
+
+## 4ter. ⚠️ RÈGLE ANTI-RENOMMAGE (CRITIQUE) — clé stock immuable, correction = ALIAS
+Les noms d'articles stock sont les **CLÉS** des `stock_balances` / `stock_movements` / `articles_catalog`.
+Certaines portent une **faute** (`NITRETE DE POTASSE`, `ACIDE SULFRIQUE`, `RHIZO BOR`). **NE JAMAIS les
+renommer** : impact mesuré 2026-06-16 → renommer ces 3 clés toucherait **1 861 mouvements + 13 soldes +
+3 docs catalogue**, cassant les liens.
+**Règle : `article_stock` = la clé EXISTANTE (avec sa faute) ; le nom correct va dans un champ `alias`
+(affichage uniquement).** Ex. mapping `0021 → article_stock:"NITRETE DE POTASSE", alias:"NITRATE DE
+POTASSE"`. Pareil pour `ACIDE SULFRIQUE`/(SULFURIQUE) et `RHIZO BOR`/(BORE).
+
 ## 5. Pour les fournisseurs SANS code (nom/fuzzy)
 Normalisation étendue (au-delà du strip d'unité) : retirer parenthèses, tailles/formulations
 (`\d+ ?(KG|L|SC|WG)`), romain→arabe, typos (`NITRETE`→NITRATE, `SULFRIQUE`→SULFURIQUE, `BOR`→BORE) ;
