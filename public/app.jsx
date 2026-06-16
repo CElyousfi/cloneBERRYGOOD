@@ -48686,6 +48686,27 @@ ${rejetHtml}
                                             </tr>
                                         ))}
                                     </tbody>
+                                    {visibleEntries.length > 0 && (() => {
+                                        const net = visibleEntries.reduce((s, e) => s + (Number(e.quantite) || 0), 0);
+                                        const totIn = visibleEntries.reduce((s, e) => { const q = Number(e.quantite) || 0; return q > 0 ? s + q : s; }, 0);
+                                        const totOut = visibleEntries.reduce((s, e) => { const q = Number(e.quantite) || 0; return q < 0 ? s + (-q) : s; }, 0);
+                                        const last = visibleEntries[visibleEntries.length - 1];
+                                        const u = last.unite;
+                                        return (
+                                            <tfoot>
+                                                <tr style={{background:'rgba(139,34,82,0.06)',fontWeight:700,borderTop:'2px solid rgba(139,34,82,0.25)'}}>
+                                                    <td colSpan={4} style={{fontSize:12,fontWeight:700}}>TOTAL ({visibleEntries.length} mouvement{visibleEntries.length > 1 ? 's' : ''})</td>
+                                                    <td></td>
+                                                    <td style={{textAlign:'right'}}>
+                                                        <div style={{fontWeight:700,color: net >= 0 ? 'var(--green,#27ae60)' : 'var(--red)'}}>{net >= 0 ? '+' : ''}{fmt(net)} {u}</div>
+                                                        <div style={{fontSize:10,fontWeight:400,color:'#999'}}>Entrées +{fmt(totIn)} · Sorties −{fmt(totOut)}</div>
+                                                    </td>
+                                                    <td style={{textAlign:'right',fontWeight:700}}>{fmt(last.cumul_apres)} {u}</td>
+                                                    <td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{fmt(last.cumul_global_apres)} {u}</td>
+                                                </tr>
+                                            </tfoot>
+                                        );
+                                    })()}
                                 </table></div>
                             )}
                         </React.Fragment>
