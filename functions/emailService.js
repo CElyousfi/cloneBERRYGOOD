@@ -492,6 +492,293 @@ async function parseLiquidationSummaryPdf(pdfBuffer) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// TIMAC AGRO MAROC — supplier invoices (native-text PDF, no OCR)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse a French-formatted number from a TIMAC invoice.
+ * Examples: "27.445,00" -> 27445.00 ; "800,000" -> 800.0 ;
+ *           "1,750" -> 1.75 ; "2 708,331" -> 2708.331 ; "8 400,00" -> 8400.0
+ * Strategy: drop spaces (thousand sep), drop dots (thousand sep), comma -> decimal point.
+ * @param {string} s
+ * @returns {number}
+ */
+function parseTimacNumber(s) {
+  if (s == null) return NaN;
+  const cleaned = String(s).trim().replace(/\s/g, "").replace(/\./g, "").replace(/,/g, ".");
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+// A French number token as it appears in the body: optional thousand groups
+// separated by space or dot, decimal part separated by comma.
+// e.g. "800,000", "2 708,331", "27.445,00", "152,291", "1 950,00"
+//
+// Disambiguation rule (critical): the column separator is ALSO a space, while
+// "5 100,00" is a single amount. To avoid splitting "5 100,00" into "5" and
+// "100,00", a number that uses a SPACE thousand-separator MUST end with a
+// decimal part (",dd"). Plain integers / decimals without thousand-grouping
+// stay valid too (e.g. "0,500", "34,000").
+const TIMAC_NUM =
+  "(?:\\d{1,3}(?: \\d{3})+,\\d+" + // grouped-by-space amounts must have decimals: "5 100,00", "2 708,331"
+  "|\\d{1,3}(?:\\.\\d{3})+(?:,\\d+)?" + // dot-grouped thousands: "27.445,00"
+  "|\\d+(?:,\\d+)?)"; // plain: "800,000", "34,000", "0,500", "1950"
+// Units (matched case-insensitively via the `i` flag below, so "kG", "Kg",
+// "KG" all hit). Order longest-first so "Litre"/"Tonne" win over "L".
+const TIMAC_UNIT = "TONNE|LITRE|UNITE|UNIT[ÉE]|KG|Tonne|Litre|Unit[ée]|TON|KG|L|U";
+
+// Tail of an article line. After the unit there are NUMBER columns:
+//   [remise] prix_unitaire montant   (remise column usually empty in TIMAC).
+// Because an optional remise group fights with the greedy amount parsing of
+// "5 100,00", we instead capture the unit + the whole trailing number region,
+// then split that region into number tokens deterministically (left to right,
+// each token grabbing maximal thousand-grouping). The last token = montant,
+// the one before = prix_unitaire, an optional earlier one = remise.
+const TIMAC_NUM_RE = new RegExp(TIMAC_NUM, "g");
+const TIMAC_LINE_TAIL = new RegExp(
+  "^(?<designation>.*?)\\s+" +
+  "(?<quantite>" + TIMAC_NUM + ")\\s*" +
+  "(?<unite>" + TIMAC_UNIT + ")\\s+" +
+  "(?<numbers>(?:" + TIMAC_NUM + ")(?:\\s+(?:" + TIMAC_NUM + ")){1,2})\\s*$",
+  "i"
+);
+
+/**
+ * Does the accumulated text form a complete article line
+ * (i.e. ends with qty + unit + [rem] + PU + montant)?
+ * Returns a normalized object or null.
+ * @param {string} body  text after the 4-digit code
+ * @returns {{designation:string,quantite:string,unite:string,remise:?string,prix_unitaire:string,montant:string}|null}
+ */
+function matchTimacLineTail(body) {
+  const m = TIMAC_LINE_TAIL.exec(body);
+  if (!m || !m.groups) return null;
+  const nums = m.groups.numbers.match(TIMAC_NUM_RE) || [];
+  if (nums.length < 2) return null;
+  const montant = nums[nums.length - 1];
+  const prix_unitaire = nums[nums.length - 2];
+  const remise = nums.length >= 3 ? nums[nums.length - 3] : null;
+  return {
+    designation: m.groups.designation,
+    quantite: m.groups.quantite,
+    unite: m.groups.unite,
+    remise,
+    prix_unitaire,
+    montant,
+  };
+}
+
+/**
+ * Parse the plain text extracted from a TIMAC invoice PDF.
+ * Pure function (string -> object), testable without any PDF.
+ * @param {string} text
+ * @returns {object}
+ */
+function parseTimacInvoiceText(text) {
+  const result = {
+    fournisseur: "TIMAC AGRO MAROC",
+    code_client: null,
+    num_facture: null,
+    date_facture: null,
+    num_bcde: null,
+    date_bcde: null,
+    num_bl: null,
+    date_bl: null,
+    bls: [],
+    ice: null,
+    date_echeance: null,
+    net_a_payer: null,
+    total_ht: null,
+    total_tva: null,
+    lignes: [],
+    reconciliation: { somme_lignes: 0, total_ht: null, ok: false, ecart: null },
+  };
+  if (!text || typeof text !== "string") return result;
+
+  // Strip the metadata footer (#subj#...) if present.
+  const body = text.split("#subj#")[0];
+  const rawLines = body.split(/\r?\n/);
+  const lines = rawLines.map((l) => l.replace(/\t/g, " ").replace(/\s+$/g, ""));
+
+  // --- Header: "<code_client> <date_fac> <num_facture> <ATC label...>" ---
+  for (const l of lines) {
+    const m = l.match(/^\s*(\d{4,6})\s+(\d{2}\/\d{2}\/\d{4})\s+(\d{4,8})\b/);
+    if (m) {
+      result.code_client = m[1];
+      result.date_facture = m[2];
+      result.num_facture = m[3];
+      break;
+    }
+  }
+
+  // --- ICE ---
+  const iceM = body.match(/N°\s*ICE\s*:?\s*(\d{6,})/i);
+  if (iceM) result.ice = iceM[1];
+
+  // --- Date échéance (value may be on the same or a following line) ---
+  for (let i = 0; i < lines.length; i++) {
+    const inline = lines[i].match(/Date\s+[ée]ch[ée]ance\s*:?\s*(\d{2}\/\d{2}\/\d{4})/i);
+    if (inline) { result.date_echeance = inline[1]; break; }
+    if (/Date\s+[ée]ch[ée]ance\s*:?\s*$/i.test(lines[i])) {
+      for (let j = i + 1; j < Math.min(i + 4, lines.length); j++) {
+        const dm = lines[j].match(/^(\d{2}\/\d{2}\/\d{4})\s*$/);
+        if (dm) { result.date_echeance = dm[1]; break; }
+      }
+      break;
+    }
+  }
+
+  // --- B.Cde N° ---
+  const bcdeM = body.match(/B\.?\s*Cde\s*N°\s*:?\s*(\d+)/i);
+  if (bcdeM) result.num_bcde = bcdeM[1];
+
+  // --- Two "Du :" dates in order: 1st = date B.Cde, 2nd = date BL ---
+  const duDates = [];
+  for (const l of lines) {
+    const dm = l.match(/^\s*Du\s*:?\s*(\d{2}\/\d{2}\/\d{4})\s*$/i);
+    if (dm) duDates.push(dm[1]);
+  }
+  if (duDates[0]) result.date_bcde = duDates[0];
+  if (duDates[1]) result.date_bl = duDates[1];
+
+  // --- BL number(s): may be inline after "BL N° :" or on its own line ---
+  // Collect BL-shaped tokens (e.g. "106036-1", "132253-7") in the BL region.
+  const blIdx = lines.findIndex((l) => /^\s*BL\s*N°/i.test(l));
+  const blTokens = [];
+  if (blIdx >= 0) {
+    // inline after the label
+    const inlineBl = lines[blIdx].match(/BL\s*N°\s*:?\s*(.+)$/i);
+    if (inlineBl && inlineBl[1].trim()) {
+      const toks = inlineBl[1].match(/\d{3,7}-\d+/g);
+      if (toks) blTokens.push(...toks);
+    }
+    // standalone BL tokens in the following few lines (before first article).
+    // A "BL line" is made up exclusively of BL-shaped tokens (one or several).
+    for (let j = blIdx + 1; j < Math.min(blIdx + 8, lines.length); j++) {
+      if (/^\d{4}\s/.test(lines[j])) break;
+      const stripped = lines[j].replace(/\d{3,7}-\d+/g, "").replace(/[\s,]/g, "");
+      if (stripped === "") {
+        const toks = lines[j].match(/\d{3,7}-\d+/g);
+        if (toks) blTokens.push(...toks);
+      }
+    }
+  }
+  result.bls = blTokens;
+  if (blTokens.length) result.num_bl = blTokens[0];
+
+  // --- Articles: reconstitute logical lines, then parse tail ---
+  // The articles section starts at the "Article Désignation ..." header (or the
+  // first 4-digit line) and ends at the "Régime TVA" / "Mt TVA" block.
+  const startIdx = lines.findIndex((l) => /Article\s+D[ée]signation/i.test(l));
+  const lignes = [];
+  let acc = null; // accumulator { code, body }
+
+  const flush = () => {
+    if (!acc) return;
+    const g = matchTimacLineTail(acc.body);
+    if (g) {
+      lignes.push({
+        code_article: acc.code,
+        designation: g.designation.replace(/\s+/g, " ").trim(),
+        quantite: parseTimacNumber(g.quantite),
+        unite: g.unite,
+        remise: g.remise != null ? parseTimacNumber(g.remise) : 0,
+        prix_unitaire: parseTimacNumber(g.prix_unitaire),
+        montant: parseTimacNumber(g.montant),
+      });
+    }
+    acc = null;
+  };
+
+  const isSectionEnd = (l) =>
+    /^R[ée]gime\s+TVA/i.test(l) ||
+    /^Mt\s+TVA\b/i.test(l) ||
+    /Net\s+à\s+Payer/i.test(l);
+
+  const scanFrom = startIdx >= 0 ? startIdx + 1 : 0;
+  for (let i = scanFrom; i < lines.length; i++) {
+    const l = lines[i];
+    if (isSectionEnd(l)) { flush(); break; }
+    const codeM = l.match(/^(\d{4})\s+(.*)$/);
+    if (codeM) {
+      // New article line begins -> flush the previous accumulation.
+      flush();
+      acc = { code: codeM[1], body: codeM[2] };
+      // If this single line already completes, flush immediately.
+      if (matchTimacLineTail(acc.body)) flush();
+    } else if (acc) {
+      // Continuation of a wrapped designation / line.
+      acc.body = (acc.body + " " + l.trim()).replace(/\s+/g, " ").trim();
+      if (matchTimacLineTail(acc.body)) flush();
+    }
+  }
+  flush();
+  result.lignes = lignes;
+
+  // --- TVA block: total_ht = sum of 1st number of each "Cx" line ---
+  // e.g. "8.500,00 0.00% 0.00 C1 8.500,00"  /  "31.627,03 20.00% 6,325.41 C2 37.952,44"
+  let totalHt = 0;
+  let totalTva = 0;
+  let sawCx = false;
+  for (const l of lines) {
+    const cm = l.match(
+      new RegExp("^\\s*(" + TIMAC_NUM + ")\\s+(\\d+[.,]\\d+)%\\s+\\S+.*\\bC\\d\\b")
+    );
+    if (cm) {
+      sawCx = true;
+      totalHt += parseTimacNumber(cm[1]) || 0;
+      const rate = parseFloat(cm[2].replace(",", "."));
+      if (rate > 0) {
+        totalTva += (parseTimacNumber(cm[1]) || 0) * (rate / 100);
+      }
+    }
+  }
+  if (sawCx) {
+    result.total_ht = Math.round(totalHt * 100) / 100;
+    result.total_tva = Math.round(totalTva * 100) / 100;
+  }
+
+  // --- Net à Payer (TTC) ---
+  // Find the "Net à Payer :" line and take the number before it on that line.
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const nm = lines[i].match(new RegExp("^\\s*(" + TIMAC_NUM + ")\\s+Net\\s*à\\s*Payer\\s*:", "i"));
+    if (nm) { result.net_a_payer = parseTimacNumber(nm[1]); break; }
+  }
+
+  // --- Reconciliation: Σ(lignes.montant) vs total_ht ---
+  const sommeLignes = lignes.reduce((s, x) => s + (x.montant || 0), 0);
+  const sommeRounded = Math.round(sommeLignes * 100) / 100;
+  if (result.total_ht != null) {
+    const ecart = Math.round((sommeRounded - result.total_ht) * 100) / 100;
+    result.reconciliation = {
+      somme_lignes: sommeRounded,
+      total_ht: result.total_ht,
+      ok: Math.abs(sommeRounded - result.total_ht) < 0.01,
+      ecart,
+    };
+  } else {
+    result.reconciliation = {
+      somme_lignes: sommeRounded,
+      total_ht: null,
+      ok: false,
+      ecart: null,
+    };
+  }
+
+  return result;
+}
+
+/**
+ * Parse a TIMAC invoice PDF buffer (native text, no OCR).
+ * @param {Buffer} buffer
+ * @returns {Promise<object>}
+ */
+async function parseTimacInvoicePdf(buffer) {
+  const text = (await new PDFParse({ data: buffer }).getText()).text;
+  return parseTimacInvoiceText(text);
+}
+
 /**
  * Parse a Driscoll's Grower Settlement Statement PDF to extract commission data.
  * The PDF contains per-kilo values in EUR: Net Sales, Commission, Rebate, Return to Grower.
@@ -4492,4 +4779,6 @@ async function notifyNewAgqAnalyses(createdAnalyses) {
 // Exported for manual import scripts (e.g. import-receipt-blue.js, diag)
 module.exports.parseLiquidationXlsx = parseLiquidationXlsx;
 module.exports.parseLiquidationSummaryPdf = parseLiquidationSummaryPdf;
+module.exports.parseTimacInvoiceText = parseTimacInvoiceText;
+module.exports.parseTimacInvoicePdf = parseTimacInvoicePdf;
 module.exports.notifyNewAgqAnalyses = notifyNewAgqAnalyses;
