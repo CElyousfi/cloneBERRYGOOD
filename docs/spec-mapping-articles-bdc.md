@@ -1,86 +1,114 @@
-# Spec — Mapping articles (canevas/stock ↔ BEE ONE) pour rapprochement BDC
+# Spec — Mapping articles (stock ↔ fournisseurs) pour rapprochement BDC / factures
 
-> **Statut : QUALIFICATION (non codé, 2026-06-16).** Table de correspondance pour rapprocher les
-> réceptions (canevas/stock) aux bons de commande (BEE ONE `Bon_Commande` + Smart Berry
-> `purchase_orders`). Même pattern que le **mapping parcelles de consommation** (déjà livré).
-> NE PAS construire maintenant — la table se validera avec le magasinier. GATED.
+> **Statut : QUALIFICATION (2026-06-16, MAJ avec dictionnaire codes TIMAC).** Table de correspondance
+> article stock ↔ articles fournisseurs, pour rapprocher réceptions / BDC / **factures**. Même pattern
+> `a_mapper` que le **mapping parcelles de consommation** (déjà livré). La table se valide une fois avec
+> le magasinier. NE PAS construire la collection maintenant — c'est la spec. GATED.
 
-## 1. Pourquoi
-Le rapprochement Réceptions ↔ BDC bute sur le **nom d'article** : chaque système nomme les articles
-différemment. Sans correspondance, le matching automatique (même fuzzy) mélange vrais manquants et
-écarts de nom. Exemples réels rencontrés :
-- **Typos** : `NITRETE DE POTASSE` ≠ « Nitrate de Potasse » · `ACIDE SULFRIQUE` ≠ « Acide Sulfirique »
-- **Suffixes / formulations** : `MAP (GK)` ≠ « MAP » · `SIGNUM WG` · `EXIREL TM` · `RADIANT 120 SC`
-- **Romain vs chiffre** : `KSC 3` ≠ « KSC III »
-- **Abréviations** : `RHIZO BOR` ≠ « Rhizo Bore »
-- **Court vs commercial** : `EXTREME` ≠ « Fertiactyl Green Extreme » · `gz` ≠ « Fertiactyl GZ » ·
-  `ECOVIGOR` ≠ « Ecovigor AA » · `DEPTIL PA5` ≠ « Deptil »
-- **Noms fournisseurs en arabe** (`صطوف المودن`), variantes (`TIMAC` / `TIMAC AGRO MAROC`).
+## 1. Le problème (rappel) et la solution
+Le rapprochement Réceptions ↔ BDC ↔ Factures bute sur le **nom d'article** : chaque système nomme
+différemment (typos `NITRETE`≠Nitrate, suffixes `MAP (GK)`≠MAP, romain `KSC 3`≠`KSC III`, court vs
+commercial `EXTREME`≠`Fertiactyl Green Extreme`…). Le fuzzy de noms laisse trop d'ambiguïté.
 
-Mesure : matching naïf → 87 « sans BDC » ; normalisé+fuzzy → 71 ; mais **encore des faux positifs
-prouvés** (EXTREME, GZ commandés sous nom Fertiactyl). → **un mapping manuel est nécessaire.**
+**🎯 La facture TIMAC porte un `code_article` STABLE (0119, 0116…)** — clé bien plus fiable que le nom.
+**On mappe le code UNE fois → vaut pour toutes les factures futures** (le code ne change jamais).
 
-## 2. Modèle de données proposé (Firestore)
-Collection **`mapping_articles_bdc`** (ou réutiliser/étendre la logique de `parcelles_consommation`).
-Un doc par **article de référence stock/canevas** :
+## 2. ⚠️ PÉRIMÈTRE — mapping HYBRIDE (distinction à retenir)
+| Fournisseur | Clé de mapping | Fiabilité |
+|---|---|---|
+| **TIMAC** (le gros volume) | **`code_article` TIMAC** (0119…) — 48 codes extraits des 134 factures | **stable, validé 1 fois** |
+| **HAROUACH, NALSYA, CAS, + ~21 autres** | **nom canonicalisé / fuzzy** (pas de code stable disponible) | à re-vérifier (moins fiable) |
+
+→ Le code TIMAC couvre **uniquement** les articles TIMAC. Les autres fournisseurs restent sur le
+matching de nom (normalisation étendue + fuzzy, cf. §5). Le mapping final est donc **hybride**.
+
+## 3. Modèle de données (Firestore `mapping_articles`)
+Un doc par **article fournisseur** (clé = code si dispo, sinon nom normalisé) :
 ```
 {
-  article_stock: "MAP (GK)",                 // libellé canevas/stock (clé d'affichage)
-  article_canon: "MAP",                       // canon() pour matching
-  aliases_beeone: ["MAP"],                    // Produit.Designation BEE ONE correspondants
-  aliases_smartberry: ["MAP"],                // items.article purchase_orders
-  fournisseurs: ["TIMAC", "HAROUACH"],        // fournisseurs normalisés observés
-  statut: "mappe" | "a_mapper" | "ignore",    // a_mapper = en attente validation magasinier
-  source_suggestion: "fuzzy" | "exact" | "manuel",
+  fournisseur: "TIMAC",
+  code_fournisseur: "0119" | null,       // code stable (TIMAC) ; null pour les autres
+  designation_fournisseur: "HUMOCAL",     // libellé sur la facture / le BDC
+  article_stock: "HUMOCAL",               // article stock canonicalisé (cible)
+  statut: "mappe" | "a_valider" | "a_mapper",
+  source: "code_timac" | "nom_fuzzy" | "manuel",
   updated_at, updated_by
 }
 ```
-- **`statut: 'a_mapper'`** = flag pour les couples non résolus automatiquement (comme `parcelles_a_mapper`).
-- Le rapprochement lit ce mapping : un article réceptionné est « commandé » si son `article_canon`/
-  `aliases` matche un BDC (BEE ONE OU Smart Berry) pour un fournisseur cohérent.
+- **`code_timac`** : matching exact par `code_fournisseur` → 0 ambiguïté une fois validé.
+- **`a_mapper`** : non résolu (article facturé absent du stock, ou cible inconnue) → écran magasinier.
 
-## 3. Normalisation (à coder dans le helper de matching)
-Règle `canon()` étendue (au-delà du strip d'unité actuel) :
-1. Retirer **toute parenthèse** finale (`(GK)`, `(L)`, `(engrais…)`).
-2. Retirer tokens taille/formulation : `\d+ ?(KG|L|ML|G|SC|WG|EC|SL)`, `EN \d+L`.
-3. Romain → arabe (`III`→3, `II`→2, `IV`→4).
-4. Typos fréquents : `NITRETE`→NITRATE, `SULFRIQUE|SULFIRIQUE`→SULFURIQUE, `BOR`→BORE.
-5. Collapse espaces, MAJUSCULE, sans accents.
-Puis **fuzzy de secours** (Jaccard tokens ≥ 0.5, scopé par fournisseur) → propose un mapping `a_mapper`.
+## 4. Dictionnaire `code TIMAC → désignation → article stock` (48 codes, pré-rempli)
+`désignation` = **fiable** (extraite des 134 factures). `article stock suggéré` = **proposition à
+valider magasinier** (mon auto-match collapse les familles KSC*/RHIZO*/NITRATE* → `a_valider`).
 
-## 4. Liste des couples à mapper (pré-remplie, à valider magasinier)
-Sur les 111 couples (fournisseur, article) du canevas : **35 exacts** + **5 fuzzy confirmés** +
-**~71 à trancher**.
+| code | désignation TIMAC | article stock (suggéré) | statut |
+|---|---|---|---|
+| 0025 | SOLUPOTASSE x 25Kg | SOLUPOTASSE | mappe |
+| 0035 | ECOVIGOR AA 10L | ECOVIGOR | mappe |
+| 0039 | EUROFIT MAX 5L | EUROFIT MAX | mappe |
+| 0057 | SEACTIV KALEO 469 | KALEO L | mappe |
+| 0061 | SEACTIV VITAL 954 | VITAL | mappe |
+| 0063 | SEACTIV ALPHA | ALPHA | mappe |
+| 0081 | SEACTIV MAGICAL | MAGICAL | mappe |
+| 0084 | SEACTIV OPAL Mn Zn | OPAL | mappe |
+| 0103 | SEACTIV GOLD BMo | GOLD BMO | mappe |
+| 0116 | BIOACTYL SUPERBE 8.10.22 50KG | BIOACTYL SUPERBE | mappe |
+| 0119 | HUMOCAL | HUMOCAL | mappe |
+| 0133 | RHIZO AMINE 20 KG | RHIZO AMINE | mappe |
+| 0139 / 0140 | RHIZO HUMUS 20/25 KG | RHIZO HUMUS | mappe |
+| 0167 | DEPTIL PA5 10 L | DEPTIL PA5 | mappe |
+| 0239 | SEACTIV ORIS PZn | ORIS | mappe |
+| 0340 | SULFATE DE MAGNESIE 16% X 25 KG | SULFATE DE MAGNESIE | mappe |
+| 0344 | ACIDE PHOSPHORIQUE 32Kg | ACIDE PHOSPHORIQUE | mappe |
+| 0352 | RHIZO Mn Zn Seau 10 KG | RHIZO MN ZN | mappe |
+| 0454 | AMMONITRATE 33% x 50 Kg | AMMONITRATE | mappe |
+| 0465 | Acide Nitrique 60% x 33 Kg | ACIDE NITRIQUE | mappe |
+| 0020 | NITRATE DE CHAUX 25KG | NITRATE DE CALCIUM ? | a_valider |
+| 0021 / 0427 | NITRATE DE POTASSE 25KG | NITRETE DE POTASSE ? | a_valider |
+| 0044 | FERTIACTYL GREEN EXTREME 5 KG | EXTREME ? | a_valider |
+| 0046 | FERTIACTYL GZ 10L | GZ ? | a_valider |
+| 0085 | KSC MIX 10 KG | KSC MIX ? | a_valider |
+| 0088 | KSC PHYTACTYL I 25KG | KSC 1 ? | a_valider |
+| 0091 | KSC PHYTACTYL II 25KG | KSC 2 ? | a_valider |
+| 0094 | KSC PHYTACTYL III 25KG | KSC 3 ? | a_valider |
+| 0097 | KSC PHYTACTYL V 25KG | KSC (V) ? | a_valider |
+| 0100 | KSC SULFACID 20L | SULFACIDE ? | a_valider |
+| 0101 | KSC VII PERLA 25 KG | KSC 7 ? | a_valider |
+| 0134 | RHIZO BORE 10 KG | RHIZO BOR ? | a_valider |
+| 0137 | RHIZO CAL 25KG | RHIZO CAL ? | a_valider |
+| 0265 | SULFATE D'AMMONIAQUE SACS 50KG | SULFATE D'AMMONIAQUE | a_valider |
+| 0340… | (voir mappe) | | |
+| 0399 / 0407 | MAP TECHNIQUE 25KG | MAP (GK) ? | a_valider |
+| 0535 | ACIDE SULFURIQUE 35 Kg | ACIDE SULFRIQUE ? | a_valider |
+| 0033 | CO-ACTYL H 10KG | ? (absent stock) | a_mapper |
+| 0072 | SEACTIV ELITE 10L | ? | a_mapper |
+| 0218 | EUROFERTIL 0-12-24 X50 KG | ? | a_mapper |
+| 0260 | UREE 46 X 50KG | URÉE 46% ? | a_mapper |
+| 0316 / 0422 | MAXIFRUIT 5L/10L | ? | a_mapper |
+| 0327 | TIMASOL PHOSCAL 10-50-00 25KG | ? | a_mapper |
+| 0353 | FERTIACTYL STARTER 10L | ? | a_mapper |
+| 0482 | EXCELIS N 25 Kg | ? | a_mapper |
 
-### 4.1 Fuzzy confirmés (mapping suggéré fort)
-| Canevas | → BEE ONE/Smart Berry | Confiance |
-|---|---|---|
-| ECOVIGOR (L) | Ecovigor AA | 100 % |
-| DEPTIL PA5 (L) | Deptil | 50 % |
-| CODACIDE | Codacide Oil | 50 % |
-| SIGNUM | Signum WG | 100 % |
-| EXIREL | Exirel TM | 100 % |
+**Bilan auto (à valider) : ~20 `mappe` clairs, ~16 `a_valider` (familles/typos), ~10 `a_mapper`.**
+La désignation est sûre ; seule la **cible stock** demande l'œil du magasinier — **une seule fois par
+code**, ensuite définitif.
 
-### 4.2 Faux positifs identifiés (à mapper, NE sont PAS des manquants)
-`EXTREME` → Fertiactyl Green Extreme · `gz`/`GZ` → Fertiactyl GZ · `NITRETE DE POTASSE` → Nitrate de
-Potasse · `MAP (GK)` → MAP · `KSC 3` → KSC III · `RHIZO BOR` → Rhizo Bore.
+## 5. Pour les fournisseurs SANS code (nom/fuzzy)
+Normalisation étendue (au-delà du strip d'unité) : retirer parenthèses, tailles/formulations
+(`\d+ ?(KG|L|SC|WG)`), romain→arabe, typos (`NITRETE`→NITRATE, `SULFRIQUE`→SULFURIQUE, `BOR`→BORE) ;
+puis fuzzy Jaccard tokens ≥ 0.5 scopé fournisseur → propose un mapping `a_mapper`.
 
-### 4.3 Vrais manquants confirmés (deep-dive, AUCUN BDC ni facture — à garder hors mapping, ce sont
-des anomalies réelles, pas des écarts de nom)
-`HUMOCAL` (TIMAC 30 000) · `BIOACTYL SUPERBE` (TIMAC, inexistant BEE ONE) · `SEACTIV GENAKTIS`
-(TIMAC) · `OPAL` (TIMAC) · `MAGICAL` (TIMAC).
+## 6. Phases (GATED)
+- **P0** : cette spec + dictionnaire codes.
+- **P1** : seed `mapping_articles` (codes TIMAC `mappe` + `a_valider`/`a_mapper`) + écran validation
+  magasinier (pattern mapping parcelles).
+- **P2** : rapprochement fiable lisant le mapping (code TIMAC prioritaire, nom/fuzzy sinon) →
+  🟢/🔴/🟠 propres + écarts qté/prix + alimentation PMP au prix facturé.
 
-> La liste complète des ~71 couples résiduels est régénérable à la demande via le script de
-> rapprochement (read-only) — non figée ici car elle évoluera avec le mapping.
-
-## 5. Phases (à l'implémentation, GATED)
-- **P0** : cette spec.
-- **P1** : helper de normalisation étendu + fuzzy (pur, testé). Réutilisable par le rapprochement.
-- **P2** : seed `mapping_articles_bdc` (exacts + fuzzy confirmés), reste en `a_mapper`. Écran de
-  validation magasinier (comme mapping parcelles).
-- **P3** : rapprochement fiable qui lit le mapping → 🟢/🔴/🟠 propres + écarts qté/prix.
-
-## 6. Liens
-- Pattern : `project_mapping_parcelles_conso` (mapping parcelles déjà livré, même logique `a_mapper`).
-- Source BDC : `docs/spec-workflow-achats.md` (Bon_Commande BEE ONE + purchase_orders Smart Berry).
-- Anti-double-comptage des prix : `docs/spec-valorisation-pmp.md` §9.3.
+## 7. Liens
+- Parser factures TIMAC (source des codes) : `functions/emailService.js` `parseTimacInvoiceText` +
+  `scripts/validate-timac-parser.js` (134 factures réconciliées).
+- Pipeline factures complet : `docs/spec-workflow-achats.md` (à compléter — étape 4).
+- PMP au prix facturé (slot `facture` priorité max) : `docs/spec-valorisation-pmp.md` §8.
+- Anti-double-comptage : `docs/spec-valorisation-pmp.md` §9.3.
