@@ -67,6 +67,25 @@ Une fois les factures en base :
    code/mapping) — **JAMAIS une quantité ajoutée**.
 - Aperçu before/after de la valorisation (catalogue/FILL-ONLY → prix facturé) avant écriture. GATED.
 
+### 5bis. Factures TIMAC manquantes du corpus (4 sous-BL « factures à retrouver »)
+Rapprochement réceptions ↔ 134 factures (2026-06-16) : **4 sous-BL reçus (grand livre) sans facture
+dans le lot de 134**. Tous **DANS la plage** du corpus (juil. & nov. 2025, corpus → 05/03/2026) →
+**trou de corpus, PAS une anomalie**. Preuve : le sous-BL frère **125481-4 EST facturé** (facture
+**139213**, 09/07/2025) → **livraison fractionnée partiellement facturée** ; articles 100 % standard
+TIMAC, qtés significatives, prix grand livre cohérents avec les prix facturés.
+
+| BL | Date | Montant est. (GL) | Articles | Statut |
+|----|------|--------------|----------|--------|
+| 125481-5 | ~09/07/25 | ~36 441 DH | acides / SOLUPOTASSE / URÉE | facture à retrouver |
+| 125670-6 | 16/07/25 | ~23 164 DH | EXTREME / KSC MIX / RHIZO | facture à retrouver |
+| 125670-7 | 16/07/25 | ~4 743 DH | acides / NITRATE CALCIUM | facture à retrouver |
+| 129110-3 | ~06/11/25 | ~6 400 DH | ACIDE NITRIQUE | facture à retrouver |
+
+- **Valorisés au grand livre en attendant.** Impact PMP **quasi nul** à la récupération (prix GL ≈ prix
+  facturé), **SAUF ACIDE PHOSPHORIQUE du 125481-5** (2000 L @ 8,58/**KG** → la vraie facture donnera
+  **~13,23/L**, même point densité L/KG que l'inventaire d'ouverture, cf. `spec-valorisation-pmp.md` §10.3).
+- **Action Omar** : redemander à TIMAC les factures de ces 4 sous-BL.
+
 ## 6. Schéma global
 ```
 Email TIMAC (gmail) ──fetchEmails──> emails + PDF Storage
