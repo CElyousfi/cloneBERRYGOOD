@@ -48943,6 +48943,8 @@ ${rejetHtml}
             const [search, setSearch] = useState('');
             const [showLocFilter, setShowLocFilter] = useState(false);
             const [priceMap, setPriceMap] = useState({});
+            // Popup détail PMP (read-only) : article sélectionné via le badge PMP.
+            const [pmpDetailArticle, setPmpDetailArticle] = useState(null);
 
             // Canonicalisation identique au backend (scripts/reconstruct-stock.js) :
             // les soldes (stock_balances) sont canonicalisés (suffixe d'unité retiré),
@@ -49120,7 +49122,11 @@ ${rejetHtml}
                                                     dot = '#b9770e';
                                                 }
                                             }
-                                            return <span title={title} style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:10,background:st.bg,color:st.col,cursor: src === 'PMP' ? 'help' : 'default'}}>{src}{dot && <span style={{marginLeft:4,color:dot}}>•</span>}</span>;
+                                            if (src === 'PMP') {
+                                                title = title + ' — cliquer pour le détail du calcul';
+                                                return <span title={title} onClick={() => setPmpDetailArticle({ article_ref: b.article_ref || '', article_nom: b.article_nom || b.article_ref || '', unite: b.unite || '', lieu: b.lieu_id || '' })} style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:10,background:st.bg,color:st.col,cursor:'pointer',textDecoration:'underline dotted'}}>{src}{dot && <span style={{marginLeft:4,color:dot}}>•</span>}</span>;
+                                            }
+                                            return <span title={title} style={{fontSize:10,fontWeight:600,padding:'2px 7px',borderRadius:10,background:st.bg,color:st.col,cursor:'default'}}>{src}{dot && <span style={{marginLeft:4,color:dot}}>•</span>}</span>;
                                         })()}
                                     </td>
                                     <td style={{textAlign:'right',fontWeight:700,color: b.prix_total > 0 ? 'var(--berry)' : '#bbb'}}>{b.prix_total > 0 ? b.prix_total.toLocaleString('fr-FR', {maximumFractionDigits:2}) : '—'}</td>
@@ -49134,6 +49140,15 @@ ${rejetHtml}
                             {filtered.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun résultat pour les critères sélectionnés.</td></tr>}
                         </tbody>
                     </table></div>
+                    {pmpDetailArticle && window.PmpDetailPopup && (
+                        <window.PmpDetailPopup
+                            article_ref={pmpDetailArticle.article_ref}
+                            article_nom={pmpDetailArticle.article_nom}
+                            unite={pmpDetailArticle.unite}
+                            lieu={pmpDetailArticle.lieu}
+                            onClose={() => setPmpDetailArticle(null)}
+                        />
+                    )}
                 </div>
             );
         }

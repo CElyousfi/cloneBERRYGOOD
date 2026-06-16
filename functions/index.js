@@ -24,6 +24,7 @@ const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const { buildArticleHistoryIndex, sliceArticleHistory } = require("./lib/stock/articleHistoryIndex");
+const pmpDetailLib = require("./lib/stock/pmpDetail");
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 
@@ -50,6 +51,69 @@ async function getArticleHistoryIndex(db_firestore) {
   const snap = await db_firestore.collection("stock_movements").get();
   const index = buildArticleHistoryIndex(snap.docs, stockMovementGuard);
   _articleHistoryCache = { index, expiresAt: now + ARTICLE_HISTORY_CACHE_TTL_MS };
+  return index;
+}
+
+// --- Index facture par article stock (pour get-pmp-detail) ---------------
+// Scan UNIQUE des collections `invoices` + `mapping_articles`, mis en cache
+// mémoire (même TTL que l'historique). Read-only. Pour chaque item de facture
+// (qui stocke la DÉSIGNATION fournisseur, pas le code article stock), on résout
+// l'article stock par :
+//   1) match direct canon(item.article)
+//   2) mapping_articles : canon(designation_fournisseur) → article_stock (+ alias)
+// L'index est clé sur canon(article_stock) et accumule les lignes facture.
+const PMP_INVOICE_CACHE_TTL_MS = 5 * 60 * 1000;
+let _pmpInvoiceCache = null; // { index, expiresAt }
+
+async function getInvoiceByArticleIndex(db_firestore) {
+  const now = Date.now();
+  if (_pmpInvoiceCache && _pmpInvoiceCache.expiresAt > now) {
+    return _pmpInvoiceCache.index;
+  }
+  const canon = pmpDetailLib.canon;
+
+  // 1) Table de résolution designation → article_stock depuis mapping_articles.
+  const desigToArticle = {}; // canon(designation) -> article_stock (nom)
+  const mapSnap = await db_firestore.collection("mapping_articles").get();
+  mapSnap.forEach((doc) => {
+    const m = doc.data() || {};
+    const target = m.article_stock || "";
+    if (!target) return;
+    if (m.designation_fournisseur) desigToArticle[canon(m.designation_fournisseur)] = target;
+    const aliases = Array.isArray(m.alias) ? m.alias : (m.alias ? [m.alias] : []);
+    for (const al of aliases) {
+      if (al) desigToArticle[canon(al)] = target;
+    }
+  });
+
+  // 2) Scan des factures → lignes par article stock (clé canon).
+  const index = {}; // canon(article_stock) -> [{numero_facture, date_facture, designation, quantite, unite, prix_unitaire}]
+  const invSnap = await db_firestore.collection("invoices").get();
+  invSnap.forEach((doc) => {
+    const inv = doc.data() || {};
+    const items = Array.isArray(inv.items) ? inv.items : [];
+    for (const it of items) {
+      const desig = it.article || it.article_nom || "";
+      if (!desig) continue;
+      const cDesig = canon(desig);
+      // Résolution : mapping prioritaire, sinon le canon de la désignation lui-même
+      // (le match contre l'article demandé se fait en aval sur cette clé).
+      const articleStock = desigToArticle[cDesig] || desig;
+      const key = canon(articleStock);
+      if (!index[key]) index[key] = [];
+      index[key].push({
+        numero_facture: inv.numero_facture || inv.numero || "",
+        date_facture: inv.date_facture || "",
+        designation: desig,
+        quantite: it.quantite,
+        unite: it.unite || "",
+        prix_unitaire: it.prix_unitaire,
+        fournisseur: (inv.fournisseur && inv.fournisseur.nom) || inv.fournisseur_nom || "",
+      });
+    }
+  });
+
+  _pmpInvoiceCache = { index, expiresAt: now + PMP_INVOICE_CACHE_TTL_MS };
   return index;
 }
 
@@ -10275,6 +10339,102 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         const slice = sliceArticleHistory(articleIndex, articleParam, filterLieuId);
 
         return res.json({ success: true, ...slice });
+      }
+
+      // --- GET PMP DETAIL (popup read-only : grand livre vs prix facturé) ---
+      // Lecture seule, AUCUNE écriture, AUCUNE re-valorisation. Affiche le détail
+      // du coût PMP de l'écran Inventaire en 2 colonnes :
+      //   (1) PMP grand livre  = articles_catalog.prix_pmp (valeur affichée, source
+      //       de vérité — cf. valuationPMP.js). Les prix par LIGNE du grand livre ne
+      //       sont PAS persistés en Firestore (seul le PMP final l'est) : on liste
+      //       donc les bons d'entrée + inventaire d'ouverture (qté/unité/date/lieu)
+      //       depuis l'index grand livre, sans prix par ligne fabriqué.
+      //   (2) PMP au prix facturé = pondéré sur les lignes facture TIMAC cohérentes
+      //       en unité (Tonne→KG normalisée), null si unité divergente (cf. pmpDetail).
+      if (action === "get-pmp-detail") {
+        const articleRef = (req.query.article_ref || "").trim();
+        const articleNom = (req.query.article_nom || "").trim();
+        const filterLieuId = req.query.lieu || req.query.magasin || null;
+        const articleParam = articleNom || articleRef;
+        if (!articleParam) {
+          return res.status(400).json({ success: false, error: "article_ref ou article_nom requis" });
+        }
+
+        const canon = pmpDetailLib.canon;
+        const keyCanon = canon(articleParam);
+
+        // -- Article + unité stock (depuis articles_catalog : prix_pmp + unite) --
+        let prix_pmp = null;
+        let prix_pmp_source = null;
+        let unite_stock = "";
+        let articleNomResolu = articleParam;
+        const catSnap = await db_firestore.collection("articles_catalog").get();
+        catSnap.forEach((doc) => {
+          const a = doc.data() || {};
+          if (!a.nom) return;
+          const matchNom = canon(a.nom) === keyCanon;
+          const matchRef = a.reference && canon(a.reference) === keyCanon;
+          if (!matchNom && !matchRef) return;
+          // Garde l'entrée avec un prix_pmp > 0 si plusieurs docs collisionnent sur le canon.
+          const p = parseFloat(a.prix_pmp);
+          if (prix_pmp == null || (!(prix_pmp > 0) && p > 0)) {
+            prix_pmp = isFinite(p) ? p : prix_pmp;
+            prix_pmp_source = a.prix_pmp_source || prix_pmp_source;
+            unite_stock = a.unite || unite_stock;
+            articleNomResolu = a.nom || articleNomResolu;
+          }
+        });
+
+        // -- Lignes grand livre (entrées + inventaire ouverture) depuis l'index --
+        const articleIndex = await getArticleHistoryIndex(db_firestore);
+        const slice = sliceArticleHistory(articleIndex, articleParam, filterLieuId);
+        if (!unite_stock) unite_stock = (slice.article && slice.article.unite) || "";
+        const glLignes = (slice.entries || [])
+          .filter((e) => e.sens === "entree" && e.type === "reception")
+          .map((e) => ({
+            date: e.date,
+            lieu: `${e.lieu_type}|${e.lieu_id}`,
+            numero: e.numero,
+            qte: e.quantite,
+            unite: e.unite,
+            // Les prix par ligne du grand livre ne sont pas stockés en Firestore.
+            prix_brut: null,
+            prix_normalise: null,
+          }));
+
+        // -- Lignes facture rattachées à cet article stock --
+        const invoiceIndex = await getInvoiceByArticleIndex(db_firestore);
+        const factureLignesRaw = invoiceIndex[keyCanon] || [];
+        const factureCalc = pmpDetailLib.computeFacturePMP(factureLignesRaw, unite_stock);
+
+        return res.json({
+          success: true,
+          article: articleNomResolu,
+          unite_stock,
+          grand_livre: {
+            prix_pmp,
+            prix_pmp_source,
+            lignes: glLignes,
+            // PMP pondéré du grand livre = la valeur affichée (articles_catalog.prix_pmp).
+            // Non recalculé ici : les prix par ligne ne sont pas persistés en Firestore
+            // (seul le PMP final l'est, cf. apply-pmp-catalogue.js / valuationPMP.js).
+            pmp_pondere: prix_pmp,
+          },
+          facture: {
+            lignes: factureCalc.lignes.map((l) => ({
+              numero_facture: l.numero_facture,
+              date_facture: l.date_facture,
+              designation: l.designation,
+              qte: l.qte,
+              unite: l.unite,
+              prix_unitaire: l.prix_unitaire,
+            })),
+            unite_dominante: factureCalc.unite_dominante,
+            coherence_unite: factureCalc.coherence_unite,
+            pmp_pondere: factureCalc.pmp_pondere,
+            note: factureCalc.note,
+          },
+        });
       }
 
       // --- GET STOCK LOCATIONS CONFIG ---

@@ -68,6 +68,7 @@ const COMPONENT_SENTINELS = {
   "PointageValidationPanel.js": "window.PointageValidationPanel",
   "PointageValidationView.js": "window.PointageValidationView",
   "MagMappingConsoTab.js": "window.MagMappingConsoTab",
+  "PmpDetailPopup.js": "window.PmpDetailPopup",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));
