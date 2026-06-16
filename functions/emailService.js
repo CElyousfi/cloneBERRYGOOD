@@ -309,6 +309,15 @@ function isLiquidationEmail(_from, subject) {
 }
 
 /**
+ * Detect if an email is a TIMAC supplier invoice.
+ * STRICT: only matches when the sender is on timacmaroc.com AND the subject
+ * mentions "facture". Must never capture Driscoll's / liquidation / DQR mails.
+ */
+function isTimacInvoice(from, subject) {
+  return /timacmaroc\.com/i.test(from || "") && /facture/i.test(subject || "");
+}
+
+/**
  * Parse a Liquidation XLS/XLSX attachment.
  * Format: Sheet name = "W 6" (week number), headers in row 1, data rows 2+.
  * Dates are Excel serial numbers. PFQ score = "80.85 REY".
@@ -777,6 +786,158 @@ function parseTimacInvoiceText(text) {
 async function parseTimacInvoicePdf(buffer) {
   const text = (await new PDFParse({ data: buffer }).getText()).text;
   return parseTimacInvoiceText(text);
+}
+
+/**
+ * Create a TIMAC invoice from a parsed PDF object — shared by the email cron
+ * (analyzeEmail) AND the historical backfill script so both go through the
+ * exact same idempotence guard and write path.
+ *
+ * Hardening (décision Omar): an invoice without a supplier number
+ * (`num_facture`) NEVER enters the payment workflow — it is flagged
+ * `a_revoir` and nothing is written.
+ *
+ * @param {object} parsed  Output of parseTimacInvoicePdf / parseTimacInvoiceText.
+ * @param {object} opts
+ * @param {Buffer} [opts.pdfBuffer]  Raw PDF bytes (required for real writes).
+ * @param {string} [opts.filename]   Source filename, used for the Storage path.
+ * @param {string} [opts.source]     'email_timac' (cron) | 'backfill_timac'.
+ * @param {boolean} [opts.dryRun]    When true, read-only: runs the idempotence
+ *                                   check then returns 'would_create' without
+ *                                   writing anything.
+ * @returns {Promise<object>} One of:
+ *   { status:'a_revoir', reason }
+ *   { status:'skipped', reason, existing_numero, existing_id }
+ *   { status:'would_create', numero_facture, fournisseur, date_facture, total_ttc, nb_lignes }
+ *   { status:'created', numero, invoice_id, scan_id }
+ */
+async function createTimacInvoiceFromParsed(parsed, opts) {
+  opts = opts || {};
+  const source = opts.source || "email_timac";
+  const dryRun = !!opts.dryRun;
+  const parsedObj = parsed || {};
+
+  const fournisseur = parsedObj.fournisseur || "TIMAC AGRO MAROC";
+  const dateFacture = parsedObj.date_facture || null;
+  const totalTtc = parsedObj.net_a_payer != null ? parsedObj.net_a_payer : null;
+  const lignes = parsedObj.lignes || [];
+
+  // --- TÂCHE A — Garde num_facture : jamais de facture sans numéro. ---
+  if (!parsedObj.num_facture) {
+    return { status: "a_revoir", reason: "num_facture absent" };
+  }
+
+  // --- Garde idempotence (lecture, faite même en dry-run). ---
+  const dupSnap = await db
+    .collection("invoices")
+    .where("numero_facture", "==", parsedObj.num_facture)
+    .limit(1)
+    .get();
+  if (!dupSnap.empty) {
+    const existingDoc = dupSnap.docs[0];
+    return {
+      status: "skipped",
+      reason: "existe déjà",
+      existing_numero: existingDoc.data().numero || null,
+      existing_id: existingDoc.id,
+    };
+  }
+
+  if (dryRun) {
+    return {
+      status: "would_create",
+      numero_facture: parsedObj.num_facture,
+      fournisseur,
+      date_facture: dateFacture,
+      total_ttc: totalTtc,
+      nb_lignes: lignes.length,
+    };
+  }
+
+  // --- Écriture réelle. ---
+  if (!opts.pdfBuffer) {
+    throw new Error("createTimacInvoiceFromParsed: pdfBuffer requis pour une écriture réelle");
+  }
+
+  // a) Upload PDF to Storage (same bucket/path scheme as scan-facture).
+  const bucket = admin.storage().bucket("berrygood-farms-photos");
+  const ts = Date.now();
+  const baseName = (opts.filename || parsedObj.num_facture || "facture_timac")
+    .replace(/[^a-zA-Z0-9._-]/g, "_")
+    .slice(0, 60);
+  const storagePath = `scans/factures/${ts}_${baseName}.pdf`;
+  const storageFile = bucket.file(storagePath);
+  await storageFile.save(opts.pdfBuffer, {
+    metadata: { contentType: "application/pdf" },
+  });
+  const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+  // b) Create the invoice_scans record.
+  const scanData = {
+    source,
+    status: "accepted",
+    analysis: parsedObj,
+    scan_url,
+    matched_bdc_id: null,
+    invoice_id: null,
+    created_at: ts,
+    updated_at: ts,
+  };
+  const scanRef = await db.collection("invoice_scans").add(scanData);
+
+  // c) Allocate the next invoice number with the SAME counter as create-facture.
+  const counterRef = db.collection("stock_config").doc("counters");
+  const numero = await db.runTransaction(async (t) => {
+    const csnap = await t.get(counterRef);
+    const cdata = csnap.exists ? csnap.data() : {};
+    const current = (cdata.invoice || 0) + 1;
+    t.set(counterRef, { ...cdata, invoice: current }, { merge: true });
+    return `FAC-${new Date().getFullYear()}-${String(current).padStart(4, "0")}`;
+  });
+
+  // d) Create the invoices doc with the same schema as create-facture.
+  const items = lignes.map((ligne) => ({
+    article: ligne.designation || "",
+    quantite: ligne.quantite != null ? ligne.quantite : null,
+    unite: ligne.unite || null,
+    prix_unitaire: ligne.prix_unitaire != null ? ligne.prix_unitaire : null,
+    taux_tva: null,
+    montant_ht: ligne.montant != null ? ligne.montant : null,
+    montant_tva: null,
+    montant_ttc: null,
+  }));
+  const facData = {
+    numero,
+    numero_facture: parsedObj.num_facture,
+    bdc_id: null,
+    bdc_numero: null,
+    fournisseur: { nom: "TIMAC AGRO MAROC", ice: parsedObj.ice || null },
+    date_facture: dateFacture,
+    items,
+    total_ht: parsedObj.total_ht != null ? parsedObj.total_ht : null,
+    total_tva: parsedObj.total_tva != null ? parsedObj.total_tva : null,
+    total_ttc: totalTtc,
+    discrepancies: [],
+    has_discrepancies: false,
+    payment_status: "non_payee",
+    ferme: null,
+    scan_url,
+    scan_id: scanRef.id,
+    source,
+    history: [{ action: "created_from_email", at: new Date().toISOString() }],
+    created_at: ts,
+    updated_at: ts,
+  };
+  const invRef = await db.collection("invoices").add(facData);
+
+  // e) Wire the invoice back onto the scan record.
+  await scanRef.update({
+    invoice_id: invRef.id,
+    invoice_numero: numero,
+    updated_at: Date.now(),
+  });
+
+  return { status: "created", numero, invoice_id: invRef.id, scan_id: scanRef.id };
 }
 
 /**
@@ -1287,6 +1448,7 @@ exports.fetchEmails = functions
           const isAgq = isAgqAnalysisEmail(emailFrom, emailSubject) ||
             /envioresultatsmaroc@agqlabs/i.test(bodyForAgq);
           const isPfqDirect = isDriscolsQualityReport(emailSubject, parsed.text || "", parsed.html || "");
+          const isTimac = isTimacInvoice(emailFrom, emailSubject);
 
           // Store XLSX attachments for Daily Quality Reports and Liquidations
           const attachmentsMeta = (parsed.attachments || []).map((a) => ({
@@ -1314,6 +1476,13 @@ exports.fetchEmails = functions
           if (isWeeklyQR && parsed.attachments && parsed.attachments.length > 0) {
             const pdfAtt = parsed.attachments.find(a => /\.pdf$/i.test(a.filename || ""));
             if (pdfAtt && pdfAtt.content) pdfBase64 = pdfAtt.content.toString("base64");
+          }
+
+          // Store the first PDF attachment for TIMAC supplier invoices
+          let timacInvoicePdfBase64 = null;
+          if (isTimac && parsed.attachments && parsed.attachments.length > 0) {
+            const pdfAtt = parsed.attachments.find(a => /\.pdf$/i.test(a.filename || "") && a.content);
+            if (pdfAtt && pdfAtt.content) timacInvoicePdfBase64 = pdfAtt.content.toString("base64");
           }
 
           // For liquidation emails, also grab the "LIQUIDATION*.pdf" summary attachment (contains financial totals)
@@ -1415,6 +1584,8 @@ exports.fetchEmails = functions
             isWeeklyQualityReport: isWeeklyQR,
             isAgqAnalysis: isAgq,
             isDriscolsReport: isPfqDirect,
+            isTimacInvoice: isTimac,
+            timacInvoicePdfBase64: timacInvoicePdfBase64,
             agqPdfAttachments: agqPdfAttachments,
             status: "pending",
             analysisError: null,
@@ -2427,6 +2598,56 @@ exports.analyzeEmail = functions
         }
 
         console.log(`analyzeEmail AGQ: ${emailId} → ${createdAnalyses.length} created, ${skipped.length} skipped, ${errors.length} errors`);
+      } else if (emailData.isTimacInvoice && emailData.timacInvoicePdfBase64) {
+        // ---- TIMAC supplier invoice (PDF) ----
+        category = "invoice";
+
+        const buf = Buffer.from(emailData.timacInvoicePdfBase64, "base64");
+        const inv = await parseTimacInvoicePdf(buf);
+
+        const safeName = (emailData.subject || "facture_timac")
+          .replace(/[^a-zA-Z0-9._-]/g, "_")
+          .slice(0, 60);
+
+        const result = await createTimacInvoiceFromParsed(inv, {
+          pdfBuffer: buf,
+          filename: safeName,
+          source: "email_timac",
+          dryRun: false,
+        });
+
+        if (result.status === "a_revoir") {
+          // TÂCHE A — facture sans numéro : revue manuelle, aucune écriture facture/scan.
+          await emailRef.update({
+            status: "error",
+            category: "invoice_a_revoir",
+            analysisError: "TIMAC: num_facture absent — à revoir manuellement",
+            timacInvoicePdfBase64: admin.firestore.FieldValue.delete(),
+          });
+          console.warn(`analyzeEmail TIMAC: ${emailId} → num_facture absent, à revoir manuellement`);
+          return null;
+        }
+
+        if (result.status === "skipped") {
+          await emailRef.update({
+            status: "analyzed",
+            category: "invoice",
+            invoice_id: result.existing_id,
+            timacInvoicePdfBase64: admin.firestore.FieldValue.delete(),
+          });
+          console.log(`analyzeEmail TIMAC: ${emailId} → duplicate of invoice ${result.existing_id} (numero_facture=${inv.num_facture}), skipped`);
+          return null;
+        }
+
+        // result.status === 'created'
+        await emailRef.update({
+          status: "analyzed",
+          category: "invoice",
+          invoice_id: result.invoice_id,
+          timacInvoicePdfBase64: admin.firestore.FieldValue.delete(),
+        });
+        console.log(`analyzeEmail TIMAC: ${emailId} → invoice ${result.invoice_id} (${result.numero}, numero_facture=${inv.num_facture}), ${(inv.lignes || []).length} line(s)`);
+        return null;
       } else {
         // ---- Generic email analysis ----
         const textContent = emailData.textBody || "";
@@ -4781,4 +5002,9 @@ module.exports.parseLiquidationXlsx = parseLiquidationXlsx;
 module.exports.parseLiquidationSummaryPdf = parseLiquidationSummaryPdf;
 module.exports.parseTimacInvoiceText = parseTimacInvoiceText;
 module.exports.parseTimacInvoicePdf = parseTimacInvoicePdf;
+module.exports.createTimacInvoiceFromParsed = createTimacInvoiceFromParsed;
+module.exports.isTimacInvoice = isTimacInvoice;
+module.exports.isLiquidationEmail = isLiquidationEmail;
+module.exports.isDailyQualityReport = isDailyQualityReport;
+module.exports.isWeeklyQualityReport = isWeeklyQualityReport;
 module.exports.notifyNewAgqAnalyses = notifyNewAgqAnalyses;
