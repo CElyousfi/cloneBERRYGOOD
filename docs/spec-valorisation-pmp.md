@@ -1,8 +1,9 @@
 # Spec — Valorisation du stock au PMP (coût d'acquisition réel)
 
-> **Statut : QUALIFICATION (non codé).** À traiter après stabilisation du stock. Objectif :
-> remplacer la valorisation par **prix catalogue figé** par le **coût moyen pondéré d'acquisition
-> (PMP / CMUP)**, comptablement correct. GATED à l'implémentation.
+> **Statut : PMP grand-livre LIVRÉ PROD (§8). Architecture « PMP daté par campagne » QUALIFIÉE (§10,
+> non codé).** Objectif : remplacer la valorisation par **prix catalogue figé** par le **coût moyen
+> pondéré d'acquisition (PMP / CMUP)**, **borné par campagne** et réajusté au **prix facturé**.
+> GATED à l'implémentation.
 
 ## 1. Pourquoi
 Aujourd'hui la Fiche de Stock / Inventaire valorise au **prix catalogue** (`articles_catalog.prix_ttc`),
@@ -129,3 +130,97 @@ du grand livre, **matchée** sur `canon(Article)` + `Periode_Date` + `Quantite` 
 `BR_Achat` = **appoint marginal futur** (~11 articles récents), **PAS prioritaire**. La vraie source de
 raffinement comptable = les **FACTURES** (`invoices`/`invoice_scans`, Phase 3), pas `BR_Achat`. On
 **ne branche rien** maintenant ; le grand livre suffit (100 %, en prod).
+
+---
+
+## 10. PMP daté par campagne (architecture comptable — QUALIFICATION, GATED)
+
+> **Statut : SPEC (2026-06-16). Aucun code.** Décision d'architecture validée par Omar : le PMP n'est
+> **pas un prix unique figé** mais se calcule **par campagne** (frontière 30/06), réajusté à chaque
+> nouvelle facture. Mesuré sur les **134 factures TIMAC** réelles (parser `parseTimacInvoiceText`).
+
+### 10.1 Principe
+Le PMP est **borné par campagne** : il ne moyenne que les acquisitions **de la campagne courante** +
+la **valeur d'ouverture** de cette campagne. Une facture appartient à une campagne selon sa date via
+`campagneOf(date_facture)` (frontière 30/06, cohérent avec [spec-gestion-campagnes.md]). Les prix
+d'engrais bougent → le PMP d'un article **suit**, campagne après campagne.
+
+### 10.2 Modèle 3 campagnes (mesuré sur les 134 factures)
+Les factures TIMAC s'étalent du **12/01/2024 au 05/03/2026** → elles couvrent **3 campagnes**, pas 2 :
+
+| Campagne | Fenêtre `campagneOf` | Factures | Rôle dans le PMP |
+|---|---|---|---|
+| 2023-2024 | < 01/07/2024 | **40** | valorisent l'ouverture *de* 24-25 (chaînage amont) |
+| 2024-2025 | 01/07/2024 → 30/06/2025 | **59** | PMP de clôture 24-25 = **valeur d'ouverture 30/06/2025** |
+| **2025-2026 (courante)** | ≥ 01/07/2025 | **35** (Σ **770 226 DH HT**) | entrées courantes au prix facturé |
+
+Split brut au cutoff 30/06/2025 : **99 avant / 35 après**. ⚠️ Les 99 « avant » ne forment **pas une
+seule campagne** : elles se scindent en 40 (camp. 23-24) + 59 (camp. 24-25). Ne **jamais** moyenner les
+99 ensemble pour l'ouverture — ça mélangerait 18 mois et 2 campagnes.
+
+### 10.3 Inventaire d'ouverture 30/06/2025 — valorisation + hiérarchie de fallback
+L'ouverture = stock physique résiduel à la clôture 24-25. Le stock restant à cette date est surtout
+composé des **derniers achats** → l'ancre la plus fidèle est la **dernière facture ≤ 30/06 par article**
+(et non un PMP lissé sur 18 mois).
+
+**Hiérarchie de fallback (le premier disponible gagne, par article) :**
+1. **Dernière facture TIMAC ≤ 30/06/2025** de l'article (ancre fidèle au stock résiduel).
+   *Ex. ACIDE PHOSPHORIQUE → 20/06/2025 ; NITRATE DE POTASSE → 11/04/2025.*
+2. **PMP de la fenêtre campagne 24-25** (01/07/2024 → 30/06/2025) de l'article — si pas de dernière
+   facture exploitable.
+3. **Prix grand livre 30/06** (FILL-ONLY, déjà en prod) — **fallback STRUCTUREL**, pas optionnel.
+
+**Pourquoi le fallback grand livre est structurel :**
+- **Périmètre TIMAC = 87,6 %** seulement. Les articles d'ouverture **non-TIMAC** (HAROUACH, NALSYA,
+  ~21 autres fournisseurs) n'ont **aucune facture** → restent au grand livre.
+- **1 code TIMAC sans antériorité** : `0265 SULFATE D'AMMONIAQUE` (1ʳᵉ facture 25/08/2025) → nouvel
+  article 25-26, absent de l'ouverture au prix TIMAC → grand livre.
+
+**Couverture TIMAC mesurée : 47 / 48 codes ont ≥ 1 facture avant le 30/06/2025** (22 facturés
+uniquement avant cutoff = campagnes passées dont les 8 `hors_campagne` ; 25 continus des deux côtés ;
+1 seul — le 0265 — uniquement après). Côté TIMAC, l'ouverture est donc quasi intégralement valorisable.
+
+### 10.4 Entrées campagne courante (≥ 01/07/2025)
+Chaque réception facturée de la campagne courante entre au **prix facturé HT** de la campagne ; le PMP
+de l'article se recalcule :
+```
+PMP = (valeur_stock_avant + qté_entrée × prix_facturé) / (qté_stock_avant + qté_entrée)
+```
+35 factures couvrent la campagne 25-26 (770 226 DH HT). Anti-double-comptage (§9.3) : la facture
+fournit **le prix** sur une acquisition **déjà connue** du grand livre (matchée par `num_bl` + mapping
+code→article), **jamais une quantité ajoutée**.
+
+### 10.5 Réajustement : batch maintenant → incrémental ensuite
+| | Incrémental (par réception) | **Batch par campagne (retenu maintenant)** |
+|---|---|---|
+| Justesse | exacte, suit chaque mouvement | ≈ correcte si rejoué régulièrement |
+| Prérequis | **chaque réception liée à SA facture** (`num_bl`) live | lire toutes les factures de la campagne + ouverture |
+| Faisabilité actuelle | ❌ factures arrivent par email **async** (étape 4 non déployée) | ✅ tenable tout de suite (134 factures, BL présents) |
+
+**Décision : démarrer en BATCH** — `computePMP` **scopé par campagne** (filtrer les factures par
+`campagneOf(date_facture)`, amorcer avec la valeur d'ouverture §10.3). **Évoluer vers incrémental**
+quand l'**étape 4 (captation email)** + le **lien `num_bl` réception↔facture** seront en prod
+(cf. `spec-pipeline-factures.md` §4-5). Le module pur `valuationPMP.computePMP` fait déjà la moyenne
+pondérée — il suffit de le borner par campagne (pas de réécriture).
+
+### 10.6 Périmètre & question ouverte
+- **Périmètre** : TIMAC (87,6 %) au **prix facturé** ; autres fournisseurs au **grand livre**
+  (fallback structurel §10.3).
+- **Question ouverte (à trancher avant code)** : l'ouverture 30/06/2025 utilise-t-elle la **dernière
+  facture ≤ 30/06 par article** (retenu §10.3, fidèle au résiduel) — confirmé comme défaut — ou un
+  **PMP de la fenêtre 24-25** (plus lissé) ? Le défaut spec = dernière facture, fallback PMP-fenêtre.
+
+### 10.7 Phases (GATED)
+- **P0** : cette section (§10). ✅
+- **P1** : `campagneOf` appliqué au calcul PMP + `computePMP` scopé campagne + ancre d'ouverture
+  (dernière facture ≤ 30/06 par article) + hiérarchie fallback. Tests purs.
+- **P2** : aperçu chiffré before/after **par campagne** (ouverture vs courante), article par article,
+  validé par Omar. Distinction prix facturé / grand livre visible.
+- **P3** : bascule incrémentale une fois l'étape 4 email + lien BL en prod.
+
+### 10.8 Liens
+- Plage/couverture mesurées : parser `functions/emailService.js` `parseTimacInvoiceText` sur les 134
+  factures (`docs/factures/TIMAC`).
+- Pipeline factures (captation email, rapprochement BL, alimentation prix) : `spec-pipeline-factures.md`.
+- Mapping code→article (alimentation par article) : `spec-mapping-articles-bdc.md`.
+- Frontière campagne / `campagneOf` : `spec-gestion-campagnes.md`.
