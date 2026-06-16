@@ -48945,6 +48945,9 @@ ${rejetHtml}
             const [priceMap, setPriceMap] = useState({});
             // Popup détail PMP (read-only) : article sélectionné via le badge PMP.
             const [pmpDetailArticle, setPmpDetailArticle] = useState(null);
+            // Popup détail des mouvements (read-only) : article sélectionné via le NOM (cible
+            // de clic distincte du badge PMP). Borné à la date d'inventaire affichée.
+            const [mvtDetailLine, setMvtDetailLine] = useState(null);
 
             // Canonicalisation identique au backend (scripts/reconstruct-stock.js) :
             // les soldes (stock_balances) sont canonicalisés (suffixe d'unité retiré),
@@ -49038,6 +49041,41 @@ ${rejetHtml}
             const nbCatalogue = filtered.filter(b => b.prix_source === 'Catalogue').length;
             const nbSansPrix = filtered.filter(b => !b.prix_source || b.prix_source === '—').length;
 
+            // Totaux de la sélection AFFICHÉE (pied de tableau + ligne TOTAL de l'export).
+            // Sous-totaux quantité PAR UNITÉ (jamais de somme mélangée L/KG) + total DH commun.
+            const IU = window.InventaireUtils || {};
+            const totals = IU.computeInventaireTotals
+                ? IU.computeInventaireTotals(filtered.map(b => ({ unite: b.unite, balance: b.balance, prix_total: b.prix_total })))
+                : { count: filtered.length, prix_total_sum: 0, qte_par_unite: {} };
+            const qteParUniteLabel = IU.formatQteParUnite ? IU.formatQteParUnite(totals.qte_par_unite) : '—';
+
+            // Libellé date d'inventaire (réutilisé : titre, nom de fichier export, popup mvts).
+            const dateInvValid = filterDate && /^\d{4}-\d{2}-\d{2}$/.test(filterDate);
+            const dateInvFr = dateInvValid ? filterDate.split('-').reverse().join('-') : 'actuel';
+
+            // Export Excel de la sélection affichée (respecte filtres lieu/recherche + date).
+            const exportExcel = () => {
+                if (!window.XLSX) return;
+                const cols = ['Lieu', 'Type', 'Article', 'Unité', 'Solde', 'Prix unitaire (DH)', 'Source', 'Prix total (DH)', 'Statut'];
+                const statutOf = (b) => b.balance <= 0 ? 'Rupture' : (b.seuil_alerte && b.balance <= b.seuil_alerte) ? 'Alerte' : 'OK';
+                const dataRows = filtered.map(b => [
+                    b.lieu_id || '', b.lieu_type || '', b.article_nom || b.article_ref || '', b.unite || '',
+                    Number(b.balance) || 0,
+                    b.prix_unitaire > 0 ? Number(b.prix_unitaire) : '',
+                    b.prix_source || '—',
+                    b.prix_total > 0 ? Number(b.prix_total) : '',
+                    statutOf(b),
+                ]);
+                // Ligne TOTAL : total Prix Total DH + sous-totaux qté par unité (libellé compact).
+                const totalRow = ['', '', `TOTAL (${totals.count} lignes)`, '', qteParUniteLabel, '', '', totals.prix_total_sum, ''];
+                const all = [cols, ...dataRows, totalRow];
+                const ws = XLSX.utils.aoa_to_sheet(all);
+                ws['!cols'] = [16, 10, 32, 8, 12, 14, 12, 14, 10].map(w => ({ wch: w }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, 'Inventaire');
+                XLSX.writeFile(wb, `Inventaire_${dateInvFr}.xlsx`);
+            };
+
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
             return (
@@ -49081,6 +49119,11 @@ ${rejetHtml}
                             </div>
                             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher article..."
                                 style={{padding:'6px 14px',borderRadius:8,border:'1px solid #ddd',fontSize:12,width:180}} />
+                            <button onClick={exportExcel} disabled={!filtered.length}
+                                title="Exporter la sélection affichée en Excel"
+                                style={{padding:'6px 12px',borderRadius:8,border:'none',fontSize:12,fontWeight:600,cursor: filtered.length ? 'pointer' : 'not-allowed',background:'var(--green)',color:'#fff',opacity: filtered.length ? 1 : 0.5,display:'flex',alignItems:'center',gap:6}}>
+                                <i className="fa-solid fa-file-excel"></i> Exporter Excel
+                            </button>
                         </div>
                     </div>
 
@@ -49098,7 +49141,20 @@ ${rejetHtml}
                                 <tr key={i}>
                                     <td><span className="status-badge" style={{background:'rgba(139,34,82,0.1)',color:'var(--berry)',fontSize:10}}>{b.lieu_id}</span></td>
                                     <td style={{fontSize:11,textTransform:'capitalize'}}>{b.lieu_type}</td>
-                                    <td style={{fontWeight:600}}>{b.article_nom || b.article_ref}</td>
+                                    <td style={{fontWeight:600}}>
+                                        <span
+                                            title="Voir le détail des mouvements jusqu'à la date d'inventaire"
+                                            onClick={() => setMvtDetailLine({
+                                                article: b.article_ref || b.article_nom || '',
+                                                article_nom: b.article_nom || b.article_ref || '',
+                                                lieu_id: b.lieu_id || '',
+                                                unite: b.unite || '',
+                                                solde: Number(b.balance) || 0,
+                                            })}
+                                            style={{cursor:'pointer',textDecoration:'underline dotted',textUnderlineOffset:2}}>
+                                            {b.article_nom || b.article_ref}
+                                        </span>
+                                    </td>
                                     <td>{b.unite}</td>
                                     <td style={{fontWeight:700,fontSize:14}}>{(b.balance || 0).toLocaleString('fr-FR', {minimumFractionDigits:1})}</td>
                                     <td style={{textAlign:'right',color: b.prix_unitaire > 0 ? '#333' : '#bbb'}}>{b.prix_unitaire > 0 ? b.prix_unitaire.toFixed(2) : '—'}</td>
@@ -49139,6 +49195,17 @@ ${rejetHtml}
                             ))}
                             {filtered.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun résultat pour les critères sélectionnés.</td></tr>}
                         </tbody>
+                        {filtered.length > 0 && (
+                            <tfoot>
+                                <tr style={{background:'rgba(139,34,82,0.06)',fontWeight:700}}>
+                                    <td colSpan="2" style={{fontWeight:700}}>TOTAL ({totals.count} lignes)</td>
+                                    <td colSpan="2" style={{fontSize:11,fontWeight:600,color:'#555'}}>{qteParUniteLabel}</td>
+                                    <td colSpan="3"></td>
+                                    <td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{totals.prix_total_sum.toLocaleString('fr-FR', {maximumFractionDigits:2})}</td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        )}
                     </table></div>
                     {pmpDetailArticle && window.PmpDetailPopup && (
                         <window.PmpDetailPopup
@@ -49147,6 +49214,17 @@ ${rejetHtml}
                             unite={pmpDetailArticle.unite}
                             lieu={pmpDetailArticle.lieu}
                             onClose={() => setPmpDetailArticle(null)}
+                        />
+                    )}
+                    {mvtDetailLine && window.InventaireMouvementsPopup && (
+                        <window.InventaireMouvementsPopup
+                            article={mvtDetailLine.article}
+                            article_nom={mvtDetailLine.article_nom}
+                            lieu_id={mvtDetailLine.lieu_id}
+                            unite={mvtDetailLine.unite}
+                            dateInventaire={dateInvValid ? filterDate : ''}
+                            soldeAttendu={mvtDetailLine.solde}
+                            onClose={() => setMvtDetailLine(null)}
                         />
                     )}
                 </div>
