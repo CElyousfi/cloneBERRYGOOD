@@ -5,7 +5,12 @@ if('serviceWorker'in navigator){const regs=await navigator.serviceWorker.getRegi
 // where('archived','!=',true) qui exclurait les docs sans champ archived.
 // Source de vérité du référentiel = seed backend tracké
 // functions/scripts/seedComptesClientsMarcheLocal.js (5 clients actifs).
-async function getActiveMarcheLocalClients(db){const snap=await db.collection('clients_marche_local').get();const all=snap.docs.map(d=>d.data()).filter(Boolean);return{active:all.filter(d=>d.archived!==true),archivedNames:new Set(all.filter(d=>d.archived===true).map(d=>d.nom).filter(Boolean))};}// Fonction utilitaire : charger TOUS les bons depuis Firestore
+async function getActiveMarcheLocalClients(db){const snap=await db.collection('clients_marche_local').get();const all=snap.docs.map(d=>d.data()).filter(Boolean);const active=all.filter(d=>d.archived!==true);// Un nom canonique a souvent 2 docs : 1 actif + 1 archivé (doublon
+// historique). Un nom présent parmi les actifs n'est JAMAIS "archivé",
+// sinon on retirerait à tort le client de la liste (régression 2b :
+// dropdown vide). archivedNames = noms archivés SANS aucun doc actif
+// correspondant (ex. IMAD/AMIN, archivés et sans actif).
+const activeNames=new Set(active.map(d=>d.nom).filter(Boolean));const archivedNames=new Set(all.filter(d=>d.archived===true).map(d=>d.nom).filter(Boolean).filter(n=>!activeNames.has(n)));return{active,archivedNames};}// Fonction utilitaire : charger TOUS les bons depuis Firestore
 let _bonsCache=null;let _bonsCacheTime=0;async function loadBonsFromFirestore(forceRefresh){// Cache mémoire 2min — empêche les requêtes répétées dans la même session
 if(!forceRefresh&&_bonsCache&&Date.now()-_bonsCacheTime<120000)return _bonsCache;const db=firebase.firestore();// Vérifier le compteur serveur pour détecter si les données ont changé
 try{const meta=await db.collection('app_settings').doc('pfq_import_meta').get();const serverCount=meta.exists?meta.data().lastImportCount||0:0;if(_bonsCache&&_bonsCache.length===serverCount&&Date.now()-_bonsCacheTime<300000){console.log('[Firestore] Cache valid, count matches server:',serverCount);return _bonsCache;}}catch(e){}// Charger depuis Firestore
