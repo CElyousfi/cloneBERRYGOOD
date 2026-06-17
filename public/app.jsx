@@ -55289,6 +55289,11 @@ ${rejetHtml}
             const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
 
             const [hideImports, setHideImports] = useState(false);
+            const [filterSource, setFilterSource] = useState(''); // '' tous | 'import' | 'saisi'
+            const [viewDeleted, setViewDeleted] = useState(false); // vue historique des suppressions
+            const [delMov, setDelMov] = useState(null); // bon en cours de suppression (modal motif)
+            const [delReason, setDelReason] = useState('');
+            const [delSaving, setDelSaving] = useState(false);
             const [query, setQuery] = useState('');
             const [sortField, setSortField] = useState('date');
             const [sortDir, setSortDir] = useState('desc');
@@ -55303,27 +55308,32 @@ ${rejetHtml}
             const loadMovements = () => {
                 setLoading(true);
                 let url = '/api/stock?action=list-movements&limit=500';
+                if (viewDeleted) url += '&deleted=true';
                 if (filterType) url += '&type=' + filterType;
-                if (filterStatus) url += '&status=' + filterStatus;
+                if (filterStatus && !viewDeleted) url += '&status=' + filterStatus;
                 if (filterFerme) url += '&ferme=' + filterFerme;
                 fetch(url).then(r => r.json())
                     .then(json => {
                         let movs = json.success ? (json.movements || []) : [];
                         // For chef validation view: only show reception+sortie, exclude imports
-                        if (defaultStatus && !filterType) {
+                        if (defaultStatus && !filterType && !viewDeleted) {
                             movs = movs.filter(m => (m.type === 'reception' || m.type === 'sortie') && !(m.numero||'').startsWith('IMP-'));
                         }
                         setMovements(movs);
                     })
                     .catch(err => console.warn(err)).finally(() => setLoading(false));
             };
-            useEffect(() => { loadMovements(); }, [filterType, filterStatus, filterFerme]);
+            useEffect(() => { loadMovements(); }, [filterType, filterStatus, filterFerme, viewDeleted]);
 
             const typeLabels = { reception: 'Réception', transfert: 'Transfert', consommation: 'Consommation', sortie: 'Sortie' };
             const typeColors = { reception: 'var(--green)', transfert: 'var(--blue)', consommation: 'var(--gold)', sortie: 'var(--red)' };
             // Transfert/consommation: stock impact applied immediately, valide_mag = auto-validated
             const needsMultiValid = (t) => t === 'reception' || t === 'sortie';
             const isImport = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
+            // Bon importé du grand livre (insupprimable). Aligné sur le garde-fou backend
+            // stockMovementGuard.isImportedMovement : import_source présent / tag CANEVA / IMP-.
+            const isImported = (m) => Guard ? Guard.isImportedMovement(m) : (!!m.import_source || isImport(m));
+            const isSaisiApp = (m) => !isImported(m);
             const statusLabel = (s, t, m) => {
                 if (m && isImport(m)) return 'Importé';
                 if (s === 'valide_chef') return 'Validé';
@@ -55369,11 +55379,15 @@ ${rejetHtml}
 
             // Édition/suppression : créateur, bon non importé et non validé (cf. stockMovementGuard).
             const canMutate = (mov) => Guard ? Guard.canEditMovement(mov, requester) : false;
+            // Suppression admin Achats/DG : tout bon SAISI app (jamais importé), même validé.
+            const isAdminDeleter = Guard ? Guard.isAdminDeleter(requester) : (currentProfile === 'achats' || currentProfile === 'dg');
+            const canAdminDelete = (mov) => Guard ? Guard.canAdminDeleteMovement(mov, requester) : false;
             // La colonne Actions s'affiche pour les valideurs (achats/chef) OU dès qu'au
             // moins un bon est mutable par le demandeur courant (son créateur).
             const isValidatorProfile = currentProfile === 'achats' || (currentProfile && currentProfile.startsWith('chef_'));
             const anyMutable = movements.some(canMutate);
-            const showActionsCol = isValidatorProfile || anyMutable;
+            const anyAdminDeletable = isAdminDeleter && movements.some(canAdminDelete);
+            const showActionsCol = !viewDeleted && (isValidatorProfile || anyMutable || anyAdminDeletable);
 
             const openEdit = (mov) => {
                 setEditMov(mov);
@@ -55418,6 +55432,27 @@ ${rejetHtml}
                     if (json.success) { alert('Bon supprimé.'); loadMovements(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur réseau'));
+            };
+
+            const openDelete = (mov) => { setDelMov(mov); setDelReason(''); };
+            const closeDelete = () => { setDelMov(null); setDelReason(''); };
+            const submitAdminDelete = async () => {
+                const reason = (delReason || '').trim();
+                if (!reason) { alert('Le motif de suppression est obligatoire.'); return; }
+                setDelSaving(true);
+                try {
+                    const res = await fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: delMov.id, reason }) });
+                    const json = await res.json();
+                    if (json.success) {
+                        setMovements(movs => movs.filter(x => x.id !== delMov.id));
+                        const msg = 'Bon ' + delMov.numero + ' supprimé' + (json.reversed ? ' (impact stock annulé)' : '') + '.';
+                        if (typeof window !== 'undefined' && typeof window.showToast === 'function') window.showToast(msg);
+                        else alert(msg);
+                        closeDelete();
+                    } else { alert('Erreur: ' + (json.error || 'Echec')); }
+                } catch (e) { alert('Erreur réseau'); }
+                finally { setDelSaving(false); }
             };
 
             const toggleSort = (field) => {
@@ -55466,21 +55501,34 @@ ${rejetHtml}
                                 <option value="">Toutes fermes</option>
                                 {MAGASINS.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
+                            <select value={filterSource} onChange={e => setFilterSource(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
+                                <option value="">Toutes sources</option>
+                                <option value="import">Importé</option>
+                                <option value="saisi">Saisi app</option>
+                            </select>
                             {!defaultStatus && (
                                 <label style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,cursor:'pointer',background: hideImports ? 'rgba(139,34,82,0.08)' : '#fff'}}>
                                     <input type="checkbox" checked={hideImports} onChange={e => setHideImports(e.target.checked)} />
                                     Masquer imports
                                 </label>
                             )}
+                            {!defaultStatus && (
+                                <button onClick={() => setViewDeleted(v => !v)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid '+(viewDeleted?'var(--red)':'#ddd'),fontSize:12,cursor:'pointer',fontWeight:600,background: viewDeleted ? 'rgba(220,53,69,0.1)' : '#fff',color: viewDeleted ? 'var(--red)' : '#444'}}>
+                                    <i className="fa-solid fa-trash-can-arrow-up" style={{marginRight:6}}></i>{viewDeleted ? 'Bons actifs' : 'Bons supprimés'}
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    <div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
-                        <thead><tr><th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th><th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th><th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th><th style={sortThStyle} onClick={() => toggleSort('source')}>Source{sortArrow('source')}</th><th style={sortThStyle} onClick={() => toggleSort('destination')}>Destination{sortArrow('destination')}</th><th style={sortThStyle} onClick={() => toggleSort('article')}>Articles{sortArrow('article')}</th><th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th><th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Créé par{sortArrow('cree_par')}</th>{showActionsCol && <th>Actions</th>}</tr></thead>
+                    {!viewDeleted && (<div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
+                        <thead><tr><th style={sortThStyle} onClick={() => toggleSort('numero')}>N°{sortArrow('numero')}</th><th>Source</th><th style={sortThStyle} onClick={() => toggleSort('type')}>Type{sortArrow('type')}</th><th style={sortThStyle} onClick={() => toggleSort('date')}>Date{sortArrow('date')}</th><th style={sortThStyle} onClick={() => toggleSort('source')}>Lieu source{sortArrow('source')}</th><th style={sortThStyle} onClick={() => toggleSort('destination')}>Destination{sortArrow('destination')}</th><th style={sortThStyle} onClick={() => toggleSort('article')}>Articles{sortArrow('article')}</th><th style={sortThStyle} onClick={() => toggleSort('statut')}>Statut{sortArrow('statut')}</th><th style={sortThStyle} onClick={() => toggleSort('cree_par')}>Créé par{sortArrow('cree_par')}</th>{showActionsCol && <th>Actions</th>}</tr></thead>
                         <tbody>
-                            {movements.filter(m => !hideImports || !isImport(m)).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.lieu_source?.id||'').toLowerCase().includes(q) || (m.lieu_destination?.id||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).slice().sort((a, b) => { const va = getSortVal(a), vb = getSortVal(b); const c = va < vb ? -1 : va > vb ? 1 : 0; return sortDir === 'asc' ? c : -c; }).map((m) => (
+                            {movements.filter(m => !hideImports || !isImport(m)).filter(m => filterSource === 'import' ? isImported(m) : filterSource === 'saisi' ? isSaisiApp(m) : true).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.lieu_source?.id||'').toLowerCase().includes(q) || (m.lieu_destination?.id||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).slice().sort((a, b) => { const va = getSortVal(a), vb = getSortVal(b); const c = va < vb ? -1 : va > vb ? 1 : 0; return sortDir === 'asc' ? c : -c; }).map((m) => (
                                 <tr key={m.id} onClick={() => setDetailMouvement(m)} style={{cursor:'pointer'}} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(139,34,82,0.04)'; }} onMouseLeave={e => { e.currentTarget.style.background = ''; }}>
                                     <td style={{fontWeight:700,color: typeColors[m.type] || '#666'}}>{m.numero}</td>
+                                    <td>{isImported(m)
+                                        ? <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,background:'#eee',color:'#777'}}>Importé</span>
+                                        : <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,background:'rgba(139,34,82,0.12)',color:'var(--berry)'}}>Saisi app</span>}</td>
                                     <td><span style={{color: typeColors[m.type] || '#666',fontWeight:600,fontSize:11}}>{typeLabels[m.type] || m.type}</span></td>
                                     <td>{m.date}</td>
                                     <td style={{fontSize:11}}>{m.lieu_source ? m.lieu_source.id : '—'}</td>
@@ -55497,18 +55545,66 @@ ${rejetHtml}
                                                     <button onClick={e => { e.stopPropagation(); handleValidate(m); }} style={{padding:'3px 8px',borderRadius:6,border:'none',background:'var(--green)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600}}>Valider</button>
                                                     <button onClick={e => { e.stopPropagation(); handleReject(m); }} style={{padding:'3px 8px',borderRadius:6,border:'none',background:'var(--red)',color:'#fff',cursor:'pointer',fontSize:10,fontWeight:600}}>Rejeter</button>
                                                 </>)}
-                                                {canMutate(m) && (<>
+                                                {canMutate(m) && (
                                                     <button onClick={e => { e.stopPropagation(); openEdit(m); }} title="Modifier" style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--blue)',background:'#fff',color:'var(--blue)',cursor:'pointer',fontSize:10,fontWeight:600}}><i className="fa-solid fa-pen" style={{marginRight:3}}></i>Modifier</button>
+                                                )}
+                                                {canMutate(m) && !isAdminDeleter && (
                                                     <button onClick={e => { e.stopPropagation(); handleDelete(m); }} title="Supprimer" style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--red)',background:'#fff',color:'var(--red)',cursor:'pointer',fontSize:10,fontWeight:600}}><i className="fa-solid fa-trash" style={{marginRight:3}}></i>Supprimer</button>
-                                                </>)}
+                                                )}
+                                                {canAdminDelete(m) && (
+                                                    <button onClick={e => { e.stopPropagation(); openDelete(m); }} title="Supprimer (Achats/DG)" style={{padding:'3px 8px',borderRadius:6,border:'1px solid var(--red)',background:'#fff',color:'var(--red)',cursor:'pointer',fontSize:10,fontWeight:600}}><i className="fa-solid fa-trash" style={{marginRight:3}}></i>Supprimer</button>
+                                                )}
                                             </div>
                                         </td>
                                     )}
                                 </tr>
                             ))}
-                            {movements.length === 0 && <tr><td colSpan={showActionsCol ? 9 : 8} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun mouvement trouvé.</td></tr>}
+                            {movements.length === 0 && <tr><td colSpan={showActionsCol ? 10 : 9} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun mouvement trouvé.</td></tr>}
                         </tbody>
-                    </table></div>
+                    </table></div>)}
+
+                    {viewDeleted && (<div className="table-responsive"><table className="data-table" style={{fontSize:12}}>
+                        <thead><tr><th>N°</th><th>Type</th><th>Date</th><th>Articles</th><th>Supprimé par</th><th>Date suppression</th><th>Motif</th></tr></thead>
+                        <tbody>
+                            {movements.filter(m => filterSource === 'import' ? isImported(m) : filterSource === 'saisi' ? isSaisiApp(m) : true).filter(m => { if (!query) return true; const q = query.toLowerCase(); return (m.numero||'').toLowerCase().includes(q) || (m.created_by?.name||'').toLowerCase().includes(q) || (m.items||[]).some(i => (i.article_nom||i.article_ref||'').toLowerCase().includes(q)); }).map((m) => {
+                                const delBy = m.deleted_by ? (m.deleted_by.profileId || m.deleted_by.userId || '—') : '—';
+                                let delAt = '—';
+                                if (m.deleted_at) { try { delAt = new Date(typeof m.deleted_at === 'number' ? m.deleted_at : (m.deleted_at.seconds ? m.deleted_at.seconds * 1000 : m.deleted_at)).toLocaleString('fr-FR'); } catch (e) { delAt = '—'; } }
+                                return (
+                                    <tr key={m.id}>
+                                        <td style={{fontWeight:700,color: typeColors[m.type] || '#666'}}>{m.numero}</td>
+                                        <td><span style={{color: typeColors[m.type] || '#666',fontWeight:600,fontSize:11}}>{typeLabels[m.type] || m.type}</span></td>
+                                        <td>{m.date}</td>
+                                        <td style={{fontSize:11}}>{(m.items||[]).map(i => (i.article_nom||i.article_ref) + ' (' + i.quantite + ')').join(', ')}</td>
+                                        <td style={{fontSize:11}}>{delBy}</td>
+                                        <td style={{fontSize:11}}>{delAt}</td>
+                                        <td style={{fontSize:11,color:'#555'}}>{m.deleted_reason || '—'}</td>
+                                    </tr>
+                                );
+                            })}
+                            {movements.length === 0 && <tr><td colSpan={7} style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon supprimé.</td></tr>}
+                        </tbody>
+                    </table></div>)}
+
+                    {delMov && (
+                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !delSaving) closeDelete(); }}>
+                            <div className="modal-content" style={{maxWidth:480}}>
+                                <h3 style={{marginTop:0,color:'var(--red)'}}><i className="fa-solid fa-trash" style={{marginRight:8}}></i>Supprimer le bon {delMov.numero}</h3>
+                                <div style={{background:'#fff3f3',borderRadius:8,padding:10,marginBottom:14,fontSize:12,color:'#a11'}}>
+                                    <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                    {Guard && Guard.isValidatedMovement(delMov)
+                                        ? 'Ce bon est validé : sa suppression annulera son impact sur les soldes de stock.'
+                                        : 'Le bon sera retiré des listes (soft-delete, traçabilité conservée).'}
+                                </div>
+                                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif de suppression <span style={{color:'var(--red)'}}>*</span></label>
+                                <textarea value={delReason} onChange={e => setDelReason(e.target.value)} placeholder="Obligatoire — ex. doublon, erreur de saisie…" rows={3} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13,resize:'vertical'}} />
+                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                                    <button onClick={closeDelete} disabled={delSaving} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
+                                    <button onClick={submitAdminDelete} disabled={delSaving || !delReason.trim()} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--red)',color:'#fff',cursor: delSaving || !delReason.trim() ? 'not-allowed' : 'pointer',opacity: delSaving || !delReason.trim() ? 0.6 : 1,fontWeight:600,fontSize:13}}>{delSaving ? 'Suppression…' : 'Confirmer la suppression'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {editMov && (
                         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeEdit(); }}>

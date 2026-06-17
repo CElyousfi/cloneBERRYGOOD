@@ -149,10 +149,54 @@ test('canEdit === canDelete (same rule) across cases', () => {
   }
 });
 
+// --- admin delete (Achats/DG) ---
+
+const achats = { profileId: 'achats', userId: 'uid-A' };
+const dg = { profileId: 'dg', userId: 'uid-D' };
+
+test('isAdminDeleter — true for achats and dg only', () => {
+  assert.equal(G.isAdminDeleter(achats), true);
+  assert.equal(G.isAdminDeleter(dg), true);
+  assert.equal(G.isAdminDeleter({ profileId: 'magasinier' }), false);
+  assert.equal(G.isAdminDeleter({ profileId: 'chef_f1' }), false);
+  assert.equal(G.isAdminDeleter(null), false);
+});
+
+test('evaluateAdminDelete — saisi app validé non-créateur → allowed (pas de restriction)', () => {
+  const m = appMovement({ status: 'valide_chef', created_by: { profileId: 'magasinier' } });
+  assert.deepEqual(G.evaluateAdminDelete(m, achats), { allowed: true, reason: null });
+  assert.deepEqual(G.evaluateAdminDelete(m, dg), { allowed: true, reason: null });
+  assert.equal(G.canAdminDeleteMovement(m, achats), true);
+});
+
+test('evaluateAdminDelete — bon importé GRAND_LIVRE → refusé (garde-fou absolu)', () => {
+  const m = appMovement({ import_source: 'GRAND_LIVRE' });
+  assert.deepEqual(G.evaluateAdminDelete(m, achats), { allowed: false, reason: 'imported' });
+  assert.deepEqual(G.evaluateAdminDelete(m, dg), { allowed: false, reason: 'imported' });
+  assert.equal(G.canAdminDeleteMovement(m, dg), false);
+});
+
+test('evaluateAdminDelete — bon importé CANEVA / IMP- → aussi refusé', () => {
+  assert.deepEqual(G.evaluateAdminDelete(appMovement({ created_by: { userId: 'import_caneva' } }), achats), { allowed: false, reason: 'imported' });
+  assert.deepEqual(G.evaluateAdminDelete(appMovement({ numero: 'IMP-9' }), achats), { allowed: false, reason: 'imported' });
+});
+
+test('evaluateAdminDelete — déjà supprimé → deleted', () => {
+  assert.deepEqual(G.evaluateAdminDelete(appMovement({ deleted: true }), achats), { allowed: false, reason: 'deleted' });
+});
+
+test('evaluateAdminDelete — non-admin → not_admin', () => {
+  assert.deepEqual(G.evaluateAdminDelete(appMovement(), creator), { allowed: false, reason: 'not_admin' });
+});
+
+test('evaluateAdminDelete — null movement → not_found', () => {
+  assert.deepEqual(G.evaluateAdminDelete(null, achats), { allowed: false, reason: 'not_found' });
+});
+
 // --- refusalMessage ---
 
 test('refusalMessage — returns a non-empty FR string per reason', () => {
-  for (const reason of ['not_found', 'imported', 'validated', 'deleted', 'not_creator', 'whatever']) {
+  for (const reason of ['not_found', 'imported', 'validated', 'deleted', 'not_creator', 'not_admin', 'whatever']) {
     assert.equal(typeof G.refusalMessage(reason), 'string');
     assert.ok(G.refusalMessage(reason).length > 0);
   }

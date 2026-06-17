@@ -127,6 +127,47 @@ function canDeleteMovement(m, requester) {
   return evaluateMutable(m, requester).allowed;
 }
 
+/**
+ * Rôles « admin métier stock » autorisés à supprimer un bon SAISI app même
+ * validé / dont ils ne sont pas créateurs (item suppression bons).
+ */
+var ADMIN_DELETE_ROLES = ['achats', 'dg'];
+
+/**
+ * Le demandeur a-t-il un rôle admin (Achats/DG) habilité à la suppression élargie ?
+ * @param {{profileId?:string}} requester
+ * @returns {boolean}
+ */
+function isAdminDeleter(requester) {
+  return !!requester && ADMIN_DELETE_ROLES.indexOf(requester.profileId || '') !== -1;
+}
+
+/**
+ * Évalue la suppression « admin » (Achats/DG) : autorisée pour tout bon SAISI app
+ * (non importé) non déjà supprimé, sans restriction validé/créateur. Les bons
+ * importés du grand livre restent INSUPPRIMABLES.
+ * @param {*} m
+ * @param {{profileId?:string, userId?:string}} requester
+ * @returns {{allowed:boolean, reason:(string|null)}}
+ */
+function evaluateAdminDelete(m, requester) {
+  if (!m) return { allowed: false, reason: 'not_found' };
+  if (!isAdminDeleter(requester)) return { allowed: false, reason: 'not_admin' };
+  if (isDeletedMovement(m)) return { allowed: false, reason: 'deleted' };
+  if (isImportedMovement(m)) return { allowed: false, reason: 'imported' };
+  return { allowed: true, reason: null };
+}
+
+/**
+ * Bon supprimable par un admin (Achats/DG) ? (boolean simple pour l'UI)
+ * @param {*} m
+ * @param {{profileId?:string, userId?:string}} requester
+ * @returns {boolean}
+ */
+function canAdminDeleteMovement(m, requester) {
+  return evaluateAdminDelete(m, requester).allowed;
+}
+
 /** Message FR lisible pour un refus donné. */
 function refusalMessage(reason) {
   switch (reason) {
@@ -135,6 +176,7 @@ function refusalMessage(reason) {
     case 'validated': return 'Bon déjà validé : impact stock comptabilisé. Passez par un bon d\'annulation/retour';
     case 'deleted': return 'Bon déjà supprimé';
     case 'not_creator': return 'Seul le créateur du bon peut le modifier ou le supprimer';
+    case 'not_admin': return 'Seuls les profils Achats et DG peuvent supprimer ce bon';
     default: return 'Action non autorisée';
   }
 }
@@ -153,6 +195,10 @@ var __stockMovementGuardApi = {
   evaluateMutable: evaluateMutable,
   canEditMovement: canEditMovement,
   canDeleteMovement: canDeleteMovement,
+  ADMIN_DELETE_ROLES: ADMIN_DELETE_ROLES,
+  isAdminDeleter: isAdminDeleter,
+  evaluateAdminDelete: evaluateAdminDelete,
+  canAdminDeleteMovement: canAdminDeleteMovement,
   refusalMessage: refusalMessage,
 };
 

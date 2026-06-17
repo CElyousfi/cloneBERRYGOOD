@@ -9578,6 +9578,30 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         await Promise.all(promises);
       }
 
+      // --- Helper: annule l'impact stock d'un mouvement validé (delta inverse) ---
+      // Applique l'opposé exact de applyStockImpact : re-crédite la source et
+      // re-débite la destination. À n'appeler QUE si le mouvement avait un impact
+      // matérialisé (status === valide_chef), sinon double-comptage.
+      async function reverseStockImpact(movement) {
+        const promises = [];
+        for (const item of (movement.items || [])) {
+          const ref = item.article_ref || item.article || "";
+          const nom = item.article_nom || item.article || "";
+          const qty = parseFloat(item.quantite) || 0;
+          const unite = item.unite || "kg";
+          if (qty <= 0) continue;
+          // Inverse de la source : on re-crédite (+qty au lieu de -qty)
+          if (movement.lieu_source && movement.lieu_source.id) {
+            promises.push(updateStockBalance(movement.lieu_source.type, movement.lieu_source.id, ref, nom, unite, qty));
+          }
+          // Inverse de la destination : on re-débite (-qty au lieu de +qty)
+          if (movement.lieu_destination && movement.lieu_destination.id && movement.lieu_destination.type !== "parcelle") {
+            promises.push(updateStockBalance(movement.lieu_destination.type, movement.lieu_destination.id, ref, nom, unite, -qty));
+          }
+        }
+        await Promise.all(promises);
+      }
+
       // --- Helper: determine chef profile for a ferme ---
       function getChefProfileForFerme(ferme) {
         if (ferme === "F1") return "chef_f1";
@@ -10000,17 +10024,19 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
 
       // --- LIST MOVEMENTS ---
       if (action === "list-movements") {
-        const { type, status, ferme: movFerme, limit: movLimit } = req.query;
+        const { type, status, ferme: movFerme, limit: movLimit, deleted } = req.query;
+        // deleted=true → renvoie UNIQUEMENT les bons soft-deleted (historique des
+        // suppressions). Sinon, comportement par défaut : exclut les supprimés.
+        const onlyDeleted = deleted === "true" || deleted === "1";
         const lim = parseInt(movLimit || "200");
         let q = db_firestore.collection("stock_movements").orderBy("created_at", "desc").limit(lim);
         if (type) q = q.where("type", "==", type);
         if (status) q = q.where("status", "==", status);
         if (movFerme) q = q.where("ferme", "==", movFerme);
         const snap = await q.get();
-        // Exclure les bons soft-deleted (deleted:true / status supprime).
         const movements = snap.docs
           .map((doc) => ({ id: doc.id, ...doc.data() }))
-          .filter((m) => !stockMovementGuard.isDeletedMovement(m));
+          .filter((m) => onlyDeleted ? stockMovementGuard.isDeletedMovement(m) : !stockMovementGuard.isDeletedMovement(m));
         return res.json({ success: true, movements, count: movements.length });
       }
 
@@ -10225,9 +10251,14 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         return res.json({ success: true, id });
       }
 
-      // --- DELETE MOVEMENT (soft-delete d'un bon non validé, non importé, par son créateur) ---
+      // --- DELETE MOVEMENT (soft-delete) ---
+      // Deux chemins :
+      //  - Achats/DG (admin métier) : peut supprimer tout bon SAISI app (non importé),
+      //    même validé, même s'il n'en est pas créateur. Si le bon était validé
+      //    (impact matérialisé dans stock_balances), on annule l'impact (reverse).
+      //  - Autres rôles (chemin historique) : créateur d'un bon non importé / non validé.
       if (action === "delete-movement" && req.method === "POST") {
-        const { id } = req.body || {};
+        const { id, reason } = req.body || {};
         if (!id) return res.status(400).json({ success: false, error: "id requis" });
         const docRef = db_firestore.collection("stock_movements").doc(id);
         const snap = await docRef.get();
@@ -10235,28 +10266,58 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         const mov = snap.data();
 
         const requester = await resolveRequesterIdentity(authUser);
-        const evalRes = requester.isAdminCli
-          ? (stockMovementGuard.isDeletedMovement(mov) ? { allowed: false, reason: "deleted" }
-            : stockMovementGuard.isImportedMovement(mov) ? { allowed: false, reason: "imported" }
-              : stockMovementGuard.isValidatedMovement(mov) ? { allowed: false, reason: "validated" }
-                : { allowed: true, reason: null })
-          : stockMovementGuard.evaluateMutable(mov, requester);
-        if (!evalRes.allowed) {
-          const code = evalRes.reason === "not_found" ? 404 : 403;
-          return res.status(code).json({ success: false, error: stockMovementGuard.refusalMessage(evalRes.reason), reason: evalRes.reason });
+        const isAdminRole = stockMovementGuard.isAdminDeleter(requester);
+
+        let reverse = false;
+        if (isAdminRole) {
+          // Chemin Achats/DG : seul garde-fou = bon déjà supprimé OU importé.
+          // PAS de restriction validé / créateur (cf. evaluateAdminDelete).
+          const adminEval = stockMovementGuard.evaluateAdminDelete(mov, requester);
+          if (!adminEval.allowed) {
+            const code = adminEval.reason === "deleted" ? 400 : 403;
+            const msg = adminEval.reason === "imported"
+              ? "Bon importé du grand livre : non supprimable"
+              : stockMovementGuard.refusalMessage(adminEval.reason);
+            return res.status(code).json({ success: false, error: msg, reason: adminEval.reason });
+          }
+          // Si le bon était validé, son impact est matérialisé dans stock_balances → on l'annule.
+          reverse = stockMovementGuard.isValidatedMovement(mov);
+        } else {
+          // Chemin historique : créateur, non importé, non validé.
+          const evalRes = requester.isAdminCli
+            ? (stockMovementGuard.isDeletedMovement(mov) ? { allowed: false, reason: "deleted" }
+              : stockMovementGuard.isImportedMovement(mov) ? { allowed: false, reason: "imported" }
+                : stockMovementGuard.isValidatedMovement(mov) ? { allowed: false, reason: "validated" }
+                  : { allowed: true, reason: null })
+            : stockMovementGuard.evaluateMutable(mov, requester);
+          if (!evalRes.allowed) {
+            const code = evalRes.reason === "not_found" ? 404 : 403;
+            return res.status(code).json({ success: false, error: stockMovementGuard.refusalMessage(evalRes.reason), reason: evalRes.reason });
+          }
         }
 
-        // Soft-delete : traçabilité conservée, exclu des listes. Non validé → aucun impact stock.
+        const cleanReason = typeof reason === "string" ? reason.trim() : "";
+
+        // Annule l'impact stock AVANT le soft-delete (le bon est encore "validé"
+        // dans son état courant ; reverseStockImpact applique l'inverse de applyStockImpact).
+        if (reverse) {
+          await reverseStockImpact(mov);
+        }
+
         await docRef.update({
           deleted: true,
           deleted_by: { userId: requester.userId, profileId: requester.profileId },
           deleted_at: Date.now(),
+          deleted_reason: cleanReason || null,
           updated_at: Date.now(),
           history: (mov.history || []).concat([{
-            action: "delete", by: { userId: requester.userId, profileId: requester.profileId }, at: Date.now(),
+            action: "delete",
+            by: { userId: requester.userId, profileId: requester.profileId },
+            at: Date.now(),
+            reason: cleanReason || null,
           }]),
         });
-        return res.json({ success: true, id });
+        return res.json({ success: true, id, reversed: reverse });
       }
 
       // --- GET CONSUMPTION COSTS BY VARIETY ---
