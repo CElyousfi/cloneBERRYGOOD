@@ -20,6 +20,20 @@
             } catch(e) {}
         })();
 
+        // Helper unique : clients marché local ACTIFS (exclut les archivés).
+        // Filtre archived CÔTÉ CODE (`archived !== true`) — surtout PAS de
+        // where('archived','!=',true) qui exclurait les docs sans champ archived.
+        // Source de vérité du référentiel = seed backend tracké
+        // functions/scripts/seedComptesClientsMarcheLocal.js (5 clients actifs).
+        async function getActiveMarcheLocalClients(db) {
+            const snap = await db.collection('clients_marche_local').get();
+            const all = snap.docs.map(d => d.data()).filter(Boolean);
+            return {
+                active: all.filter(d => d.archived !== true),
+                archivedNames: new Set(all.filter(d => d.archived === true).map(d => d.nom).filter(Boolean))
+            };
+        }
+
         // Fonction utilitaire : charger TOUS les bons depuis Firestore
         let _bonsCache = null;
         let _bonsCacheTime = 0;
@@ -50362,21 +50376,23 @@ ${rejetHtml}
                         } catch(e2) {}
                     }
                     let fromCollection = [];
+                    let archivedNames = new Set();
                     try {
-                        const snap2 = await db.collection('clients_marche_local').get();
-                        fromCollection = snap2.docs.map(d => d.data().nom).filter(Boolean);
+                        // Lecture centralisée via le helper : exclut les clients archivés
+                        // (filtre côté code). Le filtre ne peut plus être oublié ici.
+                        const ref = await getActiveMarcheLocalClients(db);
+                        fromCollection = ref.active.map(d => d.nom).filter(Boolean);
+                        archivedNames = ref.archivedNames;
                     } catch(e) {}
-                    // Seed initial clients if collection is empty and no clients found
-                    if (fromCollection.length === 0 && fromBons.length === 0) {
-                        const defaultClients = ['MUSTAPHA CHAFIK A', 'Mr MONAIM LOCAL', 'IRAQI MOHAMED', 'Hamdouch Omar', 'Fruit congel du nord', 'IMAD', 'AMIN'];
-                        const batch = db.batch();
-                        defaultClients.forEach(nom => {
-                            const ref = db.collection('clients_marche_local').doc();
-                            batch.set(ref, { nom, createdAt: Date.now(), createdBy: { profileId: 'system', name: 'Auto-seed' } });
-                        });
-                        try { await batch.commit(); fromCollection = defaultClients; } catch(e) {}
-                    }
-                    const clients = [...new Set([...fromBons, ...fromCollection])].sort();
+                    // Auto-seed front retiré (étape 2b) : il réintroduisait IMAD/AMIN et
+                    // des doublons, divergeant du référentiel canonique. Le seed est
+                    // désormais géré exclusivement par le backend tracké
+                    // functions/scripts/seedComptesClientsMarcheLocal.js (5 clients).
+                    // Les noms issus de l'historique des bons sont aussi filtrés des
+                    // clients archivés pour ne jamais réafficher IMAD/AMIN/doublons.
+                    const clients = [...new Set([...fromBons, ...fromCollection])]
+                        .filter(n => !archivedNames.has(n))
+                        .sort();
                     setMarcheLocalClients(clients);
                 } catch(e) { console.error('Error loading marché local clients:', e); }
             };
