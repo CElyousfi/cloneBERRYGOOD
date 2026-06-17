@@ -1,0 +1,7409 @@
+[
+  {
+    "bonApport": "1089",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10.5,
+    "prixDH": 15,
+    "totalDH": 157.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1089",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7.6,
+    "prixDH": 10,
+    "totalDH": 76,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1090",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8.5,
+    "prixDH": 15,
+    "totalDH": 127.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1090",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 10,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1091",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 21,
+    "prixDH": 15,
+    "totalDH": 315,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1092",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10.5,
+    "prixDH": 15,
+    "totalDH": 157.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1093",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 35,
+    "prixDH": 15,
+    "totalDH": 525,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1094",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30.5,
+    "prixDH": 15,
+    "totalDH": 457.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1095",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 15,
+    "totalDH": 37.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1096",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.6,
+    "prixDH": 10,
+    "totalDH": 46,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1097",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7.4,
+    "prixDH": 10,
+    "totalDH": 74,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1098",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7.7,
+    "prixDH": 10,
+    "totalDH": 77,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1099",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 9,
+    "totalDH": 22.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1099",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F1",
+    "poidsLot": 17.6,
+    "prixDH": 9,
+    "totalDH": 158.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1099",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F1",
+    "poidsLot": 10.6,
+    "prixDH": 15,
+    "totalDH": 159,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1151",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6.5,
+    "prixDH": 9,
+    "totalDH": 58.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1151",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F1",
+    "poidsLot": 14.2,
+    "prixDH": 9,
+    "totalDH": 127.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1151",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F1",
+    "poidsLot": 3.5,
+    "prixDH": 15,
+    "totalDH": 52.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1152",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.5,
+    "prixDH": 9,
+    "totalDH": 40.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1152",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 14.5,
+    "prixDH": 15,
+    "totalDH": 217.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1153",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 9,
+    "totalDH": 22.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1153",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9,
+    "prixDH": 15,
+    "totalDH": 135,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1154",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 9,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1154",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 15,
+    "totalDH": 150,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1155",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 9,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1155",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 9,
+    "totalDH": 90,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1156",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 9,
+    "totalDH": 9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1156",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 11,
+    "prixDH": 15,
+    "totalDH": 165,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1156",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1157",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 9,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1157",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5.5,
+    "prixDH": 9,
+    "totalDH": 49.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1158",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12,
+    "prixDH": 15,
+    "totalDH": 180,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1158",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 9,
+    "totalDH": 13.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1158",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 9,
+    "totalDH": 31.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1159",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F5",
+    "poidsLot": 72,
+    "prixDH": 30,
+    "totalDH": 2160,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1159",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.2,
+    "prixDH": 9,
+    "totalDH": 28.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1159",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5.1,
+    "prixDH": 15,
+    "totalDH": 76.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1159",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.7,
+    "prixDH": 9,
+    "totalDH": 69.3,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1160",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 9,
+    "totalDH": 27,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1160",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8.4,
+    "prixDH": 9,
+    "totalDH": 75.60000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1161",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 9,
+    "totalDH": 13.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1161",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.7,
+    "prixDH": 9,
+    "totalDH": 42.300000000000004,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1162",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 9,
+    "totalDH": 31.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1162",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.6,
+    "prixDH": 9,
+    "totalDH": 68.39999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1162",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 9,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1163",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8.3,
+    "prixDH": 9,
+    "totalDH": 74.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1163",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 9,
+    "totalDH": 81,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1163",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 9,
+    "totalDH": 27,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1164",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10.8,
+    "prixDH": 9,
+    "totalDH": 97.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1164",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.4,
+    "prixDH": 9,
+    "totalDH": 30.599999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1164",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.3,
+    "prixDH": 9,
+    "totalDH": 38.699999999999996,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1164",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.2,
+    "prixDH": 9,
+    "totalDH": 37.800000000000004,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1165",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 9,
+    "totalDH": 90,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1165",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 9,
+    "totalDH": 31.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1165",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 15,
+    "totalDH": 75,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1165",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.1,
+    "prixDH": 9,
+    "totalDH": 36.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1165",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 9,
+    "totalDH": 27,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1166",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 9,
+    "totalDH": 63,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1166",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 9,
+    "totalDH": 45,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1166",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1166",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 2,
+    "prixDH": 9,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1167",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 9,
+    "totalDH": 81,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1167",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 9,
+    "totalDH": 63,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1167",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 1.9,
+    "prixDH": 9,
+    "totalDH": 17.099999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1167",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 2.5,
+    "prixDH": 9,
+    "totalDH": 22.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1168",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11.5,
+    "prixDH": 9,
+    "totalDH": 103.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1168",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 9,
+    "totalDH": 81,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1168",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 9,
+    "totalDH": 45,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1169",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11.5,
+    "prixDH": 9,
+    "totalDH": 103.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1169",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 9,
+    "totalDH": 63,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1169",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5.5,
+    "prixDH": 9,
+    "totalDH": 49.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1170",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 9,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1170",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 9,
+    "totalDH": 90,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1170",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 9,
+    "totalDH": 54,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1171",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 9,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1171",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 9,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1171",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40.1,
+    "prixDH": 9,
+    "totalDH": 360.90000000000003,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1171",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 11,
+    "prixDH": 9,
+    "totalDH": 99,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1172",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13,
+    "prixDH": 9,
+    "totalDH": 117,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1172",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11,
+    "prixDH": 9,
+    "totalDH": 99,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1172",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 9,
+    "totalDH": 180,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1172",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 31,
+    "prixDH": 9,
+    "totalDH": 279,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1173",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11,
+    "prixDH": 9,
+    "totalDH": 99,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1173",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8.5,
+    "prixDH": 9,
+    "totalDH": 76.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1173",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1173",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 11,
+    "prixDH": 9,
+    "totalDH": 99,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1174",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 9,
+    "totalDH": 81,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1174",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 9,
+    "totalDH": 45,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1174",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 9,
+    "totalDH": 54,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1174",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10.8,
+    "prixDH": 9,
+    "totalDH": 97.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1175",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1175",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 9,
+    "totalDH": 63,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1175",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.17,
+    "prixDH": 9,
+    "totalDH": 64.53,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1175",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 11.8,
+    "prixDH": 9,
+    "totalDH": 106.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1176",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 9,
+    "totalDH": 63,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1176",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 9,
+    "totalDH": 45,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1176",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6.4,
+    "prixDH": 9,
+    "totalDH": 57.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1176",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9.3,
+    "prixDH": 9,
+    "totalDH": 83.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1177",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1177",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 9,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1177",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 9,
+    "totalDH": 54,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1177",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 9,
+    "totalDH": 90,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1178",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 9,
+    "totalDH": 27,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1178",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1178",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1178",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 9,
+    "totalDH": 63,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1178",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 9,
+    "totalDH": 31.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1178",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.5,
+    "prixDH": 9,
+    "totalDH": 67.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1179",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 9,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1179",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 9,
+    "totalDH": 54,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1179",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 9,
+    "totalDH": 45,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1179",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 9,
+    "totalDH": 27,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1179",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1179",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1180",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1180",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 12,
+    "totalDH": 168,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1180",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 17.5,
+    "prixDH": 12,
+    "totalDH": 210,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1180",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 16.5,
+    "prixDH": 12,
+    "totalDH": 198,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1181",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.4,
+    "prixDH": 12,
+    "totalDH": 16.799999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1181",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1181",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1181",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1182",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1182",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.3,
+    "prixDH": 12,
+    "totalDH": 51.599999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1182",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.8,
+    "prixDH": 12,
+    "totalDH": 57.599999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1182",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1183",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.8,
+    "prixDH": 12,
+    "totalDH": 21.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1183",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.2,
+    "prixDH": 12,
+    "totalDH": 50.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1183",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.3,
+    "prixDH": 12,
+    "totalDH": 87.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1183",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1184",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.7,
+    "prixDH": 12,
+    "totalDH": 56.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1184",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1184",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1184",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1185",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1185",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1185",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 18,
+    "prixDH": 12,
+    "totalDH": 216,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1185",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1186",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1186",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1186",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1186",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1187",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 12,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1187",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1187",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1187",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1188",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1188",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 12,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1188",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1188",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 2.8,
+    "prixDH": 12,
+    "totalDH": 33.599999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1189",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1189",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 12,
+    "totalDH": 30,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1189",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9,
+    "prixDH": 12,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1189",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5.5,
+    "prixDH": 12,
+    "totalDH": 66,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1190",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 12,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1190",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1190",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1190",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1191",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1191",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1191",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.7,
+    "prixDH": 12,
+    "totalDH": 56.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1191",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1192",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1192",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1192",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1192",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.2,
+    "prixDH": 12,
+    "totalDH": 50.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1193",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1193",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1193",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8.6,
+    "prixDH": 12,
+    "totalDH": 103.19999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1193",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6.3,
+    "prixDH": 12,
+    "totalDH": 75.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1194",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 0.8,
+    "prixDH": 12,
+    "totalDH": 9.600000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1194",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1194",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1194",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3.2,
+    "prixDH": 12,
+    "totalDH": 38.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1195",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 12,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1195",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1195",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1195",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1196",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1196",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1196",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9,
+    "prixDH": 12,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1196",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5.4,
+    "prixDH": 12,
+    "totalDH": 64.80000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1197",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 12,
+    "totalDH": 30,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1197",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1197",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.8,
+    "prixDH": 12,
+    "totalDH": 93.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1197",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1198",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1198",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1198",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 12,
+    "totalDH": 120,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1198",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7.2,
+    "prixDH": 12,
+    "totalDH": 86.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1199",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1199",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1199",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 38,
+    "prixDH": 12,
+    "totalDH": 456,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1199",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 15,
+    "prixDH": 12,
+    "totalDH": 180,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1200",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1200",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 12,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1200",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 30,
+    "prixDH": 12,
+    "totalDH": 360,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1200",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1201",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 0,
+    "prixDH": 12,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1201",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 0,
+    "prixDH": 12,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1201",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 32,
+    "prixDH": 12,
+    "totalDH": 384,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1201",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1202",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 12,
+    "totalDH": 30,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1202",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1202",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 28.2,
+    "prixDH": 12,
+    "totalDH": 338.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1202",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1203",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1203",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1203",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1203",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5.8,
+    "prixDH": 12,
+    "totalDH": 69.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1204",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1204",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 12,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1204",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9,
+    "prixDH": 12,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1204",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.7,
+    "prixDH": 12,
+    "totalDH": 56.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1205",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1205",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1205",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1205",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3.4,
+    "prixDH": 12,
+    "totalDH": 40.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1206",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1206",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1206",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1206",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1207",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1207",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.6,
+    "prixDH": 12,
+    "totalDH": 19.200000000000003,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1207",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1207",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 1.4,
+    "prixDH": 12,
+    "totalDH": 16.799999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1208",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1208",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1208",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1208",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1209",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1209",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1209",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1209",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1210",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1210",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1210",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9,
+    "prixDH": 12,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1210",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1211",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1211",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1211",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1211",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1212",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1212",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 12,
+    "totalDH": 30,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1212",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 11,
+    "prixDH": 12,
+    "totalDH": 132,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1212",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 9,
+    "prixDH": 12,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1213",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1213",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1213",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1213",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 19,
+    "prixDH": 12,
+    "totalDH": 228,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 15,
+    "prixDH": 12,
+    "totalDH": 180,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 24,
+    "prixDH": 12,
+    "totalDH": 288,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 17,
+    "prixDH": 12,
+    "totalDH": 204,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5.4,
+    "prixDH": 12,
+    "totalDH": 64.80000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 22,
+    "prixDH": 12,
+    "totalDH": 264,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 26,
+    "prixDH": 12,
+    "totalDH": 312,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1214",
+    "client": "Hamdouch Omar",
+    "blocFerme": "F1",
+    "poidsLot": 147,
+    "prixDH": 30,
+    "totalDH": 4410,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1215",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1215",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1215",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35,
+    "prixDH": 12,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1215",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 28,
+    "prixDH": 12,
+    "totalDH": 336,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1216",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 12,
+    "totalDH": 108,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1216",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1216",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40,
+    "prixDH": 12,
+    "totalDH": 480,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1216",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 32,
+    "prixDH": 12,
+    "totalDH": 384,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1217",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 12,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1217",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 12,
+    "totalDH": 120,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1217",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 25,
+    "prixDH": 12,
+    "totalDH": 300,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1217",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 14,
+    "prixDH": 12,
+    "totalDH": 168,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1318",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 30,
+    "prixDH": 15,
+    "totalDH": 450,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1318",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 15,
+    "totalDH": 300,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1329",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 173,
+    "prixDH": 27,
+    "totalDH": 4671,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1329",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 50,
+    "prixDH": 15,
+    "totalDH": 750,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1330",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 77.5,
+    "prixDH": 27,
+    "totalDH": 2092.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1330",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 15,
+    "totalDH": 150,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1331",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 202.5,
+    "prixDH": 27,
+    "totalDH": 5467.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1332",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 105.5,
+    "prixDH": 17,
+    "totalDH": 1793.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1332",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 31.5,
+    "prixDH": 15,
+    "totalDH": 472.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1333",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 92.5,
+    "prixDH": 27,
+    "totalDH": 2497.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1333",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 132.5,
+    "prixDH": 15,
+    "totalDH": 1987.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1334",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 110,
+    "prixDH": 27,
+    "totalDH": 2970,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1334",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 82,
+    "prixDH": 15,
+    "totalDH": 1230,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1335",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 77.5,
+    "prixDH": 27,
+    "totalDH": 2092.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1335",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 100.5,
+    "prixDH": 15,
+    "totalDH": 1507.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1336",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 62,
+    "prixDH": 27,
+    "totalDH": 1674,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1336",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 70,
+    "prixDH": 14,
+    "totalDH": 980,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1551",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 25,
+    "prixDH": 12,
+    "totalDH": 300,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1551",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 18,
+    "prixDH": 12,
+    "totalDH": 216,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1552",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 40,
+    "prixDH": 12,
+    "totalDH": 480,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1552",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20,
+    "prixDH": 12,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1553",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35,
+    "prixDH": 12,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1553",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 23,
+    "prixDH": 12,
+    "totalDH": 276,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1554",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20,
+    "prixDH": 12,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1554",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1555",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 42,
+    "prixDH": 12,
+    "totalDH": 504,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1555",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 24,
+    "prixDH": 12,
+    "totalDH": 288,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1556",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 42,
+    "prixDH": 12,
+    "totalDH": 504,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1556",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 26,
+    "prixDH": 12,
+    "totalDH": 312,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1556",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 22,
+    "prixDH": 12,
+    "totalDH": 264,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1556",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 16,
+    "prixDH": 12,
+    "totalDH": 192,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1557",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35,
+    "prixDH": 12,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1557",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1558",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 27,
+    "prixDH": 12,
+    "totalDH": 324,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1558",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 23,
+    "prixDH": 12,
+    "totalDH": 276,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1559",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35,
+    "prixDH": 12,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1559",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1560",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 75,
+    "prixDH": 12,
+    "totalDH": 900,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1560",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 18,
+    "prixDH": 12,
+    "totalDH": 216,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1561",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 180,
+    "prixDH": 12,
+    "totalDH": 2160,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1561",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 12,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1562",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 46,
+    "prixDH": 25,
+    "totalDH": 1150,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1563",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 142.4,
+    "prixDH": 12,
+    "totalDH": 1708.8000000000002,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1563",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.3,
+    "prixDH": 12,
+    "totalDH": 51.599999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1564",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 36.2,
+    "prixDH": 25,
+    "totalDH": 905.0000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1565",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 233.5,
+    "prixDH": 12,
+    "totalDH": 2802,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1566",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 63,
+    "prixDH": 25,
+    "totalDH": 1575,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1567",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F5",
+    "poidsLot": 44,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1567",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F1",
+    "poidsLot": 100,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1568",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F1",
+    "poidsLot": 21.5,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1568",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F1",
+    "poidsLot": 165,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1569",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F1",
+    "poidsLot": 99,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1569",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F1",
+    "poidsLot": 44,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1569",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1570",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 41,
+    "prixDH": 25,
+    "totalDH": 1025,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1570",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 166,
+    "prixDH": 15,
+    "totalDH": 2490,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1571",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 80,
+    "prixDH": 25,
+    "totalDH": 2000,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1571",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 15,
+    "totalDH": 150,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1574",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 50,
+    "prixDH": 25,
+    "totalDH": 1250,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1575",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 14,
+    "prixDH": 25,
+    "totalDH": 350,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1575",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 140,
+    "prixDH": 15,
+    "totalDH": 2100,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1576",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F1",
+    "poidsLot": 134,
+    "prixDH": 15,
+    "totalDH": 2010,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1581",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20.3,
+    "prixDH": 17,
+    "totalDH": 345.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1582",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 17,
+    "totalDH": 340,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1583",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10.1,
+    "prixDH": 17,
+    "totalDH": 171.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1584",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 17,
+    "totalDH": 170,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1585",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40,
+    "prixDH": 17,
+    "totalDH": 680,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1586",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 151.1,
+    "prixDH": 17,
+    "totalDH": 2568.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1587",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 521.2,
+    "prixDH": 18,
+    "totalDH": 9381.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1588",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 426,
+    "prixDH": 18,
+    "totalDH": 7668,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1589",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 208.1,
+    "prixDH": 18,
+    "totalDH": 3745.7999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1590",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 80.5,
+    "prixDH": 18,
+    "totalDH": 1449,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1591",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 30,
+    "prixDH": 18,
+    "totalDH": 540,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1592",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10.1,
+    "prixDH": 18,
+    "totalDH": 181.79999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1593",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 13.2,
+    "prixDH": 14,
+    "totalDH": 184.79999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1594",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F5",
+    "poidsLot": 15.3,
+    "prixDH": 14,
+    "totalDH": 214.20000000000002,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1594",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F5",
+    "poidsLot": 59.2,
+    "prixDH": 13,
+    "totalDH": 769.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1595",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 15.1,
+    "prixDH": 14,
+    "totalDH": 211.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1598",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1599",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12.1,
+    "prixDH": 14,
+    "totalDH": 169.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1665",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 12,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1801",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 275.8,
+    "prixDH": 18,
+    "totalDH": 4964.400000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1801",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.8,
+    "prixDH": 13,
+    "totalDH": 231.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1802",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.4,
+    "prixDH": 18,
+    "totalDH": 313.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1802",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28.6,
+    "prixDH": 13,
+    "totalDH": 371.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1803",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 161,
+    "prixDH": 18,
+    "totalDH": 2898,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1803",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 32.1,
+    "prixDH": 13,
+    "totalDH": 417.3,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1804",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 76,
+    "prixDH": 18,
+    "totalDH": 1368,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1804",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 60.2,
+    "prixDH": 13,
+    "totalDH": 782.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1805",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 47.2,
+    "prixDH": 18,
+    "totalDH": 849.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1805",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 42.2,
+    "prixDH": 13,
+    "totalDH": 548.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1806",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12.7,
+    "prixDH": 18,
+    "totalDH": 228.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1806",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.3,
+    "prixDH": 13,
+    "totalDH": 224.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1807",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F5",
+    "poidsLot": 15.7,
+    "prixDH": 14,
+    "totalDH": 219.79999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1807",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 0,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1808",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6.3,
+    "prixDH": 14,
+    "totalDH": 88.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1808",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 33,
+    "prixDH": 13,
+    "totalDH": 429,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1809",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6.8,
+    "prixDH": 14,
+    "totalDH": 95.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1809",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 49,
+    "prixDH": 13,
+    "totalDH": 637,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1810",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 14,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1810",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 33.2,
+    "prixDH": 13,
+    "totalDH": 431.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1811",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "1811",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 49.8,
+    "prixDH": 13,
+    "totalDH": 647.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2301",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 30.9,
+    "prixDH": 17,
+    "totalDH": 525.3,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2302",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 87.5,
+    "prixDH": 17,
+    "totalDH": 1487.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2303",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 116,
+    "prixDH": 17,
+    "totalDH": 1972,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2304",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 70.3,
+    "prixDH": 17,
+    "totalDH": 1195.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2305",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 118.4,
+    "prixDH": 17,
+    "totalDH": 2012.8000000000002,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2306",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 150.7,
+    "prixDH": 17,
+    "totalDH": 2561.8999999999996,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2307",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 96.7,
+    "prixDH": 17,
+    "totalDH": 1643.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2308",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 60.5,
+    "prixDH": 17,
+    "totalDH": 1028.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2309",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 50,
+    "prixDH": 17,
+    "totalDH": 850,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2310",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20.5,
+    "prixDH": 17,
+    "totalDH": 348.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2311",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 25,
+    "prixDH": 17,
+    "totalDH": 425,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2312",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 17,
+    "totalDH": 340,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2313",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40.5,
+    "prixDH": 17,
+    "totalDH": 688.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2314",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 50,
+    "prixDH": 17,
+    "totalDH": 850,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2315",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 14.5,
+    "prixDH": 17,
+    "totalDH": 246.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2316",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 16,
+    "prixDH": 17,
+    "totalDH": 272,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2317",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 151.5,
+    "prixDH": 25,
+    "totalDH": 3787.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2318",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 34,
+    "prixDH": 17,
+    "totalDH": 578,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2318",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 17,
+    "totalDH": 170,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2319",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 14,
+    "prixDH": 17,
+    "totalDH": 238,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2320",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 17,
+    "totalDH": 340,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2322",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 17,
+    "totalDH": 170,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2322",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 17,
+    "totalDH": 340,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2322",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 8.5,
+    "prixDH": 20,
+    "totalDH": 170,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2323",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20,
+    "prixDH": 25,
+    "totalDH": 500,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2323",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 12,
+    "prixDH": 17,
+    "totalDH": 204,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2324",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 10,
+    "prixDH": 17,
+    "totalDH": 170,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2325",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 44,
+    "prixDH": 17,
+    "totalDH": 748,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2326",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40,
+    "prixDH": 17,
+    "totalDH": 680,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2327",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 32,
+    "prixDH": 17,
+    "totalDH": 544,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2327",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 94.5,
+    "prixDH": 17,
+    "totalDH": 1606.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2328",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35.1,
+    "prixDH": 15,
+    "totalDH": 526.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2329",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 30.2,
+    "prixDH": 17,
+    "totalDH": 513.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2330",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 50.5,
+    "prixDH": 17,
+    "totalDH": 858.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2331",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40.1,
+    "prixDH": 17,
+    "totalDH": 681.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2332",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 90.5,
+    "prixDH": 17,
+    "totalDH": 1538.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2333",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 80,
+    "prixDH": 17,
+    "totalDH": 1360,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2334",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 105.5,
+    "prixDH": 17,
+    "totalDH": 1793.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2335",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 84.5,
+    "prixDH": 17,
+    "totalDH": 1436.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2336",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 110.1,
+    "prixDH": 17,
+    "totalDH": 1871.6999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2337",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 130.1,
+    "prixDH": 17,
+    "totalDH": 2211.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2339",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 109,
+    "prixDH": 17,
+    "totalDH": 1853,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2340",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 96.2,
+    "prixDH": 17,
+    "totalDH": 1635.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2341",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 164.3,
+    "prixDH": 17,
+    "totalDH": 2793.1000000000004,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2342",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 272.1,
+    "prixDH": 17,
+    "totalDH": 4625.700000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2343",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 162.5,
+    "prixDH": 17,
+    "totalDH": 2762.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2344",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 123.1,
+    "prixDH": 17,
+    "totalDH": 2092.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2345",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 239.4,
+    "prixDH": 17,
+    "totalDH": 4069.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2346",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 139.5,
+    "prixDH": 17,
+    "totalDH": 2371.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2347",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 128.8,
+    "prixDH": 17,
+    "totalDH": 2189.6000000000004,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2348",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 169.2,
+    "prixDH": 17,
+    "totalDH": 2876.3999999999996,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2349",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 80,
+    "prixDH": 17,
+    "totalDH": 1360,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2350",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40.1,
+    "prixDH": 17,
+    "totalDH": 681.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2701",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 102,
+    "prixDH": 15,
+    "totalDH": 1530,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2703",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 80,
+    "prixDH": 15,
+    "totalDH": 1200,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2704",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 70,
+    "prixDH": 15,
+    "totalDH": 1050,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2705",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 92,
+    "prixDH": 15,
+    "totalDH": 1380,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2705",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 30,
+    "totalDH": 120,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2705",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 22,
+    "prixDH": 28,
+    "totalDH": 616,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2706",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 130,
+    "prixDH": 15,
+    "totalDH": 1950,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2707",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 138,
+    "prixDH": 15,
+    "totalDH": 2070,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2709",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 121,
+    "prixDH": 15,
+    "totalDH": 1815,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2710",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 136,
+    "prixDH": 15,
+    "totalDH": 2040,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2710",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5.3,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2711",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 96,
+    "prixDH": 15,
+    "totalDH": 1440,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2712",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 82.8,
+    "prixDH": 15,
+    "totalDH": 1242,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2713",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 94,
+    "prixDH": 15,
+    "totalDH": 1410,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2714",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 145.3,
+    "prixDH": 15,
+    "totalDH": 2179.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2715",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 162.3,
+    "prixDH": 15,
+    "totalDH": 2434.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2716",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 149,
+    "prixDH": 15,
+    "totalDH": 2235,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2717",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 100.2,
+    "prixDH": 15,
+    "totalDH": 1503,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2718",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 88,
+    "prixDH": 15,
+    "totalDH": 1320,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2718",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 21,
+    "prixDH": 30,
+    "totalDH": 630,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2719",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 82,
+    "prixDH": 15,
+    "totalDH": 1230,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2719",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 30,
+    "totalDH": 360,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2720",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 98,
+    "prixDH": 15,
+    "totalDH": 1470,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2721",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 97.5,
+    "prixDH": 15,
+    "totalDH": 1462.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2722",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 66,
+    "prixDH": 15,
+    "totalDH": 990,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2723",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 92,
+    "prixDH": 15,
+    "totalDH": 1380,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2724",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 95,
+    "prixDH": 15,
+    "totalDH": 1425,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2725",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 54.5,
+    "prixDH": 15,
+    "totalDH": 817.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2726",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 62,
+    "prixDH": 15,
+    "totalDH": 930,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2727",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 66.5,
+    "prixDH": 15,
+    "totalDH": 997.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2728",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 235,
+    "prixDH": 15,
+    "totalDH": 3525,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2728",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 30,
+    "totalDH": 300,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2729",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 79,
+    "prixDH": 15,
+    "totalDH": 1185,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2729",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11,
+    "prixDH": 30,
+    "totalDH": 330,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2730",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 47,
+    "prixDH": 15,
+    "totalDH": 705,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2730",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 15,
+    "prixDH": 30,
+    "totalDH": 450,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2731",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 246,
+    "prixDH": 17,
+    "totalDH": 4182,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2731",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 26,
+    "prixDH": 30,
+    "totalDH": 780,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2732",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 19,
+    "prixDH": 30,
+    "totalDH": 570,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2732",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 24.5,
+    "prixDH": 17,
+    "totalDH": 416.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2733",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 94,
+    "prixDH": 17,
+    "totalDH": 1598,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2733",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 23.5,
+    "prixDH": 30,
+    "totalDH": 705,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2734",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 40,
+    "prixDH": 17,
+    "totalDH": 680,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2734",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 15.5,
+    "prixDH": 30,
+    "totalDH": 465,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2736",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 34.7,
+    "prixDH": 17,
+    "totalDH": 589.9000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2736",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 18.5,
+    "prixDH": 15,
+    "totalDH": 277.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2738",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 23.6,
+    "prixDH": 15,
+    "totalDH": 354,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2738",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 39,
+    "prixDH": 17,
+    "totalDH": 663,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2739",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 61.5,
+    "prixDH": 17,
+    "totalDH": 1045.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2739",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20,
+    "prixDH": 15,
+    "totalDH": 300,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2739",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 16,
+    "prixDH": 15,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2740",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 40,
+    "prixDH": 17,
+    "totalDH": 680,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2740",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 15,
+    "prixDH": 15,
+    "totalDH": 225,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2740",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 32,
+    "prixDH": 15,
+    "totalDH": 480,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2741",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 16,
+    "prixDH": 17,
+    "totalDH": 272,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2741",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.6,
+    "prixDH": 15,
+    "totalDH": 69,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2741",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 15,
+    "totalDH": 90,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2742",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 17,
+    "totalDH": 153,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2743",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 17,
+    "totalDH": 136,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2743",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11,
+    "prixDH": 15,
+    "totalDH": 165,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2744",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 17,
+    "totalDH": 238,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2744",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 38,
+    "prixDH": 15,
+    "totalDH": 570,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2744",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 47,
+    "prixDH": 15,
+    "totalDH": 705,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2745",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 31,
+    "prixDH": 17,
+    "totalDH": 527,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2745",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 15,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2745",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 32,
+    "prixDH": 15,
+    "totalDH": 480,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2746",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 32,
+    "prixDH": 15,
+    "totalDH": 480,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2746",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 36,
+    "prixDH": 17,
+    "totalDH": 612,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2746",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 15,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2747",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 17,
+    "totalDH": 136,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2747",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 53.2,
+    "prixDH": 15,
+    "totalDH": 798,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2748",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 77.2,
+    "prixDH": 15,
+    "totalDH": 1158,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2748",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.7,
+    "prixDH": 17,
+    "totalDH": 45.900000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2749",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.6,
+    "prixDH": 17,
+    "totalDH": 44.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2750",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.6,
+    "prixDH": 17,
+    "totalDH": 61.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2750",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 63,
+    "prixDH": 15,
+    "totalDH": 945,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2751",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 2.5,
+    "prixDH": 15,
+    "totalDH": 37.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2751",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 13,
+    "prixDH": 28,
+    "totalDH": 364,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2754",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3,
+    "prixDH": 15,
+    "totalDH": 45,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2754",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 68,
+    "prixDH": 28,
+    "totalDH": 1904,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2755",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 106,
+    "prixDH": 28,
+    "totalDH": 2968,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2755",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 4.5,
+    "prixDH": 15,
+    "totalDH": 67.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2756",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 162,
+    "prixDH": 28,
+    "totalDH": 4536,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2756",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 3.5,
+    "prixDH": 15,
+    "totalDH": 52.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2757",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 77,
+    "prixDH": 15,
+    "totalDH": 1155,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2758",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 109,
+    "prixDH": 15,
+    "totalDH": 1635,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2759",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 91.5,
+    "prixDH": 15,
+    "totalDH": 1372.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2760",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 163,
+    "prixDH": 15,
+    "totalDH": 2445,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2763",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 209.5,
+    "prixDH": 15,
+    "totalDH": 3142.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2764",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 108.5,
+    "prixDH": 15,
+    "totalDH": 1627.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2765",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 150.5,
+    "prixDH": 15,
+    "totalDH": 2257.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2766",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 125.5,
+    "prixDH": 15,
+    "totalDH": 1882.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2767",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 135.5,
+    "prixDH": 15,
+    "totalDH": 2032.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2768",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 110,
+    "prixDH": 15,
+    "totalDH": 1650,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2771",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 80.5,
+    "prixDH": 15,
+    "totalDH": 1207.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2773",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 82.5,
+    "prixDH": 15,
+    "totalDH": 1237.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2774",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 70,
+    "prixDH": 15,
+    "totalDH": 1050,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2776",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 90.8,
+    "prixDH": 15,
+    "totalDH": 1362,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2777",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 116.2,
+    "prixDH": 15,
+    "totalDH": 1743,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2780",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 90.3,
+    "prixDH": 15,
+    "totalDH": 1354.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2781",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 86.8,
+    "prixDH": 15,
+    "totalDH": 1302,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2782",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 60.7,
+    "prixDH": 15,
+    "totalDH": 910.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2783",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 44.8,
+    "prixDH": 15,
+    "totalDH": 672,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2784",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 286.1,
+    "prixDH": 15,
+    "totalDH": 4291.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2785",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 516.2,
+    "prixDH": 15,
+    "totalDH": 7743.000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2786",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 150.6,
+    "prixDH": 15,
+    "totalDH": 2259,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2787",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 70.7,
+    "prixDH": 15,
+    "totalDH": 1060.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2788",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 50.2,
+    "prixDH": 15,
+    "totalDH": 753,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2789",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 25.8,
+    "prixDH": 17,
+    "totalDH": 438.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2790",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 23.8,
+    "prixDH": 17,
+    "totalDH": 404.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2791",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 20.1,
+    "prixDH": 17,
+    "totalDH": 341.70000000000005,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2792",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 30.9,
+    "prixDH": 17,
+    "totalDH": 525.3,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2793",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35.6,
+    "prixDH": 17,
+    "totalDH": 605.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2794",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 23,
+    "prixDH": 17,
+    "totalDH": 391,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2795",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 37.5,
+    "prixDH": 17,
+    "totalDH": 637.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2796",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 38.3,
+    "prixDH": 17,
+    "totalDH": 651.0999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2797",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 40.5,
+    "prixDH": 17,
+    "totalDH": 688.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2798",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 33.2,
+    "prixDH": 17,
+    "totalDH": 564.4000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2799",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 35,
+    "prixDH": 17,
+    "totalDH": 595,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "2800",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 21.4,
+    "prixDH": 17,
+    "totalDH": 363.79999999999995,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3251",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13.5,
+    "prixDH": 14,
+    "totalDH": 189,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3252",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 14,
+    "totalDH": 140,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3254",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13,
+    "prixDH": 14,
+    "totalDH": 182,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3255",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.5,
+    "prixDH": 14,
+    "totalDH": 287,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3257",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 191,
+    "prixDH": 27,
+    "totalDH": 5157,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3257",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 14,
+    "totalDH": 392,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3258",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10.5,
+    "prixDH": 14,
+    "totalDH": 147,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3259",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 208,
+    "prixDH": 27,
+    "totalDH": 5616,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3259",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 17,
+    "prixDH": 14,
+    "totalDH": 238,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3260",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 14,
+    "totalDH": 168,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3262",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 14,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3263",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 14,
+    "totalDH": 112,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3263",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 30,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3264",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 14,
+    "totalDH": 196,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3264",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 30,
+    "totalDH": 180,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3265",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 14,
+    "totalDH": 112,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3266",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 16.4,
+    "prixDH": 14,
+    "totalDH": 229.59999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3266",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 30,
+    "totalDH": 240,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3267",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.5,
+    "prixDH": 14,
+    "totalDH": 245,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3268",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10.5,
+    "prixDH": 14,
+    "totalDH": 147,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3269",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13.5,
+    "prixDH": 14,
+    "totalDH": 189,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3270",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12.5,
+    "prixDH": 14,
+    "totalDH": 175,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3271",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.5,
+    "prixDH": 14,
+    "totalDH": 287,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3272",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 25.5,
+    "prixDH": 14,
+    "totalDH": 357,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3273",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 35.5,
+    "prixDH": 14,
+    "totalDH": 497,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3274",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 38.5,
+    "prixDH": 14,
+    "totalDH": 539,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3275",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30.5,
+    "prixDH": 14,
+    "totalDH": 427,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3276",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 228.2,
+    "prixDH": 14,
+    "totalDH": 3194.7999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3277",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 402.8,
+    "prixDH": 28,
+    "totalDH": 11278.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3277",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 85.5,
+    "prixDH": 14,
+    "totalDH": 1197,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3278",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 228,
+    "prixDH": 14,
+    "totalDH": 3192,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3278",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 214.9,
+    "prixDH": 14,
+    "totalDH": 3008.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3281",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 94,
+    "prixDH": 28,
+    "totalDH": 2632,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3281",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 110.5,
+    "prixDH": 14,
+    "totalDH": 1547,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3282",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 88,
+    "prixDH": 28,
+    "totalDH": 2464,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3282",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 112,
+    "prixDH": 14,
+    "totalDH": 1568,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3283",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 183.5,
+    "prixDH": 28,
+    "totalDH": 5138,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3284",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 104,
+    "prixDH": 28,
+    "totalDH": 2912,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3284",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 157,
+    "prixDH": 14,
+    "totalDH": 2198,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3285",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 60,
+    "prixDH": 28,
+    "totalDH": 1680,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3285",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 404,
+    "prixDH": 14,
+    "totalDH": 5656,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3286",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 28,
+    "totalDH": 392,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3286",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 340,
+    "prixDH": 14,
+    "totalDH": 4760,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3287",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 25,
+    "prixDH": 28,
+    "totalDH": 700,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3287",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 349,
+    "prixDH": 14,
+    "totalDH": 4886,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3288",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 438,
+    "prixDH": 14,
+    "totalDH": 6132,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3289",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 350,
+    "prixDH": 14,
+    "totalDH": 4900,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3290",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20,
+    "prixDH": 28,
+    "totalDH": 560,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3290",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 270,
+    "prixDH": 14,
+    "totalDH": 3780,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3291",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 120,
+    "prixDH": 28,
+    "totalDH": 3360,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3291",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 320.5,
+    "prixDH": 14,
+    "totalDH": 4487,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3292",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 121,
+    "prixDH": 28,
+    "totalDH": 3388,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3292",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 257,
+    "prixDH": 14,
+    "totalDH": 3598,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3293",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 66,
+    "prixDH": 28,
+    "totalDH": 1848,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3293",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 186,
+    "prixDH": 14,
+    "totalDH": 2604,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3294",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30,
+    "prixDH": 28,
+    "totalDH": 840,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3294",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 210,
+    "prixDH": 14,
+    "totalDH": 2940,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3295",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 37,
+    "prixDH": 28,
+    "totalDH": 1036,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3295",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 219,
+    "prixDH": 14,
+    "totalDH": 3066,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3296",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 117,
+    "prixDH": 28,
+    "totalDH": 3276,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3296",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 83.5,
+    "prixDH": 14,
+    "totalDH": 1169,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3297",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 87,
+    "prixDH": 28,
+    "totalDH": 2436,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3297",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 81,
+    "prixDH": 14,
+    "totalDH": 1134,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3298",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 151.5,
+    "prixDH": 15,
+    "totalDH": 2272.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3300",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 130,
+    "prixDH": 15,
+    "totalDH": 1950,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3300",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30,
+    "prixDH": 30,
+    "totalDH": 900,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3551",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 237,
+    "prixDH": 15,
+    "totalDH": 3555,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3553",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.9,
+    "prixDH": 17,
+    "totalDH": 49.3,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3553",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 61.2,
+    "prixDH": 15,
+    "totalDH": 918,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3554",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 58.4,
+    "prixDH": 15,
+    "totalDH": 876,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3555",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 36.6,
+    "prixDH": 15,
+    "totalDH": 549,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3558",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 35.7,
+    "prixDH": 15,
+    "totalDH": 535.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3558",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 17,
+    "totalDH": 17,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3559",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.2,
+    "prixDH": 17,
+    "totalDH": 37.400000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3559",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 15,
+    "totalDH": 210,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3560",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7.8,
+    "prixDH": 17,
+    "totalDH": 132.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3560",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 16.6,
+    "prixDH": 15,
+    "totalDH": 249.00000000000003,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3560",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12.3,
+    "prixDH": 15,
+    "totalDH": 184.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3561",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7.3,
+    "prixDH": 17,
+    "totalDH": 124.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3561",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 22.1,
+    "prixDH": 15,
+    "totalDH": 331.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3562",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13.2,
+    "prixDH": 15,
+    "totalDH": 198,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3562",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.8,
+    "prixDH": 17,
+    "totalDH": 47.599999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3563",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 52.3,
+    "prixDH": 15,
+    "totalDH": 784.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3563",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 16.6,
+    "prixDH": 17,
+    "totalDH": 282.20000000000005,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3564",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13.4,
+    "prixDH": 17,
+    "totalDH": 227.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3564",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 43.39,
+    "prixDH": 15,
+    "totalDH": 650.85,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3565",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 72.34,
+    "prixDH": 17,
+    "totalDH": 1229.78,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3565",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 45.5,
+    "prixDH": 15,
+    "totalDH": 682.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3566",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11.5,
+    "prixDH": 17,
+    "totalDH": 195.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3566",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 64,
+    "prixDH": 15,
+    "totalDH": 960,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3567",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 59,
+    "prixDH": 15,
+    "totalDH": 885,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3567",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8.8,
+    "prixDH": 15,
+    "totalDH": 132,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3568",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 73.4,
+    "prixDH": 15,
+    "totalDH": 1101,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3568",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 9,
+    "prixDH": 17,
+    "totalDH": 153,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3569",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 22,
+    "prixDH": 15,
+    "totalDH": 330,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3569",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.1,
+    "prixDH": 15,
+    "totalDH": 301.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3569",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5.7,
+    "prixDH": 17,
+    "totalDH": 96.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3570",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.3,
+    "prixDH": 17,
+    "totalDH": 39.099999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3570",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 37,
+    "prixDH": 15,
+    "totalDH": 555,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3571",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30.6,
+    "prixDH": 17,
+    "totalDH": 520.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3571",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6.2,
+    "prixDH": 15,
+    "totalDH": 93,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3572",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.4,
+    "prixDH": 17,
+    "totalDH": 295.79999999999995,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3572",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 23.2,
+    "prixDH": 15,
+    "totalDH": 348,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3573",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 51.54,
+    "prixDH": 15,
+    "totalDH": 773.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3573",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.44,
+    "prixDH": 15,
+    "totalDH": 66.60000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3573",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.3,
+    "prixDH": 15,
+    "totalDH": 304.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3574",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7.2,
+    "prixDH": 17,
+    "totalDH": 122.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3574",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.4,
+    "prixDH": 15,
+    "totalDH": 306,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3574",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 32.2,
+    "prixDH": 15,
+    "totalDH": 483.00000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3575",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 53,
+    "prixDH": 15,
+    "totalDH": 795,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3575",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.1,
+    "prixDH": 15,
+    "totalDH": 301.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3575",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.8,
+    "prixDH": 17,
+    "totalDH": 64.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3576",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 22.1,
+    "prixDH": 15,
+    "totalDH": 331.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3576",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 38.2,
+    "prixDH": 15,
+    "totalDH": 573,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3577",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 81.7,
+    "prixDH": 15,
+    "totalDH": 1225.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3577",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 17,
+    "totalDH": 51,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3578",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11.8,
+    "prixDH": 17,
+    "totalDH": 200.60000000000002,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3578",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 67.6,
+    "prixDH": 15,
+    "totalDH": 1013.9999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3579",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.3,
+    "prixDH": 17,
+    "totalDH": 56.099999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3579",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 80.8,
+    "prixDH": 13,
+    "totalDH": 1050.3999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3580",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11.7,
+    "prixDH": 13,
+    "totalDH": 152.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3580",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 62.4,
+    "prixDH": 13,
+    "totalDH": 811.1999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3580",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 17,
+    "totalDH": 59.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3581",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.7,
+    "prixDH": 17,
+    "totalDH": 62.900000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3581",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 42.4,
+    "prixDH": 13,
+    "totalDH": 551.1999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3582",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 17,
+    "totalDH": 68,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3582",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 51.6,
+    "prixDH": 13,
+    "totalDH": 670.8000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3583",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6.3,
+    "prixDH": 17,
+    "totalDH": 107.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3583",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 113.6,
+    "prixDH": 13,
+    "totalDH": 1476.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3584",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5.5,
+    "prixDH": 17,
+    "totalDH": 93.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3584",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 58.5,
+    "prixDH": 13,
+    "totalDH": 760.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3584",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 24.2,
+    "prixDH": 13,
+    "totalDH": 314.59999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3585",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.3,
+    "prixDH": 17,
+    "totalDH": 39.099999999999994,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3585",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 32.8,
+    "prixDH": 13,
+    "totalDH": 426.4,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3585",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 29.6,
+    "prixDH": 13,
+    "totalDH": 384.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3586",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.8,
+    "prixDH": 17,
+    "totalDH": 81.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3586",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 13.6,
+    "prixDH": 13,
+    "totalDH": 176.79999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3586",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 34.7,
+    "prixDH": 13,
+    "totalDH": 451.1,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3587",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 17,
+    "totalDH": 119,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3587",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 36.3,
+    "prixDH": 13,
+    "totalDH": 471.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3587",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 24.6,
+    "prixDH": 13,
+    "totalDH": 319.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3588",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10.4,
+    "prixDH": 17,
+    "totalDH": 176.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3588",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 20.9,
+    "prixDH": 13,
+    "totalDH": 271.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3588",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.9,
+    "prixDH": 13,
+    "totalDH": 232.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3589",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5.5,
+    "prixDH": 17,
+    "totalDH": 93.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3589",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 25.3,
+    "prixDH": 13,
+    "totalDH": 328.90000000000003,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3590",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.1,
+    "prixDH": 17,
+    "totalDH": 52.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3590",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 27.5,
+    "prixDH": 13,
+    "totalDH": 357.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3591",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 17,
+    "totalDH": 51,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3591",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 41.1,
+    "prixDH": 13,
+    "totalDH": 534.3,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3592",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 17,
+    "totalDH": 59.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3592",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 15.9,
+    "prixDH": 13,
+    "totalDH": 206.7,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3593",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.7,
+    "prixDH": 17,
+    "totalDH": 62.900000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3593",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 53.39,
+    "prixDH": 13,
+    "totalDH": 694.07,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3594",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.7,
+    "prixDH": 17,
+    "totalDH": 28.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3594",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 55.35,
+    "prixDH": 13,
+    "totalDH": 719.5500000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3595",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 17,
+    "totalDH": 25.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3595",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11.6,
+    "prixDH": 13,
+    "totalDH": 150.79999999999998,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3596",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.7,
+    "prixDH": 17,
+    "totalDH": 62.900000000000006,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3596",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 17.6,
+    "prixDH": 13,
+    "totalDH": 228.8,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3597",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.8,
+    "prixDH": 17,
+    "totalDH": 81.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3597",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6.8,
+    "prixDH": 13,
+    "totalDH": 88.39999999999999,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3598",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 17,
+    "totalDH": 34,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3598",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.5,
+    "prixDH": 13,
+    "totalDH": 32.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3599",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.9,
+    "prixDH": 17,
+    "totalDH": 83.30000000000001,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3599",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4.2,
+    "prixDH": 13,
+    "totalDH": 54.6,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3600",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 17,
+    "totalDH": 476,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3600",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8.3,
+    "prixDH": 13,
+    "totalDH": 107.9,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3601",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 18,
+    "prixDH": 12,
+    "totalDH": 216,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3601",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3602",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3602",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3603",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3603",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3604",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12.3,
+    "prixDH": 12,
+    "totalDH": 147.60000000000002,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3604",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3605",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3605",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3606",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3606",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1.5,
+    "prixDH": 12,
+    "totalDH": 18,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3607",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 12,
+    "totalDH": 120,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3607",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 1,
+    "prixDH": 12,
+    "totalDH": 12,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3608",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3608",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3609",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 18,
+    "prixDH": 12,
+    "totalDH": 216,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3609",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3610",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 45,
+    "prixDH": 12,
+    "totalDH": 540,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3610",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3611",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 46,
+    "prixDH": 12,
+    "totalDH": 552,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3611",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 12,
+    "totalDH": 144,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3613",
+    "client": "Fruit congel du nord",
+    "blocFerme": "F5",
+    "poidsLot": 38,
+    "prixDH": 0,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3614",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 58,
+    "prixDH": 12,
+    "totalDH": 696,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3614",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 8,
+    "prixDH": 12,
+    "totalDH": 96,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3616",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 12,
+    "totalDH": 60,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3616",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 62,
+    "prixDH": 12,
+    "totalDH": 744,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3616",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 25,
+    "totalDH": 100,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3617",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3617",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3617",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 34,
+    "prixDH": 12,
+    "totalDH": 408,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3618",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 0,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3618",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 46,
+    "prixDH": 12,
+    "totalDH": 552,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3618",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3619",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 12,
+    "totalDH": 24,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3619",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 26,
+    "prixDH": 12,
+    "totalDH": 312,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3619",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3620",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 12,
+    "totalDH": 48,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3620",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 38,
+    "prixDH": 12,
+    "totalDH": 456,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3620",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 12,
+    "totalDH": 36,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3621",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 12,
+    "totalDH": 72,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3621",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 36,
+    "prixDH": 12,
+    "totalDH": 432,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3621",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.5,
+    "prixDH": 12,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3622",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2.2,
+    "prixDH": 14,
+    "totalDH": 30.800000000000004,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3622",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 14,
+    "totalDH": 392,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3622",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3.7,
+    "prixDH": 14,
+    "totalDH": 51.800000000000004,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3623",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 14,
+    "totalDH": 28,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3623",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 29.3,
+    "prixDH": 14,
+    "totalDH": 410.2,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3623",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 14,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3624",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 14,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3624",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28.4,
+    "prixDH": 14,
+    "totalDH": 397.59999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3624",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3625",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 14,
+    "totalDH": 28,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3625",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 36,
+    "prixDH": 14,
+    "totalDH": 504,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3625",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 14,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3626",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 14,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3626",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 33,
+    "prixDH": 14,
+    "totalDH": 462,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3626",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 14,
+    "totalDH": 28,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3627",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 14,
+    "totalDH": 28,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3627",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 19.4,
+    "prixDH": 14,
+    "totalDH": 271.59999999999997,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3627",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 14,
+    "totalDH": 168,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3628",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 2,
+    "prixDH": 14,
+    "totalDH": 28,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3628",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 14,
+    "totalDH": 392,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3628",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3629",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 28,
+    "prixDH": 14,
+    "totalDH": 392,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3629",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3630",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 22,
+    "prixDH": 14,
+    "totalDH": 308,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3630",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 6,
+    "prixDH": 14,
+    "totalDH": 84,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3631",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 35,
+    "prixDH": 14,
+    "totalDH": 490,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3631",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30,
+    "prixDH": 14,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3631",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3632",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 42.5,
+    "prixDH": 14,
+    "totalDH": 595,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3633",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 50,
+    "prixDH": 14,
+    "totalDH": 700,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3633",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3634",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 43,
+    "prixDH": 14,
+    "totalDH": 602,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3634",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3635",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 38,
+    "prixDH": 14,
+    "totalDH": 532,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3635",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 5,
+    "prixDH": 14,
+    "totalDH": 70,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3636",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 26,
+    "prixDH": 14,
+    "totalDH": 364,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3636",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 4,
+    "prixDH": 14,
+    "totalDH": 56,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3637",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30,
+    "prixDH": 14,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3637",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 7,
+    "prixDH": 14,
+    "totalDH": 98,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3639",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 18,
+    "prixDH": 14,
+    "totalDH": 252,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3639",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 3,
+    "prixDH": 14,
+    "totalDH": 42,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3640",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 14,
+    "totalDH": 196,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3640",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 70,
+    "prixDH": 14,
+    "totalDH": 980,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3641",
+    "client": "IRAQI MOHAMED",
+    "blocFerme": "F5",
+    "poidsLot": 170,
+    "prixDH": 27,
+    "totalDH": 4590,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3642",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 46,
+    "prixDH": 14,
+    "totalDH": 644,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3642",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 11,
+    "prixDH": 14,
+    "totalDH": 154,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3645",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 50,
+    "prixDH": 14,
+    "totalDH": 700,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3645",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 14,
+    "totalDH": 140,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3646",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 30,
+    "prixDH": 14,
+    "totalDH": 420,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3646",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 14,
+    "prixDH": 14,
+    "totalDH": 196,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3648",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 42,
+    "prixDH": 14,
+    "totalDH": 588,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3648",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 10,
+    "prixDH": 14,
+    "totalDH": 140,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3650",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 12,
+    "prixDH": 14,
+    "totalDH": 168,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "3663",
+    "client": "Mr MONAIM LOCAL",
+    "blocFerme": "F1",
+    "poidsLot": 42,
+    "prixDH": 15,
+    "totalDH": 630,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "6663",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 42,
+    "prixDH": 28,
+    "totalDH": 1176,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "6710",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 31,
+    "prixDH": 15,
+    "totalDH": 465,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "6710",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 21,
+    "prixDH": 17,
+    "totalDH": 357,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "6710",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 82.5,
+    "prixDH": 17,
+    "totalDH": 1402.5,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "7302",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 114,
+    "prixDH": 28,
+    "totalDH": 3192,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "7302",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 168,
+    "prixDH": 14,
+    "totalDH": 2352,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "7329",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 88,
+    "prixDH": 15,
+    "totalDH": 1320,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "7341",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 172.5,
+    "prixDH": 28,
+    "totalDH": 4830,
+    "typeVente": "Marché Local"
+  },
+  {
+    "bonApport": "8283",
+    "client": "MUSTAPHA CHAFIK A",
+    "blocFerme": "F5",
+    "poidsLot": 100,
+    "prixDH": 14,
+    "totalDH": 1400,
+    "typeVente": "Marché Local"
+  }
+]
