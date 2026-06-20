@@ -51,6 +51,13 @@
 // @ts-check
 'use strict';
 
+// IIFE d'isolation : tout le corps du module vit dans cette fonction pour
+// qu'AUCUN identifiant top-level (round2, parseDate, slugifyClient, __api, …)
+// ne fuie dans le scope lexical global partagé par les <script> classiques.
+// Sans ça, `const __api` entre en collision avec caisseUtils.js → erreur
+// "Identifier '__api' has already been declared" au boot → React #200
+// (cf. incident commit 1754a64). Les exports passent par window/module en fin d'IIFE.
+(function () {
 // ============================================================================
 // HELPERS — nombres / dates / slug / référence
 // ============================================================================
@@ -493,3 +500,5 @@ const __api = {
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;
 if (typeof window !== 'undefined') window.EncaissementsCanevas = __api;
+
+})();
