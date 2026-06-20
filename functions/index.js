@@ -20,6 +20,7 @@ const { validateBugReport } = require("./lib/bugReports/validateBugReport");
 const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus, isFilterableStatus } = require("./lib/bugReports/bugStatus");
 const bugTriage = require("./lib/triage/bugTriage");
 const stockMovementGuard = require("./lib/stock/movementGuard");
+const { planEncaissementWrites } = require("./lib/marcheLocalCaisse/applyEncaissements");
 const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
@@ -14158,6 +14159,132 @@ exports.caisseManagement = functions
 
         const docRef = await db_firestore.collection("caisse_transactions").add(txData);
         return res.json({ success: true, id: docRef.id, reference: refNum });
+      }
+
+      // ========== APPLY ENCAISSEMENTS (Marché Local — compte client) ==========
+      // Action SÉPARÉE de create-transaction : les encaissements (type='encaissement')
+      // sont écrits exclusivement ici. NE PAS ajouter 'encaissement'/'vente' à la
+      // whitelist de create-transaction. Séparation des rôles : seul DG/Finance
+      // peut appliquer (Achats NE peut PAS). dryRun=true -> aucune écriture.
+      if (action === "apply-encaissements" && req.method === "POST") {
+        if (!isControle && !isAdmin) {
+          return res.status(403).json({ success: false, error: "Seul DG/Finance peut appliquer des encaissements" });
+        }
+
+        const lignes = Array.isArray(req.body.lignes) ? req.body.lignes : null;
+        const dryRun = req.body.dryRun === true;
+        if (!lignes) {
+          return res.status(400).json({ success: false, error: "lignes[] requis" });
+        }
+
+        // Référentiel des comptes clients actifs : caisse_definitions dont
+        // l'id commence par 'compte_client_' et active === true.
+        const caissesSnap = await db_firestore.collection("caisse_definitions").where("active", "==", true).get();
+        const activeClientIds = new Set();
+        caissesSnap.docs.forEach(d => {
+          if (d.id.startsWith("compte_client_")) {
+            activeClientIds.add(d.id.slice("compte_client_".length));
+          }
+        });
+
+        // Clés d'idempotence déjà présentes en base (encaissements existants).
+        const existingSnap = await db_firestore.collection("caisse_transactions")
+          .where("type", "==", "encaissement").get();
+        const existingKeys = new Set();
+        existingSnap.docs.forEach(d => {
+          const k = d.data().idempotency_key;
+          if (k) existingKeys.add(k);
+        });
+
+        const plan = planEncaissementWrites(lignes, existingKeys, { activeClientIds });
+
+        // ---- DRY-RUN : aucune écriture, on retourne le plan. ----
+        if (dryRun) {
+          return res.json({
+            success: true,
+            dryRun: true,
+            toCreate: plan.toCreate.length,
+            duplicates: plan.duplicates,
+            errors: plan.errors.map(e => ({ ligne: e.ligne, raison: e.raison })),
+          });
+        }
+
+        // ---- WRITE RÉEL (gated : nécessite deploy functions, hors scope 4.3). ----
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const saisi_par = { uid: userInfo.uid, profileId: userInfo.profileId, name: userInfo.name };
+
+        // BACKUP des caisses compte_client_* impactées (restore point, NO-DELETE).
+        const impactedClientIds = new Set(plan.toCreate.map(w => w.client_id));
+        const backupBatch = db_firestore.batch();
+        const backupId = `enc_apply_${Date.now()}`;
+        for (const cid of impactedClientIds) {
+          const caisseId = "compte_client_" + cid;
+          const cDoc = await db_firestore.collection("caisse_definitions").doc(caisseId).get();
+          if (cDoc.exists) {
+            const bref = db_firestore.collection("caisse_backups").doc(backupId)
+              .collection("caisse_definitions").doc(caisseId);
+            backupBatch.set(bref, { ...cDoc.data(), _backup_at: now, _backup_reason: "apply-encaissements" });
+          }
+        }
+        await backupBatch.commit();
+
+        // Écriture set(merge) des encaissements — idempotent par doc id. NO-DELETE.
+        let created = 0;
+        const CHUNK = 400;
+        for (let i = 0; i < plan.toCreate.length; i += CHUNK) {
+          const slice = plan.toCreate.slice(i, i + CHUNK);
+          const batch = db_firestore.batch();
+          for (const w of slice) {
+            const ref = db_firestore.collection("caisse_transactions").doc(w.doc_id);
+            batch.set(ref, {
+              type: "encaissement",
+              source: "canevas",
+              caisse_id: "compte_client_" + w.client_id,
+              client_id: w.client_id,
+              montant: w.montant,
+              date: w.date,
+              mode: w.mode,
+              reference: w.reference,
+              reference_norm: w.reference_norm,
+              motif: w.motif,
+              idempotency_key: w.idempotency_key,
+              status: "valide",
+              version: 1,
+              saisi_par,
+              saisi_le: now,
+              created_at: now,
+              updated_at: now,
+            }, { merge: true });
+            created++;
+          }
+          await batch.commit();
+        }
+
+        // Recalcul du solde_actuel de chaque caisse compte_client_* impactée
+        // = Σ vente − Σ encaissement (transactions validées).
+        for (const cid of impactedClientIds) {
+          const caisseId = "compte_client_" + cid;
+          const txSnap = await db_firestore.collection("caisse_transactions")
+            .where("caisse_id", "==", caisseId)
+            .where("status", "==", "valide")
+            .get();
+          let totalVente = 0, totalEnc = 0;
+          txSnap.docs.forEach(d => {
+            const tx = d.data();
+            if (tx.type === "vente") totalVente += (tx.montant || 0);
+            else if (tx.type === "encaissement") totalEnc += (tx.montant || 0);
+          });
+          const soldeActuel = Math.round((totalVente - totalEnc) * 100) / 100;
+          await db_firestore.collection("caisse_definitions").doc(caisseId)
+            .update({ solde_actuel: soldeActuel, updated_at: now });
+        }
+
+        return res.json({
+          success: true,
+          created,
+          duplicatesIgnored: plan.duplicates,
+          errors: plan.errors.map(e => ({ ligne: e.ligne, raison: e.raison })),
+        });
       }
 
       // ========== UPDATE TRANSACTION ==========

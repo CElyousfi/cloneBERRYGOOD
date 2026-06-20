@@ -56828,7 +56828,7 @@ ${rejetHtml}
             v = (v == null) ? '' : String(v).trim();
             return v === '' ? ENC_BRUT_VIDE : v;
         }
-        function CaisseImportEncaissementsSub() {
+        function CaisseImportEncaissementsSub({ isControle, onApplied }) {
             const EC = (typeof window !== 'undefined' && window.EncaissementsCanevas) || null;
             const [active, setActive] = useState([]); // [{client_id, nom}]
             const [archivedNames, setArchivedNames] = useState(new Set());
@@ -56836,7 +56836,41 @@ ${rejetHtml}
             const [report, setReport] = useState(null);
             const [fileName, setFileName] = useState('');
             const [error, setError] = useState('');
+            const [applying, setApplying] = useState(false);
+            const [applyResult, setApplyResult] = useState(null);
             const fileRef = React.useRef(null);
+
+            // Applique les encaissements VALIDÉS (report.ok) via l'action backend
+            // dédiée apply-encaissements (DG/Finance uniquement). NO write côté client.
+            const handleApply = async () => {
+                if (!report || !report.ok || !report.ok.length) return;
+                setError('');
+                setApplyResult(null);
+                setApplying(true);
+                try {
+                    const lignes = report.ok.map(e => ({
+                        client_id: e.client_id,
+                        montant: e.montant,
+                        date: e.date,
+                        mode: e.mode || '',
+                        reference: e.reference,
+                        motif: e.motif || '',
+                    }));
+                    const resp = await fetch('/api/caisse?action=apply-encaissements', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ lignes, dryRun: false }),
+                    });
+                    const json = await resp.json();
+                    if (!json.success) throw new Error(json.error || 'Échec de l\'application.');
+                    setApplyResult(json);
+                    if (typeof onApplied === 'function') onApplied();
+                } catch (e) {
+                    setError('Erreur application : ' + (e && e.message ? e.message : e));
+                } finally {
+                    setApplying(false);
+                }
+            };
 
             // Charger les clients ACTIFS en live (fallback sur les 5 connus si KO).
             React.useEffect(() => {
@@ -56884,6 +56918,7 @@ ${rejetHtml}
             const handleFile = (ev) => {
                 setError('');
                 setReport(null);
+                setApplyResult(null);
                 const file = ev.target.files && ev.target.files[0];
                 if (!file) return;
                 setFileName(file.name);
@@ -56958,6 +56993,46 @@ ${rejetHtml}
                                 {counter('Rejetées', report.stats.rejetes, '#E74C3C')}
                                 {counter('Doublons', report.stats.doublons, '#E67E22')}
                             </div>
+
+                            {/* Bouton Appliquer — DG/Finance uniquement (Achats : pas le bouton). */}
+                            {isControle && (
+                                <div style={{ ...card, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                        <button
+                                            onClick={handleApply}
+                                            disabled={applying || !report.ok.length}
+                                            style={{
+                                                padding: '10px 20px', borderRadius: 8, border: 'none',
+                                                background: (applying || !report.ok.length) ? 'var(--gray-300, #ccc)' : 'var(--berry)',
+                                                color: 'white', fontSize: 13, fontWeight: 700,
+                                                cursor: (applying || !report.ok.length) ? 'not-allowed' : 'pointer',
+                                                display: 'flex', alignItems: 'center', gap: 8,
+                                            }}>
+                                            <i className={applying ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-database'}></i>
+                                            {applying ? 'Application en cours…' : `Appliquer (${report.ok.length} encaissement${report.ok.length > 1 ? 's' : ''})`}
+                                        </button>
+                                        <span style={{ fontSize: 11.5, color: 'var(--gray-500)' }}>
+                                            <i className="fa-solid fa-circle-info" style={{ marginRight: 5 }}></i>
+                                            Enregistre les lignes valides dans les comptes clients. Réservé DG / Finance.
+                                        </span>
+                                    </div>
+                                    {applyResult && (
+                                        <div style={{ background: '#EAFAF1', border: '1px solid #27AE60', borderRadius: 8, padding: '10px 14px', fontSize: 12.5, color: '#1E8449' }}>
+                                            <i className="fa-solid fa-circle-check" style={{ marginRight: 7 }}></i>
+                                            <strong>{applyResult.created || 0}</strong> créé{(applyResult.created || 0) > 1 ? 's' : ''} ·{' '}
+                                            <strong>{applyResult.duplicatesIgnored || 0}</strong> doublon{(applyResult.duplicatesIgnored || 0) > 1 ? 's' : ''} ignoré{(applyResult.duplicatesIgnored || 0) > 1 ? 's' : ''} ·{' '}
+                                            <strong>{(applyResult.errors || []).length}</strong> erreur{(applyResult.errors || []).length > 1 ? 's' : ''}
+                                            {(applyResult.errors || []).length > 0 && (
+                                                <div style={{ marginTop: 6, color: '#C0392B' }}>
+                                                    {applyResult.errors.map((er, i) => (
+                                                        <div key={i}>Ligne {er.ligne} : {ENC_REJET_LABELS[er.raison] || er.raison}</div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {report.ok.length > 0 && (
                                 <div style={card}>
@@ -57139,7 +57214,7 @@ ${rejetHtml}
                     {subTab === 'caisse_rapports' && <CaisseRapportsSub caisses={caisses} />}
                     {subTab === 'caisse_rapprochement' && <CaisseRapprochementSub caisses={caisses} />}
                     {subTab === 'caisse_import' && <CaisseImportSub caisses={caisses} onDone={refresh} />}
-                    {subTab === 'caisse_import_encaissements' && <CaisseImportEncaissementsSub />}
+                    {subTab === 'caisse_import_encaissements' && <CaisseImportEncaissementsSub isControle={isControle} onApplied={refresh} />}
                     {subTab === 'caisse_config' && <CaisseConfigSub caisses={caisses} onDone={refresh} />}
                 </div>
             );
