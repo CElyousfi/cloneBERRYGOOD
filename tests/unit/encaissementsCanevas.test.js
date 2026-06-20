@@ -190,6 +190,53 @@ test('parseEncaissements : montant_invalide', () => {
   assert.equal(r.rejets[0].raison, 'montant_invalide');
 });
 
+// ---------------------------------------------------------------------------
+// Valeurs BRUTES exposées sur les rejets/doublons (4.2 cosmétique) — l'UI doit
+// pouvoir afficher la ligne d'origine telle que lue, même invalide.
+// ---------------------------------------------------------------------------
+test('parseEncaissements : rejet montant_non_positif conserve le montant brut lu', () => {
+  const r = EC.parseEncaissements([header({ 'Montant (DH)': '0' })], deps());
+  assert.equal(r.rejets[0].raison, 'montant_non_positif');
+  assert.ok(r.rejets[0].brut, 'le rejet expose un objet brut');
+  assert.equal(r.rejets[0].brut.montant, '0'); // montant brut conservé
+  assert.equal(r.rejets[0].brut.client, 'Hamdouch Omar'); // client brut conservé
+  assert.equal(r.rejets[0].brut.reference, 'CHQ-12'); // référence brute conservée
+
+  const rNeg = EC.parseEncaissements([header({ 'Montant (DH)': '-100' })], deps());
+  assert.equal(rNeg.rejets[0].brut.montant, '-100');
+});
+
+test('parseEncaissements : rejet client_inconnu conserve le nom brut lu', () => {
+  const r = EC.parseEncaissements([header({ Client: 'Inconnu XYZ' })], deps());
+  assert.equal(r.rejets[0].raison, 'client_inconnu');
+  assert.ok(r.rejets[0].brut);
+  assert.equal(r.rejets[0].brut.client, 'Inconnu XYZ');
+  assert.equal(r.rejets[0].brut.reference, 'CHQ-12');
+  assert.equal(r.rejets[0].brut.montant, '27 445,00'); // valeur brute non normalisée
+});
+
+test('parseEncaissements : rejet client_absent → brut.client vide (chaîne)', () => {
+  const r = EC.parseEncaissements([header({ Client: '' })], deps());
+  assert.equal(r.rejets[0].raison, 'client_absent');
+  assert.ok(r.rejets[0].brut);
+  assert.equal(r.rejets[0].brut.client, '');
+  // les autres valeurs brutes restent lisibles malgré le rejet
+  assert.equal(r.rejets[0].brut.reference, 'CHQ-12');
+});
+
+test('parseEncaissements : doublon expose brut (client/référence/montant)', () => {
+  const rows = [
+    header({ 'Référence': 'CHQ 12' }),
+    header({ 'Référence': 'chq  12', 'Montant (DH)': '999' }),
+  ];
+  const r = EC.parseEncaissements(rows, deps());
+  assert.equal(r.doublons[0].raison, 'doublon_intra_fichier');
+  assert.ok(r.doublons[0].brut);
+  assert.equal(r.doublons[0].brut.client, 'Hamdouch Omar');
+  assert.equal(r.doublons[0].brut.reference, 'chq  12'); // référence brute de la 2e ligne
+  assert.equal(r.doublons[0].brut.montant, '999');
+});
+
 test('parseEncaissements : date_invalide', () => {
   const r = EC.parseEncaissements([header({ 'Date encaissement': '31/02/2026' })], deps());
   assert.equal(r.rejets[0].raison, 'date_invalide');

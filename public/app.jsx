@@ -56814,6 +56814,20 @@ ${rejetHtml}
             date_invalide: 'Date invalide',
             doublon_intra_fichier: 'Doublon dans le fichier (réf. déjà vue)',
         };
+
+        // Affiche une valeur BRUTE lue dans le fichier (rejets/doublons). Priorité
+        // au champ `brut` exposé par parseEncaissements ; fallback sur `donnees`
+        // (row brute) pour compat. Vide -> « (vide) » discret.
+        const ENC_BRUT_VIDE = React.createElement('span', { style: { color: 'var(--gray-400)', fontStyle: 'italic' } }, '(vide)');
+        function encBrut(item, brutKey, donneesHeader) {
+            let v = item && item.brut ? item.brut[brutKey] : undefined;
+            if (v == null || v === '') {
+                const fb = item && item.donnees ? item.donnees[donneesHeader] : undefined;
+                v = (fb == null) ? '' : String(fb);
+            }
+            v = (v == null) ? '' : String(v).trim();
+            return v === '' ? ENC_BRUT_VIDE : v;
+        }
         function CaisseImportEncaissementsSub() {
             const EC = (typeof window !== 'undefined' && window.EncaissementsCanevas) || null;
             const [active, setActive] = useState([]); // [{client_id, nom}]
@@ -56986,16 +57000,17 @@ ${rejetHtml}
                                             <thead><tr>
                                                 <th style={th}>Ligne</th><th style={th}>Motif du rejet</th>
                                                 <th style={th}>Client</th><th style={th}>Référence</th>
-                                                <th style={th}>Montant</th>
+                                                <th style={th}>Date</th><th style={th}>Montant</th>
                                             </tr></thead>
                                             <tbody>
                                                 {report.rejets.map((r, i) => (
                                                     <tr key={i}>
                                                         <td style={td}>{r.ligne}</td>
                                                         <td style={{ ...td, color: '#C0392B', fontWeight: 600 }}>{ENC_REJET_LABELS[r.raison] || r.raison}</td>
-                                                        <td style={td}>{(r.donnees && r.donnees['Client']) || '—'}</td>
-                                                        <td style={td}>{(r.donnees && r.donnees['Référence']) || '—'}</td>
-                                                        <td style={td}>{(r.donnees && r.donnees['Montant (DH)']) || '—'}</td>
+                                                        <td style={td}>{encBrut(r, 'client', 'Client')}</td>
+                                                        <td style={td}>{encBrut(r, 'reference', 'Référence')}</td>
+                                                        <td style={td}>{encBrut(r, 'date', 'Date encaissement')}</td>
+                                                        <td style={td}>{encBrut(r, 'montant', 'Montant (DH)')}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -57017,15 +57032,17 @@ ${rejetHtml}
                                         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 600 }}>
                                             <thead><tr>
                                                 <th style={th}>Ligne</th><th style={th}>Client</th>
-                                                <th style={th}>Référence</th><th style={th}>Montant</th>
+                                                <th style={th}>Référence</th><th style={th}>Date</th>
+                                                <th style={th}>Montant</th>
                                             </tr></thead>
                                             <tbody>
                                                 {report.doublons.map((d, i) => (
                                                     <tr key={i}>
                                                         <td style={td}>{d.ligne}</td>
-                                                        <td style={td}>{(d.donnees && d.donnees['Client']) || '—'}</td>
-                                                        <td style={td}>{(d.donnees && d.donnees['Référence']) || '—'}</td>
-                                                        <td style={td}>{(d.donnees && d.donnees['Montant (DH)']) || '—'}</td>
+                                                        <td style={td}>{encBrut(d, 'client', 'Client')}</td>
+                                                        <td style={td}>{encBrut(d, 'reference', 'Référence')}</td>
+                                                        <td style={td}>{encBrut(d, 'date', 'Date encaissement')}</td>
+                                                        <td style={td}>{encBrut(d, 'montant', 'Montant (DH)')}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>

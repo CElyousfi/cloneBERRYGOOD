@@ -266,7 +266,7 @@ function cell(row, header) {
  * @param {{activeClients: ClientRef[], archivedNames?: Set<string>|string[]}} deps
  *   activeClients = clients ACTIFS [{client_id, nom}].
  *   archivedNames = Set (ou tableau) des NOMS de clients ARCHIVÉS.
- * @returns {{ok:Encaissement[], rejets:Array<{ligne:number, raison:string, donnees:Object}>, doublons:Array<{ligne:number, raison:string, donnees:Object}>, stats:{lus:number, ok:number, rejetes:number, doublons:number}}}
+ * @returns {{ok:Encaissement[], rejets:Array<{ligne:number, raison:string, donnees:Object, brut:Object}>, doublons:Array<{ligne:number, raison:string, donnees:Object, brut:Object}>, stats:{lus:number, ok:number, rejetes:number, doublons:number}}}
  */
 function parseEncaissements(rows, deps) {
   const activeClients = (deps && deps.activeClients) || [];
@@ -289,13 +289,17 @@ function parseEncaissements(rows, deps) {
 
   /** @type {Encaissement[]} */
   const ok = [];
-  /** @type {Array<{ligne:number, raison:string, donnees:Object}>} */
+  /** @type {Array<{ligne:number, raison:string, donnees:Object, brut:Object}>} */
   const rejets = [];
-  /** @type {Array<{ligne:number, raison:string, donnees:Object}>} */
+  /** @type {Array<{ligne:number, raison:string, donnees:Object, brut:Object}>} */
   const doublons = [];
   /** @type {Set<string>} */
   const seenKeys = new Set();
   let lus = 0;
+
+  // Convertit une valeur de cellule brute en chaîne d'affichage (non normalisée).
+  // null/undefined -> '' ; tout le reste -> String(...) tel quel.
+  const brutStr = (v) => (v == null ? '' : String(v));
 
   const list = rows || [];
   for (let i = 0; i < list.length; i++) {
@@ -303,12 +307,29 @@ function parseEncaissements(rows, deps) {
     lus += 1;
     const ligne = i + 2; // +1 pour l'en-tête, +1 pour passer en index 1-based humain.
 
+    // Valeurs BRUTES lues AVANT toute validation/normalisation (pour affichage UI
+    // des lignes rejetées/doublons : le Resp. Achats doit pouvoir identifier la
+    // ligne à corriger dans son fichier source).
     const clientRaw = cell(row, colByKey.client);
+    const refRawForBrut = cell(row, colByKey.reference);
+    const montantRawForBrut = cell(row, colByKey.montant);
+    const dateRawForBrut = cell(row, colByKey.date);
+    const modeRawForBrut = cell(row, colByKey.mode);
+    const motifRawForBrut = cell(row, colByKey.motif);
+    const brut = {
+      client: brutStr(clientRaw),
+      date: brutStr(dateRawForBrut),
+      montant: brutStr(montantRawForBrut),
+      reference: brutStr(refRawForBrut),
+      mode: brutStr(modeRawForBrut),
+      motif: brutStr(motifRawForBrut),
+    };
+
     const clientStr = clientRaw == null ? '' : String(clientRaw).trim();
 
     // R — client absent.
     if (clientStr === '') {
-      rejets.push({ ligne, raison: 'client_absent', donnees: row });
+      rejets.push({ ligne, raison: 'client_absent', donnees: row, brut });
       continue;
     }
 
@@ -316,11 +337,11 @@ function parseEncaissements(rows, deps) {
     if (!byId.has(client_id)) {
       // R — client archivé (DISTINCT de inconnu).
       if (archivedSlugs.has(client_id)) {
-        rejets.push({ ligne, raison: 'client_archive', donnees: row });
+        rejets.push({ ligne, raison: 'client_archive', donnees: row, brut });
         continue;
       }
       // R — client inconnu (ni actif ni archivé).
-      rejets.push({ ligne, raison: 'client_inconnu', donnees: row });
+      rejets.push({ ligne, raison: 'client_inconnu', donnees: row, brut });
       continue;
     }
 
@@ -328,25 +349,25 @@ function parseEncaissements(rows, deps) {
     const refRaw = cell(row, colByKey.reference);
     const reference = refRaw == null ? '' : String(refRaw).trim();
     if (reference === '') {
-      rejets.push({ ligne, raison: 'reference_absente', donnees: row });
+      rejets.push({ ligne, raison: 'reference_absente', donnees: row, brut });
       continue;
     }
 
     // R — montant.
     const montant = parseFrNumber(cell(row, colByKey.montant));
     if (montant == null) {
-      rejets.push({ ligne, raison: 'montant_invalide', donnees: row });
+      rejets.push({ ligne, raison: 'montant_invalide', donnees: row, brut });
       continue;
     }
     if (!(montant > 0)) {
-      rejets.push({ ligne, raison: 'montant_non_positif', donnees: row });
+      rejets.push({ ligne, raison: 'montant_non_positif', donnees: row, brut });
       continue;
     }
 
     // R — date.
     const date = parseDate(cell(row, colByKey.date));
     if (!date) {
-      rejets.push({ ligne, raison: 'date_invalide', donnees: row });
+      rejets.push({ ligne, raison: 'date_invalide', donnees: row, brut });
       continue;
     }
 
@@ -362,7 +383,7 @@ function parseEncaissements(rows, deps) {
 
     // R — doublon intra-fichier : garder la 1ère, signaler les suivantes.
     if (seenKeys.has(idempotency_key)) {
-      doublons.push({ ligne, raison: 'doublon_intra_fichier', donnees: row });
+      doublons.push({ ligne, raison: 'doublon_intra_fichier', donnees: row, brut });
       continue;
     }
     seenKeys.add(idempotency_key);
