@@ -97,6 +97,61 @@ test('parseEncaissements : ligne OK produit un encaissement valide', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mapping d'en-têtes TOLÉRANT (BUG 4.2) — le modèle téléchargé marque les
+// colonnes requises avec un suffixe « * ». Le parseur doit les lire malgré ça,
+// ainsi que les variantes de casse / espaces.
+// ---------------------------------------------------------------------------
+test('parseEncaissements : en-têtes du modèle avec suffixe « * » (Client *, …)', () => {
+  const row = {
+    'Client *': 'Hamdouch Omar',
+    'Date encaissement *': '15/06/2026',
+    'Montant (DH) *': '27 445,00',
+    Mode: 'Espèces',
+    'Référence *': 'CHQ-12',
+    Motif: 'acompte',
+  };
+  const r = EC.parseEncaissements([row], deps());
+  assert.equal(r.stats.lus, 1);
+  assert.equal(r.stats.ok, 1);
+  assert.equal(r.stats.rejetes, 0);
+  const e = r.ok[0];
+  assert.equal(e.client_id, 'hamdouch_omar');
+  assert.equal(e.montant, 27445);
+  assert.equal(e.date, '2026-06-15');
+  assert.equal(e.reference, 'CHQ-12');
+});
+
+test('parseEncaissements : en-têtes variantes casse + espaces multiples', () => {
+  const row = {
+    '  CLIENT  ': 'Hamdouch Omar',
+    'date  encaissement': '15/06/2026',
+    'montant (dh) *': '27 445,00',
+    mode: 'Espèces',
+    '  RÉFÉRENCE *  ': 'CHQ-12',
+    MOTIF: 'acompte',
+  };
+  const r = EC.parseEncaissements([row], deps());
+  assert.equal(r.stats.ok, 1);
+  assert.equal(r.rejets.length, 0);
+  assert.equal(r.ok[0].reference, 'CHQ-12');
+});
+
+// ---------------------------------------------------------------------------
+// Réserve QA 4.2 : un client ACTIF dont le nom figure AUSSI dans archivedNames
+// doit être ACCEPTÉ (l'appartenance aux actifs prime sur l'archive).
+// ---------------------------------------------------------------------------
+test('parseEncaissements : client actif dont le nom est aussi archivé → accepté', () => {
+  const activeAndArchived = {
+    activeClients: [{ client_id: 'hamdouch_omar', nom: 'Hamdouch Omar' }],
+    archivedNames: new Set(['Hamdouch Omar', 'IMAD']),
+  };
+  const r = EC.parseEncaissements([header()], activeAndArchived);
+  assert.equal(r.stats.ok, 1);
+  assert.equal(r.stats.rejetes, 0);
+  assert.equal(r.ok[0].client_id, 'hamdouch_omar');
+});
+
+// ---------------------------------------------------------------------------
 // Motifs de rejet distincts
 // ---------------------------------------------------------------------------
 test('parseEncaissements : client_absent', () => {
@@ -167,6 +222,43 @@ test('parseEncaissements : ne produit QUE type=encaissement', () => {
   const r = EC.parseEncaissements(rows, deps());
   const types = Array.from(new Set(r.ok.map((e) => e.type)));
   assert.deepEqual(types, ['encaissement']);
+});
+
+// ---------------------------------------------------------------------------
+// FIXTURE FIDÈLE AU MODÈLE (en-têtes annotés « * ») — anti-régression BUG 4.2.
+// Confirme le décompte attendu 10/2/7/1 sur le fichier réel uploadé.
+// ---------------------------------------------------------------------------
+test('parseEncaissements : fixture fidèle au modèle → 10 lus / 2 ok / 7 rejets / 1 doublon', () => {
+  const path = require('node:path');
+  const XLSX = require('xlsx');
+  const fixturePath = path.join(__dirname, '..', 'fixtures', 'canevas_encaissements_demo.xlsx');
+  const wb = XLSX.readFile(fixturePath);
+  const ws = wb.Sheets[EC.ENCAISSEMENTS_SCHEMA.sheet];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+  // En-têtes du fichier = ceux du modèle (avec « * » sur les requises).
+  const keys = Object.keys(rows[0]);
+  assert.ok(keys.includes('Client *'), 'la fixture doit porter « Client * » (fidèle au modèle)');
+  assert.ok(keys.includes('Référence *'), 'la fixture doit porter « Référence * »');
+
+  const r = EC.parseEncaissements(rows, deps());
+  assert.equal(r.stats.lus, 10);
+  assert.equal(r.stats.ok, 2);
+  assert.equal(r.stats.rejetes, 7);
+  assert.equal(r.stats.doublons, 1);
+
+  // Un rejet par motif distinct.
+  const raisons = r.rejets.map((x) => x.raison).sort();
+  assert.deepEqual(raisons, [
+    'client_absent',
+    'client_archive',
+    'client_inconnu',
+    'date_invalide',
+    'montant_invalide',
+    'montant_non_positif',
+    'reference_absente',
+  ]);
+  assert.equal(r.doublons[0].raison, 'doublon_intra_fichier');
 });
 
 // ---------------------------------------------------------------------------

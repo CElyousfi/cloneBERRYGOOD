@@ -217,14 +217,37 @@ const ENCAISSEMENTS_SCHEMA = {
 };
 
 /**
+ * Normalise un en-tête pour un matching tolérant : retire le/les '*' final(aux),
+ * collapse les espaces, trim, minuscules. Permet de lire indifféremment
+ * « Client » (schéma) ou « Client * » (modèle téléchargé), ainsi que les
+ * variantes de casse/espaces saisies par l'utilisateur.
+ * @param {*} h
+ * @returns {string}
+ */
+function normHeader(h) {
+  return String(h == null ? '' : h)
+    .replace(/\*+\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
  * Lit une valeur de cellule par header nommé (objet de ligne).
+ * Chemin rapide exact, puis fallback tolérant via normHeader (ignore le
+ * suffixe '*' du modèle, la casse et les espaces).
  * @param {Object} row
  * @param {string} header
  * @returns {*}
  */
 function cell(row, header) {
   if (!row || typeof row !== 'object') return undefined;
-  return row[header];
+  if (header in row) return row[header]; // chemin rapide exact
+  const target = normHeader(header);
+  for (const k of Object.keys(row)) {
+    if (normHeader(k) === target) return row[k];
+  }
+  return undefined;
 }
 
 // ============================================================================
