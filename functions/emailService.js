@@ -433,68 +433,100 @@ function parseLiquidationXlsx(xlsxBuffer) {
 
 /**
  * Parse a Driscoll's LIQUIDATION summary PDF (separate from RECEIPT.xls).
- * The PDF contains a summary table with columns:
- *   Total in Kg | Base | Fruit Advance | DED Rasp (or Plant Deduction) | Crop Advance | DEX Adjustment | PKG deduction | Net Payable
- * and metadata: Numéro de liquidation (APIV-...), Periode, Date.
- * Returns { liquidationNumber, period, summary:{ totalKg, base, fruitAdvance, dedRasp, dedPlants, cropAdvance, dexAdjustment, pkgDeduction, netPayable } } or null.
+ *
+ * Two layouts exist with DIFFERENT column orders:
+ *   Raspberry (RASP) — English header:
+ *     Total in Kg | Base | Fruit Advance | DED Rasp (or Plant Deduction) | Crop Advance | DEX Adjustment | PKG deduction | Net Payable
+ *   Blueberry (BLUE) — French header, columns reordered:
+ *     Total en Kg | Base | DED BLUE | ADVANCE FRUIT | Adjustment DEX | LOAN | Straw Plants | Montant
+ *
+ * Both layouts produce the same normalized output shape:
+ *   { totalKg, base, fruitAdvance, dedRasp, dedPlants, cropAdvance, dexAdjustment, pkgDeduction, netPayable }
+ *
+ * and metadata: Numéro de liquidation (APIV-...), Periode.
  */
+// Pure helper: parse the already-extracted PDF text into the normalized summary shape.
+// Exposed for unit testing without needing a real PDF buffer.
+function parseLiquidationSummaryText(text) {
+  if (!text) return null;
+  const result = { liquidationNumber: null, period: null, summary: {} };
+
+  const apiv = text.match(/(APIV-\d+)/i);
+  if (apiv) result.liquidationNumber = apiv[1];
+
+  const period = text.match(/P[eé]riode\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
+  if (period) result.period = `${period[1]} - ${period[2]}`;
+
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // Detect blueberry layout by distinctive French markers anywhere in the text.
+  const isBlueLayout = /DED\s+BLUE|ADVANCE\s+FRUIT|Straw\s+Plants|Total\s+en\s+Kg/i.test(text);
+
+  const headerIdx = lines.findIndex(l => isBlueLayout
+    ? /Total\s+en\s+Kg.*Base.*DED\s+BLUE.*Montant/i.test(l)
+    : /Total\s+in\s+Kg.*Base.*Fruit\s+Advance.*Net\s+Payable/i.test(l)
+  );
+  if (headerIdx < 0) return result;
+
+  const headerLine = lines[headerIdx];
+  const valuesLine = lines[headerIdx + 1];
+  if (!valuesLine) return result;
+
+  // Robust number extraction — handles both PDF locales:
+  //   English (newer): "3,226.50 231,656.27 166,525.18 - - - 0.00 65,131.09"
+  //   Space-separated (older): "6 492.00 373 923.94 274 234.08 24 971.38 44 271.50 - 0.00 30 446.97"
+  //
+  // Strategy: match either a literal "-" placeholder, or a number with optional
+  // thousand separators (space or comma, always followed by exactly 3 digits)
+  // and optional decimal part. Matches are ordered left-to-right as table columns.
+  const numRe = /-(?=\s|$)|\d{1,3}(?:[\s,]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
+  const matches = valuesLine.match(numRe) || [];
+  const nums = matches.map((m) => {
+    if (m === "-") return 0;
+    return parseFloat(m.replace(/[\s,]/g, "")) || 0;
+  });
+  if (nums.length < 8) return result;
+
+  const [c1, c2, c3, c4, c5, c6, c7, c8] = nums.slice(0, 8);
+
+  if (isBlueLayout) {
+    // Blueberry columns: [totalKg, base, DED BLUE, ADVANCE FRUIT, Adjustment DEX, LOAN, Straw Plants, Montant]
+    result.summary = {
+      totalKg: c1,
+      base: c2,
+      fruitAdvance: c4,
+      dedRasp: 0,
+      dedPlants: c3,
+      cropAdvance: c6,
+      dexAdjustment: c5,
+      pkgDeduction: c7,
+      netPayable: c8,
+    };
+  } else {
+    // Raspberry columns: [totalKg, base, Fruit Advance, DED Rasp|Plant Deduction, Crop Advance, DEX, PKG, Net Payable]
+    // Column 4 is either "DED Rasp" (framboise) or "Plant Deduction"/"DED Plants" (variante).
+    const raspIsPlantDed = /plant\s*deduction|ded\.?\s*plants?/i.test(headerLine);
+    result.summary = {
+      totalKg: c1,
+      base: c2,
+      fruitAdvance: c3,
+      dedRasp: raspIsPlantDed ? 0 : c4,
+      dedPlants: raspIsPlantDed ? c4 : 0,
+      cropAdvance: c5,
+      dexAdjustment: c6,
+      pkgDeduction: c7,
+      netPayable: c8,
+    };
+  }
+  return result;
+}
+
 async function parseLiquidationSummaryPdf(pdfBuffer) {
   try {
     const parser = new PDFParse({ data: pdfBuffer });
     const textResult = await parser.getText();
     const text = (textResult && textResult.text) || (typeof textResult === "string" ? textResult : "");
-    if (!text) return null;
-
-    const result = { liquidationNumber: null, period: null, summary: {} };
-
-    const apiv = text.match(/(APIV-\d+)/i);
-    if (apiv) result.liquidationNumber = apiv[1];
-
-    const period = text.match(/P[eé]riode\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/i);
-    if (period) result.period = `${period[1]} - ${period[2]}`;
-
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const headerIdx = lines.findIndex(l =>
-      /Total\s+in\s+Kg.*Base.*Fruit\s+Advance.*Net\s+Payable/i.test(l)
-    );
-    if (headerIdx < 0) return result;
-
-    const headerLine = lines[headerIdx];
-    const valuesLine = lines[headerIdx + 1];
-    if (!valuesLine) return result;
-
-    // Detect whether column 4 is "DED Rasp" (framboise) or "Plant Deduction" / "DED Plants" (myrtille)
-    const isBlueLayout = /plant\s*deduction|ded\.?\s*plants?/i.test(headerLine);
-
-    // Robust number extraction — handles both PDF locales:
-    //   English (newer): "3,226.50 231,656.27 166,525.18 - - - 0.00 65,131.09"
-    //   Space-separated (older): "6 492.00 373 923.94 274 234.08 24 971.38 44 271.50 - 0.00 30 446.97"
-    //
-    // Strategy: match either a literal "-" placeholder, or a number with optional
-    // thousand separators (space or comma, always followed by exactly 3 digits)
-    // and optional decimal part. Matches are ordered left-to-right as table columns.
-    const numRe = /-(?=\s|$)|\d{1,3}(?:[\s,]\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g;
-    const matches = valuesLine.match(numRe) || [];
-    const nums = matches.map((m) => {
-      if (m === "-") return 0;
-      return parseFloat(m.replace(/[\s,]/g, "")) || 0;
-    });
-    // Expected 8 values: [totalKg, base, fruitAdvance, ded(Rasp|Plants), cropAdvance, dexAdjustment, pkg(deduction|Caution), netPayable]
-    if (nums.length < 8) return result;
-
-    const [tk, b, fa, dedCol, ca, dex, pkg, np] = nums.slice(0, 8);
-    result.summary = {
-      totalKg: tk,
-      base: b,
-      fruitAdvance: fa,
-      dedRasp: isBlueLayout ? 0 : dedCol,
-      dedPlants: isBlueLayout ? dedCol : 0,
-      cropAdvance: ca,
-      dexAdjustment: dex,
-      pkgDeduction: pkg,
-      netPayable: np,
-    };
-    return result;
+    return parseLiquidationSummaryText(text);
   } catch (err) {
     console.error("parseLiquidationSummaryPdf error:", err.message);
     return null;
@@ -5000,6 +5032,7 @@ async function notifyNewAgqAnalyses(createdAnalyses) {
 // Exported for manual import scripts (e.g. import-receipt-blue.js, diag)
 module.exports.parseLiquidationXlsx = parseLiquidationXlsx;
 module.exports.parseLiquidationSummaryPdf = parseLiquidationSummaryPdf;
+module.exports.parseLiquidationSummaryText = parseLiquidationSummaryText;
 module.exports.parseTimacInvoiceText = parseTimacInvoiceText;
 module.exports.parseTimacInvoicePdf = parseTimacInvoicePdf;
 module.exports.createTimacInvoiceFromParsed = createTimacInvoiceFromParsed;
