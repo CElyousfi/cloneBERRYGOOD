@@ -631,3 +631,40 @@ Pas de refonte backend (endpoints stock existants). Risque faible, valeur
 opérationnelle élevée.
 
 À cadrer APRÈS le sprint caisse (+ fix pipeline liquidations). Gated : oui.
+
+---
+
+## CADRAGE — Module Paie bout-en-bout (À TRAITER APRÈS clôture marché local — NE PAS démarrer)
+
+Objectif DG : chaîner **calcul SB → bordereau → émargement → payé/impayé tracé →
+rapprochement Caisse Paie**. Base = audit cartographie paie (pointage fiable BEE ONE,
+calcul SB éphémère côté front, taux global `app_settings/paie_baremes`, référentiel
+`ouvriers_registry` matricule-keyé 1636, caisse_paie 100% import Excel, émargement
+inexistant).
+
+### Décisions DG actées
+1. **OJRA = aval déclaratif** (fiches paie + CNSS), PAS une source concurrente.
+   **SB = source du calcul/paiement.** À explorer plus tard : SB → export vers OJRA ?
+2. **Matricule** : hypothèse = tous matriculés sauf historique. À VÉRIFIER au cadrage
+   (scan Excel impayés vs `ouvriers_registry` → liste des sans-matricule ; distinguer
+   actifs à régulariser vs historique gelable). Ex. signalé : AYOUB CHINGO 8 849 DH.
+3. **Méthode caisses (principe DG, vaut pour TOUTES les caisses)** :
+   a. Importer TOUTES les alimentations d'abord (vue d'ensemble des entrées).
+   b. Passer les dépenses de chaque caisse séparément.
+   c. Équilibrer par **TRANSFERTS inter-caisses** à la fin (le solde -23 344 de la
+      Caisse Paie = argent pris ailleurs, non tracé comme transfert).
+
+### Vérifié (pré-cadrage)
+- **Transfert inter-caisses EXISTE** : action backend `create-transfer`
+  (functions/index.js:14414) → paire `transfer_out`/`transfer_in`, comptée dans les
+  soldes. Pivot d'équilibrage viable. ⚠️ Confirmer l'UI caisse du transfert au cadrage
+  (l'onglet « Transferts » actuel = côté stock).
+
+### Séquence pressentie (4 lots, risque croissant)
+1. **Persister le calcul paie** (ouvrier×quinzaine) — l'éphémère devient donnée.
+2. **Bordereau** depuis le calcul persisté.
+3. **Émargement** (collection payé/impayé : qui/quand/montant).
+4. **Rapprochement Caisse Paie** (Σ dépenses paie ↔ Σ bordereaux émargés).
+
+Gated : oui — cadrage complet avec Omar avant tout dev. Ne pas démarrer avant clôture
+du sprint marché local.
