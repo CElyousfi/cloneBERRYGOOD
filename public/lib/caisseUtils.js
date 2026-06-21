@@ -751,6 +751,64 @@ function aggregateAvances(transactions, now, options) {
   return out;
 }
 
+// ============================================================================
+// COMPTES CLIENTS MARCHÉ LOCAL (sous-lot 4.4) — read-only aggregation
+// ============================================================================
+
+/**
+ * Prefix that identifies a "compte client marché local" caisse id.
+ * The 5 client accounts live as caisse_definitions with id
+ * 'compte_client_<client_id>' (e.g. compte_client_mustapha_chafik_a).
+ */
+const COMPTE_CLIENT_PREFIX = 'compte_client_';
+
+/**
+ * Returns true if a caisse is a marché-local client account.
+ * Detection is by id prefix (no dedicated `kind` field is guaranteed in DB);
+ * if a `kind` field equal to 'compte_client_marche_local' is present it also
+ * qualifies, for forward compatibility.
+ *
+ * @param {{id?: string, kind?: string}} caisse
+ * @returns {boolean}
+ */
+function isCompteClientCaisse(caisse) {
+  if (!caisse || typeof caisse !== 'object') return false;
+  if (caisse.kind === 'compte_client_marche_local') return true;
+  return typeof caisse.id === 'string' && caisse.id.indexOf(COMPTE_CLIENT_PREFIX) === 0;
+}
+
+/**
+ * Aggregates a client's transactions into totals for the read-only account view.
+ * - totalVendu     = Σ montant of type 'vente'
+ * - totalEncaisse  = Σ montant of type 'encaissement'
+ * - resteDu        = totalVendu - totalEncaisse
+ *
+ * Pure: no DOM, no network. Ignores non vente/encaissement types.
+ *
+ * @param {Array<{type?: string, montant?: number}>} transactions
+ * @returns {{totalVendu: number, totalEncaisse: number, resteDu: number, nbVentes: number, nbEncaissements: number}}
+ */
+function computeCompteClientTotals(transactions) {
+  const list = Array.isArray(transactions) ? transactions : [];
+  let totalVendu = 0;
+  let totalEncaisse = 0;
+  let nbVentes = 0;
+  let nbEncaissements = 0;
+  for (const t of list) {
+    if (!t || typeof t !== 'object') continue;
+    const m = Number(t.montant) || 0;
+    if (t.type === 'vente') { totalVendu += m; nbVentes += 1; }
+    else if (t.type === 'encaissement') { totalEncaisse += m; nbEncaissements += 1; }
+  }
+  return {
+    totalVendu,
+    totalEncaisse,
+    resteDu: totalVendu - totalEncaisse,
+    nbVentes,
+    nbEncaissements,
+  };
+}
+
 
 // ============================================================================
 // UMD-style export (browser global + CommonJS for node:test)
@@ -774,6 +832,10 @@ const __api = {
   detectAnomaliesBatch,
   // functions — Sprint 3
   extractBeneficiaire, aggregateAvances,
+  // constants — Comptes Clients Marché Local (sous-lot 4.4)
+  COMPTE_CLIENT_PREFIX,
+  // functions — Comptes Clients Marché Local (sous-lot 4.4)
+  isCompteClientCaisse, computeCompteClientTotals,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;
