@@ -605,3 +605,29 @@ Principe :
   modèle de paie unifié (popup / PaieTab).
 
 Gated : oui — circuit de validation par étape + rôles à valider avec Omar avant dev.
+
+---
+
+## ITEM (idée DG, à cadrer) — QR stock : étiquettes + scan inventaire/sortie
+
+Étiqueter les produits du stock avec un **QR code** (encodant le code article,
+voire un id lot/emplacement) pour accélérer et fiabiliser :
+1. **Inventaire physique** : scan article → pré-remplit la ligne de comptage.
+2. **Bon de sortie / consommation** : scan article(s) → construit le bon
+   (article + qté + parcelle/destination), validé via le flux existant
+   (`create-movement`, garde `lib/stock/movementGuard`).
+
+Faisabilité élevée — l'infra existe :
+- Capture caméra déjà en place (`scan-bon-apport` / `scan-facture` / `scan-bl`).
+  Manque : **décodage QR** (lib CDN type `html5-qrcode`/`jsQR`, pattern
+  `<script>` comme XLSX/jsPDF).
+- Référentiel article : `articles_catalog` / `mapping_articles`.
+- Génération des étiquettes imprimables : générateur code article → QR + libellé
+  (réutilise jsPDF/XLSX).
+
+Périmètre : nouveau composant scan isolé (règle modularisation) + générateur
+d'étiquettes + branchement léger sur écrans magasinier (Inventaire + Sortie).
+Pas de refonte backend (endpoints stock existants). Risque faible, valeur
+opérationnelle élevée.
+
+À cadrer APRÈS le sprint caisse (+ fix pipeline liquidations). Gated : oui.
