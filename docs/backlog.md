@@ -668,3 +668,46 @@ inexistant).
 
 Gated : oui — cadrage complet avec Omar avant tout dev. Ne pas démarrer avant clôture
 du sprint marché local.
+
+### GARDE-FOUS DE VALIDATION (décisions DG actées) — DOUBLE FILET
+
+**1. FIGEAGE D'UNE QUINZAINE = BLOQUANT (protège l'argent réel)**
+Une quinzaine ne peut être FIGÉE (donc payée) que si les contrôles passent :
+- SMAG appliqué **conforme au barème légal de la période**.
+- Jours **cohérents** (dimanches / repos / fériés exclus, contrôle **visible**).
+- Écart vs barème théorique **sous seuil**.
+Si incohérent → **figeage IMPOSSIBLE, pas de forçage**. S'ancre dans le workflow
+3 visas (Caporal/Chef → RH → DG) → FIGÉE/immuable.
+
+**2. BARÈME SMAG ÉDITABLE AVEC BORNES + ALERTE**
+- La RH peut éditer (nouveau décret) MAIS toute saisie **hors bornes légales connues**
+  (ex. 107,22) → **alerte bloquante / à confirmer** (qu'un nouveau « 107,22 » ne puisse
+  plus être introduit silencieusement).
+- Barème **par date d'effet** : 93 jusqu'au 31/03/2026, 97,44 dès 01/04/2026.
+
+→ Double filet : **barème borné** (erreur à la source) + **figeage bloquant** (rattrape
+jours/écarts).
+
+### DIAGNOSTIC INVESTIGATION (read-only, golden file 1Q juin 2026) — pour mémoire
+- **Base de calcul saine et unifiée** : `public/lib/paieUtils.js` → `computePayslip`,
+  utilisée par tous les écrans bulletin (popup, CoutRecolteTab, PaieTab). `computeWorkerPaie`
+  (HS+transport) = **code mort**.
+- **SMAG** : entrée parasite `smagHistory` 2026-06-01 = **107,22** (aucun barème légal) →
+  SB calcule juin à 107,22 (+13 061 sur 1Q juin). **Jamais payé** (caisse_paie sans juin ;
+  paies réelles = Excel @97,44). Correctif = retirer l'entrée.
+- **Jours 15 vs 13** : SB compte en plus le **15/06 (lundi, clôture Excel anticipée → SB
+  plus complet)** et le **14/06 (dimanche → règle DG à trancher : dimanches payés ?)**.
+  Pas un bug « tous les dimanches ».
+- **Prime fonction** : registre incomplet (82/128 ouvriers `primeFonctionJournaliere=0`) +
+  HS/récolte/conditionnement **fondues** dans la « Prime Fonction Brut » de l'Excel,
+  absentes des inputs SB (−11 441).
+- **Transport** : non déduit du net en SB (`computePayslip` sans transport) ; modèle cible
+  (ponction net + reversement transporteur via caisse paie) à construire ; pas de lien
+  ouvrier→transporteur (transport au niveau équipe).
+- **Émargement** : inexistant en SB (feuille Excel « ETAT EMARGEMENT »). Cible : espèces
+  (non déclarés) = signature ; virements (déclarés) = preuve bancaire.
+- **Caisse paie** : 19 dépenses = montant global/quinzaine importé Excel, **0 ventilation**
+  net/transport/divers, pas de détail ouvrier. Cible = 4 natures de sortie.
+- **Référentiel** : 1636 matricules ; les **non-déclarés (SANS CNSS)** sont massivement
+  **absents du registre** (313/356 hors registry) → enrôlement requis (le « sans matricule »
+  n'est pas le vrai trou).
