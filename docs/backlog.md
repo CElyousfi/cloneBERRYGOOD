@@ -711,3 +711,21 @@ jours/écarts).
 - **Référentiel** : 1636 matricules ; les **non-déclarés (SANS CNSS)** sont massivement
   **absents du registre** (313/356 hors registry) → enrôlement requis (le « sans matricule »
   n'est pas le vrai trou).
+
+### ARBITRAGES DG EN ATTENTE (à trancher à froid avant de cadrer les lots)
+Acquis : l'écart 1Q juin n'est **PAS un bug de calcul**. 37/47 des « jours-extra » SB sont des
+**présences pointeuses RÉELLES** (`prod_presence`, heure d'entrée) → SB n'invente pas, il lit
+BEE ONE. L'écart = **règle dimanche + cutoff + incohérence miroirs**.
+
+1. **RÈGLE DIMANCHE** : les dimanches travaillés (récolte, pointage réel BEE ONE) sont-ils
+   **payés** ? Détermine si SB doit les inclure ou exclure du décompte jours.
+2. **CUTOFF QUINZAINE** : définir quand une quinzaine est officiellement close (le 15 inclus ?
+   règle de date de clôture). SB est plus à jour que l'Excel figé trop tôt.
+3. **SOURCE DE VÉRITÉ POINTAGE** : Excel Hamza (manuel) vs BEE ONE (`sql_mirror`) — laquelle
+   fait foi en cas de divergence ?
+4. 🔴 **FIABILITÉ INTERNE** : 10 jours-extra **incohérents `sql_mirror_pointage` vs
+   `prod_presence`** (un miroir dit présent, l'autre non). À investiguer — touche la fiabilité
+   du pointage (brique supposée saine). **Réconciliation à intégrer au garde-fou figeage.**
+
+Note : preuve DG « EL HADDAJ 14-15 vides » NON confirmée par le golden `docs/` (mat 5 y a
+13 j, absents 3 & 10, et est Gardien 7/7) → reconfirmer quel fichier/ouvrier côté DG.
