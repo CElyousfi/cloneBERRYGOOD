@@ -88,6 +88,37 @@ const IGNORE_RE = /Firebase|firebaseAuth|auth\/|api\/auth|backend-not-available|
   const navLegacy = /id:\s*['"]fin_marche_local['"]\s*,\s*label/.test(bundle);
   log(!navLegacy, "Entrée de menu legacy fin_marche_local (id+label) ABSENTE du nav");
 
+  // 3b. Le remap fallback est embarqué dans le bundle servi par le preview.
+  log(bundle.includes('function remapLegacyTab'), 'Remap fallback remapLegacyTab présent dans le bundle');
+  log(/caisseInitialSubTab['"]\s*,\s*['"]caisse_comptes_clients/.test(bundle), 'Hint sous-onglet Comptes Clients posé par le remap');
+
+  // ========================================================================
+  // 4. ⭐ TEST FALLBACK : lastTab = 'fin_marche_local' AVANT chargement.
+  //
+  // Le remap s'exécute au top-level du module app.js (init de __savedTab),
+  // donc AVANT le gate d'auth — observable même sur l'écran de login. On
+  // vérifie que la valeur persistée a été RÉÉCRITE en 'caisse' (plus jamais
+  // fin_marche_local) et que le hint sous-onglet Comptes Clients est posé.
+  // Aucun chemin de retour vers le legacy ne peut donc subsister.
+  // ========================================================================
+  const fbPage = await browser.newPage();
+  await fbPage.addInitScript(() => {
+    try { localStorage.setItem('lastTab', 'fin_marche_local'); } catch (e) {}
+  });
+  await fbPage.goto(BASE_URL, { waitUntil: 'networkidle', timeout: 45000 });
+  await fbPage.waitForTimeout(2500);
+
+  const fb = await fbPage.evaluate(() => {
+    let lastTab = null, hint = null;
+    try { lastTab = localStorage.getItem('lastTab'); } catch (e) {}
+    try { hint = sessionStorage.getItem('caisseInitialSubTab'); } catch (e) {}
+    return { lastTab, hint };
+  });
+  log(fb.lastTab === 'caisse', 'FALLBACK : localStorage.lastTab réécrit fin_marche_local → caisse', 'lastTab=' + fb.lastTab);
+  log(fb.lastTab !== 'fin_marche_local', 'FALLBACK : aucune persistance résiduelle de fin_marche_local');
+  log(fb.hint === 'caisse_comptes_clients', 'FALLBACK : hint sous-onglet Comptes Clients posé', 'hint=' + fb.hint);
+
+  await fbPage.close();
   await browser.close();
 
   console.log(failed ? '\nRESULTAT: ECHEC' : '\nRESULTAT: SUCCES');

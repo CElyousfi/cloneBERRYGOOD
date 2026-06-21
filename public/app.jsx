@@ -57326,7 +57326,16 @@ ${rejetHtml}
 
         // ---- CaisseTab Main ----
         function CaisseTab({ currentProfile, profileData, userProfile }) {
-            const [subTab, setSubTab] = useState('caisse_dashboard');
+            // Hint de sous-onglet initial (ex. remap legacy fin_marche_local →
+            // Comptes Clients). Consommé une seule fois puis effacé.
+            const initialSubTab = (() => {
+                try {
+                    const hint = sessionStorage.getItem('caisseInitialSubTab');
+                    if (hint) { sessionStorage.removeItem('caisseInitialSubTab'); return hint; }
+                } catch(e) {}
+                return 'caisse_dashboard';
+            })();
+            const [subTab, setSubTab] = useState(initialSubTab);
             const [caisses, setCaisses] = useState([]);
             const [dashData, setDashData] = useState(null);
             const [loading, setLoading] = useState(true);
@@ -61381,7 +61390,30 @@ ${rejetHtml}
 
         // ===================== MAIN APP =====================
         var __savedProfile = 'rh'; try { __savedProfile = localStorage.getItem('lastProfile') || 'rh'; } catch(e) {}
-        var __savedTab = 'dashboard'; try { __savedTab = localStorage.getItem('lastTab') || 'dashboard'; } catch(e) {}
+        // Remap centralisé des tabs legacy retirés du menu (sous-lot 4.4).
+        // L'écran « Marché Local / Situation Clients » (fin_marche_local) a été
+        // retiré du menu et remplacé par la vue read-only Comptes Clients de la
+        // Gestion de Caisse. On bloque TOUT chemin de retour vers le legacy, y
+        // compris la restauration du dernier onglet mémorisé : on redirige vers
+        // le tab `caisse` et on pose un hint pour ouvrir directement le sous-onglet
+        // Comptes Clients. Centraliser ici couvre savedTab + tout futur appel.
+        function remapLegacyTab(tab) {
+            if (tab === 'fin_marche_local') {
+                try { sessionStorage.setItem('caisseInitialSubTab', 'caisse_comptes_clients'); } catch(e) {}
+                return 'caisse';
+            }
+            return tab;
+        }
+        var __savedTab = 'dashboard';
+        try {
+            __savedTab = localStorage.getItem('lastTab') || 'dashboard';
+            var __remapped = remapLegacyTab(__savedTab);
+            if (__remapped !== __savedTab) {
+                __savedTab = __remapped;
+                // Écrase la valeur persistée pour ne pas re-déclencher au reload.
+                try { localStorage.setItem('lastTab', __savedTab); } catch(e) {}
+            }
+        } catch(e) {}
 
         // ===================== DG ADOPTION TRACKING =====================
         function DGAdoptionTab({ currentProfile, profileData }) {
