@@ -729,3 +729,21 @@ BEE ONE. L'écart = **règle dimanche + cutoff + incohérence miroirs**.
 
 Note : preuve DG « EL HADDAJ 14-15 vides » NON confirmée par le golden `docs/` (mat 5 y a
 13 j, absents 3 & 10, et est Gardien 7/7) → reconfirmer quel fichier/ouvrier côté DG.
+
+### DÉCISIONS FINALES — INVESTIGATION CLOSE (les 4 arbitrages ci-dessus = TRANCHÉS)
+- **Source pointage autoritaire = `sql_mirror_pointage` (BEE ONE officiel)**, **SNAPSHOT figé au visa** (pas de relecture live). `prod_presence` = **témoin de contrôle**.
+- **Édits BEE ONE post-cutoff** : **fenêtre de correction de X jours** (durée à fixer ~2-3j, à valider Hamza) puis figeage. Après figeage : **correction DG tracée uniquement**.
+- **Dimanches travaillés = PAYÉS** (1 jour = 1 jour, **sans majoration**).
+- **Conséquence 1Q juin** : **SB a le BON décompte** (dimanche 14 + lundi 15 réels, BEE ONE) ; l'Excel Hamza **sous-comptait**. **SB = source unique confirmée.**
+
+### CORRECTIONS À CODER — LOT 1 (gated, au lancement du build)
+1. **Retirer l'entrée `smagHistory` 107,22 (2026-06-01)** → SB repasse à 97,44 pour juin+. Backup avant, **no-delete (archiver l'entrée)**.
+2. **Compléter `primeFonctionJournaliere`** du registre (82 ouvriers à 0).
+3. **Décompte jours** : déjà correct côté SB (dimanches inclus, BEE ONE réel) — **valider que la règle dimanche=payé est explicite** dans le calcul.
+
+### GARDE-FOUS (au figeage) — rappel
+Figeage bloquant (SMAG conforme + jours cohérents + écart sous seuil) + barème SMAG borné/alerte + **réconciliation `sql_mirror` ↔ `prod_presence` en contrôle**.
+
+### À FIXER / RESTE BACKLOG
+- **PARAMÈTRE** : durée fenêtre de correction (X jours) — valider avec Hamza.
+- **Reste** : audit toutes-quinzaines (après fiabilisation 1Q juin) ; lots transport / émargement / caisse paie ventilée (4 natures) / enrôlement des 313 non-déclarés.
