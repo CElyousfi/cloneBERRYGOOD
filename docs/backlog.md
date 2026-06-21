@@ -745,5 +745,17 @@ Note : preuve DG « EL HADDAJ 14-15 vides » NON confirmée par le golden `docs/
 Figeage bloquant (SMAG conforme + jours cohérents + écart sous seuil) + barème SMAG borné/alerte + **réconciliation `sql_mirror` ↔ `prod_presence` en contrôle**.
 
 ### À FIXER / RESTE BACKLOG
-- **PARAMÈTRE** : durée fenêtre de correction (X jours) — valider avec Hamza.
+- **PARAMÈTRE** : durée fenêtre de correction — **≥ lag refresh reporting** (plancher 2-3j, valider Hamza).
 - **Reste** : audit toutes-quinzaines (après fiabilisation 1Q juin) ; lots transport / émargement / caisse paie ventilée (4 natures) / enrôlement des 313 non-déclarés.
+
+### INVESTIGATION CLOSE & PROUVÉE (read-only, 1Q juin 2026)
+**PREUVE A — sources BEE ONE :**
+- `sql_mirror_pointage` = base **REPORTING** (`BR_Pointage`, différée), cron horaire conditionnel → **source autoritaire paie**.
+- `prod_presence` = base **PRODUCTION** (`Presence`, temps réel) → **témoin de contrôle**.
+- **Lag possible ~1j** (refresh reporting nocturne) → fenêtre de correction **≥ délai refresh reporting** avant figeage. Renforce le **snapshot-au-visa**.
+
+**PREUVE B — réconciliation post-correction (simulation, 0 write) :**
+- **97** ouvriers sans écart jours → **matchent l'Excel** au centime.
+- **31** avec écart → **résidu 5 319 DH, expliqué à 100 % par jours réels** (dim 14 + lun 15). Attendu effet-jours = 5 327 DH. **Écarts inexpliqués >5 DH = 0**.
+- **VERDICT : aucun bug de calcul résiduel.** L'Excel **SOUS-PAYAIT ~5 300 DH** (dimanches + jour 15). Le « 4746 » de Hamza = ce sous-paiement, **pas un défaut SB**.
+- → Après Lot 1, **SB reproduit l'Excel au centime SAUF les jours réels en plus** (dus aux ouvriers). **Hamza s'aligne sur SB.**
