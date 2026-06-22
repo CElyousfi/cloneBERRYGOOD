@@ -764,3 +764,13 @@ Figeage bloquant (SMAG conforme + jours cohérents + écart sous seuil) + barèm
 - **1A SMAG 107,22** : ✅ **CORRIGÉ EN PROD** (entrée retirée de `smagHistory`, archivée dans `smagHistory_archive` no-delete ; juin+ = 97,44 ; backup `docs/BACKUP-paie-baremes-lot1-smag.json` ; script `functions/scripts/fixSmagBareme.js` ; commit `fc2bfe7`). Aucun deploy (lu live).
 - **1C Règle dimanche=payé** : **DÉJÀ en place** dans `computePayslip` (constat investigation). Action = **DOCUMENTER + rendre visible au garde-fou figeage** (contrôle jours), **pas de code**. **Ne pas « corriger » en excluant les dimanches** : décision DG = dimanche travaillé **payé 1j=1j**.
 - **1B Primes fixes (81 + 1 hors-registre)** : fichier livré `docs/PRIMES-FIXES-82-a-valider.xlsx`. Write registre soumis à **3 feux verts** : (1) ✅ relecture technique (conversions OK, hors-registre `10602` isolé, 0 doublon) ; (2) ⏳ **format interface** (le script doit écrire un doc IDENTIQUE à l'interface de modif des primes fixes — mêmes champs/métadonnées/unité) ; (3) ⏳ **validation montants Hamza** (9,13×~77 + hautes). Write SEULEMENT quand (2) ET (3) verts.
+
+---
+
+## ITEM (caisse, futur) — Validation des PJ caisse par le Chef de Ferme
+
+**Besoin CONFIRMÉ par le DG**, à **REFAIRE FRAIS** (ne PAS merger le draft PR #29, périmé 283 commits derrière, inexploitable). La PR #29 a été **fermée** ; son intention est tracée ici pour mémoire.
+
+Intention initiale (PR #29 « Sprint 2 — validation des PJ caisse par le Chef de Ferme ») : permettre au **Chef de Ferme de valider les pièces jointes** (justificatifs) des transactions caisse, dans le workflow de validation caisse. À recadrer comme **lot caisse futur** sur la base actuelle (la caisse a été refondue depuis : Sprint 2/3 + marché local).
+
+Gated : oui — à cadrer avec Omar.
