@@ -88,3 +88,6 @@ node_modules
 # Bruit OS / sauvegardes locales
 .DS_Store
 *.bak
+
+# Playwright e2e screenshots (générés)
+tests/e2e-screenshots/
