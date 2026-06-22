@@ -763,7 +763,13 @@ Figeage bloquant (SMAG conforme + jours cohérents + écart sous seuil) + barèm
 ### LOT 1 — SUIVI
 - **1A SMAG 107,22** : ✅ **CORRIGÉ EN PROD** (entrée retirée de `smagHistory`, archivée dans `smagHistory_archive` no-delete ; juin+ = 97,44 ; backup `docs/BACKUP-paie-baremes-lot1-smag.json` ; script `functions/scripts/fixSmagBareme.js` ; commit `fc2bfe7`). Aucun deploy (lu live).
 - **1C Règle dimanche=payé** : **DÉJÀ en place** dans `computePayslip` (constat investigation). Action = **DOCUMENTER + rendre visible au garde-fou figeage** (contrôle jours), **pas de code**. **Ne pas « corriger » en excluant les dimanches** : décision DG = dimanche travaillé **payé 1j=1j**.
-- **1B Primes fixes (81 + 1 hors-registre)** : fichier livré `docs/PRIMES-FIXES-82-a-valider.xlsx`. Write registre soumis à **3 feux verts** : (1) ✅ relecture technique (conversions OK, hors-registre `10602` isolé, 0 doublon) ; (2) ⏳ **format interface** (le script doit écrire un doc IDENTIQUE à l'interface de modif des primes fixes — mêmes champs/métadonnées/unité) ; (3) ⏳ **validation montants Hamza** (9,13×~77 + hautes). Write SEULEMENT quand (2) ET (3) verts.
+- **1B Primes fixes** : 🧊 **GELÉ** (feedback Hamza) — voir ci-dessous.
+
+### ⚠️ FEEDBACK HAMZA (à traiter à la réouverture RH, après le stock)
+1. **SMAG 107,22 a RÉELLEMENT payé la quinzaine précédente** (≠ « jamais payé » — ma conclusion initiale venait de l'absence d'écriture juin dans `caisse_paie`, mais le paiement a transité autrement). → **À VÉRIFIER à la réouverture RH : y a-t-il eu sur-paiement réel ? quel montant ? régularisation nécessaire ?** (Le retrait 1A reste valide pour les quinzaines futures.)
+2. **Les primes ~9,11 DH ne sont PAS des primes de fonction** : c'est un **véhicule pour rattraper le SMAG au nouveau barème (93 → 97,44)**. 
+   → **CONSÉQUENCE : Lot 1B (write des primes) GELÉ.** Ne PAS inscrire les ~9,11 comme primes permanentes au registre → **risque de DOUBLE COMPTE** avec le SMAG désormais corrigé à 97,44. Le fichier `PRIMES-FIXES-82-a-valider.xlsx` et la conversion /0,9326 restent valables pour les VRAIES primes de fonction (hautes : ~19, ~49…) mais **à re-trier** : séparer rattrapage-SMAG (à ne pas écrire) des vraies primes fixes. À clarifier avec Hamza à la **réouverture RH**.
+- **1A SMAG 107,22** : reste **valide** (retrait barème illégal). Indépendant du point 1B.
 
 ---
 
