@@ -49510,14 +49510,15 @@ ${rejetHtml}
             });
             recap.push([txt('TOTAL'), txt(''), txt(''), txt(''), txt(''), num(sHt), num(sTva), num(sTtc), txt(''), txt(''), txt('')]);
             const lastDataRow = recap.length; // 1-based row of header is 1; autofilter spans header..last facture row
-            // Récap par statut
+            // Récap par statut — helper PUR partagé (FactureExportUtils) qui aligne
+            // "Nombre" sous TVA (idx 6) et le montant sous "Total TTC" (idx 7) sur
+            // 11 colonnes. Sans cet alignement, les valeurs débordaient sur la
+            // colonne "Fournisseur" (idx 3) et le montant manquait sous l'en-tête
+            // "Total TTC" (bug DG corrigé v5fix). Conversion des descripteurs
+            // neutres → cellules typées SheetJS.
+            const toCell = (d) => d.kind === 'num' ? num(d.v) : d.kind === 'cnt' ? cnt(d.v) : txt(d.v);
             recap.push([]);
-            recap.push([txt('Récapitulatif par statut'), txt(''), txt('Nombre'), txt('Total TTC')]);
-            ['non_payee', 'en_validation', 'validee_achats', 'validee_finance', 'validee_dg', 'payee'].forEach(st => {
-                const sub = scoped.filter(f => f.payment_status === st);
-                if (sub.length) recap.push([txt(statusLabels[st]), txt(''), cnt(sub.length), num(sub.reduce((s, f) => s + (Number(f.total_ttc) || 0), 0))]);
-            });
-            recap.push([txt('Total général'), txt(''), cnt(scoped.length), num(sTtc)]);
+            FE.buildRecapStatutRows(scoped, statusLabels).forEach(r => recap.push(r.map(toCell)));
 
             const recapCols = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 16 }];
             // Autofilter sur l'en-tête + les lignes factures (hors TOTAL/récap statut).

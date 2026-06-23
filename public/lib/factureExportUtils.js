@@ -518,6 +518,69 @@ function buildFactureLines(facture) {
 }
 
 // ============================================================================
+// RECAP SHEET — construction des lignes (pure, testable)
+// ============================================================================
+
+/**
+ * Index des colonnes du récap (alignés sur recapHeader côté app.jsx /
+ * gen-script). SOURCE DE VÉRITÉ partagée pour éviter tout décalage.
+ *   0 N° Interne · 1 N° Facture · 2 BDC · 3 Fournisseur · 4 Date
+ *   5 Total HT · 6 TVA · 7 Total TTC · 8 Écarts · 9 Anomalie TVA · 10 Statut
+ */
+const RECAP_COL = Object.freeze({
+  NUM_INTERNE: 0, NUM_FACTURE: 1, BDC: 2, FOURNISSEUR: 3, DATE: 4,
+  TOTAL_HT: 5, TVA: 6, TOTAL_TTC: 7, ECARTS: 8, ANOMALIE: 9, STATUT: 10,
+});
+
+/** Nombre de colonnes du récap. */
+const RECAP_NB_COLS = 11;
+
+/**
+ * Construit les lignes du bloc "Récapitulatif par statut" (+ TOTAL général)
+ * sous forme de descripteurs de cellules NEUTRES (indépendants de SheetJS) :
+ *   - { kind: 'txt', v: string }
+ *   - { kind: 'num', v: number }
+ *   - { kind: 'cnt', v: number }   (entier sans format monnaie)
+ * Chaque ligne fait EXACTEMENT RECAP_NB_COLS colonnes. "Nombre" est aligné sous
+ * la colonne TVA (idx 6) et le montant sous la colonne Total TTC (idx 7), pour
+ * NE PAS déborder sur la colonne Fournisseur (idx 3) — bug corrigé v5fix.
+ *
+ * @param {Array<Object>} scoped  factures exportées
+ * @param {Object} statusLabels   map payment_status → libellé
+ * @returns {Array<Array<{kind:string, v:*}>>}
+ */
+function buildRecapStatutRows(scoped, statusLabels) {
+  const list = Array.isArray(scoped) ? scoped : [];
+  const labels = statusLabels || {};
+  const tcell = (v) => ({ kind: 'txt', v: v == null ? '' : String(v) });
+  const ncell = (v) => ({ kind: 'num', v: Number(v) || 0 });
+  const ccell = (v) => ({ kind: 'cnt', v: Number(v) || 0 });
+  const row = (label, count, ttc) => {
+    const r = new Array(RECAP_NB_COLS).fill(null).map(() => tcell(''));
+    r[RECAP_COL.NUM_INTERNE] = tcell(label);
+    if (count != null) r[RECAP_COL.TVA] = ccell(count);
+    if (ttc != null) r[RECAP_COL.TOTAL_TTC] = ncell(ttc);
+    return r;
+  };
+  const rows = [];
+  // En-tête du bloc : "Nombre" sous TVA, "Total TTC" sous Total TTC.
+  const header = row('Récapitulatif par statut', null, null);
+  header[RECAP_COL.TVA] = tcell('Nombre');
+  header[RECAP_COL.TOTAL_TTC] = tcell('Total TTC');
+  rows.push(header);
+  const STATUTS = ['non_payee', 'en_validation', 'validee_achats', 'validee_finance', 'validee_dg', 'payee'];
+  STATUTS.forEach((st) => {
+    const sub = list.filter((f) => f.payment_status === st);
+    if (sub.length) {
+      rows.push(row(labels[st] || st, sub.length, sub.reduce((s, f) => s + (Number(f.total_ttc) || 0), 0)));
+    }
+  });
+  const totalTtc = list.reduce((s, f) => s + (Number(f.total_ttc) || 0), 0);
+  rows.push(row('Total général', list.length, totalTtc));
+  return rows;
+}
+
+// ============================================================================
 // EXPORT API
 // ============================================================================
 
@@ -534,6 +597,8 @@ const __factureExportApi = {
   parseSaisiTaux, resolveTauxLigne,
   // core
   deriveTauxTva, buildFactureLines,
+  // récap sheet (pur, testable) — alignement colonnes
+  RECAP_COL, RECAP_NB_COLS, buildRecapStatutRows,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __factureExportApi;

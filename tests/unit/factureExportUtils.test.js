@@ -298,3 +298,94 @@ test('isWithinPeriod — bornes campagne 25-26 inclusives', () => {
   assert.strictEqual(isWithinPeriod('15/12/2025', start, end), true);
   assert.strictEqual(isWithinPeriod('', start, end), false);
 });
+
+// ============================================================================
+// RECAP — ligne TOTAL + bloc "Récapitulatif par statut" (v5fix, bug DG)
+// ============================================================================
+// Régression : la ligne TOTAL et le bloc statut affichaient 0,00 et débordaient
+// sur la colonne "Fournisseur" (idx 3). Le montant doit tomber sous "Total TTC"
+// (idx 7) et le compte sous "TVA" (idx 6), jamais sur Fournisseur (idx 3).
+
+const {
+  RECAP_COL,
+  RECAP_NB_COLS,
+  buildRecapStatutRows,
+} = require('../../public/lib/factureExportUtils.js');
+
+const STATUS_LABELS = {
+  non_payee: 'Non payée', en_validation: 'En validation',
+  validee_achats: 'Validée Achats', validee_finance: 'Validée Finance',
+  validee_dg: 'Validée DG', payee: 'Payée',
+};
+
+// Petit jeu de factures (sommes exactes faciles à vérifier).
+const FIXTURE = [
+  { total_ht: 1000, total_tva: 200, total_ttc: 1200, payment_status: 'payee' },
+  { total_ht: 500, total_tva: 0, total_ttc: 500, payment_status: 'payee' },
+  { total_ht: 250.5, total_tva: 25.05, total_ttc: 275.55, payment_status: 'non_payee' },
+];
+const EXP_HT = 1750.5;
+const EXP_TVA = 225.05;
+const EXP_TTC = 1975.55;
+
+// Reproduit la ligne TOTAL telle que construite par app.jsx / gen-script.
+function buildTotalRow(scoped) {
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const sHt = r2(scoped.reduce((s, f) => s + (Number(f.total_ht) || 0), 0));
+  const sTva = r2(scoped.reduce((s, f) => s + (Number(f.total_tva) || 0), 0));
+  const sTtc = r2(scoped.reduce((s, f) => s + (Number(f.total_ttc) || 0), 0));
+  const row = new Array(RECAP_NB_COLS).fill('');
+  row[RECAP_COL.NUM_INTERNE] = { t: 's', v: 'TOTAL' };
+  row[RECAP_COL.TOTAL_HT] = { t: 'n', v: sHt };
+  row[RECAP_COL.TVA] = { t: 'n', v: sTva };
+  row[RECAP_COL.TOTAL_TTC] = { t: 'n', v: sTtc };
+  return row;
+}
+
+test('RECAP TOTAL — somme exacte HT/TVA/TTC dans les bonnes colonnes', () => {
+  const row = buildTotalRow(FIXTURE);
+  // Libellé bien en colonne A.
+  assert.strictEqual(row[RECAP_COL.NUM_INTERNE].v, 'TOTAL');
+  // Sommes numériques (pas du texte, pas 0) sous HT/TVA/TTC.
+  assert.strictEqual(row[RECAP_COL.TOTAL_HT].t, 'n');
+  assert.strictEqual(row[RECAP_COL.TOTAL_HT].v, EXP_HT);
+  assert.strictEqual(row[RECAP_COL.TVA].v, EXP_TVA);
+  assert.strictEqual(row[RECAP_COL.TOTAL_TTC].t, 'n');
+  assert.strictEqual(row[RECAP_COL.TOTAL_TTC].v, EXP_TTC);
+  // La colonne Fournisseur (idx 3) NE doit PAS porter de montant.
+  assert.strictEqual(row[RECAP_COL.FOURNISSEUR], '');
+});
+
+test('RECAP statut — Nombre/Total TTC alignés, rien sur Fournisseur', () => {
+  const rows = buildRecapStatutRows(FIXTURE, STATUS_LABELS);
+  // Toutes les lignes font 11 colonnes.
+  rows.forEach((r) => assert.strictEqual(r.length, RECAP_NB_COLS));
+  // En-tête : "Nombre" sous TVA, "Total TTC" sous Total TTC.
+  const header = rows[0];
+  assert.strictEqual(header[RECAP_COL.NUM_INTERNE].v, 'Récapitulatif par statut');
+  assert.strictEqual(header[RECAP_COL.TVA].v, 'Nombre');
+  assert.strictEqual(header[RECAP_COL.TOTAL_TTC].v, 'Total TTC');
+  // Aucune cellule ne déborde sur Fournisseur (idx 3) : toujours texte vide.
+  rows.forEach((r) => assert.strictEqual(r[RECAP_COL.FOURNISSEUR].v, ''));
+  // Dernière ligne = "Total général" : nb=3, TTC sous Total TTC = somme exacte.
+  const last = rows[rows.length - 1];
+  assert.strictEqual(last[RECAP_COL.NUM_INTERNE].v, 'Total général');
+  assert.strictEqual(last[RECAP_COL.TVA].kind, 'cnt');
+  assert.strictEqual(last[RECAP_COL.TVA].v, 3);
+  assert.strictEqual(last[RECAP_COL.TOTAL_TTC].kind, 'num');
+  assert.strictEqual(last[RECAP_COL.TOTAL_TTC].v, EXP_TTC);
+});
+
+test('RECAP statut — ventilation par statut correcte', () => {
+  const rows = buildRecapStatutRows(FIXTURE, STATUS_LABELS);
+  // payee : 2 factures, TTC = 1200 + 500 = 1700.
+  const payee = rows.find((r) => r[RECAP_COL.NUM_INTERNE].v === 'Payée');
+  assert.ok(payee, 'ligne Payée présente');
+  assert.strictEqual(payee[RECAP_COL.TVA].v, 2);
+  assert.strictEqual(payee[RECAP_COL.TOTAL_TTC].v, 1700);
+  // non_payee : 1 facture, TTC = 275.55.
+  const nonPayee = rows.find((r) => r[RECAP_COL.NUM_INTERNE].v === 'Non payée');
+  assert.ok(nonPayee, 'ligne Non payée présente');
+  assert.strictEqual(nonPayee[RECAP_COL.TVA].v, 1);
+  assert.strictEqual(nonPayee[RECAP_COL.TOTAL_TTC].v, 275.55);
+});

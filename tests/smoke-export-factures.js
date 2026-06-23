@@ -107,10 +107,23 @@ async function runOn(launcher, name, url) {
     return {
       present: true,
       fns: ['buildFactureLines', 'campaignBounds', 'isWithinPeriod', 'parseFactureDate',
-        'reconciliationEpsilon', 'parseSaisiTaux', 'resolveTauxLigne'].every((f) => typeof u[f] === 'function'),
+        'reconciliationEpsilon', 'parseSaisiTaux', 'resolveTauxLigne',
+        'buildRecapStatutRows'].every((f) => typeof u[f] === 'function'),
       infoLabel: u.INFO_TVA_NON_SAISIE,
       anomalieB: u.ANOMALIE_TVA_B,
       noAnomalieA: typeof u.ANOMALIE_TVA_A === 'undefined',
+      // v5fix — bloc statut aligné : montant sous Total TTC (idx 7), jamais
+      // sur Fournisseur (idx 3).
+      recapAligned: (() => {
+        const rows = u.buildRecapStatutRows(
+          [{ total_ttc: 1200, payment_status: 'payee' }],
+          { payee: 'Payée' }
+        );
+        const last = rows[rows.length - 1];
+        return last.length === u.RECAP_NB_COLS &&
+          last[u.RECAP_COL.FOURNISSEUR].v === '' &&
+          last[u.RECAP_COL.TOTAL_TTC].v === 1200;
+      })(),
     };
   });
   ok(shape.present, 'window.FactureExportUtils exposed');
@@ -118,6 +131,7 @@ async function runOn(launcher, name, url) {
   ok(shape.infoLabel === 'TVA par ligne non saisie', 'INFO_TVA_NON_SAISIE exposé (label informatif)');
   ok(typeof shape.anomalieB === 'string', 'ANOMALIE_TVA_B exposé (vraie anomalie)');
   ok(shape.noAnomalieA, 'ANOMALIE_TVA_A retiré (devinette mot-clé abandonnée)');
+  ok(shape.recapAligned, 'buildRecapStatutRows — bloc statut aligné (montant sous Total TTC, rien sur Fournisseur)');
 
   // v5 — résolution du taux ligne : SAISI uniquement, sinon non déterminé.
   const resolve = await page.evaluate(() => {

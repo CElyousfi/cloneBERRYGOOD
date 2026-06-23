@@ -54,14 +54,19 @@ const getArg = (name) => {
   return i !== -1 && i + 1 < argv.length ? argv[i + 1] : null;
 };
 const LIST_ONLY = argv.includes('--list-fournisseurs');
+// --all : ignore le filtre campagne ET le filtre fournisseur → export "Toutes"
+// (reproduit la vue "Toutes" de l'écran Factures). Sert à prouver la ligne TOTAL.
+const ALL_MODE = argv.includes('--all');
 const FOURNISSEUR_FILTER = getArg('--fournisseur'); // null → TIMAC par défaut
 const FOURNISSEUR_NEEDLE = (FOURNISSEUR_FILTER || 'TIMAC').toUpperCase();
 const IS_TIMAC = !FOURNISSEUR_FILTER;
 const OUT = path.join(
   ROOT, 'docs',
-  getArg('--out') || (IS_TIMAC
-    ? 'EXEMPLE-Export-Factures-TIMAC-25-26-v5.xlsx'
-    : 'EXEMPLE-Export-Factures-NON-TIMAC-v5.xlsx')
+  getArg('--out') || (ALL_MODE
+    ? 'EXEMPLE-Export-Factures-TOUTES-v5fix.xlsx'
+    : IS_TIMAC
+      ? 'EXEMPLE-Export-Factures-TIMAC-25-26-v5.xlsx'
+      : 'EXEMPLE-Export-Factures-NON-TIMAC-v5.xlsx')
 );
 const CAMPAIGN_START_YEAR = 2025;
 
@@ -115,7 +120,10 @@ function buildSheet(matrix, cols, autofilterRange) {
 
   const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const { start, end } = FE.campaignBounds(CAMPAIGN_START_YEAR);
-  const inCampaign = all.filter((f) => FE.isWithinPeriod(f.date_facture, start, end));
+  // En mode --all : aucune restriction de période (vue "Toutes").
+  const inCampaign = ALL_MODE
+    ? all
+    : all.filter((f) => FE.isWithinPeriod(f.date_facture, start, end));
 
   if (LIST_ONLY) {
     const byFour = {};
@@ -132,13 +140,14 @@ function buildSheet(matrix, cols, autofilterRange) {
     const nom = ((f.fournisseur && f.fournisseur.nom) || '').toUpperCase();
     return nom.indexOf(FOURNISSEUR_NEEDLE) !== -1;
   };
-  const scoped = inCampaign
-    .filter(matchFournisseur)
+  // En mode --all : pas de filtre fournisseur non plus.
+  const scoped = (ALL_MODE ? inCampaign : inCampaign.filter(matchFournisseur))
     .sort((a, b) => String(a.date_facture).localeCompare(String(b.date_facture)));
 
-  console.log(`[gen] invoices totales: ${all.length} | "${FOURNISSEUR_NEEDLE}" campagne 25-26: ${scoped.length}`);
+  const scopeLabel = ALL_MODE ? 'TOUTES (sans filtre)' : `"${FOURNISSEUR_NEEDLE}" campagne 25-26`;
+  console.log(`[gen] invoices totales: ${all.length} | ${scopeLabel}: ${scoped.length}`);
   if (scoped.length === 0) {
-    console.error(`[gen] aucune facture pour "${FOURNISSEUR_NEEDLE}" — rien à générer.`);
+    console.error(`[gen] aucune facture pour ${scopeLabel} — rien à générer.`);
     process.exit(3);
   }
 
@@ -175,13 +184,10 @@ function buildSheet(matrix, cols, autofilterRange) {
   });
   recap.push([txt('TOTAL'), txt(''), txt(''), txt(''), txt(''), num(sHt), num(sTva), num(sTtc), txt(''), txt(''), txt('')]);
   const lastDataRow = recap.length;
+  // Récap par statut — helper PUR partagé (alignement Nombre/Total TTC, 11 cols).
+  const toCell = (d) => (d.kind === 'num' ? num(d.v) : d.kind === 'cnt' ? cnt(d.v) : txt(d.v));
   recap.push([]);
-  recap.push([txt('Récapitulatif par statut'), txt(''), txt('Nombre'), txt('Total TTC')]);
-  ['non_payee', 'en_validation', 'validee_achats', 'validee_finance', 'validee_dg', 'payee'].forEach((st) => {
-    const sub = scoped.filter((f) => f.payment_status === st);
-    if (sub.length) recap.push([txt(statusLabels[st]), txt(''), cnt(sub.length), num(sub.reduce((s, f) => s + (Number(f.total_ttc) || 0), 0))]);
-  });
-  recap.push([txt('Total général'), txt(''), cnt(scoped.length), num(sTtc)]);
+  FE.buildRecapStatutRows(scoped, statusLabels).forEach((r) => recap.push(r.map(toCell)));
   const recapCols = [{ wch: 12 }, { wch: 16 }, { wch: 12 }, { wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 28 }, { wch: 16 }];
   const recapFilterRef = 'A1:' + XLSX.utils.encode_cell({ r: lastDataRow - 1, c: recapHeader.length - 1 });
 
