@@ -905,3 +905,45 @@ mapping par article. Étape 1 read-only : mesurer combien de factures sont
 raccordables à un BDC.
 Gated : oui (écriture/backfill de données invoices).
 
+
+## [ ] ITEM — Correctifs front meteoblue + auth (roadmap gatée)
+Issu des investigations read-only 2026-06-23 (meteoblue VOLET A + auth VOLET B).
+- meteoblue : ajouter la DÉDUP DES REQUÊTES EN VOL (stocker la Promise dans
+  `_meteoblueCache` AVANT le await, la servir aux appels concurrents). Le drain vient
+  de la rafale concurrente au boot + des reloads (`checkVersion` vide le cache module
+  15 min), PAS d'un emballement par render (cache module-scope effectif, useEffect à
+  deps stables). Couvre `fetchMeteoblueData` (basic-day_agro-day_basic-1h + agro-1h) et
+  `fetchSprayData` (agromodelspray-1h), public/app.jsx ~889-1005.
+- auth : ajouter un handler 401 dans le wrapper fetch (public/app.jsx:109-122) =
+  1 `getIdToken(true)` (forceRefresh) + 1 retry de l'appel, PUIS bannière « session
+  expirée, reconnectez-vous » si échec. JAMAIS de `signOut()` auto en boucle. Conserver
+  le pattern `getIdToken()`-par-appel (déjà correct). Aujourd'hui : aucune gestion
+  401/403, l'échec est avalé en silence (donnée vide).
+- Cycle : dev → QA → preview → smoke réel → deploy gated. PRIORITÉ : dédup meteoblue
+  d'abord (limite le drain). NE PAS recharger le forfait meteoblue avant la dédup.
+Gated : oui (deploy).
+
+## [ ] ITEM — Investigation déconnexions horaires (BACKEND, read-only)
+Le front est SAIN (établi 2026-06-23) : token jamais figé (wrapper fetch ré-appelle
+`currentUser.getIdToken()` à chaque `/api/*`, tous sans forceRefresh = auto-refresh) ;
+persistance LOCAL par défaut ; meteoblue indépendant de l'auth (URL absolue, pas de token).
+Les déconnexions ~horaires ne sont donc PAS produites par le code client → cause BACKEND :
+TTL de session / règles `/api/auth` (functions), ou réseau. À investiguer côté serveur en
+READ-ONLY (durée de validité de session, vérification du token, logout forcé éventuel),
+rapport AVANT tout correctif.
+Gated : non (investigation read-only) ; correctif éventuel gated.
+
+## [ ] ITEM — Salvage feature BDC→DG (PDF + session interactive OK/NON)
+Source : tag `archive/chef-bahia` (968512e). Main n'a qu'une notif TEXTE `bdc_chef_approved`
+(vers dg/achats) SANS PDF ni session interactive. La feature archivée envoie au DG le MÊME
+mécanisme que le chef : PDF récap des articles en pièce jointe + session WhatsApp OK/NON.
+Méthode : repartir de MAIN, cherry-pick CIBLÉ de 4 fichiers, PARTIE BDC UNIQUEMENT :
+- functions/notificationDispatcher.js (`dispatchBdcValidationRequest` + `buildBdcArticlesSummary`)
+- functions/bdcValidationService.js (hop chef→DG ; `bdc_chef_approved` réduit à ["achats"])
+- functions/index.js (~5294, `submit-bdc` via le dispatcher partagé)
+- tests/test-chef-bdc-bot.js
+NE PAS reprendre (régressif vs main) : hunk transport ~4417 de index.js, emailService.js
+(main plus avancé : TIMAC), bump babel package.json/package-lock, symlinks node_modules / app.js.
+⚠️ Dans index.js le hunk BDC (~5294) cohabite avec le hunk transport (~4417) → ne cueillir
+que la partie BDC. Cycle dev → QA → preview → smoke → deploy gated. À planifier, pas urgent.
+Gated : oui (deploy functions).
