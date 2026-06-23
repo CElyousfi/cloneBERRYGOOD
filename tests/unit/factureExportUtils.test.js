@@ -300,6 +300,52 @@ test('isWithinPeriod — bornes campagne 25-26 inclusives', () => {
 });
 
 // ============================================================================
+// listAvailableCampaigns — dérivation des campagnes disponibles
+// ============================================================================
+const { listAvailableCampaigns, campaignYearOf } = require('../../public/lib/factureExportUtils.js');
+
+test('campaignYearOf — bascule juillet', () => {
+  assert.strictEqual(campaignYearOf(new Date(2025, 6, 1)), 2025); // 01/07/2025 → 2025
+  assert.strictEqual(campaignYearOf(new Date(2025, 5, 30)), 2024); // 30/06/2025 → 2024
+  assert.strictEqual(campaignYearOf(new Date(2026, 0, 15)), 2025); // 15/01/2026 → 2025
+});
+
+test('listAvailableCampaigns — facture 15/08/2025 ∈ campagne 2025-2026', () => {
+  const camps = listAvailableCampaigns(['15/08/2025']);
+  assert.strictEqual(camps.length, 1);
+  assert.strictEqual(camps[0].year, 2025);
+  assert.strictEqual(camps[0].label, 'Campagne 2025-2026');
+});
+
+test('listAvailableCampaigns — facture 15/06/2025 ∈ campagne 2024-2025', () => {
+  const camps = listAvailableCampaigns(['15/06/2025']);
+  assert.strictEqual(camps.length, 1);
+  assert.strictEqual(camps[0].year, 2024);
+  assert.strictEqual(camps[0].label, 'Campagne 2024-2025');
+});
+
+test('listAvailableCampaigns — étendue min→max, tri décroissant, sans trou', () => {
+  const camps = listAvailableCampaigns(['15/06/2025', '2025-08-01', '10/03/2027']);
+  // min campagne = 2024 (15/06/2025), max = 2026 (10/03/2027) → 2026, 2025, 2024
+  assert.deepStrictEqual(camps.map(c => c.year), [2026, 2025, 2024]);
+  assert.deepStrictEqual(camps.map(c => c.label), [
+    'Campagne 2026-2027', 'Campagne 2025-2026', 'Campagne 2024-2025',
+  ]);
+});
+
+test('listAvailableCampaigns — dates illisibles ignorées, liste vide possible', () => {
+  assert.deepStrictEqual(listAvailableCampaigns([]), []);
+  assert.deepStrictEqual(listAvailableCampaigns(['', null, 'xx', undefined]), []);
+});
+
+test('listAvailableCampaigns — bounds réutilisables pour filtrage (15/08/2025)', () => {
+  const camps = listAvailableCampaigns(['15/08/2025']);
+  const { start, end } = camps[0].bounds;
+  assert.strictEqual(isWithinPeriod('15/08/2025', start, end), true);
+  assert.strictEqual(isWithinPeriod('15/06/2025', start, end), false);
+});
+
+// ============================================================================
 // RECAP — ligne TOTAL + bloc "Récapitulatif par statut" (v5fix, bug DG)
 // ============================================================================
 // Régression : la ligne TOTAL et le bloc statut affichaient 0,00 et débordaient

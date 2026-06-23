@@ -49565,6 +49565,7 @@ ${rejetHtml}
             const [bdcList, setBdcList] = useState([]);
             const [selectedBdc, setSelectedBdc] = useState(null);
             const [filterStatus, setFilterStatus] = useState('');
+            const [filterCampaign, setFilterCampaign] = useState(''); // '' = toutes les campagnes
             const [detailFacture, setDetailFacture] = useState(null);
             const emptyItem = { article: '', quantite: '', unite: 'kg', prix_unitaire: '', taux_tva: 20 };
             const [form, setForm] = useState({ bdc_id: '', numero_facture: '', date_facture: '', items: [{ ...emptyItem }] });
@@ -49623,9 +49624,19 @@ ${rejetHtml}
 
             const totals = calcTotal();
 
+            // Campagnes disponibles dérivées des dates des factures chargées (helper pur).
+            const FE = window.FactureExportUtils || {};
+            const campaigns = (FE.listAvailableCampaigns ? FE.listAvailableCampaigns(factures.map(f => f.date_facture)) : []);
+            // Filtre campagne côté client (ET avec le filtre statut déjà appliqué côté serveur).
+            const visibleFactures = filterCampaign
+                ? factures.filter(f => { const c = campaigns.find(c => String(c.year) === String(filterCampaign)); return c && FE.isWithinPeriod && FE.isWithinPeriod(f.date_facture, c.bounds.start, c.bounds.end); })
+                : factures;
+
             const exportExcel = () => {
-                const filterLabel = filterStatus ? (statusLabels[filterStatus] || filterStatus) : 'Toutes';
-                buildFacturesWorkbook(factures, { filterLabel });
+                const statusLabel = filterStatus ? (statusLabels[filterStatus] || filterStatus) : 'Toutes';
+                const campLabel = filterCampaign ? (campaigns.find(c => String(c.year) === String(filterCampaign)) || {}).label : '';
+                const filterLabel = campLabel ? statusLabel + ' / ' + campLabel : statusLabel;
+                buildFacturesWorkbook(visibleFactures, { filterLabel });
             };
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
@@ -49633,16 +49644,22 @@ ${rejetHtml}
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                             {['','non_payee','en_validation','validee_achats','validee_finance','validee_dg','payee'].map(s => (
                                 <button key={s} className={`chip c-berry ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
                                     {s ? statusLabels[s] || s : 'Toutes'}
                                 </button>
                             ))}
+                            <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} title="Filtrer par campagne agricole (juillet → juin)"
+                                style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--berry)',background:'#fff',color:'var(--berry)',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                                <option value="">Toutes les campagnes</option>
+                                {campaigns.map(c => <option key={c.year} value={c.year}>{c.label}</option>)}
+                            </select>
+                            <span style={{fontSize:12,color:'var(--gray-400)',fontWeight:600}}>{visibleFactures.length} facture{visibleFactures.length > 1 ? 's' : ''}</span>
                         </div>
                         <div style={{display:'flex',gap:8}}>
-                            <button onClick={exportExcel} disabled={!factures.length} title="Exporter les factures affichées (selon le filtre actif)"
-                                style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,cursor:factures.length?'pointer':'not-allowed',border:'1.5px solid #217346',background:'#fff',color:'#217346',opacity:factures.length?1:0.5,display:'flex',alignItems:'center',gap:6}}>
+                            <button onClick={exportExcel} disabled={!visibleFactures.length} title="Exporter les factures affichées (selon le filtre actif)"
+                                style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,cursor:visibleFactures.length?'pointer':'not-allowed',border:'1.5px solid #217346',background:'#fff',color:'#217346',opacity:visibleFactures.length?1:0.5,display:'flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-file-excel"></i>Exporter Excel
                             </button>
                             <button onClick={() => { setSelectedBdc(null); setForm({ bdc_id: '', numero_facture: '', date_facture: '', items: [{ ...emptyItem }] }); setShowForm(true); }}
@@ -49655,7 +49672,7 @@ ${rejetHtml}
                     <div className="table-responsive"><table className="data-table">
                         <thead><tr><th>N° Interne</th><th>N° Facture</th><th>BDC</th><th>Fournisseur</th><th>Date</th><th>Total TTC</th><th>Ecarts</th><th>Paiement</th><th></th></tr></thead>
                         <tbody>
-                            {factures.map((f) => (
+                            {visibleFactures.map((f) => (
                                 <tr key={f.id} onClick={() => setDetailFacture(f)} style={{cursor:'pointer'}} title="Voir le détail de la facture">
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{f.numero}</td>
                                     <td style={{fontSize:12}}>{f.numero_facture}</td>
@@ -49671,7 +49688,7 @@ ${rejetHtml}
                                     </td>
                                 </tr>
                             ))}
-                            {factures.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture{filterStatus ? ' avec ce statut' : ''}.</td></tr>}
+                            {visibleFactures.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture{filterStatus ? ' avec ce statut' : ''}{filterCampaign ? ' pour cette campagne' : ''}.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -49833,6 +49850,7 @@ ${rejetHtml}
             const [factures, setFactures] = useState([]);
             const [loading, setLoading] = useState(true);
             const [detailFacture, setDetailFacture] = useState(null);
+            const [filterCampaign, setFilterCampaign] = useState(''); // '' = toutes les campagnes
             const statusLabels = { non_payee: 'Non payée', en_validation: 'En validation', validee_achats: 'Validée Achats', validee_finance: 'Validée Finance', validee_dg: 'Validée DG', payee: 'Payée' };
 
             const loadFactures = () => {
@@ -49857,23 +49875,40 @@ ${rejetHtml}
                 }).then(r => r.json()).then(json => { if (json.success) { alert('Facture rejetee'); loadFactures(); window._refreshNotifications?.(); } else alert('Erreur: ' + (json.error || 'Echec')); }).catch(() => alert('Erreur reseau'));
             };
 
-            const exportExcel = () => { buildFacturesWorkbook(factures, { filterLabel: 'Validation-Finance' }); };
+            // Campagnes disponibles dérivées des dates des factures chargées (helper pur).
+            const FE = window.FactureExportUtils || {};
+            const campaigns = (FE.listAvailableCampaigns ? FE.listAvailableCampaigns(factures.map(f => f.date_facture)) : []);
+            const visibleFactures = filterCampaign
+                ? factures.filter(f => { const c = campaigns.find(c => String(c.year) === String(filterCampaign)); return c && FE.isWithinPeriod && FE.isWithinPeriod(f.date_facture, c.bounds.start, c.bounds.end); })
+                : factures;
+
+            const exportExcel = () => {
+                const campLabel = filterCampaign ? (campaigns.find(c => String(c.year) === String(filterCampaign)) || {}).label : '';
+                buildFacturesWorkbook(visibleFactures, { filterLabel: campLabel ? 'Validation-Finance / ' + campLabel : 'Validation-Finance' });
+            };
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <h3 style={{margin:0}}><i className="fa-solid fa-file-invoice" style={{marginRight:8}}></i>Factures en attente de validation Finance ({factures.length})</h3>
-                        <button onClick={exportExcel} disabled={!factures.length} title="Exporter les factures affichées"
-                            style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,cursor:factures.length?'pointer':'not-allowed',border:'1.5px solid #217346',background:'#fff',color:'#217346',opacity:factures.length?1:0.5,display:'flex',alignItems:'center',gap:6}}>
-                            <i className="fa-solid fa-file-excel"></i>Exporter Excel
-                        </button>
+                        <h3 style={{margin:0}}><i className="fa-solid fa-file-invoice" style={{marginRight:8}}></i>Factures en attente de validation Finance ({visibleFactures.length})</h3>
+                        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                            <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} title="Filtrer par campagne agricole (juillet → juin)"
+                                style={{padding:'6px 10px',borderRadius:8,border:'1.5px solid var(--berry)',background:'#fff',color:'var(--berry)',fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                                <option value="">Toutes les campagnes</option>
+                                {campaigns.map(c => <option key={c.year} value={c.year}>{c.label}</option>)}
+                            </select>
+                            <button onClick={exportExcel} disabled={!visibleFactures.length} title="Exporter les factures affichées"
+                                style={{padding:'8px 16px',borderRadius:8,fontSize:13,fontWeight:600,cursor:visibleFactures.length?'pointer':'not-allowed',border:'1.5px solid #217346',background:'#fff',color:'#217346',opacity:visibleFactures.length?1:0.5,display:'flex',alignItems:'center',gap:6}}>
+                                <i className="fa-solid fa-file-excel"></i>Exporter Excel
+                            </button>
+                        </div>
                     </div>
                     <div className="table-responsive"><table className="data-table">
                         <thead><tr><th>N°</th><th>Facture</th><th>BDC</th><th>Fournisseur</th><th>Total TTC</th><th>Ecarts</th><th>Actions</th></tr></thead>
                         <tbody>
-                            {factures.map((f) => (
+                            {visibleFactures.map((f) => (
                                 <tr key={f.id} onClick={() => setDetailFacture(f)} style={{cursor:'pointer'}} title="Voir le détail de la facture">
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{f.numero}</td>
                                     <td style={{fontSize:12}}>{f.numero_facture}</td>
@@ -49887,7 +49922,7 @@ ${rejetHtml}
                                     </td>
                                 </tr>
                             ))}
-                            {factures.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture en attente de validation Finance.</td></tr>}
+                            {visibleFactures.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture en attente de validation Finance{filterCampaign ? ' pour cette campagne' : ''}.</td></tr>}
                         </tbody>
                     </table></div>
 

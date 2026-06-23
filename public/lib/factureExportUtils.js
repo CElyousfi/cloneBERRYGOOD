@@ -184,6 +184,47 @@ function isWithinPeriod(dateValue, start, end) {
   return true;
 }
 
+/**
+ * Année de campagne d'une date (campagne agricole juillet N → juin N+1).
+ * Une date dont le mois >= juillet appartient à la campagne de son année ;
+ * janvier→juin appartient à la campagne de l'année précédente.
+ * @param {Date} d
+ * @returns {number} startYear de la campagne
+ */
+function campaignYearOf(d) {
+  const y = d.getFullYear();
+  return d.getMonth() >= CAMPAIGN_START_MONTH ? y : y - 1;
+}
+
+/**
+ * Dérive la liste des campagnes disponibles à partir d'une liste de dates de
+ * factures (ISO ou dd/mm/yyyy). Retourne les campagnes du min au max année,
+ * triées de la plus récente à la plus ancienne. Les dates illisibles sont
+ * ignorées. Liste vide si aucune date exploitable.
+ *
+ * @param {Array<string|Date>} dates  valeurs date_facture brutes
+ * @returns {Array<{year: number, label: string, bounds: {start: Date, end: Date, label: string}}>}
+ */
+function listAvailableCampaigns(dates) {
+  const list = Array.isArray(dates) ? dates : [];
+  let minY = null;
+  let maxY = null;
+  for (const raw of list) {
+    const d = parseFactureDate(raw);
+    if (!d) continue;
+    const cy = campaignYearOf(d);
+    if (minY === null || cy < minY) minY = cy;
+    if (maxY === null || cy > maxY) maxY = cy;
+  }
+  if (minY === null) return [];
+  const out = [];
+  for (let y = maxY; y >= minY; y--) {
+    const bounds = campaignBounds(y);
+    out.push({ year: y, label: 'Campagne ' + bounds.label, bounds });
+  }
+  return out;
+}
+
 // ============================================================================
 // TVA RATE DERIVATION
 // ============================================================================
@@ -590,7 +631,7 @@ const __factureExportApi = {
   TAXABLE_TVA_RATE, TAXABLE_PRODUCT_PATTERNS,
   ANOMALIE_TVA_B, INFO_TVA_NON_SAISIE,
   // helpers
-  fxRound2, parseFactureDate, campaignBounds, isWithinPeriod, reconciliationEpsilon,
+  fxRound2, parseFactureDate, campaignBounds, isWithinPeriod, campaignYearOf, listAvailableCampaigns, reconciliationEpsilon,
   // [code mort — référence historique, NON utilisé depuis v5] devinette mot-clé
   normalizeDesignation, matchProduitTaxable, deriveTauxLigne,
   // TVA par ligne — v5 : taux SAISI uniquement
