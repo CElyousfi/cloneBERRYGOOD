@@ -780,3 +780,128 @@ Figeage bloquant (SMAG conforme + jours cohérents + écart sous seuil) + barèm
 Intention initiale (PR #29 « Sprint 2 — validation des PJ caisse par le Chef de Ferme ») : permettre au **Chef de Ferme de valider les pièces jointes** (justificatifs) des transactions caisse, dans le workflow de validation caisse. À recadrer comme **lot caisse futur** sur la base actuelle (la caisse a été refondue depuis : Sprint 2/3 + marché local).
 
 Gated : oui — à cadrer avec Omar.
+
+## [ ] ITEM — 5 factures TIMAC à anomalie TVA réelle (vérif physique, hors SB)
+Détecté 2026-06-22 par le garde-fou de l'export factures v3/v4 (cas A « TVA estimée
+non réconciliée », non résoluble par modèle binaire 0/20).
+Factures concernées : **154515, 154516, 154211, 154255, 154152**.
+Symptôme : taux de TVA implicite sur les acides NON-standard (9,6 / 10,2 / 12,3 /
+13,7 / 17,5 %) → Σ TVA-lignes ne retombe pas sur (TTC−HT) en base.
+Hypothèse : erreur de saisie (HT ou TTC faux) OU facture TIMAC atypique (avoir,
+remise, taux mixte).
+À FAIRE (Omar / Achats, action manuelle HORS Smart BERRY) :
+- Sortir les 5 factures physiques TIMAC, comparer HT/TVA/TTC au saisi dans SB.
+- Identifier : erreur de saisie vs facture réellement atypique.
+- **Priorité : 154255 (20 544 DH de TVA).**
+Correction de la donnée source si erreur = **write GATED + versionné** (validation
+Omar avant toute écriture Firestore sur invoices).
+Note : ces 5 restent flaggées par l'export tant que la donnée n'est pas corrigée —
+c'est voulu (le garde-fou ne doit jamais masquer une anomalie réelle).
+Gated : oui (toute correction de donnée).
+
+## [x] NOTE — Modèle TVA de l'export factures (référence, 2026-06-23)
+Export factures = **TVA fiable au niveau FACTURE (TTC−HT, toujours exact)**.
+Détail par ligne : exact si `taux_tva` saisi, "non déterminé" sinon.
+Le `taux_tva` par ligne vit dans **`purchase_orders` (BDC), PAS dans `invoices`**.
+`invoices` = **100% TIMAC** actuellement (TVA seulement au niveau facture).
+Export **future-proof** : se ventile seul dès que les taux par ligne existeront
+(non-TIMAC ajoutés à invoices, ou enrichissement depuis les BDC).
+Décision : pas de devinette mot-clé (taxabilité dépend de la facture, pas du
+produit — prouvé read-only). Livré en v5 (taux saisi uniquement).
+
+## [ ] ITEM (cadrage à faire ensemble) — Rapprochement facture↔BDC↔réception (Phase 1)
+Investigation read-only faite 2026-06-23 (GATE 3, validée par Omar). Constats :
+- Le contrôle PRIX via réception est IMPOSSIBLE (réceptions sans prix : BL aucun prix,
+  177 réceptions Grand Livre à PU=0). **Le prix passe OBLIGATOIREMENT par le BDC.**
+- NE PAS reconstruire de moteur : `create-facture` (functions/index.js ~5973) calcule
+  DÉJÀ les écarts qté+prix facture↔BDC à la saisie native. Il faut juste l'alimenter
+  (les 154 factures TIMAC ont été importées SANS bdc_id → moteur dormant).
+- `create-bl` lie réception↔BDC mais recopie le PU du BDC (pas un prix indépendant).
+- ⚠️ Le tab "Rapprochement" existant (app.jsx ~50056) = HORS-SUJET (sorties prod/ventes,
+  PFQ/DQR). NE PAS y toucher.
+Chiffres : bdc_id rempli sur 1/154 factures ; matching article facture↔réception
+0/50 exact (22/50 substring fragile, libellés divergents) ; purchase_orders=50
+(BDC TIMAC historiques absents, vivent dans BEE ONE/SQL BR_Achat).
+PHASE 1 (ordre validé Omar, à cadrer ensemble — AUCUN code lancé) :
+  1. CLÉ ARTICLE : mapping libellé↔code stable (verrou n°1).
+  2. IMPORT BDC TIMAC depuis BEE ONE : prix + qté commandée + réf article.
+  3. LIER les 154 factures à leur bdc_id → réveille le moteur d'écarts existant.
+  4. 2-way facture↔réception = quantités seulement.
+Gated : oui (import/migration données depuis BEE ONE).
+
+SOURCES SQL CONFIRMÉES (investigation read-only 2026-06-23, doc only) :
+- Base TRANSACTIONNELLE = `BEE_BERRY_GOOD` (≠ `BR_BERRY_GOOD` = reporting/mirror).
+  Connexion READ-ONLY via functions/config/sqlConfigProd.js (pattern functions/prodSyncService.js).
+- BDC en-tête : `dbo.Bon_Commande` (Num_BC format "BC-000XXX", IDFournisseur, Date_BC, totaux HT/TVA/TTC).
+- BDC lignes (CRITIQUE = le prix) : `dbo.Demande_achat_Bon_Commande`
+  (Prix_U_HT = prix négocié, Qte, ID = IDProduit ; 490/491 lignes avec prix > 0).
+- Articles : `dbo.Produit` (ID = PK clé stable, **Ref** = code stable type "Ref-Eng0073"
+  — PAS `Reference` qui est vide, Designation).
+- Lien réception↔commande au code : `dbo.Bon_Commande_Mouvement_stock` (transactionnel,
+  ABSENT du mirror BR — BR_Achat relie par texte uniquement).
+- Clé de rapprochement facture↔BDC : `Num_BC` == `bdc_numero` des invoices Firestore.
+- Couverture : 34 BDC TIMAC sur la campagne 25-26 (11/08/2025 → 09/04/2026).
+RÉSERVES :
+  (1) lignes `Prix_U_HT = 1` DH = placeholder de saisie → filtrer/signaler dans le contrôle.
+  (2) BR_Achat (reporting) relie par TEXTE (désignation+fournisseur) ; le lien au code
+      article stable est dans BEE_BERRY_GOOD, pas dans le mirror BR.
+  (3) toute lecture BEE_BERRY_GOOD reste READ-ONLY ; privilégier un MIRROR (comme
+      BR_Pointage) plutôt que taper la prod transactionnelle en direct.
+
+DÉCISIONS GATE 2 (rapport d'écarts dry-run, 2026-06-23) :
+- LIAISON : ne PAS écrire bdc_numero automatiquement sur matching heuristique (non fiable :
+  mirror couvre août2025→avr2026, 100/154 factures antérieures ; relation non 1:1 ;
+  majorité BDC placeholder). Lien "direct" bdc_numero format "BDC-2026-xxxx" = autre système,
+  ne pas l'utiliser comme clé tant que non vérifié.
+- RÈGLE PRIX TIMAC (clarifiée DG) : le BDC/devis porte un prix pré-négocié INDICATIF ;
+  le prix réel fluctue, c'est la FACTURE qui fait foi (contractuel). Donc pour TIMAC :
+  contrôle QUANTITÉ = ACTIF, contrôle PRIX = NEUTRALISÉ (écart prix BDC→facture = "écart
+  attendu", JAMAIS une alerte). Les +6/+20% (~72 700 MAD) = fonctionnement normal, PAS un
+  litige, PAS un préjudice. Question fermée.
+- SPÉCIFICITÉ : la neutralisation prix est PROPRE À TIMAC. Pour tout AUTRE fournisseur, le
+  prix est ferme → contrôle prix RESTE ACTIF (écart prix = vraie alerte). À coder ainsi
+  (flag par fournisseur) quand le contrôle sera implémenté.
+- EXTENSION MIRROR 2024→mi-2025 : ABANDONNÉE (servait à chiffrer un préjudice inexistant).
+- DÉ-PLACEHOLDER les 4 BDC (BC-000012/14/66/114) côté BEE ONE : backlog CONFORT (suivi/
+  prévision d'achat), PAS un prérequis de contrôle. Sans urgence.
+- 4 mismatch d'unité (Tonne facture vs kg BDC) : à NORMALISER dans la logique de matching
+  (Tonne↔kg) pour éviter de faux écarts énormes. Lignes : FAC-2026-0152/0151 (UREE, BC-000175),
+  FAC-2026-0131/0129 (SULFATE MAGNESIE, BC-000131). Une fois normalisées, prix alignés
+  (UREE 5100/T vs 4900/T ; Sulfate 2708/T vs 2710/T) → non-anomalies (et TIMAC = prix neutralisé).
+
+## [ ] ITEM (PRÉREQUIS BLOQUANT) — Bug colonne transfert + rejet silencieux import canevas stock
+Détecté 2026-06-23 (investigation read-only, GATE 3). Le module functions/lib/stockCaneva
+n'écrit PAS en prod aujourd'hui (base alimentée par GRAND_LIVRE + saisies manuelles ;
+0 mouvement CANEVA_STOCK_BGF) → pas d'urgence, mais 2 bugs à corriger AVANT tout futur
+import canevas :
+1. **BUG COLONNE TRANSFERT** : parseWorkbook.js (~l.171) lit la quantité des transferts
+   en row[6], or dans le canevas elle est en **row[5]** → qte=0 → les **2402 lignes de
+   transfert** sont droppées en silence (if qte===0 continue). Si l'import canevas était
+   relancé via ce code, tous les transferts (dont apports F3/F4 et BAHIA) seraient perdus.
+   Fix : row[6]→row[5] + test garantissant counts.transferts > 0.
+2. **REJET SILENCIEUX buildLieu** (mappings.js ~l.32-41) : un magasin inconnu (ni F1-F6
+   ni externe connu) est routé en `parcelle` SANS log ni warning ; normalizeFerme ne
+   whiteliste pas → risque de solde fantôme muet sur une future typo. Durcir : logger un
+   warning (ou rejeter explicitement) au lieu du fallback silencieux. Même lot que le bug 1.
+RÈGLE : **aucun import canevas ne doit s'exécuter avant correction de ces 2 points.**
+Gated : oui (touche au pipeline d'écriture stock).
+
+## [ ] ITEM (GELÉ — ne pas retirer) — Module stockCaneva : état et décision réparer/archiver
+État documenté 2026-06-23 : le module functions/lib/stockCaneva/* (parseWorkbook, mappings,
+action import-caneva-stock index.js ~8316) **n'a jamais persisté en prod** (0 doc
+CANEVA_STOCK_BGF ; 2 docs stock_caneva_imports avec impacted_dates=0). La base stock réelle
+vient de l'importeur GRAND_LIVRE (3935 mouvements) + 22 saisies manuelles app.
+Décision Omar (GATE 3) : **NE PAS retirer** (règle no-delete). GELER + documenter.
+La décision réparer-vs-archiver est un sujet dédié ULTÉRIEUR (pas maintenant).
+Prérequis si réparation un jour : corriger d'abord les 2 bugs ci-dessus (item PRÉREQUIS BLOQUANT).
+Gated : oui.
+
+## [ ] ITEM (à évaluer) — Enrichir invoices avec le taux par ligne depuis purchase_orders
+Objectif : rapatrier `items[].taux_tva` (+ montant_tva/ttc) des BDC vers les
+factures `invoices` pour ventiler le détail par ligne (notamment TIMAC).
+BLOQUÉ : le lien facture↔BDC (`bdc_id`/`bdc_numero` sur invoices) est vide
+(1/154) → pas de clé de jointure fiable. Prérequis : rétablir le lien, ou
+mapping par article. Étape 1 read-only : mesurer combien de factures sont
+raccordables à un BDC.
+Gated : oui (écriture/backfill de données invoices).
+
