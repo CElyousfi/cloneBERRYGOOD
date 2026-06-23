@@ -49565,6 +49565,7 @@ ${rejetHtml}
             const [bdcList, setBdcList] = useState([]);
             const [selectedBdc, setSelectedBdc] = useState(null);
             const [filterStatus, setFilterStatus] = useState('');
+            const [detailFacture, setDetailFacture] = useState(null);
             const emptyItem = { article: '', quantite: '', unite: 'kg', prix_unitaire: '', taux_tva: 20 };
             const [form, setForm] = useState({ bdc_id: '', numero_facture: '', date_facture: '', items: [{ ...emptyItem }] });
 
@@ -49655,7 +49656,7 @@ ${rejetHtml}
                         <thead><tr><th>N° Interne</th><th>N° Facture</th><th>BDC</th><th>Fournisseur</th><th>Date</th><th>Total TTC</th><th>Ecarts</th><th>Paiement</th><th></th></tr></thead>
                         <tbody>
                             {factures.map((f) => (
-                                <tr key={f.id}>
+                                <tr key={f.id} onClick={() => setDetailFacture(f)} style={{cursor:'pointer'}} title="Voir le détail de la facture">
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{f.numero}</td>
                                     <td style={{fontSize:12}}>{f.numero_facture}</td>
                                     <td style={{fontSize:12}}>{f.bdc_numero}</td>
@@ -49664,7 +49665,7 @@ ${rejetHtml}
                                     <td style={{fontWeight:700}}>{(f.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td>{f.has_discrepancies ? <span className="status-badge rejete" style={{fontSize:10}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{(f.discrepancies||[]).length} ecart(s)</span> : <span style={{color:'var(--green)',fontSize:11}}><i className="fa-solid fa-check"></i></span>}</td>
                                     <td><span className={'status-badge ' + statusClass(f.payment_status)}>{statusLabels[f.payment_status] || f.payment_status}</span></td>
-                                    <td style={{whiteSpace:'nowrap'}}>
+                                    <td style={{whiteSpace:'nowrap'}} onClick={(e) => e.stopPropagation()}>
                                         {f.payment_status === 'non_payee' && <button onClick={() => handleSubmitPayment(f.id)} title="Soumettre paiement" style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13,marginRight:4}}><i className="fa-solid fa-paper-plane"></i></button>}
                                         <button onClick={() => printFacture(f)} title="Imprimer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:13}}><i className="fa-solid fa-print"></i></button>
                                     </td>
@@ -49724,6 +49725,10 @@ ${rejetHtml}
                                 </div>
                             </div>
                         </div>
+                    )}
+
+                    {detailFacture && window.FactureDetailPopup && (
+                        <window.FactureDetailPopup facture={detailFacture} statusLabels={statusLabels} onClose={() => setDetailFacture(null)} />
                     )}
                 </div>
             );
@@ -49827,6 +49832,8 @@ ${rejetHtml}
         function FinFacturesTab({ currentProfile, profileData }) {
             const [factures, setFactures] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [detailFacture, setDetailFacture] = useState(null);
+            const statusLabels = { non_payee: 'Non payée', en_validation: 'En validation', validee_achats: 'Validée Achats', validee_finance: 'Validée Finance', validee_dg: 'Validée DG', payee: 'Payée' };
 
             const loadFactures = () => {
                 fetch('/api/stock?action=list-factures&payment_status=validee_achats').then(r => r.json())
@@ -49867,14 +49874,14 @@ ${rejetHtml}
                         <thead><tr><th>N°</th><th>Facture</th><th>BDC</th><th>Fournisseur</th><th>Total TTC</th><th>Ecarts</th><th>Actions</th></tr></thead>
                         <tbody>
                             {factures.map((f) => (
-                                <tr key={f.id}>
+                                <tr key={f.id} onClick={() => setDetailFacture(f)} style={{cursor:'pointer'}} title="Voir le détail de la facture">
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{f.numero}</td>
                                     <td style={{fontSize:12}}>{f.numero_facture}</td>
                                     <td style={{fontSize:12}}>{f.bdc_numero}</td>
                                     <td style={{fontWeight:600}}>{f.fournisseur?.nom || '—'}</td>
                                     <td style={{fontWeight:700}}>{(f.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td>{f.has_discrepancies ? <span className="status-badge rejete" style={{fontSize:10}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{(f.discrepancies||[]).length}</span> : <span style={{color:'var(--green)',fontSize:11}}><i className="fa-solid fa-check"></i> OK</span>}</td>
-                                    <td style={{whiteSpace:'nowrap'}}>
+                                    <td style={{whiteSpace:'nowrap'}} onClick={(e) => e.stopPropagation()}>
                                         <button onClick={() => handleValidate(f.id)} title="Valider" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:14,marginRight:8}}><i className="fa-solid fa-circle-check"></i></button>
                                         <button onClick={() => handleReject(f.id)} title="Rejeter" style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:14}}><i className="fa-solid fa-circle-xmark"></i></button>
                                     </td>
@@ -49883,6 +49890,10 @@ ${rejetHtml}
                             {factures.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture en attente de validation Finance.</td></tr>}
                         </tbody>
                     </table></div>
+
+                    {detailFacture && window.FactureDetailPopup && (
+                        <window.FactureDetailPopup facture={detailFacture} statusLabels={statusLabels} onClose={() => setDetailFacture(null)} />
+                    )}
                 </div>
             );
         }
