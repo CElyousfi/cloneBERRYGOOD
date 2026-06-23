@@ -47777,7 +47777,8 @@ ${rejetHtml}
             const [subTab, setSubTab] = useState('liste');
             const [canevaPending, setCanevaPending] = useState(0);
             const [detailReception, setDetailReception] = useState(null);
-            const MAGASINS_BR = ['F1', 'F2', 'F5', 'F6'];
+            // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
+            const MAGASINS_BR = useStockLocations().magasins;
             const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
             const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
 
@@ -48249,7 +48250,8 @@ ${rejetHtml}
 
         // ===================== MAGASINIER: BDC À RÉCEPTIONNER =====================
         function MagBdcReceptionTab({ currentProfile, profileData }) {
-            const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
+            // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
+            const MAGASINS = useStockLocations().magasins;
             const [bdcList, setBdcList] = useState([]);
             const [receptions, setReceptions] = useState([]);
             const [loading, setLoading] = useState(true);
@@ -54107,7 +54109,8 @@ ${rejetHtml}
             const [parcelles, setParcelles] = useState([]);
             const [parcellesConso, setParcellesConso] = useState([]);
             const FARMS = ['F1', 'F5'];
-            const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
+            // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
+            const MAGASINS = useStockLocations().magasins;
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
             const emptyItem = { article: '', quantite: '', unite: 'kg', parcelle: '', culture: '', ferme: '' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] });
@@ -54594,7 +54597,8 @@ ${rejetHtml}
 
         // ===================== MAGASINIER: TRANSFERT TAB =====================
         function MagTransfertTab({ currentProfile, profileData }) {
-            const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
+            // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
+            const MAGASINS = useStockLocations().magasins;
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
             const LIEUX_TRANSFERT = [...MAGASINS, ...STATIONS];
             const [transferts, setTransferts] = useState([]);
@@ -55079,7 +55083,8 @@ ${rejetHtml}
 
         // ===================== MAGASINIER: SORTIE TAB =====================
         function MagSortieTab({ currentProfile, profileData }) {
-            const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
+            // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
+            const MAGASINS = useStockLocations().magasins;
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
             const SORTIE_TYPES = [{ id: 'retour_fournisseur', label: 'Retour fournisseur' }, { id: 'pret', label: 'Prêt' }, { id: 'rebut', label: 'Rebut' }];
             const [sorties, setSorties] = useState([]);
@@ -55507,7 +55512,8 @@ ${rejetHtml}
             const [filterType, setFilterType] = useState('');
             const [filterStatus, setFilterStatus] = useState(defaultStatus);
             const [filterFerme, setFilterFerme] = useState('');
-            const MAGASINS = ['F1', 'F2', 'F5', 'F6'];
+            // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
+            const MAGASINS = useStockLocations().magasins;
 
             const [hideImports, setHideImports] = useState(false);
             const [filterSource, setFilterSource] = useState(''); // '' tous | 'import' | 'saisi'

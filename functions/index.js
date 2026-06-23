@@ -26,6 +26,7 @@ const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const { buildArticleHistoryIndex, sliceArticleHistory } = require("./lib/stock/articleHistoryIndex");
 const pmpDetailLib = require("./lib/stock/pmpDetail");
+const locationsConfig = require("./lib/stock/locationsConfig");
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 
@@ -10517,6 +10518,30 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           return res.json({ success: true, locations: defaultLocations });
         }
         return res.json({ success: true, locations: snap.data() });
+      }
+
+      // --- SET STOCK LOCATIONS CONFIG (update ciblé, write via CF, rôles dg|finance) ---
+      // Met à jour UNIQUEMENT les champs fournis (magasins / stations / parcelles).
+      // N'écrase jamais les champs non fournis (merge). Idempotent : réécrire la même
+      // liste ne change rien. Le rôle est dérivé du TOKEN (resolveCallerRole), jamais du body.
+      if (action === "set-locations" && req.method === "POST") {
+        // Rôle RÉEL dérivé du token Firebase (anti-spoof body). Jamais req.body.role.
+        const callerRole = await resolveCallerRole(authUser);
+        const auth = locationsConfig.authorizeSetLocations(callerRole);
+        if (!auth.allowed) {
+          return res.status(auth.status).json({ success: false, error: auth.error });
+        }
+
+        const built = locationsConfig.buildLocationsPatch(req.body);
+        if (!built.ok) {
+          return res.status(built.status).json({ success: false, error: built.error });
+        }
+
+        const ref = db_firestore.collection("stock_config").doc("locations");
+        // merge:true → update CIBLÉ, ne touche pas aux champs absents du patch (idempotent).
+        await ref.set(built.patch, { merge: true });
+        const after = await ref.get();
+        return res.json({ success: true, locations: after.data() });
       }
 
       // --- MIGRATE: auto-validate transfert/consommation stuck in valide_mag ---
