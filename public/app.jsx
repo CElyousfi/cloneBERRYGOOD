@@ -934,6 +934,13 @@
 
         const _meteoblueCache = {};
         const METEO_CACHE_TTL = 15 * 60 * 1000; // 15 min
+        // In-flight dedup registry: concurrent callers on the SAME cacheKey reuse
+        // the running promise instead of firing a redundant meteoblue request.
+        // Cleared on settle by dedupInflight (helper: public/lib/inflightDedup.js).
+        const _meteoblueInflight = {};
+        const _dedupInflight = (typeof window !== 'undefined' && window.InflightDedup)
+            ? window.InflightDedup.dedupInflight
+            : function(reg, key, fn) { return fn(); };
 
         async function fetchMeteoblueData(fermeKey) {
             const ferme = meteoFermes[fermeKey];
@@ -941,37 +948,39 @@
             const cacheKey = ferme.lat + '_' + ferme.lon + '_' + ferme.altitude + '_basic';
             const cached = _meteoblueCache[cacheKey];
             if (cached && (Date.now() - cached.ts) < METEO_CACHE_TTL) return cached.data;
-            const base = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
-            const agroHourly = 'https://my.meteoblue.com/packages/agro-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
-            try {
-                const res = await fetch(base);
-                if (!res.ok) throw new Error('API error ' + res.status);
-                const data = await res.json();
-                // Best-effort: enrich data_1h with shortwave_radiation + evapotranspiration if the agro-1h
-                // package is included in the subscription. Silently skip on failure — the rest of the
-                // tab keeps working with daily ETo / no hourly radiation.
+            return _dedupInflight(_meteoblueInflight, cacheKey, async function() {
+                const base = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+                const agroHourly = 'https://my.meteoblue.com/packages/agro-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
                 try {
-                    const res2 = await fetch(agroHourly);
-                    if (res2.ok) {
-                        const extra = await res2.json();
-                        if (extra && extra.data_1h) {
-                            data.data_1h = Object.assign({}, data.data_1h || {}, {
-                                shortwave_radiation: extra.data_1h.shortwave_radiation || extra.data_1h.shortwaveradiation,
-                                evapotranspiration: extra.data_1h.evapotranspiration,
-                            });
+                    const res = await fetch(base);
+                    if (!res.ok) throw new Error('API error ' + res.status);
+                    const data = await res.json();
+                    // Best-effort: enrich data_1h with shortwave_radiation + evapotranspiration if the agro-1h
+                    // package is included in the subscription. Silently skip on failure — the rest of the
+                    // tab keeps working with daily ETo / no hourly radiation.
+                    try {
+                        const res2 = await fetch(agroHourly);
+                        if (res2.ok) {
+                            const extra = await res2.json();
+                            if (extra && extra.data_1h) {
+                                data.data_1h = Object.assign({}, data.data_1h || {}, {
+                                    shortwave_radiation: extra.data_1h.shortwave_radiation || extra.data_1h.shortwaveradiation,
+                                    evapotranspiration: extra.data_1h.evapotranspiration,
+                                });
+                            }
+                        } else {
+                            console.info('Meteoblue agro-1h not available (' + res2.status + ') — fallback sans radiation/ETo horaires.');
                         }
-                    } else {
-                        console.info('Meteoblue agro-1h not available (' + res2.status + ') — fallback sans radiation/ETo horaires.');
+                    } catch(e2) {
+                        console.info('Meteoblue agro-1h fetch failed, fallback:', e2);
                     }
-                } catch(e2) {
-                    console.info('Meteoblue agro-1h fetch failed, fallback:', e2);
+                    _meteoblueCache[cacheKey] = { data, ts: Date.now() };
+                    return data;
+                } catch(e) {
+                    console.warn('Meteoblue API error for ' + fermeKey + ':', e);
+                    return null;
                 }
-                _meteoblueCache[cacheKey] = { data, ts: Date.now() };
-                return data;
-            } catch(e) {
-                console.warn('Meteoblue API error for ' + fermeKey + ':', e);
-                return null;
-            }
+            });
         }
 
         // ===================== OPEN-METEO (fallback "Hier") =====================
@@ -1040,17 +1049,19 @@
             const cacheKey = ferme.lat + '_' + ferme.lon + '_' + ferme.altitude + '_spray';
             const cached = _meteoblueCache[cacheKey];
             if (cached && (Date.now() - cached.ts) < METEO_CACHE_TTL) return cached.data;
-            const url = 'https://my.meteoblue.com/packages/agromodelspray-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
-            try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('API error ' + res.status);
-                const data = await res.json();
-                _meteoblueCache[cacheKey] = { data, ts: Date.now() };
-                return data;
-            } catch(e) {
-                console.warn('Meteoblue Spray API error for ' + fermeKey + ':', e);
-                return null;
-            }
+            return _dedupInflight(_meteoblueInflight, cacheKey, async function() {
+                const url = 'https://my.meteoblue.com/packages/agromodelspray-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error('API error ' + res.status);
+                    const data = await res.json();
+                    _meteoblueCache[cacheKey] = { data, ts: Date.now() };
+                    return data;
+                } catch(e) {
+                    console.warn('Meteoblue Spray API error for ' + fermeKey + ':', e);
+                    return null;
+                }
+            });
         }
 
         function transformSprayData(apiData) {
