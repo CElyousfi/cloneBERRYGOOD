@@ -1,19 +1,39 @@
 
-        // Version de l'app — si différente du serveur, force reload
+        // Version de l'app. CORRECTIF (b) "soft checkVersion" :
+        // on ne recharge PLUS la page automatiquement quand app-version.txt change
+        // (le reload brutal faisait clignoter le login + perdait l'état, source de
+        // fausses "déconnexions"). À la place on signale une nouvelle version via un
+        // CustomEvent que <NewVersionToast> écoute → reload UNIQUEMENT sur clic
+        // utilisateur. La comparaison de version est la fonction pure testable
+        // AuthResilience.isNewAppVersion (public/lib/authResilience.js).
         const APP_VERSION = '20260415b';
+        window.__APP_VERSION = APP_VERSION;
         (async function checkVersion() {
+            // Garde : si authResilience.js n'a pas chargé (improbable, il est non-defer),
+            // on s'abstient plutôt que de recharger en boucle.
+            var AR = window.AuthResilience;
             try {
                 const resp = await fetch('/app-version.txt?t=' + Date.now(), { cache: 'no-store' });
                 if (resp.ok) {
                     const serverVersion = (await resp.text()).trim();
-                    if (serverVersion && serverVersion !== APP_VERSION) {
-                        console.log('New version detected:', serverVersion, '!= ', APP_VERSION);
-                        // Mettre à jour le SW sans le désinstaller (nécessaire pour Share Target)
-                        if ('serviceWorker' in navigator) {
-                            const regs = await navigator.serviceWorker.getRegistrations();
-                            for (const r of regs) await r.update();
-                        }
-                        window.location.reload(true);
+                    const isNew = AR
+                        ? AR.isNewAppVersion(APP_VERSION, serverVersion)
+                        : (!!serverVersion && serverVersion !== APP_VERSION);
+                    if (isNew) {
+                        console.log('New version detected:', serverVersion, '!= ', APP_VERSION, '— soft toast, no auto-reload');
+                        // NE PAS recharger automatiquement. Signaler la nouvelle version
+                        // EN PREMIER (avant le SW update, qui peut rejeter/traîner selon
+                        // le navigateur) pour que <NewVersionToast> s'affiche de façon fiable.
+                        window.__newAppVersion = serverVersion;
+                        try { window.dispatchEvent(new CustomEvent('app-version-changed', { detail: { version: serverVersion } })); } catch(e) {}
+                        // Mettre à jour le SW sans le désinstaller (nécessaire pour Share Target).
+                        // Best-effort, n'empêche jamais l'affichage du toast.
+                        try {
+                            if ('serviceWorker' in navigator) {
+                                const regs = await navigator.serviceWorker.getRegistrations();
+                                for (const r of regs) { try { await r.update(); } catch(e) {} }
+                            }
+                        } catch(e) {}
                         return;
                     }
                 }
@@ -65094,40 +65114,151 @@ ${rejetHtml}
             );
         }
 
+        // CORRECTIF (a) — cache du dernier profil connu (localStorage).
+        // Permet de restaurer le profil après un reload alors que `me` échoue
+        // transitoirement (réseau/5xx) tout en restant connecté côté Firebase.
+        const CACHED_PROFILE_KEY = 'cachedUserProfile';
+        function loadCachedProfile() {
+            try {
+                const raw = localStorage.getItem(CACHED_PROFILE_KEY);
+                if (!raw) return null;
+                const obj = JSON.parse(raw);
+                return (obj && typeof obj === 'object' && obj.uid) ? obj : null;
+            } catch (e) { return null; }
+        }
+        function saveCachedProfile(profile, uid) {
+            try {
+                if (profile && typeof profile === 'object') {
+                    localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(profile));
+                }
+            } catch (e) {}
+        }
+        function clearCachedProfile() {
+            try { localStorage.removeItem(CACHED_PROFILE_KEY); } catch (e) {}
+        }
+
         // Auth wrapper component
         function App() {
             const [authUser, setAuthUser] = useState(null);
             const [userProfile, setUserProfile] = useState(null);
             const [authLoading, setAuthLoading] = useState(true);
             const [authError, setAuthError] = useState('');
+            // CORRECTIF (a) : bannière non bloquante "Reconnexion en cours…"
+            const [reconnecting, setReconnecting] = useState(false);
+            // CORRECTIF (a) : impossible de charger le profil ET aucun cache → écran retry.
+            const [profileLoadFailed, setProfileLoadFailed] = useState(false);
+            const retryTimerRef = useRef(null);
+            const retryAttemptRef = useRef(0);
 
             useEffect(() => {
+                const AR = window.AuthResilience;
+
+                const clearRetry = () => {
+                    if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
+                };
+
+                // Appelle /api/auth?action=me et renvoie un meResult normalisé pour
+                // AuthResilience.decideAuthState. ok=false => fetch a échoué (réseau/5xx).
+                const fetchMe = async (user) => {
+                    try {
+                        const token = await user.getIdToken();
+                        const r = await fetch('/api/auth?action=me', { headers: { 'Authorization': 'Bearer ' + token } });
+                        let json = null;
+                        try { json = await r.json(); } catch (e) { json = null; }
+                        if (!r.ok || !json) {
+                            return { ok: false, error: 'HTTP ' + r.status };
+                        }
+                        return { ok: true, success: !!json.success, user: json.user, disabled: !!json.disabled, error: json.error };
+                    } catch (e) {
+                        // Catch réseau : Firebase peut rester connecté → transitoire.
+                        return { ok: false, error: (e && e.message) || 'network' };
+                    }
+                };
+
+                // Applique la décision pure d'AuthResilience à l'état React.
+                const applyDecision = (user, meResult) => {
+                    const cachedProfile = loadCachedProfile();
+                    const decision = AR
+                        ? AR.decideAuthState({ authUser: user, meResult, cachedProfile })
+                        : // Fallback ultra-défensif si la lib n'a pas chargé (ne devrait pas arriver).
+                          (user && meResult && meResult.ok && meResult.success && meResult.user
+                              ? { action: 'profile', profile: meResult.user }
+                              : { action: 'login' });
+
+                    if (decision.action === 'profile') {
+                        clearRetry();
+                        retryAttemptRef.current = 0;
+                        setUserProfile(decision.profile);
+                        saveCachedProfile(decision.profile);
+                        setAuthError('');
+                        setReconnecting(false);
+                        setProfileLoadFailed(false);
+                    } else if (decision.action === 'retry') {
+                        // Firebase connecté mais `me` a échoué transitoirement.
+                        // On RESTE dans l'app avec le dernier profil connu + bannière + retry.
+                        setUserProfile(decision.profile);
+                        setAuthError('');
+                        setProfileLoadFailed(false);
+                        setReconnecting(true);
+                        scheduleRetry(user);
+                    } else if (decision.action === 'error') {
+                        // Firebase connecté mais aucun profil (ni live ni cache) → on ne
+                        // peut pas entrer. Écran retry, surtout PAS de faux profil.
+                        clearRetry();
+                        setReconnecting(false);
+                        setProfileLoadFailed(true);
+                        setUserProfile(null);
+                        setAuthError(meResult && meResult.error ? meResult.error : 'Impossible de charger votre profil');
+                        // Retry en arrière-plan quand même (réseau peut revenir).
+                        scheduleRetry(user);
+                    } else {
+                        // 'login' — vraie déconnexion (Firebase signé out OU compte désactivé).
+                        clearRetry();
+                        retryAttemptRef.current = 0;
+                        setReconnecting(false);
+                        setProfileLoadFailed(false);
+                        setUserProfile(null);
+                        // Compte désactivé : signOut explicite (comportement historique).
+                        if (meResult && meResult.ok && meResult.success === false && meResult.disabled) {
+                            setAuthError(meResult.error || 'Compte désactivé');
+                            firebaseAuth.signOut();
+                            clearCachedProfile();
+                        }
+                    }
+                };
+
+                // Retry automatique de `me` avec backoff court (2s,5s,10s… plafonné).
+                const scheduleRetry = (user) => {
+                    clearRetry();
+                    const delay = AR ? AR.retryDelayMs(retryAttemptRef.current) : 5000;
+                    retryAttemptRef.current += 1;
+                    retryTimerRef.current = setTimeout(async () => {
+                        // L'utilisateur a pu se déconnecter entre-temps.
+                        const current = firebaseAuth.currentUser;
+                        if (!current) { applyDecision(null, null); return; }
+                        const meResult = await fetchMe(current);
+                        applyDecision(current, meResult);
+                    }, delay);
+                };
+
                 const unsub = firebaseAuth.onAuthStateChanged(async (user) => {
                     if (user) {
                         setAuthUser(user);
-                        try {
-                            const token = await user.getIdToken();
-                            const r = await fetch('/api/auth?action=me', { headers: { 'Authorization': 'Bearer ' + token } });
-                            const json = await r.json();
-                            if (json.success) {
-                                setUserProfile(json.user);
-                                setAuthError('');
-                            } else {
-                                setAuthError(json.error || 'Compte non configuré');
-                                setUserProfile(null);
-                                if (json.disabled) firebaseAuth.signOut();
-                            }
-                        } catch (e) {
-                            setAuthError('Erreur de connexion au serveur');
-                            setUserProfile(null);
-                        }
+                        const meResult = await fetchMe(user);
+                        applyDecision(user, meResult);
                     } else {
+                        // Vraie déconnexion Firebase → login. Nettoie le cache profil.
                         setAuthUser(null);
+                        clearRetry();
+                        retryAttemptRef.current = 0;
+                        setReconnecting(false);
+                        setProfileLoadFailed(false);
                         setUserProfile(null);
+                        clearCachedProfile();
                     }
                     setAuthLoading(false);
                 });
-                return () => unsub();
+                return () => { clearRetry(); unsub(); };
             }, []);
 
             // Fullscreen auto : paysage mobile + desktop — armé UNIQUEMENT après
@@ -65212,8 +65343,22 @@ ${rejetHtml}
                 </div>
             );
 
-            if (!authUser || !userProfile) return (
+            // CORRECTIF (a) — Firebase connecté mais profil introuvable ET aucun
+            // cache (ex. tout premier login + réseau down). On ne fabrique PAS de
+            // faux profil : écran d'erreur/retry explicite. Un retry tourne déjà en
+            // arrière-plan ; le bouton force un essai immédiat.
+            if (authUser && profileLoadFailed && !userProfile) return (
+                <ProfileLoadErrorScreen
+                    message={authError}
+                    onSignOut={() => firebaseAuth.signOut()}
+                />
+            );
+
+            // Vraie déconnexion : pas d'utilisateur Firebase OU (cas désactivé géré
+            // ci-dessus via signOut). Si pas de profil ET pas en reconnexion → login.
+            if (!authUser || (!userProfile && !reconnecting)) return (
                 <div>
+                    <NewVersionToast />
                     <LoginScreen />
                     {authError && authUser && (
                         <div style={{position:'fixed',bottom:20,left:'50%',transform:'translateX(-50%)',background:'rgba(220,53,69,0.95)',color:'#fff',padding:'12px 24px',borderRadius:12,fontSize:13,maxWidth:400,textAlign:'center',boxShadow:'0 4px 20px rgba(0,0,0,0.3)'}}>
@@ -65224,7 +65369,73 @@ ${rejetHtml}
                 </div>
             );
 
-            return <AuthenticatedApp authUser={authUser} userProfile={userProfile} />;
+            // userProfile présent (frais OU restauré depuis le cache pendant une
+            // reconnexion transitoire) → on entre dans l'app. Bannière non bloquante
+            // si reconnexion en cours, + toast nouvelle version.
+            return (
+                <React.Fragment>
+                    <NewVersionToast />
+                    {reconnecting && <ReconnectingBanner />}
+                    <AuthenticatedApp authUser={authUser} userProfile={userProfile} />
+                </React.Fragment>
+            );
+        }
+
+        // CORRECTIF (a) — bannière non bloquante affichée quand `me` échoue
+        // transitoirement alors que Firebase est connecté. Le retry tourne en
+        // arrière-plan (App); cette bannière est purement informative.
+        function ReconnectingBanner() {
+            return (
+                <div style={{position:'fixed',top:0,left:0,right:0,zIndex:99998,background:'var(--berry, #8B2252)',color:'#fff',padding:'8px 16px',fontSize:13,fontWeight:500,textAlign:'center',boxShadow:'0 2px 10px rgba(0,0,0,0.2)',display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                    <i className="fa-solid fa-spinner fa-spin"></i>
+                    <span>Reconnexion en cours…</span>
+                </div>
+            );
+        }
+
+        // CORRECTIF (a) — écran d'erreur quand le profil est introuvable et qu'aucun
+        // cache n'existe. PAS un faux profil : on propose réessayer / se déconnecter.
+        function ProfileLoadErrorScreen({ message, onSignOut }) {
+            return (
+                <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#fff',padding:24,textAlign:'center',fontFamily:"'Inter',sans-serif"}}>
+                    <i className="fa-solid fa-cloud-exclamation" style={{fontSize:48,color:'var(--berry, #8B2252)',marginBottom:16}}></i>
+                    <h3 style={{margin:'0 0 8px',color:'#1e293b'}}>Impossible de charger votre profil</h3>
+                    <p style={{color:'#64748b',fontSize:14,maxWidth:420,marginBottom:8}}>{message || 'Vérifiez votre connexion. Une nouvelle tentative est en cours automatiquement.'}</p>
+                    <div style={{display:'flex',alignItems:'center',gap:8,color:'var(--berry, #8B2252)',fontSize:13,marginBottom:20}}>
+                        <i className="fa-solid fa-spinner fa-spin"></i><span>Nouvelle tentative…</span>
+                    </div>
+                    <div style={{display:'flex',gap:8}}>
+                        <button onClick={() => window.location.reload()} style={{padding:'8px 20px',background:'var(--berry, #8B2252)',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                            <i className="fa-solid fa-rotate-right" style={{marginRight:6}}></i>Réessayer
+                        </button>
+                        <button onClick={onSignOut} style={{padding:'8px 20px',background:'var(--gray-200, #e2e8f0)',color:'#475569',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>Déconnexion</button>
+                    </div>
+                </div>
+            );
+        }
+
+        // CORRECTIF (b) — toast "nouvelle version" non bloquant. La page ne se
+        // recharge QUE sur clic utilisateur (plus de window.location.reload auto).
+        // Écoute l'évènement 'app-version-changed' émis par checkVersion, et gère
+        // aussi le cas où la version a changé AVANT le montage (window.__newAppVersion).
+        function NewVersionToast() {
+            const [show, setShow] = useState(false);
+            useEffect(() => {
+                if (window.__newAppVersion) setShow(true);
+                const onChange = () => setShow(true);
+                window.addEventListener('app-version-changed', onChange);
+                return () => window.removeEventListener('app-version-changed', onChange);
+            }, []);
+            if (!show) return null;
+            return (
+                <div
+                    onClick={() => window.location.reload()}
+                    role="button"
+                    style={{position:'fixed',bottom:20,right:20,zIndex:99999,background:'var(--berry, #8B2252)',color:'#fff',padding:'12px 18px',borderRadius:12,fontSize:13,fontWeight:600,cursor:'pointer',boxShadow:'0 4px 20px rgba(0,0,0,0.25)',display:'flex',alignItems:'center',gap:10,maxWidth:320}}>
+                    <i className="fa-solid fa-arrows-rotate"></i>
+                    <span>Nouvelle version disponible — cliquez pour recharger</span>
+                </div>
+            );
         }
 
         // ===================== INSTALL GUIDE COMPONENT =====================
