@@ -974,3 +974,24 @@ Fonctionnellement SAIN (jamais de déconnexion, session tenue). Purement cosmét
 À uniformiser dans un futur passage si on veut un comportement réseau homogène (ex. bandeau
 réseau global + re-fetch auto au retour online). PAS une régression, PAS un bloqueur.
 Gated : non (front, à cadrer).
+
+## [ ] ITEM (Phase 2 rapprochement) — Achats BAHIA ne bouclent pas contre le stock BGF
+Acté 2026-06-24 (GATE 0 migration BDC). Côté stock, BAHIA est traitée comme `externe:BAHIA`
+(un transfert vers BAHIA SORT du stock BGF). Donc les achats BAHIA n'ont PAS de bon d'entrée
+dans le stock BGF → le three-way match BDC↔Facture↔Réception NE BOUCLE PAS pour BAHIA comme
+pour BGF. À traiter À PART en Phase 2 : les achats BAHIA se réconcilient entre eux, pas contre
+le stock BGF. NB : la migration BDC actuelle ne contient aucun BDC BAHIA (BEE ONE IDSociete=1
+= BGF uniquement) — l'alerte vaut pour les futurs achats BAHIA. PAS un blocage de la migration.
+Gated : oui (cadrage Phase 2).
+
+## [ ] ITEM — Fusion des doublons fournisseurs dans suppliers (SB)
+Détecté 2026-06-24 (rapprochement migration BDC). `suppliers` SB contient des DOUBLONS internes
+(2 docs pour la même entité) : TIMAC, HAROUACHE, OUM JIHAD, CASEM, CCT. La migration BDC LIE
+chaque BDC au docId CANONIQUE (sans fusionner) — la fusion propre est un sujet SÉPARÉ à cadrer
+(choisir le docId à garder, ré-router les références, compléter ICE, désactiver le doublon —
+règle no-delete : désactiver, pas supprimer).
+⚠️ Anomalie connexe : BIOBEST (ICE 000063708000082) et BIOBETTER MAROC (ICE 63708000082) ont
+le MÊME ICE après normalisation des zéros → probable même ICE réel saisi sur 2 fiches distinctes,
+des 2 côtés (SB + BEE ONE). À vérifier (vraies 2 entités ? ou doublon ?).
+NB distinct : CAS ≠ CASEM = 2 VRAIES entités (ICE différents), NE PAS fusionner.
+Gated : oui (écriture suppliers).
