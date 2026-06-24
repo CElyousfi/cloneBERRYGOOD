@@ -963,3 +963,14 @@ alors que Firebase est toujours connecté.
       « reconnexion… », PAS de `setUserProfile(null)` ;
   (b) `checkVersion` SOFT : toast « nouvelle version » cliquable, pas de reload immédiat.
 Cycle dev → QA → preview → smoke → deploy gated.
+
+## [ ] ITEM (cosmétique, non bloquant) — Harmoniser le comportement réseau auth vs données
+Constaté en prod 2026-06-24 (après deploy auth résilience). Incohérence d'UX réseau :
+- échec de `me` (AUTH) → bandeau « Reconnexion en cours… » + retry auto (nouveau, OK).
+- échec réseau des écrans de DONNÉES (ex. Carburant) → affiche leur propre « Load failed »,
+  (a) PAS de bandeau « Reconnexion… », (b) PAS de re-fetch auto au retour réseau (l'utilisateur
+  doit rafraîchir manuellement).
+Fonctionnellement SAIN (jamais de déconnexion, session tenue). Purement cosmétique/UX.
+À uniformiser dans un futur passage si on veut un comportement réseau homogène (ex. bandeau
+réseau global + re-fetch auto au retour online). PAS une régression, PAS un bloqueur.
+Gated : non (front, à cadrer).
