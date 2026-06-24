@@ -947,3 +947,19 @@ NE PAS reprendre (régressif vs main) : hunk transport ~4417 de index.js, emailS
 ⚠️ Dans index.js le hunk BDC (~5294) cohabite avec le hunk transport (~4417) → ne cueillir
 que la partie BDC. Cycle dev → QA → preview → smoke → deploy gated. À planifier, pas urgent.
 Gated : oui (deploy functions).
+
+## NOTE — Déconnexions horaires : piste backend GCP ÉLIMINÉE (2026-06-24)
+Vérif GCP faite par Omar : **Identity Platform N'EST PAS activé** sur le projet (l'écran
+propose « Activer ») → on est en **Firebase Auth de base**, donc AUCUN réglage « Session
+duration » ne force une expiration ~1h. **Piste backend ÉLIMINÉE.** Identity Platform NON
+activé (service payant, ne résoudrait rien).
+Diagnostic CONFIRMÉ = (1) **fausses déconnexions** = reloads `checkVersion` en phase de
+déploiement intense (la session LOCAL survit, mais l'écran login réapparaît ~1-2 s pendant
+le re-`me`) + (2) **vrai bug** app.jsx:61263 : `me` échoue → `setUserProfile(null)` → login
+alors que Firebase est toujours connecté.
+→ Les 2 correctifs front de l'item « Correctifs front meteoblue + auth » deviennent la
+**SOLUTION DÉFINITIVE** (plus du confort) :
+  (a) sur échec de `me` AVEC `authUser` présent → garder le dernier profil connu + bannière
+      « reconnexion… », PAS de `setUserProfile(null)` ;
+  (b) `checkVersion` SOFT : toast « nouvelle version » cliquable, pas de reload immédiat.
+Cycle dev → QA → preview → smoke → deploy gated.
