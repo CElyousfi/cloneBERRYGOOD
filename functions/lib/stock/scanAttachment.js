@@ -12,14 +12,15 @@
  *   - extractPdfText(buffer): pdf-parse v2 API (fixes cause B — pdfParse(buffer)
  *     is no longer a function; v2 = new PDFParse({data}).getText()).
  *
- * The PURE mapping/validation logic lives in
- * ../../public/lib/scanAttachmentUtils.js (shared with the frontend + node:test).
+ * The PURE mapping/validation logic lives in ./scanAttachmentUtils.js — a
+ * BACKEND COPY of public/lib/scanAttachmentUtils.js. Le backend ne dépend JAMAIS
+ * de public/ : le package déployé n'embarque que functions/, donc un require vers
+ * public/ throw "Cannot find module" au runtime et casse toutes les fonctions.
+ * Duplication assumée (UMD front + CommonJS back), logique pure identique.
  */
 
-const path = require('path');
-
-// Pure helpers shared with the frontend (UMD module).
-const utils = require(path.join(__dirname, '../../../public/lib/scanAttachmentUtils.js'));
+// Pure helpers — backend-local copy (see scanAttachmentUtils.js header).
+const utils = require('./scanAttachmentUtils');
 
 /** Default validity window for signed read URLs (7 days). */
 const SIGNED_URL_TTL_MS = 7 * 24 * 60 * 60 * 1000;

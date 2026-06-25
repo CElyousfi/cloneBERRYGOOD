@@ -32,9 +32,10 @@
  *   répartitions 1:N incluses (Σ des parts == charge d'origine).
  */
 
-// Source unique de vérité campagne (année fiscale Juillet→Juin) : module partagé
-// front+back public/lib/campagneUtils.js. Factorise l'ancien `campagneOf` inline.
-const { campagneOf } = require('../../../public/lib/campagneUtils')
+// Source unique de vérité campagne (année fiscale Juillet→Juin). COPIE backend
+// locale (./campagneUtils) — le backend ne dépend JAMAIS de public/ (package
+// déployé = functions/ uniquement). Cf. en-tête de campagneUtils.js (duplication).
+const { campagneOf } = require('./campagneUtils')
 
 const COVERED = new Set(['matched', 'alias_valide', 'creee'])
 const NON_TRANCHE = new Set(['alias_propose', 'a_creer', 'hors_propose'])
