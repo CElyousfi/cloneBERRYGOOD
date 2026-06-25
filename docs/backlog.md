@@ -995,3 +995,20 @@ le MÊME ICE après normalisation des zéros → probable même ICE réel saisi 
 des 2 côtés (SB + BEE ONE). À vérifier (vraies 2 entités ? ou doublon ?).
 NB distinct : CAS ≠ CASEM = 2 VRAIES entités (ICE différents), NE PAS fusionner.
 Gated : oui (écriture suppliers).
+
+## [ ] ITEM (à investiguer) — BC-000666 / BAHIA émet ses propres BDC + pré-bascule BEE ONE
+Détecté 2026-06-25 (investigation orphelins scans BDC).
+1. **BC-000666** est émis par **BAHIA AGRICOLE SARL** (entité juridique distincte,
+   ICE 001454414000011), hors de la série BGF → **BAHIA émet possiblement ses propres BDC
+   hors périmètre BGF (2e flux)**. À investiguer si BAHIA passe en suivi séparé (multi-entité).
+2. **Pré-bascule BEE ONE** : reset de numérotation au **23/07/2025** (lancement officiel).
+   L'ancienne série BC/DA (jusqu'à ≥ BC-000881 / DA-000897) est ABSENTE de l'instance actuelle
+   `BEE_BERRY_GOOD` (qui redémarre à 1). 7 traces seulement via les PDF de docs/Bons de Commande/.
+   Historique ancien probablement dans **`GPW_BEE ONE`** (accès SQL REFUSÉ à l'user `omar`).
+   Vérif read-only : AUCUNE facture de campagne (date_facture >= 01/07/2025) ne pointe vers le
+   pré-bascule, SAUF 2 cas non vérifiables (NALSYA BC-880, SOLUTION AGRICOLES BC-881, datés 03/07)
+   faute de factures extraites → **pré-bascule quasi hors périmètre**.
+   Action HUMAINE/IT (DG) : confirmer le reset 23/07 avec l'éditeur BEE ONE + obtenir l'accès
+   `GPW_BEE ONE` SI on veut trancher ces 2 cas / récupérer l'historique. Requêtes SQL read-only
+   à préparer le moment venu (compter BDC pré-bascule, plage, fournisseurs, montants).
+Gated : oui (accès base tierce + éventuel import historique).
