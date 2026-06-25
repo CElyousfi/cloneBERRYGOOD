@@ -1012,3 +1012,17 @@ Détecté 2026-06-25 (investigation orphelins scans BDC).
    `GPW_BEE ONE` SI on veut trancher ces 2 cas / récupérer l'historique. Requêtes SQL read-only
    à préparer le moment venu (compter BDC pré-bascule, plage, fournisseurs, montants).
 Gated : oui (accès base tierce + éventuel import historique).
+
+## [ ] ITEM (cadré, après deploy brique scan) — Pop-up détail "Hors Récolte" : grouper par PARCELLE puis TÂCHE
+Modale de détail de la validation pointage (ex. "Hors Récolte — F5", liste des 51 ouvriers).
+PÉRIMÈTRE STRICT : uniquement l'AFFICHAGE INTÉRIEUR de la modale. PAS de toggle. AUCUN impact
+sur les boutons Valider / Ne pas valider (sur la vue de fond, par équipe — inchangés).
+- Aujourd'hui : ouvriers groupés par ÉQUIPE dans la modale ("ksar femme — 18", "RAGRAGUI — 14"…).
+- Cible : grouper par **Parcelle (niveau 1)** puis par **Tâche/Opération (niveau 2)**.
+  Ex. CASCADE MYRTILLE S8-1 > Nettoyage > [ouvriers] / > Désherbage Manuel > [ouvriers].
+- Colonnes inchangées (matricule, nom, opération, parcelle, heures, entrée, sortie, coût).
+- Sous-totaux (nb ouvriers, coût DH) recalculés par parcelle ET par tâche.
+- Changement d'AFFICHAGE seul : mêmes données (chaque ligne porte déjà parcelle+opération+coût),
+  AUCUN nouveau calcul backend, AUCUNE migration, AUCUNE logique de validation touchée.
+Cycle dev→QA→preview→smoke→deploy gaté. À développer APRÈS validation du smoke brique scan.
+Gated : oui (deploy).
