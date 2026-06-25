@@ -10,13 +10,16 @@ service firebase.storage {
     // ce qui contourne la limite de payload 10 MB des functions 1ère gen).
     // Lecture authentifiée ; les métadonnées (scan_path, signed URL) sont
     // ensuite enregistrées sur le doc cible via l'action upload-attachment.
-    // Écriture durcie : create-only (path unique horodaté) limité à 25 MB et
-    // aux types PDF/image ; pas d'overwrite/delete côté client.
+    // Écriture durcie : create-only (path unique horodaté) ; pas d'overwrite/
+    // delete côté client. Taille + MIME ne sont PLUS vérifiés ici car en upload
+    // resumable (mobile), request.resource.size / contentType sont peu fiables
+    // au moment de la rule → faux refus storage/unauthorized. L'enforcement
+    // taille (<25 MB) et MIME (PDF/image) est fait côté Cloud Function
+    // (action upload-attachment) où les métadonnées de l'objet sont fiables ;
+    // un objet refusé y est supprimé avant tout enregistrement de lien.
     match /scans/{path=**} {
       allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && request.resource.size < 25 * 1024 * 1024
-        && request.resource.contentType.matches('application/pdf|image/(jpeg|png|webp|heic)');
+      allow create: if request.auth != null;
       allow update, delete: if false;
     }
     // PDF des bons de commande (générés à la soumission, joints à la notif

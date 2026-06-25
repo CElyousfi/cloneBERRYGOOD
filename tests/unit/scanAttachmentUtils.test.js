@@ -7,11 +7,29 @@ const {
   collectionForEntity,
   folderForEntity,
   extOf,
+  mimeFromFilename,
   sanitizeFilename,
   buildScanPath,
   isScanPathForEntity,
   validateUploadAttachmentParams,
 } = require('../../public/lib/scanAttachmentUtils.js');
+
+test('mimeFromFilename maps known extensions to canonical MIME types', () => {
+  assert.strictEqual(mimeFromFilename('facture.pdf'), 'application/pdf');
+  assert.strictEqual(mimeFromFilename('photo.jpg'), 'image/jpeg');
+  assert.strictEqual(mimeFromFilename('photo.JPEG'), 'image/jpeg');
+  assert.strictEqual(mimeFromFilename('scan.png'), 'image/png');
+  assert.strictEqual(mimeFromFilename('img.webp'), 'image/webp');
+  assert.strictEqual(mimeFromFilename('img.heic'), 'image/heic');
+});
+
+test('mimeFromFilename falls back to octet-stream for unknown / missing ext', () => {
+  assert.strictEqual(mimeFromFilename('archive.zip'), 'application/octet-stream');
+  assert.strictEqual(mimeFromFilename('image.gif'), 'application/octet-stream');
+  // no extension → no pdf default → octet-stream (CF rejects it)
+  assert.strictEqual(mimeFromFilename('noextension'), 'application/octet-stream');
+  assert.strictEqual(mimeFromFilename(undefined), 'application/octet-stream');
+});
 
 test('isValidEntityType accepts the 3 canonical types only', () => {
   assert.strictEqual(isValidEntityType('invoices'), true);
@@ -37,12 +55,18 @@ test('folderForEntity maps to storage folders', () => {
   assert.strictEqual(folderForEntity('x'), null);
 });
 
-test('extOf returns lowercase extension, default pdf', () => {
+test('extOf returns lowercase extension, empty when none (no pdf default)', () => {
   assert.strictEqual(extOf('facture.PDF'), 'pdf');
   assert.strictEqual(extOf('photo.JPG'), 'jpg');
-  assert.strictEqual(extOf('noext'), 'pdf');
-  assert.strictEqual(extOf(''), 'pdf');
-  assert.strictEqual(extOf(undefined), 'pdf');
+  assert.strictEqual(extOf('noext'), '');
+  assert.strictEqual(extOf(''), '');
+  assert.strictEqual(extOf(undefined), '');
+});
+
+test('mimeFromFilename: no/unknown extension falls back to octet-stream (rejected server-side)', () => {
+  assert.strictEqual(mimeFromFilename('noext'), 'application/octet-stream');
+  assert.strictEqual(mimeFromFilename('virus.exe'), 'application/octet-stream');
+  assert.strictEqual(mimeFromFilename('scan.pdf'), 'application/pdf');
 });
 
 test('sanitizeFilename strips unicode/spaces/paths', () => {

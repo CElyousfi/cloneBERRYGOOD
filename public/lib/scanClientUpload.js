@@ -50,7 +50,11 @@
     var filename = file.name || 'scan.pdf';
     var scanPath = SCU_Utils.buildScanPath(entityType, filename, Date.now());
     var ref = window.firebase.storage().ref().child(scanPath);
-    return ref.put(file).then(function () {
+    // Explicit contentType is REQUIRED: on mobile file.type is often empty /
+    // octet-stream → without it the stored object has no usable contentType and
+    // the server-side MIME enforcement (CF upload-attachment) would reject it.
+    var contentType = (file.type && file.type !== '') ? file.type : SCU_Utils.mimeFromFilename(filename);
+    return ref.put(file, { contentType: contentType }).then(function () {
       return { scan_path: scanPath, filename: filename };
     });
   }

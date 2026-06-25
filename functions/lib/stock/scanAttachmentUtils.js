@@ -81,9 +81,30 @@ function folderForEntity(entityType) {
  * @returns {string}
  */
 function extOf(filename) {
-  if (typeof filename !== 'string' || filename.indexOf('.') === -1) return 'pdf';
+  if (typeof filename !== 'string' || filename.indexOf('.') === -1) return '';
   const ext = filename.split('.').pop().toLowerCase().trim();
-  return ext || 'pdf';
+  return ext;
+}
+
+/**
+ * Maps a filename extension to its canonical MIME type. Used CLIENT-SIDE to set
+ * an explicit contentType at upload time (file.type is empty / octet-stream on
+ * mobile), so the stored object carries a reliable contentType that the Cloud
+ * Function can enforce against. Unknown extensions fall back to octet-stream
+ * (which the CF then rejects).
+ * @param {string} filename
+ * @returns {string}
+ */
+function mimeFromFilename(filename) {
+  switch (extOf(filename)) {
+    case 'pdf': return 'application/pdf';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'png': return 'image/png';
+    case 'webp': return 'image/webp';
+    case 'heic': return 'image/heic';
+    default: return 'application/octet-stream';
+  }
 }
 
 /**
@@ -165,6 +186,7 @@ const __scanAttachmentApi = {
   collectionForEntity,
   folderForEntity,
   extOf,
+  mimeFromFilename,
   sanitizeFilename,
   buildScanPath,
   isScanPathForEntity,

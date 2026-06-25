@@ -9283,6 +9283,19 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ 
         try { [exists] = await bucket.file(scan_path).exists(); } catch (_) { exists = false; }
         if (!exists) return res.status(400).json({ success: false, error: "Fichier introuvable dans le stockage (upload incomplet ?)" });
 
+        // SERVER-SIDE ENFORCEMENT (replaces the size/MIME constraints removed
+        // from the Storage rules — unreliable on resumable/mobile uploads).
+        // Read the real object metadata and validate BEFORE writing any link.
+        // A rejected object is deleted so no orphan object/link is left behind.
+        let objMeta = null;
+        try { [objMeta] = await bucket.file(scan_path).getMetadata(); } catch (_) { objMeta = null; }
+        if (!objMeta) return res.status(400).json({ success: false, error: "Métadonnées du fichier illisibles" });
+        const metaCheck = scanAttachment.validateAttachmentMetadata({ size: objMeta.size, contentType: objMeta.contentType });
+        if (!metaCheck.valid) {
+          try { await bucket.file(scan_path).delete(); } catch (_) { /* best effort cleanup */ }
+          return res.status(400).json({ success: false, error: metaCheck.error });
+        }
+
         const signedUrl = await scanAttachment.generateSignedUrl(bucket, scan_path);
         const now = Date.now();
         const uploadedBy = {

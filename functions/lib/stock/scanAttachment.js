@@ -25,6 +25,48 @@ const utils = require('./scanAttachmentUtils');
 /** Default validity window for signed read URLs (7 days). */
 const SIGNED_URL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Maximum accepted attachment size (bytes). */
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+
+/**
+ * MIME types accepted for a scanned attachment. Server-side source of truth:
+ * the size/MIME constraints were removed from the Storage rules (unreliable on
+ * resumable/mobile uploads) and are now enforced HERE against the real object
+ * metadata read back from the bucket.
+ * @type {Record<string, true>}
+ */
+const ALLOWED_ATTACHMENT_MIME = {
+  'application/pdf': true,
+  'image/jpeg': true,
+  'image/png': true,
+  'image/webp': true,
+  'image/heic': true,
+};
+
+/**
+ * PURE validation of an uploaded object's metadata (size + contentType).
+ * Called by the upload-attachment action AFTER reading the object metadata from
+ * Storage, BEFORE writing any link on the target doc. A rejected object is then
+ * deleted by the caller so no orphan object/link survives.
+ * @param {{size?: number|string, contentType?: string}} meta
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function validateAttachmentMetadata(meta) {
+  const m = meta || {};
+  const size = typeof m.size === 'string' ? parseInt(m.size, 10) : m.size;
+  if (typeof size !== 'number' || !isFinite(size) || size <= 0) {
+    return { valid: false, error: 'Fichier refusé: taille du fichier indéterminée' };
+  }
+  if (size >= MAX_ATTACHMENT_BYTES) {
+    return { valid: false, error: 'Fichier refusé: taille supérieure à 25 Mo' };
+  }
+  const contentType = typeof m.contentType === 'string' ? m.contentType.split(';')[0].trim().toLowerCase() : '';
+  if (!ALLOWED_ATTACHMENT_MIME[contentType]) {
+    return { valid: false, error: 'Fichier refusé: type de fichier non autorisé (PDF ou image uniquement)' };
+  }
+  return { valid: true };
+}
+
 /**
  * Generates a V4 signed read URL for an object already present in the bucket.
  * @param {import('@google-cloud/storage').Bucket} bucket
@@ -92,6 +134,9 @@ async function downloadBuffer(bucket, scanPath) {
 
 module.exports = {
   SIGNED_URL_TTL_MS,
+  MAX_ATTACHMENT_BYTES,
+  ALLOWED_ATTACHMENT_MIME,
+  validateAttachmentMetadata,
   generateSignedUrl,
   extractPdfText,
   downloadBuffer,
