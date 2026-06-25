@@ -5,9 +5,19 @@ service firebase.storage {
     match /data/{file=**} {
       allow read, write: if request.auth != null;
     }
-    // Scans WhatsApp / bons d'apport (lecture authentifiée)
+    // Scans WhatsApp / bons d'apport + pièces jointes factures/BL/BDC.
+    // Upload CLIENT-DIRECT (le fichier ne transite plus par la Cloud Function,
+    // ce qui contourne la limite de payload 10 MB des functions 1ère gen).
+    // Lecture authentifiée ; les métadonnées (scan_path, signed URL) sont
+    // ensuite enregistrées sur le doc cible via l'action upload-attachment.
+    // Écriture durcie : create-only (path unique horodaté) limité à 25 MB et
+    // aux types PDF/image ; pas d'overwrite/delete côté client.
     match /scans/{path=**} {
       allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.size < 25 * 1024 * 1024
+        && request.resource.contentType.matches('application/pdf|image/(jpeg|png|webp|heic)');
+      allow update, delete: if false;
     }
     // PDF des bons de commande (générés à la soumission, joints à la notif
     // WhatsApp de validation). Lecture+écriture authentifiée.

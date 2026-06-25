@@ -27,6 +27,7 @@ const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const { buildArticleHistoryIndex, sliceArticleHistory } = require("./lib/stock/articleHistoryIndex");
 const pmpDetailLib = require("./lib/stock/pmpDetail");
 const locationsConfig = require("./lib/stock/locationsConfig");
+const scanAttachment = require("./lib/stock/scanAttachment");
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 
@@ -6343,7 +6344,7 @@ exports.stockManagement = functions
   .https.onRequest(async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
     if (req.method === "OPTIONS") return res.status(204).send("");
 
     const action = req.query.action || req.body?.action || "stock-dashboard";
@@ -9009,13 +9010,8 @@ exports.stockManagement = functions
           const mediaType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
           messageContent.push({ type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } });
         } else if (isPdf) {
-          // Try text extraction first
-          let pdfText = "";
-          try {
-            const pdfParse = require("pdf-parse");
-            const pdfData = await pdfParse(buffer);
-            pdfText = pdfData.text || "";
-          } catch (e) { console.error("pdf-parse error:", e.message); }
+          // Try text extraction first (pdf-parse v2 API via shared helper)
+          const pdfText = await scanAttachment.extractPdfText(buffer);
 
           if (pdfText.length > 50) {
             messageContent.push({ type: "text", text: "CONTENU TEXTE DU PDF:\n" + pdfText });
@@ -9167,12 +9163,8 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Les montants
           const mediaType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
           messageContent.push({ type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } });
         } else if (isPdf) {
-          let pdfText = "";
-          try {
-            const pdfParse = require("pdf-parse");
-            const pdfData = await pdfParse(buffer);
-            pdfText = pdfData.text || "";
-          } catch (e) { console.error("pdf-parse error:", e.message); }
+          // pdf-parse v2 API via shared helper
+          const pdfText = await scanAttachment.extractPdfText(buffer);
 
           if (pdfText.length > 50) {
             messageContent.push({ type: "text", text: "CONTENU TEXTE DU PDF:\n" + pdfText });
@@ -9270,6 +9262,64 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ 
         const scanDocRef = await db_firestore.collection("bl_scans").add(scanData);
 
         return res.json({ success: true, scan_id: scanDocRef.id, scan_url, analysis, matched_bdc });
+      }
+
+      // ========== UNIFIED ATTACHMENT (client-direct upload model) ==========
+      // The file is uploaded DIRECTLY from the client to Firebase Storage
+      // (bypasses the 10 MB CF payload limit). This action only records the
+      // metadata on the target doc and returns a V4 signed read URL.
+      if (action === "upload-attachment" && req.method === "POST") {
+        const { entity_type, entity_id, scan_path, filename } = req.body || {};
+        const validation = scanAttachment.utils.validateUploadAttachmentParams({ entity_type, entity_id, scan_path, filename });
+        if (!validation.valid) return res.status(400).json({ success: false, error: validation.error });
+
+        const collection = scanAttachment.utils.collectionForEntity(entity_type);
+        const docRef = db_firestore.collection(collection).doc(entity_id);
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) return res.status(404).json({ success: false, error: "Document cible introuvable" });
+
+        // Confirm the object actually exists in the bucket before recording it.
+        let exists = false;
+        try { [exists] = await bucket.file(scan_path).exists(); } catch (_) { exists = false; }
+        if (!exists) return res.status(400).json({ success: false, error: "Fichier introuvable dans le stockage (upload incomplet ?)" });
+
+        const signedUrl = await scanAttachment.generateSignedUrl(bucket, scan_path);
+        const now = Date.now();
+        const uploadedBy = {
+          uid: authUser.uid || null,
+          email: authUser.email || null,
+          name: (req.body.uploaded_by && req.body.uploaded_by.name) || null,
+          profileId: (req.body.uploaded_by && req.body.uploaded_by.profileId) || null,
+        };
+        await docRef.update({
+          scan_url: signedUrl || null,
+          scan_path,
+          scan_filename: filename || scanAttachment.utils.sanitizeFilename(filename),
+          scan_uploaded_at: now,
+          scan_uploaded_by: uploadedBy,
+          updated_at: now,
+        });
+
+        return res.json({ success: true, scan_url: signedUrl, scan_path, scan_uploaded_at: now });
+      }
+
+      // Generate (or refresh) a V4 signed read URL for an existing attachment.
+      // Used by the list viewers so we never expose a public/no-ACL URL (cause C).
+      if (action === "get-attachment-url") {
+        const entityType = req.query.entity_type;
+        const entityId = req.query.entity_id;
+        if (!scanAttachment.utils.isValidEntityType(entityType)) {
+          return res.status(400).json({ success: false, error: "entity_type invalide" });
+        }
+        if (!entityId) return res.status(400).json({ success: false, error: "entity_id requis" });
+        const collection = scanAttachment.utils.collectionForEntity(entityType);
+        const docSnap = await db_firestore.collection(collection).doc(entityId).get();
+        if (!docSnap.exists) return res.status(404).json({ success: false, error: "Document introuvable" });
+        const data = docSnap.data();
+        const scanPath = data.scan_path || null;
+        if (!scanPath) return res.json({ success: true, scan_url: null });
+        const signedUrl = await scanAttachment.generateSignedUrl(bucket, scanPath);
+        return res.json({ success: true, scan_url: signedUrl, scan_path: scanPath });
       }
 
       // ========== SCAN HISTORY ==========

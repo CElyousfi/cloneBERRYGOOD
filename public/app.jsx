@@ -46102,6 +46102,11 @@ ${rejetHtml}
                                                         </tr></tfoot>
                                                     </table>
                                                 </div>
+                                                {/* Pièce jointe (scan BDC) */}
+                                                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid #f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                    <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Scan BDC :</span>
+                                                    {window.ScanAttachmentButton && <window.ScanAttachmentButton entityType="purchase_orders" entityId={bdc.id} scanUrl={bdc.scan_url} scanPath={bdc.scan_path} uploadedBy={{ profileId: currentProfile }} onUploaded={() => load()} />}
+                                                </div>
                                                 {/* Durées détaillées */}
                                                 <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                                     {[
@@ -46669,7 +46674,7 @@ ${rejetHtml}
                     </div>
 
                     <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>N°</th><th>Date</th><th>Fournisseur</th><th>Ferme</th><th>Articles</th><th>Total TTC</th><th>Statut</th><th>Livraison</th><th></th></tr></thead>
+                        <thead><tr><th>N°</th><th>Date</th><th>Fournisseur</th><th>Ferme</th><th>Articles</th><th>Total TTC</th><th>Statut</th><th>Livraison</th><th>Scan</th><th></th></tr></thead>
                         <tbody>
                             {bdcList.map((b) => (
                                 <tr key={b.id} onClick={() => openDetail(b.id)} style={{cursor:'pointer'}}>
@@ -46681,6 +46686,7 @@ ${rejetHtml}
                                     <td style={{fontWeight:700}}>{(b.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td><span className={'status-badge ' + statusClass(b.status)}>{statusLabels[b.status] || b.status}</span></td>
                                     <td><span className={'status-badge ' + (b.delivery_status === 'complet' ? 'valide' : b.delivery_status === 'partiel' ? 'en-attente' : 'brouillon')} style={{fontSize:10}}>{b.delivery_status === 'complet' ? 'Livré' : b.delivery_status === 'partiel' ? 'Partiel' : 'Non livré'}</span></td>
+                                    <td onClick={e => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="purchase_orders" entityId={b.id} scanUrl={b.scan_url} scanPath={b.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadBdc()} compact /> : null}</td>
                                     <td onClick={e => e.stopPropagation()} style={{whiteSpace:'nowrap'}}>
                                         <div style={{display:'flex',gap:12,alignItems:'center'}}>
                                         {b.status === 'brouillon' && <button onClick={() => handleSubmit(b.id)} title="Soumettre" style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13}}><i className="fa-solid fa-paper-plane"></i></button>}
@@ -46690,7 +46696,7 @@ ${rejetHtml}
                                     </td>
                                 </tr>
                             ))}
-                            {bdcList.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de commande{filterStatus ? ' avec ce statut' : ''}.</td></tr>}
+                            {bdcList.length === 0 && <tr><td colSpan="10" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de commande{filterStatus ? ' avec ce statut' : ''}.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -47136,6 +47142,7 @@ ${rejetHtml}
                                                         <span style={{color:'#64748b'}}>{bl.date_reception || '—'}</span>
                                                         {bl.numero_bl_fournisseur && <span style={{color:'#94a3b8'}}>BL fournisseur: {bl.numero_bl_fournisseur}</span>}
                                                         <span style={{color:'#475569'}}>{(bl.items || []).map(it => it.article + ': ' + it.quantite_recue + ' ' + (it.unite||'')).join(', ')}</span>
+                                                        {window.ScanAttachmentButton && <window.ScanAttachmentButton entityType="delivery_notes" entityId={bl.id} scanUrl={bl.scan_url} scanPath={bl.scan_path} uploadedBy={{ profileId: currentProfile }} onUploaded={() => openDetail(selectedBdc)} compact />}
                                                     </div>
                                                 ))}
                                             </div>
@@ -49703,7 +49710,7 @@ ${rejetHtml}
                     </div>
 
                     <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>N° Interne</th><th>N° Facture</th><th>BDC</th><th>Fournisseur</th><th>Date</th><th>Total TTC</th><th>Ecarts</th><th>Paiement</th><th></th></tr></thead>
+                        <thead><tr><th>N° Interne</th><th>N° Facture</th><th>BDC</th><th>Fournisseur</th><th>Date</th><th>Total TTC</th><th>Ecarts</th><th>Scan</th><th>Paiement</th><th></th></tr></thead>
                         <tbody>
                             {visibleFactures.map((f) => (
                                 <tr key={f.id} onClick={() => setDetailFacture(f)} style={{cursor:'pointer'}} title="Voir le détail de la facture">
@@ -49714,6 +49721,7 @@ ${rejetHtml}
                                     <td style={{fontSize:12}}>{f.date_facture || '—'}</td>
                                     <td style={{fontWeight:700}}>{(f.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td>{f.has_discrepancies ? <span className="status-badge rejete" style={{fontSize:10}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{(f.discrepancies||[]).length} ecart(s)</span> : <span style={{color:'var(--green)',fontSize:11}}><i className="fa-solid fa-check"></i></span>}</td>
+                                    <td onClick={(e) => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="invoices" entityId={f.id} scanUrl={f.scan_url} scanPath={f.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadFactures()} compact /> : null}</td>
                                     <td><span className={'status-badge ' + statusClass(f.payment_status)}>{statusLabels[f.payment_status] || f.payment_status}</span></td>
                                     <td style={{whiteSpace:'nowrap'}} onClick={(e) => e.stopPropagation()}>
                                         {f.payment_status === 'non_payee' && <button onClick={() => handleSubmitPayment(f.id)} title="Soumettre paiement" style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13,marginRight:4}}><i className="fa-solid fa-paper-plane"></i></button>}
@@ -49721,7 +49729,7 @@ ${rejetHtml}
                                     </td>
                                 </tr>
                             ))}
-                            {visibleFactures.length === 0 && <tr><td colSpan="9" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture{filterStatus ? ' avec ce statut' : ''}{filterCampaign ? ' pour cette campagne' : ''}.</td></tr>}
+                            {visibleFactures.length === 0 && <tr><td colSpan="10" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture{filterStatus ? ' avec ce statut' : ''}{filterCampaign ? ' pour cette campagne' : ''}.</td></tr>}
                         </tbody>
                     </table></div>
 
@@ -49939,7 +49947,7 @@ ${rejetHtml}
                         </div>
                     </div>
                     <div className="table-responsive"><table className="data-table">
-                        <thead><tr><th>N°</th><th>Facture</th><th>BDC</th><th>Fournisseur</th><th>Total TTC</th><th>Ecarts</th><th>Actions</th></tr></thead>
+                        <thead><tr><th>N°</th><th>Facture</th><th>BDC</th><th>Fournisseur</th><th>Total TTC</th><th>Ecarts</th><th>Scan</th><th>Actions</th></tr></thead>
                         <tbody>
                             {visibleFactures.map((f) => (
                                 <tr key={f.id} onClick={() => setDetailFacture(f)} style={{cursor:'pointer'}} title="Voir le détail de la facture">
@@ -49949,13 +49957,14 @@ ${rejetHtml}
                                     <td style={{fontWeight:600}}>{f.fournisseur?.nom || '—'}</td>
                                     <td style={{fontWeight:700}}>{(f.total_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits:2})} MAD</td>
                                     <td>{f.has_discrepancies ? <span className="status-badge rejete" style={{fontSize:10}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{(f.discrepancies||[]).length}</span> : <span style={{color:'var(--green)',fontSize:11}}><i className="fa-solid fa-check"></i> OK</span>}</td>
+                                    <td onClick={(e) => e.stopPropagation()}>{window.ScanAttachmentButton ? <window.ScanAttachmentButton entityType="invoices" entityId={f.id} scanUrl={f.scan_url} scanPath={f.scan_path} uploadedBy={{ profileId: currentProfile, name: profileData?.name || currentProfile }} onUploaded={() => loadFactures()} compact /> : null}</td>
                                     <td style={{whiteSpace:'nowrap'}} onClick={(e) => e.stopPropagation()}>
                                         <button onClick={() => handleValidate(f.id)} title="Valider" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:14,marginRight:8}}><i className="fa-solid fa-circle-check"></i></button>
                                         <button onClick={() => handleReject(f.id)} title="Rejeter" style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:14}}><i className="fa-solid fa-circle-xmark"></i></button>
                                     </td>
                                 </tr>
                             ))}
-                            {visibleFactures.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture en attente de validation Finance{filterCampaign ? ' pour cette campagne' : ''}.</td></tr>}
+                            {visibleFactures.length === 0 && <tr><td colSpan="8" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucune facture en attente de validation Finance{filterCampaign ? ' pour cette campagne' : ''}.</td></tr>}
                         </tbody>
                     </table></div>
 

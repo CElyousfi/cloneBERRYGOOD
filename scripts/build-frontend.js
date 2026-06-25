@@ -71,6 +71,7 @@ const COMPONENT_SENTINELS = {
   "PmpDetailPopup.js": "window.PmpDetailPopup",
   "InventaireMouvementsPopup.js": "window.InventaireMouvementsPopup",
   "FactureDetailPopup.js": "window.FactureDetailPopup",
+  "ScanAttachmentButton.js": "window.ScanAttachmentButton",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));
