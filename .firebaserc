@@ -1,5 +1,14 @@
 {
   "projects": {
     "default": "berrygood-farms-dashboard"
+  },
+  "targets": {
+    "berrygood-farms-dashboard": {
+      "storage": {
+        "photos": [
+          "berrygood-farms-photos"
+        ]
+      }
+    }
   }
 }
