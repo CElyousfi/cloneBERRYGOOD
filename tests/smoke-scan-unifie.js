@@ -175,6 +175,52 @@ async function runOnBrowser(launcher, name, url) {
   ok(sim.calledBody && sim.calledBody.entity_type === 'invoices', 'body.entity_type = invoices');
   ok(sim.calledBody && /^scans\/invoices\/\d+_facture\.pdf$/.test(sim.calledBody.scan_path || ''), `scan_path bien formé (got ${sim.calledBody && sim.calledBody.scan_path})`);
 
+  // BUG 1 — déclencheur picker : le bouton « Joindre » doit être un <label>
+  // natif CONTENANT son <input type=file> (pas de display:none, pas de .click()
+  // JS). Avec plusieurs lignes, chaque label doit ouvrir SON propre input.
+  // On vérifie : (a) 2 labels distincts, chacun avec un input file enfant ;
+  // (b) l'input n'est pas en display:none ; (c) cliquer le label focus l'input
+  // (= le label est bien le déclencheur natif, robuste sur WebKit).
+  const labelCheck = await page.evaluate(() => {
+    return new Promise((resolve) => {
+      const out = { labels: 0, childInputs: 0, displayNone: 0, focusedAfterClick: false };
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = window.ReactDOM.createRoot(container);
+      root.render(window.React.createElement('div', null, [
+        window.React.createElement(window.ScanAttachmentButton, { key: 'a', entityType: 'invoices', entityId: 'A' }),
+        window.React.createElement(window.ScanAttachmentButton, { key: 'b', entityType: 'invoices', entityId: 'B' }),
+      ]));
+      setTimeout(function () {
+        const labels = container.querySelectorAll('label');
+        out.labels = labels.length;
+        labels.forEach(function (lab) {
+          const inp = lab.querySelector('input[type=file]');
+          if (inp) {
+            out.childInputs += 1;
+            if (getComputedStyle(inp).display === 'none') out.displayNone += 1;
+          }
+        });
+        // Cliquer le 2e label doit cibler/focuser SON input (pas celui du 1er).
+        const secondLabel = labels[1];
+        const secondInput = secondLabel ? secondLabel.querySelector('input[type=file]') : null;
+        if (secondInput) {
+          // Le clic natif sur un <label> englobant déclenche le picker du navigateur
+          // (impossible à observer en headless) ; on vérifie au moins que l'input
+          // est focusable et que le label le référence comme control.
+          secondInput.focus();
+          out.focusedAfterClick = (document.activeElement === secondInput) &&
+            (secondLabel.control === secondInput);
+        }
+        resolve(out);
+      }, 80);
+    });
+  });
+  ok(labelCheck.labels === 2, `2 boutons « Joindre » rendus comme <label> (got ${labelCheck.labels})`);
+  ok(labelCheck.childInputs === 2, `chaque <label> contient son <input type=file> (got ${labelCheck.childInputs})`);
+  ok(labelCheck.displayNone === 0, `aucun input file en display:none (got ${labelCheck.displayNone})`);
+  ok(labelCheck.focusedAfterClick === true, 'le <label> référence/active SON input (label.control === input)');
+
   await browser.close();
   return failures;
 }

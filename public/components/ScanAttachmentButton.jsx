@@ -30,7 +30,6 @@
   var React = window.React;
   if (!React) return;
   var useState = React.useState;
-  var useRef = React.useRef;
 
   var SAB_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp';
 
@@ -51,7 +50,6 @@
     var hasScan = stateHasScan[0]; var setHasScan = stateHasScan[1];
     var stateBusy = useState(false);
     var busy = stateBusy[0]; var setBusy = stateBusy[1];
-    var fileRef = useRef(null);
 
     var SCU = window.ScanClientUpload;
 
@@ -68,11 +66,6 @@
       }).catch(function () { setBusy(false); alert('Erreur lors de la récupération du scan.'); });
     }
 
-    function handlePick(e) {
-      if (e) e.stopPropagation();
-      if (fileRef.current) fileRef.current.click();
-    }
-
     function handleFile(e) {
       var file = e.target.files && e.target.files[0];
       if (e.target) e.target.value = '';
@@ -87,16 +80,18 @@
         uploaded_by: props.uploadedBy || {},
       }).then(function (res) {
         setBusy(false);
+        // Every branch MUST end with either a recorded scan OR an alert — the
+        // "0 erreur mais 0 scan" case must never happen silently.
         if (res && res.success) {
           setHasScan(true);
           setUrl(res.scan_url || null);
           if (props.onUploaded) props.onUploaded(res);
         } else {
-          alert('Erreur upload: ' + ((res && res.error) || 'Échec'));
+          alert('Erreur upload: ' + ((res && res.error) || 'Échec inconnu — scan non enregistré.'));
         }
       }).catch(function (err) {
         setBusy(false);
-        alert('Erreur upload: ' + (err && err.message ? err.message : 'réseau'));
+        alert('Erreur upload: ' + (err && err.message ? err.message : 'réseau — scan non enregistré.'));
       });
     }
 
@@ -116,22 +111,39 @@
         compact ? null : React.createElement('span', null, 'Voir le scan')
       ));
     } else if (canUpload) {
-      children.push(React.createElement('button', {
-        key: 'up', onClick: handlePick, disabled: busy, title: 'Joindre un scan',
-        style: Object.assign({}, btnBase, { color: 'var(--gray-400, #888)' }),
+      // WebKit/Safari closes the native picker when it's opened via a JS
+      // `input.click()` on a `display:none` input. The robust fix is a native
+      // <label> that CONTAINS the <input> → clicking the label opens the picker
+      // natively, no JS .click() involved. The input is rendered but visually
+      // hidden WITHOUT display:none (sr-only style) so WebKit keeps it usable.
+      // The input is a CHILD of the label → no id collision between the many
+      // ScanAttachmentButton rows in a list; each label opens its OWN input.
+      children.push(React.createElement('label', {
+        key: 'up',
+        title: 'Joindre un scan',
+        // A <label> cannot be `disabled`; during upload we neutralize it via
+        // pointer-events + dimmed style instead.
+        onClick: function (e) { if (e) e.stopPropagation(); },
+        style: Object.assign({}, btnBase, {
+          color: 'var(--gray-400, #888)',
+          pointerEvents: busy ? 'none' : 'auto',
+          opacity: busy ? 0.6 : 1,
+        }),
       },
         React.createElement('i', { className: busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paperclip' }),
-        compact ? null : React.createElement('span', null, busy ? 'Envoi…' : 'Joindre')
+        compact ? null : React.createElement('span', null, busy ? 'Envoi…' : 'Joindre'),
+        React.createElement('input', {
+          type: 'file', accept: SAB_ACCEPT, onChange: handleFile, disabled: busy,
+          // Visually hidden but NOT display:none (WebKit picker reliability).
+          style: {
+            position: 'absolute', width: 1, height: 1, padding: 0, margin: -1,
+            overflow: 'hidden', clip: 'rect(0,0,0,0)', clipPath: 'inset(50%)',
+            border: 0, opacity: 0,
+          },
+        })
       ));
     } else {
       children.push(React.createElement('span', { key: 'none', style: { color: 'var(--gray-400, #bbb)', fontSize: 12 } }, '—'));
-    }
-
-    if (canUpload) {
-      children.push(React.createElement('input', {
-        key: 'input', ref: fileRef, type: 'file', accept: SAB_ACCEPT,
-        style: { display: 'none' }, onChange: handleFile,
-      }));
     }
 
     return React.createElement('span', { style: { whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 } }, children);

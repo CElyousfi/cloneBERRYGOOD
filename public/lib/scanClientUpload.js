@@ -27,6 +27,42 @@
 
   var SCU_Utils = (typeof window !== 'undefined' && window.ScanAttachmentUtils) || null;
 
+  // Hard ceiling on the direct-to-Storage PUT. On WebKit/Safari a blocked
+  // upload (CORS preflight stuck, network silently dropped) can leave the
+  // ref.put() promise pending FOREVER → the UI shows "Envoi…" with no error
+  // and no scan ("0 erreur mais 0 scan"). The timeout guarantees a hard,
+  // explicit failure that propagates to the UI.
+  var SCU_UPLOAD_TIMEOUT_MS = 90000;
+
+  /**
+   * Wraps a promise so it rejects if it doesn't settle within `ms`.
+   * @param {Promise<any>} promise
+   * @param {number} ms
+   * @param {string} message
+   * @returns {Promise<any>}
+   */
+  function withTimeout(promise, ms, message) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var timer = setTimeout(function () {
+        if (done) return;
+        done = true;
+        reject(new Error(message));
+      }, ms);
+      Promise.resolve(promise).then(function (value) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve(value);
+      }, function (err) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+  }
+
   /**
    * True if the Firebase Storage compat SDK is available.
    * @returns {boolean}
@@ -54,7 +90,13 @@
     // octet-stream → without it the stored object has no usable contentType and
     // the server-side MIME enforcement (CF upload-attachment) would reject it.
     var contentType = (file.type && file.type !== '') ? file.type : SCU_Utils.mimeFromFilename(filename);
-    return ref.put(file, { contentType: contentType }).then(function () {
+    // Wrap the (resumable) PUT in a hard timeout so a stuck upload never hangs
+    // the UI silently. The contentType handling above is unchanged.
+    return withTimeout(
+      ref.put(file, { contentType: contentType }),
+      SCU_UPLOAD_TIMEOUT_MS,
+      'Upload bloqué — vérifiez la connexion ou réessayez.'
+    ).then(function () {
       return { scan_path: scanPath, filename: filename };
     });
   }
@@ -87,7 +129,14 @@
           filename: args.filename,
           uploaded_by: args.uploaded_by || {},
         }),
-      }).then(function (r) { return r.json(); });
+      }).then(function (r) {
+        // Never let a non-JSON / HTTP-error response slip through silently:
+        // if the body can't be parsed, build an explicit failure object so the
+        // UI always reports something ("0 erreur mais 0 scan" must not happen).
+        return r.json().then(function (j) { return j; }, function () {
+          return { success: false, error: 'Réponse serveur invalide (HTTP ' + r.status + ').' };
+        });
+      });
     });
   }
 
