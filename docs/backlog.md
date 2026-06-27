@@ -1026,3 +1026,19 @@ sur les boutons Valider / Ne pas valider (sur la vue de fond, par équipe — in
   AUCUN nouveau calcul backend, AUCUNE migration, AUCUNE logique de validation touchée.
 Cycle dev→QA→preview→smoke→deploy gaté. À développer APRÈS validation du smoke brique scan.
 Gated : oui (deploy).
+
+## [ ] ITEM (UI scan/PJ — après bouclage stock) — 3 demandes
+Demandes DG 2026-06-27 (après mise en service du scan unifié). Front, à développer après le
+bouclage stock.
+1. **REMPLACER une pièce jointe (PRIORITAIRE)** : lacune actuelle = mécanisme create-only
+   (storage.rules `update,delete:false` ; upload-attachment écrit scan_path mais ne remplace
+   pas). Besoin : pouvoir re-joindre un scan sur une entité qui en a déjà un (mauvais fichier,
+   meilleure version). Approche sans delete : uploader le nouveau fichier (nouveau path
+   horodaté) + repointer scan_path/scan_url sur le doc (l'ancien objet reste orphelin →
+   nettoyage admin ultérieur, ou ajouter un `allow delete` ciblé au propriétaire). Ne bloque
+   PAS le backfill (le dry-run permet de repérer une erreur d'appariement avant écriture).
+2. **PDF côte à côte** : afficher 2 PDF/scans côte à côte (ex. BDC ↔ facture, ou 2 versions)
+   pour comparaison visuelle.
+3. **Lisibilité de la modale** (détail/viewer) : améliorer la lisibilité (taille, contraste,
+   mise en page) de la modale de visualisation.
+Gated : oui (deploy).
