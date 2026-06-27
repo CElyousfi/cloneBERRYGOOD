@@ -138,6 +138,10 @@
       children.push(React.createElement('label', {
         key: 'up',
         title: 'Joindre un scan',
+        // Exclure ce déclencheur du "Fullscreen auto" : sur Safari, requestFullscreen
+        // déclenché sur le même geste que l'ouverture du picker tue le picker.
+        // Le handler onInteraction (app.jsx) ignore tout clic sous [data-no-fullscreen].
+        'data-no-fullscreen': '',
         // A <label> cannot be `disabled`; during upload we neutralize it via
         // pointer-events + dimmed style instead.
         onClick: function (e) {
@@ -146,27 +150,40 @@
         style: Object.assign({}, btnBase, {
           color: 'var(--gray-400, #888)',
           pointerEvents: busy ? 'none' : 'auto',
-          opacity: busy ? 0.6 : 1
+          opacity: busy ? 0.6 : 1,
+          // Overlay input réellement dimensionné (cf. ci-dessous) → besoin d'un
+          // contexte de positionnement et d'un clip propre du débordement.
+          position: 'relative',
+          overflow: 'hidden',
+          minWidth: compact ? 24 : undefined,
+          minHeight: compact ? 24 : undefined,
+          justifyContent: compact ? 'center' : undefined
         })
       }, React.createElement('i', {
         className: busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-paperclip'
       }), compact ? null : React.createElement('span', null, busy ? 'Envoi…' : 'Joindre'), React.createElement('input', {
+        // key stable → pas de remount React qui casserait le geste picker.
+        key: 'file',
         type: 'file',
         accept: SAB_ACCEPT,
         onChange: handleFile,
         disabled: busy,
-        // Visually hidden but NOT display:none (WebKit picker reliability).
+        'data-no-fullscreen': '',
+        // Overlay transparent qui couvre TOUTE la surface du label. PAS de
+        // clip/clipPath/width:1px (WebKit traite ces inputs comme non-interactables
+        // → picker tué). L'input transparent reçoit le clic, visuel inchangé.
         style: {
           position: 'absolute',
-          width: 1,
-          height: 1,
-          padding: 0,
-          margin: -1,
-          overflow: 'hidden',
-          clip: 'rect(0,0,0,0)',
-          clipPath: 'inset(50%)',
+          top: 0,
+          left: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0,
+          cursor: 'pointer',
+          fontSize: 0,
           border: 0,
-          opacity: 0
+          padding: 0,
+          margin: 0
         }
       })));
     } else {

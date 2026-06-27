@@ -194,11 +194,25 @@ async function runOnBrowser(launcher, name, url) {
       setTimeout(function () {
         const labels = container.querySelectorAll('label');
         out.labels = labels.length;
+        out.labelNoFs = 0; out.inputNoFs = 0; out.overlayOk = 0; out.clipped = 0;
         labels.forEach(function (lab) {
+          if (lab.hasAttribute('data-no-fullscreen')) out.labelNoFs += 1;
           const inp = lab.querySelector('input[type=file]');
           if (inp) {
             out.childInputs += 1;
-            if (getComputedStyle(inp).display === 'none') out.displayNone += 1;
+            const cs = getComputedStyle(inp);
+            if (cs.display === 'none') out.displayNone += 1;
+            if (inp.hasAttribute('data-no-fullscreen')) out.inputNoFs += 1;
+            // Overlay réellement dimensionné : 100% x 100%, position absolute,
+            // PAS de clip/clipPath (qui rendrait l'input non-interactable sur WebKit).
+            const noClip = (cs.clip === 'auto' || cs.clip === '') &&
+              (cs.clipPath === 'none' || cs.clipPath === '');
+            // Overlay couvre la surface du label (tolérance sub-pixel).
+            const covers = Math.abs(parseFloat(cs.width) - lab.clientWidth) <= 1.5 &&
+              Math.abs(parseFloat(cs.height) - lab.clientHeight) <= 1.5 &&
+              lab.clientWidth > 0 && lab.clientHeight > 0;
+            if (cs.position === 'absolute' && covers && noClip) out.overlayOk += 1;
+            if (!noClip) out.clipped += 1;
           }
         });
         // Cliquer le 2e label doit cibler/focuser SON input (pas celui du 1er).
@@ -219,6 +233,10 @@ async function runOnBrowser(launcher, name, url) {
   ok(labelCheck.labels === 2, `2 boutons « Joindre » rendus comme <label> (got ${labelCheck.labels})`);
   ok(labelCheck.childInputs === 2, `chaque <label> contient son <input type=file> (got ${labelCheck.childInputs})`);
   ok(labelCheck.displayNone === 0, `aucun input file en display:none (got ${labelCheck.displayNone})`);
+  ok(labelCheck.labelNoFs === 2, `chaque <label> « Joindre » porte data-no-fullscreen (got ${labelCheck.labelNoFs})`);
+  ok(labelCheck.inputNoFs === 2, `chaque <input> file porte data-no-fullscreen (got ${labelCheck.inputNoFs})`);
+  ok(labelCheck.clipped === 0, `aucun input file clippé (clip/clipPath) (got ${labelCheck.clipped})`);
+  ok(labelCheck.overlayOk === 2, `input overlay 100%×100% non clippé sur la surface du label (got ${labelCheck.overlayOk})`);
   ok(labelCheck.focusedAfterClick === true, 'le <label> référence/active SON input (label.control === input)');
 
   await browser.close();

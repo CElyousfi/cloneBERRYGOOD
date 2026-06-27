@@ -65291,7 +65291,11 @@ ${rejetHtml}
                     }
                 };
 
-                const onInteraction = () => {
+                const onInteraction = (e) => {
+                    // Exclure le déclencheur du picker "Joindre un scan" : sur Safari,
+                    // appeler requestFullscreen sur le même geste que l'ouverture du
+                    // picker tue le picker. Voir public/components/ScanAttachmentButton.jsx.
+                    if (e && e.target && e.target.closest && e.target.closest('[data-no-fullscreen]')) return;
                     if (wantFullscreen) tryFullscreen();
                 };
 
