@@ -66153,6 +66153,14 @@ ${rejetHtml}
                 baseNavItems.push({ id: 'station_historique', label: 'Historique Irrigation', icon: 'fa-clock-rotate-left' });
             }
 
+            // Onglet « Engrais & Pesticides » (conso/Ha valorisée PMP) — visible
+            // UNIQUEMENT pour DG, Finance et Chef de Ferme. La vraie barrière est
+            // backend (action conso-valorisee : 403 + filtre ferme imposé). Le
+            // masquage nav est un confort côté client.
+            if (currentProfile === 'dg' || currentProfile === 'finance' || isChef) {
+                baseNavItems.push({ id: 'agro_conso_valorisee', label: 'Engrais & Pesticides', icon: 'fa-coins' });
+            }
+
             // Add Evolution tab for all users
             const withEvolution = [...baseNavItems, { id: 'evolution', label: 'Évolutions', icon: 'fa-rocket' }];
 
@@ -66571,6 +66579,7 @@ ${rejetHtml}
                                 {renderTab('agro_dashboard', AgroDashboardTab, { data, getAlias }, 'Agro Dashboard')}
                                 {renderTab('agro_fertilisation', AgroFertilisationTab, { data, getAlias, getFerme }, 'Fertilisation')}
                                 {renderTab('agro_phyto', AgroPhytoTab, { data, getAlias, getFerme }, 'Phyto')}
+                                {currentTab === 'agro_conso_valorisee' && window.ConsoValoriseeTab && <TabErrorBoundary name="Engrais & Pesticides" key="conso-valorisee-eb">{React.createElement(window.ConsoValoriseeTab, { getAlias, currentProfile, fermesDispo: ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'] })}</TabErrorBoundary>}
                                 {renderTab('agro_irrigation', AgroIrrigationTab, { data, getAlias, getFerme }, 'Irrigation')}
                                 {renderTab('agro_composition', AgroCompositionTab, { data }, 'Composition')}
                                 {renderTab('agro_parcelles', AgroParcellesTab, { data, getAlias, updateAlias, parcAliases, parcFermes, updateFerme }, 'Parcelles')}

@@ -26,6 +26,8 @@ const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const { buildArticleHistoryIndex, sliceArticleHistory } = require("./lib/stock/articleHistoryIndex");
 const pmpDetailLib = require("./lib/stock/pmpDetail");
+const consoValorisationLib = require("./lib/valorisation/consoValorisation");
+const consoAccessControl = require("./lib/valorisation/accessControl");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const whatsappService = require("./whatsappService");
@@ -7963,6 +7965,97 @@ exports.stockManagement = functions
         articles.sort((a, b) => (a.nom || "").localeCompare(b.nom || "", "fr", { sensitivity: "base" }));
         if (q) { const ql = q.toLowerCase(); articles = articles.filter(a => a.nom.toLowerCase().includes(ql)); }
         return res.json({ success: true, articles });
+      }
+
+      // --- CONSO VALORISÉE AU PMP (lecture seule) -------------------------
+      // État CONSOMMATION par parcelle / Ha / famille (engrais|pesticide|autre),
+      // VALORISÉE au PMP grand livre (articles_catalog.prix_pmp), depuis le
+      // 01/07/2025. AUCUNE écriture, AUCUN recalcul du PMP : on lit le mirror
+      // de conso + le PMP catalogue et on agrège en mémoire (module pur).
+      // Périmètre = consommation SAISIE uniquement (plancher) — cf. bandeau UI.
+      if (action === "conso-valorisee") {
+        const DEFAULT_SINCE = "2025-07-01";
+        // 0) CONTRÔLE D'ACCÈS — barrière sécurité. Le périmètre ferme est IMPOSÉ
+        //    serveur via le profil de l'appelant (users/{uid}). Un Chef de Ferme
+        //    est forcé sur SA ferme : tout param ?ferme= incompatible est ignoré.
+        let callerProfile = {};
+        if (authUser && authUser.uid && authUser.uid !== "admin-cli") {
+          const uDoc = await db_firestore.collection("users").doc(authUser.uid).get();
+          callerProfile = uDoc.exists ? (uDoc.data() || {}) : {};
+        } else if (authUser && authUser.uid === "admin-cli") {
+          // Accès CLI admin-secret : périmètre global.
+          callerProfile = { profileId: "dg", role: "admin" };
+        }
+        const fermeDemandee = req.query.ferme;
+        const perim = consoAccessControl.resolvePerimetre(callerProfile, fermeDemandee);
+        if (!perim.autorise) {
+          return res.status(403).json({ success: false, error: perim.error || "Accès non autorisé" });
+        }
+        // Périmètre vide (chef sans ferme résolue) : on renvoie un agrégat vide.
+        if (perim.ferme_filtre === "__none__") {
+          return res.json({
+            success: true,
+            role: perim.role,
+            perimetre_ferme: perim.perimetre_ferme,
+            since: DEFAULT_SINCE,
+            campagne: "2025/2026",
+            dateExtraction: new Date().toLocaleDateString("fr-FR"),
+            parcelles: [], par_ferme: [], par_culture: [],
+            total: { total_engrais_mad: 0, total_pest_mad: 0, total_autre_mad: 0, total_mad: 0, nb_parcelles: 0 },
+            couverture: { nb_articles_total: 0, nb_valorises: 0, pct_articles: 0, qte_totale: 0, qte_valorisee: 0, pct_quantite: 0 },
+            articles_non_valorises: [],
+          });
+        }
+
+        // 1) Filtres période + culture (paramètres optionnels).
+        const since = (req.query.since && /^\d{4}-\d{2}-\d{2}$/.test(req.query.since)) ? req.query.since : DEFAULT_SINCE;
+        const culture = req.query.culture && String(req.query.culture).trim() ? String(req.query.culture).trim() : undefined;
+        const consoFilters = { weekStart: since };
+        if (culture) consoFilters.culture = culture;
+        // Filtre ferme IMPOSÉ par le périmètre (null = toutes fermes).
+        if (perim.ferme_filtre) consoFilters.ferme = perim.ferme_filtre;
+
+        // 2) Lignes de conso depuis le mirror.
+        const consoRows = await getConsommationRows(consoFilters);
+        // 3) Map de PMP par canon(nom) depuis articles_catalog (active).
+        const canon = consoValorisationLib.canon;
+        const catSnap = await db_firestore.collection("articles_catalog").get();
+        const pmpMap = {};
+        catSnap.forEach((doc) => {
+          const a = doc.data() || {};
+          if (!a.nom) return;
+          const p = parseFloat(a.prix_pmp);
+          if (!isFinite(p)) return;
+          const key = canon(a.nom);
+          // Garde l'entrée au prix_pmp le plus élevé si collision sur le canon
+          // (préfère un vrai prix à un placeholder <=1).
+          if (!pmpMap[key] || p > pmpMap[key].pmp) {
+            pmpMap[key] = { pmp: p, source: a.prix_pmp_source || "pmp" };
+          }
+        });
+        // 4) Agrégation pure.
+        const agg = consoValorisationLib.aggregateConsoValorisee(consoRows, pmpMap);
+        // Liste à plat des articles non valorisés (toutes parcelles), dédoublonnée.
+        const nonValMap = {};
+        for (const p of agg.parcelles) {
+          for (const a of (p.articles_non_valorises || [])) {
+            const k = canon(a.article) + "|" + (a.unite || "");
+            if (!nonValMap[k]) nonValMap[k] = { article: a.article, unite: a.unite, famille: a.famille, source_prix: a.source_prix, quantite: 0 };
+            nonValMap[k].quantite += a.quantite || 0;
+          }
+        }
+        const articles_non_valorises = Object.values(nonValMap);
+        return res.json({
+          success: true,
+          role: perim.role,
+          perimetre_ferme: perim.perimetre_ferme,
+          since,
+          culture: culture || null,
+          campagne: "2025/2026",
+          dateExtraction: new Date().toLocaleDateString("fr-FR"),
+          articles_non_valorises,
+          ...agg,
+        });
       }
 
       if (action === "update-article" && req.method === "POST") {

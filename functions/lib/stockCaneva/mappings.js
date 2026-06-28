@@ -194,6 +194,13 @@ const PARCELLE_MAP = {
   'CASCADE MYRTILLE S8-1': 'S8 Corina',
   '1/Σ AVOCAT': 'Avocat F2',
   'Σ AVOCAT   F-06': 'Avocat F6',
+  // Libellés conso « Engrais & Pesticides » non encore normalisés (variantes
+  // d'espaces / casse rencontrées dans sql_mirror_consommation).
+  'BREEZE S14 F5': 'BREEZE S14 F5',
+  'CASCADE S13 F5': 'CASCADE S13 F5',
+  'Σ AVOCAT F-06': 'Avocat F6',
+  'Σ AVOCAT   F-02': 'Avocat F2',
+  'S9 REYNA': 'S9 Reyna',
 }
 
 /** Parcelle (system name after PARCELLE_MAP) -> CPC variety */
