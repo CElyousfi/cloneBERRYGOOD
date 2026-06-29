@@ -15284,6 +15284,205 @@ exports.caisseManagement = functions
   });
 
 // =============================================
+// PRIMES FIXES — gestion gated (RH/DG) du registre ouvrier (prime de fonction)
+// =============================================
+//
+// SÉCURITÉ CRITIQUE : écriture de PAIE. Toutes les écritures vers
+// ouvriers_registry passent EXCLUSIVEMENT par cette Cloud Function. Le rôle
+// est résolu côté SERVEUR (resolveCallerRole + users/{uid}.role), jamais
+// depuis le body. Seuls profileId ∈ {rh, dg} OU role système 'admin' sont
+// autorisés ; tout autre profil (caporal, chef, magasinier...) reçoit 403
+// AVANT toute lecture/écriture.
+//
+// Sémantique effectiveFrom + historisation : cf. functions/lib/primes/*.
+const { canManagePrimes, forbiddenReason } = require("./lib/primes/primesAccess");
+const { normalizeMatricule, buildImportPreview } = require("./lib/primes/primesImport");
+const { buildPrimeUpdate } = require("./lib/primes/primeHistory");
+
+exports.primesManagement = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    // ========== AUTH + GATING RÔLE (avant toute lecture/écriture) ==========
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    // Identité résolue SERVEUR : profileId via resolveCallerRole, role système
+    // via users/{uid}.role (comme la caisse). Jamais depuis le body client.
+    const profileId = await resolveCallerRole(authUser);
+    let systemRole = "";
+    let userName = authUser.name || authUser.email || "";
+    try {
+      const userDoc = await db_firestore.collection("users").doc(authUser.uid).get();
+      if (userDoc.exists) {
+        const ud = userDoc.data();
+        systemRole = ud.role || "";
+        userName = ud.fullName || ud.name || userName;
+      }
+    } catch (e) {
+      systemRole = "";
+    }
+
+    if (!canManagePrimes({ profileId, role: systemRole })) {
+      return res.status(403).json({ success: false, error: forbiddenReason() });
+    }
+
+    // Identité serveur figée pour l'audit (jamais du body).
+    const actor = { uid: authUser.uid, profileId: profileId || "", name: userName };
+    const now = Date.now();
+    const action = req.query.action || (req.body && req.body.action) || "";
+    const REGISTRY = db_firestore.collection("ouvriers_registry");
+
+    try {
+      // ---------- save-prime : prime de fonction (DH/jour) d'un ouvrier ----------
+      if (action === "save-prime" && req.method === "POST") {
+        const matricule = normalizeMatricule(req.body && req.body.matricule);
+        if (!matricule) return res.status(400).json({ success: false, error: "matricule requis" });
+        const montant = Number(req.body && req.body.montant) || 0;
+        const effectiveFrom = String((req.body && req.body.effectiveFrom) || new Date().toISOString().slice(0, 10));
+
+        const ref = REGISTRY.doc(matricule);
+        const snap = await ref.get();
+        const current = snap.exists ? snap.data() : null;
+        const upd = buildPrimeUpdate({ current, montant, effectiveFrom, actor, now });
+        // Conserve matricule/nom si nouveau doc.
+        upd.matricule = matricule;
+        if (!current || !current.nom) {
+          const nom = String((req.body && req.body.nom) || "").trim();
+          if (nom) upd.nom = nom;
+        }
+        await ref.set(upd, { merge: true });
+        return res.json({ success: true, matricule, primeFonctionJournaliere: montant, effectiveFrom });
+      }
+
+      // ---------- set-declare : déclaration ouvrier + baseline ancienneté ----------
+      if (action === "set-declare" && req.method === "POST") {
+        const matricule = normalizeMatricule(req.body && req.body.matricule);
+        if (!matricule) return res.status(400).json({ success: false, error: "matricule requis" });
+        const payload = { matricule, updatedAt: now, updatedBy: actor };
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "declare")) {
+          payload.declare = req.body.declare === true;
+          payload.declareSource = String((req.body && req.body.declareSource) || "manual");
+        }
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "baselineJours")) {
+          payload.baselineJours = Number(req.body.baselineJours) || 0;
+        }
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "baselineDate")) {
+          payload.baselineDate = String(req.body.baselineDate || "");
+        }
+        const nom = String((req.body && req.body.nom) || "").trim();
+        if (nom) payload.nom = nom;
+        await REGISTRY.doc(matricule).set(payload, { merge: true });
+        return res.json({ success: true, matricule });
+      }
+
+      // ---------- import-declares : batch "liste déclarés" ----------
+      if (action === "import-declares" && req.method === "POST") {
+        const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
+        if (!rows) return res.status(400).json({ success: false, error: "rows[] requis" });
+        let ok = 0;
+        for (let i = 0; i < rows.length; i += 400) {
+          const slice = rows.slice(i, i + 400);
+          const batch = db_firestore.batch();
+          for (const row of slice) {
+            const matricule = normalizeMatricule(row && row.matricule);
+            if (!matricule) continue;
+            const payload = { matricule, declare: true, declareSource: "import", updatedAt: now, updatedBy: actor };
+            const nom = String((row && row.nom) || "").trim();
+            if (nom) payload.nom = nom;
+            batch.set(REGISTRY.doc(matricule), payload, { merge: true });
+            ok++;
+          }
+          await batch.commit();
+        }
+        return res.json({ success: true, imported: ok });
+      }
+
+      // ---------- import-baseline : batch "baseline jours" ----------
+      if (action === "import-baseline" && req.method === "POST") {
+        const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
+        if (!rows) return res.status(400).json({ success: false, error: "rows[] requis" });
+        let ok = 0;
+        for (let i = 0; i < rows.length; i += 400) {
+          const slice = rows.slice(i, i + 400);
+          const batch = db_firestore.batch();
+          for (const row of slice) {
+            const matricule = normalizeMatricule(row && row.matricule);
+            if (!matricule) continue;
+            const payload = {
+              matricule,
+              baselineJours: Number((row && row.baselineJours)) || 0,
+              baselineDate: String((row && row.baselineDate) || ""),
+              updatedAt: now, updatedBy: actor,
+            };
+            const nom = String((row && row.nom) || "").trim();
+            if (nom) payload.nom = nom;
+            batch.set(REGISTRY.doc(matricule), payload, { merge: true });
+            ok++;
+          }
+          await batch.commit();
+        }
+        return res.json({ success: true, imported: ok });
+      }
+
+      // ---------- import-primes : dry-run (preview) / apply ----------
+      if (action === "import-primes" && req.method === "POST") {
+        const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
+        const mode = String((req.body && req.body.mode) || "dry-run");
+        if (!rows) return res.status(400).json({ success: false, error: "rows[] requis" });
+
+        // Liste des matricules registry existants (pour toCreate vs toUpdate).
+        const regSnap = await REGISTRY.get();
+        const registryMatricules = regSnap.docs.map(d => d.id);
+        const preview = buildImportPreview(rows, registryMatricules);
+
+        if (mode === "dry-run") {
+          return res.json({
+            success: true, mode: "dry-run",
+            toCreate: preview.toCreate, toUpdate: preview.toUpdate,
+            unmatched: preview.unmatched, collisions: preview.collisions,
+            counts: {
+              toCreate: preview.toCreate.length, toUpdate: preview.toUpdate.length,
+              unmatched: preview.unmatched.length, collisions: preview.collisions.length,
+            },
+          });
+        }
+
+        // mode apply : applique UNIQUEMENT les lignes valides non ambiguës.
+        const effectiveFrom = String((req.body && req.body.effectiveFrom) || new Date().toISOString().slice(0, 10));
+        const applicable = preview.toCreate.concat(preview.toUpdate);
+        let ok = 0;
+        for (let i = 0; i < applicable.length; i += 400) {
+          const slice = applicable.slice(i, i + 400);
+          const refs = slice.map(r => REGISTRY.doc(r.matricule));
+          const snaps = await Promise.all(refs.map(r => r.get()));
+          const batch = db_firestore.batch();
+          slice.forEach((r, idx) => {
+            const current = snaps[idx].exists ? snaps[idx].data() : null;
+            const upd = buildPrimeUpdate({ current, montant: r.montant, effectiveFrom, actor, now });
+            upd.matricule = r.matricule;
+            batch.set(refs[idx], upd, { merge: true });
+            ok++;
+          });
+          await batch.commit();
+        }
+        return res.json({
+          success: true, mode: "apply", applied: ok,
+          skipped: { unmatched: preview.unmatched.length, collisions: preview.collisions.length },
+        });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue" });
+    } catch (err) {
+      console.error("Erreur primesManagement:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // WhatsApp — Firestore trigger on alerts + admin config API
 // =============================================
 

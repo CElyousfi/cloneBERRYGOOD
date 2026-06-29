@@ -481,6 +481,7 @@
             { id: 'primes', label: 'Primes', icon: 'fa-award', rhOnly: true },
             { id: 'chef_agronomie', label: 'Agronomie', icon: 'fa-seedling' },
             { id: 'paie', label: 'Paie', icon: 'fa-money-bill-wave', rhOnly: true },
+            { id: 'primes_fixes', label: 'Primes Fixes', icon: 'fa-award', rhOnly: true },
             { id: 'parametres', label: 'Paramètres', icon: 'fa-sliders', rhOnly: true },
             { id: 'chef_production', label: 'Production', icon: 'fa-industry', chefOnly: true },
             { id: 'chef_tracking', label: 'Suivi Commandes', icon: 'fa-route', chefOnly: true },
@@ -24221,17 +24222,33 @@ ${rejetHtml}
             // de doc parasite à lettres en doublon. Idempotent sur une clé déjà numérique.
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
 
+            // SÉCURITÉ PAIE : toutes les écritures vers ouvriers_registry passent
+            // EXCLUSIVEMENT par la Cloud Function gated /api/primes (rôle RH/DG
+            // vérifié côté serveur). Aucune écriture Firestore directe côté client.
+            const callPrimesCF = async (action, body) => {
+                const token = (firebaseAuth && firebaseAuth.currentUser) ? await firebaseAuth.currentUser.getIdToken() : null;
+                const resp = await fetch('/api/primes?action=' + action, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+                    body: JSON.stringify(body || {}),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.success) {
+                    throw new Error(data.error || ('Erreur ' + resp.status));
+                }
+                return data;
+            };
+
             const toggleDeclare = async (matricule, nextVal) => {
-                const db = firebase.firestore();
                 const docId = numKey(matricule);
                 const prev = registry[docId] || { matricule: docId };
                 setRegistry(prevReg => ({ ...prevReg, [docId]: { ...prev, declare: nextVal, declareSource: 'manual' } }));
                 try {
-                    await db.collection('ouvriers_registry').doc(docId).set({
+                    // Écriture via Cloud Function gated (RH/DG), jamais Firestore direct.
+                    await callPrimesCF('set-declare', {
                         matricule: docId, declare: nextVal, declareSource: 'manual',
                         nom: prev.nom || pointageMap.get(matricule)?.nom || '',
-                        updatedAt: Date.now(),
-                    }, { merge: true });
+                    });
                     // Cache devenu obsolète → la prochaine ouverture relira le registre.
                     __PaieDataCache.invalidate('paie:registry');
                 } catch (e) {
@@ -24244,17 +24261,17 @@ ${rejetHtml}
             // Prime de fonction (DH/jour) par ouvrier — persistée dans ouvriers_registry
             // sous le champ primeFonctionJournaliere (relu par le calcul de paie).
             const savePrimeFonction = async (matricule, val) => {
-                const db = firebase.firestore();
                 const docId = numKey(matricule);
                 const prev = registry[docId] || { matricule: docId };
                 const num = Number(val) || 0;
                 setRegistry(prevReg => ({ ...prevReg, [docId]: { ...prev, primeFonctionJournaliere: num } }));
                 try {
-                    await db.collection('ouvriers_registry').doc(docId).set({
-                        matricule: docId, primeFonctionJournaliere: num,
+                    // Écriture via Cloud Function gated (RH/DG) : audit + historisation serveur.
+                    await callPrimesCF('save-prime', {
+                        matricule: docId, montant: num,
+                        effectiveFrom: new Date().toISOString().slice(0, 10),
                         nom: prev.nom || pointageMap.get(matricule)?.nom || '',
-                        updatedAt: Date.now(),
-                    }, { merge: true });
+                    });
                     __PaieDataCache.invalidate('paie:registry');
                 } catch (e) {
                     console.error('savePrimeFonction:', e);
@@ -24285,23 +24302,23 @@ ${rejetHtml}
                         const ws = wb.Sheets[wb.SheetNames[0]];
                         const xlsxRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
                         const db = firebase.firestore();
-                        let batch = db.batch(); let count = 0; let ok = 0;
                         const newRegistry = { ...registry };
+                        // Construit les rows à envoyer à la Cloud Function gated (RH/DG).
+                        const rows = [];
                         for (const row of xlsxRows) {
                             const mat = String(row['Matricule'] || row['matricule'] || row['MATRICULE'] || '').trim();
                             if (!mat) continue;
                             const nom = String(row['Nom'] || row['NOM'] || row['nom'] || '').trim();
                             // Doc id NUMÉRIQUE (collection keyée numérique) : évite un doc à lettres en doublon.
                             const docId = numKey(mat);
-                            const ref = db.collection('ouvriers_registry').doc(docId);
+                            rows.push({ matricule: mat, nom });
                             const payload = { matricule: docId, declare: true, declareSource: 'import', updatedAt: Date.now() };
                             if (nom) payload.nom = nom;
-                            batch.set(ref, payload, { merge: true });
                             newRegistry[docId] = { ...(newRegistry[docId] || {}), ...payload };
-                            count++; ok++;
-                            if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
                         }
-                        if (count > 0) await batch.commit();
+                        // Écriture registre via Cloud Function uniquement.
+                        const res = await callPrimesCF('import-declares', { rows });
+                        const ok = res.imported || 0;
                         const metaPayload = { lastDeclaresImportAt: Date.now(), lastDeclaresImportCount: ok, lastDeclaresImportFile: file.name };
                         await db.collection('app_settings').doc('paie_import_meta').set(metaPayload, { merge: true });
                         __PaieDataCache.invalidate('paie:registry');
@@ -24326,8 +24343,9 @@ ${rejetHtml}
                         const ws = wb.Sheets[wb.SheetNames[0]];
                         const xlsxRows = XLSX.utils.sheet_to_json(ws, { defval: '' });
                         const db = firebase.firestore();
-                        let batch = db.batch(); let count = 0; let ok = 0;
                         const newRegistry = { ...registry };
+                        // Construit les rows à envoyer à la Cloud Function gated (RH/DG).
+                        const rows = [];
                         for (const row of xlsxRows) {
                             const mat = String(row['Matricule'] || row['matricule'] || '').trim();
                             if (!mat) continue;
@@ -24336,15 +24354,14 @@ ${rejetHtml}
                             const nom = String(row['Nom'] || row['nom'] || '').trim();
                             // Doc id NUMÉRIQUE (collection keyée numérique) : évite un doc à lettres en doublon.
                             const docId = numKey(mat);
-                            const ref = db.collection('ouvriers_registry').doc(docId);
+                            rows.push({ matricule: mat, baselineJours: jours, baselineDate: cutoff, nom });
                             const payload = { matricule: docId, baselineJours: jours, baselineDate: cutoff, updatedAt: Date.now() };
                             if (nom) payload.nom = nom;
-                            batch.set(ref, payload, { merge: true });
                             newRegistry[docId] = { ...(newRegistry[docId] || {}), ...payload };
-                            count++; ok++;
-                            if (count >= 400) { await batch.commit(); batch = db.batch(); count = 0; }
                         }
-                        if (count > 0) await batch.commit();
+                        // Écriture registre via Cloud Function uniquement.
+                        const res = await callPrimesCF('import-baseline', { rows });
+                        const ok = res.imported || 0;
                         const metaPayload = { lastBaselineImportAt: Date.now(), lastBaselineImportCount: ok, lastBaselineImportFile: file.name };
                         await db.collection('app_settings').doc('paie_import_meta').set(metaPayload, { merge: true });
                         // Baseline touche les bornes d'ancienneté → invalider aussi le pointage en cache.
@@ -66481,6 +66498,7 @@ ${rejetHtml}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
+                                {renderTab('primes_fixes', window.PrimesFixesTab, {}, 'Primes Fixes')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
                                 {renderTab('suivi', SuiviTab, { data }, 'Suivi')}
