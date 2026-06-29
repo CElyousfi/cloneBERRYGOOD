@@ -136,6 +136,36 @@ test('fermeDemandee non-string (objet/array) pour un dg → all, pas d\'erreur',
   assert.equal(rarr.ferme_filtre, null);
 });
 
+// --- Non-fuite inter-fermes : le filtre appliqué == le périmètre annoncé ---
+// (régression bug « Chef F1 voit toutes les fermes » : la cause était frontend,
+//  mais on verrouille ici l'invariant backend qui garantit le cloisonnement.)
+
+test('SÉCURITÉ: chef_f1 → ferme_filtre === perimetre_ferme === F1 (jamais Avocatier/F5)', () => {
+  const r = AC.resolvePerimetre({ profileId: 'chef_f1', role: 'user' }, 'Avocatier');
+  assert.equal(r.perimetre_ferme, 'F1');
+  assert.equal(r.ferme_filtre, 'F1');
+  // Le filtre injecté dans getConsommationRows (r.Ferme === filtre) ne peut donc
+  // matcher que les lignes Ferme==='F1' : aucune parcelle Avocatier/F5 ne fuit.
+  assert.notEqual(r.ferme_filtre, 'Avocatier');
+  assert.notEqual(r.ferme_filtre, 'F5');
+});
+
+test('SÉCURITÉ: chef_avo demandant F1 → reste Avocatier (param ignoré)', () => {
+  const r = AC.resolvePerimetre({ profileId: 'chef_avo', role: 'user' }, 'F1');
+  assert.equal(r.perimetre_ferme, 'Avocatier');
+  assert.equal(r.ferme_filtre, 'Avocatier');
+});
+
+test('INVARIANT: pour tout chef autorisé, ferme_filtre === perimetre_ferme', () => {
+  ['chef_f1', 'chef_f5', 'chef_avo', 'chef_bahia'].forEach((pid) => {
+    const r = AC.resolvePerimetre({ profileId: pid, role: 'user' }, 'F5');
+    assert.equal(r.autorise, true);
+    assert.equal(r.ferme_filtre, r.perimetre_ferme,
+      pid + ' : le filtre doit être exactement le périmètre annoncé');
+    assert.notEqual(r.perimetre_ferme, 'all');
+  });
+});
+
 test('admin système → autorisé, toutes fermes', () => {
   const r = AC.resolvePerimetre({ profileId: 'magasinier', role: 'admin' }, null);
   assert.equal(r.autorise, true);

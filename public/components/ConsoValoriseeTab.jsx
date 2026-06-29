@@ -22,7 +22,9 @@
  *
  * Props :
  *   - getAlias       : (parcelle) => libellé d'affichage (optionnel)
- *   - currentProfile : profileId courant ('dg' | 'finance' | 'chef_f1' | …)
+ *   - currentProfile : profileId frontend courant — NON utilisé pour le
+ *     cloisonnement (switchable par DG/Finance sans changer le token). Le
+ *     périmètre affiché vient de la RÉPONSE serveur (d.role / d.perimetre_ferme).
  *   - fermesDispo    : liste des fermes pour le sélecteur DG/Finance
  */
 (function () {
@@ -332,10 +334,13 @@
 
   function ConsoValoriseeTab(props) {
     var getAlias = props.getAlias;
-    var currentProfile = props.currentProfile || '';
     var fermesDispo = props.fermesDispo || ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'];
-    var isChef = CVT_isChef(currentProfile);
-    var canFilterFerme = currentProfile === 'dg' || currentProfile === 'finance';
+    // NB : currentProfile (props) est un profil FRONTEND switchable (DG/Finance
+    // peuvent le changer via le menu profil) SANS changer le token Firebase. Il
+    // ne doit JAMAIS piloter le cloisonnement : le backend reste la seule barrière
+    // (resolvePerimetre lit users/{uid}.profileId du TOKEN). L'affichage du
+    // périmètre est donc piloté par la RÉPONSE serveur (d.role / d.perimetre_ferme),
+    // pas par currentProfile. Voir diagnostic item conso/Ha.
 
     var st = useState({ loading: true, error: null, data: null });
     var state = st[0]; var setState = st[1];
@@ -360,7 +365,11 @@
       setState({ loading: true, error: null, data: null });
       var filters = { since: since };
       if (culture) filters.culture = culture;
-      if (canFilterFerme && ferme && ferme !== 'all') filters.ferme = ferme;
+      // Le param ?ferme= n'est honoré par le backend que pour DG/Finance ; il est
+      // IGNORÉ (forcé sur la ferme du chef) pour un Chef. On peut donc l'envoyer
+      // sans risque : le serveur reste la barrière. On l'envoie quand une ferme
+      // précise est sélectionnée dans le sélecteur DG/Finance.
+      if (ferme && ferme !== 'all') filters.ferme = ferme;
       CVT_fetch(filters).then(function (json) {
         setState({ loading: false, error: null, data: json });
       }).catch(function (e) {
@@ -374,6 +383,18 @@
     var total = d.total || {};
     var rawParcelles = d.parcelles || [];
     var nonValList = d.articles_non_valorises || [];
+
+    // PÉRIMÈTRE IMPOSÉ PAR LE SERVEUR (jamais par currentProfile).
+    // Le rôle effectif vient de la réponse serveur (d.role), résolu depuis le
+    // TOKEN Firebase côté backend — insensible au switch de profil frontend.
+    // - role dg/finance/admin => sélecteur ferme disponible (peut filtrer/voir tout).
+    // - role chef_* => ferme VERROUILLÉE sur perimetre_ferme (jamais "Toutes").
+    // Avant la 1re réponse (data null), on ne montre PAS le sélecteur (fail-safe).
+    var serverRole = d.role;
+    var serverPerim = d.perimetre_ferme;
+    var perimResolved = serverRole != null;
+    var canFilterFerme = serverRole === 'dg' || serverRole === 'finance' || serverRole === 'admin';
+    var isChefServer = perimResolved && CVT_isChef(serverRole);
 
     // Liste des cultures disponibles (pour le filtre).
     var culturesDispo = useMemo(function () {
@@ -445,7 +466,7 @@
             React.createElement('select', { value: ferme, onChange: function (e) { setFerme(e.target.value); }, style: inputStyle },
               React.createElement('option', { value: 'all' }, 'Toutes fermes'),
               fermesDispo.map(function (f) { return React.createElement('option', { key: f, value: f }, f); })))
-          : (isChef ? React.createElement('div', { style: { fontSize: 12, color: CVT_C.textTertiary, padding: '6px 10px', background: CVT_C.surface2, borderRadius: 8 } },
+          : (isChefServer ? React.createElement('div', { style: { fontSize: 12, color: CVT_C.textTertiary, padding: '6px 10px', background: CVT_C.surface2, borderRadius: 8 } },
               React.createElement('i', { className: 'fa-solid fa-lock', style: { marginRight: 6 } }), 'Ferme : ' + perimLabel) : null),
         React.createElement('button', { onClick: loadData, disabled: state.loading, style: { padding: '7px 16px', borderRadius: 8, border: 'none', background: CVT_C.berry, color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer' } },
           React.createElement('i', { className: 'fa-solid fa-filter', style: { marginRight: 6 } }), 'Appliquer'),

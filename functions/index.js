@@ -28,6 +28,7 @@ const { buildArticleHistoryIndex, sliceArticleHistory } = require("./lib/stock/a
 const pmpDetailLib = require("./lib/stock/pmpDetail");
 const consoValorisationLib = require("./lib/valorisation/consoValorisation");
 const consoAccessControl = require("./lib/valorisation/accessControl");
+const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const whatsappService = require("./whatsappService");
@@ -88,6 +89,12 @@ async function getInvoiceByArticleIndex(db_firestore) {
     const aliases = Array.isArray(m.alias) ? m.alias : (m.alias ? [m.alias] : []);
     for (const al of aliases) {
       if (al) desigToArticle[canon(al)] = target;
+    }
+    // designation_alias : array de désignations fournisseur alternatives.
+    // Même normalisation (canon) que designation_fournisseur pour un matching identique.
+    const desigAliases = Array.isArray(m.designation_alias) ? m.designation_alias : [];
+    for (const da of desigAliases) {
+      if (da) desigToArticle[canon(da)] = target;
     }
   });
 
@@ -8012,11 +8019,25 @@ exports.stockManagement = functions
         const culture = req.query.culture && String(req.query.culture).trim() ? String(req.query.culture).trim() : undefined;
         const consoFilters = { weekStart: since };
         if (culture) consoFilters.culture = culture;
-        // Filtre ferme IMPOSÉ par le périmètre (null = toutes fermes).
-        if (perim.ferme_filtre) consoFilters.ferme = perim.ferme_filtre;
+        // NOTE: on N'INJECTE PAS perim.ferme_filtre dans getConsommationRows.
+        // Le champ Ferme du mirror vaut « BERRY GOOD Farms » sur 100% des lignes
+        // (inexploitable) : la vraie ferme est encodée dans Parcelle_Culturale.
+        // Le cloisonnement chef se fait ci-dessous par dérivation en mémoire.
 
-        // 2) Lignes de conso depuis le mirror.
-        const consoRows = await getConsommationRows(consoFilters);
+        // 2) Lignes de conso depuis le mirror (sans filtre Ferme).
+        let consoRows = await getConsommationRows(consoFilters);
+
+        // 2bis) Cloisonnement ferme FAIL-CLOSED pour un périmètre chef.
+        //   perimetre_ferme === 'all' (DG/Finance/admin) → aucune restriction,
+        //   y compris les parcelles non dérivables. Sinon (chef), on ne garde
+        //   QUE les lignes dont la ferme dérivée du libellé == son périmètre.
+        //   Une parcelle dérivée à null est EXCLUE (jamais montrée à un chef).
+        if (perim.perimetre_ferme !== 'all') {
+          const cible = perim.perimetre_ferme;
+          consoRows = consoRows.filter(
+            (r) => deriveFermeFromParcelle(r.Parcelle_Culturale) === cible
+          );
+        }
         // 3) Map de PMP par canon(nom) depuis articles_catalog (active).
         const canon = consoValorisationLib.canon;
         const catSnap = await db_firestore.collection("articles_catalog").get();
