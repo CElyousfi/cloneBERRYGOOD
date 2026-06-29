@@ -6378,7 +6378,7 @@ exports.stockManagement = functions
     const action = req.query.action || req.body?.action || "stock-dashboard";
 
     // Admin-only actions (no Firebase Auth, uses env secret)
-    const adminSecret = process.env.ADMIN_SECRET || "bgf-admin-2026";
+    const adminSecret = process.env.ADMIN_SECRET;
     if (action === "reset-email-cursor" && req.method === "POST") {
       if (req.body.secret !== adminSecret) return res.status(403).json({ success: false, error: "forbidden" });
       const { uid } = req.body;
@@ -14086,7 +14086,7 @@ exports.caisseManagement = functions
     if (req.method === "OPTIONS") return res.status(204).send("");
 
     const action = req.query.action || req.body?.action || "dashboard";
-    const adminSecret = process.env.ADMIN_SECRET || "bgf-admin-2026";
+    const adminSecret = process.env.ADMIN_SECRET;
 
     // ========== BULK IMPORT (admin-secret protected, no Firebase Auth) ==========
     if (action === "bulk-import-transactions" && req.method === "POST") {
