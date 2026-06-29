@@ -22,6 +22,7 @@ const bugTriage = require("./lib/triage/bugTriage");
 const stockMovementGuard = require("./lib/stock/movementGuard");
 const { planEncaissementWrites } = require("./lib/marcheLocalCaisse/applyEncaissements");
 const pointageValidationSM = require("./lib/pointageValidation/stateMachine");
+const { authorizeValidationAction } = require("./lib/validation/validationAccess");
 const { isImpactApplied } = require("./lib/stock/movementImpact");
 const { checkStockAvailability } = require("./lib/stock/stockGuard");
 const { buildArticleHistoryIndex, sliceArticleHistory } = require("./lib/stock/articleHistoryIndex");
@@ -5413,15 +5414,21 @@ exports.validation = functions
 
       // POST validate
       if (action === "validate") {
-        const { date, ferme, role, profileId, comment } = req.body || {};
-        if (!date || !ferme || !role) return res.status(400).json({ success: false, error: "date, ferme, role required" });
+        // SÉCURITÉ : role/profileId du body sont IGNORÉS — identité résolue serveur.
+        const { date, ferme, comment } = req.body || {};
+        if (!date || !ferme) return res.status(400).json({ success: false, error: "date, ferme required" });
+
+        const callerProfile = await resolveCallerRole(authUser);
+        const dec = authorizeValidationAction({ callerProfile, action: "validate", ferme });
+        if (!dec.allowed) return res.status(403).json({ success: false, error: dec.reason });
+        const role = dec.role;
 
         const docId = `${date}_${ferme}`;
         const docRef = db_firestore.collection("pointage_validations").doc(docId);
         const snap = await docRef.get();
         const current = snap.exists ? snap.data() : { date, ferme, visaRH: null, visaCaporal: null, visaChef: null, locked: false };
 
-        const visa = { validatedBy: profileId || role, validatedAt: Date.now(), comment: comment || "" };
+        const visa = { validatedBy: callerProfile, validatedAt: Date.now(), comment: comment || "" };
 
         if (role === "rh") {
           if (ferme === "DIVERS") {
@@ -5429,13 +5436,13 @@ exports.validation = functions
             const diversDoc = await db_firestore.collection("pointage_divers").doc(date).get();
             const diversData = diversDoc.exists ? diversDoc.data() : { entries: [] };
             await db_firestore.collection("pointage_snapshots").doc(docId).set({
-              ...diversData, snapshotAt: Date.now(), snapshotBy: profileId,
+              ...diversData, snapshotAt: Date.now(), snapshotBy: callerProfile,
             });
             current.workerCount = (diversData.entries || []).length;
           } else {
             // Create snapshot of SQL data (freeze data at submission time)
             const { createSnapshot } = require("./pointageService");
-            const snapshotData = await createSnapshot(date, ferme, profileId);
+            const snapshotData = await createSnapshot(date, ferme, callerProfile);
             current.workerCount = snapshotData.workerCount || 0;
           }
           current.visaRH = visa;
@@ -5470,8 +5477,14 @@ exports.validation = functions
 
       // POST reject (Caporal or Chef)
       if (action === "reject") {
-        const { date, ferme, role, profileId, comment } = req.body || {};
-        if (!date || !ferme || !role || !comment) return res.status(400).json({ success: false, error: "date, ferme, role, comment required" });
+        // SÉCURITÉ : role/profileId du body sont IGNORÉS — identité résolue serveur.
+        const { date, ferme, comment } = req.body || {};
+        if (!date || !ferme || !comment) return res.status(400).json({ success: false, error: "date, ferme, comment required" });
+
+        const callerProfile = await resolveCallerRole(authUser);
+        const dec = authorizeValidationAction({ callerProfile, action: "reject", ferme });
+        if (!dec.allowed) return res.status(403).json({ success: false, error: dec.reason });
+        const role = dec.role;
 
         const docId = `${date}_${ferme}`;
         const docRef = db_firestore.collection("pointage_validations").doc(docId);
@@ -5496,7 +5509,7 @@ exports.validation = functions
 
         current.locked = false;
         current.rejected = true;
-        current.rejectedBy = profileId || role;
+        current.rejectedBy = callerProfile;
         current.rejectedAt = Date.now();
         current.rejectionComment = comment;
         current.rejectionRole = role;
@@ -5509,20 +5522,26 @@ exports.validation = functions
 
       // POST unlock (RH only, or DG override)
       if (action === "unlock") {
-        const { date, ferme, profileId } = req.body || {};
+        // SÉCURITÉ : profileId du body est IGNORÉ — identité résolue serveur.
+        const { date, ferme } = req.body || {};
         if (!date || !ferme) return res.status(400).json({ success: false, error: "date, ferme required" });
 
+        const callerProfile = await resolveCallerRole(authUser);
         const docId = `${date}_${ferme}`;
         const docRef = db_firestore.collection("pointage_validations").doc(docId);
 
-        // Guard: RH cannot unlock a validated (locked & not rejected) pointage — only DG can
+        // Guard: only DG can unlock a validated (locked & not rejected) pointage.
+        // locked/rejected lus de l'état serveur, décision serveur (jamais profileId du body).
         const existingSnap = await docRef.get();
-        if (existingSnap.exists) {
-          const existing = existingSnap.data();
-          if (existing.locked && !existing.rejected && profileId !== 'dg') {
-            return res.status(403).json({ success: false, error: "Impossible de déverrouiller un pointage validé. Seul le DG peut le faire." });
-          }
-        }
+        const existing = existingSnap.exists ? existingSnap.data() : {};
+        const dec = authorizeValidationAction({
+          callerProfile,
+          action: "unlock",
+          ferme,
+          locked: existing.locked === true,
+          rejected: existing.rejected === true,
+        });
+        if (!dec.allowed) return res.status(403).json({ success: false, error: dec.reason });
 
         await docRef.set({ date, ferme, visaRH: null, visaCaporal: null, visaChef: null, locked: false, rejected: false, rejectedBy: null, rejectedAt: null, rejectionComment: null, rejectionRole: null, pieceJointeUrl: null, pieceJointeFilename: null, updatedAt: Date.now() });
         // Delete snapshot — return to SQL as data source
