@@ -1042,3 +1042,116 @@ bouclage stock.
 3. **Lisibilité de la modale** (détail/viewer) : améliorer la lisibilité (taille, contraste,
    mise en page) de la modale de visualisation.
 Gated : oui (deploy).
+
+---
+
+# ═══════════ MODULE STOCK — BACKLOG (tracé 2026-06-29) ═══════════
+Issu de la session de diagnostic stock + chiffrage + sécurité. AUCUN dev lancé — on bascule
+sur le RH. Items à traiter à leur tour.
+
+## ── CHIFFRAGE / INVENTAIRE (dépend d'actions terrain) ──
+
+## [ ] STOCK-1 — Chiffrage stock DÉFINITIF en PMP (suspendu)
+Suspendu tant que le comptage physique de DEMAIN (F1/F2/F5 rouges + F3/F4/F6) n'est pas fini.
+À REFAIRE en **PMP** (`articles_catalog.prix_pmp`, PAS le canevas) ET en **EXCLUANT les articles
+"en cours de comptage"** (cellules ROUGES du 23/06 : KSC 1/2/5/7, F2). Le ~406k brut était
+SURÉVALUÉ : KSC 2 (−221k = 52%) reposait sur un comptage 23/06 inachevé (173 KG = partiel).
+Chiffrage FIABLE actuel (hors rouges) = **−151 436 MAD net** (CAT1 manque sorties −201 659 /
+CAT2 manque entrées +50 223). À recalculer une fois les rouges comptés.
+Gated : non (read-only) ; tout recalage = gated (mais DG a tranché : PAS de recalage).
+
+## [ ] STOCK-2 — Comptage physique F3/F4/F6 (feuilles générées)
+Feuilles `docs/INVENTAIRE/COMPTAGE_{F3,F4,F6}_a_remplir.xlsx` générées (F3=41 art, F4=32, F6=35).
+À COMPTER demain. **HUMOCAL F6 = 30 000 L = priorité + vérif unité KG/L** (probable saisie L au
+lieu de KG sur un solide). Finaliser AUSSI les rouges F1/F2/F5 (KSC). Objectif : fermer le test
+de conservation (le surplus F2 part-il vers F3/F4/F6 consommé non tracé, ou stock caché ?).
+Gated : non (comptage terrain) ; saisie SB ultérieure = gated.
+
+## [ ] STOCK-3 — Reclassement des écarts par fenêtre temporelle (2 inventaires)
+Grâce aux 2 inventaires physiques (31/03 + 23/06), borner CHAQUE écart dans le temps : pré-31/03
+vs avril-juin. Établi : ~420k MAD d'écart né APRÈS le 31/03 (55/92 articles cohérents, mouvements
+avril-juin fiables ; 37 en trou). **KSC 2 = sorti avril-juin 2026** (stable 8075→7875 jusqu'au
+31/03, puis →173 sans aucun mouvement). Méthode robuste = agrégat BGF (transferts internes
+s'annulent ; maille par ferme faussée par transferts F2→F1/F5 sous-tracés).
+Gated : non (read-only).
+
+## ── ANOMALIES À ÉLUCIDER ──
+
+## [ ] STOCK-4 — HUMOCAL : 164k facturé vs 36k reçu (−96%) + PMP=1 placeholder
+HUMOCAL : facturé 164 000 KG (dont 152 t en TONNE) vs reçu ~36 000 (KG+L mélangés). Écart −96%,
+le plus gros en valeur. De plus **PMP=1,00 = placeholder** (jamais eu de prix réel → non valorisé
+par le garde-fou PMP≤1). Vérifier au magasin (vraie sous-réception ? erreur d'unité facture ?
+30 000 "L" = KG mal saisis ?) + **corriger le PMP** (reprixer HUMOCAL).
+Gated : oui (write PMP).
+
+## [ ] STOCK-5 — FERTIACTYL GREEN EXTREME : seul mapping non résolu (1/31)
+Après les 3 mappings écrits (CO-ACTYL + 2 Acides Nitriques), reste **1 seule** désignation campagne
+non mappée : "FERTIACTYL GREEN EXTREME 5 KG" (5 factures). Existe au catalogue (Ref-Eng0027) mais
+AUCUNE réception sous ce nom en campagne. Vérif magasin : reçu sous un AUTRE nom (→ à mapper) OU
+jamais livré (→ vrai "facturé sans réception" sur 5 factures, à investiguer). 400 KG facturés.
+Gated : oui (write mapping si reçu sous autre nom).
+
+## [ ] STOCK-6 — NITRATE DE MAGNESIE : reçu non facturé
+Sens inverse : 3 850 reçu en campagne (post-ouverture) SANS facture TIMAC en face. Engrais notable
+(les autres "reçu non facturé" sont des phytos d'autres fournisseurs = normal). À investiguer :
+autre fournisseur, ou facture manquante ?
+Gated : non (read-only investigation).
+
+## ── SÉCURITÉ (audit — à séquencer avec #3-6 de l'audit) ──
+
+## [ ] STOCK-7 — Cloisonnement ferme STOCK côté serveur (généraliser resolvePerimetre)
+Un chef/caporal F1 peut obtenir F5 via `?ferme=F5` sur stock/BDC/mouvements (le filtre ferme est
+client-side). `resolvePerimetre` + `deriveFermeFromParcelle` existent (construits pour conso/Ha) et
+fonctionnent — à GÉNÉRALISER aux actions stock. Le bon pattern est en place, il faut l'étendre.
+Gated : oui (deploy functions).
+
+## [ ] STOCK-8 — /api/stock : durcir l'autorisation par rôle (resolveCallerRole)
+create-article lit le rôle du `body` (falsifiable), BDC create/update/submit/delete sans rôle,
+`pending-validations?role=dg` lit le rôle du query. À durcir via `resolveCallerRole(authUser)`
+(token vérifié), comme /api/pointage-validation et la conso. (Cf. audit sécu trous Élevés.)
+Gated : oui (deploy functions).
+
+## ── VISION CIBLE (campagne 26-27, dès 01/07) ──
+
+## [ ] STOCK-9 — Chaîne de fiabilisation 100% scannée
+Cible 26-27 : BDC → Bon de Livraison scanné → Bon de Transfert + Bon de Consommation scannés →
+conso comparée au PROGRAMME DE FERTILISATION théorique. Chaque maillon tracé/scanné. Élimine la
+sous-saisie des sorties (cause des ~218k d'écart actuel). À cadrer comme refonte de process.
+Gated : oui (process + dev).
+
+## [ ] STOCK-10 — Reconstruire le pont BDC↔facture (cassé)
+Liaison BDC↔facture cassée (num_bcde TIMAC ≠ BC-000XXX, 0/54 rattachables ; matching approché 1/54
+fiable). Cible : reporter le **n° TIMAC sur le BDC** OU **bdc_numero sur la facture** à la saisie.
++ écran de mapping manuel BDC↔facture avec pop-up détail (seulement **34 BDC TIMAC**, gérable
+à la main). Prérequis d'un vrai three-way BDC→facture→réception.
+Gated : oui (dev + écriture).
+
+## ── DETTE TECHNIQUE ──
+
+## [ ] STOCK-11 — Resolver conso agrège montant_ttc (=0) → doit agréger quantite
+`functions/lib/mappingConso/resolver.js:59` (`montantOf`) somme `montant_ttc`, absent de 100% des
+items (0/16333) → renvoie 0. Doit agréger **`quantite`**. (N'impacte pas l'onglet conso/Ha actuel
+qui passe par agroSummary, mais le resolver mappingConso reste cassé.)
+Gated : oui (deploy si rebranché).
+
+## [ ] STOCK-12 — MappingParcellesConsommation.jsx = stub vide
+Le fichier référencé (racine + composant) est VIDE / absent du disque. Écran mapping parcelles
+conso non branché. À implémenter ou retirer la référence.
+Gated : oui (deploy).
+
+## [ ] STOCK-13 — Bug affichage "Migration BEE ONE — Signé le Invalid Date" (BDC migrés)
+Sur les BDC migrés (source bee_one_migration), l'UI affiche "Signé le Invalid Date" (date de
+signature absente/non parsée). Correctif d'affichage (gérer date manquante).
+Gated : oui (deploy hosting).
+
+## [ ] STOCK-14 — Fusion doublons fournisseurs + audit secrets avant fork
+(a) Fusion doublons `suppliers` (TIMAC, HAROUACHE, OUM JIHAD, CASEM, CCT + cas BIOBEST/BIOBETTER
+même ICE) — cf. item dédié plus haut. (b) Audit secrets AVANT d'ouvrir le repo au fork : 4 secrets
+détectés en clair (Gmail IMAP, Google OAuth client_secret, farmroad Bearer, METEOBLUE_API_KEY) —
+à régénérer/sortir du code. NB : ADMIN_SECRET déjà traité (Secret Manager, 2026-06-29).
+Gated : oui (écriture suppliers + régénération secrets).
+
+## [ ] STOCK-15 — Rebrancher les 151 scans factures TIMAC legacy sur le viewer unifié
+151 scans factures TIMAC legacy (scan_url public, ancien mécanisme) à rebrancher sur le viewer
+unifié (brique scan). Cohérence d'affichage de l'historique.
+Gated : oui (deploy).
