@@ -50271,9 +50271,9 @@ ${rejetHtml}
                                             <td style={{fontSize:12}}>{new Date(s.created_at).toLocaleDateString('fr-FR')} {new Date(s.created_at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</td>
                                             <td style={{fontSize:12}}><a href={s.scan_url} target="_blank" rel="noopener noreferrer" style={{color:'var(--blue)'}}>{s.scan_filename || 'scan'}</a></td>
                                             <td><span className={'status-badge ' + (s.status === 'accepted' ? 'valide' : 'rejete')}>{s.status === 'accepted' ? 'Acceptée' : 'Rejetée'}</span></td>
-                                            <td style={{fontWeight:600}}>{s.analysis?.fournisseur?.nom || '—'}</td>
-                                            <td>{s.analysis?.total_ttc ? (s.analysis.total_ttc).toLocaleString('fr-FR',{minimumFractionDigits:2}) + ' MAD' : '—'}</td>
-                                            <td style={{fontSize:12}}>{s.matched_bdc_numero || '—'}</td>
+                                            <td style={{fontWeight:600}}>{window.ScanHistoryDisplay.scanFournisseurLabel(s)}</td>
+                                            <td>{(() => { const ttc = window.ScanHistoryDisplay.scanTtc(s); return ttc != null ? ttc.toLocaleString('fr-FR',{minimumFractionDigits:2}) + ' MAD' : '—'; })()}</td>
+                                            <td style={{fontSize:12}}>{window.ScanHistoryDisplay.scanBdcMatche(s)}</td>
                                             <td style={{fontSize:12,fontWeight:600,color:'var(--berry)'}}>{s.invoice_numero || '—'}</td>
                                         </tr>
                                     ))}</tbody>
