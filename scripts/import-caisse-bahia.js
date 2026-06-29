@@ -17,7 +17,11 @@ const https = require("https");
 const ROOT = path.resolve(__dirname, "..");
 const XLSX_FILE = path.join(ROOT, "La caisses des depenses BAHIA.xlsm");
 const API_URL = "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/caisseManagement";
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "bgf-admin-2026";
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+if (!ADMIN_SECRET) {
+  console.error("❌ ADMIN_SECRET manquant. Exportez-le avant de lancer: export ADMIN_SECRET='...'");
+  process.exit(1);
+}
 const CAISSE_ID = "caisse_depenses_bahia";
 const SHEET_NAME = "Les dépenses";
 const HEADER_ROW = 5;

@@ -6368,7 +6368,7 @@ exports.onAnalyseFoliaireWrite = functions
 
 exports.stockManagement = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .runWith({ timeoutSeconds: 540, memory: "1GB", secrets: ["ADMIN_SECRET"] })
   .https.onRequest(async (req, res) => {
     res.set("Access-Control-Allow-Origin", "*");
     res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
@@ -14080,7 +14080,7 @@ const CAISSE_PROFILES_CONTROLE = ["dg", "finance"];
 
 exports.caisseManagement = functions
   .region("europe-west1")
-  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .runWith({ timeoutSeconds: 540, memory: "1GB", secrets: ["ADMIN_SECRET"] })
   .https.onRequest(async (req, res) => {
     setCors(res, req);
     if (req.method === "OPTIONS") return res.status(204).send("");

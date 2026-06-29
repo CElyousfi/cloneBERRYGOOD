@@ -18,7 +18,11 @@ const https = require("https");
 const ROOT = path.resolve(__dirname, "..");
 const XLSX_FILE = path.join(ROOT, "Caisse de dépenses 2025-2026.xlsx");
 const API_URL = "https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/caisseManagement";
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "bgf-admin-2026";
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
+if (!ADMIN_SECRET) {
+  console.error("❌ ADMIN_SECRET manquant. Exportez-le avant de lancer: export ADMIN_SECRET='...'");
+  process.exit(1);
+}
 const CAISSE_ID = "caisse_depenses";
 
 // Sheets to import (Jan 2025 → Apr 2026)
