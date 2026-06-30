@@ -179,25 +179,41 @@
             type: 'binary'
           });
           var ws = wb.Sheets[wb.SheetNames[0]];
-          var xlsxRows = XLSX.utils.sheet_to_json(ws, {
-            defval: ''
-          });
           var importRows = [];
-          xlsxRows.forEach(function (row) {
-            var mat = String(row['Matricule'] || row['matricule'] || row['MATRICULE'] || '').trim();
-            if (!mat) {
-              importRows.push({
-                matricule: '',
-                montant: 0
-              });
+          if (window.PrimesImportParse) {
+            // Parse robuste : feuille 2D, saute les lignes de titre/vides au-dessus
+            // des vraies en-têtes, accepte les alias (MTR, Prime dh Brut, …).
+            var aoa = XLSX.utils.sheet_to_json(ws, {
+              header: 1,
+              defval: ''
+            });
+            var res = window.PrimesImportParse.extractPrimesRows(aoa);
+            if (res.error) {
+              alert('Erreur import : ' + res.error);
               return;
             }
-            var montant = Number(row['Prime'] || row['prime'] || row['Montant'] || row['montant'] || row['PrimeFonction'] || 0) || 0;
-            importRows.push({
-              matricule: mat,
-              montant: montant
+            importRows = res.rows;
+          } else {
+            // Fallback (lib absente) : ancien comportement header-auto.
+            var xlsxRows = XLSX.utils.sheet_to_json(ws, {
+              defval: ''
             });
-          });
+            xlsxRows.forEach(function (row) {
+              var mat = String(row['Matricule'] || row['matricule'] || row['MATRICULE'] || '').trim();
+              if (!mat) {
+                importRows.push({
+                  matricule: '',
+                  montant: 0
+                });
+                return;
+              }
+              var montant = Number(row['Prime'] || row['prime'] || row['Montant'] || row['montant'] || row['PrimeFonction'] || 0) || 0;
+              importRows.push({
+                matricule: mat,
+                montant: montant
+              });
+            });
+          }
           setImporting(true);
           PFT_callCF('import-primes', {
             mode: 'dry-run',
