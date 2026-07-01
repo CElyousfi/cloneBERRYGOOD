@@ -10,8 +10,10 @@
  * de sécurité : le périmètre ferme est IMPOSÉ serveur, jamais négociable par le
  * client. Un Chef de Ferme F1 qui demande ?ferme=F5 reçoit F1, jamais F5.
  *
- * Rôles autorisés : DG, Finance, Chef de Ferme uniquement. Tout autre profil
- * (magasinier, achats, caporal, agronomie, inconnu…) → non autorisé.
+ * Rôles autorisés : DG, Finance, RH (accès global), Chef de Ferme (sa ferme).
+ * Tout autre profil (magasinier, achats, caporal, agronomie, inconnu…) → non
+ * autorisé. NB : RH est full-access car la matrice RH voit tout le nominatif ;
+ * ce module sert aussi de barrière pour le gating paie (divers / pointageRH).
  *
  * Modèle de rôles (cf. users/{uid}) :
  *  - profileId : rôle fonctionnel ('dg' | 'finance' | 'chef_f1' | 'chef_f5' |
@@ -23,8 +25,8 @@
  * chef_avo→Avocatier, chef_bahia→BAHIA.
  */
 
-/** Profils à accès global (toutes fermes). */
-const FULL_ACCESS_PROFILES = { dg: true, finance: true };
+/** Profils à accès global (toutes fermes). RH voit tout le nominatif (matrice RH). */
+const FULL_ACCESS_PROFILES = { dg: true, finance: true, rh: true };
 
 /**
  * Table profileId chef → ferme système. Source de vérité du rattachement.

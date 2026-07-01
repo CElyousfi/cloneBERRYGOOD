@@ -19,6 +19,15 @@ const {
   getCueilletteRows,
   getSyncStatus,
 } = require("./firestoreDataService");
+
+// Aliases bruts (non filtrés) des fetchers de lignes, pour le gating chef
+// dans pointageRH : les wrappers filtrés shadowent les noms non préfixés,
+// tandis que le reste du fichier continue d'utiliser les fetchers d'origine.
+const _getPointageRowsForDate = getPointageRowsForDate;
+const _getPointageRowsForDateRange = getPointageRowsForDateRange;
+const _getPointageRowsForPeriode = getPointageRowsForPeriode;
+const _getWorkerHistory = getWorkerHistory;
+const _getCueilletteRows = getCueilletteRows;
 const USE_MIRROR = process.env.USE_FIRESTORE_MIRROR !== "false";
 
 // Heures supplémentaires — helpers purs (calcul durée/dépassement + exclusions)
@@ -32,6 +41,13 @@ const {
 // Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
 const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
+
+// GATING PAIE (Étape 0) — barrière serveur sur les agrégats RH nominatifs.
+// Rôle résolu depuis le token (users/{uid}), jamais depuis le body.
+const { verifyAuth } = require("./middleware/requireAuth");
+const { resolveCallerProfile } = require("./lib/auth/resolveRole");
+const consoAccessControl = require("./lib/valorisation/accessControl");
+const { resolvePointageRHAccess } = require("./lib/auth/paieAccess");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -46,6 +62,246 @@ async function getPool() {
 // =============================================
 // Helpers
 // =============================================
+/**
+ * Filtrage ferme PUR des lignes brutes du mirror (Ref_parcelle / Parcelle_Culturale).
+ * GATING PAIE (Étape 0) — cloisonnement chef : ne garde que les lignes dont la ferme
+ * dérivée === fermeFilter. 'Autre'/indéterminé exclu (fail-closed : jamais dans la
+ * ferme d'un chef). fermeFilter falsy (null/'') → passthrough (RH/DG/Finance = toutes
+ * fermes, comportement inchangé).
+ *
+ * @param {Array<{Ref_parcelle?:string, Parcelle_Culturale?:string}>} rows
+ * @param {string|null} fermeFilter  'F1'|'F5'|'Avocatier'|'BAHIA' ou null
+ * @returns {Array} lignes filtrées
+ */
+function filterMirrorRowsByFerme(rows, fermeFilter) {
+  if (!fermeFilter) return rows || [];
+  return (rows || []).filter(r => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) === fermeFilter);
+}
+
+/**
+ * Filtrage ferme PUR sur un payload DÉJÀ agrégé/enrichi portant un champ `ferme`
+ * par élément (ex. snapshots, lignes recolte-equipes enrichies prod). Même règle
+ * fail-closed : 'Autre'/mismatch exclu ; fermeFilter falsy → passthrough.
+ *
+ * @param {Array<{ferme?:string}>} rows
+ * @param {string|null} fermeFilter
+ * @returns {Array}
+ */
+function filterByFermeField(rows, fermeFilter) {
+  if (!fermeFilter) return rows || [];
+  return (rows || []).filter(r => r && r.ferme === fermeFilter);
+}
+
+/**
+ * Filtrage ferme PUR sur les lignes ARCHIVÉES (quinzaine_archive → analytique).
+ * Ces lignes portent `parcelle` + `refParcelle` (grain parcelle/opération, agrégé
+ * par variété en aval) → la ferme est dérivable via deriveFerme(). Même règle
+ * fail-closed : ferme dérivée ≠ fermeFilter (ou 'Autre'/indéterminé) → exclu.
+ * fermeFilter falsy (null) → passthrough (RH/DG/Finance = toutes fermes, inchangé).
+ *
+ * Utilisé pour cloisonner le chemin archivé de mo-analytique-variete /
+ * campagne-mo-variete : sans ça, un chef verrait les agrégats coût/JH archivés
+ * de TOUTES les fermes.
+ *
+ * @param {Array<{parcelle?:string, refParcelle?:string}>} rows
+ * @param {string|null} fermeFilter  'F1'|'F5'|'Avocatier'|'BAHIA' ou null
+ * @returns {Array} lignes archivées filtrées
+ */
+function filterArchivedRowsByFerme(rows, fermeFilter) {
+  if (!fermeFilter) return rows || [];
+  return (rows || []).filter(r => r && deriveFerme(r.refParcelle, r.parcelle) === fermeFilter);
+}
+
+/**
+ * Filtrage ferme PUR sur les lignes de PRODUCTION (prod_tracabilite_recolte/{date}.rows
+ * et docs de campagne). Ces lignes portent `refParcelle` (pas de parcelle culturale
+ * fiable) → la ferme se dérive via deriveFerme(refParcelle, ''). Même règle fail-closed :
+ * ferme dérivée ≠ fermeFilter (ou 'Autre'/indéterminé) → exclu. fermeFilter falsy (null)
+ * → passthrough STRICT (RH/DG/Finance = toutes fermes, inchangé).
+ *
+ * ⚠️ Sécurité : prod_tracabilite_recolte contient TOUS les ouvriers de TOUTES les fermes
+ * (aucun champ ferme stocké). Sans ce filtre, un chef reçoit matricule+nom+kg d'autres
+ * fermes (fuite nominative) via l'enrichissement recolte et le kg de campagne-mo-variete.
+ *
+ * @param {Array<{refParcelle?:string}>} prodRows
+ * @param {string|null} fermeFilter  'F1'|'F5'|'Avocatier'|'BAHIA' ou null
+ * @returns {Array} lignes prod filtrées
+ */
+function filterProdRowsByFerme(prodRows, fermeFilter) {
+  if (!fermeFilter) return prodRows || [];
+  return (prodRows || []).filter(r => r && deriveFerme(r.refParcelle, '') === fermeFilter);
+}
+
+/**
+ * Recompose le total kg cueillette (récolte) pour un chef à partir des lignes prod
+ * DÉJÀ filtrées par sa ferme. En prod, l'enrichissement recolte remplace le détail
+ * BR_Cueillette par un total unique issu de prod_tracabilite_recolte
+ * (`prodData.totalKg`), qui est un total TOUTES fermes → il fuiterait à un chef.
+ * On resomme donc `totalKg` sur les seules lignes prod de sa ferme.
+ * fermeFilter falsy (null) → on retourne le total prod d'origine (comportement inchangé).
+ *
+ * @param {Array<{totalKg?:number}>} filteredProdRows  lignes prod DÉJÀ filtrées ferme
+ * @param {number} originalTotalKg  prodData.totalKg (total toutes fermes)
+ * @param {string|null} fermeFilter
+ * @returns {number} total kg cloisonné
+ */
+function recomposeProdTotalKg(filteredProdRows, originalTotalKg, fermeFilter) {
+  if (!fermeFilter) return originalTotalKg || 0;
+  return (filteredProdRows || []).reduce((s, r) => s + ((r && r.totalKg) || 0), 0);
+}
+
+/**
+ * Cloisonne l'agrégat archivé `summary.parFerme` (action=quinzaine) pour un chef.
+ * `parFerme` est un tableau d'objets `{ferme, journees, cout, ...}` déjà keyé par
+ * ferme → on ne garde QUE l'entrée de la ferme du chef. Fail-closed : toute entrée
+ * d'une autre ferme (ou 'Autre') est exclue.
+ * fermeFilter falsy (null) → passthrough (RH/DG/Finance = toutes fermes, inchangé).
+ *
+ * @param {Array<{ferme?:string}>} parFerme
+ * @param {string|null} fermeFilter
+ * @returns {Array}
+ */
+function filterArchivedParFerme(parFerme, fermeFilter) {
+  if (!fermeFilter) return parFerme || [];
+  return (parFerme || []).filter(e => e && e.ferme === fermeFilter);
+}
+
+/**
+ * Cloisonne l'agrégat archivé `summary.parJour` (action=quinzaine) pour un chef.
+ * Chaque entrée jour porte une ventilation par ferme (`F1`, `F5`, `Avocatier`,
+ * `BAHIA` = nb ouvriers distincts ce jour sur cette ferme) + des totaux tous-fermes
+ * (`nbOuv`, `journees`, `cout`). Pour un chef, on ne peut PAS reconstituer ses
+ * `journees`/`cout` du jour depuis l'archive (seul le compte d'ouvriers est ventilé
+ * par ferme, pas le coût). On recompose donc chaque jour en :
+ *   - `nbOuv` = le compte de SA ferme,
+ *   - les autres colonnes ferme mises à 0 (ne pas révéler les autres fermes),
+ *   - `journees`/`cout` mis à 0 (non ventilables par ferme dans l'archive → fail-closed,
+ *     on n'expose pas un total tous-fermes à un chef).
+ * fermeFilter falsy (null) → passthrough (inchangé).
+ *
+ * @param {Array<object>} parJour
+ * @param {string|null} fermeFilter
+ * @returns {Array}
+ */
+function filterArchivedParJour(parJour, fermeFilter) {
+  if (!fermeFilter) return parJour || [];
+  const FERMES = ['F1', 'F5', 'Avocatier', 'BAHIA'];
+  return (parJour || []).map(d => {
+    const nbOuv = Number((d && d[fermeFilter]) || 0);
+    const out = { jour: d.jour, jourLabel: d.jourLabel, nbOuv, journees: 0, cout: 0 };
+    for (const f of FERMES) out[f] = f === fermeFilter ? nbOuv : 0;
+    return out;
+  });
+}
+
+/**
+ * Recompose totalJournees/totalCout du chef depuis l'agrégat parFerme filtré.
+ * L'archive stocke des totaux tous-fermes → un chef ne doit voir QUE la somme de
+ * sa ferme. fermeFilter falsy → on retourne les totaux d'origine (inchangé).
+ *
+ * @param {Array<{journees?:number,cout?:number}>} filteredParFerme parFerme DÉJÀ filtré
+ * @param {{totalJournees?:number,totalCout?:number}} originalTotals
+ * @param {string|null} fermeFilter
+ * @returns {{totalJournees:number, totalCout:number}}
+ */
+function recomposeArchivedTotals(filteredParFerme, originalTotals, fermeFilter) {
+  if (!fermeFilter) {
+    return {
+      totalJournees: (originalTotals && originalTotals.totalJournees) || 0,
+      totalCout: (originalTotals && originalTotals.totalCout) || 0,
+    };
+  }
+  let totalJournees = 0;
+  let totalCout = 0;
+  for (const e of filteredParFerme || []) {
+    totalJournees += (e && e.journees) || 0;
+    totalCout += (e && e.cout) || 0;
+  }
+  return { totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout) };
+}
+
+/**
+ * Cloisonne les workers repos archivés (action=quinzaine-repos) pour un chef.
+ *
+ * `reposData.workers` = {matricule, nom, joursPresent} de TOUTES fermes, sans champ
+ * ferme ni parcelle exploitable pour dériver la ferme. Contrairement au mirror (où
+ * computeAllowedMatricules dérive le set depuis les lignes brutes filtrées), l'archive
+ * ne conserve AUCUNE source ferme pour restreindre les workers repos.
+ *
+ * DÉCISION fail-closed (priorité = zéro fuite nominative) : pour un chef, on n'expose
+ * PAS le nominatif repos cross-ferme d'une période archivée → on vide `workers`.
+ * fermeFilter falsy (null) → passthrough (RH/DG/Finance, inchangé).
+ *
+ * @param {Array} workers reposData.workers
+ * @param {string|null} fermeFilter
+ * @returns {Array} workers (vidé pour un chef, inchangé pour RH/DG/Finance)
+ */
+function filterReposWorkersArchived(workers, fermeFilter) {
+  if (!fermeFilter) return workers || [];
+  return [];
+}
+
+/**
+ * Calcule le set des matricules (UPPERCASE) AUTORISÉS pour un chef à partir des
+ * lignes brutes du mirror : ceux ayant ≥1 ligne pointage sur SA ferme.
+ * Réutilise la même logique fail-closed que buildHeuresSup — sert à cloisonner
+ * prod_presence, qui ne porte pas de parcelle exploitable pour dériver la ferme.
+ *
+ * @param {Array} mirrorRows lignes brutes du mirror (Personnel_Matricule + parcelle)
+ * @param {string|null} fermeFilter ferme du chef, ou null (RH/DG/Finance)
+ * @returns {Set<string>|null} set de matricules UPPERCASE, ou null si fermeFilter falsy
+ */
+function computeAllowedMatricules(mirrorRows, fermeFilter) {
+  if (!fermeFilter) return null;
+  const allowed = new Set();
+  for (const r of filterMirrorRowsByFerme(mirrorRows, fermeFilter)) {
+    const m = String(r.Personnel_Matricule || '').trim().toUpperCase();
+    if (m) allowed.add(m);
+  }
+  return allowed;
+}
+
+/**
+ * Filtrage PUR des lignes prod_presence par set de matricules autorisés.
+ * prod_presence n'a pas de parcelle → on restreint aux matricules ayant pointé
+ * la ferme du chef (set dérivé du mirror via computeAllowedMatricules).
+ * Fail-closed : un ouvrier présent mais jamais pointé sur cette ferme est exclu.
+ * allowedMatricules null (RH/DG/Finance) → passthrough (toutes rows, inchangé).
+ *
+ * @param {Array<{matricule?:string}>} rows lignes prod_presence (champ `matricule`)
+ * @param {Set<string>|null} allowedMatricules matricules UPPERCASE autorisés, ou null
+ * @returns {Array}
+ */
+function filterPresenceRowsByAllowed(rows, allowedMatricules) {
+  if (!allowedMatricules) return rows || [];
+  return (rows || []).filter(r => {
+    const m = String((r && r.matricule) || '').trim().toUpperCase();
+    return m && allowedMatricules.has(m);
+  });
+}
+
+/**
+ * Construit une clé de cache ferme-aware pour les actions pointageRH nominatives.
+ *
+ * withCache utilise un cache Firestore PARTAGÉ par clé. Or le payload nominatif
+ * est filtré par la ferme de l'appelant (_fermeFilter via le shadow des fetchers).
+ * Sans dimension de périmètre dans la clé, un chef-F1 et le RH (scope 'all')
+ * partageraient la MÊME entrée → soit une FUITE nominative (payload toutes-fermes
+ * servi à un chef), soit une perte de données (payload F1 servi au RH).
+ *
+ * On suffixe donc la clé par le périmètre : `_all` pour RH/DG/Finance
+ * (fermeFilter null), `_<ferme>` pour un chef. Les warm paths (préchauffage)
+ * s'alignent sur `_all` pour continuer à réchauffer la vue RH sans polluer les
+ * vues chef.
+ *
+ * @param {string} base clé de base (sans dimension ferme)
+ * @param {string|null|undefined} fermeFilter ferme du chef, ou null/undefined = 'all'
+ * @returns {string} clé ferme-aware
+ */
+function pointageCacheKey(base, fermeFilter) {
+  return `${base}_${fermeFilter || 'all'}`;
+}
+
 function deriveFerme(refParcelle, parcelleCulturale) {
   const ref = (refParcelle || "").trim();
   // BAHIA = entité juridique distincte (cf. deriveSubFerme côté frontend). Prioritaire
@@ -401,9 +657,11 @@ async function getExcludedFonctionsHS() {
  *
  * @param {Object|null} meta - sql_mirror_pointage_meta/config
  * @param {Array<string>} excludedFonctions
+ * @param {string|null} [fermeFilter] - GATING PAIE : ferme du chef, ou null
+ *        (RH/DG/Finance = toutes fermes, inchangé). Fourni → cloisonnement chef.
  * @returns {Promise<Object>} { success, periodes, excludedFonctions, seuilMinutes, periodeDates, rows }
  */
-async function buildHeuresSup(meta, excludedFonctions) {
+async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
   const periodes = (meta && meta.periodes) || [];
   const periodeMap = (meta && meta.periodeMap) || {};
   const targetPeriodes = periodes.slice(0, 2);
@@ -449,12 +707,24 @@ async function buildHeuresSup(meta, excludedFonctions) {
 
   // 2. Fonction pointée par jour (mirror) → Map(MATUPPER → fonction représentative)
   //    Représentant = couple (famille|opération) le plus fréquent ce jour-là.
+  // GATING PAIE : quand fermeFilter est fourni (chef), on filtre les lignes brutes
+  // du mirror sur SA ferme AVANT agrégation. On construit aussi le set des matricules
+  // AUTORISÉS (ceux ayant pointé la ferme du chef) — utilisé pour cloisonner
+  // prod_presence, qui ne porte pas de parcelle exploitable pour dériver la ferme.
   const fonctionByDay = {};
+  const allowedMatricules = fermeFilter ? new Set() : null;
   for (let i = 0; i < allDays.length; i += 10) {
     const batch = allDays.slice(i, i + 10);
     const results = await Promise.all(batch.map(d => getPointageRowsForDate(d)));
-    results.forEach((rows, idx) => {
+    results.forEach((rowsRaw, idx) => {
       const d = batch[idx];
+      const rows = filterMirrorRowsByFerme(rowsRaw, fermeFilter);
+      if (allowedMatricules) {
+        for (const r of rows) {
+          const m = String(r.Personnel_Matricule || "").trim().toUpperCase();
+          if (m) allowedMatricules.add(m);
+        }
+      }
       const acc = new Map();
       for (const r of rows) {
         const mat = String(r.Personnel_Matricule || "").trim().toUpperCase();
@@ -484,6 +754,10 @@ async function buildHeuresSup(meta, excludedFonctions) {
     const presence = presenceByDay[d] || new Map();
     const fonctions = fonctionByDay[d] || new Map();
     for (const [matUpper, p] of presence) {
+      // GATING PAIE (chef) : prod_presence n'a pas de parcelle → on restreint aux
+      // matricules ayant pointé la ferme du chef (set dérivé du mirror ci-dessus).
+      // Fail-closed : un ouvrier présent mais jamais pointé sur cette ferme est exclu.
+      if (allowedMatricules && !allowedMatricules.has(matUpper)) continue;
       const f = fonctions.get(matUpper) || null;
       const fonctionMissing = !f;
       // Récolte + fonctions configurées exclues. Fonction inconnue → conservée + flag.
@@ -532,9 +806,12 @@ function mapMirrorRowToDetail(r) {
   };
 }
 
-async function fetchDetailFromMirror(dateParam) {
+async function fetchDetailFromMirror(dateParam, fermeFilter = null) {
   const dateStr = dateParam || new Date().toISOString().slice(0, 10);
-  const rows = await getPointageRowsForDate(dateStr);
+  const rowsRaw = await getPointageRowsForDate(dateStr);
+  // GATING PAIE : chef → filtre ferme sur lignes brutes AVANT mapping (fail-closed
+  // sur 'Autre'). null → toutes fermes (RH/DG/Finance), inchangé.
+  const rows = filterMirrorRowsByFerme(rowsRaw, fermeFilter);
   return rows.map(mapMirrorRowToDetail);
 }
 
@@ -552,9 +829,11 @@ async function fetchSummaryFromMirror(dateParam) {
   return countDistinctByFermeType(lines, POINTAGE_FERMES);
 }
 
-async function fetchPostesFixesFromMirror(dateParam) {
+async function fetchPostesFixesFromMirror(dateParam, fermeFilter = null) {
   const dateStr = dateParam || new Date().toISOString().slice(0, 10);
-  const rows = await getPointageRowsForDate(dateStr);
+  const rowsRaw = await getPointageRowsForDate(dateStr);
+  // GATING PAIE : chef → filtre ferme sur lignes brutes AVANT agrégation (fail-closed).
+  const rows = filterMirrorRowsByFerme(rowsRaw, fermeFilter);
   return rows
     .filter(r => r.Operation_Famille === "11. Postes fixes")
     .map(r => ({
@@ -705,6 +984,18 @@ exports.createSnapshot = createSnapshot;
 exports.getSubmittedFermes = getSubmittedFermes;
 exports.getSnapshotData = getSnapshotData;
 exports.deriveFerme = deriveFerme;
+exports.filterMirrorRowsByFerme = filterMirrorRowsByFerme;
+exports.filterByFermeField = filterByFermeField;
+exports.filterArchivedRowsByFerme = filterArchivedRowsByFerme;
+exports.filterProdRowsByFerme = filterProdRowsByFerme;
+exports.recomposeProdTotalKg = recomposeProdTotalKg;
+exports.filterArchivedParFerme = filterArchivedParFerme;
+exports.filterArchivedParJour = filterArchivedParJour;
+exports.recomposeArchivedTotals = recomposeArchivedTotals;
+exports.filterReposWorkersArchived = filterReposWorkersArchived;
+exports.computeAllowedMatricules = computeAllowedMatricules;
+exports.filterPresenceRowsByAllowed = filterPresenceRowsByAllowed;
+exports.pointageCacheKey = pointageCacheKey;
 exports.getJoursFeries = getJoursFeries;
 exports.JOURS_FERIES_FALLBACK = JOURS_FERIES_FALLBACK;
 exports.computeChargCond = computeChargCond;
@@ -745,7 +1036,10 @@ function shouldCacheRecolteEquipes(r) {
 // (quantiteToKg=0 sur l'opération « Récolte »). Source de vérité unique partagée entre le
 // serving path et le warm path → plus de divergence (warm cachait un payload kg=0).
 // nQuinz : nombre de quinzaines chargées depuis meta.periodes (slice(0, nQuinz)). 3 partout.
-async function computeRecolteEquipesPayload(nQuinz) {
+// fermeFilter : GATING PAIE — chef → agrégat cloisonné sur SA ferme ; null → toutes fermes
+// (RH/DG/Finance, inchangé). Filtre appliqué sur les lignes brutes du mirror AVANT
+// agrégation, ET sur les ouvriers prod ajoutés (fail-closed sur 'Autre').
+async function computeRecolteEquipesPayload(nQuinz, fermeFilter = null) {
   if (USE_MIRROR) {
     const meta = await getPointageMeta();
     const periodes = meta?.periodes || [];
@@ -757,7 +1051,8 @@ async function computeRecolteEquipesPayload(nQuinz) {
     const allRows = [];
     for (const p of targetPeriodes) {
       const pRows = await getPointageRowsForPeriode(p);
-      allRows.push(...pRows);
+      // GATING PAIE : chef → filtre ferme sur lignes brutes AVANT agrégation.
+      allRows.push(...filterMirrorRowsByFerme(pRows, fermeFilter));
     }
     const recolteRows = allRows.filter(r => r.Operation_Famille === "8. Récolte");
     const rawRows = recolteRows.map(r => ({
@@ -849,10 +1144,14 @@ async function computeRecolteEquipesPayload(nQuinz) {
         let perDateAdded = 0;
         prodRows.forEach(pr => {
           if (!existingMats.has((pr.matricule || "").toUpperCase()) && pr.totalKg > 0) {
+            // GATING PAIE : ouvrier prod ajouté → n'entre QUE s'il appartient à la
+            // ferme du chef (fail-closed : ferme dérivée 'Autre'/autre ferme exclue).
+            const prFerme = deriveFerme(pr.refParcelle, "");
+            if (fermeFilter && prFerme !== fermeFilter) return;
             rows.push({
               matricule: pr.matricule, nom: pr.nom, jour: date, periode,
               kg: pr.totalKg, heures: 0, cout: 0,
-              ferme: deriveFerme(pr.refParcelle, ""), variete: pr.variete || "",
+              ferme: prFerme, variete: pr.variete || "",
               culture: "", parcelle: pr.refParcelle || "", operation: "Récolte (prod)",
             });
             addedCount++;
@@ -874,7 +1173,9 @@ async function computeRecolteEquipesPayload(nQuinz) {
   const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
   const periodes = periodesRes.recordset.map(r => r.Periode_paie);
   const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Quantite_unite, Nombre_Hr, Cout, Ref_parcelle, Parcelle_Culturale, Variete, Culture, Operation FROM BR_Pointage WHERE Operation_Famille = N'8. Récolte' ORDER BY jour DESC`);
-  const sqlRawRows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, kg: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale), culture: (r.Culture || "").trim(), parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim() }));
+  const sqlRawRowsAll = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, kg: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: resolveMyrtilleVariete((r.Variete || "").trim(), r.Parcelle_Culturale), culture: (r.Culture || "").trim(), parcelle: (r.Parcelle_Culturale || "").trim(), operation: (r.Operation || "").trim() }));
+  // GATING PAIE : chef → cloisonnement sur la ferme dérivée (fail-closed).
+  const sqlRawRows = filterByFermeField(sqlRawRowsAll, fermeFilter);
   // Agréger par ouvrier+jour
   const sqlGrouped = {};
   for (const r of sqlRawRows) {
@@ -912,7 +1213,7 @@ async function warmAllPointageCaches() {
 
   // 1. Summary
   try {
-    await withCache(`pointage_summary_${today}`, 0, async () => {
+    await withCache(pointageCacheKey(`pointage_summary_${today}`, null), 0, async () => {
       const submittedFermes = await getSubmittedFermes(today);
       const yesterdayStr = new Date(new Date(today).getTime() - 86400000).toISOString().slice(0, 10);
       const weekStartStr = new Date(new Date(today).getTime() - 6 * 86400000).toISOString().slice(0, 10);
@@ -968,7 +1269,7 @@ async function warmAllPointageCaches() {
 
   // 2. Detail
   try {
-    await withCache(`pointage_detail_${today}`, 0, async () => {
+    await withCache(`pointage_detail_${today}_all`, 0, async () => {
       const rows = await fetchDetailFromMirror(today);
       return { success: true, date: today, rows, count: rows.length };
     });
@@ -977,7 +1278,7 @@ async function warmAllPointageCaches() {
 
   // 3. Recolte
   try {
-    await withCache(`pointage_recolte_${today}`, 0, async () => {
+    await withCache(pointageCacheKey(`pointage_recolte_${today}`, null), 0, async () => {
       const [pointageRows, cueilletteRows] = await Promise.all([
         getPointageRowsForDate(today),
         getCueilletteRows(today, today),
@@ -1005,7 +1306,7 @@ async function warmAllPointageCaches() {
 
   // 4. Quinzaine (latest)
   try {
-    await withCache("pointage_quinzaine_latest", 0, async () => {
+    await withCache(pointageCacheKey("pointage_quinzaine_latest", null), 0, async () => {
       const selectedPeriode = periodes[0];
       if (!selectedPeriode) return { success: true, periode: null, periodes, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
       const rows = await getPointageRowsForPeriode(selectedPeriode);
@@ -1029,7 +1330,7 @@ async function warmAllPointageCaches() {
 
   // 4b. Quinzaine-analytique (latest)
   try {
-    await withCache("pointage_quinzaine_analytique_latest", 0, async () => {
+    await withCache(pointageCacheKey("pointage_quinzaine_analytique_latest", null), 0, async () => {
       const selectedPeriode = periodes[0];
       if (!selectedPeriode) return { success: true, periode: null, periodes, rows: [] };
       const rawRows = await getPointageRowsForPeriode(selectedPeriode);
@@ -1049,7 +1350,7 @@ async function warmAllPointageCaches() {
 
   // 4c. Quinzaine-repos (latest)
   try {
-    await withCache("pointage_quinzaine_repos_latest", 0, async () => {
+    await withCache(pointageCacheKey("pointage_quinzaine_repos_latest", null), 0, async () => {
       const selectedPeriode = periodes[0];
       if (!selectedPeriode) return { success: true, periode: null, equipes: [], nbJoursQuinzaine: 0 };
       const quinzaineDates = (meta?.periodeMap?.[selectedPeriode] || []).sort();
@@ -1077,7 +1378,7 @@ async function warmAllPointageCaches() {
 
   // 4d. Quinzaine-alertes (latest)
   try {
-    await withCache("pointage_quinzaine_alertes_latest", 0, async () => {
+    await withCache(pointageCacheKey("pointage_quinzaine_alertes_latest", null), 0, async () => {
       const selectedPeriode = periodes[0];
       if (!selectedPeriode) return { success: true, periode: null, alertes: [] };
       const quinzaineDates = (meta?.periodeMap?.[selectedPeriode] || []).sort();
@@ -1110,13 +1411,13 @@ async function warmAllPointageCaches() {
   // brut (kg=0 car quantiteToKg=0 sur « Récolte ») sans garde-fou → graphe Coût Récolte vide servi 5 min.
   // TTL=0 force le recalcul ; shouldCacheRecolteEquipes empêche d'écrire un payload dégradé.
   try {
-    await withCache("pointage_recolte_equipes", 0, () => computeRecolteEquipesPayload(3), shouldCacheRecolteEquipes);
+    await withCache("pointage_recolte_equipes_all", 0, () => computeRecolteEquipesPayload(3), shouldCacheRecolteEquipes);
     results.push("recolte-equipes:ok");
   } catch (e) { results.push(`recolte-equipes:${e.message}`); }
 
   // 6. Transport
   try {
-    await withCache("pointage_transport", 0, async () => {
+    await withCache(pointageCacheKey("pointage_transport", null), 0, async () => {
       const targetPeriodes = periodes.slice(0, 2);
       const allRows = [];
       for (const p of targetPeriodes) { allRows.push(...await getPointageRowsForPeriode(p)); }
@@ -1135,7 +1436,7 @@ async function warmAllPointageCaches() {
 
   // 6b. Heures supplémentaires
   try {
-    await withCache("pointage_heures_sup", 0, async () => {
+    await withCache("pointage_heures_sup_all", 0, async () => {
       const excludedFonctions = await getExcludedFonctionsHS();
       return await buildHeuresSup(meta, excludedFonctions);
     });
@@ -1144,7 +1445,7 @@ async function warmAllPointageCaches() {
 
   // 7. Nouveaux ouvriers
   try {
-    await withCache("pointage_nouveaux_ouvriers", 0, async () => {
+    await withCache(pointageCacheKey("pointage_nouveaux_ouvriers", null), 0, async () => {
       const currentPeriode = periodes[0];
       if (!currentPeriode) return { success: true, periode: null, summary: { totalQuinzaine: 0, totalToday: 0, byFarm: {}, byDay: [] }, workers: [] };
       const periodeDates = meta?.periodeMap?.[currentPeriode] || [];
@@ -1178,7 +1479,7 @@ async function warmAllPointageCaches() {
 
   // 8. Hors-récolte
   try {
-    await withCache(`pointage_hors_recolte_${today}`, 0, async () => {
+    await withCache(pointageCacheKey(`pointage_hors_recolte_${today}`, null), 0, async () => {
       const rawRows = await getPointageRowsForDate(today);
       const filtered = rawRows.filter(r => r.Operation_Famille !== "8. Récolte" && r.Operation_Famille !== "11. Postes fixes");
       const groups = {};
@@ -1261,6 +1562,57 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
     try {
       const action = req.query.action || "summary";
       const dateParam = req.query.date; // YYYY-MM-DD
+
+      // ===== GATING PAIE (Étape 0) — barrière serveur sur le nominatif RH =====
+      // pointageRH agrège sql_mirror_pointage (nominatif). Rôle résolu SERVEUR
+      // depuis users/{uid} (token Firebase), JAMAIS depuis le body/query.
+      //  - dg/finance/rh/admin (perimetre_ferme 'all') → toutes fermes (inchangé).
+      //  - chef (perimetre_ferme = SA ferme) → lignes filtrées sur sa ferme.
+      //  - autres profils / non authentifié → 403 AVANT toute lecture.
+      // NB : pointageRH est atteint via /api/pointage-rh (pointageV3) ET la
+      // délégation de /api/validation ; les deux passent déjà requireAuth. Le
+      // gating est ici pour couvrir les deux points d'entrée en un seul endroit.
+      //
+      // EXCEPTION — actions OPÉRATIONNELLES légitimement utilisées par le caporal
+      // (écran « Tunnels » : HorsRecolteSuiviTab → action=suivi-tunnels). Ce sont
+      // des agrégats de PROGRESSION par parcelle/tâche (effectifs, quantités),
+      // PAS un listing paie nominatif ; déjà cloisonnés côté client par ?ferme=.
+      // On les exclut du gating paie pour ne pas casser l'écran caporal.
+      // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
+      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true };
+      let _fermeFilter = null; // null = accès global (all) ou action exemptée
+      if (!GATING_EXEMPT_ACTIONS[action]) {
+        const _authUser = await verifyAuth(req);
+        const _callerProfile = await resolveCallerProfile(_authUser);
+        const _perim = consoAccessControl.resolvePerimetre(_callerProfile, req.query.ferme);
+        const _access = resolvePointageRHAccess(_perim);
+        if (!_access.allowed) {
+          return res.status(403).json({ success: false, error: "Accès non autorisé" });
+        }
+        _fermeFilter = _access.fermeFilter; // null (all) ou 'F1'|'F5'|'Avocatier'|'BAHIA'
+      }
+      // Chef : filtre ferme appliqué AU NIVEAU DES LIGNES BRUTES, avant toute
+      // agrégation, en shadowant les fetchers. deriveFerme retourne 'Autre' si
+      // indéterminé → exclu (fail-closed : jamais dans la ferme d'un chef).
+      const _keepPointage = (r) => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) === _fermeFilter;
+      const _keepCueillette = (r) => deriveFerme(r.Reference_Technique, r.Parcelle_Culturale) === _fermeFilter;
+      const getPointageRowsForDate = _fermeFilter
+        ? async (...a) => (await _getPointageRowsForDate(...a)).filter(_keepPointage)
+        : _getPointageRowsForDate;
+      const getPointageRowsForDateRange = _fermeFilter
+        ? async (...a) => (await _getPointageRowsForDateRange(...a)).filter(_keepPointage)
+        : _getPointageRowsForDateRange;
+      const getPointageRowsForPeriode = _fermeFilter
+        ? async (...a) => (await _getPointageRowsForPeriode(...a)).filter(_keepPointage)
+        : _getPointageRowsForPeriode;
+      const getWorkerHistory = _fermeFilter
+        ? async (...a) => (await _getWorkerHistory(...a)).filter(_keepPointage)
+        : _getWorkerHistory;
+      const getCueilletteRows = _fermeFilter
+        ? async (...a) => (await _getCueilletteRows(...a)).filter(_keepCueillette)
+        : _getCueilletteRows;
+      // ===== FIN GATING =====
+
       const db = USE_MIRROR ? null : await getPool();
 
       // ------ CONFECTION-TYPES: extract distinct confection types from BR_Pointage ------
@@ -1307,11 +1659,25 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           return res.json({ success: true, date, rows: [], rowCount: 0, syncedAt: null });
         }
         const data = snap.data();
+        let rows = data.rows || [];
+        // GATING PAIE (chef) : prod_presence est NOMINATIF et ne porte pas de parcelle
+        // exploitable pour dériver la ferme. Même approche que buildHeuresSup : on
+        // dérive le set des matricules ayant pointé la ferme du chef (via le mirror
+        // du même jour), puis on ne renvoie que ces rows. Fail-closed : un ouvrier
+        // présent mais jamais pointé sur la ferme du chef est exclu.
+        // _fermeFilter null (RH/DG/Finance) → passthrough (toutes rows, inchangé).
+        if (_fermeFilter) {
+          // getPointageRowsForDate est shadowé (filtré ferme) → computeAllowedMatricules
+          // re-filtre sans effet, restant correct.
+          const mirrorRows = await getPointageRowsForDate(date);
+          const allowed = computeAllowedMatricules(mirrorRows, _fermeFilter);
+          rows = filterPresenceRowsByAllowed(rows, allowed);
+        }
         return res.json({
           success: true,
           date,
-          rows: data.rows || [],
-          rowCount: data.rowCount || 0,
+          rows,
+          rowCount: rows.length,
           syncedAt: data.syncedAt || null,
         });
       }
@@ -1319,7 +1685,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ SUMMARY: effectif today + yesterday + weekly trend + top ops ------
       if (action === "summary") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
-        const cacheKey = `pointage_summary_${dateForCheck}`;
+        // Clé ferme-aware : le payload est filtré par _fermeFilter (shadow des fetchers).
+        const cacheKey = pointageCacheKey(`pointage_summary_${dateForCheck}`, _fermeFilter);
         const cached = await withCache(cacheKey, 2 * 60 * 1000, async () => {
         const submittedFermes = await getSubmittedFermes(dateForCheck);
 
@@ -1348,8 +1715,15 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             cout: r.Cout || 0,
           })), POINTAGE_FERMES);
           const fermesYesterday = { F1: { total: veilleEffectif.F1.total }, F5: { total: veilleEffectif.F5.total }, Avocatier: { total: veilleEffectif.Avocatier.total }, BAHIA: { total: veilleEffectif.BAHIA.total } };
-          // Override with snapshot data
+          // Override with snapshot data.
+          // GATING PAIE (fail-closed) : snapData.summary est le résumé effectif/coût
+          // d'UNE ferme soumise. Pour un chef, on ne réinjecte QUE le snapshot de SA
+          // ferme — sinon pointageJour émettrait l'effectif/coût des autres fermes
+          // soumises. Les live counts (fermes[f]) des autres fermes sont déjà zérotés
+          // par le shadow des fetchers (todayRows filtré). _fermeFilter null
+          // (RH/DG/Finance) → override de toutes les fermes soumises (inchangé).
           for (const f of Object.keys(submittedFermes)) {
+            if (_fermeFilter && f !== _fermeFilter) continue;
             const snapData = await getSnapshotData(dateForCheck, f);
             if (snapData && snapData.summary && fermes[f]) fermes[f] = snapData.summary;
           }
@@ -1399,25 +1773,41 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = DATEADD(day, -1, ${dateSQL}) GROUP BY Ref_parcelle, Parcelle_Culturale, Operation_Famille, Personnel_Matricule`),
           db.request().query(`SELECT CONVERT(date, Periode_Date) AS jour, Ref_parcelle, Parcelle_Culturale, Personnel_Matricule FROM BR_Pointage WHERE Periode_Date >= DATEADD(day, -6, ${dateSQL}) AND CONVERT(date, Periode_Date) <= ${dateSQL} GROUP BY CONVERT(date, Periode_Date), Ref_parcelle, Parcelle_Culturale, Personnel_Matricule ORDER BY jour`),
           db.request().query(`SELECT Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Hr) AS totalHr FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes' GROUP BY Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale ORDER BY nbOuv DESC`),
-          db.request().query(`SELECT SUM(Quantite_unite) AS totalQty, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille = '8. Récolte'`),
+          db.request().query(`SELECT Ref_parcelle, Parcelle_Culturale, Quantite_unite, Personnel_Matricule, Cout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille = '8. Récolte'`),
           db.request().query(`SELECT TOP 1 Periode_Date FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} ORDER BY Periode_Date DESC`),
         ]);
 
-        const fermes = countDistinctByFermeType(todayRes.recordset.map(row => ({
+        // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false, filet de sécurité). Ces
+        // recordsets portent Ref_parcelle/Parcelle_Culturale → ferme dérivable. On filtre
+        // CHAQUE recordset par la ferme du chef AVANT agrégation (effectifs/trend/topOps/
+        // récolte), comme le chemin mirror via les fetchers shadowés. Fail-closed.
+        // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
+        const todayRows = filterMirrorRowsByFerme(todayRes.recordset, _fermeFilter);
+        const yesterdayRows = filterMirrorRowsByFerme(yesterdayRes.recordset, _fermeFilter);
+        const trendRows = filterMirrorRowsByFerme(trendRes.recordset, _fermeFilter);
+        const topOpsRows = filterMirrorRowsByFerme(topOpsRes.recordset, _fermeFilter);
+        const recolteRows = filterMirrorRowsByFerme(recolteKgRes.recordset, _fermeFilter);
+
+        const fermes = countDistinctByFermeType(todayRows.map(row => ({
           matricule: row.Personnel_Matricule,
           ferme: deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale),
           type: classifyType(row.Operation_Famille),
           cout: row.totalCout || 0,
         })), POINTAGE_FERMES);
-        const veilleEffectif = countDistinctByFermeType(yesterdayRes.recordset.map(row => ({
+        const veilleEffectif = countDistinctByFermeType(yesterdayRows.map(row => ({
           matricule: row.Personnel_Matricule,
           ferme: deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale),
           type: classifyType(row.Operation_Famille),
         })), POINTAGE_FERMES);
         const fermesYesterday = { F1: { total: veilleEffectif.F1.total }, F5: { total: veilleEffectif.F5.total }, Avocatier: { total: veilleEffectif.Avocatier.total }, BAHIA: { total: veilleEffectif.BAHIA.total } };
 
-        // Override with snapshot data for submitted fermes
+        // Override with snapshot data for submitted fermes.
+        // GATING PAIE (fail-closed) : même garde ferme que le chemin mirror (l.1726).
+        // Pour un chef, ne réinjecter QUE le snapshot de SA ferme — sinon le résumé
+        // effectif/coût des autres fermes soumises fuiterait. _fermeFilter null
+        // (RH/DG/Finance) → override de toutes les fermes soumises (inchangé).
         for (const f of Object.keys(submittedFermes)) {
+          if (_fermeFilter && f !== _fermeFilter) continue;
           const snapData = await getSnapshotData(dateForCheck, f);
           if (snapData && snapData.summary && fermes[f]) {
             fermes[f] = snapData.summary;
@@ -1438,7 +1828,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
         // Weekly trend — ouvriers distincts par (jour, ferme), dédupliqués via Set.
         const trendMap = {};
-        for (const row of trendRes.recordset) {
+        for (const row of trendRows) {
           const d = new Date(row.jour);
           const key = d.toISOString().slice(0, 10);
           if (!trendMap[key]) trendMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }), F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
@@ -1450,7 +1840,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           .sort((a, b) => a.jour.localeCompare(b.jour));
 
         // Top ops
-        const topOps = topOpsRes.recordset.slice(0, 10).map(r => ({
+        const topOps = topOpsRows.slice(0, 10).map(r => ({
           operation: r.Operation || r.Operation_Famille,
           operationFamille: r.Operation_Famille,
           effectif: r.nbOuv,
@@ -1459,7 +1849,17 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
         }));
 
-        const recolteKg = recolteKgRes.recordset[0] || {};
+        // Récolte : agrégé en JS depuis les lignes filtrées par ferme (la requête ne
+        // pré-agrège plus, pour rester cloisonnable). nbOuv = matricules distincts.
+        const recolteMatricules = new Set();
+        let recolteTotalQty = 0;
+        let recolteTotalCout = 0;
+        for (const r of recolteRows) {
+          if (r.Personnel_Matricule) recolteMatricules.add(r.Personnel_Matricule);
+          recolteTotalQty += r.Quantite_unite || 0;
+          recolteTotalCout += r.Cout || 0;
+        }
+        const recolteKg = { totalQty: recolteTotalQty, nbOuv: recolteMatricules.size, totalCout: recolteTotalCout };
         const lastSaisieRow = lastSaisieRes.recordset[0];
         const lastSaisie = lastSaisieRow ? new Date(lastSaisieRow.Periode_Date).toISOString() : null;
 
@@ -1476,12 +1876,16 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ DETAIL: detailed pointage for a date ------
       if (action === "detail") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
-        const cached = await withCache(`pointage_detail_${dateForCheck}`, 2 * 60 * 1000, async () => {
+        // GATING PAIE : la clé de cache inclut la ferme du chef (_fermeFilter) pour
+        // qu'un payload cloisonné ne soit jamais servi à un autre profil ni ne pollue
+        // le cache global RH ('all' → suffixe 'all', comportement inchangé).
+        const cacheSuffix = _fermeFilter || 'all';
+        const cached = await withCache(`pointage_detail_${dateForCheck}_${cacheSuffix}`, 2 * 60 * 1000, async () => {
         const submittedFermes = await getSubmittedFermes(dateForCheck);
 
         let rows;
         if (USE_MIRROR) {
-          rows = await fetchDetailFromMirror(dateForCheck);
+          rows = await fetchDetailFromMirror(dateForCheck, _fermeFilter);
         } else {
           const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
           const result = await db.request().query(`
@@ -1498,6 +1902,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), type: classifyType(r.Operation_Famille),
             variete: r.Variete, culture: r.Culture, hs25: r.HS_25, hs50: r.HS_50, hs100: r.HS_100,
           }));
+          // GATING PAIE : chef → cloisonnement sur la ferme dérivée (fail-closed).
+          rows = filterByFermeField(rows, _fermeFilter);
         }
 
         if (Object.keys(submittedFermes).length > 0) {
@@ -1507,7 +1913,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const snapData = await getSnapshotData(dateForCheck, f);
             if (snapData && snapData.detailRows) snapshotRows = snapshotRows.concat(snapData.detailRows);
           }
-          rows = [...liveRows, ...snapshotRows];
+          // GATING PAIE : les snapshots agrègent TOUTES les fermes → filtrer sur la
+          // ferme du chef avant renvoi (fail-closed sur 'Autre'/autre ferme).
+          rows = filterByFermeField([...liveRows, ...snapshotRows], _fermeFilter);
         }
 
         return { success: true, date: dateForCheck, rows, count: rows.length };
@@ -1518,7 +1926,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ RECOLTE: harvest workers for a date ------
       if (action === "recolte") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
-        const cached = await withCache(`pointage_recolte_${dateForCheck}`, 2 * 60 * 1000, async () => {
+        // Clé ferme-aware : le payload est filtré par _fermeFilter (shadow des fetchers).
+        const cached = await withCache(pointageCacheKey(`pointage_recolte_${dateForCheck}`, _fermeFilter), 2 * 60 * 1000, async () => {
         let workers, cueillette;
 
         if (USE_MIRROR) {
@@ -1552,6 +1961,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           ]);
           cueillette = cueilletteRes.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || "").trim(), variete: r.Variete, ferme: deriveFerme(r.Reference_Technique, r.Parcelle_Culturale), totalKg: r.totalKg || 0, totalCaisses: r.totalCaisses || 0 }));
           workers = pointageRes.recordset.map((r, i) => ({ rank: i + 1, matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), operation: r.Operation, quantite: quantiteToKg(r.Quantite_unite, r.Operation), heures: r.Nombre_Hr, cout: r.Cout, parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), variete: r.Variete }));
+          // Fail-closed : cohérence avec detail/postes-fixes. En prod USE_MIRROR=true
+          // (le shadow filtre déjà), mais on filtre aussi cette branche SQL fallback.
+          workers = filterByFermeField(workers, _fermeFilter);
+          cueillette = filterByFermeField(cueillette, _fermeFilter);
         }
 
         // Dédup SYSTÉMATIQUE par matricule : 1 ligne BR_Pointage par (ouvrier × parcelle),
@@ -1582,7 +1995,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           }
           if (prodDoc.exists) {
             const prodData = prodDoc.data();
-            const prodRows = prodData.rows || [];
+            // GATING PAIE (fail-closed) : prod_tracabilite_recolte contient TOUS les
+            // ouvriers de TOUTES les fermes (aucun champ ferme). Pour un chef, on filtre
+            // les lignes prod sur sa ferme AVANT tout enrichissement — sinon la boucle
+            // « add workers missing from pointage » injecterait matricule+nom+kg d'autres
+            // fermes, et cueillette/totalKg (prodData.totalKg) seraient tous-fermes.
+            // _fermeFilter null (RH/DG/Finance) → passthrough STRICT (inchangé).
+            const prodRows = filterProdRowsByFerme(prodData.rows || [], _fermeFilter);
             if (prodRows.length > 0) {
               // workers est déjà dédupliqué par matricule (cf. dedupeWorkersByMatricule
               // appelé plus haut, systématiquement). Idempotent par sécurité.
@@ -1612,8 +2031,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
                   });
                 }
               });
-              // Use prod totalKg instead of BR_Cueillette
-              cueillette = [{ parcelle: "Total (prod)", variete: "", ferme: "", totalKg: prodData.totalKg || 0, totalCaisses: 0 }];
+              // Use prod totalKg instead of BR_Cueillette. Pour un chef, prodData.totalKg
+              // est un total TOUTES fermes → on resomme sur les seules lignes prod de sa
+              // ferme (déjà filtrées ci-dessus). _fermeFilter null → total prod d'origine.
+              const prodTotalKg = recomposeProdTotalKg(prodRows, prodData.totalKg || 0, _fermeFilter);
+              cueillette = [{ parcelle: "Total (prod)", variete: "", ferme: _fermeFilter || "", totalKg: prodTotalKg, totalCaisses: 0 }];
             }
           }
         } catch (prodErr) {
@@ -1631,7 +2053,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ QUINZAINE: bi-weekly summary ------
       if (action === "quinzaine") {
         const periodeParam = req.query.periode;
-        const cacheKey = `pointage_quinzaine_${periodeParam || "latest"}`;
+        // Clé ferme-aware : le payload (parFerme/parJour) dépend de _fermeFilter.
+        const cacheKey = pointageCacheKey(`pointage_quinzaine_${periodeParam || "latest"}`, _fermeFilter);
         const cached = await withCache(cacheKey, 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
@@ -1649,10 +2072,19 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
             if (archiveDoc.exists && archiveDoc.data().summary) {
               const arch = archiveDoc.data().summary;
+              // GATING PAIE (chef) : l'archive stocke des agrégats TOUTES fermes
+              // (parFerme keyé par ferme, parJour ventilé par ferme, totaux tous-fermes).
+              // Sans cloisonnement, un chef verrait toutes les fermes. On ne garde que
+              // sa ferme et on recompose ses totaux (fail-closed sur journees/cout du jour,
+              // non ventilables par ferme dans l'archive).
+              // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
+              const parFerme = filterArchivedParFerme(arch.parFerme, _fermeFilter);
+              const parJour = filterArchivedParJour(arch.parJour, _fermeFilter);
+              const totals = recomposeArchivedTotals(parFerme, arch, _fermeFilter);
               return {
                 success: true, periode: selectedPeriode, periodes,
-                totalJournees: arch.totalJournees, totalCout: arch.totalCout,
-                parFerme: arch.parFerme, parJour: arch.parJour,
+                totalJournees: totals.totalJournees, totalCout: totals.totalCout,
+                parFerme, parJour,
               };
             }
             // Fallback: fetch directly from SQL for older quinzaines
@@ -1685,6 +2117,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               DateStr: r.DateStr,
               HS_25: r.HS_25 || 0, HS_50: r.HS_50 || 0, HS_100: r.HS_100 || 0, HS_NM: r.HS_NM || 0,
             }));
+            // GATING PAIE (chef) : ce fallback SQL lit le raw recordset SANS passer par
+            // le fetcher shadowé (getPointageRowsForPeriode). On filtre donc les LIGNES
+            // BRUTES par la ferme du chef AVANT toute agrégation (qFermes/parJour/totaux),
+            // exactement comme le chemin mirror. Sans ça, un chef verrait toutes les fermes.
+            // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
+            rows = filterMirrorRowsByFerme(rows, _fermeFilter);
           }
           // Summary per ferme
           const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
@@ -1723,15 +2161,23 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour, Personnel_Matricule, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE 1=1 ${periodeFilter}`),
           db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`),
         ]);
+        // GATING PAIE (chef) : ce fallback SQL externe (USE_MIRROR=false, filet de
+        // sécurité) agrège des recordsets bruts portant Ref_parcelle/Parcelle_Culturale
+        // → ferme dérivable. On filtre CHAQUE recordset par la ferme du chef AVANT
+        // agrégation (qFermes/parJour/totaux) pour cloisonner, cohérence fail-closed.
+        // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
+        const summaryRows = filterMirrorRowsByFerme(summaryRes.recordset, _fermeFilter);
+        const perDayRows = filterMirrorRowsByFerme(perDayRes.recordset, _fermeFilter);
+        const perDayMatRows = filterMirrorRowsByFerme(perDayMatRes.recordset, _fermeFilter);
         const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
-        for (const row of summaryRes.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); const type = classifyType(row.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += row.totalJr || 0; qFermes[ferme].cout += row.totalCout || 0; qFermes[ferme][type] += row.totalJr || 0; } }
+        for (const row of summaryRows) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); const type = classifyType(row.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += row.totalJr || 0; qFermes[ferme].cout += row.totalCout || 0; qFermes[ferme][type] += row.totalJr || 0; } }
         // journees/cout = SOMMES sur les groupes (parcelle × op-famille) — INCHANGÉ.
         const dayMap = {};
-        for (const row of perDayRes.recordset) { const d = new Date(row.jour); const key = d.toISOString().slice(0, 10); if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 }; dayMap[key].journees += row.totalJr || 0; dayMap[key].cout += row.totalCout || 0; }
+        for (const row of perDayRows) { const d = new Date(row.jour); const key = d.toISOString().slice(0, 10); if (!dayMap[key]) dayMap[key] = { jour: key, jourLabel: d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }), nbOuv: 0, journees: 0, cout: 0, F1: 0, F5: 0, Avocatier: 0, BAHIA: 0 }; dayMap[key].journees += row.totalJr || 0; dayMap[key].cout += row.totalCout || 0; }
         // nbOuv (jour + par ferme) = matricules DISTINCTS via Set (corrige le gonflage :
         // on ne somme plus des COUNT(DISTINCT) par parcelle/op). Mirroir du chemin MIRROR.
         const daySets = {};
-        for (const row of perDayMatRes.recordset) {
+        for (const row of perDayMatRows) {
           const d = new Date(row.jour); const key = d.toISOString().slice(0, 10);
           if (!daySets[key]) daySets[key] = { nbOuv: new Set(), F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
           const mat = row.Personnel_Matricule;
@@ -1756,7 +2202,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ QUINZAINE-ANALYTIQUE: pivot parcelle x operation ------
       if (action === "quinzaine-analytique") {
         const periodeParam = req.query.periode;
-        const cacheKey = `pointage_quinzaine_analytique_${periodeParam || "latest"}`;
+        // Clé ferme-aware : les rows par parcelle/op dépendent de _fermeFilter.
+        const cacheKey = pointageCacheKey(`pointage_quinzaine_analytique_${periodeParam || "latest"}`, _fermeFilter);
         const cached = await withCache(cacheKey, 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
@@ -1768,7 +2215,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             // Check Firestore archive
             const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
             if (archiveDoc.exists && archiveDoc.data().analytique) {
-              return { success: true, periode: selectedPeriode, periodes, rows: archiveDoc.data().analytique };
+              // GATING PAIE (chef) : les rows archivées portent parcelle/refParcelle
+              // → ferme dérivable. Sans filtrage, un chef verrait les parcelles/coûts
+              // de toutes les fermes. Fail-closed : ferme dérivée ≠ _fermeFilter → exclue.
+              // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
+              return { success: true, periode: selectedPeriode, periodes, rows: filterArchivedRowsByFerme(archiveDoc.data().analytique, _fermeFilter) };
             }
           }
           // Group by parcelle+ref+opFamille+operation
@@ -1788,7 +2239,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const periodes = periodesRes.recordset.map(r => r.Periode_paie);
         const selectedPeriode = periodeParam || periodes[0];
         const result = await db.request().query(`SELECT Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS JH, SUM(Cout) AS Cout FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation ORDER BY Parcelle_Culturale, Operation_Famille`);
-        const rows = result.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), operationFamille: r.Operation_Famille, operation: r.Operation, nbOuv: r.nbOuv, jh: Math.round((r.JH || 0) * 100) / 100, cout: Math.round(r.Cout || 0) }));
+        // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Les rows portent un champ
+        // `ferme` dérivé → on cloisonne sur la ferme du chef (fail-closed), cohérence avec
+        // le chemin mirror/archive. _fermeFilter null (RH/DG/Finance) → passthrough.
+        const rows = filterByFermeField(result.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), operationFamille: r.Operation_Famille, operation: r.Operation, nbOuv: r.nbOuv, jh: Math.round((r.JH || 0) * 100) / 100, cout: Math.round(r.Cout || 0) })), _fermeFilter);
         return { success: true, periode: selectedPeriode, periodes, rows };
         }); // end withCache
         return res.json(cached);
@@ -1797,7 +2251,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ HORS-RECOLTE: operations breakdown ------
       if (action === "hors-recolte") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
-        const cached = await withCache(`pointage_hors_recolte_${dateForCheck}`, 10 * 60 * 1000, async () => {
+        // Clé ferme-aware : operations/effectifs dépendent de _fermeFilter.
+        const cached = await withCache(pointageCacheKey(`pointage_hors_recolte_${dateForCheck}`, _fermeFilter), 10 * 60 * 1000, async () => {
           if (USE_MIRROR) {
             const rawRows = await getPointageRowsForDate(dateForCheck);
             const filtered = rawRows.filter(r => r.Operation_Famille !== "8. Récolte" && r.Operation_Famille !== "11. Postes fixes");
@@ -1845,7 +2300,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           }
           const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
           const result = await db.request().query(`SELECT Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Hr) AS totalHr, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes' GROUP BY Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale ORDER BY Operation_Famille, nbOuv DESC`);
-          const ops = result.recordset.map(r => ({ operationFamille: r.Operation_Famille, operation: r.Operation, effectif: r.nbOuv, heures: r.totalHr, journees: r.totalJr, cout: Math.round(r.totalCout || 0), parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+          // Fail-closed : cohérence avec le shadow. En prod USE_MIRROR=true, mais on
+          // filtre aussi cette branche SQL fallback par la ferme du chef.
+          const ops = filterByFermeField(result.recordset.map(r => ({ operationFamille: r.Operation_Famille, operation: r.Operation, effectif: r.nbOuv, heures: r.totalHr, journees: r.totalJr, cout: Math.round(r.totalCout || 0), parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) })), _fermeFilter);
           // Effectifs DISTINCTS : on ramène les couples DISTINCTS (matricule, famille, parcelle)
           // pour dériver la ferme en JS et compter via Set (global / par famille / par ferme).
           const matRes = await db.request().query(`SELECT DISTINCT Personnel_Matricule, Operation_Famille, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes'`);
@@ -1857,6 +2314,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const mat = r.Personnel_Matricule;
             const f = r.Operation_Famille || "Autre";
             const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+            // Fail-closed : un chef ne voit que sa ferme dans les effectifs distincts.
+            if (_fermeFilter && ferme !== _fermeFilter) continue;
             globalSet.add(mat);
             if (!familleSets[f]) familleSets[f] = new Set();
             familleSets[f].add(mat);
@@ -1952,10 +2411,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       if (action === "recolte-equipes") {
         // Calcul + cache via la fonction partagée (même logique serving + warm).
         // 3 quinzaines, enrichissement prod, garde-fou shouldCacheRecolteEquipes.
+        // GATING PAIE : clé de cache + payload cloisonnés par ferme du chef
+        // (_fermeFilter). 'all' → clé/comportement inchangés (RH/DG/Finance).
+        const reCacheSuffix = _fermeFilter || 'all';
         const cached = await withCache(
-          "pointage_recolte_equipes",
+          `pointage_recolte_equipes_${reCacheSuffix}`,
           5 * 60 * 1000,
-          () => computeRecolteEquipesPayload(3),
+          () => computeRecolteEquipesPayload(3, _fermeFilter),
           shouldCacheRecolteEquipes
         );
         return res.json(cached);
@@ -1963,7 +2425,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ TRANSPORT: all workers per day for transport cost calculation ------
       if (action === "transport") {
-        const cached = await withCache("pointage_transport", 0, async () => {
+        // Clé ferme-aware : les rows nominatives (matricule/nom) dépendent de _fermeFilter.
+        const cached = await withCache(pointageCacheKey("pointage_transport", _fermeFilter), 0, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
@@ -1989,7 +2452,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
         const periodes = periodesRes.recordset.map(r => r.Periode_paie);
         const result = await db.request().query(`SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, CONVERT(date, Periode_Date) AS jour, Periode_paie, Operation_Famille, Operation, MIN(Ref_parcelle) AS Ref_parcelle, MIN(Parcelle_Culturale) AS Parcelle_Culturale FROM BR_Pointage GROUP BY Personnel_Matricule, CONVERT(date, Periode_Date), Periode_paie, Operation_Famille, Operation ORDER BY jour DESC`);
-        const rows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+        // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Rows NOMINATIVES avec
+        // ferme dérivée → cloisonnement sur la ferme du chef (fail-closed), cohérence
+        // avec le chemin mirror shadowé. _fermeFilter null (RH/DG/Finance) → passthrough.
+        const rows = filterByFermeField(result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) })), _fermeFilter);
         return { success: true, periodes, rows };
         }); // end withCache
         return res.json(cached);
@@ -1997,10 +2463,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ HEURES-SUP: durée travaillée + dépassement 8h30 par quinzaine ------
       if (action === "heures-sup") {
-        const cached = await withCache("pointage_heures_sup", 0, async () => {
+        // GATING PAIE : clé de cache + payload cloisonnés par ferme du chef.
+        const hsCacheSuffix = _fermeFilter || 'all';
+        const cached = await withCache(`pointage_heures_sup_${hsCacheSuffix}`, 0, async () => {
           const metaHS = await getPointageMeta();
           const excludedFonctions = await getExcludedFonctionsHS();
-          return await buildHeuresSup(metaHS, excludedFonctions);
+          return await buildHeuresSup(metaHS, excludedFonctions, _fermeFilter);
         });
         return res.json(cached);
       }
@@ -2022,14 +2490,30 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           }
           return res.json({ success: true, dates });
         }
-        const result = await db.request().query(`SELECT DISTINCT TOP 30 CONVERT(date, Periode_Date) AS jour, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage GROUP BY CONVERT(date, Periode_Date) ORDER BY jour DESC`);
-        const dates = result.recordset.map(r => ({ date: new Date(r.jour).toISOString().slice(0, 10), nbOuv: r.nbOuv }));
+        // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Le chemin mirror compte
+        // nbOuv via getPointageRowsForDate shadowé (déjà filtré ferme). Pour rester
+        // cloisonnable, on ramène les couples DISTINCTS (jour, matricule, parcelle),
+        // on filtre par la ferme du chef, puis on compte les matricules DISTINCTS par
+        // jour en JS. _fermeFilter null (RH/DG/Finance) → passthrough (tous comptés).
+        const result = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour, Personnel_Matricule, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) >= DATEADD(day, -60, CONVERT(date, GETDATE()))`);
+        const dateSets = {};
+        for (const r of filterMirrorRowsByFerme(result.recordset, _fermeFilter)) {
+          const key = new Date(r.jour).toISOString().slice(0, 10);
+          if (!dateSets[key]) dateSets[key] = new Set();
+          if (r.Personnel_Matricule) dateSets[key].add(r.Personnel_Matricule);
+        }
+        const dates = Object.entries(dateSets)
+          .map(([date, workers]) => ({ date, nbOuv: workers.size }))
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .slice(0, 30);
         return res.json({ success: true, dates });
       }
 
       // ------ NOUVEAUX OUVRIERS: new workers detected in current quinzaine ------
       if (action === "nouveaux-ouvriers") {
-        const cached = await withCache("pointage_nouveaux_ouvriers", 5 * 60 * 1000, async () => {
+        // Clé ferme-aware : la liste nominative des nouveaux ouvriers dépend de
+        // _fermeFilter. La période est toujours la quinzaine courante (meta.periodes[0]).
+        const cached = await withCache(pointageCacheKey("pointage_nouveaux_ouvriers", _fermeFilter), 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const currentPeriode = meta?.periodes?.[0];
@@ -2068,7 +2552,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const currentPeriode = (periodeRes.recordset[0] || {}).Periode_paie;
         if (!currentPeriode) return { success: true, periode: null, summary: { totalQuinzaine: 0, totalToday: 0, byFarm: {}, byDay: [] }, workers: [] };
         const result = await db.request().query(`WITH QuinzaineBounds AS (SELECT MIN(CONVERT(date, Periode_Date)) AS q_start, MAX(CONVERT(date, Periode_Date)) AS q_end FROM BR_Pointage WHERE Periode_paie = N'${currentPeriode.replace(/'/g, "''")}'), WorkerFirst AS (SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, MIN(CONVERT(date, Periode_Date)) AS first_date FROM BR_Pointage GROUP BY Personnel_Matricule HAVING MIN(CONVERT(date, Periode_Date)) >= (SELECT q_start FROM QuinzaineBounds)), WorkerFirstDetail AS (SELECT w.Personnel_Matricule, w.Personnel_Nom, w.first_date, p.Ref_parcelle, p.Parcelle_Culturale, p.Operation_Famille FROM WorkerFirst w OUTER APPLY (SELECT TOP 1 Ref_parcelle, Parcelle_Culturale, Operation_Famille FROM BR_Pointage WHERE Personnel_Matricule = w.Personnel_Matricule AND CONVERT(date, Periode_Date) = w.first_date) p) SELECT *, (SELECT q_start FROM QuinzaineBounds) AS q_start, (SELECT q_end FROM QuinzaineBounds) AS q_end FROM WorkerFirstDetail ORDER BY first_date DESC, Personnel_Nom`);
-        const rows = result.recordset;
+        // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Chaque worker porte
+        // Ref_parcelle/Parcelle_Culturale (première apparition) → ferme dérivable. On
+        // filtre les LIGNES BRUTES par la ferme du chef AVANT agrégation (byFarm/byDay/
+        // workers nominatifs). Fail-closed : ferme dérivée ≠ _fermeFilter → exclue.
+        // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
+        const rows = filterMirrorRowsByFerme(result.recordset, _fermeFilter);
         const today = new Date().toISOString().slice(0, 10);
         const qStart = rows.length > 0 ? new Date(rows[0].q_start).toISOString().slice(0, 10) : null;
         const qEnd = rows.length > 0 ? new Date(rows[0].q_end).toISOString().slice(0, 10) : null;
@@ -2094,7 +2583,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           rows = rows.map(r => ({ Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Operation_Groupe: r.Operation_Groupe, Nombre_Jr: r.Nombre_Jr, Nombre_Hr: r.Nombre_Hr, Quantite_unite: r.Quantite_unite, Cout: r.Cout, Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Variete: r.Variete, Culture: r.Culture, Periode_paie: r.Periode_paie, jour: r.DateStr, HS_25: r.HS_25, HS_50: r.HS_50, HS_100: r.HS_100 }));
         } else {
           const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, Operation_Famille, Operation, Operation_Groupe, Nombre_Jr, Nombre_Hr, Quantite_unite, Cout, Parcelle_Culturale, Ref_parcelle, Variete, Culture, Periode_paie, CONVERT(date, Periode_Date) AS jour, HS_25, HS_50, HS_100, HS_NM FROM BR_Pointage WHERE Personnel_Matricule = N'${(matricule || '').replace(/'/g, "''")}' ORDER BY Periode_Date DESC`);
-          rows = result.recordset;
+          // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). L'historique complet
+          // d'un ouvrier peut couvrir plusieurs fermes. On ne garde que les LIGNES de la
+          // ferme du chef (ferme dérivable via parcelle), comme le chemin mirror via
+          // getWorkerHistory shadowé → si l'ouvrier n'a jamais pointé la ferme du chef,
+          // rows vide → worker: null. _fermeFilter null (RH/DG/Finance) → passthrough.
+          rows = filterMirrorRowsByFerme(result.recordset, _fermeFilter);
         }
 
         if (rows.length === 0) return res.json({ success: true, worker: null });
@@ -2123,7 +2617,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ QUINZAINE-REPOS: average rest days per team per quinzaine ------
       if (action === "quinzaine-repos") {
         const periodeParamR = req.query.periode;
-        const cacheKeyR = `pointage_quinzaine_repos_${periodeParamR || "latest"}`;
+        // Clé ferme-aware : les équipes/ouvriers nominatifs dépendent de _fermeFilter.
+        const cacheKeyR = pointageCacheKey(`pointage_quinzaine_repos_${periodeParamR || "latest"}`, _fermeFilter);
         const cachedR = await withCache(cacheKeyR, 5 * 60 * 1000, async () => {
         let periodes, selectedPeriode, quinzaineDates, rawRows;
         if (USE_MIRROR) {
@@ -2140,7 +2635,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               const rd = archiveDoc.data().reposData;
               quinzaineDates = rd.quinzaineDates;
               rawRows = [];
-              for (const w of rd.workers) {
+              // GATING PAIE (chef) : reposData.workers = matricule+nom TOUTES fermes,
+              // NOMINATIF, sans champ ferme ni parcelle exploitable. L'archive ne conserve
+              // AUCUNE source ferme pour restreindre ces workers (contrairement au mirror).
+              // DÉCISION fail-closed (zéro fuite nominative) : un chef ne voit PAS le
+              // nominatif repos cross-ferme d'une période archivée → workers vidé.
+              // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
+              for (const w of filterReposWorkersArchived(rd.workers, _fermeFilter)) {
                 for (const d of w.joursPresent) {
                   rawRows.push({ Personnel_Matricule: w.matricule, Personnel_Nom: w.nom, DateStr: d });
                 }
@@ -2155,7 +2656,14 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const datesRes = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' ORDER BY jour`);
           quinzaineDates = datesRes.recordset.map(r => new Date(r.jour).toISOString().slice(0, 10));
           const workersRes = await db.request().query(`SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY Personnel_Matricule, CONVERT(date, Periode_Date) ORDER BY Personnel_Matricule`);
-          rawRows = workersRes.recordset.map(r => ({ Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: new Date(r.jour).toISOString().slice(0, 10) }));
+          // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Cette requête N'inclut
+          // PAS de parcelle/refParcelle → la ferme n'est PAS dérivable pour ces lignes
+          // repos nominatives. DÉCISION fail-closed (zéro fuite nominative), cohérente
+          // avec filterReposWorkersArchived : un chef ne voit PAS le nominatif repos
+          // cross-ferme (rawRows vidé). _fermeFilter null (RH/DG/Finance) → passthrough.
+          rawRows = _fermeFilter
+            ? []
+            : workersRes.recordset.map(r => ({ Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: new Date(r.jour).toISOString().slice(0, 10) }));
         }
         const nbJoursQuinzaine = quinzaineDates.length;
         const equipeMap = {};
@@ -2181,7 +2689,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // ------ QUINZAINE-ALERTES: teams absent 5+ consecutive days ------
       if (action === "quinzaine-alertes") {
         const periodeParamA = req.query.periode;
-        const cacheKeyA = `pointage_quinzaine_alertes_${periodeParamA || "latest"}`;
+        // Clé ferme-aware : les alertes d'équipe dépendent des lignes filtrées par _fermeFilter.
+        const cacheKeyA = pointageCacheKey(`pointage_quinzaine_alertes_${periodeParamA || "latest"}`, _fermeFilter);
         const cachedA = await withCache(cacheKeyA, 5 * 60 * 1000, async () => {
         let periodes, selectedPeriode, quinzaineDates, presenceMap;
         if (USE_MIRROR) {
@@ -2205,8 +2714,18 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               const ad = archiveDoc.data().alertesData;
               quinzaineDates = ad.quinzaineDates;
               presenceMap = {};
-              for (const [prefix, days] of Object.entries(ad.presenceByPrefix)) {
-                presenceMap[prefix] = new Set(days);
+              // GATING PAIE (chef) : presenceByPrefix est keyé par préfixe d'équipe
+              // (2 premiers caractères du matricule). Un préfixe d'équipe n'est PAS
+              // cloisonné par ferme et AUCUN mapping préfixe→ferme n'existe côté serveur
+              // (le mirror dérive la ferme via la PARCELLE, absente de l'archive alertes).
+              // Un préfixe peut donc révéler l'activité d'une équipe d'une autre ferme.
+              // DÉCISION fail-closed : pour un chef, on n'expose PAS les alertes d'équipe
+              // d'une période archivée (presenceMap vidé → aucune alerte).
+              // _fermeFilter null (RH/DG/Finance) → tous les préfixes (inchangé).
+              if (!_fermeFilter) {
+                for (const [prefix, days] of Object.entries(ad.presenceByPrefix)) {
+                  presenceMap[prefix] = new Set(days);
+                }
               }
             } else {
               presenceMap = {};
@@ -2221,7 +2740,15 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           quinzaineDates = datesRes.recordset.map(r => new Date(r.jour).toISOString().slice(0, 10)).sort();
           const presenceRes = await db.request().query(`SELECT SUBSTRING(LTRIM(Personnel_Matricule), 1, 2) AS equipe_prefix, CONVERT(date, Periode_Date) AS jour, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY SUBSTRING(LTRIM(Personnel_Matricule), 1, 2), CONVERT(date, Periode_Date)`);
           presenceMap = {};
-          for (const row of presenceRes.recordset) { const prefix = (row.equipe_prefix || '').toUpperCase(); if (!presenceMap[prefix]) presenceMap[prefix] = new Set(); presenceMap[prefix].add(new Date(row.jour).toISOString().slice(0, 10)); }
+          // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Les alertes sont keyées
+          // par préfixe d'équipe (2 premiers car. du matricule) ; AUCUN mapping
+          // préfixe→ferme n'existe (la ferme se dérive via la parcelle, absente ici).
+          // DÉCISION fail-closed, cohérente avec le chemin archive : un chef ne voit PAS
+          // les alertes d'équipe cross-ferme (presenceMap vidé → aucune alerte).
+          // _fermeFilter null (RH/DG/Finance) → tous les préfixes (inchangé).
+          if (!_fermeFilter) {
+            for (const row of presenceRes.recordset) { const prefix = (row.equipe_prefix || '').toUpperCase(); if (!presenceMap[prefix]) presenceMap[prefix] = new Set(); presenceMap[prefix].add(new Date(row.jour).toISOString().slice(0, 10)); }
+          }
         }
         // Find consecutive absent streaks >= 5 days
         const alertes = [];
@@ -2242,7 +2769,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ MO-ANALYTIQUE-VARIETE: labor cost breakdown by variety across all quinzaines ------
       if (action === "mo-analytique-variete") {
-        const cached = await withCache("mo_analytique_variete", 30 * 60 * 1000, async () => {
+        // Clé ferme-aware : les rows (jh/cout par parcelle) dépendent de _fermeFilter
+        // via le shadow de getPointageRowsForPeriode.
+        const cached = await withCache(pointageCacheKey("mo_analytique_variete", _fermeFilter), 30 * 60 * 1000, async () => {
           const meta = await getPointageMeta();
           const allPeriodes = meta?.allPeriodes || [];
           const mirrorPeriodes = meta?.periodes || [];
@@ -2280,7 +2809,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           }
           for (const { periode, data } of archiveDocs) {
             if (data) {
-              for (const row of data) {
+              // GATING PAIE (chef) : le chemin archivé pousse toutes les fermes. Les
+              // lignes archivées portent parcelle/refParcelle → ferme dérivable, donc
+              // cloisonnable. Fail-closed : ferme dérivée ≠ _fermeFilter → exclue.
+              // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
+              for (const row of filterArchivedRowsByFerme(data, _fermeFilter)) {
                 allRows.push({ parcelle: row.parcelle, refParcelle: row.refParcelle, operationFamille: row.operationFamille, jh: row.jh, cout: row.cout, periode });
               }
             }
@@ -2358,7 +2891,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const cycle1End = `${startYear}-12-31`;
         const cycle2Start = `${startYear + 1}-01-01`;
 
-        const cached = await withCache(`campagne_mo_variete_v4_${campagne.start}`, 30 * 60 * 1000, async () => {
+        // Clé ferme-aware : les rows (jh/cout par parcelle) dépendent de _fermeFilter
+        // via le shadow de getPointageRowsForDate/Periode.
+        const cached = await withCache(pointageCacheKey(`campagne_mo_variete_v4_${campagne.start}`, _fermeFilter), 30 * 60 * 1000, async () => {
           const meta = await getPointageMeta();
           const allPeriodes = meta?.allPeriodes || [];
           const mirrorPeriodes = meta?.periodes || [];
@@ -2418,7 +2953,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           }));
           for (const result of archiveDocs) {
             if (!result) continue;
-            for (const row of result.analytique) {
+            // GATING PAIE (chef) : même cloisonnement fail-closed que mo-analytique-variete
+            // sur le chemin archivé (ferme dérivée via parcelle/refParcelle).
+            // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
+            for (const row of filterArchivedRowsByFerme(result.analytique, _fermeFilter)) {
               taggedRows.push({
                 parcelle: row.parcelle,
                 refParcelle: row.refParcelle,
@@ -2468,7 +3006,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const dateStr = docSnap.id;
             const inCycle1 = dateStr <= cycle1End;
             const inCycle2 = dateStr >= cycle2Start;
-            const rows = docSnap.data().rows || [];
+            // GATING PAIE (fail-closed) : prod_tracabilite_recolte agrège TOUTES les
+            // fermes → pour un chef, on ne garde que les lignes prod de sa ferme, sinon
+            // des buckets (variété|ferme) d'autres fermes gonfleraient kgRecolte/totaux.
+            // _fermeFilter null (RH/DG/Finance) → passthrough STRICT (inchangé).
+            const rows = filterProdRowsByFerme(docSnap.data().rows || [], _fermeFilter);
             for (const r of rows) {
               const resolved = resolveVariete(r.variete || r.parcelle || '', r.refParcelle || '');
               const key = `${resolved.variete}|${resolved.ferme}`;
@@ -2539,7 +3081,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // parcelle → un ouvrier multi-parcelles était compté N fois. Mirroir du chemin MIRROR.
         const result = await db.request().query(`SELECT DISTINCT Personnel_Matricule, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL}`);
         const farmData = { F1: new Set(), F5: new Set(), Avocatier: new Set(), BAHIA: new Set() };
-        for (const row of result.recordset) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].add(row.Personnel_Matricule); }
+        // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). On filtre les lignes brutes
+        // par la ferme du chef AVANT de peupler farmData → un chef ne voit que le nbOuv de
+        // sa ferme (autres fermes = 0), comme le chemin mirror shadowé (fail-closed).
+        // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
+        for (const row of filterMirrorRowsByFerme(result.recordset, _fermeFilter)) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].add(row.Personnel_Matricule); }
         const uploads = Object.entries(farmData).map(([ferme, workers]) => ({ ferme, nbOuv: workers.size }));
         return res.json({ success: true, date: dateForCheck, lastTableWrite: lastTableWrite ? new Date(lastTableWrite).toISOString() : null, uploads });
       }
@@ -2551,18 +3097,21 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
         let rows;
         if (USE_MIRROR) {
-          rows = await fetchPostesFixesFromMirror(dateForCheck);
+          rows = await fetchPostesFixesFromMirror(dateForCheck, _fermeFilter);
         } else {
           const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
           const result = await db.request().query(`SELECT Personnel_Matricule, Personnel_Nom, Operation, Ref_parcelle, Parcelle_Culturale, Nombre_Jr, Nombre_Hr, Cout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille = N'11. Postes fixes' ORDER BY Ref_parcelle, Operation, Personnel_Nom`);
           rows = result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || '').trim(), nom: (r.Personnel_Nom || '').trim(), operation: r.Operation, parcelle: (r.Parcelle_Culturale || '').trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), jours: r.Nombre_Jr, heures: r.Nombre_Hr, cout: Math.round(r.Cout || 0) }));
+          // GATING PAIE : chef → cloisonnement sur la ferme dérivée (fail-closed).
+          rows = filterByFermeField(rows, _fermeFilter);
         }
 
         if (Object.keys(submittedFermes).length > 0) {
           const liveRows = rows.filter(r => !submittedFermes[r.ferme]);
           let snapshotRows = [];
           for (const f of Object.keys(submittedFermes)) { const snapData = await getSnapshotData(dateForCheck, f); if (snapData && snapData.postesFixes) snapshotRows = snapshotRows.concat(snapData.postesFixes); }
-          rows = [...liveRows, ...snapshotRows];
+          // GATING PAIE : snapshots (toutes fermes) → filtrer sur la ferme du chef.
+          rows = filterByFermeField([...liveRows, ...snapshotRows], _fermeFilter);
         }
 
         return res.json({ success: true, date: dateForCheck, rows, count: rows.length });

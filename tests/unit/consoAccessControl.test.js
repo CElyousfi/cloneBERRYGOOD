@@ -31,6 +31,20 @@ test('finance → autorisé, toutes fermes par défaut', () => {
   assert.equal(r.ferme_filtre, null);
 });
 
+test('rh → autorisé, toutes fermes (matrice RH voit tout le nominatif)', () => {
+  const r = AC.resolvePerimetre({ profileId: 'rh', role: 'user' }, undefined);
+  assert.equal(r.autorise, true);
+  assert.equal(r.perimetre_ferme, 'all');
+  assert.equal(r.ferme_filtre, null);
+});
+
+test('rh → filtre optionnel ?ferme=F1 respecté (comme dg/finance)', () => {
+  const r = AC.resolvePerimetre({ profileId: 'rh', role: 'user' }, 'F1');
+  assert.equal(r.autorise, true);
+  assert.equal(r.perimetre_ferme, 'F1');
+  assert.equal(r.ferme_filtre, 'F1');
+});
+
 test('finance → filtre optionnel ?ferme=F5 respecté', () => {
   const r = AC.resolvePerimetre({ profileId: 'finance', role: 'user' }, 'F5');
   assert.equal(r.autorise, true);

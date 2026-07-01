@@ -15,7 +15,8 @@ const caisseImport = require("./lib/caisseImport");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
-const { resolveCallerRole } = require("./lib/auth/resolveRole");
+const { resolveCallerRole, resolveCallerProfile } = require("./lib/auth/resolveRole");
+const paieAccess = require("./lib/auth/paieAccess");
 const { validateBugReport } = require("./lib/bugReports/validateBugReport");
 const { isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc, isValidStatus, isFilterableStatus } = require("./lib/bugReports/bugStatus");
 const bugTriage = require("./lib/triage/bugTriage");
@@ -5910,6 +5911,19 @@ exports.validation = functions
           tx.set(ref, { holidays, updatedAt: nowIso }, { merge: true });
         });
         return res.json({ success: true, message: "Supprimé" });
+      }
+
+      // GATING PAIE (Étape 0) — la sous-traitance nominative (pointage_divers)
+      // n'a PAS de champ ferme → non cloisonnable. Accès réservé aux profils
+      // full-access (dg/finance/rh/admin). Chef (ferme spécifique) ou tout autre
+      // profil → 403 AVANT toute lecture Firestore (fail-closed). Rôle résolu
+      // SERVEUR depuis users/{uid} (token), jamais depuis le body.
+      if (action === "divers-entries" || action === "divers-entries-range") {
+        const callerProfile = await resolveCallerProfile(authUser);
+        const perimDivers = consoAccessControl.resolvePerimetre(callerProfile, null);
+        if (!paieAccess.canAccessDivers(perimDivers)) {
+          return res.status(403).json({ success: false, error: "Accès non autorisé" });
+        }
       }
 
       // GET: get divers entries for a specific date
