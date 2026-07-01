@@ -153,6 +153,40 @@
 
     var fileRef = useRef(null);
 
+    // --- V2 : ajout / initiation manuelle (modale recherche base) ---------
+    var addOpenState = useState(false);        // modale ouverte ?
+    var addOpen = addOpenState[0];
+    var setAddOpen = addOpenState[1];
+
+    var addSearchState = useState('');         // requête recherche base
+    var addSearch = addSearchState[0];
+    var setAddSearch = addSearchState[1];
+
+    var addSelectedState = useState(null);     // ouvrier sélectionné {docId,matricule,nom,prime}
+    var addSelected = addSelectedState[0];
+    var setAddSelected = addSelectedState[1];
+
+    var addMontantState = useState('');        // prime DH/jour saisie
+    var addMontant = addMontantState[0];
+    var setAddMontant = addMontantState[1];
+
+    var addDateState = useState('');           // effectiveFrom (défaut aujourd'hui)
+    var addDate = addDateState[0];
+    var setAddDate = addDateState[1];
+
+    var addSavingState = useState(false);
+    var addSaving = addSavingState[0];
+    var setAddSaving = addSavingState[1];
+
+    var addErrorState = useState('');
+    var addError = addErrorState[0];
+    var setAddError = addErrorState[1];
+
+    // --- V2 : pop-up historique par ouvrier (read-only) -------------------
+    var histRowState = useState(null);         // ligne dont on affiche l'historique
+    var histRow = histRowState[0];
+    var setHistRow = histRowState[1];
+
     // Lecture du registre (autorisée en lecture pour tout user auth).
     function loadRegistry() {
       setLoading(true);
@@ -168,6 +202,9 @@
             prime: Number(d.primeFonctionJournaliere) || 0,
             fonction_id: d.fonction_id || '',
             effectiveFrom: d.prime_effectiveFrom || '',
+            // prime_history conservé en mémoire pour la pop-up historique (V2,
+            // read-only). Absent/vide → état vide explicite dans la modale.
+            prime_history: Array.isArray(d.prime_history) ? d.prime_history : [],
           });
         });
         list.sort(function (a, b) { return (b.prime - a.prime) || a.docId.localeCompare(b.docId); });
@@ -360,6 +397,68 @@
       }).then(function () { setImporting(false); });
     }
 
+    // --- V2 : ouverture / fermeture modale d'ajout manuel -----------------
+    function openAdd() {
+      setAddSearch('');
+      setAddSelected(null);
+      setAddMontant('');
+      setAddDate(PFT_today());
+      setAddError('');
+      setAddOpen(true);
+    }
+    function closeAdd() {
+      setAddOpen(false);
+      setAddSelected(null);
+      setAddError('');
+    }
+
+    // Résultats de recherche sur TOUTE la base (1636 ouvriers déjà en mémoire),
+    // par matricule OU nom, en IGNORANT le filtre prime>0. Helper pur PrimesV2.
+    var addResults = useMemo(function () {
+      if (!window.PrimesV2 || typeof window.PrimesV2.searchWorkers !== 'function') return [];
+      return window.PrimesV2.searchWorkers(rows, addSearch, 50);
+    }, [rows, addSearch]);
+
+    // Enregistrement de la prime manuelle : UNIQUEMENT via la CF gatée
+    // save-prime. AUCUNE écriture Firestore directe. Succès → reload registre.
+    function submitAdd() {
+      if (!addSelected) return;
+      var num = PFT_parse(addMontant);
+      var effFrom = addDate || PFT_today();
+      setAddSaving(true);
+      setAddError('');
+      PFT_callCF('save-prime', {
+        matricule: addSelected.docId,
+        montant: num,
+        effectiveFrom: effFrom,
+        nom: addSelected.nom,
+      }).then(function () {
+        // Recharge le registre pour que la prime apparaisse dans la liste
+        // groupée + historique à jour. Confirmation visuelle via reload.
+        loadRegistry();
+        closeAdd();
+      }).catch(function (err) {
+        setAddError(err.message || 'Erreur');
+      }).then(function () {
+        setAddSaving(false);
+      });
+    }
+
+    // --- V2 : historique (read-only) sur prime_history déjà en mémoire ----
+    var histView = useMemo(function () {
+      if (!histRow) return [];
+      if (!window.PrimesV2 || typeof window.PrimesV2.buildHistoryView !== 'function') return [];
+      return window.PrimesV2.buildHistoryView(histRow.prime_history);
+    }, [histRow]);
+
+    // Formatage date changedAt (ms epoch) → JJ/MM/AAAA HH:MM.
+    function PFT_fmtDateTime(ms) {
+      if (ms == null) return '—';
+      var d = new Date(Number(ms));
+      if (isNaN(d.getTime())) return '—';
+      return d.toLocaleDateString('fr-FR') + ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    }
+
     var c = React.createElement;
 
     var counts = preview && preview.result && preview.result.counts ? preview.result.counts : null;
@@ -379,6 +478,10 @@
               type: 'file', accept: '.xlsx,.xls,.csv', ref: fileRef, style: { display: 'none' },
               onChange: function (e) { handleFile(e.target.files && e.target.files[0]); if (e.target) e.target.value = ''; },
             }),
+            c('button', {
+              onClick: openAdd,
+              style: { padding: '6px 12px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+            }, c('i', { className: 'fa-solid fa-plus', style: { marginRight: 4 } }), 'Ajouter / initier une prime'),
             c('button', {
               onClick: function () { if (fileRef.current) fileRef.current.click(); },
               style: { padding: '6px 12px', background: 'var(--orange)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
@@ -503,13 +606,21 @@
                         })
                       ),
                       c('td', { style: { padding: '6px' } },
-                        dirty ? c('button', {
-                          onClick: function () { savePrime(r); }, disabled: isSaving,
-                          style: { padding: '4px 10px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
-                        }, isSaving ? '…' : 'Enregistrer')
-                          : ok ? c('span', { style: { color: '#2e7d32', fontSize: 12, fontWeight: 700 } }, c('i', { className: 'fa-solid fa-check', style: { marginRight: 4 } }), 'Enregistré')
-                            : errMsg ? c('span', { style: { color: '#c62828', fontSize: 11 } }, errMsg)
-                              : c('span', { style: { color: '#bbb', fontSize: 12 } }, PFT_fmt(r.prime))
+                        c('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                          dirty ? c('button', {
+                            onClick: function () { savePrime(r); }, disabled: isSaving,
+                            style: { padding: '4px 10px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+                          }, isSaving ? '…' : 'Enregistrer')
+                            : ok ? c('span', { style: { color: '#2e7d32', fontSize: 12, fontWeight: 700 } }, c('i', { className: 'fa-solid fa-check', style: { marginRight: 4 } }), 'Enregistré')
+                              : errMsg ? c('span', { style: { color: '#c62828', fontSize: 11 } }, errMsg)
+                                : c('span', { style: { color: '#bbb', fontSize: 12 } }, PFT_fmt(r.prime)),
+                          // Icône historique (read-only) — ouvre la pop-up.
+                          c('button', {
+                            title: 'Historique de la prime',
+                            onClick: function () { setHistRow(r); },
+                            style: { padding: '4px 8px', background: 'transparent', color: 'var(--berry)', border: '1px solid #e0d6ea', borderRadius: 6, fontSize: 12, cursor: 'pointer' },
+                          }, c('i', { className: 'fa-solid fa-clock-rotate-left' }))
+                        )
                       )
                     );
                   });
@@ -519,7 +630,112 @@
             ),
             filteredRows.length === 0 ? c('div', { style: { textAlign: 'center', padding: 20, color: '#999' } }, 'Aucun ouvrier.') : null
           )
-      )
+      ),
+
+      // ===================== MODALE : Ajout / initiation manuelle =========
+      addOpen ? c('div', {
+        style: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
+        onClick: function (e) { if (e.target === e.currentTarget && !addSaving) closeAdd(); },
+      },
+        c('div', { style: { background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 560, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.25)' } },
+          c('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            c('h3', { style: { margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--berry)' } },
+              c('i', { className: 'fa-solid fa-plus', style: { marginRight: 6 } }), 'Ajouter / initier une prime'),
+            c('button', { onClick: function () { if (!addSaving) closeAdd(); }, style: { background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', color: '#999' } }, c('i', { className: 'fa-solid fa-xmark' }))
+          ),
+
+          !addSelected ? c('div', null,
+            c('div', { style: { fontSize: 12, color: '#666', marginBottom: 8 } }, 'Rechercher dans toute la base (matricule ou nom) — y compris les ouvriers sans prime.'),
+            c('input', {
+              type: 'text', value: addSearch, autoFocus: true, placeholder: 'Matricule ou nom…',
+              onChange: function (e) { setAddSearch(e.target.value); },
+              style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 10 },
+            }),
+            !addSearch.trim() ? c('div', { style: { color: '#999', fontSize: 13, padding: 12, textAlign: 'center' } }, 'Saisissez un matricule ou un nom pour rechercher.') :
+              addResults.length === 0 ? c('div', { style: { color: '#999', fontSize: 13, padding: 12, textAlign: 'center' } }, 'Aucun ouvrier trouvé.') :
+                c('div', { style: { border: '1px solid #eee', borderRadius: 8, overflow: 'hidden' } },
+                  addResults.map(function (w) {
+                    return c('div', {
+                      key: w.docId,
+                      onClick: function () { setAddSelected(w); setAddMontant(w.prime > 0 ? String(w.prime) : ''); setAddError(''); },
+                      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderBottom: '1px solid #f2f2f2', cursor: 'pointer', fontSize: 13 },
+                    },
+                      c('span', null, c('strong', null, w.matricule), '  ', w.nom || c('span', { style: { color: '#bbb' } }, '(sans nom)')),
+                      c('span', { style: { color: w.prime > 0 ? 'var(--berry)' : '#bbb', fontWeight: 600 } }, w.prime > 0 ? (PFT_fmt(w.prime) + ' DH') : '—')
+                    );
+                  })
+                )
+          ) : c('div', null,
+            c('div', { style: { background: '#f8f5fb', borderRadius: 8, padding: 12, marginBottom: 12 } },
+              c('div', { style: { fontSize: 14, fontWeight: 700 } }, addSelected.matricule, ' — ', addSelected.nom || '(sans nom)'),
+              c('div', { style: { fontSize: 12, color: '#666', marginTop: 2 } }, 'Prime actuelle : ', addSelected.prime > 0 ? (PFT_fmt(addSelected.prime) + ' DH/jour') : 'aucune (0)'),
+              c('button', { onClick: function () { setAddSelected(null); }, disabled: addSaving, style: { marginTop: 8, background: 'transparent', border: 'none', color: 'var(--berry)', fontSize: 12, cursor: 'pointer', padding: 0 } },
+                c('i', { className: 'fa-solid fa-arrow-left', style: { marginRight: 4 } }), 'Changer d\'ouvrier')
+            ),
+            c('label', { style: { display: 'block', fontSize: 12, color: '#444', marginBottom: 4 } }, 'Prime de fonction (DH/jour)'),
+            c('input', {
+              type: 'text', inputMode: 'decimal', value: addMontant, autoFocus: true, disabled: addSaving, placeholder: 'ex : 15,00',
+              onChange: function (e) { setAddMontant(e.target.value); },
+              style: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 4 },
+            }),
+            c('div', { style: { fontSize: 11, color: '#aaa', marginBottom: 10 } }, '= ', PFT_fmt(PFT_parse(addMontant)), ' DH/jour'),
+            c('label', { style: { display: 'block', fontSize: 12, color: '#444', marginBottom: 4 } }, 'Date d\'effet'),
+            c('input', {
+              type: 'date', value: addDate, disabled: addSaving,
+              onChange: function (e) { setAddDate(e.target.value); },
+              style: { padding: '8px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, marginBottom: 12 },
+            }),
+            addError ? c('div', { style: { color: '#c62828', fontSize: 12, marginBottom: 10, background: '#fdecea', padding: '6px 10px', borderRadius: 6 } }, addError) : null,
+            c('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
+              c('button', { onClick: function () { if (!addSaving) closeAdd(); }, disabled: addSaving, style: { padding: '8px 14px', background: '#eee', color: '#333', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer' } }, 'Annuler'),
+              c('button', {
+                onClick: submitAdd, disabled: addSaving,
+                style: { padding: '8px 16px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, cursor: 'pointer', opacity: addSaving ? 0.6 : 1 },
+              }, addSaving ? 'Enregistrement…' : 'Enregistrer la prime')
+            )
+          )
+        )
+      ) : null,
+
+      // ===================== MODALE : Historique (read-only) ==============
+      histRow ? c('div', {
+        style: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 },
+        onClick: function (e) { if (e.target === e.currentTarget) setHistRow(null); },
+      },
+        c('div', { style: { background: '#fff', borderRadius: 12, padding: 20, width: '100%', maxWidth: 620, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 8px 30px rgba(0,0,0,0.25)' } },
+          c('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+            c('h3', { style: { margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--berry)' } },
+              c('i', { className: 'fa-solid fa-clock-rotate-left', style: { marginRight: 6 } }), 'Historique — ', histRow.matricule, ' ', histRow.nom || ''),
+            c('button', { onClick: function () { setHistRow(null); }, style: { background: 'transparent', border: 'none', fontSize: 18, cursor: 'pointer', color: '#999' } }, c('i', { className: 'fa-solid fa-xmark' }))
+          ),
+          histView.length === 0 ? c('div', { style: { color: '#999', fontSize: 13, padding: 16, textAlign: 'center', background: '#fafafa', borderRadius: 8 } },
+            'Aucun historique avant la 1re modification dans l\'app'
+          ) : c('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 13 } },
+            c('thead', null,
+              c('tr', { style: { borderBottom: '2px solid #eee', textAlign: 'left' } },
+                c('th', { style: { padding: '6px 8px' } }, 'Date modif.'),
+                c('th', { style: { padding: '6px 8px', textAlign: 'right' } }, 'Ancienne → Nouvelle'),
+                c('th', { style: { padding: '6px 8px' } }, 'Date d\'effet'),
+                c('th', { style: { padding: '6px 8px' } }, 'Auteur')
+              )
+            ),
+            c('tbody', null,
+              histView.map(function (e, i) {
+                return c('tr', { key: i, style: { borderBottom: '1px solid #f2f2f2' } },
+                  c('td', { style: { padding: '6px 8px', color: '#555' } }, PFT_fmtDateTime(e.changedAt)),
+                  c('td', { style: { padding: '6px 8px', textAlign: 'right' } },
+                    c('span', { style: { color: '#999' } }, PFT_fmt(e.previousMontant)),
+                    c('i', { className: 'fa-solid fa-arrow-right', style: { margin: '0 6px', color: '#bbb', fontSize: 10 } }),
+                    c('strong', { style: { color: 'var(--berry)' } }, PFT_fmt(e.montant))
+                  ),
+                  c('td', { style: { padding: '6px 8px' } }, e.effectiveFrom || '—'),
+                  c('td', { style: { padding: '6px 8px' } }, e.author)
+                );
+              })
+            )
+          )
+        )
+      ) : null
     );
   }
 
