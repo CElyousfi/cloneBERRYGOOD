@@ -61,6 +61,34 @@
       });
     });
   }
+
+  // Appel de la Cloud Function gated FONCTIONS (référentiel + classement).
+  // SÉCURITÉ PAIE : écriture fonction_id EXCLUSIVEMENT via /api/fonctions
+  // (rôle RH/DG vérifié SERVEUR). Calqué sur PFT_callCF.
+  function PFT_callFonctionsCF(action, body) {
+    var user = firebase.auth().currentUser;
+    var tokenPromise = user ? user.getIdToken() : Promise.resolve(null);
+    return tokenPromise.then(function (token) {
+      return fetch('/api/fonctions?action=' + action, {
+        method: 'POST',
+        headers: Object.assign({
+          'Content-Type': 'application/json'
+        }, token ? {
+          Authorization: 'Bearer ' + token
+        } : {}),
+        body: JSON.stringify(body || {})
+      });
+    }).then(function (resp) {
+      return resp.json().catch(function () {
+        return {};
+      }).then(function (data) {
+        if (!resp.ok || !data.success) {
+          throw new Error(data.error || 'Erreur ' + resp.status);
+        }
+        return data;
+      });
+    });
+  }
   function PFT_fmt(n) {
     return (Number(n) || 0).toLocaleString('fr-FR', {
       minimumFractionDigits: 2,
@@ -173,6 +201,47 @@
     var histRowState = useState(null); // ligne dont on affiche l'historique
     var histRow = histRowState[0];
     var setHistRow = histRowState[1];
+
+    // --- V2 phase 2 : classement des ouvriers ----------------------------
+    var classingState = useState({}); // { [docId]: true } classement en cours
+    var classing = classingState[0];
+    var setClassing = classingState[1];
+    var classErrState = useState({}); // { [docId]: string } échec classement
+    var classErr = classErrState[0];
+    var setClassErr = classErrState[1];
+
+    // --- V2 phase 2 : modale « Gérer les fonctions » (référentiel) --------
+    var manageOpenState = useState(false);
+    var manageOpen = manageOpenState[0];
+    var setManageOpen = manageOpenState[1];
+    var manageListState = useState([]); // liste des fonctions (via CF list-fonctions)
+    var manageList = manageListState[0];
+    var setManageList = manageListState[1];
+    var manageLoadingState = useState(false);
+    var manageLoading = manageLoadingState[0];
+    var setManageLoading = manageLoadingState[1];
+    var manageErrState = useState('');
+    var manageErr = manageErrState[0];
+    var setManageErr = manageErrState[1];
+    var manageBusyState = useState(false); // création/maj en cours (bloque les boutons)
+    var manageBusy = manageBusyState[0];
+    var setManageBusy = manageBusyState[1];
+
+    // Champs de création d'une nouvelle fonction.
+    var newSlugState = useState('');
+    var newSlug = newSlugState[0];
+    var setNewSlug = newSlugState[1];
+    var newLibelleState = useState('');
+    var newLibelle = newLibelleState[0];
+    var setNewLibelle = newLibelleState[1];
+    var newOrdreState = useState('');
+    var newOrdre = newOrdreState[0];
+    var setNewOrdre = newOrdreState[1];
+
+    // Édition inline d'une fonction existante (par slug).
+    var editFnState = useState({}); // { [slug]: {libelle, ordre} }
+    var editFn = editFnState[0];
+    var setEditFn = editFnState[1];
 
     // Lecture du registre (autorisée en lecture pour tout user auth).
     function loadRegistry() {
@@ -506,6 +575,129 @@
       });
     }
 
+    // --- V2 phase 2 : classement d'un ouvrier dans une fonction -----------
+    // fonctionId = '' → déclassement (retour « À classer »). Écriture
+    // EXCLUSIVEMENT via la CF gatée fonctionsManagement. Succès → reload.
+    function classifyOuvrier(r, fonctionId) {
+      var docId = r.docId;
+      setClassing(function (s) {
+        var n = Object.assign({}, s);
+        n[docId] = true;
+        return n;
+      });
+      setClassErr(function (e) {
+        var n = Object.assign({}, e);
+        delete n[docId];
+        return n;
+      });
+      PFT_callFonctionsCF('set-ouvrier-fonction', {
+        matricule: docId,
+        fonction_id: fonctionId || null
+      }).then(function () {
+        // Recharge registre + fonctions → l'ouvrier bascule dans le bon groupe.
+        loadRegistry();
+        loadFonctions();
+      }).catch(function (err) {
+        setClassErr(function (e) {
+          var n = Object.assign({}, e);
+          n[docId] = err.message || 'Erreur';
+          return n;
+        });
+      }).then(function () {
+        setClassing(function (s) {
+          var n = Object.assign({}, s);
+          delete n[docId];
+          return n;
+        });
+      });
+    }
+
+    // Options du dropdown de classement, triées par ordre du référentiel.
+    var fonctionOptions = useMemo(function () {
+      var fmap = fonctions || {};
+      return Object.keys(fmap).map(function (id) {
+        return {
+          id: id,
+          libelle: fmap[id].libelle,
+          ordre: fmap[id].ordre
+        };
+      }).sort(function (a, b) {
+        return a.ordre - b.ordre || String(a.libelle).localeCompare(String(b.libelle));
+      });
+    }, [fonctions]);
+
+    // --- V2 phase 2 : gestion du référentiel des fonctions ----------------
+    function loadManageList() {
+      setManageLoading(true);
+      setManageErr('');
+      PFT_callFonctionsCF('list-fonctions', {}).then(function (res) {
+        var list = (res.fonctions || []).slice().sort(function (a, b) {
+          return a.ordre - b.ordre || String(a.libelle).localeCompare(String(b.libelle));
+        });
+        setManageList(list);
+      }).catch(function (err) {
+        setManageErr(err.message || 'Erreur');
+      }).then(function () {
+        setManageLoading(false);
+      });
+    }
+    function openManage() {
+      setManageOpen(true);
+      setNewSlug('');
+      setNewLibelle('');
+      setNewOrdre('');
+      setEditFn({});
+      loadManageList();
+    }
+    function closeManage() {
+      if (manageBusy) return;
+      setManageOpen(false);
+    }
+    function createFonction() {
+      var slug = String(newSlug || '').trim().toLowerCase();
+      var libelle = String(newLibelle || '').trim();
+      if (!slug || !libelle) {
+        setManageErr('Slug et libellé requis.');
+        return;
+      }
+      setManageBusy(true);
+      setManageErr('');
+      PFT_callFonctionsCF('create-fonction', {
+        fonction_id: slug,
+        libelle: libelle,
+        ordre: newOrdre === '' ? undefined : Number(newOrdre)
+      }).then(function () {
+        setNewSlug('');
+        setNewLibelle('');
+        setNewOrdre('');
+        loadManageList();
+        loadFonctions();
+      }).catch(function (err) {
+        setManageErr(err.message || 'Erreur');
+      }).then(function () {
+        setManageBusy(false);
+      });
+    }
+    function updateFonction(slug, patch) {
+      setManageBusy(true);
+      setManageErr('');
+      PFT_callFonctionsCF('update-fonction', Object.assign({
+        fonction_id: slug
+      }, patch)).then(function () {
+        setEditFn(function (e) {
+          var n = Object.assign({}, e);
+          delete n[slug];
+          return n;
+        });
+        loadManageList();
+        loadFonctions();
+      }).catch(function (err) {
+        setManageErr(err.message || 'Erreur');
+      }).then(function () {
+        setManageBusy(false);
+      });
+    }
+
     // --- V2 : historique (read-only) sur prime_history déjà en mémoire ----
     var histView = useMemo(function () {
       if (!histRow) return [];
@@ -600,6 +792,23 @@
         marginRight: 4
       }
     }), 'Ajouter / initier une prime'), c('button', {
+      onClick: openManage,
+      style: {
+        padding: '6px 12px',
+        background: '#6a4c93',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer'
+      }
+    }, c('i', {
+      className: 'fa-solid fa-sitemap',
+      style: {
+        marginRight: 4
+      }
+    }), 'Gérer les fonctions'), c('button', {
       onClick: function () {
         if (fileRef.current) fileRef.current.click();
       },
@@ -813,6 +1022,10 @@
       }
     }, 'Poste'), c('th', {
       style: {
+        padding: '8px 6px'
+      }
+    }, 'Fonction'), c('th', {
+      style: {
         padding: '8px 6px',
         textAlign: 'right'
       }
@@ -831,7 +1044,7 @@
           background: '#f4f0f7'
         }
       }, c('td', {
-        colSpan: 3,
+        colSpan: 4,
         style: {
           padding: '8px 6px',
           fontWeight: 800,
@@ -904,6 +1117,43 @@
             color: '#bbb'
           }
         }, '—')), c('td', {
+          style: {
+            padding: '6px'
+          }
+        }, c('select', {
+          value: r.fonction_id || '',
+          disabled: !!classing[docId],
+          onChange: function (e) {
+            classifyOuvrier(r, e.target.value);
+          },
+          style: {
+            padding: '4px 6px',
+            border: '1px solid #ddd',
+            borderRadius: 6,
+            fontSize: 12,
+            maxWidth: 160,
+            background: r.fonction_id ? '#fff' : '#fff8f0'
+          }
+        }, c('option', {
+          value: ''
+        }, '— À classer'), fonctionOptions.map(function (o) {
+          return c('option', {
+            key: o.id,
+            value: o.id
+          }, o.libelle);
+        })), classing[docId] ? c('span', {
+          style: {
+            marginLeft: 6,
+            fontSize: 11,
+            color: '#888'
+          }
+        }, '…') : null, classErr[docId] ? c('div', {
+          style: {
+            fontSize: 10,
+            color: '#c62828',
+            marginTop: 2
+          }
+        }, classErr[docId]) : null), c('td', {
           style: {
             padding: '6px',
             textAlign: 'right'
@@ -1443,7 +1693,419 @@
           padding: '6px 8px'
         }
       }, e.author));
-    }))))) : null);
+    }))))) : null,
+    // ===================== MODALE : Gérer les fonctions (référentiel) ====
+    // SÉCURITÉ PAIE : toutes les écritures (create/update-fonction) passent
+    // par la CF gatée /api/fonctions (RH/DG serveur). Pas de suppression :
+    // désactivation via active:false (no-delete).
+    manageOpen ? c('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.45)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        padding: 16
+      },
+      onClick: function (e) {
+        if (e.target === e.currentTarget) closeManage();
+      }
+    }, c('div', {
+      style: {
+        background: '#fff',
+        borderRadius: 12,
+        padding: 20,
+        width: '100%',
+        maxWidth: 680,
+        maxHeight: '85vh',
+        overflowY: 'auto',
+        boxShadow: '0 8px 30px rgba(0,0,0,0.25)'
+      }
+    }, c('div', {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12
+      }
+    }, c('h3', {
+      style: {
+        margin: 0,
+        fontSize: 16,
+        fontWeight: 800,
+        color: 'var(--berry)'
+      }
+    }, c('i', {
+      className: 'fa-solid fa-sitemap',
+      style: {
+        marginRight: 6
+      }
+    }), 'Gérer les fonctions'), c('button', {
+      onClick: closeManage,
+      disabled: manageBusy,
+      style: {
+        background: 'transparent',
+        border: 'none',
+        fontSize: 18,
+        cursor: 'pointer',
+        color: '#999'
+      }
+    }, c('i', {
+      className: 'fa-solid fa-xmark'
+    }))), manageErr ? c('div', {
+      style: {
+        color: '#c62828',
+        fontSize: 12,
+        marginBottom: 10,
+        background: '#fdecea',
+        padding: '6px 10px',
+        borderRadius: 6
+      }
+    }, manageErr) : null,
+    // --- Création d'une nouvelle fonction ---
+    c('div', {
+      style: {
+        border: '1px solid #eee',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 14,
+        background: '#faf8fc'
+      }
+    }, c('div', {
+      style: {
+        fontSize: 13,
+        fontWeight: 700,
+        marginBottom: 8,
+        color: 'var(--berry)'
+      }
+    }, 'Créer une fonction'), c('div', {
+      style: {
+        display: 'flex',
+        gap: 8,
+        flexWrap: 'wrap',
+        alignItems: 'flex-end'
+      }
+    }, c('div', null, c('label', {
+      style: {
+        display: 'block',
+        fontSize: 11,
+        color: '#666',
+        marginBottom: 2
+      }
+    }, 'Slug (a-z0-9_)'), c('input', {
+      type: 'text',
+      value: newSlug,
+      disabled: manageBusy,
+      placeholder: 'ex : caporal',
+      onChange: function (e) {
+        setNewSlug(e.target.value.toLowerCase());
+      },
+      style: {
+        width: 140,
+        padding: '6px 8px',
+        border: '1px solid #ddd',
+        borderRadius: 6,
+        fontSize: 13
+      }
+    })), c('div', null, c('label', {
+      style: {
+        display: 'block',
+        fontSize: 11,
+        color: '#666',
+        marginBottom: 2
+      }
+    }, 'Libellé'), c('input', {
+      type: 'text',
+      value: newLibelle,
+      disabled: manageBusy,
+      placeholder: 'ex : Caporal',
+      onChange: function (e) {
+        setNewLibelle(e.target.value);
+      },
+      style: {
+        width: 160,
+        padding: '6px 8px',
+        border: '1px solid #ddd',
+        borderRadius: 6,
+        fontSize: 13
+      }
+    })), c('div', null, c('label', {
+      style: {
+        display: 'block',
+        fontSize: 11,
+        color: '#666',
+        marginBottom: 2
+      }
+    }, 'Ordre'), c('input', {
+      type: 'number',
+      value: newOrdre,
+      disabled: manageBusy,
+      placeholder: '9990',
+      onChange: function (e) {
+        setNewOrdre(e.target.value);
+      },
+      style: {
+        width: 80,
+        padding: '6px 8px',
+        border: '1px solid #ddd',
+        borderRadius: 6,
+        fontSize: 13
+      }
+    })), c('button', {
+      onClick: createFonction,
+      disabled: manageBusy,
+      style: {
+        padding: '7px 14px',
+        background: 'var(--berry)',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 6,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: 'pointer',
+        opacity: manageBusy ? 0.6 : 1
+      }
+    }, c('i', {
+      className: 'fa-solid fa-plus',
+      style: {
+        marginRight: 4
+      }
+    }), 'Créer'))),
+    // --- Liste des fonctions existantes ---
+    manageLoading ? c('div', {
+      style: {
+        textAlign: 'center',
+        padding: 20,
+        color: '#888'
+      }
+    }, 'Chargement…') : manageList.length === 0 ? c('div', {
+      style: {
+        textAlign: 'center',
+        padding: 16,
+        color: '#999',
+        fontSize: 13
+      }
+    }, 'Aucune fonction dans le référentiel.') : c('table', {
+      style: {
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: 13
+      }
+    }, c('thead', null, c('tr', {
+      style: {
+        borderBottom: '2px solid #eee',
+        textAlign: 'left'
+      }
+    }, c('th', {
+      style: {
+        padding: '6px 8px'
+      }
+    }, 'Slug'), c('th', {
+      style: {
+        padding: '6px 8px'
+      }
+    }, 'Libellé'), c('th', {
+      style: {
+        padding: '6px 8px',
+        width: 80
+      }
+    }, 'Ordre'), c('th', {
+      style: {
+        padding: '6px 8px'
+      }
+    }, 'Statut'), c('th', {
+      style: {
+        padding: '6px 8px'
+      }
+    }, ''))), c('tbody', null, manageList.map(function (f) {
+      var ed = Object.prototype.hasOwnProperty.call(editFn, f.fonction_id) ? editFn[f.fonction_id] : null;
+      var editing = !!ed;
+      return c('tr', {
+        key: f.fonction_id,
+        style: {
+          borderBottom: '1px solid #f2f2f2',
+          opacity: f.active ? 1 : 0.5
+        }
+      }, c('td', {
+        style: {
+          padding: '6px 8px',
+          fontFamily: 'monospace',
+          color: '#666'
+        }
+      }, f.fonction_id), c('td', {
+        style: {
+          padding: '6px 8px'
+        }
+      }, editing ? c('input', {
+        type: 'text',
+        value: ed.libelle,
+        disabled: manageBusy,
+        onChange: function (e) {
+          var v = e.target.value;
+          setEditFn(function (m) {
+            var n = Object.assign({}, m);
+            n[f.fonction_id] = Object.assign({}, n[f.fonction_id], {
+              libelle: v
+            });
+            return n;
+          });
+        },
+        style: {
+          width: 150,
+          padding: '4px 6px',
+          border: '1px solid #ddd',
+          borderRadius: 6,
+          fontSize: 13
+        }
+      }) : f.libelle), c('td', {
+        style: {
+          padding: '6px 8px'
+        }
+      }, editing ? c('input', {
+        type: 'number',
+        value: ed.ordre,
+        disabled: manageBusy,
+        onChange: function (e) {
+          var v = e.target.value;
+          setEditFn(function (m) {
+            var n = Object.assign({}, m);
+            n[f.fonction_id] = Object.assign({}, n[f.fonction_id], {
+              ordre: v
+            });
+            return n;
+          });
+        },
+        style: {
+          width: 70,
+          padding: '4px 6px',
+          border: '1px solid #ddd',
+          borderRadius: 6,
+          fontSize: 13
+        }
+      }) : f.ordre), c('td', {
+        style: {
+          padding: '6px 8px'
+        }
+      }, f.active ? c('span', {
+        style: {
+          color: '#2e7d32',
+          fontWeight: 600
+        }
+      }, 'Active') : c('span', {
+        style: {
+          color: '#c62828',
+          fontWeight: 600
+        }
+      }, 'Désactivée')), c('td', {
+        style: {
+          padding: '6px 8px'
+        }
+      }, c('div', {
+        style: {
+          display: 'flex',
+          gap: 6,
+          flexWrap: 'wrap'
+        }
+      }, editing ? [c('button', {
+        key: 'save',
+        disabled: manageBusy,
+        onClick: function () {
+          updateFonction(f.fonction_id, {
+            libelle: ed.libelle,
+            ordre: Number(ed.ordre)
+          });
+        },
+        style: {
+          padding: '4px 10px',
+          background: 'var(--berry)',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 6,
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer'
+        }
+      }, 'Enregistrer'), c('button', {
+        key: 'cancel',
+        disabled: manageBusy,
+        onClick: function () {
+          setEditFn(function (m) {
+            var n = Object.assign({}, m);
+            delete n[f.fonction_id];
+            return n;
+          });
+        },
+        style: {
+          padding: '4px 10px',
+          background: '#eee',
+          color: '#333',
+          border: 'none',
+          borderRadius: 6,
+          fontSize: 12,
+          cursor: 'pointer'
+        }
+      }, 'Annuler')] : [c('button', {
+        key: 'edit',
+        disabled: manageBusy,
+        onClick: function () {
+          setEditFn(function (m) {
+            var n = Object.assign({}, m);
+            n[f.fonction_id] = {
+              libelle: f.libelle,
+              ordre: f.ordre
+            };
+            return n;
+          });
+        },
+        style: {
+          padding: '4px 10px',
+          background: 'transparent',
+          color: 'var(--berry)',
+          border: '1px solid #e0d6ea',
+          borderRadius: 6,
+          fontSize: 12,
+          cursor: 'pointer'
+        }
+      }, c('i', {
+        className: 'fa-solid fa-pen',
+        style: {
+          marginRight: 4
+        }
+      }), 'Éditer'), c('button', {
+        key: 'toggle',
+        disabled: manageBusy,
+        onClick: function () {
+          updateFonction(f.fonction_id, {
+            active: !f.active
+          });
+        },
+        style: {
+          padding: '4px 10px',
+          background: 'transparent',
+          color: f.active ? '#c62828' : '#2e7d32',
+          border: '1px solid #eee',
+          borderRadius: 6,
+          fontSize: 12,
+          cursor: 'pointer'
+        }
+      }, f.active ? 'Désactiver' : 'Réactiver')])));
+    }))), c('div', {
+      style: {
+        fontSize: 11,
+        color: '#999',
+        marginTop: 10
+      }
+    }, c('i', {
+      className: 'fa-solid fa-circle-info',
+      style: {
+        marginRight: 4
+      }
+    }), 'Aucune suppression possible : une fonction inutilisée se désactive (no-delete).'))) : null);
   }
   window.PrimesFixesTab = PrimesFixesTab;
 })();

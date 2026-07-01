@@ -15483,6 +15483,181 @@ exports.primesManagement = functions
   });
 
 // =============================================
+// FONCTIONS — référentiel des fonctions + classement des ouvriers (V2 phase 2)
+// =============================================
+//
+// SÉCURITÉ CRITIQUE (paie/RH) : le classement d'un ouvrier (fonction_id sur
+// ouvriers_registry) conditionne sa prime de fonction. Toutes les écritures
+// vers `fonctions` et `ouvriers_registry.fonction_id` passent EXCLUSIVEMENT
+// par cette Cloud Function. Le rôle est résolu côté SERVEUR (resolveCallerRole
+// + users/{uid}.role), jamais depuis le body. Périmètre IDENTIQUE aux primes :
+// seuls profileId ∈ {rh, dg} OU role système 'admin' sont autorisés (réutilise
+// canManagePrimes) ; tout autre profil (caporal, chef, magasinier...) reçoit
+// 403 AVANT toute lecture/écriture.
+const { buildFonctionUpdate } = require("./lib/fonctions/fonctionsHistory");
+const {
+  normalizeFonctionSlug,
+  normalizeLibelle,
+  normalizeOrdre,
+} = require("./lib/fonctions/fonctionsValidate");
+
+exports.fonctionsManagement = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 540, memory: "1GB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    // ========== AUTH + GATING RÔLE (avant toute lecture/écriture) ==========
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+
+    // Identité résolue SERVEUR : profileId via resolveCallerRole, role système
+    // via users/{uid}.role. Jamais depuis le body client.
+    const profileId = await resolveCallerRole(authUser);
+    let systemRole = "";
+    let userName = authUser.name || authUser.email || "";
+    try {
+      const userDoc = await db_firestore.collection("users").doc(authUser.uid).get();
+      if (userDoc.exists) {
+        const ud = userDoc.data();
+        systemRole = ud.role || "";
+        userName = ud.fullName || ud.name || userName;
+      }
+    } catch (e) {
+      systemRole = "";
+    }
+
+    if (!canManagePrimes({ profileId, role: systemRole })) {
+      return res.status(403).json({ success: false, error: forbiddenReason() });
+    }
+
+    // Identité serveur figée pour l'audit (jamais du body).
+    const actor = { uid: authUser.uid, profileId: profileId || "", name: userName };
+    const now = Date.now();
+    const action = req.query.action || (req.body && req.body.action) || "";
+    const REGISTRY = db_firestore.collection("ouvriers_registry");
+    const FONCTIONS = db_firestore.collection("fonctions");
+    const FieldValue = admin.firestore.FieldValue;
+
+    try {
+      // ---------- set-ouvrier-fonction : classe / déclasse un ouvrier -------
+      if (action === "set-ouvrier-fonction" && req.method === "POST") {
+        const matricule = String((req.body && req.body.matricule) || "").trim();
+        if (!matricule) return res.status(400).json({ success: false, error: "matricule requis" });
+
+        // fonction_id : soit une fonction existante, soit falsy (déclassement).
+        const rawFonctionId = (req.body && req.body.fonction_id);
+        const fonctionId = (rawFonctionId === undefined || rawFonctionId === null)
+          ? "" : String(rawFonctionId).trim();
+
+        // Classement : la fonction cible DOIT exister (no dangling ref).
+        if (fonctionId) {
+          const fSnap = await FONCTIONS.doc(fonctionId).get();
+          if (!fSnap.exists) {
+            return res.status(400).json({ success: false, error: "fonction inconnue" });
+          }
+        }
+
+        const ref = REGISTRY.doc(matricule);
+        const snap = await ref.get();
+        const current = snap.exists ? snap.data() : null;
+
+        // Historisation NON destructive (module pur). unset=true → déclassement.
+        const upd = buildFonctionUpdate({ current, fonctionId, actor, now });
+        const write = {
+          fonction_by: upd.fonction_by,
+          fonction_updated_at: upd.fonction_updated_at,
+          fonction_history: upd.fonction_history,
+          updatedAt: upd.updatedAt,
+          matricule: matricule,
+        };
+        if (upd.unset) {
+          // Déclassement : supprime fonction_id (jamais de string vide en base).
+          write.fonction_id = FieldValue.delete();
+        } else {
+          write.fonction_id = upd.fonction_id;
+        }
+        await ref.set(write, { merge: true });
+        return res.json({
+          success: true,
+          matricule,
+          fonction_id: upd.unset ? null : upd.fonction_id,
+        });
+      }
+
+      // ---------- create-fonction : ajoute une entrée au référentiel --------
+      if (action === "create-fonction" && req.method === "POST") {
+        const slug = normalizeFonctionSlug(req.body && req.body.fonction_id);
+        if (!slug) return res.status(400).json({ success: false, error: "fonction_id (slug) invalide" });
+        const libelle = normalizeLibelle(req.body && req.body.libelle);
+        if (!libelle) return res.status(400).json({ success: false, error: "libelle requis" });
+        const ordre = normalizeOrdre(req.body && req.body.ordre, 9990);
+
+        await FONCTIONS.doc(slug).set({
+          fonction_id: slug,
+          libelle: libelle,
+          ordre: ordre,
+          active: true,
+          prime_reference: null,
+          created_at: now,
+          updated_at: now,
+          created_by: actor,
+          updated_by: actor,
+        }, { merge: true });
+        return res.json({ success: true, fonction_id: slug });
+      }
+
+      // ---------- update-fonction : renomme / réordonne / (dés)active -------
+      if (action === "update-fonction" && req.method === "POST") {
+        const slug = normalizeFonctionSlug(req.body && req.body.fonction_id);
+        if (!slug) return res.status(400).json({ success: false, error: "fonction_id (slug) invalide" });
+
+        const ref = FONCTIONS.doc(slug);
+        const snap = await ref.get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "fonction inconnue" });
+
+        // Update UNIQUEMENT les champs fournis. PAS de suppression (no-delete) :
+        // désactivation via active:false.
+        const write = { updated_at: now, updated_by: actor };
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "libelle")) {
+          const libelle = normalizeLibelle(req.body.libelle);
+          if (!libelle) return res.status(400).json({ success: false, error: "libelle vide" });
+          write.libelle = libelle;
+        }
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "ordre")) {
+          write.ordre = normalizeOrdre(req.body.ordre, snap.data().ordre);
+        }
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, "active")) {
+          write.active = req.body.active === true;
+        }
+        await ref.set(write, { merge: true });
+        return res.json({ success: true, fonction_id: slug });
+      }
+
+      // ---------- list-fonctions : lecture du référentiel (pour l'UI) -------
+      if (action === "list-fonctions" && (req.method === "GET" || req.method === "POST")) {
+        const snap = await FONCTIONS.get();
+        const list = snap.docs.map((d) => {
+          const data = d.data() || {};
+          return {
+            fonction_id: data.fonction_id || d.id,
+            libelle: data.libelle || d.id,
+            ordre: (typeof data.ordre === "number") ? data.ordre : 9990,
+            active: data.active !== false,
+          };
+        });
+        return res.json({ success: true, fonctions: list });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue" });
+    } catch (err) {
+      console.error("Erreur fonctionsManagement:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // WhatsApp — Firestore trigger on alerts + admin config API
 // =============================================
 

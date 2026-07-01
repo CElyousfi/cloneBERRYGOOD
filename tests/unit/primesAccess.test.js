@@ -66,3 +66,16 @@ test('role non-string ignoré (pas d élévation)', () => {
 test('forbiddenReason renvoie un message générique', () => {
   assert.equal(forbiddenReason(), 'Accès non autorisé');
 });
+
+// --- Usage fonctionsManagement (V2 phase 2) : même gating que les primes -----
+test('fonctions : gating réutilise canManagePrimes — RH/DG/admin OK', () => {
+  assert.equal(canManagePrimes({ profileId: 'rh' }), true);
+  assert.equal(canManagePrimes({ profileId: 'dg' }), true);
+  assert.equal(canManagePrimes({ profileId: 'caporal', role: 'admin' }), true);
+});
+
+test('fonctions : caporal/chef/magasinier refusés (403)', () => {
+  assert.equal(canManagePrimes({ profileId: 'caporal' }), false);
+  assert.equal(canManagePrimes({ profileId: 'chef' }), false);
+  assert.equal(canManagePrimes({ profileId: 'magasinier' }), false);
+});
