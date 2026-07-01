@@ -63,6 +63,30 @@
     return (Number(n) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  // Parse une valeur saisie en gérant la virgule décimale (« 9,5 » → 9.5).
+  function PFT_parse(raw) {
+    return Number(String(raw == null ? '' : raw).replace(',', '.')) || 0;
+  }
+
+  // Recherche texte tolérante (matricule / nom). Réutilise FilterUtils si
+  // présent, sinon helper inline équivalent (insensible à la casse, espaces).
+  function PFT_matchesQuery(text, query) {
+    if (window.FilterUtils && typeof window.FilterUtils.matchesTextQuery === 'function') {
+      return window.FilterUtils.matchesTextQuery(text, query);
+    }
+    var q = String(query == null ? '' : query).trim().toLowerCase();
+    if (!q) return true;
+    return String(text == null ? '' : text).toLowerCase().indexOf(q) !== -1;
+  }
+
+  // Aujourd'hui au format YYYY-MM-DD (défaut effectiveFrom).
+  function PFT_today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  // Clé de groupe « À classer » pour les ouvriers sans fonction_id.
+  var PFT_UNCLASSIFIED = '__unclassified__';
+
   function PrimesFixesTab() {
     var rowsState = useState([]);
     var rows = rowsState[0];
@@ -76,17 +100,48 @@
     var search = searchState[0];
     var setSearch = searchState[1];
 
-    var filterState = useState('all'); // all | withPrime
-    var filter = filterState[0];
-    var setFilter = filterState[1];
+    // showZero : masque par défaut les primes à 0 ; toggle pour les afficher
+    // (et les rendre éditables, pour initier une prime).
+    var showZeroState = useState(false);
+    var showZero = showZeroState[0];
+    var setShowZero = showZeroState[1];
 
-    var editState = useState({}); // { [docId]: stringValue }
+    var editState = useState({}); // { [docId]: stringValue }  prime éditée
     var edits = editState[0];
     var setEdits = editState[1];
+
+    // focusedId : docId de l'input prime actuellement focusé. Le FOCUS seul ne
+    // marque PAS la ligne comme éditée (pas de dirty/surlignage) : il sert juste
+    // à afficher la valeur PRÉCISE (String(prime)) au lieu de la valeur formatée
+    // 2 décimales, pour que l'utilisateur édite le vrai nombre sans perte.
+    var focusedIdState = useState(null);
+    var focusedId = focusedIdState[0];
+    var setFocusedId = focusedIdState[1];
+
+    var dateEditState = useState({}); // { [docId]: 'YYYY-MM-DD' } date d'effet éditée
+    var dateEdits = dateEditState[0];
+    var setDateEdits = dateEditState[1];
 
     var savingState = useState({}); // { [docId]: true }
     var saving = savingState[0];
     var setSaving = savingState[1];
+
+    var savedOkState = useState({}); // { [docId]: true } confirmation ✓ transitoire
+    var savedOk = savedOkState[0];
+    var setSavedOk = savedOkState[1];
+
+    var errorState = useState({}); // { [docId]: string } échec save (surlignage rouge)
+    var saveErrors = errorState[0];
+    var setSaveErrors = errorState[1];
+
+    // Référentiel des fonctions : { [fonction_id]: {libelle, ordre} }.
+    var fonctionsState = useState(null); // null = pas (encore) chargé
+    var fonctions = fonctionsState[0];
+    var setFonctions = fonctionsState[1];
+
+    var fonctionsErrState = useState(false);
+    var fonctionsErr = fonctionsErrState[0];
+    var setFonctionsErr = fonctionsErrState[1];
 
     var previewState = useState(null); // dry-run result
     var preview = previewState[0];
@@ -111,6 +166,7 @@
             nom: d.nom || '',
             poste: d.poste || '',
             prime: Number(d.primeFonctionJournaliere) || 0,
+            fonction_id: d.fonction_id || '',
             effectiveFrom: d.prime_effectiveFrom || '',
           });
         });
@@ -123,34 +179,123 @@
       });
     }
 
-    useEffect(function () { loadRegistry(); }, []);
+    // Référentiel fonctions : libellés + ordre d'affichage. Lecture seule.
+    // En cas d'erreur de lecture (règle absente, offline) → fallback groupement
+    // par fonction_id brut, sans planter.
+    function loadFonctions() {
+      firebase.firestore().collection('fonctions').get().then(function (snap) {
+        var map = {};
+        snap.forEach(function (doc) {
+          var d = doc.data() || {};
+          var fid = d.fonction_id || doc.id;
+          map[fid] = {
+            libelle: d.libelle || fid,
+            ordre: (typeof d.ordre === 'number') ? d.ordre : 9998,
+          };
+        });
+        setFonctions(map);
+        setFonctionsErr(false);
+      }).catch(function (e) {
+        console.error('PrimesFixesTab loadFonctions:', e);
+        setFonctions({});
+        setFonctionsErr(true);
+      });
+    }
 
+    useEffect(function () { loadRegistry(); loadFonctions(); }, []);
+
+    // Lignes visibles : masquage prime 0 (sauf toggle) + recherche.
+    // Note : une ligne à 0 en cours d'édition (prime saisie) reste visible.
     var filteredRows = useMemo(function () {
-      var q = search.trim().toLowerCase();
       return rows.filter(function (r) {
-        if (filter === 'withPrime' && !(r.prime > 0)) return false;
-        if (q && !(String(r.nom).toLowerCase().indexOf(q) !== -1 || String(r.matricule).toLowerCase().indexOf(q) !== -1)) return false;
+        var editedVal = Object.prototype.hasOwnProperty.call(edits, r.docId) ? PFT_parse(edits[r.docId]) : r.prime;
+        if (!showZero && !(editedVal > 0)) return false;
+        if (!PFT_matchesQuery(r.matricule, search) && !PFT_matchesQuery(r.nom, search)) return false;
         return true;
       });
-    }, [rows, search, filter]);
+    }, [rows, search, showZero, edits]);
+
+    // Compteur + total des lignes visibles.
+    var summary = useMemo(function () {
+      var total = 0;
+      filteredRows.forEach(function (r) {
+        var editedVal = Object.prototype.hasOwnProperty.call(edits, r.docId) ? PFT_parse(edits[r.docId]) : r.prime;
+        total += editedVal;
+      });
+      return { count: filteredRows.length, total: total };
+    }, [filteredRows, edits]);
+
+    // Groupement par fonction_id, en-têtes triés par `ordre` du référentiel.
+    // Les ouvriers sans fonction_id → groupe « À classer » en dernier.
+    var groups = useMemo(function () {
+      var byKey = {};
+      filteredRows.forEach(function (r) {
+        var key = r.fonction_id || PFT_UNCLASSIFIED;
+        if (!byKey[key]) byKey[key] = [];
+        byKey[key].push(r);
+      });
+      var fmap = fonctions || {};
+      var result = Object.keys(byKey).map(function (key) {
+        var meta = fmap[key];
+        var libelle;
+        var ordre;
+        if (key === PFT_UNCLASSIFIED) {
+          libelle = 'À classer';
+          ordre = 9999;
+        } else if (meta) {
+          libelle = meta.libelle;
+          ordre = meta.ordre;
+        } else {
+          // Fallback : référentiel non chargé ou fonction_id inconnu → slug brut.
+          libelle = key;
+          ordre = 9998;
+        }
+        var list = byKey[key];
+        var subtotal = 0;
+        list.forEach(function (r) {
+          var editedVal = Object.prototype.hasOwnProperty.call(edits, r.docId) ? PFT_parse(edits[r.docId]) : r.prime;
+          subtotal += editedVal;
+        });
+        return { key: key, libelle: libelle, ordre: ordre, rows: list, subtotal: subtotal };
+      });
+      result.sort(function (a, b) {
+        return (a.ordre - b.ordre) || String(a.libelle).localeCompare(String(b.libelle));
+      });
+      return result;
+    }, [filteredRows, fonctions, edits]);
 
     function savePrime(r) {
       var docId = r.docId;
-      var raw = Object.prototype.hasOwnProperty.call(edits, docId) ? edits[docId] : String(r.prime);
-      var num = Number(raw) || 0;
+      // Valeur précise renvoyée à la CF :
+      //  - ligne ÉDITÉE → saisie utilisateur, virgule décimale gérée
+      //    (Number(String(raw).replace(',','.'))), précision pleine de la saisie ;
+      //  - ligne NON éditée → valeur stockée d'origine intacte (String(r.prime)),
+      //    AUCUNE troncature ni reformatage.
+      var editedHere = Object.prototype.hasOwnProperty.call(edits, docId);
+      var raw = editedHere ? edits[docId] : String(r.prime);
+      var num = editedHere ? (Number(String(raw).replace(',', '.')) || 0) : (Number(raw) || 0);
+      var effFrom = Object.prototype.hasOwnProperty.call(dateEdits, docId) ? dateEdits[docId] : (r.effectiveFrom || PFT_today());
       setSaving(function (s) { var n = Object.assign({}, s); n[docId] = true; return n; });
+      setSaveErrors(function (e) { var n = Object.assign({}, e); delete n[docId]; return n; });
       PFT_callCF('save-prime', {
         matricule: docId,
         montant: num,
-        effectiveFrom: new Date().toISOString().slice(0, 10),
+        effectiveFrom: effFrom,
         nom: r.nom,
       }).then(function () {
         setRows(function (prev) {
-          return prev.map(function (x) { return x.docId === docId ? Object.assign({}, x, { prime: num }) : x; });
+          return prev.map(function (x) { return x.docId === docId ? Object.assign({}, x, { prime: num, effectiveFrom: effFrom }) : x; });
         });
         setEdits(function (e) { var n = Object.assign({}, e); delete n[docId]; return n; });
+        setDateEdits(function (e) { var n = Object.assign({}, e); delete n[docId]; return n; });
+        // Confirmation visuelle ✓ vert transitoire.
+        setSavedOk(function (s) { var n = Object.assign({}, s); n[docId] = true; return n; });
+        setTimeout(function () {
+          setSavedOk(function (s) { var n = Object.assign({}, s); delete n[docId]; return n; });
+        }, 2500);
       }).catch(function (err) {
-        alert('Erreur enregistrement : ' + err.message);
+        // Échec CF : surlignage rouge + message. AUCUNE écriture directe.
+        setSaveErrors(function (e) { var n = Object.assign({}, e); n[docId] = err.message || 'Erreur'; return n; });
       }).then(function () {
         setSaving(function (s) { var n = Object.assign({}, s); delete n[docId]; return n; });
       });
@@ -222,8 +367,13 @@
     return c('div', { className: 'fade-in' },
       c('div', { style: { background: '#fff', borderRadius: 12, padding: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } },
         c('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 12 } },
-          c('h2', { style: { fontSize: 16, fontWeight: 800, color: 'var(--berry)', margin: 0 } },
-            c('i', { className: 'fa-solid fa-award', style: { marginRight: 8 } }), 'Primes Fixes — prime de fonction (DH/jour)'),
+          c('div', null,
+            c('h2', { style: { fontSize: 16, fontWeight: 800, color: 'var(--berry)', margin: 0 } },
+              c('i', { className: 'fa-solid fa-award', style: { marginRight: 8 } }), 'Primes Fixes — prime de fonction (DH/jour)'),
+            c('div', { style: { fontSize: 12, color: '#666', marginTop: 4 } },
+              c('strong', null, summary.count), ' ouvrier', summary.count > 1 ? 's' : '', ' primé', summary.count > 1 ? 's' : '',
+              ' · Σ prime/jour = ', c('strong', { style: { color: 'var(--berry)' } }, PFT_fmt(summary.total)), ' DH')
+          ),
           c('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
             c('input', {
               type: 'file', accept: '.xlsx,.xls,.csv', ref: fileRef, style: { display: 'none' },
@@ -270,20 +420,24 @@
           )
         ) : null,
 
+        // Avertissement référentiel fonctions indisponible (fallback slug brut)
+        fonctionsErr ? c('div', { style: { fontSize: 12, color: '#ef6c00', background: '#fff8f0', border: '1px solid #ffe0b2', borderRadius: 8, padding: '6px 10px', marginBottom: 12 } },
+          c('i', { className: 'fa-solid fa-triangle-exclamation', style: { marginRight: 6 } }),
+          'Référentiel des fonctions indisponible — regroupement par code brut.') : null,
+
         // Filtres
-        c('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 } },
+        c('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 } },
           c('input', {
             type: 'text', value: search, placeholder: 'Rechercher matricule / nom…',
             onChange: function (e) { setSearch(e.target.value); },
             style: { flex: 1, minWidth: 180, padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 13 },
           }),
-          c('select', {
-            value: filter, onChange: function (e) { setFilter(e.target.value); },
-            style: { padding: '6px 10px', border: '1px solid #ddd', borderRadius: 8, fontSize: 13 },
-          },
-            c('option', { value: 'all' }, 'Tous'),
-            c('option', { value: 'withPrime' }, 'Avec prime > 0')
-          )
+          c('label', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#444', cursor: 'pointer', whiteSpace: 'nowrap' } },
+            c('input', {
+              type: 'checkbox', checked: showZero,
+              onChange: function (e) { setShowZero(e.target.checked); },
+            }),
+            'Afficher tous (incl. primes à 0)')
         ),
 
         loading ? c('div', { style: { textAlign: 'center', padding: 30, color: '#888' } }, 'Chargement…') :
@@ -295,33 +449,71 @@
                   c('th', { style: { padding: '8px 6px' } }, 'Nom'),
                   c('th', { style: { padding: '8px 6px' } }, 'Poste'),
                   c('th', { style: { padding: '8px 6px', textAlign: 'right' } }, 'Prime (DH/jour)'),
+                  c('th', { style: { padding: '8px 6px' } }, 'Date d\'effet'),
                   c('th', { style: { padding: '8px 6px' } }, '')
                 )
               ),
               c('tbody', null,
-                filteredRows.map(function (r) {
-                  var docId = r.docId;
-                  var editing = Object.prototype.hasOwnProperty.call(edits, docId);
-                  var val = editing ? edits[docId] : String(r.prime);
-                  var isSaving = !!saving[docId];
-                  return c('tr', { key: docId, style: { borderBottom: '1px solid #f2f2f2' } },
-                    c('td', { style: { padding: '6px' } }, r.matricule),
-                    c('td', { style: { padding: '6px' } }, r.nom || c('span', { style: { color: '#bbb' } }, '—')),
-                    c('td', { style: { padding: '6px' } }, r.poste || c('span', { style: { color: '#bbb' } }, '—')),
-                    c('td', { style: { padding: '6px', textAlign: 'right' } },
-                      c('input', {
-                        type: 'number', min: 0, step: 'any', value: val, disabled: isSaving,
-                        onChange: function (e) { var v = e.target.value; setEdits(function (ed) { var n = Object.assign({}, ed); n[docId] = v; return n; }); },
-                        style: { width: 90, padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 },
-                      })
+                groups.map(function (g) {
+                  var headerCells = [
+                    c('tr', { key: 'h_' + g.key, style: { background: '#f4f0f7' } },
+                      c('td', { colSpan: 3, style: { padding: '8px 6px', fontWeight: 800, color: 'var(--berry)' } },
+                        g.libelle,
+                        g.key === PFT_UNCLASSIFIED ? c('span', { style: { marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#ef6c00' } }, '(' + g.rows.length + ')') : null),
+                      c('td', { style: { padding: '8px 6px', textAlign: 'right', fontWeight: 800, color: 'var(--berry)' } }, PFT_fmt(g.subtotal)),
+                      c('td', { colSpan: 2, style: { padding: '8px 6px', fontSize: 11, color: '#888' } }, 'sous-total / jour')
                     ),
-                    c('td', { style: { padding: '6px' } },
-                      editing ? c('button', {
-                        onClick: function () { savePrime(r); }, disabled: isSaving,
-                        style: { padding: '4px 10px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
-                      }, isSaving ? '…' : 'Enregistrer') : c('span', { style: { color: '#bbb', fontSize: 12 } }, PFT_fmt(r.prime))
-                    )
-                  );
+                  ];
+                  var bodyRows = g.rows.map(function (r) {
+                    var docId = r.docId;
+                    var editingPrime = Object.prototype.hasOwnProperty.call(edits, docId);
+                    var editingDate = Object.prototype.hasOwnProperty.call(dateEdits, docId);
+                    var dirty = editingPrime || editingDate;
+                    // Valeur de l'input prime :
+                    //  - dirty (édité) → chaîne saisie telle quelle ;
+                    //  - focusé (non édité) → valeur PRÉCISE String(r.prime) pour
+                    //    éditer le vrai nombre (pas la valeur tronquée) ;
+                    //  - au repos → valeur FORMATÉE 2 décimales virgule (PFT_fmt).
+                    var isFocused = focusedId === docId;
+                    var val = editingPrime ? edits[docId] : (isFocused ? String(r.prime) : PFT_fmt(r.prime));
+                    var dateVal = editingDate ? dateEdits[docId] : (r.effectiveFrom || PFT_today());
+                    var isSaving = !!saving[docId];
+                    var ok = !!savedOk[docId];
+                    var errMsg = saveErrors[docId];
+                    var rowBg = errMsg ? '#fdecea' : (dirty ? '#fffbe6' : (ok ? '#e8f5e9' : 'transparent'));
+                    return c('tr', { key: docId, style: { borderBottom: '1px solid #f2f2f2', background: rowBg, transition: 'background 0.3s' } },
+                      c('td', { style: { padding: '6px' } }, r.matricule),
+                      c('td', { style: { padding: '6px' } }, r.nom || c('span', { style: { color: '#bbb' } }, '—')),
+                      c('td', { style: { padding: '6px' } }, r.poste || c('span', { style: { color: '#bbb' } }, '—')),
+                      c('td', { style: { padding: '6px', textAlign: 'right' } },
+                        c('input', {
+                          type: 'text', inputMode: 'decimal', value: val, disabled: isSaving,
+                          onFocus: function () { setFocusedId(docId); },
+                          onBlur: function () { setFocusedId(function (f) { return f === docId ? null : f; }); },
+                          onChange: function (e) { var v = e.target.value; setEdits(function (ed) { var n = Object.assign({}, ed); n[docId] = v; return n; }); },
+                          style: { width: 90, padding: '4px 6px', textAlign: 'right', border: '1px solid #ddd', borderRadius: 6, fontSize: 13 },
+                        }),
+                        c('div', { style: { fontSize: 10, color: '#aaa', marginTop: 2 } }, PFT_fmt(Number(String(val).replace(',', '.')) || 0))
+                      ),
+                      c('td', { style: { padding: '6px' } },
+                        c('input', {
+                          type: 'date', value: dateVal, disabled: isSaving,
+                          onChange: function (e) { var v = e.target.value; setDateEdits(function (ed) { var n = Object.assign({}, ed); n[docId] = v; return n; }); },
+                          style: { padding: '4px 6px', border: '1px solid #ddd', borderRadius: 6, fontSize: 12 },
+                        })
+                      ),
+                      c('td', { style: { padding: '6px' } },
+                        dirty ? c('button', {
+                          onClick: function () { savePrime(r); }, disabled: isSaving,
+                          style: { padding: '4px 10px', background: 'var(--berry)', color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+                        }, isSaving ? '…' : 'Enregistrer')
+                          : ok ? c('span', { style: { color: '#2e7d32', fontSize: 12, fontWeight: 700 } }, c('i', { className: 'fa-solid fa-check', style: { marginRight: 4 } }), 'Enregistré')
+                            : errMsg ? c('span', { style: { color: '#c62828', fontSize: 11 } }, errMsg)
+                              : c('span', { style: { color: '#bbb', fontSize: 12 } }, PFT_fmt(r.prime))
+                      )
+                    );
+                  });
+                  return c(React.Fragment, { key: 'g_' + g.key }, headerCells.concat(bodyRows));
                 })
               )
             ),
