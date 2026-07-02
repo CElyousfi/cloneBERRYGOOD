@@ -454,10 +454,39 @@ const anciennete=Number(reg.baselineJours||0);const __pal=PU.trouverPalierAncien
 const primesOptionnelles=declare&&pr>0?pr:0;const paie=PU.computePayslip({declare,smagBrut:__smag.smagBrutJournalier,smagNet:__smag.smagNetJournalier,jT:1,jF:0,ancienneteTaux,primeFonctionJour,primesOptionnelles,baremes:paieBaremes});const base=Number(paie&&paie.base)||0;const anc=Number(paie&&paie.anciennete)||0;const primeFonction=Number(paie&&paie.primeFonction)||0;const chargesPat=Number(paie&&paie.chargesPatronales)||0;// primeRécolte comptée dans le coût uniquement pour les déclarés (intégrée au brut →
 // coutEmployeur). Pour les non-déclarés, elle est hors coutEmployeur (charges=0).
 const primeAffichee=declare?primeFonction+pr:primeFonction;return{salaire:base+anc,prime:primeAffichee,charges:chargesPat};};const loadData=date=>{const dq=date?`&date=${date}`:'';fetch(`/api/pointage-rh?action=recolte${dq}`).then(r=>r.json()).then(json=>{if(json.success)setWorkers(json.workers||[]);}).catch(err=>console.warn(err)).finally(()=>setLoading(false));};React.useEffect(()=>{loadData();cachedFetch('/api/pointage-rh?action=dates').then(json=>{if(json.success)setDates(json.dates||[]);}).catch(()=>{});// Bypass localStorage cache pour recolte-equipes (données fréquemment mises à jour, évite chart vide sur stale cache)
-invalidateCache('recolte-equipes');cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json=>{if(json.success){setEquipeRows(json.rows||[]);setEquipePeriodes(json.periodes||[]);}}).catch(err=>console.warn(err)).finally(()=>setEquipeLoading(false));},[]);// Charge (une fois) le registre ouvriers + les barèmes paie pour le COÛT TOTAL EMPLOYEUR.
-// Même source que PaieTab : ouvriers_registry (keyé matricule numérique) + app_settings/paie_baremes.
-// Lecture seule client (Firestore rules) ; aucun write. Échec gracieux → fallback forfait 40 DH.
-React.useEffect(()=>{if(typeof firebase==='undefined'||!firebase.firestore)return;const db=firebase.firestore();let cancelled=false;db.collection('app_settings').doc('paie_baremes').get().then(doc=>{if(!cancelled&&doc.exists)setPaieBaremes(prev=>({...prev,...doc.data()}));}).catch(e=>console.warn('cout-recolte paie_baremes load:',e));db.collection('ouvriers_registry').get().then(snap=>{if(cancelled)return;const reg={};snap.forEach(d=>{reg[d.id]={matricule:d.id,...d.data()};});setOuvriersRegistry(reg);}).catch(e=>console.warn('cout-recolte ouvriers_registry load:',e));return()=>{cancelled=true;};},[]);const handleDateChange=d=>{setSelectedDate(d);setLoading(true);loadData(d);};// ── KPI Transport fruits / kg récolté ─────────────────────────────────────
+invalidateCache('recolte-equipes');cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json=>{if(json.success){setEquipeRows(json.rows||[]);setEquipePeriodes(json.periodes||[]);}}).catch(err=>console.warn(err)).finally(()=>setEquipeLoading(false));},[]);// Charge (une fois) les barèmes paie pour le COÛT TOTAL EMPLOYEUR.
+// Même source que PaieTab : app_settings/paie_baremes (lecture seule client).
+React.useEffect(()=>{if(typeof firebase==='undefined'||!firebase.firestore)return;const db=firebase.firestore();let cancelled=false;db.collection('app_settings').doc('paie_baremes').get().then(doc=>{if(!cancelled&&doc.exists)setPaieBaremes(prev=>({...prev,...doc.data()}));}).catch(e=>console.warn('cout-recolte paie_baremes load:',e));return()=>{cancelled=true;};},[]);// Charge le registre ouvriers via la CF gatée /api/registry (get-registry) —
+// SÉCURITÉ PAIE (Étape 1) : plus de lecture client-direct de ouvriers_registry.
+// - Scope 'all' (RH/DG/Finance) : from/to ignorés côté serveur → registre complet
+//   → coût employeur IDENTIQUE à avant.
+// - Scope CHEF : from/to REQUIS (sinon 400) → ses ouvriers (sa ferme, période).
+//   Les ouvriers récolte affichés sont déjà cloisonnés serveur (Étape 0) ; le
+//   fallback gracieux `ouvriersRegistry[numKey()] || {}` (forfait 40 DH) est conservé.
+// Choix from/to : la fenêtre DOIT couvrir la PÉRIODE RÉELLEMENT AFFICHÉE,
+//   sinon (scope CHEF) les ouvriers hors fenêtre tombent hors du set autorisé →
+//   fallback forfait 40 DH = coût faux (régression QA 2026-07). Deux cas :
+//   - Mode JOUR : quinzaine calendaire contenant la date active du tab
+//       (jour 1–15 → 01..15 ; jour ≥16 → 16..fin de mois).
+//   - Mode QUINZAINE : bornes de la quinzaine sélectionnée (effectiveQuinz),
+//       dérivées de la string periode 'DD/MM/YYYY - DD/MM/YYYY' → PAS de selectedDate,
+//       sinon un CHEF qui change de quinzaine dans le dropdown garde l'ancienne fenêtre.
+// window.fetch est patché globalement pour injecter le Bearer token sur /api/*.
+const registryDateISO=selectedDate||dates[0]&&dates[0].date||new Date().toISOString().slice(0,10);// Quinzaine effective pour la fenêtre registre — même logique que l'affichage
+//   (periodesAvecDonnees + effectiveQuinz plus bas), mais calculée ICI car ces
+//   const vivent après l'early-return `if (loading)`, hors de portée du hook.
+// Calcul léger (filter/Set sur equipeRows) ; mémoïsé pour stabiliser la dépendance.
+const registryQuinz=React.useMemo(()=>{if(viewMode!=='quinzaine')return'';const periodesDispo=equipePeriodes.length>0?equipePeriodes.filter(p=>equipeRows.some(r=>r.periode===p)):[...new Set(equipeRows.map(r=>r.periode).filter(Boolean))].sort().reverse();return selectedQuinz&&periodesDispo.includes(selectedQuinz)?selectedQuinz:periodesDispo[0]||'';},[viewMode,selectedQuinz,equipeRows,equipePeriodes]);// Fenêtre from/to (YYYY-MM-DD) selon le mode. Toutes les bornes sont construites
+//   par formatage manuel — JAMAIS toISOString() (décale d'un jour en TZ
+//   Africa/Casablanca, UTC+1). En mode quinzaine on lit directement la string
+//   'DD/MM/YYYY - DD/MM/YYYY' et on réordonne les composants (aucun objet Date).
+const registryWindow=React.useMemo(()=>{if(viewMode==='quinzaine'&&registryQuinz){const m=String(registryQuinz).match(/(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\d{2})\/(\d{2})\/(\d{4})/);if(m){return{from:`${m[3]}-${m[2]}-${m[1]}`,to:`${m[6]}-${m[5]}-${m[4]}`};}// Format inattendu : pas de fenêtre → on ne fetch pas (évite un 400 chef).
+return{from:'',to:''};}// Mode JOUR : quinzaine calendaire de la date active.
+if(!registryDateISO)return{from:'',to:''};const y=registryDateISO.slice(0,7);// YYYY-MM
+const day=parseInt(registryDateISO.slice(8,10),10);const from=day<=15?y+'-01':y+'-16';// Dernier jour du mois via getDate() (valeur LOCALE) — surtout PAS
+// toISOString() qui décale d'un jour en TZ Africa/Casablanca (UTC+1) :
+// 2026-01-31T00:00 local → 2026-01-30T23:00Z → sliced '2026-01-30'.
+const _lastDay=new Date(parseInt(y.slice(0,4),10),parseInt(y.slice(5,7),10),0).getDate();const to=day<=15?y+'-15':y+'-'+String(_lastDay).padStart(2,'0');return{from,to};},[viewMode,registryQuinz,registryDateISO]);React.useEffect(()=>{const{from,to}=registryWindow;if(!from||!to)return;let cancelled=false;const url='/api/registry?action=get-registry&from='+from+'&to='+to;fetch(url).then(r=>r.json()).then(resp=>{if(cancelled)return;if(!resp||!resp.success){console.warn('cout-recolte registry load:',resp&&resp.error);setOuvriersRegistry({});return;}const reg={};(resp.ouvriers||[]).forEach(o=>{reg[numKey(o.matricule)]=o;});setOuvriersRegistry(reg);}).catch(e=>{if(!cancelled){console.warn('cout-recolte registry load:',e);setOuvriersRegistry({});}});return()=>{cancelled=true;};},[registryWindow.from,registryWindow.to]);const handleDateChange=d=>{setSelectedDate(d);setLoading(true);loadData(d);};// ── KPI Transport fruits / kg récolté ─────────────────────────────────────
 // Source coût : pointage_divers/{date}.entries où fonction === 'TRANSPORT FRUIT'
 //   via /api/validation?action=divers-entries&date=<d> (même endpoint que PaieTab).
 // On charge les dates affichables (fenêtre la plus large : histRange jours récoltés
