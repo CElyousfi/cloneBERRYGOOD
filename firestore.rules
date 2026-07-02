@@ -35,7 +35,8 @@ service cloud.firestore {
     }
 
     match /sql_mirror_pointage_workers/{docId} {
-      allow read: if request.auth != null;
+      // Étape 4 sécu paie : lecture CF-only (admin SDK), 0 lecture client-direct confirmée
+      allow read: if false;
       allow write: if false;
     }
 
@@ -48,7 +49,8 @@ service cloud.firestore {
 
     // Quinzaine archive — persisted summaries for older quinzaines
     match /quinzaine_archive/{docId} {
-      allow read: if request.auth != null;
+      // Étape 4 sécu paie : lecture CF-only (admin SDK), 0 lecture client-direct confirmée
+      allow read: if false;
       allow write: if false;
     }
 
