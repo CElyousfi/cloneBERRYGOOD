@@ -51,6 +51,7 @@
       { "source": "/api/caisse", "function": { "functionId": "caisseManagement", "region": "europe-west1" } },
       { "source": "/api/primes", "function": { "functionId": "primesManagement", "region": "europe-west1" } },
       { "source": "/api/fonctions", "function": { "functionId": "fonctionsManagement", "region": "europe-west1" } },
+      { "source": "/api/registry", "function": { "functionId": "registryService", "region": "europe-west1" } },
       { "source": "/api/whatsapp-admin", "function": { "functionId": "whatsappAdmin", "region": "europe-west1" } },
       { "source": "/api/whatsapp-webhook", "function": { "functionId": "whatsappWebhook", "region": "europe-west1" } },
       { "source": "/api/run-daily-phenology-job-now", "function": { "functionId": "runDailyPhenologyJobNow", "region": "europe-west1" } },

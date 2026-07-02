@@ -62,6 +62,32 @@
     });
   }
 
+  // Appel GET de la Cloud Function gatée /api/registry (lecture du registre).
+  // Étape 1 sécu paie : la lecture d'ouvriers_registry passe par la CF (rôle
+  // résolu SERVEUR) au lieu d'un accès Firestore client-direct. PrimesFixesTab
+  // est rhOnly → reçoit le scope 'all' (tous champs, dont prime_history).
+  function PFT_callGetCF(action) {
+    var user = firebase.auth().currentUser;
+    var tokenPromise = user ? user.getIdToken() : Promise.resolve(null);
+    return tokenPromise.then(function (token) {
+      return fetch('/api/registry?action=' + action, {
+        method: 'GET',
+        headers: Object.assign({}, token ? {
+          Authorization: 'Bearer ' + token
+        } : {})
+      });
+    }).then(function (resp) {
+      return resp.json().catch(function () {
+        return {};
+      }).then(function (data) {
+        if (!resp.ok || !data.success) {
+          throw new Error(data.error || 'Erreur ' + resp.status);
+        }
+        return data;
+      });
+    });
+  }
+
   // Appel de la Cloud Function gated FONCTIONS (référentiel + classement).
   // SÉCURITÉ PAIE : écriture fonction_id EXCLUSIVEMENT via /api/fonctions
   // (rôle RH/DG vérifié SERVEUR). Calqué sur PFT_callCF.
@@ -243,16 +269,21 @@
     var editFn = editFnState[0];
     var setEditFn = editFnState[1];
 
-    // Lecture du registre (autorisée en lecture pour tout user auth).
+    // Lecture du registre via la Cloud Function gatée /api/registry (Étape 1
+    // sécu paie) — plus d'accès Firestore client-direct. Le rôle est résolu
+    // SERVEUR : PrimesFixesTab (rhOnly) reçoit le scope 'all' (tous les champs,
+    // dont prime_history pour la pop-up historique). La projection/forme du
+    // tableau (tri, champs) est STRICTEMENT identique à l'ancien code.
     function loadRegistry() {
       setLoading(true);
-      firebase.firestore().collection('ouvriers_registry').get().then(function (snap) {
-        var list = [];
-        snap.forEach(function (doc) {
-          var d = doc.data() || {};
-          list.push({
-            docId: doc.id,
-            matricule: d.matricule || doc.id,
+      PFT_callGetCF('get-registry').then(function (resp) {
+        var ouvriers = Array.isArray(resp && resp.ouvriers) ? resp.ouvriers : [];
+        var list = ouvriers.map(function (d) {
+          d = d || {};
+          var docId = d.matricule || '';
+          return {
+            docId: docId,
+            matricule: d.matricule || docId,
             nom: d.nom || '',
             poste: d.poste || '',
             prime: Number(d.primeFonctionJournaliere) || 0,
@@ -261,7 +292,7 @@
             // prime_history conservé en mémoire pour la pop-up historique (V2,
             // read-only). Absent/vide → état vide explicite dans la modale.
             prime_history: Array.isArray(d.prime_history) ? d.prime_history : []
-          });
+          };
         });
         list.sort(function (a, b) {
           return b.prime - a.prime || a.docId.localeCompare(b.docId);

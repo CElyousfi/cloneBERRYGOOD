@@ -15497,6 +15497,122 @@ exports.primesManagement = functions
   });
 
 // =============================================
+// REGISTRY — lecture GATÉE du registre ouvrier (ouvriers_registry) — Étape 1 paie
+// =============================================
+//
+// SÉCURITÉ CRITIQUE (fuite nominative de paie) : ouvriers_registry est lu en
+// client-direct par 4 écrans. On migre chaque écran vers cette CF gatée, puis
+// on durcira firestore.rules (read:false) EN DERNIER. Ici : LECTURE seule.
+//
+// Gating (fail-closed) AVANT toute lecture, calqué sur l'Étape 0 :
+//   requireAuth (401) → resolveCallerProfile (token→users/{uid}) →
+//   resolvePerimetre (périmètre ferme IMPOSÉ serveur, jamais du body) →
+//   resolvePointageRHAccess → { allowed, fermeFilter }. !allowed → 403.
+//
+// Deux scopes :
+//   - FULL (fermeFilter === null : RH/DG/Finance/admin) → registre COMPLET, tous
+//     les champs de chaque doc (projectRegistryFull).
+//   - CHEF (fermeFilter = sa ferme) → REQUIERT from/to ; set des matricules ayant
+//     pointé SA ferme sur [from,to] (mirror), normalisé alpha→numérique, puis
+//     projection RÉDUITE (jamais prime_history/fonction_history/updatedBy/
+//     declareSource). from/to manquant → 400 (fail-closed).
+//
+// CACHE : on cache UNIQUEMENT le scope 'all' (clé `registry_all`, TTL court) —
+// le registre change rarement et ce scope est identique pour tous les full-access.
+// Le scope chef N'EST PAS caché : sa réponse dépend de (ferme, from, to) et du
+// mirror ; le cacher risquerait un partage cross-périmètre (leçon Étape 0 :
+// ne JAMAIS partager une entrée de cache entre périmètres). Interdit : clé unique
+// sans dimension périmètre.
+const registryAccess = require("./lib/auth/registryAccess");
+
+exports.registryService = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    // ========== AUTH + GATING (avant toute lecture) ==========
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return; // requireAuth a déjà répondu 401
+
+    // Rôle/périmètre résolus SERVEUR (token → users/{uid}), jamais du body/query.
+    const callerProfile = await resolveCallerProfile(authUser);
+    const perim = consoAccessControl.resolvePerimetre(callerProfile, null);
+    const access = paieAccess.resolvePointageRHAccess(perim);
+    if (!access.allowed) {
+      return res.status(403).json({ success: false, error: "Accès non autorisé" });
+    }
+
+    const action = req.query.action || (req.body && req.body.action) || "";
+    const REGISTRY = db_firestore.collection("ouvriers_registry");
+
+    try {
+      if (action === "get-registry" && req.method === "GET") {
+        // -------- Scope FULL ('all' : RH/DG/Finance/admin) --------
+        if (access.fermeFilter === null) {
+          // Cache périmètre-aware : clé fixe `registry_all` (identique pour tous
+          // les full-access), TTL court (60s) — le registre change rarement.
+          const payload = await withCache(
+            "registry_all",
+            60 * 1000, // TTL 60s (withCache attend des millisecondes)
+            async () => {
+              const snap = await REGISTRY.get();
+              const docs = snap.docs.map(d => Object.assign({ __id: d.id }, d.data()));
+              const ouvriers = registryAccess.projectRegistryFull(docs);
+              return { success: true, ouvriers, perimetre: "all", count: ouvriers.length };
+            }
+          );
+          return res.json(payload);
+        }
+
+        // -------- Scope CHEF (fermeFilter = sa ferme) --------
+        const fermeFilter = access.fermeFilter;
+        const from = typeof req.query.from === "string" ? req.query.from.trim() : "";
+        const to = typeof req.query.to === "string" ? req.query.to.trim() : "";
+        if (!from || !to) {
+          // Fail-closed : sans fenêtre, on ne peut pas dériver le set matricules.
+          return res.status(400).json({
+            success: false,
+            error: "Paramètres from et to requis (fenêtre de pointage) pour un périmètre ferme",
+          });
+        }
+
+        // Set des matricules ayant pointé SA ferme sur [from,to], depuis le mirror.
+        // ⚠️ le mirror est alpha-préfixé (DD10502), le registre numérique (10502).
+        const {
+          filterMirrorRowsByFerme,
+          computeAllowedMatricules,
+        } = require("./pointageService");
+        const mirrorRows = await getPointageRowsForDateRange(from, to);
+        // computeAllowedMatricules → set UPPERCASE alpha (DD10502) filtré ferme.
+        const allowedRaw = computeAllowedMatricules(
+          filterMirrorRowsByFerme(mirrorRows, fermeFilter),
+          fermeFilter
+        );
+        // Normalisation alpha→numérique AVANT filtrage des docs registry.
+        const allowedNum = registryAccess.normalizeAllowedSet(allowedRaw);
+
+        // Scope chef NON caché (dépend de ferme+from+to, pas de partage cross-périmètre).
+        const snap = await REGISTRY.get();
+        const docs = snap.docs.map(d => Object.assign({ __id: d.id }, d.data()));
+        const ouvriers = registryAccess.projectRegistryForChef(docs, allowedNum);
+        return res.json({
+          success: true,
+          ouvriers,
+          perimetre: fermeFilter,
+          count: ouvriers.length,
+        });
+      }
+
+      return res.status(400).json({ success: false, error: "Action inconnue" });
+    } catch (err) {
+      console.error("Erreur registryService:", err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
 // FONCTIONS — référentiel des fonctions + classement des ouvriers (V2 phase 2)
 // =============================================
 //
