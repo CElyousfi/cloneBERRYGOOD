@@ -18,6 +18,18 @@ jusqu'à l'arrivée du pointage de cette quinzaine. Non-gated (deploy functions 
 
 ---
 
+## [ ] BUG (non-gated) — Pop-up historique Primes Fixes ne fonctionne pas
+Signalé par le DG (2026-07-02) pendant la validation de l'Étape 1 (sécu paie).
+**PRÉ-EXISTANT** : la pop-up était déjà KO en prod AVANT la migration registry —
+ce n'est PAS une régression de l'Étape 1. Le champ `prime_history` est bien renvoyé
+par la CF (data disponible côté client), donc le bug est dans le **rendu / le
+déclenchement de la pop-up** côté frontend (`public/components/PrimesFixesTab.jsx`),
+pas dans la donnée. À faire : récupérer le bloc diagnostic du DG, reproduire le clic
+sur l'historique d'une prime fixe, corriger le rendu/handler de la pop-up. Non-gated,
+à corriger HORS migration (indépendant de l'Étape 1).
+
+---
+
 ## [x] 2. URGENT — Bug menu « Historique Irrigation » dupliqué
 Corrigé : `baseNavItems.push()` mutait une constante NAV_ITEMS partagée à chaque
 re-render → ~12 doublons. Fix = copie fraîche (spread). QA APPROUVÉ, 224/224.

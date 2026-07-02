@@ -5793,23 +5793,54 @@
                     .catch(() => setDiversEntries([]));
             }, [diversDate]);
 
-            // Charge barèmes paie + registre ouvriers (une fois) pour la popup salaire.
+            // Charge barèmes paie (une fois) pour la popup salaire.
             React.useEffect(() => {
                 const db = firebase.firestore();
                 let cancelled = false;
                 db.collection('app_settings').doc('paie_baremes').get()
                     .then(doc => { if (!cancelled && doc.exists) setPaieBaremes(prev => ({ ...prev, ...doc.data() })); })
                     .catch(e => console.warn('paie_baremes load:', e));
-                db.collection('ouvriers_registry').get()
-                    .then(snap => {
-                        if (cancelled) return;
-                        const reg = {};
-                        snap.forEach(d => { reg[d.id] = { matricule: d.id, ...d.data() }; });
-                        setOuvriersRegistry(reg);
-                    })
-                    .catch(e => console.warn('ouvriers_registry load:', e));
                 return () => { cancelled = true; };
             }, []);
+
+            // Charge le registre ouvriers via la CF gatée /api/registry (get-registry) —
+            // SÉCURITÉ PAIE (Étape 1) : plus de lecture client-direct de ouvriers_registry.
+            // - Scope 'all' (RH/DG/Finance) : from/to ignorés côté serveur → registre complet.
+            // - Scope CHEF : from/to REQUIS (sinon 400) → ses ouvriers (sa ferme, période).
+            //   La popup Pointage est déjà cloisonnée serveur (Étape 0), donc les ouvriers
+            //   affichés = son périmètre registry → aucune ligne dégradée.
+            // Choix from/to : la quinzaine contenant la date active du tab (paieDateISO).
+            //   Un chef ne doit jamais être appelé sans fenêtre ; on la dérive donc de la
+            //   période courante de l'écran (jour 1–15 → 01..15 ; jour ≥16 → 16..fin de mois).
+            // window.fetch est patché globalement pour injecter le Bearer token sur /api/*.
+            const registryDateISO = selectedDate || (dates[0] && dates[0].date) || (apiData && apiData.date) || new Date().toISOString().slice(0, 10);
+            React.useEffect(() => {
+                if (!registryDateISO) return;
+                let cancelled = false;
+                const y = registryDateISO.slice(0, 7); // YYYY-MM
+                const day = parseInt(registryDateISO.slice(8, 10), 10);
+                const from = day <= 15 ? (y + '-01') : (y + '-16');
+                // Dernier jour du mois via getDate() (valeur LOCALE) — surtout PAS
+                // toISOString() qui décale d'un jour en TZ Africa/Casablanca (UTC+1) :
+                // 2026-01-31T00:00 local → 2026-01-30T23:00Z → sliced '2026-01-30'.
+                const _lastDay = new Date(parseInt(y.slice(0, 4), 10), parseInt(y.slice(5, 7), 10), 0).getDate();
+                const to = day <= 15
+                    ? (y + '-15')
+                    : (y + '-' + String(_lastDay).padStart(2, '0'));
+                const url = '/api/registry?action=get-registry&from=' + from + '&to=' + to;
+                fetch(url)
+                    .then(r => r.json())
+                    .then(resp => {
+                        if (cancelled) return;
+                        if (!resp || !resp.success) { console.warn('registry load:', resp && resp.error); setOuvriersRegistry({}); return; }
+                        const reg = {};
+                        (resp.ouvriers || []).forEach(o => { reg[numKey(o.matricule)] = o; });
+                        setOuvriersRegistry(reg);
+                    })
+                    .catch(e => { if (!cancelled) { console.warn('registry load:', e); setOuvriersRegistry({}); } });
+                return () => { cancelled = true; };
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [registryDateISO]);
 
             // Calcule l'ancienneté (jours pointés distincts) pour la date sélectionnée.
             // Plage = de la plus ancienne baselineDate du registre jusqu'à la date sélectionnée.
