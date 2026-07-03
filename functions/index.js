@@ -946,11 +946,18 @@ exports.health = functions
       const needsSQL = req.query.mode === "sql";
       if (!needsSQL) {
         const syncStatus = await getSyncStatus();
+        // Fraîcheur de la DONNÉE source de pointage (âge de MAX(Periode_Date)),
+        // distincte du dataAge du RUN de sync (qui réussit même sur source gelée).
+        const pointageFreshness = await syncService.getPointageDataFreshness();
         return res.json({
           success: true,
           mode: "firestore",
           mirror: USE_MIRROR,
           syncStatus: syncStatus || {},
+          pointageDataMaxDate: pointageFreshness.pointageDataMaxDate,
+          pointageDataAgeHours: pointageFreshness.pointageDataAgeHours,
+          pointageDataAgeDays: pointageFreshness.pointageDataAgeDays,
+          pointageDataProbedAt: pointageFreshness.probedAt,
           timestamp: new Date().toISOString(),
         });
       }

@@ -12,6 +12,10 @@ const sql = require("mssql");
 const { admin, db: db_firestore } = require("./config/firebase");
 const baseSqlConfig = require("./config/sqlConfig");
 const whatsappService = require("./whatsappService");
+const probeStaleness = require("./lib/probeStaleness/probeStaleness");
+
+// Ré-alerte staleness : rappel toutes les 24h tant que la donnée reste gelée.
+const STALENESS_RE_ALERT_HOURS = 24;
 
 // Sync queries are heavier — use longer request timeout
 const sqlConfig = {
@@ -23,6 +27,183 @@ let pool = null;
 async function getPool() {
   if (!pool) pool = await sql.connect(sqlConfig);
   return pool;
+}
+
+/**
+ * Charge l'ensemble des dates fériées 'YYYY-MM-DD' depuis app_settings/jours_feries.
+ * Tolérant aux erreurs : renvoie [] si le doc est absent/illisible (la sonde
+ * retombe alors sur la seule tolérance week-end).
+ * @returns {Promise<string[]>}
+ */
+async function loadHolidayDates() {
+  try {
+    const snap = await db_firestore.collection("app_settings").doc("jours_feries").get();
+    if (!snap.exists) return [];
+    const holidays = snap.data().holidays;
+    if (!Array.isArray(holidays)) return [];
+    return holidays
+      .map((h) => (h && typeof h.date === "string" ? h.date.slice(0, 10) : null))
+      .filter(Boolean);
+  } catch (e) {
+    console.error("[ReplicationProbe] chargement jours fériés échec:", e.message);
+    return [];
+  }
+}
+
+/**
+ * Évalue la staleness du pointage et émet une alerte WhatsApp au DG si requis
+ * (table vide OU données périmées), avec débounce 24h et message de résolution.
+ * Envoi ROBUSTE : 0 destinataire ou échec d'envoi → flag visible dans
+ * replication_probe_state/pointage.alertDeliveryError + console.error.
+ *
+ * @param {Object} probeData  résultat brut de la sonde
+ * @param {Date} now
+ */
+async function evaluateAndAlertStaleness(probeData, now) {
+  try {
+    const holidays = await loadHolidayDates();
+    const staleness = probeStaleness.computeStaleness({
+      maxDate: probeData.pointage_max_date,
+      totalRows: probeData.pointage_total_rows,
+      now,
+      holidays,
+    });
+
+    const stateRef = db_firestore.collection("replication_probe_state").doc("pointage");
+    const stateSnap = await stateRef.get();
+    const prevState = stateSnap.exists ? stateSnap.data() : null;
+
+    const decision = probeStaleness.decideAlert(staleness, prevState, now, STALENESS_RE_ALERT_HOURS);
+
+    if (!decision.shouldSend) {
+      // Persiste l'état (stillStale/updatedAt) sans envoyer.
+      await stateRef.set(withServerTimestamp(decision.nextState), { merge: true });
+      return;
+    }
+
+    const msg = buildStalenessMessage(decision.kind, staleness, probeData);
+    const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+
+    let deliveryError = null;
+    if (!recipients || recipients.length === 0) {
+      deliveryError = "aucun destinataire DG (profileId=dg + whatsappEnabled + whatsappPhone)";
+      console.error(`[ReplicationProbe] ÉCHEC ALERTE — ${deliveryError}. Message non envoyé: ${msg}`);
+    } else {
+      const failures = [];
+      for (const r of recipients) {
+        try {
+          const res = await whatsappService.sendTextMessage(r.phone, msg);
+          if (!res || res.success !== true) {
+            failures.push(`${r.phone}: ${(res && res.error) || "échec inconnu"}`);
+          }
+        } catch (e) {
+          failures.push(`${r.phone}: ${e.message}`);
+        }
+      }
+      if (failures.length === recipients.length) {
+        deliveryError = `envoi échoué pour tous les destinataires: ${failures.join(" | ")}`;
+        console.error(`[ReplicationProbe] ÉCHEC ALERTE — ${deliveryError}`);
+      } else if (failures.length > 0) {
+        deliveryError = `envoi partiel: ${failures.join(" | ")}`;
+        console.error(`[ReplicationProbe] ALERTE partiellement échouée — ${deliveryError}`);
+      }
+    }
+
+    const nextState = Object.assign({}, decision.nextState, {
+      lastAlertKind: decision.kind,
+      lastAlertCondition: staleness.condition,
+      lastAlertMaxDate: staleness.maxDate || null,
+      lastAlertDataAgeDays: staleness.dataAgeDays,
+      alertDeliveryError: deliveryError,
+    });
+    // Si l'envoi a totalement échoué, ne pas "consommer" le lastAlertAt : on
+    // réessaiera au prochain run plutôt que de marquer un envoi réussi.
+    if (deliveryError && (!recipients || recipients.length === 0 ||
+        deliveryError.startsWith("envoi échoué pour tous"))) {
+      nextState.lastAlertAt = prevState ? (prevState.lastAlertAt || null) : null;
+    }
+
+    await stateRef.set(withServerTimestamp(nextState), { merge: true });
+
+    if (!deliveryError) {
+      console.warn(`[ReplicationProbe] ALERTE staleness envoyée (${decision.kind}/${staleness.condition || "resolved"}) à ${recipients.length} destinataire(s)`);
+    }
+  } catch (e) {
+    console.error("[ReplicationProbe] logique d'alerte staleness en erreur:", e.message);
+  }
+}
+
+/**
+ * Fraîcheur de la DONNÉE source de pointage (distincte de l'âge du RUN de sync).
+ * Lit le dernier doc replication_probe et calcule l'âge de MAX(Periode_Date).
+ * @returns {Promise<{pointageDataMaxDate:string|null, pointageDataAgeHours:number|null, pointageDataAgeDays:number|null, pointageTotalRows:number|null, probedAt:string|null}>}
+ */
+async function getPointageDataFreshness() {
+  const empty = {
+    pointageDataMaxDate: null,
+    pointageDataAgeHours: null,
+    pointageDataAgeDays: null,
+    pointageTotalRows: null,
+    probedAt: null,
+  };
+  try {
+    const snap = await db_firestore.collection("replication_probe")
+      .orderBy("localTime", "desc")
+      .limit(1)
+      .get();
+    if (snap.empty) return empty;
+    const d = snap.docs[0].data();
+    const maxDate = probeStaleness.normalizeMaxDate(d.pointage_max_date);
+    let ageHours = null;
+    let ageDays = null;
+    if (maxDate) {
+      const ms = Date.now() - new Date(maxDate + "T00:00:00Z").getTime();
+      ageHours = Math.round(ms / 3600000);
+      ageDays = Math.floor(ms / 86400000);
+    }
+    return {
+      pointageDataMaxDate: maxDate,
+      pointageDataAgeHours: ageHours,
+      pointageDataAgeDays: ageDays,
+      pointageTotalRows: d.pointage_total_rows != null ? Number(d.pointage_total_rows) : null,
+      probedAt: d.localTime || null,
+    };
+  } catch (e) {
+    console.error("[health] getPointageDataFreshness échec:", e.message);
+    return empty;
+  }
+}
+exports.getPointageDataFreshness = getPointageDataFreshness;
+
+/** Ajoute un serverTimestamp Firestore à l'état persistant. */
+function withServerTimestamp(state) {
+  return Object.assign({}, state, {
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Construit le message WhatsApp selon le type d'événement et la condition.
+ * @param {'alert'|'reminder'|'resolved'} kind
+ * @param {Object} staleness
+ * @param {Object} probeData
+ * @returns {string}
+ */
+function buildStalenessMessage(kind, staleness, probeData) {
+  if (kind === "resolved") {
+    return "✅ Smart Berry — le pointage remonte à nouveau (" +
+      probeData.pointage_total_rows + " lignes, dernière date " +
+      (staleness.maxDate || "?") + "). Panne résolue.";
+  }
+  const rappel = kind === "reminder" ? " (RAPPEL — toujours en panne)" : "";
+  if (staleness.condition === "empty") {
+    return "🔴 ALERTE Smart Berry" + rappel + " — la table reporting BR_Pointage est VIDE (0 ligne). " +
+      "L'actualisation du pointage depuis BEE ONE semble arrêtée : plus aucune donnée de pointage ne remonte dans l'app. À vérifier côté BEE ONE.";
+  }
+  const age = staleness.dataAgeDays != null ? staleness.dataAgeDays + " j" : "âge inconnu";
+  return "🔴 ALERTE Smart Berry" + rappel + " — le pointage est PÉRIMÉ : dernière date remontée = " +
+    (staleness.maxDate || "illisible") + " (" + age + "). " +
+    "La source (BR_Pointage / BEE ONE) est figée : aucune nouvelle journée n'arrive dans l'app. À vérifier côté BEE ONE.";
 }
 
 // =============================================
@@ -66,27 +247,10 @@ exports.replicationProbe = functions
       await db_firestore.collection("replication_probe").doc(timestampKey).set(probeData);
       console.log(`[ReplicationProbe] Stored: pointage_today=${probeData.pointage_today_count}, consommation_recent=${probeData.consommation_recent_count}, cueillette_today=${probeData.cueillette_today_count}`);
 
-      // Alerte si BR_Pointage est vide (alimentation reporting BEE ONE cassée).
-      // Débounce via replication_probe_state/pointage : 1 alerte par incident + 1 récupération.
-      try {
-        const stateRef = db_firestore.collection("replication_probe_state").doc("pointage");
-        const stateSnap = await stateRef.get();
-        const alreadyAlerted = stateSnap.exists && stateSnap.data().zeroAlerted === true;
-        const isZero = Number(probeData.pointage_total_rows) === 0;
-        if (isZero && !alreadyAlerted) {
-          const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
-          const msg = "🔴 ALERTE Smart Berry — la table reporting BR_Pointage est VIDE (0 ligne). L'actualisation du pointage depuis BEE ONE semble arrêtée : plus aucune nouvelle donnée de pointage ne remonte dans l'app. À vérifier côté BEE ONE.";
-          for (const r of recipients) { try { await whatsappService.sendTextMessage(r.phone, msg); } catch (e) { console.error("[ReplicationProbe] alerte WhatsApp échec:", e.message); } }
-          await stateRef.set({ zeroAlerted: true, since: probeData.localTime, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-          console.warn("[ReplicationProbe] ALERTE 0-ligne BR_Pointage envoyée au DG");
-        } else if (!isZero && alreadyAlerted) {
-          const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
-          const msg = "✅ Smart Berry — BR_Pointage est de nouveau alimentée (" + probeData.pointage_total_rows + " lignes). Le pointage remonte à nouveau dans l'app.";
-          for (const r of recipients) { try { await whatsappService.sendTextMessage(r.phone, msg); } catch (e) {} }
-          await stateRef.set({ zeroAlerted: false, recoveredAt: probeData.localTime, updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
-          console.log("[ReplicationProbe] BR_Pointage rétabli — message de récupération envoyé");
-        }
-      } catch (e) { console.error("[ReplicationProbe] logique d'alerte 0-ligne en erreur:", e.message); }
+      // Alerte STALENESS : table VIDE (0 ligne) OU données PÉRIMÉES (source gelée
+      // non-vide). Détection pure via probeStaleness (âge de la donnée vs dernier
+      // jour ouvré attendu, week-ends/fériés tolérés). Ré-alerte débounce 24h.
+      await evaluateAndAlertStaleness(probeData, now);
     } catch (err) {
       console.error("[ReplicationProbe] Error:", err.message);
       await db_firestore.collection("replication_probe").doc(timestampKey).set({
@@ -904,6 +1068,7 @@ exports.probeRawData = functions
           localTime: d.localTime,
           ptg_today: d.pointage_today_count,
           ptg_total: d.pointage_total_rows,
+          pointage_max_date: probeStaleness.normalizeMaxDate(d.pointage_max_date),
           conso: d.consommation_recent_count,
           cueill: d.cueillette_today_count,
           error: d.error,
