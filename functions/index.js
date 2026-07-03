@@ -1542,7 +1542,7 @@ exports.bugReports = functions
             + "Description : " + shortDesc
             + (photoUrl ? "\n📎 Photo jointe" : "");
           await Promise.allSettled(
-            dgRecipients.map((r) => whatsappService.sendTextMessage(r.phone, msg))
+            dgRecipients.map((r) => whatsappService.sendTemplateMessage(r.phone, "general_alert", [whatsappService.toSingleLine(msg)]))
           );
         } catch (waErr) {
           console.warn("[bugReports] notif WhatsApp échouée:", waErr.message);
@@ -1779,7 +1779,7 @@ exports.onBugReportCreate = functions
             + ". Signalé par " + reporter + ". Réf #" + refId + ".";
           const dgRecipients = await whatsappService.resolveRecipientsForProfile("dg", null);
           await Promise.allSettled(
-            dgRecipients.map((r) => whatsappService.sendTextMessage(r.phone, msg))
+            dgRecipients.map((r) => whatsappService.sendTemplateMessage(r.phone, "general_alert", [whatsappService.toSingleLine(msg)]))
           );
         } catch (waErr) {
           console.warn("[onBugReportCreate] notif WhatsApp échouée:", waErr.message);
@@ -1856,7 +1856,7 @@ exports.onBugReportUpdate = functions
     // 1. Notifier le REPORTER (celui qui a signalé) — best-effort, jamais throw.
     if (phone) {
       try {
-        await whatsappService.sendTextMessage(phone, msg);
+        await whatsappService.sendTemplateMessage(phone, "general_alert", [whatsappService.toSingleLine(msg)]);
       } catch (waErr) {
         console.warn("[onBugReportUpdate] notif WhatsApp reporter échouée:", waErr.message);
       }
@@ -1877,7 +1877,7 @@ exports.onBugReportUpdate = functions
       const dgMsg = bugTriage.buildResolvedDGMessage(after, idCourt);
       const dgRecipients = await whatsappService.resolveRecipientsForProfile("dg", null);
       const targets = (dgRecipients || []).filter((r) => r && r.phone && (!phone || r.phone !== phone));
-      await Promise.all(targets.map((r) => whatsappService.sendTextMessage(r.phone, dgMsg)));
+      await Promise.all(targets.map((r) => whatsappService.sendTemplateMessage(r.phone, "general_alert", [whatsappService.toSingleLine(dgMsg)])));
     } catch (dgErr) {
       console.warn("[onBugReportUpdate] notif WhatsApp DG échouée:", dgErr.message);
     }
@@ -5016,7 +5016,7 @@ async function notifyProfilePointageValidation(profileId, ferme, text) {
   try {
     const recipients = await whatsappService.resolveRecipientsForProfile(profileId, ferme);
     if (!recipients || !recipients.length) return;
-    await Promise.all(recipients.map((r) => whatsappService.sendTextMessage(r.phone, text)));
+    await Promise.all(recipients.map((r) => whatsappService.sendTemplateMessage(r.phone, "general_alert", [whatsappService.toSingleLine(text)])));
   } catch (e) {
     console.error('[pointageValidation] WhatsApp notify failed:', profileId, e.message);
   }

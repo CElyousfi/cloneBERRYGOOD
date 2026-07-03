@@ -141,8 +141,9 @@ function mockDeps({ stateDoc = null, sendResults = [{ success: true }] } = {}) {
   let sendIdx = 0;
   const whatsapp = {
     resolveRecipientsForProfile: async () => [{ phone: '+212600000001', profileId: 'dg', displayName: 'DG' }],
-    sendTextMessage: async (to, text) => {
-      sends.push({ to, text });
+    toSingleLine: (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim(),
+    sendTemplateMessage: async (to, template, params) => {
+      sends.push({ to, template, text: (params && params[0]) || '' });
       return sendResults[Math.min(sendIdx++, sendResults.length - 1)];
     },
   };
@@ -211,7 +212,7 @@ test('handleProdRecolteWrite: skips when no DG recipients', async () => {
   const today = N.todayCasablanca();
   const deps = {
     db: { collection: () => ({ doc: () => ({ get: async () => ({ exists: false, data: () => null }), set: async () => {} }) }) },
-    whatsapp: { resolveRecipientsForProfile: async () => [], sendTextMessage: async () => ({ success: true }) },
+    whatsapp: { resolveRecipientsForProfile: async () => [], toSingleLine: (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim(), sendTemplateMessage: async () => ({ success: true }) },
     admin: { firestore: { FieldValue: { serverTimestamp: () => 'TS' } } },
   };
   const { change, context } = mockChange({

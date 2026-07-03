@@ -351,9 +351,10 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
       await Promise.allSettled(unique.map(async (recipient) => {
         if (recipient.profileId !== "finance") return;
         try {
-          await whatsapp.sendTextMessage(
+          await whatsapp.sendTemplateMessage(
             recipient.phone,
-            `📎 Pensez à joindre l'avis de virement signé sur Smart Berry pour le BDC #${data.numero || data.bdc_id}.`
+            "general_alert",
+            [whatsapp.toSingleLine(`📎 Pensez à joindre l'avis de virement signé sur Smart Berry pour le BDC #${data.numero || data.bdc_id}.`)]
           );
         } catch (err) {
           console.error(`Finance avis reminder failed for ${recipient.phone}:`, err.message);

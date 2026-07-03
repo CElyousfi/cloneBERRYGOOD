@@ -193,7 +193,7 @@ async function handleProdRecolteWrite(deps, change, context) {
   });
 
   const results = await Promise.allSettled(
-    recipients.map(r => whatsapp.sendTextMessage(r.phone, message))
+    recipients.map(r => whatsapp.sendTemplateMessage(r.phone, 'general_alert', [whatsapp.toSingleLine(message)]))
   );
   const sent = results.filter(r => r.status === 'fulfilled' && r.value && r.value.success).length;
 

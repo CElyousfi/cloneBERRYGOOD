@@ -33,6 +33,17 @@ async function getWhatsAppConfig() {
 // reused here and by the Sentinel recipients helper) and re-exported below.
 
 /**
+ * Collapse any whitespace run (newlines, tabs, multiple spaces) into a single
+ * space and trim. Required for WhatsApp template body params: Meta rejects a
+ * param containing '\n', tab, or 4+ consecutive spaces (error 131008).
+ * @param {*} s
+ * @returns {string}
+ */
+function toSingleLine(s) {
+  return String(s == null ? "" : s).replace(/\s+/g, " ").trim();
+}
+
+/**
  * Send a template message via Meta Cloud API.
  * @param {string} to - Phone number in E.164 format
  * @param {string} templateName - Registered template name
@@ -488,6 +499,7 @@ function clearConfigCache() {
 module.exports = {
   getWhatsAppConfig,
   formatPhoneE164,
+  toSingleLine,
   sendTemplateMessage,
   sendTextMessage,
   sendInteractiveButtons,
