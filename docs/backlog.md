@@ -18,6 +18,25 @@ jusqu'à l'arrivée du pointage de cette quinzaine. Non-gated (deploy functions 
 
 ---
 
+## [ ] ITEM (échéance : reprise campagne 26-27, AVANT le 1er pic de récolte) — Sonde staleness récolte saisonnière + test réel alerte récolte
+Demandé par le DG (2026-07-03), suite au chantier monitoring pointage. Deux volets qui se
+valident ENSEMBLE sur les premières vraies écritures de la saison :
+1. **Sonde staleness RÉCOLTE saisonnière** : étendre le mécanisme de la sonde pointage
+   (`functions/sqlSyncService.js` `replicationProbe` + `functions/lib/probeStaleness/`) au flux
+   récolte (`prod_tracabilite_recolte` / `syncTracabiliteRecolte`), AVEC logique saisonnière :
+   **pas d'alerte hors campagne** (la récolte s'arrête légitimement en fin de saison — actuellement
+   figée au 10/06/2026 = fin campagne 25-26, PAS une panne), et **réarmement à la reprise 26-27**
+   (dès que des écritures récolte reprennent). Alerte via **template WhatsApp** (`general_alert`),
+   jamais free-form (règle notif proactive = template). Détecter la reprise (première donnée
+   fraîche) → armer → alerter si gel en pleine saison.
+2. **Test réel de l'alerte récolte** (`onProdRecolteWriteNotify` → notif delta kg, déjà corrigée
+   en template au lot 7 alertes du 2026-07-03) sur les **premières vraies écritures** récolte de la
+   saison : confirmer la réception WhatsApp DG (n'a pas pu être testé hors campagne sans polluer la
+   prod).
+Non-gated (deploy functions gated). Lié : sonde pointage (déployée 2026-07-03), lot 7 alertes template.
+
+---
+
 ## [ ] BUG (non-gated) — Pop-up historique Primes Fixes ne fonctionne pas
 Signalé par le DG (2026-07-02) pendant la validation de l'Étape 1 (sécu paie).
 **PRÉ-EXISTANT** : la pop-up était déjà KO en prod AVANT la migration registry —
