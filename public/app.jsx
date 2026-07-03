@@ -24113,6 +24113,8 @@ ${rejetHtml}
             const [defaultBaselineDate, setDefaultBaselineDate] = useState(() => new Date().toISOString().slice(0, 10));
             const declareFileRef = React.useRef(null);
             const baselineFileRef = React.useRef(null);
+            const [registryError, setRegistryError] = useState(false);
+            const [reloadRegistryTick, setReloadRegistryTick] = useState(0);
 
             // Live subscription on barèmes
             useEffect(() => {
@@ -24129,11 +24131,23 @@ ${rejetHtml}
                 let cancelled = false;
                 (async () => {
                     try {
+                        setRegistryError(false);
                         const [reg, metaData] = await Promise.all([
+                            // Lecture GATÉE : le registre ouvrier (nominatif, sensible) passe
+                            // par la CF /api/registry — plus de lecture Firestore directe.
+                            // PaieTab est rhOnly → scope 'all' (RH/DG/Finance) : le serveur
+                            // renvoie le registre COMPLET tous champs, from/to ignorés (donc
+                            // non passés ici, contrairement aux écrans chef-visibles).
                             __PaieDataCache.getOrLoad('paie:registry', async () => {
-                                const regSnap = await db.collection('ouvriers_registry').get();
+                                const resp = await fetch('/api/registry?action=get-registry').then(r => r.json());
+                                if (!resp || !resp.success) {
+                                    throw new Error((resp && resp.error) || 'Échec du chargement du registre');
+                                }
+                                // Reconstruit la MAP à forme STRICTEMENT IDENTIQUE à l'ancienne
+                                // (clé numérique canonique → objet ouvrier avec matricule).
+                                const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
                                 const out = {};
-                                regSnap.forEach(d => { out[d.id] = { matricule: d.id, ...d.data() }; });
+                                (resp.ouvriers || []).forEach(o => { out[numKey(o.matricule)] = o; });
                                 return out;
                             }),
                             __PaieDataCache.getOrLoad('paie:import_meta', async () => {
@@ -24152,12 +24166,12 @@ ${rejetHtml}
                         );
                         if (cancelled) return;
                         setPointageMap(map);
-                    } catch (e) { console.error('Paie load:', e); }
+                    } catch (e) { console.error('Paie load:', e); if (!cancelled) setRegistryError(true); }
                     finally { if (!cancelled) setLoading(false); }
                 })();
                 return () => { cancelled = true; };
             // eslint-disable-next-line react-hooks/exhaustive-deps
-            }, []);
+            }, [reloadRegistryTick]);
 
             // Reload pointage when period bounds change — même cache (clé = plage).
             useEffect(() => {
@@ -24481,6 +24495,15 @@ ${rejetHtml}
 
             return (
                 <div className="fade-in">
+                    {registryError && (
+                        <div style={{display:'flex', alignItems:'center', gap:10, padding:'8px 12px', marginBottom:12, background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, color:'#b91c1c', fontSize:12}}>
+                            <i className="fa-solid fa-triangle-exclamation"></i>
+                            <span style={{flex:1}}>Échec du chargement du registre — le tableau peut être incomplet.</span>
+                            <button onClick={() => { setLoading(true); setReloadRegistryTick(t => t + 1); }} style={{padding:'4px 10px', background:'#b91c1c', color:'white', border:'none', borderRadius:6, fontSize:11, fontWeight:600, cursor:'pointer'}}>
+                                Réessayer
+                            </button>
+                        </div>
+                    )}
                     <Panel title="Paie — Ouvriers, ancienneté, prime" icon="fa-money-bill-wave"
                         actions={
                             <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
