@@ -92,7 +92,14 @@ async function evaluateAndAlertStaleness(probeData, now) {
       const failures = [];
       for (const r of recipients) {
         try {
-          const res = await whatsappService.sendTextMessage(r.phone, msg);
+          // Alerte PROACTIVE (non sollicitée) : hors fenêtre WhatsApp 24h, un
+          // message texte free-form est silencieusement droppé par Meta (l'API
+          // renvoie quand même success:true). On passe donc par un TEMPLATE
+          // (general_alert, un seul param body = le message) — même appel que
+          // index.js (transport-config-apply). Le message DOIT être sur une seule
+          // ligne : Meta rejette les params de template contenant '\n', tabs ou
+          // espaces multiples (erreur 131008). Voir buildStalenessMessage.
+          const res = await whatsappService.sendTemplateMessage(r.phone, "general_alert", [msg]);
           if (!res || res.success !== true) {
             failures.push(`${r.phone}: ${(res && res.error) || "échec inconnu"}`);
           }
@@ -190,20 +197,39 @@ function withServerTimestamp(state) {
  * @returns {string}
  */
 function buildStalenessMessage(kind, staleness, probeData) {
+  // ⚠️ Ce message est envoyé comme PARAM de template WhatsApp (general_alert).
+  // Meta rejette (erreur 131008) tout param contenant '\n', une tabulation ou des
+  // espaces multiples. Chaque variante ci-dessous est donc rédigée SUR UNE SEULE
+  // LIGNE (séparateur ' — '), puis toSingleLine() collapse toute espace résiduelle
+  // en dernière ligne de défense.
+  let msg;
   if (kind === "resolved") {
-    return "✅ Smart Berry — le pointage remonte à nouveau (" +
-      probeData.pointage_total_rows + " lignes, dernière date " +
-      (staleness.maxDate || "?") + "). Panne résolue.";
+    msg = "✅ Pointage OK — remonte à nouveau (" + probeData.pointage_total_rows +
+      " lignes, dernière date " + (staleness.maxDate || "?") + "). Panne résolue.";
+  } else {
+    const rappel = kind === "reminder" ? " (RAPPEL — toujours en panne)" : "";
+    if (staleness.condition === "empty") {
+      msg = "🔴 Pointage" + rappel + ": table BR_Pointage VIDE (0 ligne) — " +
+        "réplication interrompue. Vérifier l'alimentation BEE ONE/BDR.";
+    } else {
+      const age = staleness.dataAgeDays != null ? staleness.dataAgeDays + " j" : "âge inconnu";
+      msg = "🔴 Pointage PÉRIMÉ" + rappel + " — dernière date " +
+        (staleness.maxDate || "illisible") + " (" + age + "). " +
+        "Réplication BR_Pointage figée — vérifier l'alimentation BEE ONE/BDR.";
+    }
   }
-  const rappel = kind === "reminder" ? " (RAPPEL — toujours en panne)" : "";
-  if (staleness.condition === "empty") {
-    return "🔴 ALERTE Smart Berry" + rappel + " — la table reporting BR_Pointage est VIDE (0 ligne). " +
-      "L'actualisation du pointage depuis BEE ONE semble arrêtée : plus aucune donnée de pointage ne remonte dans l'app. À vérifier côté BEE ONE.";
-  }
-  const age = staleness.dataAgeDays != null ? staleness.dataAgeDays + " j" : "âge inconnu";
-  return "🔴 ALERTE Smart Berry" + rappel + " — le pointage est PÉRIMÉ : dernière date remontée = " +
-    (staleness.maxDate || "illisible") + " (" + age + "). " +
-    "La source (BR_Pointage / BEE ONE) est figée : aucune nouvelle journée n'arrive dans l'app. À vérifier côté BEE ONE.";
+  return toSingleLine(msg);
+}
+
+/**
+ * Réduit un message à une seule ligne compatible avec un param de template
+ * WhatsApp : remplace tout saut de ligne / tabulation par un espace, puis
+ * collapse les espaces multiples. Évite le rejet Meta 131008.
+ * @param {string} s
+ * @returns {string}
+ */
+function toSingleLine(s) {
+  return String(s == null ? "" : s).replace(/\s+/g, " ").trim();
 }
 
 // =============================================
