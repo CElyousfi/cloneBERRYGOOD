@@ -66318,6 +66318,7 @@ ${rejetHtml}
             // Helper : enveloppe chaque onglet dans un TabErrorBoundary
             const renderTab = (tabId, Component, props, label) => {
                 if (currentTab !== tabId) return null;
+                if (!Component) return null;
                 return <TabErrorBoundary name={label || tabId} key={tabId + '-eb'}><Component key={refreshKey} {...props} /></TabErrorBoundary>;
             };
 
@@ -66648,7 +66649,7 @@ ${rejetHtml}
                                 {renderTab('mag_fiche_stock', MagFicheStockTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Fiche de Stock')}
                                 {renderTab('mag_inventaire', MagInventaireTab, { currentProfile }, 'Inventaire')}
                                 {renderTab('mag_mouvements', MagMouvementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Mouvements')}
-                                {renderTab('mag_mapping_conso', MagMappingConsoTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Mapping Parcelles Conso')}
+                                {renderTab('mag_mapping_conso', window.MagMappingConsoTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Mapping Parcelles Conso')}
                                 {renderTab('caporal_suivi', CaporalSuiviTab, { data, farmFilter, avoSubFilter, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Suivi Caporal')}
                                 {renderTab('caporal_saisie', CaporalSaisieTab, { data, farmFilter, avoSubFilter }, 'Saisie Caporal')}
                                 {renderTab('caporal_tunnels', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Tunnels')}
