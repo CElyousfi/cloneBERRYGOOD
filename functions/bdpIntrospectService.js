@@ -224,6 +224,53 @@ async function introspect() {
   }
   report.sections["6_ancrage_quinzaine"] = section6;
 
+  // ── SECTION 7 : FRAÎCHEUR DES DONNÉES DE POINTAGE (read-only) ────────────
+  // Objectif : mesurer jusqu'à quelle date chaque table de pointage est peuplée
+  // (MAX date + COUNT) et échantillonner les dernières lignes. Chaque requête est
+  // isolée : une erreur (ex. colonne date au nom différent) n'interrompt pas la
+  // section, elle est capturée par runQuery et renvoie {ok:false, error}.
+  const section7 = {};
+
+  // 7.1 — Pointage (table brute)
+  section7.Pointage = {};
+  section7.Pointage.stats = await runQuery(
+    pool,
+    `SELECT MAX(DATE) AS max_date, COUNT(*) AS total FROM Pointage`
+  );
+  section7.Pointage.derniers = await runQuery(
+    pool,
+    `SELECT TOP 3 IDPointage, DATE, IDFermes, Periode, Valide_pointage
+       FROM Pointage ORDER BY DATE DESC`
+  );
+
+  // 7.2 — Personnel_Pointage
+  section7.Personnel_Pointage = {};
+  section7.Personnel_Pointage.stats = await runQuery(
+    pool,
+    `SELECT MAX(DATE) AS max_date, COUNT(*) AS total FROM Personnel_Pointage`
+  );
+  section7.Personnel_Pointage.derniers = await runQuery(
+    pool,
+    `SELECT TOP 3 IDPointage, Pers_Id, DATE, cout, HN
+       FROM Personnel_Pointage ORDER BY DATE DESC`
+  );
+
+  // 7.3 — BR_Pointage (confirmation qu'elle est vide)
+  section7.BR_Pointage = {};
+  section7.BR_Pointage.stats = await runQuery(
+    pool,
+    `SELECT COUNT(*) AS total, MAX(Periode_Date) AS max_date FROM BR_Pointage`
+  );
+
+  // 7.4 — Pointage_ParcelleCulturale
+  section7.Pointage_ParcelleCulturale = {};
+  section7.Pointage_ParcelleCulturale.stats = await runQuery(
+    pool,
+    `SELECT MAX(DATE) AS max_date, COUNT(*) AS total FROM Pointage_ParcelleCulturale`
+  );
+
+  report.sections["7_fraicheur"] = section7;
+
   report.durationMs = Date.now() - startTime;
   return report;
 }
