@@ -271,6 +271,57 @@ async function introspect() {
 
   report.sections["7_fraicheur"] = section7;
 
+  // ── SECTION 8 : TABLES DE RÉFÉRENCE POUR LE MAPPING DU PULL POINTAGE ─────
+  // Read-only strict : pour chaque table de référence, colonnes
+  // (INFORMATION_SCHEMA.COLUMNS) + échantillon (SELECT TOP N *). Objectif :
+  // trouver le label quinzaine + campagne (Periode_paie), les libellés
+  // Operation (Operation_REF), le nom de ferme (Fermes) et la fonction
+  // (Fonction_Personnel) pour mapper le pull pointage.
+  const section8 = {};
+
+  // Helper local : colonnes + échantillon TOP N * d'une table de référence.
+  async function refTable(tableName, topN) {
+    const detail = {};
+    detail.colonnes = await runQuery(
+      pool,
+      `SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, CHARACTER_MAXIMUM_LENGTH
+         FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = @t ORDER BY ORDINAL_POSITION`,
+      { t: tableName }
+    );
+    if (/^[A-Za-z0-9_]+$/.test(tableName)) {
+      const sample = await runQuery(pool, `SELECT TOP ${topN} * FROM [${tableName}]`);
+      if (sample.ok) sample.rows = truncateSample(sample.rows);
+      detail.echantillon = sample;
+    } else {
+      detail.echantillon = { ok: false, error: "Nom de table non valide pour interpolation." };
+    }
+    return detail;
+  }
+
+  // 8.1 — Periode_paie (label quinzaine « Quinzaine N » + campagne)
+  section8.Periode_paie = await refTable("Periode_paie", 3);
+  // Requête ciblée : les périodes récentes (dont la 49), triées par IDPeriode DESC.
+  {
+    const recentes = await runQuery(
+      pool,
+      `SELECT TOP 5 * FROM Periode_paie ORDER BY IDPeriode DESC`
+    );
+    if (recentes.ok) recentes.rows = truncateSample(recentes.rows);
+    section8.Periode_paie.recentes = recentes;
+  }
+
+  // 8.2 — Operation_REF (libellés Operation / Operation_Famille / Operation_Groupe)
+  section8.Operation_REF = await refTable("Operation_REF", 3);
+
+  // 8.3 — Fermes (nom de ferme, mapping F1/F5/Avocatier/BAHIA) — TOP 20
+  section8.Fermes = await refTable("Fermes", 20);
+
+  // 8.4 — Fonction_Personnel (jointure Personnel_Pointage.IDFonction_personnel) — TOP 5
+  section8.Fonction_Personnel = await refTable("Fonction_Personnel", 5);
+
+  report.sections["8_tables_reference"] = section8;
+
   report.durationMs = Date.now() - startTime;
   return report;
 }
