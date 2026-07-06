@@ -267,7 +267,8 @@ service cloud.firestore {
     // la Cloud Function gated primesManagement (/api/primes, rôle RH/DG vérifié
     // serveur). Lecture autorisée pour tout user authentifié (calcul paie front).
     match /ouvriers_registry/{matricule} {
-      allow read: if request.auth != null;
+      // Étape 1 sécu paie : lecture CF-only (admin SDK) via /api/registry ; 0 lecture client-direct (grep confirmé). Write déjà CF-only.
+      allow read: if false;
       allow write: if false;
     }
 
