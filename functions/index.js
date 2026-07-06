@@ -143,6 +143,9 @@ exports.probeRawData = syncService.probeRawData;
 // Import & re-export production DB sync functions
 const prodSync = require("./prodSyncService");
 
+// BDP introspection (diagnostic READ-ONLY temporaire — protégé par ADMIN_SECRET)
+const bdpIntrospectService = require("./bdpIntrospectService");
+
 // Sync récolte prod (Tracabilite_recolte) — toutes les 30 min de 11h à 20h
 exports.syncRecolteFromProd = functions.region("europe-west1").pubsub
   .schedule("*/15 11-20 * * *")
@@ -16375,6 +16378,41 @@ exports.runSyncJoursFeriesNow = functions
       return res.json({ success: true, ...summary });
     } catch (err) {
       console.error("[runSyncJoursFeriesNow] error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// bdpIntrospect — DIAGNOSTIC READ-ONLY de la BDP prod BEE_BERRY_GOOD.
+// Lève le schéma brut des tables pointage AVANT d'écrire le pull.
+// Protégé par ADMIN_SECRET (pas de Firebase Auth). Uniquement des SELECT.
+// Appel : GET /api/bdp-introspect?secret=<ADMIN_SECRET>
+//   ou header  x-admin-secret: <ADMIN_SECRET>
+// Outil temporaire — à retirer après usage.
+// ─────────────────────────────────────────────────────────────────────────────
+exports.bdpIntrospect = functions
+  .region("europe-west1")
+  .runWith({ secrets: ["ADMIN_SECRET"], timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    const adminSecret = process.env.ADMIN_SECRET;
+    const provided =
+      (req.query && req.query.secret) ||
+      req.get("x-admin-secret") ||
+      (req.body && req.body.secret);
+    if (!adminSecret || provided !== adminSecret) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
+    try {
+      const report = await bdpIntrospectService.introspect();
+      return res.status(report.success ? 200 : 500).json(report);
+    } catch (err) {
+      console.error("[bdpIntrospect] error:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });
