@@ -12,6 +12,8 @@
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "rewrites": [
       { "source": "/api/bdp-introspect", "function": { "functionId": "bdpIntrospect", "region": "europe-west1" } },
+      { "source": "/api/sync-pointage-bdp-test", "function": { "functionId": "syncPointageBdpTrigger", "region": "europe-west1" } },
+      { "source": "/api/validate-pointage-bdp-test", "function": { "functionId": "validatePointageBdpTrigger", "region": "europe-west1" } },
       { "source": "/api/fertigation", "function": { "functionId": "fertigation", "region": "europe-west1" } },
       { "source": "/api/phytosanitaire", "function": { "functionId": "phytosanitaire", "region": "europe-west1" } },
       { "source": "/api/produits", "function": { "functionId": "produits", "region": "europe-west1" } },

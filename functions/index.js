@@ -146,6 +146,10 @@ const prodSync = require("./prodSyncService");
 // BDP introspection (diagnostic READ-ONLY temporaire — protégé par ADMIN_SECRET)
 const bdpIntrospectService = require("./bdpIntrospectService");
 
+// P2b — pull pointage FACTUEL BDP → collection témoin (zéro écriture live)
+const pointageBdpSync = require("./pointageBdpSync");
+const { comparePointage: comparePointageBdp } = require("./lib/pointageBdp/comparePointage");
+
 // Sync récolte prod (Tracabilite_recolte) — toutes les 30 min de 11h à 20h
 exports.syncRecolteFromProd = functions.region("europe-west1").pubsub
   .schedule("*/15 11-20 * * *")
@@ -16413,6 +16417,95 @@ exports.bdpIntrospect = functions
       return res.status(report.success ? 200 : 500).json(report);
     } catch (err) {
       console.error("[bdpIntrospect] error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// syncPointageBdpTrigger — P2b : pull pointage FACTUEL BDP → collection TÉMOIN.
+// ⚠️ ZÉRO écriture live. Écrit UNIQUEMENT dans sql_mirror_pointage_bdp_test.
+// Protégé par ADMIN_SECRET (comme bdpIntrospect).
+// Appel : GET /api/sync-pointage-bdp-test?secret=<ADMIN_SECRET>&from=YYYY-MM-DD&to=YYYY-MM-DD
+//   (from/to optionnels → défaut fenêtre ~7 jours glissants)
+// ─────────────────────────────────────────────────────────────────────────────
+exports.syncPointageBdpTrigger = functions
+  .region("europe-west1")
+  .runWith({ secrets: ["ADMIN_SECRET"], timeoutSeconds: 300, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    const adminSecret = process.env.ADMIN_SECRET;
+    const provided =
+      (req.query && req.query.secret) ||
+      req.get("x-admin-secret") ||
+      (req.body && req.body.secret);
+    if (!adminSecret || provided !== adminSecret) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
+    try {
+      const from = (req.query && req.query.from) || undefined;
+      const to = (req.query && req.query.to) || undefined;
+      const result = await pointageBdpSync.syncPointageFromProd(db_firestore, { from, to });
+      return res.status(result.success ? 200 : 500).json(result);
+    } catch (err) {
+      console.error("[syncPointageBdpTrigger] error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validatePointageBdpTrigger — P2b : VALIDATION CROISÉE juin.
+// Compare sql_mirror_pointage_bdp_test/{date} (reconstruit) vs
+// sql_mirror_pointage/{date} (mirror BDR figé) LIGNE À LIGNE.
+// Clé = (Personnel_Matricule × DateStr × Operation × Ref_parcelle).
+// Nombre_Jr : égalité STRICTE ; Cout/cout_beeone_ref : tolérance ±1 MAD.
+// Protégé par ADMIN_SECRET. AUCUNE écriture (comparateur read-only Firestore).
+// Appel : GET /api/validate-pointage-bdp-test?secret=<ADMIN_SECRET>&date=YYYY-MM-DD
+// ─────────────────────────────────────────────────────────────────────────────
+exports.validatePointageBdpTrigger = functions
+  .region("europe-west1")
+  .runWith({ secrets: ["ADMIN_SECRET"], timeoutSeconds: 120, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    const adminSecret = process.env.ADMIN_SECRET;
+    const provided =
+      (req.query && req.query.secret) ||
+      req.get("x-admin-secret") ||
+      (req.body && req.body.secret);
+    if (!adminSecret || provided !== adminSecret) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
+    const date = req.query && req.query.date;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ success: false, error: "date requise (YYYY-MM-DD)" });
+    }
+
+    try {
+      const [temoinSnap, mirrorSnap] = await Promise.all([
+        db_firestore.collection("sql_mirror_pointage_bdp_test").doc(date).get(),
+        db_firestore.collection("sql_mirror_pointage").doc(date).get(),
+      ]);
+      const temoinRows = temoinSnap.exists ? (temoinSnap.data().rows || []) : [];
+      const mirrorRows = mirrorSnap.exists ? (mirrorSnap.data().rows || []) : [];
+      const report = comparePointageBdp(temoinRows, mirrorRows, { tolCout: 1 });
+      return res.status(200).json({
+        success: true,
+        date,
+        temoin_present: temoinSnap.exists,
+        mirror_present: mirrorSnap.exists,
+        ...report,
+      });
+    } catch (err) {
+      console.error("[validatePointageBdpTrigger] error:", err.message);
       return res.status(500).json({ success: false, error: err.message });
     }
   });
