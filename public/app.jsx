@@ -8425,6 +8425,7 @@
             const [dates, setDates] = useState([]);
             const [equipeRows, setEquipeRows] = useState([]);
             const [equipePeriodes, setEquipePeriodes] = useState([]);
+            const [equipePeriodeCampagne, setEquipePeriodeCampagne] = useState({});
             const [equipeLoading, setEquipeLoading] = useState(true);
             const [expandedEquipe, setExpandedEquipe] = useState(null);
             const [viewMode, setViewMode] = useState('jour'); // 'jour' or 'quinzaine'
@@ -8583,7 +8584,7 @@
                 // Bypass localStorage cache pour recolte-equipes (données fréquemment mises à jour, évite chart vide sur stale cache)
                 invalidateCache('recolte-equipes');
                 cachedFetch('/api/pointage-rh?action=recolte-equipes').then(json => {
-                    if (json.success) { setEquipeRows(json.rows || []); setEquipePeriodes(json.periodes || []); }
+                    if (json.success) { setEquipeRows(json.rows || []); setEquipePeriodes(json.periodes || []); setEquipePeriodeCampagne(json.periodeCampagne || {}); }
                 }).catch(err => console.warn(err)).finally(() => setEquipeLoading(false));
             }, []);
 
@@ -9318,9 +9319,7 @@
                         </span>
                         )}
                         {isQuinzaineMode && periodesAvecDonnees.length > 0 && (
-                        <select value={effectiveQuinz} onChange={e => setSelectedQuinz(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodesAvecDonnees.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodesAvecDonnees} periodeCampagne={equipePeriodeCampagne} value={effectiveQuinz} onChange={v => setSelectedQuinz(v)} />
                         )}
                         <div style={{display:'flex',gap:4}}>
                             <button onClick={() => setViewMode('jour')} style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600,background:viewMode==='jour'?'var(--berry)':'white',color:viewMode==='jour'?'white':'var(--gray-600)',cursor:'pointer'}}>Jour</button>
@@ -9816,6 +9815,7 @@
             const [printShowNoms, setPrintShowNoms] = useState(true);
             const [rawRows, setRawRows] = useState([]);
             const [periodes, setPeriodes] = useState([]);
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const [loading, setLoading] = useState(true);
             const [selectedJourIdx, setSelectedJourIdx] = useState(null);
@@ -9924,6 +9924,7 @@
                     if (json.success) {
                         setRawRows(json.rows || []);
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         if (json.periodes?.length > 0) setSelectedPeriode(initialPeriode || json.periodes[0]);
                     }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
@@ -10165,9 +10166,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         <span style={{background:'#d4edda',color:'#155724',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-database" style={{marginRight:4}}></i>Données live
                         </span>
-                        <select value={selectedPeriode} onChange={e => { setSelectedPeriode(e.target.value); setSelectedJourIdx(null); setCultureFilter(''); setVarieteFilter(''); }} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => { setSelectedPeriode(v); setSelectedJourIdx(null); setCultureFilter(''); setVarieteFilter(''); }} />
                     </div>
 
                     <div className="filters-bar" style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
@@ -11006,10 +11005,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         <span style={{background:'#d4edda',color:'#155724',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-database" style={{marginRight:4}}></i>Firestore — Quinzaine
                         </span>
-                        <select value={selectedPeriode} onChange={e => handlePeriodeChange(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            <option value="">Dernière quinzaine</option>
-                            {(apiData.periodes || []).map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={apiData.periodes || []} periodeCampagne={apiData.periodeCampagne} value={selectedPeriode} onChange={v => handlePeriodeChange(v)} includeEmpty={true} label="Dernière quinzaine" />
                         {typeof onNavigateToPrimes === 'function' && (
                             <button onClick={() => onNavigateToPrimes(selectedPeriode)}
                                 style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--berry)',background:'var(--berry)',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
@@ -21875,6 +21871,7 @@ ${rejetHtml}
         // Sous-onglet Primes : vue quinzaine (récap lecture seule) du Pointage Divers, transposée (jours × sous-traitants).
         function DiversQuinzaineSub({ farmFilter, initialPeriode }) {
             const [periodes, setPeriodes] = useState([]);
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const [dates, setDates] = useState([]);
             const [byDate, setByDate] = useState({});
@@ -21886,6 +21883,7 @@ ${rejetHtml}
                 fetch(url).then(r => r.json()).then(json => {
                     if (json && json.success) {
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         setSelectedPeriode(json.periode || '');
                         setDates(json.dates || []);
                         setByDate(json.byDate || {});
@@ -21916,9 +21914,7 @@ ${rejetHtml}
                 <Panel title="Pointage Divers — Récapitulatif quinzaine" icon="fa-table-cells">
                     <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                         <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Quinzaine :</span>
-                        <select value={selectedPeriode} onChange={e => load(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => load(v)} />
                     </div>
                     <div className="table-responsive">
                     <table className="data-table" style={{fontSize:11}}>
@@ -21973,6 +21969,7 @@ ${rejetHtml}
             const [diversByPeriode, setDiversByPeriode] = useState({}); // { periode: {total, count} }
             const [loading, setLoading] = useState(true);
             const [periodes, setPeriodes] = useState([]);
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const transportEquipes = data.transportConfig || [];
             const fmtDuree = (min) => { if (min == null || !isFinite(min)) return '—'; const a = Math.abs(Math.round(min)); return `${Math.floor(a/60)}h ${String(a%60).padStart(2,'0')}`; };
@@ -22012,6 +22009,7 @@ ${rejetHtml}
                         setDetailRows(json.rows || []);
                         setTransportData(json);
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         if (json.periodes?.length > 0) setSelectedPeriode(initialPeriode || json.periodes[0]);
                     }
                 }).catch(err => console.warn(err)).finally(done);
@@ -22127,9 +22125,7 @@ ${rejetHtml}
                         <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-award" style={{marginRight:4}}></i>Récapitulatif Primes — {currentPeriode}
                         </span>
-                        <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     </div>
 
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:16,marginBottom:24}}>
@@ -22267,7 +22263,7 @@ ${rejetHtml}
             return (<div className="fade-in">
                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{background:'rgba(192,57,43,0.1)',color:'#c0392b',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}><i className="fa-solid fa-star" style={{marginRight:4}}></i>Prime Jour Férié — {currentPeriode}</span>
-                    <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>{periodes.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                    <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                 </div>
                 <div className="kpi-grid" style={{marginBottom:20}}>
                     <KPICard icon="fa-users" iconClass="orange" value={wList.length} label="Ouvriers éligibles" />
@@ -22354,7 +22350,7 @@ ${rejetHtml}
             return (<div className="fade-in">
                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{background:'rgba(142,68,173,0.1)',color:'#8e44ad',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}><i className="fa-solid fa-truck-loading" style={{marginRight:4}}></i>Prime Chargement — {currentPeriode}</span>
-                    <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>{periodes.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                    <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     <span style={{fontSize:11,color:'var(--gray-500)',marginLeft:8}}><i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>{PRIME_CHARG} DH / ouvrier / jour</span>
                 </div>
                 <div className="kpi-grid" style={{marginBottom:20}}>
@@ -22396,7 +22392,7 @@ ${rejetHtml}
             return (<div className="fade-in">
                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                     <span style={{background:'rgba(230,126,34,0.1)',color:'#e67e22',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}><i className="fa-solid fa-box-open" style={{marginRight:4}}></i>Prime Conditionnement — {currentPeriode}</span>
-                    <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>{periodes.map(p => <option key={p} value={p}>{p}</option>)}</select>
+                    <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={serverData && serverData.periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     <span style={{fontSize:11,color:'var(--gray-500)',marginLeft:8}}><i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>{PRIME_COND} DH / ouvrier / jour</span>
                 </div>
                 <div className="kpi-grid" style={{marginBottom:20}}>
@@ -22429,6 +22425,7 @@ ${rejetHtml}
         function TraitementSub({ data, farmFilter, initialPeriode }) {
             const [detailRows, setDetailRows] = useState([]); const [loading, setLoading] = useState(true);
             const [periodes, setPeriodes] = useState([]); const [selectedPeriode, setSelectedPeriode] = useState('');
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const PRIME_TRAITEMENT = 10; // DH par jour
 
             React.useEffect(() => {
@@ -22436,6 +22433,7 @@ ${rejetHtml}
                     if (json.success) {
                         setDetailRows(json.rows || []);
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         if (json.periodes?.length > 0) setSelectedPeriode(initialPeriode || json.periodes[0]);
                     }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
@@ -22480,9 +22478,7 @@ ${rejetHtml}
                         <span style={{background:'rgba(52,152,219,0.1)',color:'var(--blue)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-spray-can-sparkles" style={{marginRight:4}}></i>Prime Traitement — {currentPeriode}
                         </span>
-                        <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                         <span style={{fontSize:11,color:'var(--gray-500)',marginLeft:8}}>
                             <i className="fa-solid fa-info-circle" style={{marginRight:4}}></i>{PRIME_TRAITEMENT} DH / ouvrier / jour
                         </span>
@@ -22565,6 +22561,7 @@ ${rejetHtml}
             const [detailRows, setDetailRows] = useState([]);
             const [loading, setLoading] = useState(true);
             const [periodes, setPeriodes] = useState([]);
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const [workerPopup, setWorkerPopup] = useState(null);
 
@@ -22586,6 +22583,7 @@ ${rejetHtml}
                     if (json.success) {
                         setDetailRows(json.rows || []);
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         if (json.periodes && json.periodes.length > 0) setSelectedPeriode(json.periodes[0]);
                     }
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
@@ -22659,9 +22657,7 @@ ${rejetHtml}
                         <span style={{background:'#d4edda',color:'#155724',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-bus" style={{marginRight:4}}></i>Transport — {currentPeriode}
                         </span>
-                        <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                     </div>
 
                     <div className="kpi-grid" style={{marginBottom:20}}>
@@ -22797,6 +22793,7 @@ ${rejetHtml}
             const [savedMsg, setSavedMsg] = useState('');
             const [viewMode, setViewMode] = useState('jour'); // 'jour' | 'quinzaine'
             const [qzPeriodes, setQzPeriodes] = useState([]);
+            const [qzPeriodeCampagne, setQzPeriodeCampagne] = useState({});
             const [qzSelected, setQzSelected] = useState('');
             const [qzData, setQzData] = useState({ dates: [], byDate: {} });
             const [qzLoading, setQzLoading] = useState(false);
@@ -22862,6 +22859,7 @@ ${rejetHtml}
                 fetch(url).then(r => r.json()).then(json => {
                     if (json && json.success) {
                         setQzPeriodes(json.periodes || []);
+                        setQzPeriodeCampagne(json.periodeCampagne || {});
                         setQzSelected(json.periode || '');
                         setQzData({ dates: json.dates || [], byDate: json.byDate || {} });
                     }
@@ -23010,9 +23008,7 @@ ${rejetHtml}
                             <Panel title="Récapitulatif quinzaine — Pointage Divers" icon="fa-table-cells">
                                 <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                                     <span style={{fontSize:11,fontWeight:600,color:'var(--gray-500)'}}>Quinzaine :</span>
-                                    <select value={qzSelected} onChange={e => loadQuinzaine(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                                        {qzPeriodes.map(p => <option key={p} value={p}>{p}</option>)}
-                                    </select>
+                                    <window.QuinzaineCampagneSelect periodes={qzPeriodes} periodeCampagne={qzPeriodeCampagne} value={qzSelected} onChange={v => loadQuinzaine(v)} />
                                     {qzLoading && <span style={{fontSize:11,color:'var(--berry)'}}><i className="fa-solid fa-spinner fa-spin" style={{marginRight:4}}></i>Chargement…</span>}
                                 </div>
                                 <div className="table-responsive">
@@ -24644,6 +24640,7 @@ ${rejetHtml}
         function HeuresSupSub({ data, farmFilter, initialPeriode }) {
             const [rows, setRows] = useState([]);
             const [periodes, setPeriodes] = useState([]);
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const [periodeDates, setPeriodeDates] = useState({});
             const [excludedFonctions, setExcludedFonctions] = useState([]);
             const [seuilMinutes, setSeuilMinutes] = useState(510);
@@ -24660,6 +24657,7 @@ ${rejetHtml}
                     if (json && json.success) {
                         setRows(json.rows || []);
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         setPeriodeDates(json.periodeDates || {});
                         if (typeof json.seuilMinutes === 'number') setSeuilMinutes(json.seuilMinutes);
                         setExcludedFonctions(json.excludedFonctions || []);
@@ -24773,9 +24771,7 @@ ${rejetHtml}
                         <span style={{background:'#e8d5e8',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
                             <i className="fa-solid fa-clock" style={{marginRight:4}}></i>Heures Supp. — {currentPeriode}
                         </span>
-                        <select value={selectedPeriode} onChange={e => setSelectedPeriode(e.target.value)} style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                            {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <window.QuinzaineCampagneSelect periodes={periodes} periodeCampagne={periodeCampagne} periodeDates={periodeDates} value={selectedPeriode} onChange={v => setSelectedPeriode(v)} />
                         <label style={{fontSize:11,display:'flex',alignItems:'center',gap:5,cursor:'pointer',color:'var(--gray-600)'}}>
                             <input type="checkbox" checked={onlyOvertime} onChange={e => setOnlyOvertime(e.target.checked)} />
                             Seulement les dépassements
@@ -63140,6 +63136,7 @@ ${rejetHtml}
         // ===================== SUIVI POINTAGE =====================
         function SuiviPointageTab({ currentProfile, profileData }) {
             const [periodes, setPeriodes] = useState([]);
+            const [periodeCampagne, setPeriodeCampagne] = useState({});
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const [dates, setDates] = useState([]);
             const [validations, setValidations] = useState({});
@@ -63159,6 +63156,7 @@ ${rejetHtml}
                     const json = await r.json();
                     if (json.success) {
                         setPeriodes(json.periodes || []);
+                        setPeriodeCampagne(json.periodeCampagne || {});
                         setSelectedPeriode(json.selectedPeriode || '');
                         setDates(json.dates || []);
                         setValidations(json.validations || {});
@@ -63226,10 +63224,7 @@ ${rejetHtml}
                         </h2>
                         <div style={{display:'flex', alignItems:'center', gap:8}}>
                             <label style={{fontSize:12, fontWeight:600, color:'var(--gray-600)'}}>Quinzaine:</label>
-                            <select className="filter-select" value={selectedPeriode} onChange={e => handlePeriodeChange(e.target.value)}
-                                style={{padding:'6px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:13, fontWeight:600}}>
-                                {periodes.map(p => <option key={p} value={p}>{p}</option>)}
-                            </select>
+                            <window.QuinzaineCampagneSelect className="filter-select" periodes={periodes} periodeCampagne={periodeCampagne} value={selectedPeriode} onChange={v => handlePeriodeChange(v)} style={{padding:'6px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:13, fontWeight:600}} />
                             <button onClick={() => loadData(selectedPeriode)} style={{padding:'6px 12px', borderRadius:8, border:'1px solid var(--gray-200)', background:'#fff', cursor:'pointer', fontSize:12}}>
                                 <i className="fa-solid fa-refresh"></i>
                             </button>
