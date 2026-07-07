@@ -322,6 +322,75 @@ async function introspect() {
 
   report.sections["8_tables_reference"] = section8;
 
+  // ── SECTION 9 : MAKE-OR-BREAK — Y a-t-il du pointage juillet / campagne 26/27 ?
+  // Read-only strict. Les littéraux de date/année sont fixes (issus du prompt,
+  // pas d'entrée externe). Chaque requête est isolée via runQuery : une erreur
+  // (ex. colonne date au nom différent) renvoie {ok:false, error} sans casser
+  // la section.
+  const section9 = {};
+
+  // 9.1 — Pointage (table brute) : fraîcheur + volume juillet
+  section9.Pointage = {};
+  section9.Pointage.stats = await runQuery(
+    pool,
+    `SELECT MAX(DATE) AS max_date, COUNT(*) AS total FROM Pointage`
+  );
+  section9.Pointage.derniers = await runQuery(
+    pool,
+    `SELECT TOP 3 IDPointage, DATE, IDFermes, Periode, Valide_pointage
+       FROM Pointage ORDER BY DATE DESC`
+  );
+  section9.Pointage.juillet = await runQuery(
+    pool,
+    `SELECT COUNT(*) AS juillet_count FROM Pointage WHERE DATE >= '2026-07-01'`
+  );
+
+  // 9.2 — Personnel_Pointage : fraîcheur + volume juillet
+  section9.Personnel_Pointage = {};
+  section9.Personnel_Pointage.stats = await runQuery(
+    pool,
+    `SELECT MAX(DATE) AS max_date, COUNT(*) AS total FROM Personnel_Pointage`
+  );
+  section9.Personnel_Pointage.derniers = await runQuery(
+    pool,
+    `SELECT TOP 3 IDPointage, Pers_Id, DATE, cout
+       FROM Personnel_Pointage ORDER BY DATE DESC`
+  );
+  section9.Personnel_Pointage.juillet = await runQuery(
+    pool,
+    `SELECT COUNT(*) AS juillet_count FROM Personnel_Pointage WHERE DATE >= '2026-07-01'`
+  );
+
+  // 9.3 — Ventilation par campagne des lignes juillet (jointure Periode_paie)
+  section9.ventilation_campagne_juillet = await runQuery(
+    pool,
+    `SELECT peri.ID_compagne, peri.compagne, MIN(pt.DATE) AS min_date,
+            MAX(pt.DATE) AS max_date, COUNT(*) AS nb
+       FROM Pointage pt
+       LEFT JOIN Periode_paie peri ON pt.Periode = peri.IDPeriode
+      WHERE pt.DATE >= '2026-07-01'
+      GROUP BY peri.ID_compagne, peri.compagne
+      ORDER BY peri.ID_compagne`
+  );
+  section9.campagnes = await runQuery(
+    pool,
+    `SELECT DISTINCT TOP 10 peri.ID_compagne, peri.compagne, peri.annee
+       FROM Periode_paie peri ORDER BY peri.ID_compagne DESC`
+  );
+
+  // 9.4 — Vérif que la campagne 2026/2027 a du pointage
+  section9.campagne_2026_2027 = await runQuery(
+    pool,
+    `SELECT peri.compagne, COUNT(*) AS nb, MIN(pt.DATE) AS min_d, MAX(pt.DATE) AS max_d
+       FROM Pointage pt
+       JOIN Periode_paie peri ON pt.Periode = peri.IDPeriode
+      WHERE peri.annee = 2027 OR peri.compagne LIKE '%2026%2027%'
+         OR peri.compagne LIKE '%2026/2027%'
+      GROUP BY peri.compagne`
+  );
+
+  report.sections["9_make_or_break"] = section9;
+
   report.durationMs = Date.now() - startTime;
   return report;
 }
