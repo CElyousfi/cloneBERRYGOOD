@@ -676,6 +676,66 @@ async function rebuildPointageMetaFromMirror() {
   console.log(`[Sync] rebuildPointageMetaFromMirror: ${dateIds.length} dates, ${periodes.length} periodes (latest ${periodes[0] || "—"}), ${allPeriodes.length} allPeriodes`);
 }
 
+/**
+ * Rebuild sql_mirror_pointage_workers/{matricule} from the daily docs that
+ * already exist in the LIVE mirror (sql_mirror_pointage/{YYYY-MM-DD}).
+ *
+ * Same durable-source-of-truth principle as rebuildPointageMetaFromMirror:
+ * daily docs are never deleted, only upserted. Grouping ALL of them by
+ * matricule keeps the worker index consistent with juin (frozen) ∪ juillet
+ * (newly backfilled) — no worker is lost. Full `.set()` per matricule to match
+ * the canonical shape written by the normal sync path.
+ */
+async function rebuildPointageWorkersFromMirror() {
+  const docRefs = await db_firestore.collection("sql_mirror_pointage").listDocuments();
+  const dateIds = docRefs
+    .map(ref => ref.id)
+    .filter(id => /^\d{4}-\d{2}-\d{2}$/.test(id))
+    .sort();
+  if (dateIds.length === 0) {
+    console.warn("[Sync] rebuildPointageWorkersFromMirror: no daily docs to rebuild from — leaving workers untouched.");
+    return 0;
+  }
+
+  const byWorker = {};
+  for (let i = 0; i < dateIds.length; i += 10) {
+    const batchIds = dateIds.slice(i, i + 10);
+    const snaps = await Promise.all(
+      batchIds.map(d => db_firestore.collection("sql_mirror_pointage").doc(d).get())
+    );
+    for (const snap of snaps) {
+      if (!snap.exists) continue;
+      const docRows = snap.data().rows || [];
+      for (const r of docRows) {
+        const mat = (r.Personnel_Matricule || "").trim();
+        if (!mat) continue;
+        if (!byWorker[mat]) byWorker[mat] = [];
+        byWorker[mat].push(r);
+      }
+    }
+  }
+
+  const workerEntries = Object.entries(byWorker);
+  for (let i = 0; i < workerEntries.length; i += 200) {
+    const batch = db_firestore.batch();
+    const chunk = workerEntries.slice(i, i + 200);
+    for (const [matricule, workerRows] of chunk) {
+      if (!matricule) continue;
+      const docRef = db_firestore.collection("sql_mirror_pointage_workers").doc(matricule);
+      batch.set(docRef, {
+        rows: workerRows,
+        rowCount: workerRows.length,
+        nom: workerRows[0]?.Personnel_Nom || "",
+        syncedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
+  console.log(`[Sync] rebuildPointageWorkersFromMirror: ${dateIds.length} dates → ${workerEntries.length} worker docs`);
+  return workerEntries.length;
+}
+
 // =============================================
 // Quinzaine archiving helpers
 // =============================================
@@ -1176,3 +1236,11 @@ exports.sqlSyncTrigger = functions
       res.status(500).json({ success: false, error: err.message });
     }
   });
+
+// Re-export pure mirror-rebuild helpers so other modules (ex. pointageBdpSync
+// en mode target='live') puissent reconstruire le meta + workers depuis les
+// daily docs sans dupliquer la logique. Ces `module.exports` s'ajoutent aux
+// exports Cloud Functions (`exports.X = functions...`) définis plus haut — ils
+// ne les écrasent pas (module.exports référence le même objet exports).
+module.exports.rebuildPointageMetaFromMirror = rebuildPointageMetaFromMirror;
+module.exports.rebuildPointageWorkersFromMirror = rebuildPointageWorkersFromMirror;

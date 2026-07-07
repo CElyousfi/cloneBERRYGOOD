@@ -16458,6 +16458,65 @@ exports.syncPointageBdpTrigger = functions
   });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// backfillPointageBdpLiveTrigger — P3 : BACKFILL LIVE du pointage FACTUEL BDP.
+// ⚠️ ÉCRITURE LIVE SENSIBLE. Écrit dans le mirror LIVE `sql_mirror_pointage`
+// (pas le témoin) + reconstruit le meta + workers pour rendre la quinzaine
+// visible dans le dropdown. Borné à la plage [from, to] (upsert), ne supprime
+// rien, n'écrase aucune date hors plage. Idempotent.
+// GARDE-FOUS : ADMIN_SECRET + confirm=LIVE explicite + plage ≤ 40 jours.
+// Appel : GET /api/backfill-pointage-bdp-live
+//   ?secret=<ADMIN_SECRET>&from=YYYY-MM-DD&to=YYYY-MM-DD&confirm=LIVE
+// ─────────────────────────────────────────────────────────────────────────────
+exports.backfillPointageBdpLiveTrigger = functions
+  .region("europe-west1")
+  .runWith({ secrets: ["ADMIN_SECRET"], timeoutSeconds: 540, memory: "512MB" })
+  .https.onRequest(async (req, res) => {
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type, x-admin-secret");
+    if (req.method === "OPTIONS") return res.status(204).send("");
+
+    const adminSecret = process.env.ADMIN_SECRET;
+    const provided =
+      (req.query && req.query.secret) ||
+      req.get("x-admin-secret") ||
+      (req.body && req.body.secret);
+    if (!adminSecret || provided !== adminSecret) {
+      return res.status(403).json({ success: false, error: "forbidden" });
+    }
+
+    // GARDE-FOU 1 : confirmation live explicite (évite tout write live accidentel).
+    const confirm = (req.query && req.query.confirm) || (req.body && req.body.confirm);
+    if (confirm !== "LIVE") {
+      return res.status(400).json({ success: false, error: "confirmation live requise (confirm=LIVE)" });
+    }
+
+    const from = (req.query && req.query.from) || (req.body && req.body.from);
+    const to = (req.query && req.query.to) || (req.body && req.body.to);
+    if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+      return res.status(400).json({ success: false, error: "from/to (YYYY-MM-DD) requis" });
+    }
+    if (from > to) {
+      return res.status(400).json({ success: false, error: "from doit être ≤ to" });
+    }
+
+    // GARDE-FOU 2 : borne de sécurité — plage ≤ 40 jours.
+    const spanDays =
+      Math.round((new Date(to + "T00:00:00.000Z") - new Date(from + "T00:00:00.000Z")) / 86400000) + 1;
+    if (spanDays > 40) {
+      return res.status(400).json({ success: false, error: `plage ${spanDays}j > 40 jours (borne de sécurité)` });
+    }
+
+    try {
+      const result = await pointageBdpSync.syncPointageFromProd(db_firestore, { from, to, target: "live" });
+      return res.status(result.success ? 200 : 500).json(result);
+    } catch (err) {
+      console.error("[backfillPointageBdpLiveTrigger] error:", err.message);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
 // validatePointageBdpTrigger — P2b : VALIDATION CROISÉE juin.
 // Compare sql_mirror_pointage_bdp_test/{date} (reconstruit) vs
 // sql_mirror_pointage/{date} (mirror BDR figé) LIGNE À LIGNE.

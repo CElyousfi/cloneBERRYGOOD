@@ -137,24 +137,40 @@ function addDaysStr(dateStr, days) {
 }
 
 /**
- * Pull du pointage FACTUEL BDP sur la fenêtre [from, to] (inclusive) → collection
- * témoin sql_mirror_pointage_bdp_test/{YYYY-MM-DD}. Upsert par date.
+ * Pull du pointage FACTUEL BDP sur la fenêtre [from, to] (inclusive) → mirror.
+ * Upsert par date. La logique de reconstruction/mapping/grain est IDENTIQUE quel
+ * que soit le `target` : SEUL le nom de la collection d'écriture change.
  *
  * @param {import('firebase-admin').firestore.Firestore} db instance Firestore
  * @param {Object} [opts]
  * @param {string} [opts.from] YYYY-MM-DD (défaut : il y a 7 jours)
  * @param {string} [opts.to]   YYYY-MM-DD (défaut : hier)
+ * @param {'test'|'live'} [opts.target='test'] cible d'écriture :
+ *   - 'test' (DÉFAUT, comportement historique inchangé) → collection TÉMOIN
+ *     `sql_mirror_pointage_bdp_test`. NE TOUCHE JAMAIS le mirror live ni le meta.
+ *   - 'live' → mirror LIVE `sql_mirror_pointage`. Après écriture des docs
+ *     journaliers, reconstruit le meta + workers (merge global depuis TOUS les
+ *     daily docs) pour rendre la quinzaine visible dans le dropdown.
+ *
+ *   ⚠️ SÉCURITÉ 'live' : n'écrit QUE les docs `sql_mirror_pointage/{date}` de la
+ *   plage [from, to] (upsert), + le meta (merge global) + workers. Ne SUPPRIME
+ *   rien, n'écrase AUCUNE date hors plage. Idempotent (ré-exécutable).
+ *   NOTE : juillet est VIDE dans le mirror live avant ce backfill — l'upsert des
+ *   dates juillet ne peut donc entrer en conflit ni écraser les dates juin figées.
  * @returns {Promise<Object>}
  */
 async function syncPointageFromProd(db, opts) {
   const firestore = db || db_firestore;
   const o = opts || {};
+  const target = o.target === "live" ? "live" : "test";
+  const collectionName = target === "live" ? "sql_mirror_pointage" : "sql_mirror_pointage_bdp_test";
   const to = o.to || new Date(Date.now() - 1 * 86400000).toISOString().slice(0, 10);
   const from = o.from || addDaysStr(to, -6); // fenêtre défaut ~7 jours
   // Borne haute exclusive (jour suivant) pour rester SARGable et inclure le jour `to`.
   const toExcl = addDaysStr(to, 1);
   const startTime = Date.now();
-  console.log(`[BdpPointage] Pull FACTUEL ${from} → ${to} (témoin, zéro live)...`);
+  const mode = target === "live" ? "LIVE" : "témoin, zéro live";
+  console.log(`[BdpPointage] Pull FACTUEL ${from} → ${to} (${mode}) → ${collectionName}...`);
 
   try {
     const pool = await getPoolProd();
@@ -197,13 +213,18 @@ async function syncPointageFromProd(db, opts) {
     // Garde-fou 0-ligne : NE JAMAIS écrire de doc vide (n'efface rien de live,
     // mais éviter d'écraser un témoin déjà peuplé par une lecture transitoire).
     if (rawRows.length === 0) {
-      console.warn("[BdpPointage] 0 ligne sur la fenêtre — aucune écriture témoin.");
+      console.warn(`[BdpPointage] 0 ligne sur la fenêtre — aucune écriture (${mode}).`);
+      // Garde-fou 0-ligne appliqué aux DEUX cibles : ne jamais écrire de doc
+      // journalier vide (n'efface rien de live, ne reconstruit pas le meta).
+      // En mode live on écrit le _status dans la collection témoin pour ne PAS
+      // polluer le mirror live avec un doc technique.
       await firestore.collection("sql_mirror_pointage_bdp_test").doc("_status").set({
         lastRunAt: admin.firestore.FieldValue.serverTimestamp(),
+        target,
         from, to, jours: 0, lignes: 0, empty: true,
         diagnostic_grain: grainDiag,
       }, { merge: true });
-      return { success: true, from, to, jours: 0, lignes: 0, empty: true, diagnostic_grain: grainDiag, durationMs: Date.now() - startTime };
+      return { success: true, target, from, to, jours: 0, lignes: 0, empty: true, meta_rebuilt: false, diagnostic_grain: grainDiag, durationMs: Date.now() - startTime };
     }
 
     // 3) Mapping contrat + regroupement par date.
@@ -216,18 +237,20 @@ async function syncPointageFromProd(db, opts) {
       byDate[date].push(contract);
     }
 
-    // 4) Écriture témoin (upsert par date), batch chunks de 400.
+    // 4) Écriture (upsert par date), batch chunks de 400.
+    //    SEUL le nom de collection change entre 'test' et 'live' (collectionName).
+    const dailySource = target === "live" ? "bdp_reconstruction_live" : "bdp_reconstruction_temoin";
     const dates = Object.keys(byDate).sort();
     let jours = 0, lignes = 0;
     let batch = firestore.batch();
     let ops = 0;
     for (const date of dates) {
       const rows = byDate[date];
-      const ref = firestore.collection("sql_mirror_pointage_bdp_test").doc(date);
+      const ref = firestore.collection(collectionName).doc(date);
       batch.set(ref, {
         rows,
         rowCount: rows.length,
-        source: "bdp_reconstruction_temoin",
+        source: dailySource,
         syncedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
       jours++;
@@ -241,15 +264,31 @@ async function syncPointageFromProd(db, opts) {
     }
     if (ops > 0) await batch.commit();
 
+    // 5) Mode LIVE uniquement : reconstruire le meta + workers depuis TOUS les
+    //    daily docs du mirror (juin figé ∪ juillet ajouté = MERGE naturel, ne
+    //    perd pas juin). En mode 'test' : NE PAS toucher au meta live.
+    let metaRebuilt = false;
+    if (target === "live") {
+      const syncService = require("./sqlSyncService");
+      await syncService.rebuildPointageMetaFromMirror();
+      await syncService.rebuildPointageWorkersFromMirror();
+      metaRebuilt = true;
+      console.log("[BdpPointage] LIVE: meta + workers reconstruits depuis le mirror complet.");
+    }
+
+    // Le _status technique reste TOUJOURS dans la collection témoin, jamais dans
+    // le mirror live (on ne pollue pas le mirror live avec un doc non-date).
     await firestore.collection("sql_mirror_pointage_bdp_test").doc("_status").set({
       lastRunAt: admin.firestore.FieldValue.serverTimestamp(),
+      target,
       from, to, jours, lignes, empty: false,
+      meta_rebuilt: metaRebuilt,
       diagnostic_grain: grainDiag,
     }, { merge: true });
 
     const durationMs = Date.now() - startTime;
-    console.log(`[BdpPointage] Témoin écrit: ${jours} jours, ${lignes} lignes en ${durationMs}ms`);
-    return { success: true, from, to, jours, lignes, diagnostic_grain: grainDiag, durationMs };
+    console.log(`[BdpPointage] ${mode} écrit dans ${collectionName}: ${jours} jours, ${lignes} lignes en ${durationMs}ms`);
+    return { success: true, target, from, to, jours, lignes, meta_rebuilt: metaRebuilt, diagnostic_grain: grainDiag, durationMs };
   } catch (err) {
     console.error("[BdpPointage] Erreur pull:", err.message);
     return { success: false, error: err.message };
