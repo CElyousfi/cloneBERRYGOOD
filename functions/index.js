@@ -5571,9 +5571,13 @@ exports.validation = functions
         const meta = metaSnap.data();
         const periodes = meta.periodes || [];
         const periodeMap = meta.periodeMap || {};
-        const selectedPeriode = req.query.periode || periodes[0] || "";
+        const periodeCampagne = meta.periodeCampagne || {};
+        // Défaut = 1re quinzaine de la campagne courante (fallback gracieux si absent).
+        const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
+        const { campagneCourante } = require("../public/lib/campagneUtils");
+        const selectedPeriode = req.query.periode || defaultPeriodeForCampagne(periodes, periodeCampagne, campagneCourante()) || "";
         const dates = (periodeMap[selectedPeriode] || []).sort();
-        if (!dates.length) return res.json({ success: true, periodes, selectedPeriode, dates: [], validations: {} });
+        if (!dates.length) return res.json({ success: true, periodes, periodeCampagne, selectedPeriode, dates: [], validations: {} });
 
         // Firestore 'in' supports up to 30 values — quinzaines have ~15 days
         const valSnaps = await db_firestore.collection("pointage_validations")
@@ -5585,7 +5589,7 @@ exports.validation = functions
           if (!validations[v.date]) validations[v.date] = {};
           validations[v.date][v.ferme] = v;
         });
-        return res.json({ success: true, periodes, selectedPeriode, dates, validations });
+        return res.json({ success: true, periodes, periodeCampagne, selectedPeriode, dates, validations });
       }
 
       // GET sql-comparison: compare SQL mirror vs snapshot for locked days
@@ -5953,10 +5957,16 @@ exports.validation = functions
         const meta = await getPointageMeta();
         const periodes = (meta && meta.periodes) || [];
         const periodeMap = (meta && meta.periodeMap) || {};
+        const periodeCampagne = (meta && meta.periodeCampagne) || {};
+        const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
+        const { campagneCourante } = require("../public/lib/campagneUtils");
         let periode = req.query.periode;
         if (!periode || !periodeMap[periode]) {
           const d = req.query.date;
-          periode = (d && periodes.find(p => (periodeMap[p] || []).includes(d))) || periodes[0] || null;
+          // Défaut = 1re quinzaine de la campagne courante (fallback gracieux si absent).
+          periode = (d && periodes.find(p => (periodeMap[p] || []).includes(d)))
+            || defaultPeriodeForCampagne(periodes, periodeCampagne, campagneCourante())
+            || null;
         }
         // Plage CALENDAIRE complète de la quinzaine (pas seulement les jours de production),
         // pour capter les saisies divers manuelles sur des jours sans pointage production.
@@ -5980,7 +5990,7 @@ exports.validation = functions
             byDate[dd] = { entries: (data && data.entries) || [], totalMontant: (data && data.totalMontant) || 0 };
           });
         }
-        return res.json({ success: true, periodes, periode, dates, byDate });
+        return res.json({ success: true, periodes, periodeCampagne, periode, dates, byDate });
       }
 
       // POST: save divers entries for a date (blocked if locked)

@@ -525,6 +525,12 @@ async function syncPointage(db) {
     periodeMap[key] = [...periodeMap[key]].sort();
   }
 
+  // periodeCampagne + tri campagne-aware (cohérent avec rebuildPointageMetaFromMirror,
+  // qui écrase de toute façon ce meta juste après — on garde la même forme canonique).
+  const { campagneOf: __campagneOf } = require("../public/lib/campagneUtils");
+  const { buildPeriodeCampagne: __buildPC, sortPeriodesByCampagne: __sortPC } = require("./lib/pointage/campagnePeriodes");
+  const periodeCampagne = __buildPC(periodeMap, __campagneOf);
+
   // Write daily pointage docs (in batches of 500 max Firestore ops)
   // Phase 1: check which dates have manualOverride (patched from Excel)
   const dateEntries = Object.entries(byDate);
@@ -578,11 +584,14 @@ async function syncPointage(db) {
     await batch.commit();
   }
 
-  // Write meta document
+  // Write meta document (tri campagne-aware ; periodeMap n'a que les dates de la
+  // fenêtre SQML, donc periodeCampagne peut manquer certaines quinzaines archivées
+  // — rebuildPointageMetaFromMirror ré-enrichit à partir du mirror complet juste après).
   await db_firestore.collection("sql_mirror_pointage_meta").doc("config").set({
-    periodes,
-    allPeriodes,
+    periodes: __sortPC(periodes, periodeCampagne),
+    allPeriodes: __sortPC(allPeriodes, periodeCampagne),
     periodeMap,
+    periodeCampagne,
     availableDates,
     syncedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -639,11 +648,8 @@ async function syncPointage(db) {
  * never deleted, only overwritten, so they are the durable source of truth.
  */
 async function rebuildPointageMetaFromMirror() {
-  const byQuinzaineNumDesc = (a, b) => {
-    const na = parseInt((a.match(/\d+/) || [0])[0], 10);
-    const nb = parseInt((b.match(/\d+/) || [0])[0], 10);
-    return nb - na;
-  };
+  const { campagneOf } = require("../public/lib/campagneUtils");
+  const { buildPeriodeCampagne, sortPeriodesByCampagne } = require("./lib/pointage/campagnePeriodes");
 
   const docRefs = await db_firestore.collection("sql_mirror_pointage").listDocuments();
   const dateIds = docRefs
@@ -676,12 +682,23 @@ async function rebuildPointageMetaFromMirror() {
   }
   const periodeMap = {};
   for (const p of Object.keys(periodeDates)) periodeMap[p] = [...periodeDates[p]].sort();
-  const periodes = Object.keys(periodeMap).sort(byQuinzaineNumDesc);
+
+  // periodeCampagne = { "Quinzaine N": "AAAA-BBBB" } — campagne dérivée de la date
+  // la plus ancienne de chaque quinzaine. Source unique du tri campagne-aware.
+  const periodeCampagne = buildPeriodeCampagne(periodeMap, campagneOf);
+
+  // Tri (campagne DESC, puis numéro DESC) : campagne la plus récente en tête, et
+  // dans une campagne le plus grand numéro en tête. Corrige la collision de numéros
+  // entre campagnes ("Quinzaine 01" juillet 2026/2027 devant "Quinzaine 24" juin).
+  const periodes = sortPeriodesByCampagne(Object.keys(periodeMap), periodeCampagne);
 
   // allPeriodes = mirrored periodes ∪ archived quinzaines, newest first
   const archiveSnaps = await db_firestore.collection("quinzaine_archive").listDocuments();
   const archivedPeriodes = archiveSnaps.map(d => d.id);
-  const allPeriodes = [...new Set([...periodes, ...archivedPeriodes])].sort(byQuinzaineNumDesc);
+  const allPeriodes = sortPeriodesByCampagne(
+    [...new Set([...periodes, ...archivedPeriodes])],
+    periodeCampagne
+  );
 
   // Full set (not merge) to clear any stale periodeMap keys from a prior bad sync,
   // matching the canonical meta shape written by the normal sync path.
@@ -689,6 +706,7 @@ async function rebuildPointageMetaFromMirror() {
     periodes,
     allPeriodes,
     periodeMap,
+    periodeCampagne,
     availableDates: dateIds,
     syncedAt: admin.firestore.FieldValue.serverTimestamp(),
     rebuiltFromMirror: true,
