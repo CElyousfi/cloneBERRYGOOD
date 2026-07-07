@@ -11,6 +11,7 @@ const sql = require("mssql");
 // Shared config modules
 const { admin, db: db_firestore } = require("./config/firebase");
 const baseSqlConfig = require("./config/sqlConfig");
+const sqlConfigProd = require("./config/sqlConfigProd");
 const whatsappService = require("./whatsappService");
 const probeStaleness = require("./lib/probeStaleness/probeStaleness");
 
@@ -27,6 +28,15 @@ let pool = null;
 async function getPool() {
   if (!pool) pool = await sql.connect(sqlConfig);
   return pool;
+}
+
+// Pool BDP (base de production BEE_BERRY_GOOD) — source RÉELLE du pointage
+// depuis la bascule BR_Pointage → BDP. La sonde de staleness lit désormais la
+// table brute `Pointage` de la BDP (pas l'ancienne BR_Pointage reporting).
+let poolProd = null;
+async function getPoolProd() {
+  if (!poolProd) poolProd = await sql.connect(sqlConfigProd);
+  return poolProd;
 }
 
 /**
@@ -209,13 +219,13 @@ function buildStalenessMessage(kind, staleness, probeData) {
   } else {
     const rappel = kind === "reminder" ? " (RAPPEL — toujours en panne)" : "";
     if (staleness.condition === "empty") {
-      msg = "🔴 Pointage" + rappel + ": table BR_Pointage VIDE (0 ligne) — " +
-        "réplication interrompue. Vérifier l'alimentation BEE ONE/BDR.";
+      msg = "🔴 Pointage BDP" + rappel + ": table Pointage VIDE (0 ligne) — " +
+        "source BDP (BEE_BERRY_GOOD) interrompue. Vérifier l'alimentation mobile BEE ONE.";
     } else {
       const age = staleness.dataAgeDays != null ? staleness.dataAgeDays + " j" : "âge inconnu";
       msg = "🔴 Pointage PÉRIMÉ" + rappel + " — dernière date " +
         (staleness.maxDate || "illisible") + " (" + age + "). " +
-        "Réplication BR_Pointage figée — vérifier l'alimentation BEE ONE/BDR.";
+        "Source BDP (BEE_BERRY_GOOD) figée — vérifier l'alimentation mobile BEE ONE.";
     }
   }
   return toSingleLine(msg);
@@ -249,11 +259,16 @@ exports.replicationProbe = functions
 
     try {
       const db = await getPool();
+      const dbProd = await getPoolProd();
       const todayStr = now.toISOString().slice(0, 10);
 
+      // POINTAGE : sondé sur la BDP (BEE_BERRY_GOOD, table brute `Pointage`) —
+      // la VRAIE source depuis la bascule BR_Pointage → BDP. Alerte donc si le
+      // pull BDP tombe (mobile BEE ONE n'alimente plus la BDP), pas l'ancien
+      // BR_Pointage (mort). Consommation & Cueillette restent sur le reporting.
       const [pointageCount, pointageMax, consommationCount, cueilletteCount] = await Promise.all([
-        db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = '${todayStr}'`),
-        db.request().query(`SELECT MAX(Periode_Date) AS maxDate, COUNT(*) AS totalRows FROM BR_Pointage`),
+        dbProd.request().query(`SELECT COUNT(*) AS cnt FROM Pointage WHERE CONVERT(date, [DATE]) = '${todayStr}'`),
+        dbProd.request().query(`SELECT MAX([DATE]) AS maxDate, COUNT(*) AS totalRows FROM Pointage`),
         db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Consommation WHERE [Date] >= DATEADD(day, -1, GETDATE())`),
         db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Cueillette WHERE CONVERT(date, Periode_Date) = '${todayStr}'`),
       ]);
@@ -911,11 +926,34 @@ async function runFullSync() {
   try {
     const db = await getPool();
 
-    const [consommationCount, cueilletteCount, pointageCount] = await Promise.all([
+    // POINTAGE = BDP (BEE_BERRY_GOOD). L'ancienne source BR_Pointage (base
+    // reporting) est MORTE/VIDE : on ne l'utilise plus. Le pointage est
+    // reconstruit depuis la BDP brute via syncPointageFromProd sur une fenêtre
+    // glissante de 7 jours (aujourd'hui Africa/Casablanca − 6 → aujourd'hui),
+    // ce qui capte le pointage du jour ET les corrections rétroactives.
+    // En mode 'live' cette fonction écrit le mirror `sql_mirror_pointage` +
+    // reconstruit meta/workers → l'ancien syncPointage(db) N'EST PLUS appelé.
+    // Import LAZY : pointageBdpSync require déjà sqlSyncService (rebuildMeta/
+    // Workers) → un require top-level créerait un cycle.
+    const { computePointageWindow } = require("./lib/pointage/slidingWindow");
+    const { syncPointageFromProd } = require("./pointageBdpSync");
+    const pointageWindow = computePointageWindow(new Date());
+
+    // Consommation & Cueillette restent INCHANGÉS (source BR_* reporting).
+    const [consommationCount, cueilletteCount, pointageResult] = await Promise.all([
       syncConsommation(db),
       syncCueillette(db),
-      syncPointage(db),
+      syncPointageFromProd(db_firestore, {
+        from: pointageWindow.from,
+        to: pointageWindow.to,
+        target: "live",
+      }),
     ]);
+
+    if (pointageResult && pointageResult.success === false) {
+      throw new Error(`syncPointageFromProd (live) a échoué: ${pointageResult.error}`);
+    }
+    const pointageCount = pointageResult ? (pointageResult.lignes || 0) : 0;
 
     const durationMs = Date.now() - startTime;
     await statusRef.set({
@@ -929,10 +967,11 @@ async function runFullSync() {
         cueillette: cueilletteCount,
         pointage: pointageCount,
       },
+      pointageWindow: { from: pointageWindow.from, to: pointageWindow.to },
     });
 
-    console.log(`[Sync] Full sync completed in ${durationMs}ms`);
-    return { success: true, durationMs, consommationCount, cueilletteCount, pointageCount };
+    console.log(`[Sync] Full sync completed in ${durationMs}ms (pointage BDP ${pointageWindow.from}→${pointageWindow.to})`);
+    return { success: true, durationMs, consommationCount, cueilletteCount, pointageCount, pointageWindow };
   } catch (err) {
     const durationMs = Date.now() - startTime;
     console.error("[Sync] Full sync FAILED:", err.message);
