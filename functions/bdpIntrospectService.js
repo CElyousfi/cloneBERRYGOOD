@@ -320,6 +320,9 @@ async function introspect() {
   // 8.4 — Fonction_Personnel (jointure Personnel_Pointage.IDFonction_personnel) — TOP 5
   section8.Fonction_Personnel = await refTable("Fonction_Personnel", 5);
 
+  // 8.5 — ParcelleCulturale (parcelles culturales) — TOP 5
+  section8.ParcelleCulturale = await refTable("ParcelleCulturale", 5);
+
   report.sections["8_tables_reference"] = section8;
 
   // ── SECTION 9 : MAKE-OR-BREAK — Y a-t-il du pointage juillet / campagne 26/27 ?
