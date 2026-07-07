@@ -5574,7 +5574,7 @@ exports.validation = functions
         const periodeCampagne = meta.periodeCampagne || {};
         // Défaut = 1re quinzaine de la campagne courante (fallback gracieux si absent).
         const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
-        const { campagneCourante } = require("../public/lib/campagneUtils");
+        const { campagneCourante } = require("./lib/mappingConso/campagneUtils");
         const selectedPeriode = req.query.periode || defaultPeriodeForCampagne(periodes, periodeCampagne, campagneCourante()) || "";
         const dates = (periodeMap[selectedPeriode] || []).sort();
         if (!dates.length) return res.json({ success: true, periodes, periodeCampagne, selectedPeriode, dates: [], validations: {} });
@@ -5959,7 +5959,7 @@ exports.validation = functions
         const periodeMap = (meta && meta.periodeMap) || {};
         const periodeCampagne = (meta && meta.periodeCampagne) || {};
         const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
-        const { campagneCourante } = require("../public/lib/campagneUtils");
+        const { campagneCourante } = require("./lib/mappingConso/campagneUtils");
         let periode = req.query.periode;
         if (!periode || !periodeMap[periode]) {
           const d = req.query.date;

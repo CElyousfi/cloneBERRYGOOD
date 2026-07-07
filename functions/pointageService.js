@@ -42,7 +42,7 @@ const {
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
 const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
 const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
-const { campagneCourante } = require("../public/lib/campagneUtils");
+const { campagneCourante } = require("./lib/mappingConso/campagneUtils");
 
 // Défaut de période = 1re quinzaine de la CAMPAGNE COURANTE (au lieu du plus
 // grand numéro toutes campagnes confondues). Fallback gracieux si la campagne
