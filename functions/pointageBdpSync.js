@@ -26,8 +26,9 @@
  *     N opérations par en-tête, la validation croisée juin le révélera (lignes
  *     en trop/manquantes) et on basculera sur un JOIN + clé opération.
  *   - Parcelle : idem, on rattache la parcelle PRINCIPALE de l'en-tête via
- *     MIN(ParcCul_ID). Pointage_ParcelleCulturale porte Ref_parcelle/variété/
- *     culture par la jointure ParcelleCulturale.
+ *     MIN(ParcCul_ID). ParcelleCulturale porte Ref (→ Parcelle_Culturale),
+ *     Ref_parcelle et la variété (via JOIN Variete). La Culture n'a AUCUN
+ *     chemin FK certain depuis ParcelleCulturale/Variete → best-effort NULL.
  *
  * => 1 ligne produite = 1 Personnel_Pointage, enrichie de l'opération et de la
  *    parcelle PRINCIPALES de son en-tête Pointage. Pas de cartésien.
@@ -69,12 +70,15 @@ const RECONSTRUCTION_SQL = `
     pp.Qte_Unite                                    AS Quantite_unite,
     pp.cout                                         AS cout,
     oref.OpeRef_Intitule                            AS Operation,
-    fam.Famille_Operation                           AS Operation_Famille,
-    grp.Groupe_Operation                            AS Operation_Groupe,
-    pc.Parcelle_Culturale                           AS Parcelle_Culturale,
+    fam.Famille                                     AS Operation_Famille,
+    grp.Groupe                                      AS Operation_Groupe,
+    pc.Ref                                           AS Parcelle_Culturale,
     pc.Ref_parcelle                                 AS Ref_parcelle,
     v.Variete                                       AS Variete,
-    cul.Culture                                     AS Culture,
+    -- Culture : aucun chemin FK CERTAIN depuis ParcelleCulturale ni Variete
+    -- (Variete = {ID, Variete} sans FK culture). Best-effort NULL : champ
+    -- d'affichage uniquement, HORS clé de validation croisée et HORS paie.
+    CAST(NULL AS varchar(100))                       AS Culture,
     perp.Periode                                    AS Periode_paie,
     pt.IDPointage                                   AS _IDPointage
   FROM Personnel_Pointage pp
@@ -96,7 +100,6 @@ const RECONSTRUCTION_SQL = `
      WHERE ppc.IDPointage = pt.IDPointage
   )
   LEFT  JOIN Variete v          ON pc.Variete = v.ID
-  LEFT  JOIN Culture cul        ON pc.Culture = cul.ID
   WHERE pt.DATE >= @from AND pt.DATE < @toExcl
   ORDER BY pt.DATE, per.Nom
 `;

@@ -146,3 +146,20 @@ test('mapBdpRowToContract: HS_NM ignoré même si fourni', () => {
   const c = mapBdpRowToContract({ DateStr: '2026-06-01', HS_NM: 99 });
   assert.equal(c.HS_NM, 0);
 });
+
+// Culture best-effort NULL (P2b) : aucun chemin FK certain BDP → la requête
+// renvoie Culture = NULL. Le helper coerce en '' (champ d'affichage, hors clé
+// de validation croisée et hors paie). Ne casse jamais le mapping.
+test('mapBdpRowToContract: Culture NULL (best-effort BDP) → chaîne vide', () => {
+  const c = mapBdpRowToContract({
+    DateStr: '2026-06-15',
+    Parcelle_Culturale: 'S10 YAZMIN cut back F5',
+    Ref_parcelle: 'F5',
+    Variete: 'Yazmin',
+    Culture: null,
+  });
+  assert.equal(c.Parcelle_Culturale, 'S10 YAZMIN cut back F5');
+  assert.equal(c.Ref_parcelle, 'F5');
+  assert.equal(c.Variete, 'Yazmin');
+  assert.equal(c.Culture, '');
+});
