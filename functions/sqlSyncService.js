@@ -26,7 +26,10 @@ const sqlConfig = {
 
 let pool = null;
 async function getPool() {
-  if (!pool) pool = await sql.connect(sqlConfig);
+  if (!pool) {
+    pool = new sql.ConnectionPool(sqlConfig);
+    await pool.connect();
+  }
   return pool;
 }
 
@@ -35,7 +38,10 @@ async function getPool() {
 // table brute `Pointage` de la BDP (pas l'ancienne BR_Pointage reporting).
 let poolProd = null;
 async function getPoolProd() {
-  if (!poolProd) poolProd = await sql.connect(sqlConfigProd);
+  if (!poolProd) {
+    poolProd = new sql.ConnectionPool(sqlConfigProd);
+    await poolProd.connect();
+  }
   return poolProd;
 }
 

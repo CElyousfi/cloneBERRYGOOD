@@ -46,7 +46,8 @@ const { mapBdpRowToContract } = require("./lib/pointageBdp/mapBdpRow");
 let poolProd = null;
 async function getPoolProd() {
   if (!poolProd) {
-    poolProd = await sql.connect(sqlConfigProd);
+    poolProd = new sql.ConnectionPool(sqlConfigProd);
+    await poolProd.connect();
   }
   return poolProd;
 }

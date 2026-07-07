@@ -81,8 +81,8 @@ function stub(request, exportsObj) {
 
 // mssql : pool factice renvoyant N lignes brutes selon la requête.
 let FAKE_ROWS = [];
-const fakeMssql = {
-  connect: async () => ({
+function makeFakePool() {
+  return {
     request() {
       const req = {
         input() { return req; },
@@ -94,7 +94,19 @@ const fakeMssql = {
       };
       return req;
     },
-  }),
+  };
+}
+// Les getters utilisent désormais des ConnectionPool EXPLICITES et SÉPARÉS
+// (new sql.ConnectionPool(config) + .connect()) au lieu du pool global
+// sql.connect(config). Le stub expose donc une classe ConnectionPool ; on garde
+// connect() pour la rétro-compat éventuelle.
+const fakeMssql = {
+  ConnectionPool: function ConnectionPool() {
+    const p = makeFakePool();
+    p.connect = async () => p;
+    return p;
+  },
+  connect: async () => makeFakePool(),
 };
 
 // admin.firestore.FieldValue.serverTimestamp()
