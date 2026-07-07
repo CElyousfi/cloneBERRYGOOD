@@ -42,27 +42,21 @@ function n(v) {
 /**
  * Détermine le Nombre_Jr (journées) d'une ligne Personnel_Pointage.
  *
- * GRAIN / HYPOTHÈSE : la BDP porte plusieurs colonnes candidates de journées sur
- * Personnel_Pointage — JC (journée complète), DJ1/DJ2 (demi-journées ?). Le
- * mirror historique n'expose qu'un scalaire `Nombre_Jr`. On le reconstruit :
- *   Nombre_Jr = JC + 0.5*(DJ1 + DJ2)
- * si ces colonnes existent, sinon on retombe sur une colonne journée directe.
- * Cette hypothèse est l'objet de la VALIDATION CROISÉE juin (oracle) : si l'écart
- * strict Nombre_Jr apparaît, on ajuste ici (et SEULEMENT ici — helper pur).
+ * SOURCE RÉELLE (validation croisée juin) : la colonne journée est la colonne
+ * DIRECTE `Personnel_Pointage.Nombre_jour` — elle vaut 1 pour une journée
+ * complète et 0.5 pour une demi-journée. C'est une valeur DIRECTE : on ne
+ * recalcule RIEN (les colonnes JC/DJ1/DJ2 sont à 0 en BDP → l'ancienne formule
+ * `JC + 0.5*(DJ1+DJ2)` renvoyait 0). La requête SQL alias `pp.Nombre_jour AS
+ * Nombre_Jr`, on lit donc `raw.Nombre_jour` (fallback sur l'alias `Nombre_Jr`).
  *
  * @param {Object} raw ligne Personnel_Pointage aplatie
  * @returns {number}
  */
 function deriveJournees(raw) {
   if (!raw) return 0;
-  // Colonne journée directe éventuelle (ex. HJ / Nombre_Jr déjà agrégé côté BDP).
-  if (raw.Nombre_Jr != null && raw.Nombre_Jr !== '') return n(raw.Nombre_Jr);
-  if (raw.HJ != null && raw.HJ !== '') return n(raw.HJ);
-  // Sinon reconstruction JC + demi-journées.
-  const jc = n(raw.JC);
-  const dj1 = n(raw.DJ1);
-  const dj2 = n(raw.DJ2);
-  return jc + 0.5 * (dj1 + dj2);
+  if (raw.Nombre_jour != null && raw.Nombre_jour !== '') return n(raw.Nombre_jour);
+  // Alias SQL éventuel (pp.Nombre_jour AS Nombre_Jr).
+  return n(raw.Nombre_Jr);
 }
 
 /**
@@ -100,7 +94,15 @@ function mapBdpRowToContract(raw) {
     Operation: s(r.Operation != null ? r.Operation : r.OpeRef_Intitule),
     Operation_Groupe: s(r.Operation_Groupe),
     Nombre_Jr: deriveJournees(r),
-    Nombre_Hr: n(r.Nombre_Hr != null ? r.Nombre_Hr : r.HN),
+    // Nombre_Hr ← HJ (heures journée standard = 8). HN est NULL en BDP.
+    // Fallback : seuil_horaire si HJ absent, sinon 0.
+    Nombre_Hr: n(
+      r.Nombre_Hr != null
+        ? r.Nombre_Hr
+        : r.HJ != null
+        ? r.HJ
+        : r.seuil_horaire
+    ),
     Quantite_unite: n(r.Quantite_unite != null ? r.Quantite_unite : r.Qte_Unite),
     // Champ contrat Cout : rempli avec la RÉFÉRENCE BEE ONE (voir en-tête module).
     Cout: coutRef,

@@ -16,7 +16,7 @@
  * naïvement = PRODUIT CARTÉSIEN parasite.
  *
  * Grain retenu — ANCRAGE SUR Personnel_Pointage (1 ligne/ouvrier) :
- *   - Personnel_Pointage porte DÉJÀ HN, HS_*, Qte_Unite, cout, taux_jour,
+ *   - Personnel_Pointage porte DÉJÀ Nombre_jour, HJ, HS_*, Qte_Unite, cout,
  *     IDFonction_personnel → c'est le grain FIN de la paie (par ouvrier).
  *   - Opération : le pointage BEE ONE est saisi par « bon de pointage » (1
  *     en-tête = 1 opération d'une journée sur une ferme). Pointage_Operation_REF
@@ -64,9 +64,11 @@ const RECONSTRUCTION_SQL = `
     CONVERT(varchar(10), pt.DATE, 23)              AS DateStr,
     per.Mat                                        AS Personnel_Matricule,
     per.Nom                                        AS Personnel_Nom,
-    pp.HN                                           AS Nombre_Hr,
+    -- Nombre_Hr : HJ = heures journée standard (=8). HN est NULL en BDP.
+    pp.HJ                                           AS Nombre_Hr,
+    -- Nombre_Jr : valeur DIRECTE (1 = journée complète, 0.5 = demi-journée).
+    pp.Nombre_jour                                  AS Nombre_Jr,
     pp.HS_25, pp.HS_50, pp.HS_100,
-    pp.JC, pp.DJ1, pp.DJ2,
     pp.Qte_Unite                                    AS Quantite_unite,
     pp.cout                                         AS cout,
     oref.OpeRef_Intitule                            AS Operation,

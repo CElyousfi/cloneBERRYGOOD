@@ -31,14 +31,24 @@ test('n(): null/undefined/vide → 0, NaN → 0', () => {
 });
 
 // ── deriveJournees ──────────────────────────────────────────────────────────
-test('deriveJournees: colonne Nombre_Jr directe prioritaire', () => {
-  assert.equal(deriveJournees({ Nombre_Jr: 1, JC: 9, DJ1: 9 }), 1);
+// SOURCE RÉELLE : Personnel_Pointage.Nombre_jour (valeur DIRECTE : 1 = journée
+// complète, 0.5 = demi-journée). Aucun calcul JC/DJ1/DJ2 (ces colonnes sont à 0
+// en BDP → l'ancienne formule renvoyait 0).
+test('deriveJournees: lit Nombre_jour direct (journée complète = 1)', () => {
+  assert.equal(deriveJournees({ Nombre_jour: 1, JC: 0, DJ1: 0, DJ2: 0 }), 1);
 });
 
-test('deriveJournees: reconstruction JC + 0.5*(DJ1+DJ2)', () => {
-  assert.equal(deriveJournees({ JC: 1, DJ1: 1, DJ2: 0 }), 1.5);
-  assert.equal(deriveJournees({ JC: 0, DJ1: 1, DJ2: 1 }), 1);
-  assert.equal(deriveJournees({ JC: 2 }), 2);
+test('deriveJournees: lit Nombre_jour direct (demi-journée = 0.5)', () => {
+  assert.equal(deriveJournees({ Nombre_jour: 0.5 }), 0.5);
+});
+
+test('deriveJournees: ignore JC/DJ1/DJ2 (à 0 en BDP)', () => {
+  // Même si JC/DJ1/DJ2 sont renseignés, seul Nombre_jour compte.
+  assert.equal(deriveJournees({ Nombre_jour: 1, JC: 9, DJ1: 9, DJ2: 9 }), 1);
+});
+
+test('deriveJournees: fallback alias SQL Nombre_Jr', () => {
+  assert.equal(deriveJournees({ Nombre_Jr: 0.5 }), 0.5);
 });
 
 test('deriveJournees: tout absent → 0 (edge)', () => {
@@ -67,9 +77,10 @@ test('mapBdpRowToContract: cas nominal complet (19 champs + cout_beeone_ref)', (
     DateStr: '2026-06-15',
     Personnel_Matricule: ' M123 ',
     Personnel_Nom: ' DUPONT ',
-    Nombre_Hr: 8,
+    // Colonnes RÉELLES BDP : HJ (heures journée = 8), Nombre_jour (1 = complète).
+    HJ: 8,
+    Nombre_jour: 1,
     HS_25: 1, HS_50: 0.5, HS_100: 0,
-    JC: 1, DJ1: 0, DJ2: 0,
     Quantite_unite: 12,
     cout: 87.5,
     Operation: 'Cueillette',
@@ -106,12 +117,13 @@ test('mapBdpRowToContract: cas nominal complet (19 champs + cout_beeone_ref)', (
   assert.equal(c.HS_NM, 0);
 });
 
-test('mapBdpRowToContract: alias colonnes brutes (Mat/Nom/HN/Qte_Unite/OpeRef_Intitule)', () => {
+test('mapBdpRowToContract: alias colonnes brutes (Mat/Nom/HJ/Qte_Unite/OpeRef_Intitule)', () => {
   const raw = {
     DateStr: '2026-06-15',
     Mat: 'M9',
     Nom: 'ALAOUI',
-    HN: 7,
+    HJ: 8,
+    Nombre_jour: 0.5,
     Qte_Unite: 4,
     OpeRef_Intitule: 'Taille',
     Cout: 60,
@@ -119,7 +131,8 @@ test('mapBdpRowToContract: alias colonnes brutes (Mat/Nom/HN/Qte_Unite/OpeRef_In
   const c = mapBdpRowToContract(raw);
   assert.equal(c.Personnel_Matricule, 'M9');
   assert.equal(c.Personnel_Nom, 'ALAOUI');
-  assert.equal(c.Nombre_Hr, 7);
+  assert.equal(c.Nombre_Hr, 8);
+  assert.equal(c.Nombre_Jr, 0.5);
   assert.equal(c.Quantite_unite, 4);
   assert.equal(c.Operation, 'Taille');
   assert.equal(c.Cout, 60);
@@ -140,6 +153,11 @@ test('mapBdpRowToContract: edge nulls / HS absents / quantité 0', () => {
   assert.equal(c.HS_50, 0);
   assert.equal(c.HS_100, 0);
   assert.equal(c.HS_NM, 0);
+});
+
+test('mapBdpRowToContract: Nombre_Hr fallback seuil_horaire si HJ absent', () => {
+  const c = mapBdpRowToContract({ DateStr: '2026-06-01', seuil_horaire: 8 });
+  assert.equal(c.Nombre_Hr, 8);
 });
 
 test('mapBdpRowToContract: HS_NM ignoré même si fourni', () => {
