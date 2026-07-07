@@ -527,7 +527,7 @@ async function syncPointage(db) {
 
   // periodeCampagne + tri campagne-aware (cohérent avec rebuildPointageMetaFromMirror,
   // qui écrase de toute façon ce meta juste après — on garde la même forme canonique).
-  const { campagneOf: __campagneOf } = require("../public/lib/campagneUtils");
+  const { campagneOf: __campagneOf } = require("./lib/mappingConso/campagneUtils");
   const { buildPeriodeCampagne: __buildPC, sortPeriodesByCampagne: __sortPC } = require("./lib/pointage/campagnePeriodes");
   const periodeCampagne = __buildPC(periodeMap, __campagneOf);
 
@@ -648,7 +648,7 @@ async function syncPointage(db) {
  * never deleted, only overwritten, so they are the durable source of truth.
  */
 async function rebuildPointageMetaFromMirror() {
-  const { campagneOf } = require("../public/lib/campagneUtils");
+  const { campagneOf } = require("./lib/mappingConso/campagneUtils");
   const { buildPeriodeCampagne, sortPeriodesByCampagne } = require("./lib/pointage/campagnePeriodes");
 
   const docRefs = await db_firestore.collection("sql_mirror_pointage").listDocuments();
