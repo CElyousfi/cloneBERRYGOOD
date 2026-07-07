@@ -10,32 +10,43 @@
  * BRUTES : Pointage (en-tête), Personnel_Pointage (1 ligne/ouvrier),
  * Pointage_ParcelleCulturale (parcelles), Pointage_Operation_REF (opérations).
  *
- * ── DÉCISION DE GRAIN (clé de liaison) ─────────────────────────────────────
+ * ── DÉCISION DE GRAIN (clé de liaison) — P2b MULTI-PARCELLE ─────────────────
  * Le modèle brut : un Pointage (en-tête) a N Personnel_Pointage ET N
- * Pointage_ParcelleCulturale ET N Pointage_Operation_REF. Joindre les 3
- * naïvement = PRODUIT CARTÉSIEN parasite.
+ * Pointage_ParcelleCulturale ET (quasi toujours 1) Pointage_Operation_REF.
  *
- * Grain retenu — ANCRAGE SUR Personnel_Pointage (1 ligne/ouvrier) :
- *   - Personnel_Pointage porte DÉJÀ Nombre_jour, HJ, HS_*, Qte_Unite, cout,
- *     IDFonction_personnel → c'est le grain FIN de la paie (par ouvrier).
- *   - Opération : le pointage BEE ONE est saisi par « bon de pointage » (1
- *     en-tête = 1 opération d'une journée sur une ferme). Pointage_Operation_REF
- *     est donc quasi 1:1 avec Pointage. On rattache l'opération PRINCIPALE de
- *     l'en-tête via une sous-requête MIN(ID_operation_Ref) (déterministe, évite
- *     le cartésien si plusieurs opérations existent). Si le grain réel s'avère
- *     N opérations par en-tête, la validation croisée juin le révélera (lignes
- *     en trop/manquantes) et on basculera sur un JOIN + clé opération.
- *   - Parcelle : idem, on rattache la parcelle PRINCIPALE de l'en-tête via
- *     MIN(ParcCul_ID). ParcelleCulturale porte Ref (→ Parcelle_Culturale),
- *     Ref_parcelle et la variété (via JOIN Variete). La Culture n'a AUCUN
- *     chemin FK certain depuis ParcelleCulturale/Variete → best-effort NULL.
+ * VÉRITÉ TERRAIN (BR_Pointage mirror figé, validation croisée juin) : quand un
+ * ouvrier couvre N parcelles dans un bon, BR_Pointage produit **1 ligne par
+ * (ouvrier × parcelle)**, avec `Nombre_Jr` ET `Cout` **splittés au prorata du
+ * poids de la parcelle**. Les ratios sont IDENTIQUES pour tous les ouvriers du
+ * même bon → le poids est au niveau PARCELLE (Pointage_ParcelleCulturale), pas
+ * par ouvrier.
  *
- * => 1 ligne produite = 1 Personnel_Pointage, enrichie de l'opération et de la
- *    parcelle PRINCIPALES de son en-tête Pointage. Pas de cartésien.
+ * Grain retenu — 1 ligne par (Personnel_Pointage × Pointage_ParcelleCulturale
+ * du même IDPointage) :
+ *   - JOIN pp × ppc ON ppc.IDPointage = pp.IDPointage → cartésien VOULU
+ *     (ouvrier × parcelle). Chaque ligne porte SA parcelle (ppc.ParcCul_ID).
+ *   - SPLIT proportionnel au poids de la parcelle
+ *       w_p = ppc.COUT / SUM(ppc.COUT) OVER (PARTITION BY ppc.IDPointage)
+ *     (fraction du coût de la parcelle dans le bon, déjà splitté par BEE ONE).
+ *     → Nombre_Jr = pp.Nombre_jour × w_p ; Cout = pp.cout × w_p.
+ *     Qte_Unite / HS_* : répartis au même ratio w_p (Cout et Nombre_Jr sont la
+ *     clé de validation).
+ *   - Cas MONO-PARCELLE (majorité) : une seule ppc → w_p = 1 → Jr=Nombre_jour,
+ *     Cout=cout → comportement IDENTIQUE à avant (ne casse pas les 3 jours à
+ *     100%).
+ *   - Division par zéro : si SUM(ppc.COUT) OVER (...) = 0 (COÛTs nuls/absents),
+ *     fallback à parts ÉGALES w_p = 1 / COUNT(ppc) OVER (PARTITION BY IDPointage)
+ *     (géré côté SQL via NULLIF + expression de repli).
+ *   - HYPOTHÈSE POIDS = ppc.COUT. Si la re-validation juin ne tombe pas à 100%,
+ *     alternatives à tester (dans l'ordre) : ppc.Heure_Per, ppc.Poid, ppc.NBr_P.
+ *   - Opération : mono-op (multi_operation=0) → on garde la sous-requête
+ *     MIN(ID_operation_Ref) de l'en-tête (NE PAS toucher au split opération).
+ *   - Parcelle : ppc.ParcCul_ID → ParcelleCulturale (Ref, Ref_parcelle, Variete).
+ *     Culture : aucun chemin FK certain BDP → best-effort NULL.
  *
- * Ce choix est une HYPOTHÈSE. L'ORACLE = la validation croisée juin
- * (validatePointageBdp) contre le mirror figé. On itère le grain dessus AVANT
- * toute bascule live. Des logs de diagnostic de grain sont émis par en-tête.
+ * Ce choix est une HYPOTHÈSE (poids = ppc.COUT). L'ORACLE = la validation
+ * croisée juin contre le mirror figé. On itère le poids dessus AVANT toute
+ * bascule live. Diagnostic de grain émis par en-tête.
  */
 
 const sql = require("mssql");
@@ -54,10 +65,22 @@ async function getPoolProd() {
 /**
  * Requête de reconstruction du contrat mirror depuis les tables brutes.
  *
- * Ancrage sur Personnel_Pointage. Opération et parcelle principales de l'en-tête
- * via sous-requêtes MIN(...) corrélées (déterministe, pas de cartésien).
- * Fenêtre SARGable : WHERE pt.DATE >= @from AND pt.DATE < @toExcl (pas de CONVERT
- * sur la colonne indexée).
+ * P2b MULTI-PARCELLE — grain = 1 ligne par (Personnel_Pointage ×
+ * Pointage_ParcelleCulturale du même IDPointage). Le JOIN pp × ppc est un
+ * cartésien VOULU (ouvrier × parcelle du bon).
+ *
+ * SPLIT au prorata du poids de la parcelle. Le poids w_p est calculé côté SQL
+ * (fenêtre) et EXPOSÉ dans la colonne `w_p` ; la MULTIPLICATION (× w_p) est
+ * appliquée dans le mapper PUR (mapBdpRowToContract) → testable unitairement.
+ *   w_p = ppc.COUT / SUM(ppc.COUT) OVER (PARTITION BY ppc.IDPointage)
+ * Poids choisi = ppc.COUT (coût parcelle déjà splitté par BEE ONE).
+ * Fallback division/0 : si SUM(ppc.COUT) OVER (...) = 0 (COÛTs nuls/absents),
+ *   w_p = 1 / COUNT(*) OVER (PARTITION BY ppc.IDPointage) (parts ÉGALES).
+ *   Implémenté via NULLIF(...) + COALESCE vers l'expression de repli.
+ * Cas mono-parcelle : une seule ppc → w_p = 1 → comportement IDENTIQUE à avant.
+ *
+ * L'opération reste mono-op (MIN(ID_operation_Ref) de l'en-tête) — pas de split
+ * opération. Fenêtre SARGable : WHERE pt.DATE >= @from AND pt.DATE < @toExcl.
  */
 const RECONSTRUCTION_SQL = `
   SELECT
@@ -65,12 +88,19 @@ const RECONSTRUCTION_SQL = `
     per.Mat                                        AS Personnel_Matricule,
     per.Nom                                        AS Personnel_Nom,
     -- Nombre_Hr : HJ = heures journée standard (=8). HN est NULL en BDP.
+    -- NON splitté (heure journée standard, pas un cumul du bon).
     pp.HJ                                           AS Nombre_Hr,
-    -- Nombre_Jr : valeur DIRECTE (1 = journée complète, 0.5 = demi-journée).
-    pp.Nombre_jour                                  AS Nombre_Jr,
-    pp.HS_25, pp.HS_50, pp.HS_100,
-    pp.Qte_Unite                                    AS Quantite_unite,
-    pp.cout                                         AS cout,
+    -- Valeurs BRUTES au niveau OUVRIER (le split × w_p est fait dans le mapper).
+    pp.Nombre_jour                                  AS Nombre_jour_raw,
+    pp.cout                                         AS cout_raw,
+    pp.Qte_Unite                                    AS Qte_Unite_raw,
+    pp.HS_25 AS HS_25_raw, pp.HS_50 AS HS_50_raw, pp.HS_100 AS HS_100_raw,
+    -- Poids de la parcelle dans le bon (fraction du coût parcelle). Fallback
+    -- parts égales si somme des coûts nulle (évite division par zéro).
+    COALESCE(
+      1.0 * ppc.COUT / NULLIF(SUM(ppc.COUT) OVER (PARTITION BY ppc.IDPointage), 0),
+      1.0 / COUNT(*) OVER (PARTITION BY ppc.IDPointage)
+    )                                               AS w_p,
     oref.OpeRef_Intitule                            AS Operation,
     fam.Famille                                     AS Operation_Famille,
     grp.Groupe                                      AS Operation_Groupe,
@@ -85,9 +115,11 @@ const RECONSTRUCTION_SQL = `
     pt.IDPointage                                   AS _IDPointage
   FROM Personnel_Pointage pp
   INNER JOIN Pointage pt        ON pp.IDPointage = pt.IDPointage
+  -- Cartésien VOULU : 1 ligne par (ouvrier × parcelle) du même bon.
+  INNER JOIN Pointage_ParcelleCulturale ppc ON ppc.IDPointage = pt.IDPointage
   LEFT  JOIN Personnel per      ON pp.Pers_Id = per.ID
   LEFT  JOIN Periode_paie perp  ON pt.Periode = perp.IDPeriode
-  -- Opération PRINCIPALE de l'en-tête (déterministe, anti-cartésien)
+  -- Opération PRINCIPALE de l'en-tête (mono-op, déterministe, anti-cartésien)
   LEFT  JOIN Operation_REF oref ON oref.OpeRef_Id = (
     SELECT MIN(por.ID_operation_Ref)
       FROM Pointage_Operation_REF por
@@ -95,12 +127,8 @@ const RECONSTRUCTION_SQL = `
   )
   LEFT  JOIN Famille_Operation fam ON oref.Oper_Famille = fam.ID
   LEFT  JOIN Groupe_Operation  grp ON oref.OpeRef_Gr = grp.ID
-  -- Parcelle PRINCIPALE de l'en-tête (déterministe, anti-cartésien)
-  LEFT  JOIN ParcelleCulturale pc ON pc.ID = (
-    SELECT MIN(ppc.ParcCul_ID)
-      FROM Pointage_ParcelleCulturale ppc
-     WHERE ppc.IDPointage = pt.IDPointage
-  )
+  -- Parcelle de CETTE ligne (celle de la jointure ppc, pas MIN de l'en-tête)
+  LEFT  JOIN ParcelleCulturale pc ON pc.ID = ppc.ParcCul_ID
   LEFT  JOIN Variete v          ON pc.Variete = v.ID
   WHERE pt.DATE >= @from AND pt.DATE < @toExcl
   ORDER BY pt.DATE, per.Nom
@@ -179,8 +207,9 @@ async function syncPointageFromProd(db, opts) {
           entetes_multi_parcelle: multiParc,
           entetes_a_risque_cartesien: carto,
           note:
-            "Ancrage Personnel_Pointage : 1 ligne/ouvrier + opération & parcelle PRINCIPALES (MIN) de l'en-tête. " +
-            "Si entetes_multi_operation/parcelle > 0, la validation croisée juin dira si des lignes manquent.",
+            "P2b grain = 1 ligne par (ouvrier × parcelle) ; Nombre_Jr & Cout splittés au poids parcelle " +
+            "w_p = ppc.COUT / SUM(ppc.COUT) OVER (bon), fallback parts égales si somme nulle. " +
+            "Opération mono-op (MIN de l'en-tête). entetes_multi_parcelle = bons concernés par le split.",
         },
       };
       console.log(`[BdpPointage] Diag grain: ${gRows.length} en-têtes, ${multiOp} multi-op, ${multiParc} multi-parcelle`);
