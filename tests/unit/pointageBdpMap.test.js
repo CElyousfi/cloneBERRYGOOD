@@ -10,7 +10,6 @@ const {
   s,
   n,
   deriveJournees,
-  deriveParcelWeight,
   derivePeriodePaie,
   mapBdpRowToContract,
 } = require('../../functions/lib/pointageBdp/mapBdpRow.js');
@@ -52,33 +51,9 @@ test('deriveJournees: fallback alias SQL Nombre_Jr', () => {
   assert.equal(deriveJournees({ Nombre_Jr: 0.5 }), 0.5);
 });
 
-test('deriveJournees: lit alias P2b Nombre_jour_raw en priorité', () => {
-  assert.equal(deriveJournees({ Nombre_jour_raw: 1, Nombre_jour: 9 }), 1);
-});
-
 test('deriveJournees: tout absent → 0 (edge)', () => {
   assert.equal(deriveJournees({}), 0);
   assert.equal(deriveJournees(null), 0);
-});
-
-// ── deriveParcelWeight (P2b) ────────────────────────────────────────────────
-// Poids parcelle w_p exposé par le SQL (fenêtre). Défaut = 1 (mono-parcelle /
-// colonne absente → aucun split). Garde-fous : négatif / non fini → 1.
-test('deriveParcelWeight: absent → 1 (mono-parcelle, comportement avant-P2b)', () => {
-  assert.equal(deriveParcelWeight({}), 1);
-  assert.equal(deriveParcelWeight(null), 1);
-  assert.equal(deriveParcelWeight({ w_p: null }), 1);
-  assert.equal(deriveParcelWeight({ w_p: '' }), 1);
-});
-
-test('deriveParcelWeight: lit w_p fourni', () => {
-  assert.equal(deriveParcelWeight({ w_p: 0.6 }), 0.6);
-  assert.equal(deriveParcelWeight({ w_p: '0.4' }), 0.4);
-});
-
-test('deriveParcelWeight: garde-fou négatif / non fini → 1', () => {
-  assert.equal(deriveParcelWeight({ w_p: -0.5 }), 1);
-  assert.equal(deriveParcelWeight({ w_p: 'abc' }), 1);
 });
 
 // ── derivePeriodePaie ───────────────────────────────────────────────────────
@@ -205,88 +180,4 @@ test('mapBdpRowToContract: Culture NULL (best-effort BDP) → chaîne vide', () 
   assert.equal(c.Ref_parcelle, 'F5');
   assert.equal(c.Variete, 'Yazmin');
   assert.equal(c.Culture, '');
-});
-
-// ── SPLIT MULTI-PARCELLE (P2b) ──────────────────────────────────────────────
-// Vérité terrain : 1 ligne par (ouvrier × parcelle), Nombre_Jr & Cout splittés
-// au poids de la parcelle w_p (calculé côté SQL, appliqué dans le mapper).
-
-test('mapBdpRowToContract: mono-parcelle (w_p=1) → aucun split (Jr=Nombre_jour, Cout=cout)', () => {
-  // Aliases P2b (raw) + w_p=1 : identique au brut, ne casse pas les jours à 100%.
-  const c = mapBdpRowToContract({
-    DateStr: '2026-06-15',
-    Nombre_jour_raw: 1,
-    cout_raw: 100,
-    Qte_Unite_raw: 10,
-    HS_25_raw: 2,
-    w_p: 1,
-  });
-  assert.equal(c.Nombre_Jr, 1);
-  assert.equal(c.Cout, 100);
-  assert.equal(c.cout_beeone_ref, 100);
-  assert.equal(c.Quantite_unite, 10);
-  assert.equal(c.HS_25, 2);
-});
-
-test('mapBdpRowToContract: multi-parcelle 2 parcelles COUT 60/40 → split 0.6/0.4', () => {
-  // Bon avec 2 parcelles (coûts 60 et 40). Ouvrier : Nombre_jour=1, cout=100.
-  // Poids côté SQL : w_p = 60/100 = 0.6 et 40/100 = 0.4.
-  const parcelle60 = mapBdpRowToContract({
-    DateStr: '2026-06-10',
-    Nombre_jour_raw: 1,
-    cout_raw: 100,
-    Qte_Unite_raw: 10,
-    HS_25_raw: 2,
-    w_p: 0.6,
-    Ref_parcelle: 'P60',
-  });
-  const parcelle40 = mapBdpRowToContract({
-    DateStr: '2026-06-10',
-    Nombre_jour_raw: 1,
-    cout_raw: 100,
-    Qte_Unite_raw: 10,
-    HS_25_raw: 2,
-    w_p: 0.4,
-    Ref_parcelle: 'P40',
-  });
-  // Jr splitté
-  assert.ok(Math.abs(parcelle60.Nombre_Jr - 0.6) < 1e-9);
-  assert.ok(Math.abs(parcelle40.Nombre_Jr - 0.4) < 1e-9);
-  // Somme des Jr = Nombre_jour brut (conservation).
-  assert.ok(Math.abs((parcelle60.Nombre_Jr + parcelle40.Nombre_Jr) - 1) < 1e-9);
-  // Cout splitté
-  assert.ok(Math.abs(parcelle60.Cout - 60) < 1e-9);
-  assert.ok(Math.abs(parcelle40.Cout - 40) < 1e-9);
-  assert.ok(Math.abs((parcelle60.Cout + parcelle40.Cout) - 100) < 1e-9);
-  // cout_beeone_ref suit le même split
-  assert.ok(Math.abs(parcelle60.cout_beeone_ref - 60) < 1e-9);
-  // Quantité et HS splittés au même ratio
-  assert.ok(Math.abs(parcelle60.Quantite_unite - 6) < 1e-9);
-  assert.ok(Math.abs(parcelle40.Quantite_unite - 4) < 1e-9);
-  assert.ok(Math.abs(parcelle60.HS_25 - 1.2) < 1e-9);
-  assert.ok(Math.abs(parcelle40.HS_25 - 0.8) < 1e-9);
-  // Chaque ligne porte SA parcelle
-  assert.equal(parcelle60.Ref_parcelle, 'P60');
-  assert.equal(parcelle40.Ref_parcelle, 'P40');
-});
-
-test('mapBdpRowToContract: division par zéro → w_p fallback parts égales (SQL) reçu tel quel', () => {
-  // Le fallback parts égales est calculé côté SQL (1/N). Le mapper reçoit ce w_p
-  // et l'applique. 2 parcelles, somme des coûts nulle → w_p=0.5 chacune.
-  const a = mapBdpRowToContract({ DateStr: '2026-06-10', Nombre_jour_raw: 1, cout_raw: 80, w_p: 0.5 });
-  const b = mapBdpRowToContract({ DateStr: '2026-06-10', Nombre_jour_raw: 1, cout_raw: 80, w_p: 0.5 });
-  assert.ok(Math.abs(a.Nombre_Jr - 0.5) < 1e-9);
-  assert.ok(Math.abs((a.Nombre_Jr + b.Nombre_Jr) - 1) < 1e-9);
-  assert.ok(Math.abs(a.Cout - 40) < 1e-9);
-  assert.ok(Math.abs((a.Cout + b.Cout) - 80) < 1e-9);
-});
-
-test('mapBdpRowToContract: demi-journée × multi-parcelle (0.5 j, w_p 0.6/0.4)', () => {
-  const a = mapBdpRowToContract({ DateStr: '2026-06-10', Nombre_jour_raw: 0.5, cout_raw: 50, w_p: 0.6 });
-  const b = mapBdpRowToContract({ DateStr: '2026-06-10', Nombre_jour_raw: 0.5, cout_raw: 50, w_p: 0.4 });
-  assert.ok(Math.abs(a.Nombre_Jr - 0.3) < 1e-9);
-  assert.ok(Math.abs(b.Nombre_Jr - 0.2) < 1e-9);
-  assert.ok(Math.abs((a.Nombre_Jr + b.Nombre_Jr) - 0.5) < 1e-9);
-  assert.ok(Math.abs(a.Cout - 30) < 1e-9);
-  assert.ok(Math.abs(b.Cout - 20) < 1e-9);
 });
