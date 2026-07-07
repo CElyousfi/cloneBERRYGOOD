@@ -394,6 +394,120 @@ async function introspect() {
 
   report.sections["9_make_or_break"] = section9;
 
+  // ── SECTION 10 : STRUCTURE DU GRAIN OUVRIER ↔ PARCELLE ───────────────────
+  // Read-only strict. Objectif : comprendre comment un ouvrier est lié à une ou
+  // plusieurs parcelles dans un bon de pointage, sur un cas MULTI-parcelle
+  // (10/06, celui qui porte les écarts) et un cas MONO-parcelle (12/06, 100%).
+  // Les IDPointage sont récupérés dynamiquement puis VALIDÉS entier
+  // (Number.isInteger) avant toute réutilisation interpolée. Dates = littéraux
+  // fixes. Chaque requête isolée via runQuery.
+  const section10 = { multi: {}, mono: {}, pp_parcelle_fk: null };
+
+  // Helper local : dump des 3 tables du bon pour un IDPointage validé entier.
+  async function dumpBon(idPointage) {
+    const bon = { idPointage };
+    bon.personnel_pointage = await runQuery(
+      pool,
+      `SELECT pp.IDPointage, pp.Pers_Id, per.Mat, pp.Nombre_jour, pp.cout,
+              pp.HJ, pp.HN, pp.Unite_Operation, pp.Qte_Unite
+         FROM Personnel_Pointage pp
+         JOIN Personnel per ON pp.Pers_Id = per.ID
+        WHERE pp.IDPointage = ${idPointage}`
+    );
+    bon.parcelles = await runQuery(
+      pool,
+      `SELECT * FROM Pointage_ParcelleCulturale WHERE IDPointage = ${idPointage}`
+    );
+    bon.operations = await runQuery(
+      pool,
+      `SELECT * FROM Pointage_Operation_REF WHERE IDPointage = ${idPointage}`
+    );
+    return bon;
+  }
+
+  // 10.1 — En-tête MULTI-parcelle le 10/06
+  section10.multi.header = await runQuery(
+    pool,
+    `SELECT TOP 1 ppc.IDPointage, COUNT(*) AS nb_parcelles
+       FROM Pointage_ParcelleCulturale ppc
+       JOIN Pointage pt ON ppc.IDPointage = pt.IDPointage
+      WHERE CONVERT(date, pt.DATE) = '2026-06-10'
+      GROUP BY ppc.IDPointage
+     HAVING COUNT(*) > 1
+      ORDER BY COUNT(*) DESC`
+  );
+  if (
+    section10.multi.header.ok &&
+    section10.multi.header.rows.length > 0 &&
+    Number.isInteger(section10.multi.header.rows[0].IDPointage)
+  ) {
+    const idMulti = section10.multi.header.rows[0].IDPointage;
+    section10.multi.nb_parcelles = section10.multi.header.rows[0].nb_parcelles;
+    const dump = await dumpBon(idMulti);
+    section10.multi.idPointage = dump.idPointage;
+    section10.multi.personnel_pointage = dump.personnel_pointage;
+    section10.multi.parcelles = dump.parcelles;
+    section10.multi.operations = dump.operations;
+  } else {
+    section10.multi.note =
+      "Aucun en-tête MULTI-parcelle valide (IDPointage entier) trouvé le 2026-06-10.";
+  }
+
+  // 10.2 — En-tête MONO-parcelle le 12/06
+  section10.mono.header = await runQuery(
+    pool,
+    `SELECT TOP 1 ppc.IDPointage
+       FROM Pointage_ParcelleCulturale ppc
+       JOIN Pointage pt ON ppc.IDPointage = pt.IDPointage
+      WHERE CONVERT(date, pt.DATE) = '2026-06-12'
+      GROUP BY ppc.IDPointage
+     HAVING COUNT(*) = 1`
+  );
+  if (
+    section10.mono.header.ok &&
+    section10.mono.header.rows.length > 0 &&
+    Number.isInteger(section10.mono.header.rows[0].IDPointage)
+  ) {
+    const idMono = section10.mono.header.rows[0].IDPointage;
+    const dump = await dumpBon(idMono);
+    section10.mono.idPointage = dump.idPointage;
+    section10.mono.personnel_pointage = dump.personnel_pointage;
+    section10.mono.parcelles = dump.parcelles;
+    section10.mono.operations = dump.operations;
+  } else {
+    section10.mono.note =
+      "Aucun en-tête MONO-parcelle valide (IDPointage entier) trouvé le 2026-06-12.";
+  }
+
+  // 10.3 — FK parcelle DIRECTE dans Personnel_Pointage ?
+  section10.pp_parcelle_fk = await runQuery(
+    pool,
+    `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_NAME = 'Personnel_Pointage'
+        AND (COLUMN_NAME LIKE '%parc%' OR COLUMN_NAME LIKE '%ParcCul%')`
+  );
+
+  report.sections["10_structure_grain"] = section10;
+
+  // ── SECTION 11 : PARCELLES DE JUILLET (connues + variété) ────────────────
+  // Read-only strict. Les Ref_parcelle du pointage de juillet sont-ils déjà
+  // connus dans ParcelleCulturale + leur variété. Date = littéral fixe.
+  const section11 = {};
+  section11.rows = await runQuery(
+    pool,
+    `SELECT pc.Ref_parcelle, pc.Ref AS parcelle_label, v.Variete,
+            pc.IDFermes, MIN(pt.DATE) AS premiere_date, COUNT(*) AS nb_lignes
+       FROM Pointage pt
+       JOIN Pointage_ParcelleCulturale ppc ON ppc.IDPointage = pt.IDPointage
+       JOIN ParcelleCulturale pc ON ppc.ParcCul_ID = pc.ID
+       LEFT JOIN Variete v ON pc.Variete = v.ID
+      WHERE pt.DATE >= '2026-07-01'
+      GROUP BY pc.Ref_parcelle, pc.Ref, v.Variete, pc.IDFermes
+      ORDER BY pc.Ref_parcelle`
+  );
+  report.sections["11_parcelles_juillet"] = section11;
+
   report.durationMs = Date.now() - startTime;
   return report;
 }
