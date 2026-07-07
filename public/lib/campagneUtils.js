@@ -61,6 +61,24 @@ function campagneOf(dateStr) {
 }
 
 /**
+ * Campagne courante = campagne de la date du jour (année fiscale Juillet→Juin).
+ *
+ * @param {string} [todayStr]  date 'YYYY-MM-DD' (défaut : aujourd'hui, TZ locale)
+ * @returns {string|null} libellé de campagne, ou null si date invalide
+ */
+function campagneCourante(todayStr) {
+  let d = todayStr;
+  if (!d) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const mo = String(now.getMonth() + 1).padStart(2, '0');
+    const da = String(now.getDate()).padStart(2, '0');
+    d = `${y}-${mo}-${da}`;
+  }
+  return campagneOf(d);
+}
+
+/**
  * Premier jour (1er juillet) d'une campagne.
  *
  * @param {string} campagne  libellé 'AAAA-BBBB'
@@ -147,6 +165,7 @@ function phaseDeCharge(args) {
 
 const __cu_api = {
   campagneOf,
+  campagneCourante,
   debutCampagne,
   finCampagne,
   campagneDeCharge,

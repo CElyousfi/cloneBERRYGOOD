@@ -41,6 +41,21 @@ const {
 // Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
 const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
+const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
+const { campagneCourante } = require("../public/lib/campagneUtils");
+
+// Défaut de période = 1re quinzaine de la CAMPAGNE COURANTE (au lieu du plus
+// grand numéro toutes campagnes confondues). Fallback gracieux si la campagne
+// courante n'a pas encore de quinzaine ou si periodeCampagne est absent du meta
+// (période transitoire deploy→1er sync). PUREMENT une couche d'affichage/tri :
+// n'ajoute AUCUN paramètre serveur, ne touche à AUCUN cloisonnement ferme.
+function defaultPeriode(meta, periodes) {
+  return defaultPeriodeForCampagne(
+    periodes || (meta && (meta.allPeriodes || meta.periodes)) || [],
+    (meta && meta.periodeCampagne) || {},
+    campagneCourante()
+  );
+}
 
 // GATING PAIE (Étape 0) — barrière serveur sur les agrégats RH nominatifs.
 // Rôle résolu depuis le token (users/{uid}), jamais depuis le body.
@@ -782,7 +797,8 @@ async function buildHeuresSup(meta, excludedFonctions, fermeFilter = null) {
     }
   }
 
-  return { success: true, periodes, excludedFonctions, seuilMinutes: HS_SEUIL_MINUTES, periodeDates, rows };
+  const periodeCampagne = (meta && meta.periodeCampagne) || {};
+  return { success: true, periodes, periodeCampagne, excludedFonctions, seuilMinutes: HS_SEUIL_MINUTES, periodeDates, rows };
 }
 
 // =============================================
@@ -1166,7 +1182,8 @@ async function computeRecolteEquipesPayload(nQuinz, fermeFilter = null) {
     }
     console.log(`[recolte-equipes] Prod enrichment: ${enrichedCount} overridden, ${addedCount} added, ${prodDates.length} dates checked. Per-date: ${perDateStats.join(' | ')}`);
 
-    return { success: true, periodes, rows };
+    const periodeCampagne = (meta && meta.periodeCampagne) || {};
+    return { success: true, periodes, periodeCampagne, rows };
   }
   // SQL fallback
   const db = await getPool();
@@ -2059,9 +2076,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.allPeriodes || meta?.periodes || [];
+          const periodeCampagne = (meta && meta.periodeCampagne) || {};
           const mirrorPeriodes = meta?.periodes || [];
-          const selectedPeriode = periodeParam || periodes[0];
-          if (!selectedPeriode) return { success: true, periode: null, periodes, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
+          const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
+          if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
 
           // If selected period has mirror data, use Firestore; otherwise fallback to SQL
           let rows;
@@ -2082,7 +2100,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               const parJour = filterArchivedParJour(arch.parJour, _fermeFilter);
               const totals = recomposeArchivedTotals(parFerme, arch, _fermeFilter);
               return {
-                success: true, periode: selectedPeriode, periodes,
+                success: true, periode: selectedPeriode, periodes, periodeCampagne,
                 totalJournees: totals.totalJournees, totalCout: totals.totalCout,
                 parFerme, parJour,
               };
@@ -2145,7 +2163,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size, BAHIA: d.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
           const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
           const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
-          return { success: true, periode: selectedPeriode, periodes, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
+          return { success: true, periode: selectedPeriode, periodes, periodeCampagne, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
         }
 
         // === FALLBACK SQL PATH ===
@@ -2208,8 +2226,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
-          const selectedPeriode = periodeParam || periodes[0];
-          if (!selectedPeriode) return { success: true, periode: null, periodes, rows: [] };
+          const periodeCampagne = (meta && meta.periodeCampagne) || {};
+          const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
+          if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, rows: [] };
           const rawRows = await getPointageRowsForPeriode(selectedPeriode);
           if (rawRows.length === 0) {
             // Check Firestore archive
@@ -2219,7 +2238,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               // → ferme dérivable. Sans filtrage, un chef verrait les parcelles/coûts
               // de toutes les fermes. Fail-closed : ferme dérivée ≠ _fermeFilter → exclue.
               // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
-              return { success: true, periode: selectedPeriode, periodes, rows: filterArchivedRowsByFerme(archiveDoc.data().analytique, _fermeFilter) };
+              return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows: filterArchivedRowsByFerme(archiveDoc.data().analytique, _fermeFilter) };
             }
           }
           // Group by parcelle+ref+opFamille+operation
@@ -2232,7 +2251,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             groups[key].Cout += r.Cout || 0;
           }
           const rows = Object.values(groups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
-          return { success: true, periode: selectedPeriode, periodes, rows };
+          return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows };
         }
         // SQL fallback
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
@@ -2430,6 +2449,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
+          const periodeCampagne = (meta && meta.periodeCampagne) || {};
           // Only load current + previous periode (not ALL dates)
           const targetPeriodes = periodes.slice(0, 2);
           const allRows = [];
@@ -2446,7 +2466,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
           const holidays = await getJoursFeries();
           const extras = computeChargCond(allRows, holidays);
-          return { success: true, periodes, rows, ...extras };
+          return { success: true, periodes, periodeCampagne, rows, ...extras };
         }
         // SQL fallback
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
@@ -2872,7 +2892,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             periode: p, parVariete: byQuinzaine[p] || {},
           }));
 
-          return { success: true, parVariete, parQuinzaine, totaux, periodes: allPeriodes };
+          const periodeCampagne = (meta && meta.periodeCampagne) || {};
+          return { success: true, parVariete, parQuinzaine, totaux, periodes: allPeriodes, periodeCampagne };
         });
         return res.json(cached);
       }
