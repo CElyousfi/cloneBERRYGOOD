@@ -14,9 +14,12 @@ const baseSqlConfig = require("./config/sqlConfig");
 const sqlConfigProd = require("./config/sqlConfigProd");
 const whatsappService = require("./whatsappService");
 const probeStaleness = require("./lib/probeStaleness/probeStaleness");
+const pullHealth = require("./lib/pointage/pullHealth");
 
 // Ré-alerte staleness : rappel toutes les 24h tant que la donnée reste gelée.
 const STALENESS_RE_ALERT_HOURS = 24;
+// Ré-alerte panne du PULL (« mode b ») : même cadence, état débounce SÉPARÉ.
+const PULL_HEALTH_RE_ALERT_HOURS = 24;
 
 // Sync queries are heavier — use longer request timeout
 const sqlConfig = {
@@ -153,6 +156,142 @@ async function evaluateAndAlertStaleness(probeData, now) {
     }
   } catch (e) {
     console.error("[ReplicationProbe] logique d'alerte staleness en erreur:", e.message);
+  }
+}
+
+/**
+ * Formatte un serverTimestamp Firestore (Timestamp | Date | string) en 'JJ/MM HH:MM'
+ * heure locale Casablanca, ou '?' si illisible. Sert au message pull_failing.
+ * @param {*} v
+ * @returns {string}
+ */
+function formatLastSuccess(v) {
+  try {
+    let d = null;
+    if (v == null) return "?";
+    if (typeof v.toDate === "function") d = v.toDate();
+    else if (v instanceof Date) d = v;
+    else if (typeof v === "string") d = new Date(v);
+    if (!(d instanceof Date) || isNaN(d.getTime())) return "?";
+    const parts = new Intl.DateTimeFormat("fr-FR", {
+      timeZone: "Africa/Casablanca",
+      day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    }).formatToParts(d);
+    const p = {};
+    for (const x of parts) p[x.type] = x.value;
+    return `${p.day}/${p.month} ${p.hour}:${p.minute}`;
+  } catch (_) { return "?"; }
+}
+
+/**
+ * Alerte « MODE B » : détecte la panne du PULL horaire du pointage (le cron
+ * plante OU le mirror gèle alors que la BDP est fraîche) — complémentaire de
+ * evaluateAndAlertStaleness (panne SOURCE, « mode a »). NE MODIFIE PAS l'alerte
+ * staleness : état de débounce dans un doc Firestore SÉPARÉ
+ * (replication_probe_state/pull_health). Enrobée dans un try/catch qui LOG :
+ * une erreur ici ne doit jamais casser la sonde.
+ *
+ * @param {Object} probeData  résultat brut de la sonde (pointage_max_date = MAX BDP)
+ * @param {Date} now
+ */
+async function evaluateAndAlertPullHealth(probeData, now) {
+  try {
+    // MAX du mirror = max de sql_mirror_pointage_meta/config.availableDates.
+    let mirrorMaxDate = null;
+    try {
+      const metaSnap = await db_firestore.collection("sql_mirror_pointage_meta").doc("config").get();
+      if (metaSnap.exists) {
+        const dates = metaSnap.data().availableDates;
+        if (Array.isArray(dates) && dates.length > 0) {
+          mirrorMaxDate = dates.reduce((a, b) => (String(b) > String(a) ? b : a));
+        }
+      }
+    } catch (e) {
+      console.error("[ReplicationProbe] lecture mirror meta échouée:", e.message);
+    }
+
+    // État du cron : consecutiveFailures + lastSuccessAt.
+    let consecutiveFailures = 0;
+    let lastSuccessAt = null;
+    try {
+      const statusSnap = await db_firestore.collection("sql_sync_status").doc("latest").get();
+      if (statusSnap.exists) {
+        const s = statusSnap.data();
+        consecutiveFailures = s.consecutiveFailures || 0;
+        lastSuccessAt = s.lastSuccessAt || null;
+      }
+    } catch (e) {
+      console.error("[ReplicationProbe] lecture sql_sync_status échouée:", e.message);
+    }
+
+    const health = pullHealth.computePullHealth({
+      consecutiveFailures,
+      mirrorMaxDate,
+      bdpMaxDate: probeData.pointage_max_date,
+      now,
+    });
+
+    const stateRef = db_firestore.collection("replication_probe_state").doc("pull_health");
+    const stateSnap = await stateRef.get();
+    const prevState = stateSnap.exists ? stateSnap.data() : null;
+
+    const decision = pullHealth.decidePullAlert(health, prevState, now, PULL_HEALTH_RE_ALERT_HOURS);
+
+    if (!decision.shouldSend) {
+      await stateRef.set(withServerTimestamp(decision.nextState), { merge: true });
+      return;
+    }
+
+    const msg = pullHealth.buildPullMessage(decision.kind, health, {
+      lastSuccessLabel: formatLastSuccess(lastSuccessAt),
+    });
+    const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+
+    let deliveryError = null;
+    if (!recipients || recipients.length === 0) {
+      deliveryError = "aucun destinataire DG (profileId=dg + whatsappEnabled + whatsappPhone)";
+      console.error(`[ReplicationProbe] ÉCHEC ALERTE PULL — ${deliveryError}. Message non envoyé: ${msg}`);
+    } else {
+      const failures = [];
+      for (const r of recipients) {
+        try {
+          const res = await whatsappService.sendTemplateMessage(r.phone, "general_alert", [msg]);
+          if (!res || res.success !== true) {
+            failures.push(`${r.phone}: ${(res && res.error) || "échec inconnu"}`);
+          }
+        } catch (e) {
+          failures.push(`${r.phone}: ${e.message}`);
+        }
+      }
+      if (failures.length === recipients.length) {
+        deliveryError = `envoi échoué pour tous les destinataires: ${failures.join(" | ")}`;
+        console.error(`[ReplicationProbe] ÉCHEC ALERTE PULL — ${deliveryError}`);
+      } else if (failures.length > 0) {
+        deliveryError = `envoi partiel: ${failures.join(" | ")}`;
+        console.error(`[ReplicationProbe] ALERTE PULL partiellement échouée — ${deliveryError}`);
+      }
+    }
+
+    const nextState = Object.assign({}, decision.nextState, {
+      lastAlertKind: decision.kind,
+      lastAlertHealthKind: health.kind,
+      lastAlertLagHours: health.lagHours,
+      lastAlertConsecutiveFailures: health.consecutiveFailures,
+      alertDeliveryError: deliveryError,
+    });
+    // Envoi totalement échoué → ne pas consommer le lastAlertAt (retry au prochain run).
+    if (deliveryError && (!recipients || recipients.length === 0 ||
+        deliveryError.startsWith("envoi échoué pour tous"))) {
+      nextState.lastAlertAt = prevState ? (prevState.lastAlertAt || null) : null;
+    }
+
+    await stateRef.set(withServerTimestamp(nextState), { merge: true });
+
+    if (!deliveryError) {
+      console.warn(`[ReplicationProbe] ALERTE PULL envoyée (${decision.kind}/${health.kind || "resolved"}) à ${recipients.length} destinataire(s)`);
+    }
+  } catch (e) {
+    console.error("[ReplicationProbe] logique d'alerte pull-health en erreur:", e.message);
   }
 }
 
@@ -298,6 +437,12 @@ exports.replicationProbe = functions
       // non-vide). Détection pure via probeStaleness (âge de la donnée vs dernier
       // jour ouvré attendu, week-ends/fériés tolérés). Ré-alerte débounce 24h.
       await evaluateAndAlertStaleness(probeData, now);
+
+      // Alerte « MODE B » : panne du PULL horaire (cron plante OU mirror en
+      // retard sur la source BDP fraîche). Complète la staleness source ci-dessus.
+      // État de débounce SÉPARÉ (replication_probe_state/pull_health) : ne touche
+      // pas au mode-a. try/catch interne → ne casse jamais la sonde.
+      await evaluateAndAlertPullHealth(probeData, now);
     } catch (err) {
       console.error("[ReplicationProbe] Error:", err.message);
       await db_firestore.collection("replication_probe").doc(timestampKey).set({
