@@ -48,6 +48,44 @@ test('consecutiveFailures = 1 ne déclenche PAS pull_failing', () => {
   assert.strictEqual(h.kind, null);
 });
 
+test('renfort: probeSqlFailed + cf=1 déclenche pull_failing (sonde SQL injoignable)', () => {
+  const h = computePullHealth({
+    consecutiveFailures: 1,
+    mirrorMaxDate: null,
+    bdpMaxDate: null,
+    probeSqlFailed: true,
+    now: NOW,
+  });
+  assert.strictEqual(h.alert, true);
+  assert.strictEqual(h.kind, 'pull_failing');
+  assert.match(h.reason, /sonde SQL injoignable/);
+});
+
+test('pas de faux positif: probeSqlFailed + cf=0 ne déclenche RIEN', () => {
+  const h = computePullHealth({
+    consecutiveFailures: 0,
+    mirrorMaxDate: null,
+    bdpMaxDate: null,
+    probeSqlFailed: true,
+    now: NOW,
+  });
+  assert.strictEqual(h.alert, false);
+  assert.strictEqual(h.kind, null);
+});
+
+test('SQL down (bdpMaxDate null) + cf>=2 → pull_failing quand même', () => {
+  const h = computePullHealth({
+    consecutiveFailures: 18,
+    mirrorMaxDate: '2026-07-07',
+    bdpMaxDate: null, // BDP illisible car SQL down
+    probeSqlFailed: true,
+    now: NOW,
+  });
+  assert.strictEqual(h.alert, true);
+  assert.strictEqual(h.kind, 'pull_failing');
+  assert.strictEqual(h.consecutiveFailures, 18);
+});
+
 test('mirror_lag: lag > 24h déclenche l\'alerte', () => {
   const h = computePullHealth({
     consecutiveFailures: 0,

@@ -89,19 +89,29 @@ function ddmm(ms) {
  * @param {*} args.mirrorMaxDate        max de availableDates (Date|string|Timestamp)
  * @param {*} args.bdpMaxDate           pointage_max_date de la sonde (source BDP)
  * @param {Date} args.now               non utilisé pour la décision (compat signature), injecté
+ * @param {boolean} [args.probeSqlFailed]  la sonde elle-même n'a pas pu lire SQL (serveur down)
  * @returns {PullHealth}
  */
 function computePullHealth(args) {
   const cf = Number(args.consecutiveFailures);
+  const probeSqlFailed = args.probeSqlFailed === true;
 
   // 1. Cron en panne : échecs consécutifs.
-  if (!Number.isNaN(cf) && cf >= 2) {
+  //    Seuil PRIMAIRE = cf >= 2. Renfort belt-and-suspenders : si la sonde
+  //    elle-même n'a pas pu se connecter à SQL (probeSqlFailed) ET qu'au moins
+  //    un échec est déjà tracké (cf >= 1), on confirme le pull down — le serveur
+  //    est visiblement injoignable des deux côtés. PAS de faux positif si cf = 0
+  //    (une erreur sonde transitoire seule ne déclenche rien).
+  const failing = (!Number.isNaN(cf) && cf >= 2) ||
+    (probeSqlFailed && !Number.isNaN(cf) && cf >= 1);
+  if (failing) {
     return {
       alert: true,
       kind: 'pull_failing',
       lagHours: null,
       consecutiveFailures: cf,
-      reason: 'cron sqlToFirestoreSync a échoué ' + cf + ' fois consécutives',
+      reason: 'cron sqlToFirestoreSync a échoué ' + cf + ' fois consécutives' +
+        (probeSqlFailed ? ' (sonde SQL injoignable)' : ''),
     };
   }
 
