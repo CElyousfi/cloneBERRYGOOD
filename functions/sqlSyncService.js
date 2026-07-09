@@ -192,15 +192,28 @@ function formatLastSuccess(v) {
  * (replication_probe_state/pull_health). Enrobée dans un try/catch qui LOG :
  * une erreur ici ne doit jamais casser la sonde.
  *
- * @param {Object} probeData  résultat brut de la sonde (pointage_max_date = MAX BDP)
+ * ⚠️ NE DÉPEND PAS de la connexion SQL : lit consecutiveFailures + le max-date du
+ * mirror depuis FIRESTORE uniquement. Doit donc pouvoir tourner MÊME quand la
+ * lecture SQL de la sonde a échoué (serveur down = LE cas critique). Dans ce cas
+ * `probeData` est null/partiel : le signal `pull_failing` (consecutiveFailures≥2)
+ * part quand même, seul le signal `mirror_lag` (qui exige bdpMaxDate) est neutralisé.
+ *
+ * @param {Object|null} probeData  résultat brut de la sonde (pointage_max_date = MAX BDP), null si SQL down
  * @param {Date} now
+ * @param {Object} [opts]  {probeSqlFailed:boolean} — la sonde n'a pas pu lire SQL (renfort du signal pull down)
+ * @param {Object} [deps]  injection pour tests : {db, whatsapp} (défaut = modules du fichier)
  */
-async function evaluateAndAlertPullHealth(probeData, now) {
+async function evaluateAndAlertPullHealth(probeData, now, opts, deps) {
   try {
+    const options = opts || {};
+    const dd = deps || {};
+    const fs = dd.db || db_firestore;
+    const wa = dd.whatsapp || whatsappService;
+    const bdpMaxDate = probeData ? probeData.pointage_max_date : null;
     // MAX du mirror = max de sql_mirror_pointage_meta/config.availableDates.
     let mirrorMaxDate = null;
     try {
-      const metaSnap = await db_firestore.collection("sql_mirror_pointage_meta").doc("config").get();
+      const metaSnap = await fs.collection("sql_mirror_pointage_meta").doc("config").get();
       if (metaSnap.exists) {
         const dates = metaSnap.data().availableDates;
         if (Array.isArray(dates) && dates.length > 0) {
@@ -215,7 +228,7 @@ async function evaluateAndAlertPullHealth(probeData, now) {
     let consecutiveFailures = 0;
     let lastSuccessAt = null;
     try {
-      const statusSnap = await db_firestore.collection("sql_sync_status").doc("latest").get();
+      const statusSnap = await fs.collection("sql_sync_status").doc("latest").get();
       if (statusSnap.exists) {
         const s = statusSnap.data();
         consecutiveFailures = s.consecutiveFailures || 0;
@@ -228,11 +241,17 @@ async function evaluateAndAlertPullHealth(probeData, now) {
     const health = pullHealth.computePullHealth({
       consecutiveFailures,
       mirrorMaxDate,
-      bdpMaxDate: probeData.pointage_max_date,
+      // SQL down → probeData null → bdpMaxDate null. Le signal mirror_lag (qui
+      // exige bdpMaxDate) est alors neutralisé, mais pull_failing (cf≥2) part.
+      bdpMaxDate,
       now,
+      // Renfort belt-and-suspenders : la sonde n'a pas pu se connecter à SQL,
+      // c'est en soi un signe de pull down. computePullHealth garde le seuil ≥2
+      // comme signal PRIMAIRE — pas de faux positif si consecutiveFailures=0.
+      probeSqlFailed: options.probeSqlFailed === true,
     });
 
-    const stateRef = db_firestore.collection("replication_probe_state").doc("pull_health");
+    const stateRef = fs.collection("replication_probe_state").doc("pull_health");
     const stateSnap = await stateRef.get();
     const prevState = stateSnap.exists ? stateSnap.data() : null;
 
@@ -246,7 +265,7 @@ async function evaluateAndAlertPullHealth(probeData, now) {
     const msg = pullHealth.buildPullMessage(decision.kind, health, {
       lastSuccessLabel: formatLastSuccess(lastSuccessAt),
     });
-    const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+    const recipients = await wa.resolveRecipientsForProfile("dg", null);
 
     let deliveryError = null;
     if (!recipients || recipients.length === 0) {
@@ -256,7 +275,7 @@ async function evaluateAndAlertPullHealth(probeData, now) {
       const failures = [];
       for (const r of recipients) {
         try {
-          const res = await whatsappService.sendTemplateMessage(r.phone, "general_alert", [msg]);
+          const res = await wa.sendTemplateMessage(r.phone, "general_alert", [msg]);
           if (!res || res.success !== true) {
             failures.push(`${r.phone}: ${(res && res.error) || "échec inconnu"}`);
           }
@@ -393,66 +412,116 @@ function toSingleLine(s) {
 // Runs every hour to detect when the reporting DB refreshes with new data
 // (Reduced from every 10 min to save SQL bandwidth on farm server)
 // =============================================
+/**
+ * Corps de la sonde de réplication, extrait pour être TESTABLE (injection de
+ * dépendances) — voir tests/unit/replicationProbe.pullHealth.test.js.
+ *
+ * ⛔ FIX serveur down : la partie SQL (getPool/getPoolProd + requêtes + écriture
+ * probeData + evaluateAndAlertStaleness mode-a) est enrobée dans un try/catch
+ * INTERNE. Le check pull-health (mode-b), qui ne lit QUE Firestore
+ * (consecutiveFailures + mirror max-date), est appelé TOUJOURS APRÈS, hors de la
+ * dépendance SQL. Ainsi une panne de connexion SQL (serveur injoignable) ne
+ * court-circuite plus l'alerte — c'est LE scénario le plus grave (gel total).
+ *
+ * @param {Object} [deps]  dépendances injectables (défaut = fonctions du module)
+ * @param {Date}   [deps.now]
+ * @param {Function} [deps.getPool]
+ * @param {Function} [deps.getPoolProd]
+ * @param {Function} [deps.evaluateAndAlertStaleness]
+ * @param {Function} [deps.evaluateAndAlertPullHealth]
+ * @param {Object}   [deps.db]  Firestore (défaut db_firestore)
+ * @param {Object}   [deps.whatsapp]  service WhatsApp (défaut whatsappService)
+ * @returns {Promise<null>}
+ */
+async function runReplicationProbe(deps) {
+  const d = deps || {};
+  const now = d.now || new Date();
+  const _getPool = d.getPool || getPool;
+  const _getPoolProd = d.getPoolProd || getPoolProd;
+  const _evalStaleness = d.evaluateAndAlertStaleness || evaluateAndAlertStaleness;
+  const _evalPullHealth = d.evaluateAndAlertPullHealth || evaluateAndAlertPullHealth;
+  const fs = d.db || db_firestore;
+  const pullHealthDeps = { db: fs, whatsapp: d.whatsapp || whatsappService };
+
+  const timestampKey = now.toISOString().replace(/[:.]/g, "-");
+  console.log(`[ReplicationProbe] Running at ${now.toISOString()}`);
+
+  let probeData = null;
+  let probeSqlFailed = false;
+
+  // --- Bloc SQL (source) : enrobé try/catch INTERNE. Une panne ici ne doit
+  //     PLUS empêcher le check pull-health (mode-b) qui suit. ---
+  try {
+    const db = await _getPool();
+    const dbProd = await _getPoolProd();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    // POINTAGE : sondé sur la BDP (BEE_BERRY_GOOD, table brute `Pointage`) —
+    // la VRAIE source depuis la bascule BR_Pointage → BDP. Alerte donc si le
+    // pull BDP tombe (mobile BEE ONE n'alimente plus la BDP), pas l'ancien
+    // BR_Pointage (mort). Consommation & Cueillette restent sur le reporting.
+    const [pointageCount, pointageMax, consommationCount, cueilletteCount] = await Promise.all([
+      dbProd.request().query(`SELECT COUNT(*) AS cnt FROM Pointage WHERE CONVERT(date, [DATE]) = '${todayStr}'`),
+      dbProd.request().query(`SELECT MAX([DATE]) AS maxDate, COUNT(*) AS totalRows FROM Pointage`),
+      db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Consommation WHERE [Date] >= DATEADD(day, -1, GETDATE())`),
+      db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Cueillette WHERE CONVERT(date, Periode_Date) = '${todayStr}'`),
+    ]);
+
+    probeData = {
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      localTime: now.toISOString(),
+      hour: now.getHours(),
+      minute: now.getMinutes(),
+      pointage_today_count: pointageCount.recordset[0].cnt,
+      pointage_max_date: pointageMax.recordset[0].maxDate,
+      pointage_total_rows: pointageMax.recordset[0].totalRows,
+      consommation_recent_count: consommationCount.recordset[0].cnt,
+      cueillette_today_count: cueilletteCount.recordset[0].cnt,
+    };
+
+    await fs.collection("replication_probe").doc(timestampKey).set(probeData);
+    console.log(`[ReplicationProbe] Stored: pointage_today=${probeData.pointage_today_count}, consommation_recent=${probeData.consommation_recent_count}, cueillette_today=${probeData.cueillette_today_count}`);
+
+    // Alerte STALENESS (mode-a) : table VIDE (0 ligne) OU données PÉRIMÉES
+    // (source gelée non-vide). Elle LIT la donnée SQL → ne tourne QUE si la
+    // lecture SQL a réussi (normal : la staleness source exige de lire la source).
+    await _evalStaleness(probeData, now);
+  } catch (err) {
+    // Panne SQL (serveur injoignable, timeout, requête KO) : on log + on écrit
+    // le doc d'erreur comme avant, MAIS on ne return PAS — le check pull-health
+    // ci-dessous doit tourner quand même (c'est LE cas critique du serveur down).
+    probeSqlFailed = true;
+    console.error("[ReplicationProbe] Error (bloc SQL):", err.message);
+    try {
+      await fs.collection("replication_probe").doc(timestampKey).set({
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        localTime: now.toISOString(),
+        error: err.message,
+      });
+    } catch (e2) {
+      console.error("[ReplicationProbe] écriture doc d'erreur échouée:", e2.message);
+    }
+  }
+
+  // Alerte « MODE B » : panne du PULL horaire (cron plante OU mirror en retard
+  // sur la source BDP fraîche). Lit UNIQUEMENT Firestore (consecutiveFailures +
+  // mirror max-date) → INDÉPENDANT de SQL. Appelé TOUJOURS, que la lecture SQL
+  // ci-dessus ait réussi ou non. État de débounce SÉPARÉ ; try/catch interne
+  // (dans la fonction) → ne casse jamais la sonde.
+  await _evalPullHealth(probeData, now, { probeSqlFailed }, pullHealthDeps);
+
+  return null;
+}
+exports.runReplicationProbe = runReplicationProbe;
+exports.evaluateAndAlertPullHealth = evaluateAndAlertPullHealth;
+
 exports.replicationProbe = functions
   .region("europe-west1")
   .runWith({ timeoutSeconds: 60, memory: "256MB" })
   .pubsub.schedule("every 1 hours")
   .timeZone("Africa/Casablanca")
   .onRun(async () => {
-    const now = new Date();
-    const timestampKey = now.toISOString().replace(/[:.]/g, "-");
-    console.log(`[ReplicationProbe] Running at ${now.toISOString()}`);
-
-    try {
-      const db = await getPool();
-      const dbProd = await getPoolProd();
-      const todayStr = now.toISOString().slice(0, 10);
-
-      // POINTAGE : sondé sur la BDP (BEE_BERRY_GOOD, table brute `Pointage`) —
-      // la VRAIE source depuis la bascule BR_Pointage → BDP. Alerte donc si le
-      // pull BDP tombe (mobile BEE ONE n'alimente plus la BDP), pas l'ancien
-      // BR_Pointage (mort). Consommation & Cueillette restent sur le reporting.
-      const [pointageCount, pointageMax, consommationCount, cueilletteCount] = await Promise.all([
-        dbProd.request().query(`SELECT COUNT(*) AS cnt FROM Pointage WHERE CONVERT(date, [DATE]) = '${todayStr}'`),
-        dbProd.request().query(`SELECT MAX([DATE]) AS maxDate, COUNT(*) AS totalRows FROM Pointage`),
-        db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Consommation WHERE [Date] >= DATEADD(day, -1, GETDATE())`),
-        db.request().query(`SELECT COUNT(*) AS cnt FROM BR_Cueillette WHERE CONVERT(date, Periode_Date) = '${todayStr}'`),
-      ]);
-
-      const probeData = {
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        localTime: now.toISOString(),
-        hour: now.getHours(),
-        minute: now.getMinutes(),
-        pointage_today_count: pointageCount.recordset[0].cnt,
-        pointage_max_date: pointageMax.recordset[0].maxDate,
-        pointage_total_rows: pointageMax.recordset[0].totalRows,
-        consommation_recent_count: consommationCount.recordset[0].cnt,
-        cueillette_today_count: cueilletteCount.recordset[0].cnt,
-      };
-
-      await db_firestore.collection("replication_probe").doc(timestampKey).set(probeData);
-      console.log(`[ReplicationProbe] Stored: pointage_today=${probeData.pointage_today_count}, consommation_recent=${probeData.consommation_recent_count}, cueillette_today=${probeData.cueillette_today_count}`);
-
-      // Alerte STALENESS : table VIDE (0 ligne) OU données PÉRIMÉES (source gelée
-      // non-vide). Détection pure via probeStaleness (âge de la donnée vs dernier
-      // jour ouvré attendu, week-ends/fériés tolérés). Ré-alerte débounce 24h.
-      await evaluateAndAlertStaleness(probeData, now);
-
-      // Alerte « MODE B » : panne du PULL horaire (cron plante OU mirror en
-      // retard sur la source BDP fraîche). Complète la staleness source ci-dessus.
-      // État de débounce SÉPARÉ (replication_probe_state/pull_health) : ne touche
-      // pas au mode-a. try/catch interne → ne casse jamais la sonde.
-      await evaluateAndAlertPullHealth(probeData, now);
-    } catch (err) {
-      console.error("[ReplicationProbe] Error:", err.message);
-      await db_firestore.collection("replication_probe").doc(timestampKey).set({
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        localTime: now.toISOString(),
-        error: err.message,
-      });
-    }
-    return null;
+    return runReplicationProbe();
   });
 
 // =============================================
