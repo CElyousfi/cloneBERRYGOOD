@@ -40,6 +40,18 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Référentiel parcelle→ferme (docs/spec-referentiel-parcelle-ferme.md).
+    // Alimente le cloisonnement ferme (fail-closed). CF-only : construit par le
+    // job de synchro (admin SDK), 0 lecture client-direct (cohérent Étape 4).
+    match /parcelle_ferme_referentiel/{docId} {
+      allow read: if false;
+      allow write: if false;
+    }
+    match /parcelle_ferme_referentiel_meta/{docId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
     // Production harvest scans (Tracabilite_recolte) — synced every 15 min from prod SQL.
     // Read-only for authenticated users (used by the Récolte tab live listener).
     match /prod_tracabilite_recolte/{docId} {
