@@ -68,6 +68,7 @@ const COMPONENT_SENTINELS = {
   "PointageValidationPanel.js": "window.PointageValidationPanel",
   "PointageValidationView.js": "window.PointageValidationView",
   "MagMappingConsoTab.js": "window.MagMappingConsoTab",
+  "ParcellesParamsTab.js": "window.ParcellesParamsTab",
   "PmpDetailPopup.js": "window.PmpDetailPopup",
   "InventaireMouvementsPopup.js": "window.InventaireMouvementsPopup",
   "FactureDetailPopup.js": "window.FactureDetailPopup",
