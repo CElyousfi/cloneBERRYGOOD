@@ -6,6 +6,11 @@ const { admin, db: db_firestore } = require("./config/firebase");
 const sqlConfig = require("./config/sqlConfig");
 const { withCache } = require("./middleware/cache");
 const { resolveFermeFromParcelle } = require("./lib/pointage/refParcelleFerme");
+const {
+  aggregateParcellesFromMirror,
+  mergeReferentiel,
+  isValidCampagneLabel,
+} = require("./lib/pointage/parcellesParams");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -3211,6 +3216,89 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         }
 
         return res.json({ success: true, date: dateForCheck, rows, count: rows.length });
+      }
+
+      // ------ PARCELLES-PARAMS-LIST : écran « Paramètres Parcelles » (liste) ------
+      // Source MAINTENANT : parcelles distinctes du mirror sql_mirror_pointage sur
+      // la campagne sélectionnée (référentiel parcelle_ferme_referentiel encore vide,
+      // serveur BEE ONE down). LEFT-JOIN référentiel pour enrichir surface_ha /
+      // campagne_assignee — surface « manquante » tant que le pull BEE ONE n'a pas
+      // tourné (dégradé gracieux voulu, spec §7.2).
+      // Cloisonnement : _fermeFilter (chef → ses parcelles) déjà appliqué via le
+      // shadow de getPointageRowsForDate (fail-closed). DG/RH → toutes.
+      if (action === "parcelles-params-list") {
+        const campagne = req.query.campagne || campagneCourante();
+        if (!isValidCampagneLabel(campagne)) {
+          return res.status(400).json({ success: false, error: "Campagne invalide" });
+        }
+        // Toutes les dates de la campagne (année fiscale 1er juil → 30 juin).
+        const start = `${campagne.slice(0, 4)}-07-01`;
+        const end = `${campagne.slice(5, 9)}-06-30`;
+        // getPointageRowsForDateRange est shadowé (filtré ferme) quand _fermeFilter.
+        const rawRows = await getPointageRowsForDateRange(start, end);
+        const parcelles = aggregateParcellesFromMirror(rawRows, deriveFerme, campagne);
+        // LEFT-JOIN référentiel : lire les docs de la campagne (clé `${campagne}__${ref}`).
+        const refByKey = new Map();
+        try {
+          const refSnap = await db_firestore.collection("parcelle_ferme_referentiel")
+            .where("campagne", "==", campagne).get();
+          refSnap.forEach((doc) => { refByKey.set(doc.id, doc.data() || {}); });
+        } catch (e) {
+          // Référentiel illisible → toutes surfaces « manquantes » (dégradé gracieux).
+          console.error("[parcelles-params-list] référentiel illisible:", e.message);
+        }
+        const merged = mergeReferentiel(parcelles, refByKey, campagne);
+        return res.json({ success: true, campagne, parcelles: merged, count: merged.length });
+      }
+
+      // ------ ASSIGN-CAMPAGNE-PARCELLE : assignation campagne (ÉCRITURE, gatée DG/admin) ------
+      // SEULE saisie SB de l'écran (spec §4/§7.1). Rôle : DG + admin uniquement
+      // (chef/RH/finance → 403). Upsert merge dans parcelle_ferme_referentiel
+      // (source:'manual' protège d'un écrasement au sync). Ne touche PAS surface_ha
+      // (authoritative BEE ONE).
+      if (action === "assign-campagne-parcelle") {
+        // Re-résout le profil du caller (le _callerProfile du bloc de gating est
+        // hors scope). Auth déjà exigée en amont (action non exemptée).
+        const _wu = await verifyAuth(req);
+        const _wProfile = await resolveCallerProfile(_wu);
+        const _isDG = _wProfile && (_wProfile.profileId === "dg" || _wProfile.role === "admin");
+        if (!_isDG) {
+          return res.status(403).json({ success: false, error: "Réservé DG/admin" });
+        }
+        const body = req.body || {};
+        const ref = (body.ref == null ? "" : String(body.ref)).trim();
+        const campagneCible = (body.campagne == null ? "" : String(body.campagne)).trim();
+        if (!ref) return res.status(400).json({ success: false, error: "ref manquant" });
+        if (!isValidCampagneLabel(campagneCible)) {
+          return res.status(400).json({ success: false, error: "Campagne cible invalide" });
+        }
+        // La clé du doc utilise la campagne D'ORIGINE (où la parcelle est listée),
+        // pas la cible : c'est le doc de CETTE parcelle-campagne que l'on annote.
+        const campagneOrigine = (body.campagne_origine == null ? campagneCible : String(body.campagne_origine)).trim();
+        if (!isValidCampagneLabel(campagneOrigine)) {
+          return res.status(400).json({ success: false, error: "Campagne d'origine invalide" });
+        }
+        const docId = `${campagneOrigine}__${ref}`;
+        try {
+          await db_firestore.collection("parcelle_ferme_referentiel").doc(docId).set({
+            campagne: campagneOrigine,
+            ref_parcelle: ref,
+            campagne_assignee: campagneCible,
+            campagne_assignee_by: {
+              uid: (_wu && _wu.uid) || null,
+              name: (_wProfile && _wProfile.profileId) || null,
+            },
+            campagne_assignee_at: admin.firestore.FieldValue.serverTimestamp(),
+            source: "manual",
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        } catch (e) {
+          console.error("[assign-campagne-parcelle] échec écriture:", e.message);
+          return res.status(500).json({ success: false, error: "Échec de l'écriture" });
+        }
+        // Invalide le cache référentiel mémoire (l'override manual peut changer un rattachement futur).
+        invalidateReferentielCache();
+        return res.json({ success: true, ref, campagne_assignee: campagneCible });
       }
 
       return res.status(400).json({ success: false, error: "Unknown action: " + action });
