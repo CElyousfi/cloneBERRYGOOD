@@ -133,6 +133,41 @@ test('computeTransportQuinzaine: filters by matchSub predicate', () => {
   assert.strictEqual(r.totalWorkers, 1);
 });
 
+test('computeTransportQuinzaine: ferme AND matchSub stacked simultaneously', () => {
+  // Both filters applied at once: only rows matching ferme F1 AND parcelle A survive.
+  const rows = [
+    { matricule: 'MM01', jour: 'J1', periode: 'Q1', ferme: 'F1', parcelle: 'A' }, // kept
+    { matricule: 'MM02', jour: 'J1', periode: 'Q1', ferme: 'F1', parcelle: 'B' }, // dropped (sub)
+    { matricule: 'MM03', jour: 'J1', periode: 'Q1', ferme: 'F5', parcelle: 'A' }, // dropped (ferme)
+    { matricule: 'HT01', jour: 'J1', periode: 'Q1', ferme: 'F1', parcelle: 'A' }, // kept
+    { matricule: 'MM04', jour: 'J1', periode: 'Q2', ferme: 'F1', parcelle: 'A' }, // dropped (periode)
+  ];
+  const matchSub = (r) => r.parcelle === 'A';
+  const r = computeTransportQuinzaine(rows, {
+    periode: 'Q1', transportEquipes: EQUIPES, coutMap: COUT, ferme: 'F1', matchSub,
+  });
+  // Survivors: MM01 (25) + HT01 (30) = 55 ; 2 distinct workers.
+  assert.strictEqual(r.total, 55);
+  assert.strictEqual(r.totalWorkers, 2);
+  const mm = r.byEquipe.find(e => e.prefix === 'MM');
+  const ht = r.byEquipe.find(e => e.prefix === 'HT');
+  assert.strictEqual(mm.total, 25);
+  assert.strictEqual(mm.totalWorkers, 1);
+  assert.strictEqual(ht.total, 30);
+  assert.strictEqual(ht.totalWorkers, 1);
+});
+
+test('computeTransportQuinzaine: null/undefined matricule rows ignored, no throw', () => {
+  const rows = [
+    { matricule: 'MM01', jour: 'J1', periode: 'Q1' }, // valid → 25
+    { matricule: null, jour: 'J1', periode: 'Q1' },   // null → ignored
+    { matricule: undefined, jour: 'J1', periode: 'Q1' }, // undefined → ignored
+  ];
+  const r = computeTransportQuinzaine(rows, { periode: 'Q1', transportEquipes: EQUIPES, coutMap: COUT });
+  assert.strictEqual(r.total, 25);
+  assert.strictEqual(r.totalWorkers, 1);
+});
+
 test('computeTransportQuinzaine: the 240 DH edge case — DD/NV counted identically', () => {
   // 8 distinct DD-prefixed workers on one day, NV tarif 30 → 8 × 30 = 240.
   // The OLD Primes getEqPrefix returned null for these (NV not in its `known` set as

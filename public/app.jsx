@@ -4392,13 +4392,15 @@
                         const coutMap = {};
                         transportEquipes.forEach(t => { coutMap[t.prefix] = data.getCoutTransport ? data.getCoutTransport(t.prefix, currentQuinz) : t.coutParOuvrier; });
                         const qTransportRows = transportRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
-                        const transportResult = window.QuinzaineUtils.computeTransportQuinzaine(transportRows, {
-                            periode: currentQuinz,
-                            transportEquipes,
-                            coutMap,
-                            ferme: farmFilter || null,
-                            matchSub,
-                        });
+                        const transportResult = (window.QuinzaineUtils && window.QuinzaineUtils.computeTransportQuinzaine)
+                            ? window.QuinzaineUtils.computeTransportQuinzaine(transportRows, {
+                                periode: currentQuinz,
+                                transportEquipes,
+                                coutMap,
+                                ferme: farmFilter || null,
+                                matchSub,
+                            })
+                            : { total: 0, totalWorkers: 0, dates: [], byEquipe: [], dailyByEquipe: {} };
                         const totalTransport = transportResult.total;
                         const tDates = transportResult.dates;
 
@@ -22037,12 +22039,14 @@ ${rejetHtml}
             // (DD→NV compté des deux côtés) + filtre ferme aligné sur Quinzaine.
             const coutMap = {};
             transportEquipes.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, currentPeriode) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
-            const transportSummary = window.QuinzaineUtils.computeTransportQuinzaine(detailRows, {
-                periode: currentPeriode,
-                transportEquipes,
-                coutMap,
-                ferme: farmFilter || null,
-            });
+            const transportSummary = (window.QuinzaineUtils && window.QuinzaineUtils.computeTransportQuinzaine)
+                ? window.QuinzaineUtils.computeTransportQuinzaine(detailRows, {
+                    periode: currentPeriode,
+                    transportEquipes,
+                    coutMap,
+                    ferme: farmFilter || null,
+                })
+                : { total: 0, totalWorkers: 0, dates: [], byEquipe: [], dailyByEquipe: {} };
             const totalTransportCout = transportSummary.total;
             const totalTransportJH = transportSummary.totalWorkers;
 
