@@ -4384,27 +4384,26 @@
                         const currentQuinz = transportPeriodes[0] || recolteEquipePeriodes[0] || '';
                         if (!currentQuinz) return null;
 
-                        // Transport quinzaine — tarif effectif à la quinzaine (versionné)
-                        const qTransportRows = transportRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
+                        // Transport quinzaine — tarif effectif à la quinzaine (versionné).
+                        // Fonction Transport UNIFIÉE (Lot 1 spec-quinzaine-cout-charge) :
+                        // window.QuinzaineUtils.computeTransportQuinzaine — même source que
+                        // l'écran Primes → mêmes totaux à périmètre ferme/sub égal. Encode la
+                        // règle (Set ouvriers distincts par jour/équipe × tarif, filtré
+                        // periode + ferme/sub), aucun total hardcodé.
                         const coutMap = {};
                         transportEquipes.forEach(t => { coutMap[t.prefix] = data.getCoutTransport ? data.getCoutTransport(t.prefix, currentQuinz) : t.coutParOuvrier; });
-                        const dailyByEq = {};
-                        qTransportRows.forEach(r => {
-                            const eq = getEqPrefix(r.matricule);
-                            if (!eq) return;
-                            const d = r.jour;
-                            if (!dailyByEq[d]) dailyByEq[d] = {};
-                            if (!dailyByEq[d][eq]) dailyByEq[d][eq] = new Set();
-                            dailyByEq[d][eq].add(r.matricule);
-                        });
-                        let totalTransport = 0;
-                        const tDates = [...new Set(qTransportRows.map(r => r.jour))].sort();
-                        transportEquipes.forEach(t => {
-                            tDates.forEach(d => {
-                                const workers = dailyByEq[d]?.[t.prefix]?.size || 0;
-                                totalTransport += workers * (coutMap[t.prefix] || 0);
-                            });
-                        });
+                        const qTransportRows = transportRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
+                        const transportResult = (window.QuinzaineUtils && window.QuinzaineUtils.computeTransportQuinzaine)
+                            ? window.QuinzaineUtils.computeTransportQuinzaine(transportRows, {
+                                periode: currentQuinz,
+                                transportEquipes,
+                                coutMap,
+                                ferme: farmFilter || null,
+                                matchSub,
+                            })
+                            : { total: 0, totalWorkers: 0, dates: [], byEquipe: [], dailyByEquipe: {} };
+                        const totalTransport = transportResult.total;
+                        const tDates = transportResult.dates;
 
                         // Traitement quinzaine: 10 DH per worker-day
                         const traitRows = qTransportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
@@ -4435,17 +4434,16 @@
                         const nbJours = Math.max(tDates.length, [...new Set(qRecolteRows.map(r => r.jour))].length, quinzaineData?.parJour?.length || 0);
                         const totalGlobal = totalMainOeuvre + totalTransport + totalPrimeRecolte + totalAutresPrimes;
 
-                        // Detail data for popups
-                        // Transport par équipe par jour
+                        // Detail data for popups — dérivé de la MÊME source unifiée
+                        // (transportResult.dailyByEquipe, clé [jour][prefix]) pour rester
+                        // strictement cohérent avec le total. On ré-indexe en [prefix][jour].
                         const transportByEqDay = {};
-                        const transportEquipesMap = {};
-                        transportEquipes.forEach(t => { transportEquipesMap[t.prefix] = t; });
-                        qTransportRows.forEach(r => {
-                            const eq = getEqPrefix(r.matricule);
-                            if (!eq) return;
-                            if (!transportByEqDay[eq]) transportByEqDay[eq] = {};
-                            if (!transportByEqDay[eq][r.jour]) transportByEqDay[eq][r.jour] = new Set();
-                            transportByEqDay[eq][r.jour].add(r.matricule);
+                        Object.keys(transportResult.dailyByEquipe).forEach(d => {
+                            const perEq = transportResult.dailyByEquipe[d];
+                            Object.keys(perEq).forEach(eq => {
+                                if (!transportByEqDay[eq]) transportByEqDay[eq] = {};
+                                transportByEqDay[eq][d] = perEq[eq];
+                            });
                         });
                         const transportDetail = transportEquipes.filter(t => transportByEqDay[t.prefix]).map(t => {
                             let total = 0, totalWorkers = 0;
@@ -21975,16 +21973,10 @@ ${rejetHtml}
             const transportEquipes = data.transportConfig || [];
             const fmtDuree = (min) => { if (min == null || !isFinite(min)) return '—'; const a = Math.abs(Math.round(min)); return `${Math.floor(a/60)}h ${String(a%60).padStart(2,'0')}`; };
 
-            const getEqPrefix = (mat) => {
-                if (!mat) return null;
-                const m = mat.toUpperCase().trim();
-                const p2 = m.substring(0, 2);
-                const known = transportEquipes.map(t => t.prefix);
-                if (known.includes(p2)) return p2;
-                if (m.startsWith('HAFI') || m.startsWith('HA')) return 'HA';
-                if (m.startsWith('DD')) return 'NV';
-                return null;
-            };
+            // getEqPrefix UNIFIÉ (Lot 1 spec-quinzaine-cout-charge) : même comportement
+            // déterministe que l'écran Quinzaine via window.QuinzaineUtils. L'ancien
+            // getEqPrefix local retournait null pour un préfixe inconnu, ce qui divergeait
+            // de l'écran Quinzaine (cause du bug 240 DH sur l'équipe NV).
 
             const isMyrtilleVar = (v) => /myrtille|blue|corina|corrina|cascade|breeze/i.test(v || '');
             const calcPrimeLocal = (kg, variete, date) => {
@@ -22041,27 +22033,23 @@ ${rejetHtml}
             const currentPeriode = selectedPeriode || (periodes[0] || '');
             const periodeRows = detailRows.filter(r => r.periode === currentPeriode);
 
-            // Transport summary
+            // Transport summary — fonction Transport UNIFIÉE (Lot 1
+            // spec-quinzaine-cout-charge) : même source que l'écran Quinzaine
+            // (window.QuinzaineUtils.computeTransportQuinzaine) → mêmes totaux à
+            // périmètre ferme égal. Corrige le bug 240 DH : getEqPrefix déterministe
+            // (DD→NV compté des deux côtés) + filtre ferme aligné sur Quinzaine.
             const coutMap = {};
             transportEquipes.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, currentPeriode) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
-            const dailyByEquipe = {};
-            periodeRows.forEach(r => {
-                const d = r.jour; const eq = getEqPrefix(r.matricule);
-                if (!eq) return;
-                if (!dailyByEquipe[d]) dailyByEquipe[d] = {};
-                if (!dailyByEquipe[d][eq]) dailyByEquipe[d][eq] = new Set();
-                dailyByEquipe[d][eq].add(r.matricule);
-            });
-            const allDates = [...new Set(periodeRows.map(r => r.jour))].sort();
-            let totalTransportCout = 0;
-            let totalTransportJH = 0;
-            transportEquipes.forEach(t => {
-                allDates.forEach(d => {
-                    const workers = dailyByEquipe[d]?.[t.prefix]?.size || 0;
-                    totalTransportCout += workers * (coutMap[t.prefix] || 0);
-                    totalTransportJH += workers;
-                });
-            });
+            const transportSummary = (window.QuinzaineUtils && window.QuinzaineUtils.computeTransportQuinzaine)
+                ? window.QuinzaineUtils.computeTransportQuinzaine(detailRows, {
+                    periode: currentPeriode,
+                    transportEquipes,
+                    coutMap,
+                    ferme: farmFilter || null,
+                })
+                : { total: 0, totalWorkers: 0, dates: [], byEquipe: [], dailyByEquipe: {} };
+            const totalTransportCout = transportSummary.total;
+            const totalTransportJH = transportSummary.totalWorkers;
 
             // Traitement summary: 10 DH per worker-day for workers with operationFamille containing "Traitement"
             const traitementRows = periodeRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
