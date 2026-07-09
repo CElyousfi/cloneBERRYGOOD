@@ -5,6 +5,7 @@ const cors = require("cors")({ origin: true });
 const { admin, db: db_firestore } = require("./config/firebase");
 const sqlConfig = require("./config/sqlConfig");
 const { withCache } = require("./middleware/cache");
+const { resolveFermeFromParcelle } = require("./lib/pointage/refParcelleFerme");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -42,7 +43,7 @@ const {
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
 const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
 const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
-const { campagneCourante } = require("./lib/mappingConso/campagneUtils");
+const { campagneCourante, campagneOf } = require("./lib/mappingConso/campagneUtils");
 
 // Défaut de période = 1re quinzaine de la CAMPAGNE COURANTE (au lieu du plus
 // grand numéro toutes campagnes confondues). Fallback gracieux si la campagne
@@ -317,29 +318,96 @@ function pointageCacheKey(base, fermeFilter) {
   return `${base}_${fermeFilter || 'all'}`;
 }
 
-function deriveFerme(refParcelle, parcelleCulturale) {
-  const ref = (refParcelle || "").trim();
-  // BAHIA = entité juridique distincte (cf. deriveSubFerme côté frontend). Prioritaire
-  // sur la détection Avocatier afin que les ouvriers BAHIA aient leur propre bucket.
-  if (/bahia/i.test(ref) || /bahia/i.test(parcelleCulturale || "")) return "BAHIA";
-  if (ref) {
-  if (ref.startsWith("F1") || ref === "0032" || ref === "0035" || ref === "0036") return "F1";
-  if (ref.startsWith("F5") || ref === "0037" || ref === "0038" || ref === "0039") return "F5";
-  if (ref.startsWith("F2") || ref.startsWith("F3") || ref.startsWith("F4") || ref.startsWith("F6") || ref === "0031" || ref === "0033") return "Avocatier";
+// =============================================
+// Référentiel parcelle → ferme (docs/spec-referentiel-parcelle-ferme.md)
+// =============================================
+// Cache en mémoire du référentiel `parcelle_ferme_referentiel` (clé
+// `${campagne}__${ref_parcelle}` → ferme). deriveFerme est appelé
+// SYNCHRONEMENT dans des dizaines de map/filter → on ne peut pas lire Firestore
+// par ligne. On charge donc le référentiel en mémoire (comme le meta pointage)
+// et deriveFerme fait un lookup synchrone, avec fallback règle §3 inline (module
+// pur, 100 % iso) si la parcelle n'est pas encore synchro. Zéro régression : tant
+// qu'il n'y a pas d'override `manual`, lookup et fallback donnent le même résultat.
+let _referentielCache = null; // Map<`${campagne}__${ref}`, ferme> | null
+let _referentielLoadedAt = 0;
+const REFERENTIEL_TTL_MS = 10 * 60 * 1000; // rechargé au max toutes les 10 min
+
+/**
+ * Charge (ou recharge) le cache référentiel depuis Firestore. Tolérant aux
+ * erreurs : en cas d'échec, laisse le cache existant (ou null) → deriveFerme
+ * retombe sur le fallback règle §3 (fail-safe, jamais de crash).
+ * @param {boolean} [force] force le rechargement même si TTL non expiré
+ */
+async function loadReferentielCache(force) {
+  const now = Date.now();
+  if (!force && _referentielCache && (now - _referentielLoadedAt) < REFERENTIEL_TTL_MS) {
+    return _referentielCache;
   }
-  if (parcelleCulturale) {
-    if (/F1/i.test(parcelleCulturale)) return "F1";
-    if (/F5/i.test(parcelleCulturale)) return "F5";
-    if (/avocat/i.test(parcelleCulturale)) return "Avocatier";
-    // Parcelles S1-S7 = F1, S8-S14 = F5
-    const sMatch = parcelleCulturale.match(/\bS(\d{1,2})\b/i);
-    if (sMatch) {
-      const sNum = parseInt(sMatch[1], 10);
-      if (sNum >= 1 && sNum <= 7) return "F1";
-      if (sNum >= 8 && sNum <= 14) return "F5";
+  try {
+    const snap = await db_firestore.collection("parcelle_ferme_referentiel").get();
+    const map = new Map();
+    snap.forEach((doc) => {
+      const d = doc.data() || {};
+      // INCONNU stocké tel quel : le runtime le traite en fail-closed + alerte.
+      if (d.ferme) map.set(doc.id, d.ferme);
+    });
+    _referentielCache = map;
+    _referentielLoadedAt = now;
+  } catch (e) {
+    console.error("[referentiel] chargement cache échec:", e.message);
+    if (!_referentielCache) _referentielCache = new Map();
+  }
+  return _referentielCache;
+}
+
+/** Invalide le cache (appelé après une synchro du référentiel). */
+function invalidateReferentielCache() {
+  _referentielCache = null;
+  _referentielLoadedAt = 0;
+}
+
+/**
+ * Dérive la ferme SB d'une ligne de pointage.
+ *
+ * Signature RÉTROCOMPATIBLE : `campagne` est optionnel. Quand il est fourni ET
+ * que le cache référentiel est chargé, on tente un LOOKUP
+ * `parcelle_ferme_referentiel/${campagne}__${ref}`. Sinon (ou si absent du
+ * référentiel) → FALLBACK règle §3 inline (module pur), 100 % iso avec l'ancien
+ * comportement.
+ *
+ * Retour : 'F1' | 'F5' | 'Avocatier' | 'BAHIA' | 'Autre'.
+ * NOTE : on renvoie toujours 'Autre' (pas 'INCONNU') côté deriveFerme pour ne
+ * PAS changer le contrat des dizaines d'appelants (fail-closed inchangé : une
+ * parcelle non résolue n'entre dans aucune ferme de chef). La détection des
+ * parcelles ACTIVES non résolues + l'alerte se font dans le JOB de synchro
+ * (§6), qui a le contexte « parcelle active » et le debounce.
+ *
+ * @param {*} refParcelle Ref_parcelle
+ * @param {*} parcelleCulturale label Parcelle_Culturale
+ * @param {string} [campagne] libellé campagne ('2026-2027') pour le lookup
+ * @returns {'F1'|'F5'|'Avocatier'|'BAHIA'|'Autre'}
+ */
+function deriveFerme(refParcelle, parcelleCulturale, campagne) {
+  // 1. Lookup référentiel (cache mémoire) si campagne + ref disponibles.
+  if (campagne && _referentielCache) {
+    const ref = (refParcelle == null ? "" : String(refParcelle)).trim();
+    if (ref) {
+      const hit = _referentielCache.get(`${campagne}__${ref}`);
+      if (hit && hit !== "INCONNU") return hit;
+      // hit === 'INCONNU' → on retombe sur le fallback règle (peut avoir été
+      // résolu depuis via le label) ; si le fallback ne tranche pas non plus →
+      // 'Autre' (fail-closed). hit absent → parcelle hors référentiel → fallback.
     }
   }
-  return "Autre";
+  // 2. Fallback règle §3 inline (module pur, 100 % iso avec l'ancienne liste).
+  const { ferme } = resolveFermeFromParcelle({
+    refParcelle,
+    label: parcelleCulturale,
+    variete: undefined,
+    idFermes: undefined,
+  });
+  // INCONNU → 'Autre' pour préserver le contrat des appelants (fail-closed).
+  return ferme === "INCONNU" ? "Autre" : ferme;
 }
 
 /**
@@ -1000,6 +1068,8 @@ exports.createSnapshot = createSnapshot;
 exports.getSubmittedFermes = getSubmittedFermes;
 exports.getSnapshotData = getSnapshotData;
 exports.deriveFerme = deriveFerme;
+exports.loadReferentielCache = loadReferentielCache;
+exports.invalidateReferentielCache = invalidateReferentielCache;
 exports.filterMirrorRowsByFerme = filterMirrorRowsByFerme;
 exports.filterByFermeField = filterByFermeField;
 exports.filterArchivedRowsByFerme = filterArchivedRowsByFerme;
@@ -1580,6 +1650,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       const action = req.query.action || "summary";
       const dateParam = req.query.date; // YYYY-MM-DD
 
+      // Référentiel parcelle→ferme : charge le cache mémoire (best-effort) pour
+      // que deriveFerme puisse faire un lookup campagne-aware. Non bloquant : en
+      // cas d'échec, deriveFerme retombe sur le fallback règle §3 (100 % iso).
+      await loadReferentielCache();
+
       // ===== GATING PAIE (Étape 0) — barrière serveur sur le nominatif RH =====
       // pointageRH agrège sql_mirror_pointage (nominatif). Rôle résolu SERVEUR
       // depuis users/{uid} (token Firebase), JAMAIS depuis le body/query.
@@ -1611,8 +1686,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // Chef : filtre ferme appliqué AU NIVEAU DES LIGNES BRUTES, avant toute
       // agrégation, en shadowant les fetchers. deriveFerme retourne 'Autre' si
       // indéterminé → exclu (fail-closed : jamais dans la ferme d'un chef).
-      const _keepPointage = (r) => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) === _fermeFilter;
-      const _keepCueillette = (r) => deriveFerme(r.Reference_Technique, r.Parcelle_Culturale) === _fermeFilter;
+      const _keepPointage = (r) => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === _fermeFilter;
+      const _keepCueillette = (r) => deriveFerme(r.Reference_Technique, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === _fermeFilter;
       const getPointageRowsForDate = _fermeFilter
         ? async (...a) => (await _getPointageRowsForDate(...a)).filter(_keepPointage)
         : _getPointageRowsForDate;

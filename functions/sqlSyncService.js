@@ -15,6 +15,7 @@ const sqlConfigProd = require("./config/sqlConfigProd");
 const whatsappService = require("./whatsappService");
 const probeStaleness = require("./lib/probeStaleness/probeStaleness");
 const pullHealth = require("./lib/pointage/pullHealth");
+const { resolveFermeFromParcelle } = require("./lib/pointage/refParcelleFerme");
 
 // Ré-alerte staleness : rappel toutes les 24h tant que la donnée reste gelée.
 const STALENESS_RE_ALERT_HOURS = 24;
@@ -924,25 +925,18 @@ async function rebuildPointageWorkersFromMirror() {
 // Quinzaine archiving helpers
 // =============================================
 
+// Factorisé sur le module pur `refParcelleFerme` (docs/spec-referentiel-parcelle-ferme.md).
+// L'ancienne copie locale N'AVAIT PAS le signal BAHIA (bug latent : une parcelle
+// BAHIA pouvait tomber en 'Autre' ou être mal secteurisée en F1/F5 dans le path
+// archive). Le module ajoute BAHIA + renvoie 'INCONNU' → mappé en 'Autre' ici
+// pour préserver le contrat (buckets qFermes = F1/F5/Avocatier ; BAHIA/INCONNU
+// hors bucket, comportement fail-closed inchangé côté archive).
 function deriveFerme(refParcelle, parcelleCulturale) {
-  const ref = (refParcelle || "").trim();
-  if (ref) {
-    if (ref.startsWith("F1") || ref === "0032" || ref === "0035" || ref === "0036") return "F1";
-    if (ref.startsWith("F5") || ref === "0037" || ref === "0038" || ref === "0039") return "F5";
-    if (ref.startsWith("F2") || ref.startsWith("F3") || ref.startsWith("F4") || ref.startsWith("F6") || ref === "0031" || ref === "0033") return "Avocatier";
-  }
-  if (parcelleCulturale) {
-    if (/F1/i.test(parcelleCulturale)) return "F1";
-    if (/F5/i.test(parcelleCulturale)) return "F5";
-    if (/avocat/i.test(parcelleCulturale)) return "Avocatier";
-    const sMatch = parcelleCulturale.match(/\bS(\d{1,2})\b/i);
-    if (sMatch) {
-      const sNum = parseInt(sMatch[1], 10);
-      if (sNum >= 1 && sNum <= 7) return "F1";
-      if (sNum >= 8 && sNum <= 14) return "F5";
-    }
-  }
-  return "Autre";
+  const { ferme } = resolveFermeFromParcelle({
+    refParcelle,
+    label: parcelleCulturale,
+  });
+  return ferme === "INCONNU" ? "Autre" : ferme;
 }
 
 function classifyType(operationFamille) {
@@ -1140,6 +1134,29 @@ async function runFullSync() {
     });
 
     console.log(`[Sync] Full sync completed in ${durationMs}ms (pointage BDP ${pointageWindow.from}→${pointageWindow.to})`);
+
+    // Référentiel parcelle→ferme (docs/spec-referentiel-parcelle-ferme.md §4.2).
+    // Piggyback horaire, best-effort : enrobé try/catch → ne casse JAMAIS le sync.
+    try {
+      const { syncReferentielParcelleFerme } = require("./lib/pointage/referentielSync");
+      const { campagneCourante } = require("./lib/mappingConso/campagneUtils");
+      const poolProd = await getPoolProd();
+      const campagne = campagneCourante();
+      let invalidateCache = null;
+      try { invalidateCache = require("./pointageService").invalidateReferentielCache; } catch (_) {}
+      const refResult = await syncReferentielParcelleFerme({
+        sqlPool: poolProd,
+        db: db_firestore,
+        admin,
+        campagne,
+        whatsapp: whatsappService,
+        invalidateCache,
+      });
+      console.log(`[Sync] referentiel parcelle→ferme: ${JSON.stringify(refResult)}`);
+    } catch (refErr) {
+      console.error("[Sync] referentiel parcelle→ferme échec (non bloquant):", refErr.message);
+    }
+
     return { success: true, durationMs, consommationCount, cueilletteCount, pointageCount, pointageWindow };
   } catch (err) {
     const durationMs = Date.now() - startTime;
