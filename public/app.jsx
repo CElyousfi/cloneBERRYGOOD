@@ -5538,7 +5538,8 @@
                     fetch(`/api/pointage-rh?action=detail${dateQuery}`).then(r => r.json()),
                     fetch(`/api/pointage-rh?action=upload-times${dateQuery}`).then(r => r.json()).catch(() => ({ success: false })),
                     fetch(`/api/pointage-rh?action=postes-fixes${dateQuery}`).then(r => r.json()).catch(() => ({ success: false })),
-                ]).then(([summary, detail, uploads, fixes]) => {
+                    fetch(`/api/pointage-rh?action=presence${dateQuery}`).then(r => r.json()).catch(() => ({ success: false })),
+                ]).then(([summary, detail, uploads, fixes, presence]) => {
                     if (summary.success) setApiData(summary);
                     if (detail.success) setDetailRows(detail.rows || []);
                     if (uploads.success) {
@@ -5546,6 +5547,7 @@
                         setLastSyncTime(uploads.lastTableWrite || null);
                     }
                     if (fixes.success) setPostesFixes(fixes.rows || []);
+                    if (presence && presence.success) setPresenceData({ rows: presence.rows || [], syncedAt: presence.syncedAt || null });
                 }).catch(err => console.warn('Pointage error:', err)).finally(() => setLoading(false));
             };
 
@@ -5556,9 +5558,6 @@
                         setDates(json.dates || []);
                         if (json.dates && json.dates.length > 0) loadVisaStatus(json.dates[0].date);
                     }
-                }).catch(() => {});
-                cachedFetch('/api/pointage-rh?action=presence').then(json => {
-                    if (json && json.success) setPresenceData({ rows: json.rows || [], syncedAt: json.syncedAt || null });
                 }).catch(() => {});
             }, []);
 
