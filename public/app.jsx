@@ -4330,19 +4330,19 @@
 
                     {/* Équipes sans entrée/sortie — Chef F1/F5 uniquement */}
                     {(currentProfile === 'chef_f1' || currentProfile === 'chef_f5') && farmFilter && presenceQData && (() => {
-                        // Build set of allowed matricules from transportRows (ferme-filtered)
-                        const allowedMats = new Set(
-                            transportRows
-                                .filter(r => r.ferme === farmFilter)
-                                .map(r => (r.matricule || '').toUpperCase().trim())
-                        );
                         // Per day: find workers missing entry or exit
                         const daysWithIssues = (presenceQData.days || [])
                             .map(d => {
+                                // Workers who worked in THIS farm on THIS specific day (not the whole quinzaine)
+                                const allowedMatsForDay = new Set(
+                                    transportRows
+                                        .filter(r => r.ferme === farmFilter && r.jour === d.date)
+                                        .map(r => (r.matricule || '').toUpperCase().trim())
+                                );
+                                if (allowedMatsForDay.size === 0) return null;
                                 const filtered = d.rows.filter(r => {
                                     const mat = (r.matricule || '').toUpperCase().trim();
-                                    // Only workers of this ferme (derived from transport)
-                                    if (allowedMats.size > 0 && !allowedMats.has(mat)) return false;
+                                    if (!allowedMatsForDay.has(mat)) return false;
                                     return !r.heureEntree || !r.heureSortie;
                                 });
                                 if (!filtered.length) return null;
