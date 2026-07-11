@@ -10636,8 +10636,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
+            // currentPeriode doit être calculé AVANT coutMap : getCoutTransport est versionné
+            // par quinzaine et selectedPeriode reste '' tant que l'user ne change pas la sélection.
+            // Utiliser apiData.periodes[0] comme fallback pour obtenir le bon tarif historique.
+            const _periodeForCout = selectedPeriode || (apiData ? (apiData.periodes || [])[0] : null) || null;
             const coutMap = {};
-            transportConfig.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, selectedPeriode || null) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
+            transportConfig.forEach(t => { coutMap[t.prefix] = (data.getCoutTransport ? data.getCoutTransport(t.prefix, _periodeForCout) : t.coutParOuvrier) || t.coutParOuvrier || 0; });
             const getEqPrefix = (mat) => {
                 if (!mat) return 'NV';
                 const m = mat.toUpperCase().trim();
