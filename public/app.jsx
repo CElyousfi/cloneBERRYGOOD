@@ -10846,6 +10846,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [quinzPopupKey, setQuinzPopupKey] = useState(null);
             const [quinzGroupBy, setQuinzGroupBy] = useState('equipe');
             const [quinzSubWorker, setQuinzSubWorker] = useState(null);
+            const [quinzSearch, setQuinzSearch] = useState('');
             const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             const [quinzRegistry, setQuinzRegistry] = useState({});
 
@@ -11198,7 +11199,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-                                onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); }}>
+                                onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); setQuinzSearch(''); }}>
                                 <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
                                     onClick={e => e.stopPropagation()}>
                                     <div style={{padding:'20px 24px',background:`linear-gradient(135deg, ${_qpColor} 0%, ${_qpColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
@@ -11206,11 +11207,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             <div style={{fontSize:18,fontWeight:700}}><i className={`fa-solid ${_qpIcon}`} style={{marginRight:8}}></i>{_qpTitle} — {currentPeriode}</div>
                                             <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''} — {_qpTotalJ} jours hommes{_isMoCard ? ' — ' + _qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR') + ' DH net' : ''}</div>
                                         </div>
-                                        <button onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); }} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                        <button onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); setQuinzSearch(''); }} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
                                             <i className="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
-                                    <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center'}}>
+                                    <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                                         <span style={{fontSize:11,color:'var(--gray-500)',marginRight:4}}>Regrouper par :</span>
                                         {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => (
                                             <button key={mode} onClick={() => setQuinzGroupBy(mode)}
@@ -11220,9 +11221,27 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 {label}
                                             </button>
                                         ))}
+                                        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:'var(--gray-50)',borderRadius:8,border:'1px solid var(--gray-300)',padding:'4px 10px'}}>
+                                            <i className="fa-solid fa-magnifying-glass" style={{fontSize:11,color:'var(--gray-400)'}}></i>
+                                            <input
+                                                type="text"
+                                                placeholder="Matricule ou nom…"
+                                                value={quinzSearch}
+                                                onChange={e => setQuinzSearch(e.target.value)}
+                                                style={{border:'none',outline:'none',fontSize:12,background:'transparent',width:160,color:'var(--gray-700)'}}
+                                            />
+                                            {quinzSearch && (
+                                                <button onClick={() => setQuinzSearch('')} style={{border:'none',background:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:12,padding:'0 2px',lineHeight:1}}>×</button>
+                                            )}
+                                        </div>
                                     </div>
                                     <div style={{padding:'16px 24px'}}>
-                                        {_qpWorkers.length === 0 ? (
+                                        {(() => {
+                                            const _sq = quinzSearch.trim().toLowerCase();
+                                            return _sq
+                                                ? _qpWorkers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq)).length === 0
+                                                : _qpWorkers.length === 0;
+                                        })() ? (
                                             <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Aucun ouvrier.</div>
                                         ) : (
                                         <div className="table-responsive">
@@ -11240,7 +11259,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {_qpGroups.map(g => (
+                                                {(() => {
+                                                    const _sq = quinzSearch.trim().toLowerCase();
+                                                    const _filteredGroups = _qpGroups.map(g => ({
+                                                        ...g,
+                                                        workers: _sq
+                                                            ? g.workers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq))
+                                                            : g.workers,
+                                                    })).filter(g => g.workers.length > 0);
+                                                    return _filteredGroups.map(g => (
                                                     <React.Fragment key={g.key}>
                                                         <tr style={{background:'var(--green-pale, #eef7ef)'}}>
                                                             {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
@@ -11270,7 +11297,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             </tr>
                                                         ))}
                                                     </React.Fragment>
-                                                ))}
+                                                ));
+                                                })()}
                                             </tbody>
                                             <tfoot>
                                                 <tr style={{background:'var(--gray-50)',fontWeight:700}}>
