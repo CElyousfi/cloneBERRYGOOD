@@ -10944,6 +10944,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 _qpWMap[mat] = {
                                     matricule: mat, nom: r.nom || mat, ferme: r.ferme || '—',
                                     jours: new Set(), operations: new Set(), parcelles: new Set(),
+                                    heures: 0, cout: 0,
                                 };
                             }
                             if (r.jour) _qpWMap[mat].jours.add(r.jour);
@@ -10951,6 +10952,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             if (op) _qpWMap[mat].operations.add(op);
                             if (r.parcelle) _qpWMap[mat].parcelles.add(r.parcelle);
                             if (r.refParcelle) _qpWMap[mat].parcelles.add(r.refParcelle);
+                            _qpWMap[mat].heures += r.heures || 0;
+                            _qpWMap[mat].cout += r.cout || 0;
                         });
                         const _qpWorkers = Object.values(_qpWMap)
                             .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''))
@@ -10960,6 +10963,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 operationsStr: [...w.operations].join(', ') || '—',
                                 parcellesArr: [...w.parcelles],
                                 parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
+                                heuresTotal: Math.round(w.heures * 10) / 10,
+                                coutTotal: Math.round(w.cout),
                             }));
                         const _qpTotalJ = _qpWorkers.reduce((s, w) => s + w.journees, 0);
 
@@ -11029,6 +11034,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <th style={{padding:'6px 10px'}}>Opérations</th>
                                                     <th style={{padding:'6px 10px'}}>Parcelles</th>
                                                     <th style={{padding:'6px 10px',textAlign:'center'}}>Journées</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -11041,6 +11048,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
                                                             </td>
                                                             <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
+                                                            <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{Math.round(g.workers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>
+                                                            <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
                                                         </tr>
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
@@ -11052,6 +11061,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
                                                                 <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
+                                                                <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>
+                                                                <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{w.coutTotal > 0 ? w.coutTotal.toLocaleString('fr-FR') : '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </React.Fragment>
@@ -11061,6 +11072,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 <tr style={{background:'var(--gray-50)',fontWeight:700}}>
                                                     <td colSpan={4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
                                                     <td style={{textAlign:'center',padding:'6px 10px'}}>{_qpTotalJ}</td>
+                                                    <td style={{textAlign:'center',padding:'6px 10px'}}>{Math.round(_qpWorkers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>
+                                                    <td style={{textAlign:'right',padding:'6px 10px'}}>{_qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
                                                 </tr>
                                             </tfoot>
                                         </table>
