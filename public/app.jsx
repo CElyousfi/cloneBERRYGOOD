@@ -11235,21 +11235,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     </div>
                                     <div style={{padding:'16px 20px'}}>
                                         <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:10}}>
-                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Déclaré&nbsp;&nbsp;
-                                            <span style={{color:'#e74c3c',marginRight:4}}>●</span>Non déclaré
+                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Jours déclarés en BDP ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})
                                         </div>
                                         <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-                                            {_swDays.map(day => {
-                                                const worked = _sw.jours.has(day);
+                                            {[..._sw.jours].sort().map(day => {
                                                 const label = (() => { const d = new Date(day + 'T00:00:00'); return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}); })();
                                                 return (
                                                     <div key={day} style={{
                                                         display:'flex',alignItems:'center',gap:4,
                                                         padding:'5px 10px',borderRadius:8,
-                                                        background: worked ? '#eafaf1' : '#fdf2f2',
-                                                        border:`1px solid ${worked ? '#27ae60' : '#e74c3c'}`,
+                                                        background:'#eafaf1',
+                                                        border:'1px solid #27ae60',
                                                         fontSize:11,fontWeight:600,
-                                                        color: worked ? '#1a7a4a' : '#c0392b',
+                                                        color:'#1a7a4a',
                                                     }}>
                                                         <span style={{fontSize:12}}>●</span>{label}
                                                     </div>
