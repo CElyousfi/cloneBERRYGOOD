@@ -75,6 +75,7 @@ const COMPONENT_SENTINELS = {
   "ScanAttachmentButton.js": "window.ScanAttachmentButton",
   "ConsoValoriseeTab.js": "window.ConsoValoriseeTab",
   "QuinzaineCampagneSelect.js": "window.QuinzaineCampagneSelect",
+  "QuinzaineRecapCards.js": "window.QuinzaineRecapCards",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));
