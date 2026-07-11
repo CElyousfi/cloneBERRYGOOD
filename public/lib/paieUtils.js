@@ -49,7 +49,7 @@
    * }}
    */
   const PAIE_BAREMES_DEFAULT = {
-    smagBrutJournalier: 88.58,
+    smagBrutJournalier: 97.44,
     smagNetJournalier: 90.88,
     joursParMois: 26,
     heuresNormalesParJour: 8,
