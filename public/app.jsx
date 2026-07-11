@@ -10666,6 +10666,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [reposData, setReposData] = useState(null);
             const [alertesData, setAlertesData] = useState(null);
             const [expandedReposEquipe, setExpandedReposEquipe] = useState(null);
+            const [quinzPopupKey, setQuinzPopupKey] = useState(null);
 
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
@@ -10802,11 +10803,51 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const totalAutresPrimes = totalTraitement + totalConditionnement + totalChargement + totalJourFerie;
             const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes;
 
+            // ── Popup data for QuinzaineRecapCards ────────────────────────────
+            // MO popup: reuse displayData (same shape as quinzParFerme)
+            const quinzParFerme = displayData;
+            const moParJour = parJour;
+
+            // Récolte popup: top 20 workers by prime
+            const recolteByWorker = {};
+            qRecolteRows.forEach(r => {
+                if (!recolteByWorker[r.matricule]) recolteByWorker[r.matricule] = { matricule: r.matricule, nom: r.nom, ferme: r.ferme, totalKg: 0, jours: 0, prime: 0 };
+                recolteByWorker[r.matricule].totalKg += (r.kg || 0);
+                recolteByWorker[r.matricule].jours += 1;
+                recolteByWorker[r.matricule].prime += calcPrime(r.kg || 0, r.variete, r.jour);
+            });
+            const recolteTopWorkers = Object.values(recolteByWorker).sort((a, b) => b.prime - a.prime).slice(0, 20);
+
+            // Transport popup: dates + equipe breakdown (from same transportByDay used for totals)
+            const tDates = Object.keys(transportByDay).sort();
+            const popupTransportDetail = transportConfig.filter(t => transportByEquipe[t.prefix]).map(t => ({
+                equipe: t.equipe || t.prefix,
+                prefix: t.prefix,
+                caporal: t.caporal || '',
+                cout: coutMap[t.prefix] || 0,
+                totalWorkers: transportByEquipe[t.prefix] ? transportByEquipe[t.prefix].workers : 0,
+                total: transportByEquipe[t.prefix] ? transportByEquipe[t.prefix].cout : 0,
+            }));
+
+            // Traitement par jour
+            const traitByDayQ = {};
+            traitRows.forEach(r => {
+                if (!traitByDayQ[r.jour]) traitByDayQ[r.jour] = new Set();
+                traitByDayQ[r.jour].add(r.matricule);
+            });
+            const traitDetailQ = Object.keys(traitByDayQ).sort().map(d => ({
+                jour: d,
+                jourLabel: new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}),
+                nb: traitByDayQ[d].size,
+                montant: traitByDayQ[d].size * 10,
+            }));
+            // ──────────────────────────────────────────────────────────────────
+
             const recapItems = [
-                { label: 'Main d\'Oeuvre', icon: 'fa-users', color: 'var(--berry)', montant: totalCout },
-                { label: 'Prime Récolte', icon: 'fa-coins', color: '#e67e22', montant: totalPrimeRecolte },
-                { label: 'Prime Transport', icon: 'fa-bus', color: '#2D8B4E', montant: transportCoutTotal },
-                { label: 'Autres Primes', icon: 'fa-layer-group', color: '#8e44ad', montant: totalAutresPrimes,
+                { label: 'Main d\'Oeuvre', icon: 'fa-users', color: 'var(--berry)', montant: totalCout, popupKey: 'mo' },
+                { label: 'Prime Récolte', icon: 'fa-coins', color: '#e67e22', montant: totalPrimeRecolte, popupKey: 'recolte' },
+                { label: 'Prime Transport', icon: 'fa-bus', color: '#2D8B4E', montant: transportCoutTotal, popupKey: 'transport' },
+                { label: 'Autres Primes', icon: 'fa-layer-group', color: '#8e44ad', montant: totalAutresPrimes, popupKey: 'autres_primes',
                   subItems: [
                     { label: 'Traitement', montant: totalTraitement },
                     { label: 'Conditionnement', montant: totalConditionnement },
@@ -10843,8 +10884,35 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
                                 ...(parJour.length > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
                             ]}
-                            clickable={false}
-                            popup={null}
+                            clickable={true}
+                            popup={{
+                                current: quinzPopupKey,
+                                setCurrent: setQuinzPopupKey,
+                                data: {
+                                    currentQuinz: currentPeriode,
+                                    farmFilter: farmFilter,
+                                    nbJours: parJour.length,
+                                    quinzaineData: { totalJournees, totalCout, parJour, parFerme: apiData.parFerme || [] },
+                                    quinzParFerme: quinzParFerme,
+                                    moParJour: moParJour,
+                                    qRecolteRows: qRecolteRows,
+                                    recolteByWorker: recolteByWorker,
+                                    recolteTopWorkers: recolteTopWorkers,
+                                    tDates: tDates,
+                                    qTransportRows: transportRows,
+                                    transportDetail: popupTransportDetail,
+                                    traitWD: traitWD,
+                                    traitDetail: traitDetailQ,
+                                    condDetailQ: condDetailQ,
+                                    chargDetailQ: chargDetailQ,
+                                    ferieDetailQ: ferieDetailQ,
+                                    totalTraitement: totalTraitement,
+                                    totalConditionnement: totalConditionnement,
+                                    totalChargement: totalChargement,
+                                    totalJourFerie: totalJourFerie,
+                                    openWorkerDetail: null,
+                                },
+                            }}
                         />
                     </div>
 
