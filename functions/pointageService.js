@@ -1783,6 +1783,37 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         });
       }
 
+      // ------ PRESENCE-QUINZAINE: résumé absence entrée/sortie pour toute la quinzaine ------
+      if (action === "presence-quinzaine") {
+        const meta = await getPointageMeta();
+        const periodes = (meta && meta.periodes) || [];
+        const periodeMap = (meta && meta.periodeMap) || {};
+        const targetPeriode = periodes[0];
+        if (!targetPeriode) return res.json({ success: true, periode: null, days: [] });
+        const days = (periodeMap[targetPeriode] || []).slice().sort();
+        const dayResults = [];
+        for (let i = 0; i < days.length; i += 10) {
+          const batch = days.slice(i, i + 10);
+          const snaps = await Promise.all(batch.map(d => db_firestore.collection('prod_presence').doc(d).get()));
+          snaps.forEach((snap, idx) => {
+            const d = batch[idx];
+            let rows = snap.exists ? (snap.data().rows || []) : [];
+            // fermeFilter skipped: prod_presence n'a pas de parcelle exploitable.
+            // Le frontend filtre via transportRows (ferme dérivée de la parcelle BDP).
+            dayResults.push({
+              date: d,
+              rows: rows.map(r => ({
+                matricule: (r.matricule || '').trim(),
+                nom: (r.nom || '').trim(),
+                heureEntree: r.heureEntree || null,
+                heureSortie: r.heureSortie || null,
+              })),
+            });
+          });
+        }
+        return res.json({ success: true, periode: targetPeriode, days: dayResults });
+      }
+
       // ------ SUMMARY: effectif today + yesterday + weekly trend + top ops ------
       if (action === "summary") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
