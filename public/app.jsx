@@ -10903,6 +10903,20 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const qRecolteRows = recolteEquipeRows.filter(r => r.periode === currentPeriode && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
             const totalPrimeRecolte = qRecolteRows.reduce((s, r) => s + calcPrime(r.kg || 0, r.variete, r.jour), 0);
 
+            // Classification MO (mirrors backend classifyType)
+            const classifyMO = (opFam) => {
+                if (!opFam) return 'horsRecolte';
+                if (opFam === '8. Récolte') return 'recolte';
+                if (opFam === '11. Postes fixes') return 'postes';
+                return 'horsRecolte';
+            };
+            const moRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'recolte');
+            const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
+            const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
+            const totalCoutRecolte = Math.round(moRecolteRows.reduce((s, r) => s + (r.cout || 0), 0));
+            const totalCoutHorsRecolte = Math.round(moHorsRecolteRows.reduce((s, r) => s + (r.cout || 0), 0));
+            const totalCoutPostes = Math.round(moPostesRows.reduce((s, r) => s + (r.cout || 0), 0));
+
             // Traitement (10 DH/ouvrier-jour)
             const traitRows = transportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
             const traitWD = new Set();
@@ -10925,7 +10939,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes;
 
             const recapItems = [
-                { label: 'Main d\'Oeuvre', icon: 'fa-users', color: 'var(--berry)', montant: totalCout, popupKey: 'mo' },
+                { label: 'MO Récolte', icon: 'fa-seedling', color: 'var(--berry)', montant: totalCoutRecolte, popupKey: 'mo_recolte' },
+                { label: 'MO Hors Récolte', icon: 'fa-person-digging', color: '#c0392b', montant: totalCoutHorsRecolte, popupKey: 'mo_horsrecolte' },
+                { label: 'Postes Fixes', icon: 'fa-user-tie', color: '#7f8c8d', montant: totalCoutPostes, popupKey: 'mo_postes' },
                 { label: 'Prime Récolte', icon: 'fa-coins', color: '#e67e22', montant: totalPrimeRecolte, popupKey: 'recolte' },
                 { label: 'Prime Transport', icon: 'fa-bus', color: '#2D8B4E', montant: transportCoutTotal, popupKey: 'transport' },
                 { label: 'Autres Primes', icon: 'fa-layer-group', color: '#8e44ad', montant: totalAutresPrimes, popupKey: 'autres_primes',
@@ -10973,22 +10989,35 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                     {quinzPopupKey && (() => {
                         const _qpKey = quinzPopupKey;
-                        const _qpTitle = _qpKey === 'mo' ? "Main d'Oeuvre"
+                        const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
+                        const _qpTitle = _qpKey === 'mo_recolte' ? 'MO Récolte'
+                            : _qpKey === 'mo_horsrecolte' ? 'MO Hors Récolte'
+                            : _qpKey === 'mo_postes' ? 'Postes Fixes'
                             : _qpKey === 'recolte' ? 'Prime Récolte'
                             : _qpKey === 'transport' ? 'Prime Transport'
                             : 'Autres Primes';
-                        const _qpColor = _qpKey === 'mo' ? 'var(--berry)'
+                        const _qpColor = _qpKey === 'mo_recolte' ? 'var(--berry)'
+                            : _qpKey === 'mo_horsrecolte' ? '#c0392b'
+                            : _qpKey === 'mo_postes' ? '#7f8c8d'
                             : _qpKey === 'recolte' ? 'var(--orange)'
                             : _qpKey === 'transport' ? 'var(--green)'
                             : '#8e44ad';
-                        const _qpIcon = _qpKey === 'mo' ? 'fa-users'
+                        const _qpIcon = _qpKey === 'mo_recolte' ? 'fa-seedling'
+                            : _qpKey === 'mo_horsrecolte' ? 'fa-person-digging'
+                            : _qpKey === 'mo_postes' ? 'fa-user-tie'
                             : _qpKey === 'recolte' ? 'fa-coins'
                             : _qpKey === 'transport' ? 'fa-bus'
                             : 'fa-spray-can-sparkles';
 
                         // Build source rows per card type
                         let _qpSrc = [];
-                        if (_qpKey === 'recolte') {
+                        if (_qpKey === 'mo_recolte') {
+                            _qpSrc = moRecolteRows;
+                        } else if (_qpKey === 'mo_horsrecolte') {
+                            _qpSrc = moHorsRecolteRows;
+                        } else if (_qpKey === 'mo_postes') {
+                            _qpSrc = moPostesRows;
+                        } else if (_qpKey === 'recolte') {
                             _qpSrc = qRecolteRows.map(r => ({
                                 matricule: r.matricule, nom: r.nom, ferme: r.ferme || '—',
                                 jour: r.jour, operation: 'Récolte',
@@ -11010,7 +11039,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             }));
                             _qpSrc = [..._trSrc, ..._condSrc, ..._chargSrc, ..._ferieSrc];
                         } else {
-                            // mo or transport: use transportRows
+                            // transport: use transportRows
                             _qpSrc = transportRows;
                         }
 
@@ -11082,7 +11111,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     <div style={{padding:'20px 24px',background:`linear-gradient(135deg, ${_qpColor} 0%, ${_qpColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
                                         <div>
                                             <div style={{fontSize:18,fontWeight:700}}><i className={`fa-solid ${_qpIcon}`} style={{marginRight:8}}></i>{_qpTitle} — {currentPeriode}</div>
-                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''} — {_qpTotalJ} journées</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''} — {_qpTotalJ} jours hommes{_isMoCard ? ' — ' + _qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR') + ' DH net' : ''}</div>
                                         </div>
                                         <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
                                             <i className="fa-solid fa-xmark"></i>
@@ -11107,26 +11136,28 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         <table className="data-table" style={{fontSize:12,margin:0}}>
                                             <thead>
                                                 <tr style={{background:'var(--gray-50)'}}>
+                                                    {_isMoCard && <th style={{padding:'6px 6px',textAlign:'center',width:28}}></th>}
                                                     <th style={{padding:'6px 10px'}}>Matricule</th>
                                                     <th style={{padding:'6px 10px'}}>Nom</th>
                                                     <th style={{padding:'6px 10px'}}>Opérations</th>
                                                     <th style={{padding:'6px 10px'}}>Parcelles</th>
-                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Journées</th>
-                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>
-                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Jours</th>
+                                                    {!_isMoCard && <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>}
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>{_isMoCard ? 'Net à payer (DH)' : 'Coût (DH)'}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {_qpGroups.map(g => (
                                                     <React.Fragment key={g.key}>
                                                         <tr style={{background:'var(--green-pale, #eef7ef)'}}>
+                                                            {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
                                                             <td colSpan={4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
                                                                 <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.key}</span>
                                                                 {quinzGroupBy === 'equipe' ? g.label : g.key}
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
                                                             </td>
                                                             <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
-                                                            <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{Math.round(g.workers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>
+                                                            {!_isMoCard && <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{Math.round(g.workers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>}
                                                             <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
                                                         </tr>
                                                         {g.workers.map((w, wi) => (
@@ -11134,12 +11165,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 style={{transition:'background 0.15s'}}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                {_isMoCard && <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:'#27ae60',fontSize:14}}>●</span></td>}
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
                                                                 <td style={{fontWeight:600,padding:'6px 10px'}}>{w.nom}</td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
                                                                 <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
-                                                                <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>
+                                                                {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>}
                                                                 <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{w.coutTotal > 0 ? w.coutTotal.toLocaleString('fr-FR') : '—'}</td>
                                                             </tr>
                                                         ))}
@@ -11148,9 +11180,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             </tbody>
                                             <tfoot>
                                                 <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                                    {_isMoCard && <td style={{padding:'6px 6px'}}></td>}
                                                     <td colSpan={4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
                                                     <td style={{textAlign:'center',padding:'6px 10px'}}>{_qpTotalJ}</td>
-                                                    <td style={{textAlign:'center',padding:'6px 10px'}}>{Math.round(_qpWorkers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>
+                                                    {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px'}}>{Math.round(_qpWorkers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>}
                                                     <td style={{textAlign:'right',padding:'6px 10px'}}>{_qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
                                                 </tr>
                                             </tfoot>
