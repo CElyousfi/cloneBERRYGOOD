@@ -11,8 +11,9 @@
  *   nbJours      {number}  Nombre de jours de la quinzaine (pour badge Moy/jour).
  *   badges       {Array}   Badges affichés dans l'en-tête (au-dessus de la grille).
  *                            Chaque badge : { bg, color, icon, text }
- *   clickable    {bool}    true → onClick+cursor:pointer sur chaque carte (DashboardTab).
- *                          false → hover seul, pas de onClick (QuinzaineTab).
+ *   clickable    {bool}    true → onClick+cursor:pointer sur chaque carte.
+ *                          false → hover seul, pas de onClick.
+ *   externalPopup {bool}  true → désactive le modal interne ; le parent gère son propre popup.
  *   popup        {object|null}
  *                  Quand clickable=true :
  *                    { current, setCurrent, data }
@@ -49,6 +50,7 @@
     var badges = props.badges || [];
     var clickable = !!props.clickable;
     var popup = props.popup || null; // { current, setCurrent, data }
+    var externalPopup = !!props.externalPopup; // true → skip built-in modal, caller renders its own
 
     // ── Grille de cartes ──────────────────────────────────────────────────────
 
@@ -247,7 +249,7 @@
     // ── Pop-up détail (DashboardTab seulement) ────────────────────────────────
 
     var modal = null;
-    if (clickable && popup && popup.current) {
+    if (clickable && popup && popup.current && !externalPopup) {
       var d = popup.data || {};
       var currentQuinz = d.currentQuinz || '';
       var farmFilter = d.farmFilter || '';

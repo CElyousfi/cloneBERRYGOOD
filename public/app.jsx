@@ -5415,6 +5415,7 @@
             }, [workerPopup, workerNav]);
             // Popup breakdown KPI : liste des ouvriers d'une ferme pour un type donné (recolte/horsRecolte/postesFixes).
             const [pointagePopup, setPointagePopup] = useState(null); // { ferme, type, title }
+            const [popGroupBy, setPopGroupBy] = useState('equipe');
             React.useEffect(() => {
                 if (!pointagePopup) return;
                 const onKey = (e) => { if (e.key === 'Escape') setPointagePopup(null); };
@@ -6056,6 +6057,36 @@
                             count: new Set(g.rows.map(r => r.matricule)).size,
                             coutTotal: g.rows.reduce((s, r) => s + (r.cout || 0), 0)
                         })).sort((a, b) => (b.count - a.count) || a.nom.localeCompare(b.nom));
+
+                        // Alternative groupings: par ferme, par parcelle
+                        const popFermeMap = {};
+                        popRows.forEach(r => {
+                            const gk = r.raw?.ferme || '—';
+                            if (!popFermeMap[gk]) popFermeMap[gk] = { prefix: gk, nom: gk, rows: [], count: 0, coutTotal: 0 };
+                            popFermeMap[gk].rows.push(r);
+                            popFermeMap[gk].count++;
+                            popFermeMap[gk].coutTotal += (r.cout || 0);
+                        });
+                        const popFermeGroups = Object.values(popFermeMap).sort((a, b) => b.count - a.count);
+
+                        const popParcMap = {};
+                        popRows.forEach(r => {
+                            const parcs = r.raw?.parcelle ? [r.raw.parcelle] : (r.parcelle && r.parcelle !== '—' ? [r.parcelle] : []);
+                            if (parcs.length === 0) parcs.push('—');
+                            parcs.forEach(gk => {
+                                if (!popParcMap[gk]) popParcMap[gk] = { prefix: gk, nom: gk, rows: [], count: 0, coutTotal: 0 };
+                                if (!popParcMap[gk].rows.find(x => x.matricule === r.matricule)) {
+                                    popParcMap[gk].rows.push(r);
+                                    popParcMap[gk].count++;
+                                    popParcMap[gk].coutTotal += (r.cout || 0);
+                                }
+                            });
+                        });
+                        const popParcGroups = Object.values(popParcMap).sort((a, b) => b.count - a.count);
+
+                        const _activeGroups = popGroupBy === 'equipe' ? popGroups
+                            : popGroupBy === 'ferme' ? popFermeGroups
+                            : popParcGroups;
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setPointagePopup(null)}>
                                 <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
@@ -6067,6 +6098,17 @@
                                         <button onClick={() => setPointagePopup(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
                                             <i className="fa-solid fa-xmark"></i>
                                         </button>
+                                    </div>
+                                    <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center'}}>
+                                        <span style={{fontSize:11,color:'var(--gray-500)',marginRight:4}}>Regrouper par :</span>
+                                        {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => (
+                                            <button key={mode} onClick={() => setPopGroupBy(mode)}
+                                                style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${popGroupBy === mode ? 'var(--berry)' : 'var(--gray-300)'}`,fontSize:11,cursor:'pointer',fontWeight:600,
+                                                    background: popGroupBy === mode ? 'var(--berry)' : 'transparent',
+                                                    color: popGroupBy === mode ? '#fff' : 'var(--gray-600)'}}>
+                                                {label}
+                                            </button>
+                                        ))}
                                     </div>
                                     <div style={{padding:'16px 24px'}}>
                                         {popRows.length === 0 ? (
@@ -6087,7 +6129,7 @@
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {popGroups.map((g) => (
+                                                {_activeGroups.map((g) => (
                                                     <React.Fragment key={g.prefix}>
                                                         <tr style={{background:'var(--green-pale, #eef7ef)'}}>
                                                             <td colSpan={isCaporal ? 7 : 6} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
@@ -10667,6 +10709,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [alertesData, setAlertesData] = useState(null);
             const [expandedReposEquipe, setExpandedReposEquipe] = useState(null);
             const [quinzPopupKey, setQuinzPopupKey] = useState(null);
+            const [quinzGroupBy, setQuinzGroupBy] = useState('equipe');
 
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
@@ -10803,46 +10846,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const totalAutresPrimes = totalTraitement + totalConditionnement + totalChargement + totalJourFerie;
             const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes;
 
-            // ── Popup data for QuinzaineRecapCards ────────────────────────────
-            // MO popup: reuse displayData (same shape as quinzParFerme)
-            const quinzParFerme = displayData;
-            const moParJour = parJour;
-
-            // Récolte popup: top 20 workers by prime
-            const recolteByWorker = {};
-            qRecolteRows.forEach(r => {
-                if (!recolteByWorker[r.matricule]) recolteByWorker[r.matricule] = { matricule: r.matricule, nom: r.nom, ferme: r.ferme, totalKg: 0, jours: 0, prime: 0 };
-                recolteByWorker[r.matricule].totalKg += (r.kg || 0);
-                recolteByWorker[r.matricule].jours += 1;
-                recolteByWorker[r.matricule].prime += calcPrime(r.kg || 0, r.variete, r.jour);
-            });
-            const recolteTopWorkers = Object.values(recolteByWorker).sort((a, b) => b.prime - a.prime).slice(0, 20);
-
-            // Transport popup: dates + equipe breakdown (from same transportByDay used for totals)
-            const tDates = Object.keys(transportByDay).sort();
-            const popupTransportDetail = transportConfig.filter(t => transportByEquipe[t.prefix]).map(t => ({
-                equipe: t.equipe || t.prefix,
-                prefix: t.prefix,
-                caporal: t.caporal || '',
-                cout: coutMap[t.prefix] || 0,
-                totalWorkers: transportByEquipe[t.prefix] ? transportByEquipe[t.prefix].workers : 0,
-                total: transportByEquipe[t.prefix] ? transportByEquipe[t.prefix].cout : 0,
-            }));
-
-            // Traitement par jour
-            const traitByDayQ = {};
-            traitRows.forEach(r => {
-                if (!traitByDayQ[r.jour]) traitByDayQ[r.jour] = new Set();
-                traitByDayQ[r.jour].add(r.matricule);
-            });
-            const traitDetailQ = Object.keys(traitByDayQ).sort().map(d => ({
-                jour: d,
-                jourLabel: new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'}),
-                nb: traitByDayQ[d].size,
-                montant: traitByDayQ[d].size * 10,
-            }));
-            // ──────────────────────────────────────────────────────────────────
-
             const recapItems = [
                 { label: 'Main d\'Oeuvre', icon: 'fa-users', color: 'var(--berry)', montant: totalCout, popupKey: 'mo' },
                 { label: 'Prime Récolte', icon: 'fa-coins', color: '#e67e22', montant: totalPrimeRecolte, popupKey: 'recolte' },
@@ -10885,36 +10888,189 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 ...(parJour.length > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
                             ]}
                             clickable={true}
-                            popup={{
-                                current: quinzPopupKey,
-                                setCurrent: setQuinzPopupKey,
-                                data: {
-                                    currentQuinz: currentPeriode,
-                                    farmFilter: farmFilter,
-                                    nbJours: parJour.length,
-                                    quinzaineData: { totalJournees, totalCout, parJour, parFerme: apiData.parFerme || [] },
-                                    quinzParFerme: quinzParFerme,
-                                    moParJour: moParJour,
-                                    qRecolteRows: qRecolteRows,
-                                    recolteByWorker: recolteByWorker,
-                                    recolteTopWorkers: recolteTopWorkers,
-                                    tDates: tDates,
-                                    qTransportRows: transportRows,
-                                    transportDetail: popupTransportDetail,
-                                    traitWD: traitWD,
-                                    traitDetail: traitDetailQ,
-                                    condDetailQ: condDetailQ,
-                                    chargDetailQ: chargDetailQ,
-                                    ferieDetailQ: ferieDetailQ,
-                                    totalTraitement: totalTraitement,
-                                    totalConditionnement: totalConditionnement,
-                                    totalChargement: totalChargement,
-                                    totalJourFerie: totalJourFerie,
-                                    openWorkerDetail: null,
-                                },
-                            }}
+                            externalPopup={true}
+                            popup={{ current: quinzPopupKey, setCurrent: setQuinzPopupKey }}
                         />
                     </div>
+
+                    {quinzPopupKey && (() => {
+                        const _qpKey = quinzPopupKey;
+                        const _qpTitle = _qpKey === 'mo' ? "Main d'Oeuvre"
+                            : _qpKey === 'recolte' ? 'Prime Récolte'
+                            : _qpKey === 'transport' ? 'Prime Transport'
+                            : 'Autres Primes';
+                        const _qpColor = _qpKey === 'mo' ? 'var(--berry)'
+                            : _qpKey === 'recolte' ? 'var(--orange)'
+                            : _qpKey === 'transport' ? 'var(--green)'
+                            : '#8e44ad';
+                        const _qpIcon = _qpKey === 'mo' ? 'fa-users'
+                            : _qpKey === 'recolte' ? 'fa-coins'
+                            : _qpKey === 'transport' ? 'fa-bus'
+                            : 'fa-spray-can-sparkles';
+
+                        // Build source rows per card type
+                        let _qpSrc = [];
+                        if (_qpKey === 'recolte') {
+                            _qpSrc = qRecolteRows.map(r => ({
+                                matricule: r.matricule, nom: r.nom, ferme: r.ferme || '—',
+                                jour: r.jour, operation: 'Récolte',
+                                parcelle: r.parcelle || r.refParcelle || '—',
+                            }));
+                        } else if (_qpKey === 'autres_primes') {
+                            const _trSrc = traitRows.map(r => ({ ...r, operation: 'Traitement' }));
+                            const _condSrc = condDetailQ.map(w => ({
+                                matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
+                                jour: w.jour || w.date || '', operation: 'Conditionnement', parcelle: w.parcelle || '—',
+                            }));
+                            const _chargSrc = chargDetailQ.map(w => ({
+                                matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
+                                jour: w.jour || w.date || '', operation: 'Chargement', parcelle: w.parcelle || '—',
+                            }));
+                            const _ferieSrc = ferieDetailQ.map(w => ({
+                                matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
+                                jour: w.date || w.jour || '', operation: 'Jour Férié', parcelle: '—',
+                            }));
+                            _qpSrc = [..._trSrc, ..._condSrc, ..._chargSrc, ..._ferieSrc];
+                        } else {
+                            // mo or transport: use transportRows
+                            _qpSrc = transportRows;
+                        }
+
+                        // Aggregate per worker
+                        const _qpWMap = {};
+                        _qpSrc.forEach(r => {
+                            const mat = r.matricule;
+                            if (!_qpWMap[mat]) {
+                                _qpWMap[mat] = {
+                                    matricule: mat, nom: r.nom || mat, ferme: r.ferme || '—',
+                                    jours: new Set(), operations: new Set(), parcelles: new Set(),
+                                };
+                            }
+                            if (r.jour) _qpWMap[mat].jours.add(r.jour);
+                            const op = r.operation || r.operationFamille;
+                            if (op) _qpWMap[mat].operations.add(op);
+                            if (r.parcelle) _qpWMap[mat].parcelles.add(r.parcelle);
+                            if (r.refParcelle) _qpWMap[mat].parcelles.add(r.refParcelle);
+                        });
+                        const _qpWorkers = Object.values(_qpWMap)
+                            .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''))
+                            .map(w => ({
+                                ...w,
+                                journees: w.jours.size,
+                                operationsStr: [...w.operations].join(', ') || '—',
+                                parcellesArr: [...w.parcelles],
+                                parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
+                            }));
+                        const _qpTotalJ = _qpWorkers.reduce((s, w) => s + w.journees, 0);
+
+                        // Grouping
+                        const _qpGetEq = (mat) => {
+                            const m = String(mat || '').toUpperCase().trim();
+                            if (m.startsWith('HAFI') || m.startsWith('HA')) return 'HA';
+                            const p2 = m.substring(0, 2);
+                            return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
+                        };
+                        const _qpGroupMap = {};
+                        _qpWorkers.forEach(w => {
+                            let gKeys = [];
+                            if (quinzGroupBy === 'equipe') gKeys = [_qpGetEq(w.matricule)];
+                            else if (quinzGroupBy === 'ferme') gKeys = [w.ferme || '—'];
+                            else gKeys = w.parcellesArr.length > 0 ? w.parcellesArr : ['—'];
+                            gKeys.forEach(gk => {
+                                if (!_qpGroupMap[gk]) {
+                                    const gLabel = quinzGroupBy === 'equipe'
+                                        ? (prefixToName[gk] || `Équipe ${gk}`)
+                                        : gk;
+                                    _qpGroupMap[gk] = { key: gk, label: gLabel, workers: [] };
+                                }
+                                if (!_qpGroupMap[gk].workers.find(x => x.matricule === w.matricule)) {
+                                    _qpGroupMap[gk].workers.push(w);
+                                }
+                            });
+                        });
+                        const _qpGroups = Object.values(_qpGroupMap)
+                            .sort((a, b) => b.workers.length - a.workers.length);
+
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzPopupKey(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:`linear-gradient(135deg, ${_qpColor} 0%, ${_qpColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className={`fa-solid ${_qpIcon}`} style={{marginRight:8}}></i>{_qpTitle} — {currentPeriode}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''} — {_qpTotalJ} journées</div>
+                                        </div>
+                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center'}}>
+                                        <span style={{fontSize:11,color:'var(--gray-500)',marginRight:4}}>Regrouper par :</span>
+                                        {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => (
+                                            <button key={mode} onClick={() => setQuinzGroupBy(mode)}
+                                                style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${quinzGroupBy === mode ? _qpColor : 'var(--gray-300)'}`,fontSize:11,cursor:'pointer',fontWeight:600,
+                                                    background: quinzGroupBy === mode ? _qpColor : 'transparent',
+                                                    color: quinzGroupBy === mode ? '#fff' : 'var(--gray-600)'}}>
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        {_qpWorkers.length === 0 ? (
+                                            <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Aucun ouvrier.</div>
+                                        ) : (
+                                        <div className="table-responsive">
+                                        <table className="data-table" style={{fontSize:12,margin:0}}>
+                                            <thead>
+                                                <tr style={{background:'var(--gray-50)'}}>
+                                                    <th style={{padding:'6px 10px'}}>Matricule</th>
+                                                    <th style={{padding:'6px 10px'}}>Nom</th>
+                                                    <th style={{padding:'6px 10px'}}>Opérations</th>
+                                                    <th style={{padding:'6px 10px'}}>Parcelles</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Journées</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {_qpGroups.map(g => (
+                                                    <React.Fragment key={g.key}>
+                                                        <tr style={{background:'var(--green-pale, #eef7ef)'}}>
+                                                            <td colSpan={4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
+                                                                <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.key}</span>
+                                                                {quinzGroupBy === 'equipe' ? g.label : g.key}
+                                                                <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
+                                                            </td>
+                                                            <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
+                                                        </tr>
+                                                        {g.workers.map((w, wi) => (
+                                                            <tr key={g.key + '-' + wi}
+                                                                style={{transition:'background 0.15s'}}
+                                                                onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
+                                                                onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
+                                                                <td style={{fontWeight:600,padding:'6px 10px'}}>{w.nom}</td>
+                                                                <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
+                                                                <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>
+                                                                <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </React.Fragment>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                                    <td colSpan={4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
+                                                    <td style={{textAlign:'center',padding:'6px 10px'}}>{_qpTotalJ}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     <Panel title="Répartition par Ferme" icon="fa-chart-bar">
                         <table className="data-table">
