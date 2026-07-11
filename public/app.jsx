@@ -10846,6 +10846,31 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [quinzPopupKey, setQuinzPopupKey] = useState(null);
             const [quinzGroupBy, setQuinzGroupBy] = useState('equipe');
             const [quinzSubWorker, setQuinzSubWorker] = useState(null);
+            const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            const [quinzRegistry, setQuinzRegistry] = useState({});
+
+            const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
+            const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
+
+            React.useEffect(() => {
+                const db = firebase.firestore();
+                let cancelled = false;
+                db.collection('app_settings').doc('paie_baremes').get()
+                    .then(doc => { if (!cancelled && doc.exists) setQuinzPaieBaremes(prev => ({ ...prev, ...doc.data() })); })
+                    .catch(e => console.warn('quinz paie_baremes:', e));
+                return () => { cancelled = true; };
+            }, []);
+
+            React.useEffect(() => {
+                let cancelled = false;
+                fetch('/api/registry?action=get-registry').then(r => r.json()).then(resp => {
+                    if (cancelled || !resp || !resp.success) return;
+                    const reg = {};
+                    (resp.ouvriers || []).forEach(o => { reg[numKey(o.matricule)] = o; });
+                    if (!cancelled) setQuinzRegistry(reg);
+                }).catch(e => console.warn('quinz registry:', e));
+                return () => { cancelled = true; };
+            }, []);
 
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
@@ -11259,6 +11284,73 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         </table>
                                         </div>
                                         )}
+
+                                        {/* Encadré Charges Sociales — uniquement cartes MO */}
+                                        {_isMoCard && (() => {
+                                            const _PU2 = window.PaieUtils;
+                                            const _firstDayQ = parJour.length > 0 ? parJour[0].jour : null;
+                                            const _smagQ = (_PU2 && _PU2.resolveSmagForDate)
+                                                ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDayQ)
+                                                : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                                            let totalNetDeclare = 0, totalBrutDeclare = 0, totalChargesDeclare = 0, totalCoutEmpDeclare = 0;
+                                            let cntDeclare = 0, cntNonDeclare = 0;
+                                            _qpWorkers.forEach(w => {
+                                                const _rw = quinzRegistry[numKey(w.matricule)] || {};
+                                                const _isDecl = !!(_rw.declare);
+                                                const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                                                const _anc = Number(_rw.baselineJours || 0);
+                                                const _ancP = (_PU2 && _PU2.trouverPalierAnciennete)
+                                                    ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
+                                                    : { pourcentage: 0 };
+                                                const _ancT = (_ancP.pourcentage || 0) / 100;
+                                                if (_isDecl) cntDeclare++; else cntNonDeclare++;
+                                                if (!_PU2 || !_PU2.computePayslip) return;
+                                                const _ps = _PU2.computePayslip({
+                                                    declare: _isDecl,
+                                                    smagBrut: _smagQ.smagBrutJournalier,
+                                                    smagNet: _smagQ.smagNetJournalier,
+                                                    jT: w.journees, jF: 0,
+                                                    ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
+                                                    primesOptionnelles: [], baremes: quinzPaieBaremes,
+                                                });
+                                                totalNetDeclare += _ps.net;
+                                                if (_isDecl) {
+                                                    totalBrutDeclare += _ps.brut;
+                                                    totalChargesDeclare += _ps.chargesPatronales;
+                                                    totalCoutEmpDeclare += _ps.coutEmployeur;
+                                                }
+                                            });
+                                            if (Object.keys(quinzRegistry).length === 0) return null;
+                                            return (
+                                                <div style={{marginTop:16,background:'#f0f4ff',borderRadius:10,padding:14,border:'1px solid #c5d0e6'}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:'#3949ab',textTransform:'uppercase',letterSpacing:0.5,marginBottom:10}}>
+                                                        <i className="fa-solid fa-shield-halved" style={{marginRight:6}}></i>Charges Sociales
+                                                    </div>
+                                                    <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+                                                        <div style={{flex:'1 1 120px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Déclarés CNSS</div>
+                                                            <div style={{fontSize:18,fontWeight:800,color:'#27ae60'}}>{cntDeclare}</div>
+                                                        </div>
+                                                        <div style={{flex:'1 1 120px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Non déclarés</div>
+                                                            <div style={{fontSize:18,fontWeight:800,color:'#e74c3c'}}>{cntNonDeclare}</div>
+                                                        </div>
+                                                        <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Brut total déclarés</div>
+                                                            <div style={{fontSize:15,fontWeight:700,color:'var(--gray-700)'}}>{f2(totalBrutDeclare)} DH</div>
+                                                        </div>
+                                                        <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Charges patronales</div>
+                                                            <div style={{fontSize:15,fontWeight:700,color:'#3949ab'}}>+{f2(totalChargesDeclare)} DH</div>
+                                                        </div>
+                                                        <div style={{flex:'1 1 160px',textAlign:'center',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:8,padding:'8px 12px',color:'#fff'}}>
+                                                            <div style={{fontSize:11,opacity:0.85,marginBottom:4}}>Coût employeur déclarés</div>
+                                                            <div style={{fontSize:15,fontWeight:800}}>{f2(totalCoutEmpDeclare)} DH</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>
@@ -11270,20 +11362,55 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         const _sw = quinzSubWorker;
                         const _swDays = (_sw.quinzaineDays || []);
                         const _swColor = _sw.popupColor || 'var(--berry)';
+                        // Pay bulletin compute
+                        const _reg = quinzRegistry[numKey(_sw.matricule)] || {};
+                        const _declare = !!(_reg.declare);
+                        const _primeFonctionJour = Number(_reg.primeFonctionJournaliere || 0);
+                        const _anciennete = Number(_reg.baselineJours || 0);
+                        const _PU = window.PaieUtils;
+                        const _firstDay = _sw.jours ? [..._sw.jours].sort()[0] : null;
+                        const _smag = (_PU && _PU.resolveSmagForDate)
+                            ? _PU.resolveSmagForDate(quinzPaieBaremes, _firstDay)
+                            : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                        const _ancPalier = (_PU && _PU.trouverPalierAnciennete)
+                            ? _PU.trouverPalierAnciennete(_anciennete, quinzPaieBaremes.paliers || [])
+                            : { pourcentage: 0 };
+                        const _ancTaux = (_ancPalier.pourcentage || 0) / 100;
+                        const _paie = (_PU && _PU.computePayslip)
+                            ? _PU.computePayslip({
+                                declare: _declare,
+                                smagBrut: _smag.smagBrutJournalier,
+                                smagNet: _smag.smagNetJournalier,
+                                jT: _sw.journees,
+                                jF: 0,
+                                ancienneteTaux: _ancTaux,
+                                primeFonctionJour: _primeFonctionJour,
+                                primesOptionnelles: [],
+                                baremes: quinzPaieBaremes,
+                            })
+                            : null;
+                        const _hasRegistry = Object.keys(_reg).length > 0;
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
                                 onClick={() => setQuinzSubWorker(null)}>
-                                <div style={{background:'#fff',borderRadius:16,maxWidth:560,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:600,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
                                     onClick={e => e.stopPropagation()}>
                                     <div style={{padding:'16px 20px',background:`linear-gradient(135deg, ${_swColor} 0%, ${_swColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                                         <div>
-                                            <div style={{fontSize:16,fontWeight:700}}>{_sw.nom}</div>
+                                            <div style={{fontSize:16,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                                                {_sw.nom}
+                                                {_hasRegistry && (
+                                                    <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,background: _declare ? 'rgba(255,255,255,0.25)' : 'rgba(231,76,60,0.7)',letterSpacing:0.5}}>
+                                                        {_declare ? 'DÉCLARÉ CNSS' : 'NON DÉCLARÉ'}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div style={{fontSize:11,opacity:0.85,marginTop:2}}>
                                                 {_sw.matricule} · {_sw.operationsStr}
                                             </div>
                                             <div style={{fontSize:12,marginTop:4,display:'flex',gap:16}}>
                                                 <span><strong>{_sw.journees}</strong> / {_swDays.length} jours</span>
-                                                <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net</span>
+                                                <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net BDP</span>
                                             </div>
                                         </div>
                                         <button onClick={() => setQuinzSubWorker(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -11291,31 +11418,92 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         </button>
                                     </div>
                                     <div style={{padding:'16px 20px'}}>
-                                        <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:10}}>
-                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Jours déclarés en BDP ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})
+                                        {/* Jours travaillés */}
+                                        <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:8}}>
+                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Jours pointés ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})
                                         </div>
-                                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                                        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}}>
                                             {[..._sw.jours].sort().map(day => {
                                                 const label = (() => { const d = new Date(day + 'T00:00:00'); return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}); })();
                                                 return (
-                                                    <div key={day} style={{
-                                                        display:'flex',alignItems:'center',gap:4,
-                                                        padding:'5px 10px',borderRadius:8,
-                                                        background:'#eafaf1',
-                                                        border:'1px solid #27ae60',
-                                                        fontSize:11,fontWeight:600,
-                                                        color:'#1a7a4a',
-                                                    }}>
+                                                    <div key={day} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:8,background:'#eafaf1',border:'1px solid #27ae60',fontSize:11,fontWeight:600,color:'#1a7a4a'}}>
                                                         <span style={{fontSize:12}}>●</span>{label}
                                                     </div>
                                                 );
                                             })}
                                         </div>
-                                        {_sw.coutTotal > 0 && (
-                                            <div style={{marginTop:16,padding:'10px 14px',background:'var(--gray-50)',borderRadius:8,display:'flex',justifyContent:'space-between',fontSize:12}}>
-                                                <span style={{color:'var(--gray-500)'}}>Net à payer estimé</span>
-                                                <strong style={{color:_swColor}}>{_sw.coutTotal.toLocaleString('fr-FR')} DH</strong>
+
+                                        {/* Pay bulletin */}
+                                        {_paie && (
+                                        <div style={{background:'var(--berry-pale)',borderRadius:10,padding:14}}>
+                                            <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:10}}>
+                                                Estimation paie quinzaine — modèle complet ({_declare ? 'déclaré' : 'non déclaré'}).
                                             </div>
+                                            <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
+                                                {/* Bulletin ouvrier */}
+                                                <div style={{flex:'1 1 180px',minWidth:180}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Bulletin ouvrier</div>
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>{_declare ? `SMAG base : ${f2(_paie.smagBase)} × ${_paie.jT}j` : `Base net (non déclaré) : ${f2(_paie.smagBase)} × ${_paie.jT}j`}</span>
+                                                        <span style={{fontWeight:600}}>{f2(_paie.base)}</span>
+                                                    </div>
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté {Math.round(_paie.ancienneteTaux * 100)}% ({_anciennete} jr)</span>
+                                                        <span style={{fontWeight:600,color: _paie.anciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{_paie.anciennete > 0 ? `+${f2(_paie.anciennete)}` : '0,00'}</span>
+                                                    </div>
+                                                    )}
+                                                    {_paie.primeFonction > 0 && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime fonction</span>
+                                                        <span style={{fontWeight:600,color:'var(--berry)'}}>+{f2(_paie.primeFonction)}</span>
+                                                    </div>
+                                                    )}
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
+                                                        <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire brut</span>
+                                                        <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{f2(_paie.brut)} DH</span>
+                                                    </div>
+                                                    )}
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS ({(_paie.tauxCnss * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                        <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(_paie.cnss)}</span>
+                                                    </div>
+                                                    )}
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>AMO ({(_paie.tauxAmo * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                        <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(_paie.amo)}</span>
+                                                    </div>
+                                                    )}
+                                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--green)',paddingTop:8,marginTop:4}}>
+                                                        <span style={{fontWeight:800,color:'var(--green)',fontSize:13}}>= Net à payer</span>
+                                                        <span style={{fontWeight:800,fontSize:17,color:'var(--green)'}}>{f2(_paie.net)} DH</span>
+                                                    </div>
+                                                </div>
+                                                {/* Séparateur */}
+                                                <div style={{width:1,alignSelf:'stretch',background:'var(--gray-200)'}}></div>
+                                                {/* Coût employeur */}
+                                                <div style={{flex:'1 1 180px',minWidth:180}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Coût employeur</div>
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Salaire brut</span>
+                                                        <span style={{fontWeight:600}}>{f2(_paie.brut)}</span>
+                                                    </div>
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Charges patronales ({(_paie.tauxChargesPatronales * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                        <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{f2(_paie.chargesPatronales)}</span>
+                                                    </div>
+                                                    )}
+                                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--berry)',paddingTop:8,marginTop:4}}>
+                                                        <span style={{fontWeight:800,color:'var(--berry)',fontSize:13}}>= Coût employeur</span>
+                                                        <span style={{fontWeight:800,fontSize:17,color:'var(--berry)'}}>{f2(_paie.coutEmployeur)} DH</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         )}
                                     </div>
                                 </div>
