@@ -4498,265 +4498,46 @@
                         return (
                             <React.Fragment>
                             <Panel title={'Récap Quinzaine en Cours — ' + currentQuinz + (farmFilter ? ' — ' + farmFilter : '')} icon="fa-calendar-days">
-                                <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
-                                    <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                        <i className="fa-solid fa-calendar" style={{marginRight:4}}></i>{nbJours} jours
-                                    </span>
-                                    <span style={{background:'#e8f4fd',color:'#1565C0',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                        <i className="fa-solid fa-calculator" style={{marginRight:4}}></i>Total: {Math.round(totalGlobal).toLocaleString('fr-FR')} DH
-                                    </span>
-                                    {nbJours > 0 && <span style={{background:'#fff3e0',color:'#e65100',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                        <i className="fa-solid fa-chart-simple" style={{marginRight:4}}></i>Moy/jour: {Math.round(totalGlobal / nbJours).toLocaleString('fr-FR')} DH
-                                    </span>}
-                                </div>
-                                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:16,marginBottom:16}}>
-                                    {recapItems.map((item, i) => (
-                                        <div key={i} onClick={() => setQuinzainePopup(item.popupKey)} style={{background:'#fff',borderRadius:12,padding:16,border:`2px solid ${item.color}`,boxShadow:'0 4px 12px rgba(0,0,0,0.06)',cursor:'pointer',transition:'all 0.2s'}}
-                                            onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'; }}
-                                            onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)'; }}>
-                                            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-                                                <div style={{width:36,height:36,borderRadius:10,background:item.color,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:14}}>
-                                                    <i className={`fa-solid ${item.icon}`}></i>
-                                                </div>
-                                                <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)'}}>{item.label}</div>
-                                            </div>
-                                            <div style={{fontSize:22,fontWeight:800,color:item.color}}>{Math.round(item.montant).toLocaleString('fr-FR')} DH</div>
-                                            {totalGlobal > 0 && <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4}}>
-                                                <span style={{fontSize:10,color:'var(--gray-400)'}}>{Math.round(item.montant / totalGlobal * 100)}% du total</span>
-                                                <span style={{fontSize:9,color:item.color}}><i className="fa-solid fa-up-right-from-square" style={{marginRight:3}}></i>Détail</span>
-                                            </div>}
-                                        </div>
-                                    ))}
-                                </div>
-                                {totalGlobal > 0 && (
-                                    <div style={{background:'var(--gray-50)',borderRadius:10,padding:12}}>
-                                        <div style={{fontSize:11,fontWeight:600,color:'var(--gray-500)',marginBottom:8}}>Répartition des coûts</div>
-                                        <div style={{display:'flex',height:8,borderRadius:4,overflow:'hidden',gap:1}}>
-                                            {recapItems.filter(it => it.montant > 0).map((item, i) => (
-                                                <div key={i} style={{width:`${item.montant / totalGlobal * 100}%`,background:item.color,borderRadius:2}} title={`${item.label}: ${Math.round(item.montant / totalGlobal * 100)}%`}></div>
-                                            ))}
-                                        </div>
-                                        <div style={{display:'flex',gap:12,marginTop:6,flexWrap:'wrap'}}>
-                                            {recapItems.filter(it => it.montant > 0).map((item, i) => (
-                                                <span key={i} style={{fontSize:10,color:'var(--gray-500)',display:'flex',alignItems:'center',gap:4}}>
-                                                    <span style={{width:8,height:8,borderRadius:2,background:item.color,display:'inline-block'}}></span>
-                                                    {item.label} ({Math.round(item.montant / totalGlobal * 100)}%)
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                <div style={{fontSize:10,color:'var(--gray-400)',textAlign:'center',marginTop:8}}><i className="fa-solid fa-hand-pointer" style={{marginRight:4}}></i>Cliquez sur une catégorie pour voir le détail</div>
+                                <window.QuinzaineRecapCards
+                                    recapItems={recapItems}
+                                    totalGlobal={totalGlobal}
+                                    nbJours={nbJours}
+                                    badges={[
+                                        { bg: 'var(--berry-pale)', color: 'var(--berry)', icon: 'fa-calendar', text: nbJours + ' jours' },
+                                        { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
+                                        ...(nbJours > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / nbJours).toLocaleString('fr-FR') + ' DH' }] : []),
+                                    ]}
+                                    clickable={true}
+                                    popup={{
+                                        current: quinzainePopup,
+                                        setCurrent: setQuinzainePopup,
+                                        data: {
+                                            currentQuinz: currentQuinz,
+                                            farmFilter: farmFilter,
+                                            nbJours: nbJours,
+                                            quinzaineData: quinzaineData,
+                                            quinzParFerme: quinzParFerme,
+                                            moParJour: moParJour,
+                                            qRecolteRows: qRecolteRows,
+                                            recolteByWorker: recolteByWorker,
+                                            recolteTopWorkers: recolteTopWorkers,
+                                            tDates: tDates,
+                                            qTransportRows: qTransportRows,
+                                            transportDetail: transportDetail,
+                                            traitWD: traitWD,
+                                            traitDetail: traitDetail,
+                                            condDetailQ: condDetailQ,
+                                            chargDetailQ: chargDetailQ,
+                                            ferieDetailQ: ferieDetailQ,
+                                            totalTraitement: totalTraitement,
+                                            totalConditionnement: totalConditionnement,
+                                            totalChargement: totalChargement,
+                                            totalJourFerie: totalJourFerie,
+                                            openWorkerDetail: openWorkerDetail,
+                                        },
+                                    }}
+                                />
                             </Panel>
-
-                            {/* Popup détail quinzaine */}
-                            {quinzainePopup && (
-                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => setQuinzainePopup(null)}>
-                                <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
-                                    {/* Header */}
-                                    <div style={{padding:'16px 24px',borderBottom:'2px solid var(--gray-100)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                        <div style={{display:'flex',alignItems:'center',gap:12}}>
-                                            <div style={{width:40,height:40,borderRadius:10,background: quinzainePopup==='mo'?'var(--berry)':quinzainePopup==='recolte'?'var(--orange)':quinzainePopup==='transport'?'var(--green)':'var(--blue)',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:16}}>
-                                                <i className={'fa-solid ' + (quinzainePopup==='mo'?'fa-users':quinzainePopup==='recolte'?'fa-coins':quinzainePopup==='transport'?'fa-bus':'fa-spray-can-sparkles')}></i>
-                                            </div>
-                                            <div>
-                                                <h3 style={{margin:0,fontSize:17,color:'var(--berry)'}}>
-                                                    {quinzainePopup==='mo'?'Main d\'Oeuvre':quinzainePopup==='recolte'?'Prime Récolte':quinzainePopup==='transport'?'Prime Transport':'Prime Traitement'}
-                                                </h3>
-                                                <div style={{fontSize:12,color:'var(--gray-500)',marginTop:2}}>{currentQuinz}{farmFilter ? ' — ' + farmFilter : ''}</div>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setQuinzainePopup(null)} style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'var(--gray-400)',padding:4}}>
-                                            <i className="fa-solid fa-xmark"></i>
-                                        </button>
-                                    </div>
-
-                                    <div style={{padding:'20px 24px'}}>
-                                    {/* ===== MAIN D'OEUVRE ===== */}
-                                    {quinzainePopup === 'mo' && (
-                                        <div>
-                                            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--berry-pale)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--berry)'}}>{Math.round(totalMainOeuvre).toLocaleString('fr-FR')} DH</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Coût total M.O</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{quinzaineData?.totalJournees || '-'}</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Journées ouvrières</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{nbJours > 0 ? Math.round(totalMainOeuvre / nbJours).toLocaleString('fr-FR') : '-'} DH</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Moyenne / jour</div>
-                                                </div>
-                                            </div>
-                                            {/* Par ferme */}
-                                            {!farmFilter && quinzParFerme.length > 0 && (
-                                                <div style={{marginBottom:16}}>
-                                                    <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-building" style={{marginRight:6,color:'var(--berry)'}}></i>Par Ferme</div>
-                                                    <table className="data-table" style={{fontSize:11}}>
-                                                        <thead><tr><th>Ferme</th><th style={{textAlign:'right'}}>Journées</th><th style={{textAlign:'right'}}>Récolte</th><th style={{textAlign:'right'}}>Hors Récolte</th><th style={{textAlign:'right'}}>Ouvriers Avocatier</th><th style={{textAlign:'right'}}>Coût (DH)</th></tr></thead>
-                                                        <tbody>
-                                                            {quinzParFerme.map((f, i) => (
-                                                                <tr key={i}><td style={{fontWeight:600}}>{f.ferme}</td><td style={{textAlign:'right'}}>{f.journees}</td><td style={{textAlign:'right'}}>{f.recolte}</td><td style={{textAlign:'right'}}>{f.horsRecolte}</td><td style={{textAlign:'right'}}>{f.postesFixes}</td><td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{Math.round(f.cout).toLocaleString('fr-FR')}</td></tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                            {/* Par jour */}
-                                            {moParJour.length > 0 && (
-                                                <div>
-                                                    <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-calendar-days" style={{marginRight:6,color:'var(--berry)'}}></i>Par Jour</div>
-                                                    <table className="data-table" style={{fontSize:11}}>
-                                                        <thead><tr><th>Jour</th><th style={{textAlign:'right'}}>Nb Ouvriers</th><th style={{textAlign:'right'}}>Journées</th>{!farmFilter && <th style={{textAlign:'right'}}>F1</th>}{!farmFilter && <th style={{textAlign:'right'}}>F5</th>}{!farmFilter && <th style={{textAlign:'right'}}>Avo</th>}<th style={{textAlign:'right'}}>Coût (DH)</th></tr></thead>
-                                                        <tbody>
-                                                            {moParJour.map((j, i) => (
-                                                                <tr key={i}><td style={{fontWeight:500}}>{j.jourLabel}</td><td style={{textAlign:'right'}}>{j.nbOuv}</td><td style={{textAlign:'right'}}>{Math.round(j.journees*100)/100}</td>{!farmFilter && <td style={{textAlign:'right'}}>{j.F1||0}</td>}{!farmFilter && <td style={{textAlign:'right'}}>{j.F5||0}</td>}{!farmFilter && <td style={{textAlign:'right'}}>{j.Avocatier||0}</td>}<td style={{textAlign:'right',fontWeight:700,color:'var(--berry)'}}>{Math.round(j.cout).toLocaleString('fr-FR')}</td></tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {/* ===== PRIME RÉCOLTE ===== */}
-                                    {quinzainePopup === 'recolte' && (
-                                        <div>
-                                            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
-                                                <div style={{textAlign:'center',padding:14,background:'rgba(243,156,18,0.1)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--orange)'}}>{Math.round(totalPrimeRecolte).toLocaleString('fr-FR')} DH</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Total primes récolte</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{qRecolteRows.length}</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Lignes pointage</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{Object.keys(recolteByWorker).length}</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Ouvriers avec prime</div>
-                                                </div>
-                                            </div>
-                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:8,padding:'8px 12px',background:'var(--gray-50)',borderRadius:8}}>
-                                                <i className="fa-solid fa-info-circle" style={{marginRight:4,color:'var(--orange)'}}></i>
-                                                Barème: &lt;20kg = 0 DH | 20-24kg = 20 DH | 25-29kg = 40 DH | 30-39kg = 60+3/kg | 40+kg = 100+4/kg
-                                            </div>
-                                            <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-ranking-star" style={{marginRight:6,color:'var(--orange)'}}></i>Top 20 Ouvriers</div>
-                                            <table className="data-table" style={{fontSize:11}}>
-                                                <thead><tr><th>#</th><th>Matricule</th><th>Nom</th><th>Ferme</th><th style={{textAlign:'right'}}>Jours</th><th style={{textAlign:'right'}}>Total Kg</th><th style={{textAlign:'right'}}>Moy/jour</th><th style={{textAlign:'right'}}>Prime (DH)</th></tr></thead>
-                                                <tbody>
-                                                    {recolteTopWorkers.map((w, i) => (
-                                                        <tr key={i} style={{cursor:'pointer'}} onClick={() => { setQuinzainePopup(null); openWorkerDetail(w.matricule); }}>
-                                                            <td><span className={`rank ${i < 3 ? 'rank-' + (i+1) : 'rank-other'}`}>{i+1}</span></td>
-                                                            <td style={{fontFamily:'monospace',fontWeight:600}}>{w.matricule}</td>
-                                                            <td style={{fontWeight:500}}>{w.nom}</td>
-                                                            <td><span className="status-badge" style={{background:'var(--berry-pale)',color:'var(--berry)',fontSize:10}}>{w.ferme}</span></td>
-                                                            <td style={{textAlign:'right'}}>{w.jours}</td>
-                                                            <td style={{textAlign:'right',fontWeight:600}}>{Math.round(w.totalKg)}</td>
-                                                            <td style={{textAlign:'right',color:'var(--gray-500)'}}>{w.jours > 0 ? Math.round(w.totalKg / w.jours) : 0} kg</td>
-                                                            <td style={{textAlign:'right',fontWeight:700,color:'var(--orange)'}}>{Math.round(w.prime).toLocaleString('fr-FR')}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-
-                                    {/* ===== PRIME TRANSPORT ===== */}
-                                    {quinzainePopup === 'transport' && (
-                                        <div>
-                                            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
-                                                <div style={{textAlign:'center',padding:14,background:'rgba(39,174,96,0.1)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--green)'}}>{Math.round(totalTransport).toLocaleString('fr-FR')} DH</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Total prime transport</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{tDates.length}</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Jours travaillés</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{qTransportRows.length}</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Ouvriers-jours transportés</div>
-                                                </div>
-                                            </div>
-                                            <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-bus" style={{marginRight:6,color:'var(--green)'}}></i>Par Équipe de Transport</div>
-                                            <table className="data-table" style={{fontSize:11}}>
-                                                <thead><tr><th>Équipe</th><th>Caporal</th><th style={{textAlign:'right'}}>Coût/ouv</th><th style={{textAlign:'right'}}>Total ouv-jours</th><th style={{textAlign:'right'}}>Total (DH)</th></tr></thead>
-                                                <tbody>
-                                                    {transportDetail.map((t, i) => (
-                                                        <tr key={i}><td style={{fontWeight:600}}><span style={{background:'var(--green-pale)',color:'var(--green)',padding:'2px 8px',borderRadius:6,fontSize:10,fontWeight:700,marginRight:4}}>{t.prefix}</span>{t.equipe}</td><td style={{color:'var(--gray-500)'}}>{t.caporal}</td><td style={{textAlign:'right'}}>{t.cout} DH</td><td style={{textAlign:'right'}}>{t.totalWorkers}</td><td style={{textAlign:'right',fontWeight:700,color:'var(--green)'}}>{Math.round(t.total).toLocaleString('fr-FR')}</td></tr>
-                                                    ))}
-                                                    <tr style={{fontWeight:700,borderTop:'2px solid var(--gray-200)'}}><td colSpan="3">Total</td><td style={{textAlign:'right'}}>{transportDetail.reduce((s,t) => s+t.totalWorkers, 0)}</td><td style={{textAlign:'right',color:'var(--green)'}}>{Math.round(totalTransport).toLocaleString('fr-FR')} DH</td></tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-
-                                    {/* ===== PRIME TRAITEMENT ===== */}
-                                    {quinzainePopup === 'traitement' && (
-                                        <div>
-                                            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
-                                                <div style={{textAlign:'center',padding:14,background:'rgba(52,152,219,0.1)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--blue)'}}>{Math.round(totalTraitement).toLocaleString('fr-FR')} DH</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Total prime traitement</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>{traitWD.size}</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Ouvriers-jours traitement</div>
-                                                </div>
-                                                <div style={{textAlign:'center',padding:14,background:'var(--gray-50)',borderRadius:10}}>
-                                                    <div style={{fontSize:24,fontWeight:800,color:'var(--dark)'}}>10 DH</div>
-                                                    <div style={{fontSize:10,color:'var(--gray-500)'}}>Prime / ouvrier / jour</div>
-                                                </div>
-                                            </div>
-                                            <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)',marginBottom:8}}><i className="fa-solid fa-calendar-days" style={{marginRight:6,color:'var(--blue)'}}></i>Par Jour</div>
-                                            {traitDetail.length > 0 ? (
-                                            <table className="data-table" style={{fontSize:11}}>
-                                                <thead><tr><th>Jour</th><th style={{textAlign:'right'}}>Nb Ouvriers</th><th style={{textAlign:'right'}}>Montant (DH)</th></tr></thead>
-                                                <tbody>
-                                                    {traitDetail.map((t, i) => (
-                                                        <tr key={i}><td style={{fontWeight:500}}>{t.jourLabel}</td><td style={{textAlign:'right'}}>{t.nb}</td><td style={{textAlign:'right',fontWeight:700,color:'var(--blue)'}}>{t.montant.toLocaleString('fr-FR')}</td></tr>
-                                                    ))}
-                                                    <tr style={{fontWeight:700,borderTop:'2px solid var(--gray-200)'}}><td>Total</td><td style={{textAlign:'right'}}>{traitWD.size}</td><td style={{textAlign:'right',color:'var(--blue)'}}>{Math.round(totalTraitement).toLocaleString('fr-FR')} DH</td></tr>
-                                                </tbody>
-                                            </table>
-                                            ) : (
-                                                <div style={{textAlign:'center',padding:30,color:'var(--gray-400)'}}>
-                                                    <i className="fa-solid fa-info-circle" style={{fontSize:24,marginBottom:8,display:'block'}}></i>
-                                                    <div style={{fontSize:12}}>Aucun jour de traitement phyto enregistré cette quinzaine</div>
-                                                    <div style={{fontSize:10,marginTop:4}}>Les opérations "Traitement" dans BEE ONE génèrent une prime de 10 DH/ouvrier/jour</div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                    {quinzainePopup === 'autres_primes' && (
-                                        <div>
-                                            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:12,marginBottom:20}}>
-                                                {[
-                                                    { label: 'Traitement', icon: 'fa-spray-can-sparkles', color: 'var(--blue)', montant: totalTraitement, jh: traitWD.size },
-                                                    { label: 'Conditionnement', icon: 'fa-box-open', color: '#e67e22', montant: totalConditionnement, jh: condDetailQ.reduce((s,w)=>s+w.jh,0) },
-                                                    { label: 'Chargement', icon: 'fa-truck-loading', color: '#8e44ad', montant: totalChargement, jh: chargDetailQ.reduce((s,w)=>s+w.jh,0) },
-                                                    { label: 'Jour Férié', icon: 'fa-star', color: '#c0392b', montant: totalJourFerie, jh: ferieDetailQ.reduce((s,w)=>s+w.jh,0) },
-                                                ].map((p, i) => (
-                                                    <div key={i} style={{padding:14,background:`${p.color}11`,borderRadius:10,borderLeft:`3px solid ${p.color}`}}>
-                                                        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                                                            <div><i className={`fa-solid ${p.icon}`} style={{color:p.color,marginRight:6}}></i><span style={{fontWeight:600,fontSize:12}}>{p.label}</span></div>
-                                                            <span style={{fontSize:10,color:'var(--gray-500)'}}>{p.jh} JH</span>
-                                                        </div>
-                                                        <div style={{fontSize:20,fontWeight:800,color:p.color,marginTop:6}}>{Math.round(p.montant).toLocaleString('fr-FR')} DH</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div style={{padding:12,background:'rgba(142,68,173,0.06)',borderRadius:10,textAlign:'center'}}>
-                                                <div style={{fontSize:10,color:'var(--gray-500)'}}>Total Autres Primes</div>
-                                                <div style={{fontSize:28,fontWeight:800,color:'#8e44ad'}}>{Math.round(totalAutresPrimes).toLocaleString('fr-FR')} DH</div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    </div>
-                                </div>
-                            </div>
-                            )}
                         </React.Fragment>
                         );
                     })()}
@@ -11015,64 +10796,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                     <div className="quinzaine-card">
                         <h3>Quinzaine {selectedPeriode || (apiData.periodes || [])[0] || ''}{farmFilter ? ' — ' + farmFilter : ''}</h3>
-                        <div style={{display:'flex',gap:8,marginBottom:16,alignItems:'center',flexWrap:'wrap'}}>
-                            <span style={{background:'var(--berry-pale)',color:'var(--berry)',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                <i className="fa-solid fa-calendar" style={{marginRight:4}}></i>{parJour.length} jours
-                            </span>
-                            <span style={{background:'#e8f4fd',color:'#1565C0',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                <i className="fa-solid fa-users" style={{marginRight:4}}></i>{totalJournees.toLocaleString('fr-FR')} journées
-                            </span>
-                            <span style={{background:'#e8f4fd',color:'#1565C0',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                <i className="fa-solid fa-calculator" style={{marginRight:4}}></i>Total: {Math.round(totalGlobal).toLocaleString('fr-FR')} DH
-                            </span>
-                            {parJour.length > 0 && <span style={{background:'#fff3e0',color:'#e65100',padding:'4px 12px',borderRadius:12,fontSize:11,fontWeight:600}}>
-                                <i className="fa-solid fa-chart-simple" style={{marginRight:4}}></i>Moy/jour: {Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR')} DH
-                            </span>}
-                        </div>
-                        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))',gap:16,marginBottom:16}}>
-                            {recapItems.map((item, i) => (
-                                <div key={i} style={{background:'#fff',borderRadius:12,padding:16,border:`2px solid ${item.color}`,boxShadow:'0 4px 12px rgba(0,0,0,0.06)',transition:'all 0.2s'}}
-                                    onMouseEnter={e => { e.currentTarget.style.transform='translateY(-3px)'; e.currentTarget.style.boxShadow='0 8px 24px rgba(0,0,0,0.12)'; }}
-                                    onMouseLeave={e => { e.currentTarget.style.transform=''; e.currentTarget.style.boxShadow='0 4px 12px rgba(0,0,0,0.06)'; }}>
-                                    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-                                        <div style={{width:36,height:36,borderRadius:10,background:item.color,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:14}}>
-                                            <i className={`fa-solid ${item.icon}`}></i>
-                                        </div>
-                                        <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)'}}>{item.label}</div>
-                                    </div>
-                                    <div style={{fontSize:22,fontWeight:800,color:item.color}}>{Math.round(item.montant).toLocaleString('fr-FR')} DH</div>
-                                    {totalGlobal > 0 && <div style={{fontSize:10,color:'var(--gray-400)',marginTop:4}}>{Math.round(item.montant / totalGlobal * 100)}% du total</div>}
-                                    {item.subItems && (
-                                        <div style={{marginTop:8,borderTop:'1px solid var(--gray-100)',paddingTop:8}}>
-                                            {item.subItems.map((sub, j) => (
-                                                <div key={j} style={{display:'flex',justifyContent:'space-between',fontSize:10,color:'var(--gray-500)',marginBottom:2}}>
-                                                    <span>{sub.label}</span>
-                                                    <span style={{fontWeight:600}}>{Math.round(sub.montant).toLocaleString('fr-FR')} DH</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                        {totalGlobal > 0 && (
-                            <div style={{background:'var(--gray-50)',borderRadius:10,padding:12}}>
-                                <div style={{fontSize:11,fontWeight:600,color:'var(--gray-500)',marginBottom:8}}>Répartition des coûts</div>
-                                <div style={{display:'flex',height:8,borderRadius:4,overflow:'hidden',gap:1}}>
-                                    {recapItems.filter(it => it.montant > 0).map((item, i) => (
-                                        <div key={i} style={{width:`${item.montant / totalGlobal * 100}%`,background:item.color,borderRadius:2}} title={`${item.label}: ${Math.round(item.montant / totalGlobal * 100)}%`}></div>
-                                    ))}
-                                </div>
-                                <div style={{display:'flex',gap:12,marginTop:6,flexWrap:'wrap'}}>
-                                    {recapItems.filter(it => it.montant > 0).map((item, i) => (
-                                        <span key={i} style={{fontSize:10,color:'var(--gray-500)',display:'flex',alignItems:'center',gap:4}}>
-                                            <span style={{width:8,height:8,borderRadius:2,background:item.color,display:'inline-block'}}></span>
-                                            {item.label} ({Math.round(item.montant / totalGlobal * 100)}%)
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                        <window.QuinzaineRecapCards
+                            recapItems={recapItems}
+                            totalGlobal={totalGlobal}
+                            nbJours={parJour.length}
+                            badges={[
+                                { bg: 'var(--berry-pale)', color: 'var(--berry)', icon: 'fa-calendar', text: parJour.length + ' jours' },
+                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-users', text: totalJournees.toLocaleString('fr-FR') + ' journées' },
+                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
+                                ...(parJour.length > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
+                            ]}
+                            clickable={false}
+                            popup={null}
+                        />
                     </div>
 
                     <Panel title="Répartition par Ferme" icon="fa-chart-bar">
