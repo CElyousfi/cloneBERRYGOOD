@@ -10788,6 +10788,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [expandedReposEquipe, setExpandedReposEquipe] = useState(null);
             const [quinzPopupKey, setQuinzPopupKey] = useState(null);
             const [quinzGroupBy, setQuinzGroupBy] = useState('equipe');
+            const [quinzSubWorker, setQuinzSubWorker] = useState(null);
 
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
@@ -10861,6 +10862,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const parJour = apiData.parJour || [];
             const totalJournees = farmFilter ? displayData.reduce((s, d) => s + d.journees, 0) : apiData.totalJournees;
             const totalCout = farmFilter ? displayData.reduce((s, d) => s + d.cout, 0) : apiData.totalCout;
+            // Taux coût journalier moyen par ferme (pour net à payer des ouvriers MO)
+            const fermeRateMap = {};
+            parFerme.forEach(d => { if (d.journees > 0) fermeRateMap[d.ferme] = d.cout / d.journees; });
             const COLORS = ['#8B2252', '#2D8B4E', '#D4A847'];
             const trendData = parJour.map(d => ({ jour: d.jourLabel || d.jour, F1: d.F1 || 0, F5: d.F5 || 0, Avocatier: d.Avocatier || 0, BAHIA: d.BAHIA || 0 }));
 
@@ -11053,10 +11057,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 _qpWMap[mat] = {
                                     matricule: mat, nom: r.nom || mat, ferme: r.ferme || '—',
                                     jours: new Set(), operations: new Set(), parcelles: new Set(),
-                                    heures: 0, cout: 0,
+                                    fermeJours: {}, heures: 0, cout: 0,
                                 };
                             }
-                            if (r.jour) _qpWMap[mat].jours.add(r.jour);
+                            if (r.jour) {
+                                _qpWMap[mat].jours.add(r.jour);
+                                if (r.ferme) _qpWMap[mat].fermeJours[r.jour] = r.ferme;
+                            }
                             const op = r.operation || r.operationFamille;
                             if (op) _qpWMap[mat].operations.add(op);
                             if (r.parcelle) _qpWMap[mat].parcelles.add(r.parcelle);
@@ -11073,7 +11080,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 parcellesArr: [...w.parcelles],
                                 parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
                                 heuresTotal: Math.round(w.heures * 10) / 10,
-                                coutTotal: Math.round(w.cout),
+                                coutTotal: _isMoCard
+                                    ? Math.round(Object.entries(w.fermeJours).reduce((s, [, ferme]) => s + (fermeRateMap[ferme] || 0), 0))
+                                    : Math.round(w.cout),
                             }));
                         const _qpTotalJ = _qpWorkers.reduce((s, w) => s + w.journees, 0);
 
@@ -11107,7 +11116,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-                                onClick={() => setQuinzPopupKey(null)}>
+                                onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); }}>
                                 <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
                                     onClick={e => e.stopPropagation()}>
                                     <div style={{padding:'20px 24px',background:`linear-gradient(135deg, ${_qpColor} 0%, ${_qpColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
@@ -11115,7 +11124,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             <div style={{fontSize:18,fontWeight:700}}><i className={`fa-solid ${_qpIcon}`} style={{marginRight:8}}></i>{_qpTitle} — {currentPeriode}</div>
                                             <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''} — {_qpTotalJ} jours hommes{_isMoCard ? ' — ' + _qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR') + ' DH net' : ''}</div>
                                         </div>
-                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                        <button onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); }} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
                                             <i className="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
@@ -11164,7 +11173,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         </tr>
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
-                                                                style={{transition:'background 0.15s'}}
+                                                                style={{transition:'background 0.15s', cursor: _isMoCard ? 'pointer' : 'default'}}
+                                                                onClick={_isMoCard ? () => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort()}) : undefined}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 {_isMoCard && <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:'#27ae60',fontSize:14}}>●</span></td>}
@@ -11191,6 +11201,66 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             </tfoot>
                                         </table>
                                         </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Sous-popup jour par jour ouvrier MO */}
+                    {quinzSubWorker && (() => {
+                        const _sw = quinzSubWorker;
+                        const _swDays = (_sw.quinzaineDays || []);
+                        const _swColor = quinzPopupKey === 'mo_recolte' ? 'var(--berry)' : quinzPopupKey === 'mo_postes' ? '#7f8c8d' : '#c0392b';
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzSubWorker(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:560,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'16px 20px',background:`linear-gradient(135deg, ${_swColor} 0%, ${_swColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                        <div>
+                                            <div style={{fontSize:16,fontWeight:700}}>{_sw.nom}</div>
+                                            <div style={{fontSize:11,opacity:0.85,marginTop:2}}>
+                                                {_sw.matricule} · {_sw.operationsStr}
+                                            </div>
+                                            <div style={{fontSize:12,marginTop:4,display:'flex',gap:16}}>
+                                                <span><strong>{_sw.journees}</strong> / {_swDays.length} jours</span>
+                                                <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setQuinzSubWorker(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 20px'}}>
+                                        <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:10}}>
+                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Déclaré&nbsp;&nbsp;
+                                            <span style={{color:'#e74c3c',marginRight:4}}>●</span>Non déclaré
+                                        </div>
+                                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                                            {_swDays.map(day => {
+                                                const worked = _sw.jours.has(day);
+                                                const label = (() => { const d = new Date(day + 'T00:00:00'); return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}); })();
+                                                return (
+                                                    <div key={day} style={{
+                                                        display:'flex',alignItems:'center',gap:4,
+                                                        padding:'5px 10px',borderRadius:8,
+                                                        background: worked ? '#eafaf1' : '#fdf2f2',
+                                                        border:`1px solid ${worked ? '#27ae60' : '#e74c3c'}`,
+                                                        fontSize:11,fontWeight:600,
+                                                        color: worked ? '#1a7a4a' : '#c0392b',
+                                                    }}>
+                                                        <span style={{fontSize:12}}>●</span>{label}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        {_sw.coutTotal > 0 && (
+                                            <div style={{marginTop:16,padding:'10px 14px',background:'var(--gray-50)',borderRadius:8,display:'flex',justifyContent:'space-between',fontSize:12}}>
+                                                <span style={{color:'var(--gray-500)'}}>Net à payer estimé</span>
+                                                <strong style={{color:_swColor}}>{_sw.coutTotal.toLocaleString('fr-FR')} DH</strong>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
