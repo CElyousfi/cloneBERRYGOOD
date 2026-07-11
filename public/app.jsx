@@ -11099,6 +11099,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             : 'fa-spray-can-sparkles';
 
                         // Build source rows per card type
+                        // Note: r.cout dans les rows BDP transport est toujours 0 → calculé depuis coutMap.
+                        const _primeChargJour = data.primesConfig?.primeChargement?.coutParJour || 10;
                         let _qpSrc = [];
                         if (_qpKey === 'mo_recolte') {
                             _qpSrc = moRecolteRows;
@@ -11110,26 +11112,33 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             _qpSrc = qRecolteRows.map(r => ({
                                 matricule: r.matricule, nom: r.nom, ferme: r.ferme || '—',
                                 jour: r.jour, operation: 'Récolte',
-                                parcelle: r.parcelle || r.refParcelle || '—',
+                                parcelle: r.parcelle || r.refParcelle || '',
+                                cout: calcPrime(r.kg || 0, r.variete, r.jour),
                             }));
                         } else if (_qpKey === 'autres_primes') {
-                            const _trSrc = traitRows.map(r => ({ ...r, operation: 'Traitement' }));
+                            const _trSrc = traitRows.map(r => ({ ...r, operation: 'Traitement', cout: 10 }));
                             const _condSrc = condDetailQ.map(w => ({
                                 matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
-                                jour: w.jour || w.date || '', operation: 'Conditionnement', parcelle: w.parcelle || '—',
+                                jour: w.jour || w.date || '', operation: 'Conditionnement', parcelle: w.parcelle || '',
+                                cout: 10,
                             }));
                             const _chargSrc = chargDetailQ.map(w => ({
                                 matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
-                                jour: w.jour || w.date || '', operation: 'Chargement', parcelle: w.parcelle || '—',
+                                jour: w.jour || w.date || '', operation: 'Chargement', parcelle: w.parcelle || '',
+                                cout: _primeChargJour,
                             }));
                             const _ferieSrc = ferieDetailQ.map(w => ({
                                 matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
-                                jour: w.date || w.jour || '', operation: 'Jour Férié', parcelle: '—',
+                                jour: w.date || w.jour || '', operation: 'Jour Férié', parcelle: '',
+                                cout: w.cout || 0,
                             }));
                             _qpSrc = [..._trSrc, ..._condSrc, ..._chargSrc, ..._ferieSrc];
                         } else {
-                            // transport: use transportRows
-                            _qpSrc = transportRows;
+                            // transport: r.cout BDP = 0 → coût = tarif journalier par équipe
+                            _qpSrc = transportRows.map(r => ({
+                                ...r,
+                                cout: coutMap[getEqPrefix(r.matricule)] || 0,
+                            }));
                         }
 
                         // Aggregate per worker
@@ -11213,14 +11222,21 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     </div>
                                     <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                                         <span style={{fontSize:11,color:'var(--gray-500)',marginRight:4}}>Regrouper par :</span>
-                                        {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => (
-                                            <button key={mode} onClick={() => setQuinzGroupBy(mode)}
-                                                style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${quinzGroupBy === mode ? _qpColor : 'var(--gray-300)'}`,fontSize:11,cursor:'pointer',fontWeight:600,
+                                        {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => {
+                                            const _disabledParcelle = mode === 'parcelle' && _isMoCard;
+                                            return (
+                                            <button key={mode}
+                                                onClick={() => !_disabledParcelle && setQuinzGroupBy(mode)}
+                                                title={_disabledParcelle ? 'Parcelle non disponible dans BDP pour les opérations MO' : undefined}
+                                                style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${quinzGroupBy === mode ? _qpColor : 'var(--gray-300)'}`,fontSize:11,
+                                                    cursor: _disabledParcelle ? 'not-allowed' : 'pointer',fontWeight:600,
                                                     background: quinzGroupBy === mode ? _qpColor : 'transparent',
-                                                    color: quinzGroupBy === mode ? '#fff' : 'var(--gray-600)'}}>
+                                                    color: _disabledParcelle ? 'var(--gray-300)' : quinzGroupBy === mode ? '#fff' : 'var(--gray-600)',
+                                                    opacity: _disabledParcelle ? 0.5 : 1}}>
                                                 {label}
                                             </button>
-                                        ))}
+                                            );
+                                        })}
                                         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:'var(--gray-50)',borderRadius:8,border:'1px solid var(--gray-300)',padding:'4px 10px'}}>
                                             <i className="fa-solid fa-magnifying-glass" style={{fontSize:11,color:'var(--gray-400)'}}></i>
                                             <input
@@ -11252,7 +11268,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <th style={{padding:'6px 10px'}}>Matricule</th>
                                                     <th style={{padding:'6px 10px'}}>Nom</th>
                                                     <th style={{padding:'6px 10px'}}>Opérations</th>
-                                                    <th style={{padding:'6px 10px'}}>Parcelles</th>
+                                                    {!_isMoCard && <th style={{padding:'6px 10px'}}>Parcelles</th>}
                                                     <th style={{padding:'6px 10px',textAlign:'center'}}>Jours</th>
                                                     {!_isMoCard && <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>}
                                                     <th style={{padding:'6px 10px',textAlign:'right'}}>{_isMoCard ? 'Net à payer (DH)' : 'Coût (DH)'}</th>
@@ -11271,7 +11287,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <React.Fragment key={g.key}>
                                                         <tr style={{background:'var(--green-pale, #eef7ef)'}}>
                                                             {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
-                                                            <td colSpan={4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
+                                                            <td colSpan={_isMoCard ? 3 : 4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
                                                                 <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.key}</span>
                                                                 {quinzGroupBy === 'equipe' ? g.label : g.key}
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
@@ -11297,7 +11313,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
                                                                 <td style={{fontWeight:600,padding:'6px 10px'}}>{w.nom}</td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
-                                                                <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>
+                                                                {!_isMoCard && <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>}
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
                                                                 {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>}
                                                                 <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{w.coutTotal > 0 ? w.coutTotal.toLocaleString('fr-FR') : '—'}</td>
@@ -11310,7 +11326,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             <tfoot>
                                                 <tr style={{background:'var(--gray-50)',fontWeight:700}}>
                                                     {_isMoCard && <td style={{padding:'6px 6px'}}></td>}
-                                                    <td colSpan={4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
+                                                    <td colSpan={_isMoCard ? 3 : 4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
                                                     <td style={{textAlign:'center',padding:'6px 10px'}}>{_qpTotalJ}</td>
                                                     {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px'}}>{Math.round(_qpWorkers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>}
                                                     <td style={{textAlign:'right',padding:'6px 10px'}}>{_qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
