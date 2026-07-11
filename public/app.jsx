@@ -5962,30 +5962,62 @@
                     {pointagePopup && (() => {
                         const popRawRows = detailRows
                             .filter(r => (!pointagePopup.ferme || r.ferme === pointagePopup.ferme) && matchSub(r) && (pointagePopup.type === 'all' || r.type === pointagePopup.type));
-                        // Totaux globaux calculés sur les lignes BRUTES (1 enregistrement = 1 parcelle/opération)
-                        // → garantit que l'agrégation par ouvrier ne change aucun montant ni effectif.
-                        const popTotalCout = popRawRows.reduce((s, r) => s + (r.cout || 0), 0);
+                        // Net paie par ouvrier (1 journée) via computePayslip — remplace r.cout (valeur BDP brute).
+                        const __PU = window.PaieUtils;
+                        const __popFeries = (data.primesConfig && data.primesConfig.joursFeries) || [];
+                        const __popIsFerie = __popFeries.some(jf => jf && jf.date === paieDateISO);
+                        const __popSmag = (__PU && __PU.resolveSmagForDate)
+                            ? __PU.resolveSmagForDate(paieBaremes, paieDateISO)
+                            : { smagBrutJournalier: paieBaremes.smagBrutJournalier || 0, smagNetJournalier: paieBaremes.smagNetJournalier || 0 };
+                        const computeNetJour = (mat) => {
+                            if (!__PU || !__PU.computePayslip) return 0;
+                            const reg = ouvriersRegistry[numKey(mat)] || {};
+                            const declare = !!reg.declare;
+                            const primeFonctionJour = Number(reg.primeFonctionJournaliere || 0);
+                            const baselineDate = reg.baselineDate || '';
+                            const baselineJours = Number(reg.baselineJours || 0);
+                            const pt = paieDistinctDays.get(mat);
+                            let joursDepuisBaseline = 0;
+                            if (pt && pt.joursPointes) {
+                                pt.joursPointes.forEach(dISO => { if (!baselineDate || dISO >= baselineDate) joursDepuisBaseline++; });
+                            }
+                            const anciennete = baselineJours + joursDepuisBaseline;
+                            const ancienneteTaux = (__PU.trouverPalierAnciennete
+                                ? __PU.trouverPalierAnciennete(anciennete, paieBaremes.paliers || [])
+                                : { pourcentage: 0 }).pourcentage / 100;
+                            const p = __PU.computePayslip({
+                                declare,
+                                smagBrut: __popSmag.smagBrutJournalier,
+                                smagNet: __popSmag.smagNetJournalier,
+                                jT: 1,
+                                jF: (declare && __popIsFerie) ? 1 : 0,
+                                ancienneteTaux,
+                                primeFonctionJour,
+                                primesOptionnelles: 0,
+                                baremes: paieBaremes,
+                            });
+                            return p.netArrondi != null ? p.netArrondi : (p.net || 0);
+                        };
                         const popWorkers = new Set(popRawRows.map(r => r.matricule)).size;
                         // Agrégation par OUVRIER (matricule) : 1 ligne par ouvrier dans le popup.
-                        // Le temps/coût d'un irrigant sont fractionnés par parcelle dans detailRows
-                        // (ex. BOUMADIAN = 4 lignes IRRIGATION) → on somme heures + coût, on fusionne
-                        // les opérations/parcelles distinctes. matricule/nom = constants par ouvrier.
+                        // Heures/opérations/parcelles agrégées ; cout = net paie computePayslip pour 1 journée.
                         const popAggMap = {};
                         popRawRows.forEach(r => {
                             const mat = r.matricule;
                             if (!popAggMap[mat]) {
                                 popAggMap[mat] = {
                                     matricule: mat, nom: r.nom, raw: r,
-                                    heures: 0, cout: 0,
+                                    heures: 0, cout: computeNetJour(mat),
                                     operations: new Set(), parcelles: new Set()
                                 };
                             }
                             const agg = popAggMap[mat];
                             agg.heures += (r.heures || 0);
-                            agg.cout += (r.cout || 0);
                             if (r.operation) agg.operations.add(r.operation);
                             if (r.parcelle) agg.parcelles.add(r.parcelle);
                         });
+                        // Total = somme des nets paie par ouvrier unique.
+                        const popTotalCout = Object.values(popAggMap).reduce((s, a) => s + (a.cout || 0), 0);
                         // Formatage heures : arrondi 2 décimales, sans zéros inutiles (ex. 8, 8.5, 8.04).
                         const popFmtHeures = (h) => {
                             const v = Math.round((h || 0) * 100) / 100;
