@@ -4200,6 +4200,7 @@
             const [quinzaineData, setQuinzaineData] = useState(null);
             const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
             const [presenceQData, setPresenceQData] = useState(null);
+            const [sansSortiePopup, setSansSortiePopup] = useState(null); // {date, jourLabel, equipeNom, workers}
             const [workerPopup, setWorkerPopup] = useState(null);
             const [workerLoading, setWorkerLoading] = useState(false);
             const [kpiPopup, setKpiPopup] = useState(null); // { title, ferme, type }
@@ -4346,16 +4347,19 @@
                                     return !r.heureEntree || !r.heureSortie;
                                 });
                                 if (!filtered.length) return null;
-                                // Group by équipe
+                                // Group by équipe — store individual worker rows for popup
                                 const byEq = {};
                                 filtered.forEach(r => {
                                     const prefix = getEqPrefix(r.matricule);
-                                    if (!byEq[prefix]) byEq[prefix] = { nom: eqNames[prefix] || prefix, count: 0, missing: new Set() };
+                                    if (!byEq[prefix]) byEq[prefix] = { nom: eqNames[prefix] || prefix, count: 0, missing: new Set(), workers: [] };
                                     byEq[prefix].count++;
                                     if (!r.heureEntree) byEq[prefix].missing.add('entrée');
                                     if (!r.heureSortie) byEq[prefix].missing.add('sortie');
+                                    byEq[prefix].workers.push(r);
                                 });
-                                return { date: d.date, equipes: Object.values(byEq).sort((a,b) => b.count - a.count) };
+                                const dt2 = new Date(d.date + 'T00:00:00');
+                                const jourLabel2 = dt2.toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'});
+                                return { date: d.date, jourLabel: jourLabel2, equipes: Object.values(byEq).sort((a,b) => b.count - a.count) };
                             })
                             .filter(Boolean);
                         if (!daysWithIssues.length) return null;
@@ -4367,26 +4371,79 @@
                                     <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>Quinzaine en cours — {daysWithIssues.length} jour{daysWithIssues.length > 1 ? 's' : ''}</span>
                                 </div>
                                 <div style={{padding:'8px 12px',background:'#fff'}}>
-                                    {daysWithIssues.map((d, di) => {
-                                        const dt = new Date(d.date + 'T00:00:00');
-                                        const jourLabel = dt.toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'});
-                                        return (
-                                            <div key={di} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 4px',borderBottom: di < daysWithIssues.length - 1 ? '1px solid var(--gray-100)' : 'none',flexWrap:'wrap'}}>
-                                                <span style={{fontSize:11,fontWeight:700,color:'var(--dark)',minWidth:80}}>{jourLabel}</span>
-                                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                                                    {d.equipes.map((eq, ei) => (
-                                                        <span key={ei} style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:'rgba(231,76,60,0.08)',color:'#c0392b',fontWeight:600}}>
-                                                            {eq.nom} <span style={{opacity:0.6}}>({eq.count} — {[...eq.missing].join('/')})</span>
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                    {daysWithIssues.map((d, di) => (
+                                        <div key={di} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 4px',borderBottom: di < daysWithIssues.length - 1 ? '1px solid var(--gray-100)' : 'none',flexWrap:'wrap'}}>
+                                            <span style={{fontSize:11,fontWeight:700,color:'var(--dark)',minWidth:80}}>{d.jourLabel}</span>
+                                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                                {d.equipes.map((eq, ei) => (
+                                                    <span key={ei} onClick={() => setSansSortiePopup({ date: d.date, jourLabel: d.jourLabel, equipeNom: eq.nom, workers: eq.workers.sort((a,b) => (a.nom||'').localeCompare(b.nom||'')) })}
+                                                        style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:'rgba(231,76,60,0.08)',color:'#c0392b',fontWeight:600,cursor:'pointer',transition:'background 0.15s'}}
+                                                        onMouseEnter={e => e.currentTarget.style.background='rgba(231,76,60,0.18)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background='rgba(231,76,60,0.08)'}>
+                                                        {eq.nom} <span style={{opacity:0.6}}>({eq.count} — {[...eq.missing].join('/')})</span>
+                                                    </span>
+                                                ))}
                                             </div>
-                                        );
-                                    })}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         );
                     })()}
+
+                    {/* Popup détail équipe sans entrée/sortie */}
+                    {sansSortiePopup && (
+                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                            onClick={() => setSansSortiePopup(null)}>
+                            <div style={{background:'#fff',borderRadius:16,maxWidth:700,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                onClick={e => e.stopPropagation()}>
+                                <div style={{padding:'16px 20px',background:'linear-gradient(135deg, #c0392b 0%, #922b21 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                    <div>
+                                        <div style={{fontSize:16,fontWeight:700}}><i className="fa-solid fa-clock-rotate-left" style={{marginRight:8}}></i>{sansSortiePopup.equipeNom} — {sansSortiePopup.jourLabel}</div>
+                                        <div style={{fontSize:11,opacity:0.85,marginTop:2}}>{sansSortiePopup.workers.length} ouvrier{sansSortiePopup.workers.length !== 1 ? 's' : ''} sans entrée/sortie complète</div>
+                                    </div>
+                                    <button onClick={() => setSansSortiePopup(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div style={{padding:'16px 20px'}}>
+                                    <table className="data-table" style={{fontSize:12,margin:0}}>
+                                        <thead>
+                                            <tr style={{background:'var(--gray-50)'}}>
+                                                <th style={{padding:'6px 10px'}}>Matricule</th>
+                                                <th style={{padding:'6px 10px'}}>Nom</th>
+                                                <th style={{padding:'6px 10px',textAlign:'center'}}>Heure Entrée</th>
+                                                <th style={{padding:'6px 10px',textAlign:'center'}}>Heure Sortie</th>
+                                                <th style={{padding:'6px 10px',textAlign:'center'}}>Manque</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {sansSortiePopup.workers.map((w, wi) => (
+                                                <tr key={wi} style={{borderBottom:'1px solid var(--gray-100)'}}>
+                                                    <td style={{fontFamily:'monospace',fontSize:10,padding:'7px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
+                                                    <td style={{fontWeight:600,padding:'7px 10px'}}>{w.nom || w.matricule}</td>
+                                                    <td style={{textAlign:'center',padding:'7px 10px',color: w.heureEntree ? 'var(--green,#2e7d32)' : '#e74c3c',fontWeight:600}}>
+                                                        {w.heureEntree || <span style={{opacity:0.5}}>—</span>}
+                                                    </td>
+                                                    <td style={{textAlign:'center',padding:'7px 10px',color: w.heureSortie ? 'var(--green,#2e7d32)' : '#e74c3c',fontWeight:600}}>
+                                                        {w.heureSortie || <span style={{opacity:0.5}}>—</span>}
+                                                    </td>
+                                                    <td style={{textAlign:'center',padding:'7px 10px'}}>
+                                                        {!w.heureEntree && !w.heureSortie
+                                                            ? <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:'rgba(231,76,60,0.1)',color:'#c0392b',fontWeight:600}}>entrée + sortie</span>
+                                                            : !w.heureEntree
+                                                            ? <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:'rgba(231,76,60,0.1)',color:'#c0392b',fontWeight:600}}>entrée</span>
+                                                            : <span style={{fontSize:10,padding:'2px 6px',borderRadius:8,background:'rgba(231,76,60,0.1)',color:'#c0392b',fontWeight:600}}>sortie</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div style={{marginBottom:16,padding:'16px 20px',background:'linear-gradient(135deg, var(--berry) 0%, #6b1a3a 100%)',borderRadius:12,color:'white',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
                         <div style={{display:'flex',alignItems:'center',gap:12}}>
