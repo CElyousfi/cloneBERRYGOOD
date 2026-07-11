@@ -6706,7 +6706,7 @@
 
                                                 {/* SMAG base : XX,XX DH/j × N j = XXX,XX DH */}
                                                 <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>SMAG base : {f2(paie.smagBase)} × {paie.jT}</span>
+                                                    <span style={{fontSize:12,color:'var(--gray-500)'}}>{declare ? `SMAG base : ${f2(paie.smagBase)} × ${paie.jT}` : `Base net (non déclaré CNSS) : ${f2(paie.smagBase)} × ${paie.jT}`}</span>
                                                     <span style={{fontWeight:600}}>{f2(paie.base)}</span>
                                                 </div>
                                                 {/* Jours fériés (si déclaré & jF>0) */}
@@ -6737,11 +6737,13 @@
                                                     <span style={{fontWeight:600,color:'var(--green)'}}>+{f2(paie.primesOptionnelles)}</span>
                                                 </div>
                                                 )}
-                                                {/* = Salaire brut (gras) */}
+                                                {/* = Salaire brut (gras) — caché pour les non-déclarés (brut=net par décision DG, évite la confusion) */}
+                                                {declare && (
                                                 <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
                                                     <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire brut</span>
                                                     <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{f2(paie.brut)} DH</span>
                                                 </div>
+                                                )}
 
                                                 {/* Retenues salariales (déclaré uniquement) */}
                                                 {declare && (
