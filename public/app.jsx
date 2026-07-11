@@ -10906,16 +10906,18 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // Classification MO (mirrors backend classifyType)
             const classifyMO = (opFam) => {
                 if (!opFam) return 'horsRecolte';
-                if (opFam === '8. Récolte') return 'recolte';
-                if (opFam === '11. Postes fixes') return 'postes';
+                const lower = opFam.toLowerCase();
+                if (lower.includes('récolte') || lower.includes('recolte')) return 'recolte';
+                if (lower.includes('poste')) return 'postes';
                 return 'horsRecolte';
             };
             const moRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'recolte');
             const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
             const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
-            const totalCoutRecolte = Math.round(moRecolteRows.reduce((s, r) => s + (r.cout || 0), 0));
-            const totalCoutHorsRecolte = Math.round(moHorsRecolteRows.reduce((s, r) => s + (r.cout || 0), 0));
-            const totalCoutPostes = Math.round(moPostesRows.reduce((s, r) => s + (r.cout || 0), 0));
+            // Coûts MO par type : proportion journées × coût ferme (parFerme est la source fiable)
+            const totalCoutRecolte = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.recolte || 0) / d.journees : 0), 0));
+            const totalCoutHorsRecolte = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.horsRecolte || 0) / d.journees : 0), 0));
+            const totalCoutPostes = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.postesFixes || 0) / d.journees : 0), 0));
 
             // Traitement (10 DH/ouvrier-jour)
             const traitRows = transportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
