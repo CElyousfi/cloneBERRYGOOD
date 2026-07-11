@@ -10719,7 +10719,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 transportByDay[d][eq].add(r.matricule);
             });
             const transportCoutTotal = Object.entries(transportByDay).reduce((total, [d, eqs]) => {
-                return total + Object.entries(eqs).reduce((s, [eq, workers]) => s + workers.size * (coutMap[eq] || 30), 0);
+                return total + Object.entries(eqs).reduce((s, [eq, workers]) => s + workers.size * (coutMap[eq] || 0), 0);
             }, 0);
             // Build worker-level detail: per equipe, per worker → JH count
             const transportWorkerDetail = {};
@@ -10736,7 +10736,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             Object.entries(transportWorkerDetail).forEach(([eq, workers]) => {
                 const workerList = Object.values(workers).sort((a, b) => b.jh - a.jh);
                 const totalJH = workerList.reduce((s, w) => s + w.jh, 0);
-                transportByEquipe[eq] = { workers: totalJH, cout: totalJH * (coutMap[eq] || 30), workerList };
+                transportByEquipe[eq] = { workers: totalJH, cout: totalJH * (coutMap[eq] || 0), workerList };
             });
 
             // ===== PRIMES CALCULATIONS =====
