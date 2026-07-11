@@ -11286,7 +11286,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor})}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                {_isMoCard && <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:'#27ae60',fontSize:14}}>●</span></td>}
+                                                                {_isMoCard && (() => {
+                                                                    const _wr = quinzRegistry[numKey(w.matricule)] || {};
+                                                                    const _wDecl = !!(_wr.declare);
+                                                                    const _wHasReg = Object.keys(_wr).length > 0;
+                                                                    const _dotColor = _wHasReg ? (_wDecl ? '#27ae60' : '#e74c3c') : '#bbb';
+                                                                    const _dotTitle = _wHasReg ? (_wDecl ? 'Déclaré CNSS' : 'Non déclaré CNSS') : 'Statut CNSS inconnu';
+                                                                    return <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:_dotColor,fontSize:14}} title={_dotTitle}>●</span></td>;
+                                                                })()}
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
                                                                 <td style={{fontWeight:600,padding:'6px 10px'}}>{w.nom}</td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
@@ -11472,7 +11479,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 <div style={{flex:'1 1 180px',minWidth:180}}>
                                                     <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Bulletin ouvrier</div>
                                                     <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>{_declare ? `SMAG base : ${f2(_paie.smagBase)} × ${_paie.jT}j` : `Base net (non déclaré) : ${f2(_paie.smagBase)} × ${_paie.jT}j`}</span>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>{_declare ? `SMAG base : ${f2(_paie.smagBase)} DH/j × ${_paie.jT} j` : `Base net (non déclaré) : ${f2(_paie.smagBase)} DH/j × ${_paie.jT} j`}</span>
                                                         <span style={{fontWeight:600}}>{f2(_paie.base)}</span>
                                                     </div>
                                                     {_declare && (
