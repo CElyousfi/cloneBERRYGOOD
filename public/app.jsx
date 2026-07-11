@@ -11173,8 +11173,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         </tr>
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
-                                                                style={{transition:'background 0.15s', cursor: _isMoCard ? 'pointer' : 'default'}}
-                                                                onClick={_isMoCard ? () => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort()}) : undefined}
+                                                                style={{transition:'background 0.15s', cursor:'pointer'}}
+                                                                onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor})}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 {_isMoCard && <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:'#27ae60',fontSize:14}}>●</span></td>}
@@ -11208,11 +11208,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         );
                     })()}
 
-                    {/* Sous-popup jour par jour ouvrier MO */}
+                    {/* Sous-popup jour par jour ouvrier (toutes cartes) */}
                     {quinzSubWorker && (() => {
                         const _sw = quinzSubWorker;
                         const _swDays = (_sw.quinzaineDays || []);
-                        const _swColor = quinzPopupKey === 'mo_recolte' ? 'var(--berry)' : quinzPopupKey === 'mo_postes' ? '#7f8c8d' : '#c0392b';
+                        const _swColor = _sw.popupColor || 'var(--berry)';
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
                                 onClick={() => setQuinzSubWorker(null)}>
