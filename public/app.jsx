@@ -3547,22 +3547,37 @@
             const [meteoResult, setMeteoResult] = useState(null);
             const [sprayResult, setSprayResult] = useState(null);
             const [loading, setLoading] = useState(true);
+            const [loadError, setLoadError] = useState(false);
 
             useEffect(() => {
                 setLoading(true);
+                setLoadError(false);
                 Promise.all([
                     fetchMeteoblueData(farmFilter || 'F1'),
                     fetchSprayData(farmFilter || 'F1')
                 ]).then(function(results) {
                     if (results[0]) setMeteoResult(transformMeteoblueData(results[0], farmFilter));
+                    else setLoadError(true);
                     if (results[1]) setSprayResult(transformSprayData(results[1]));
                     setLoading(false);
-                }).catch(function() { setLoading(false); });
+                }).catch(function() { setLoadError(true); setLoading(false); });
             }, [farmFilter]);
 
             const [showMeteoPopup, setShowMeteoPopup] = useState(false);
 
-            if (loading || !meteoResult) return null;
+            if (loading) return null;
+            if (!meteoResult) {
+                if (!loadError) return null;
+                return (
+                    <div style={{marginBottom:16,padding:'10px 18px',borderRadius:12,background:'rgba(231,76,60,0.05)',border:'1px solid rgba(231,76,60,0.25)',display:'flex',alignItems:'center',gap:10}}>
+                        <i className="fa-solid fa-cloud-slash" style={{fontSize:16,color:'#e74c3c'}}></i>
+                        <div>
+                            <div style={{fontSize:12,fontWeight:700,color:'#e74c3c'}}>Météo temporairement indisponible</div>
+                            <div style={{fontSize:10,color:'var(--gray-400)'}}>Quota API dépassé — contact admin pour renouveler</div>
+                        </div>
+                    </div>
+                );
+            }
             const { alertes, previsions, horaireParJour } = meteoResult;
             const today = previsions.find(p => p.isToday) || previsions[0];
             if (!today && alertes.length === 0) return null;
@@ -4184,6 +4199,7 @@
             const [recolteEquipePeriodes, setRecolteEquipePeriodes] = useState([]);
             const [quinzaineData, setQuinzaineData] = useState(null);
             const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
+            const [presenceQData, setPresenceQData] = useState(null);
             const [workerPopup, setWorkerPopup] = useState(null);
             const [workerLoading, setWorkerLoading] = useState(false);
             const [kpiPopup, setKpiPopup] = useState(null); // { title, ferme, type }
@@ -4211,7 +4227,8 @@
                     cachedFetch('/api/pointage-rh?action=recolte-equipes'),
                     cachedFetch('/api/pointage-rh?action=quinzaine'),
                     cachedFetch('/api/pointage-rh?action=presence'),
-                ]).then(([summary, nouveaux, detail, recolte, transport, recolteEq, quinz, presence]) => {
+                    cachedFetch('/api/pointage-rh?action=presence-quinzaine'),
+                ]).then(([summary, nouveaux, detail, recolte, transport, recolteEq, quinz, presence, presenceQ]) => {
                     if (summary.success) setApiData(summary);
                     if (nouveaux.success) setNouveauxData(nouveaux);
                     if (detail.success) setDetailRows(detail.rows || []);
@@ -4220,6 +4237,7 @@
                     if (recolteEq.success) { setRecolteEquipeRows(recolteEq.rows || []); setRecolteEquipePeriodes(recolteEq.periodes || []); }
                     if (quinz.success) setQuinzaineData(quinz);
                     if (presence && presence.success) setPresenceData({ rows: presence.rows || [], syncedAt: presence.syncedAt || null });
+                    if (presenceQ && presenceQ.success) setPresenceQData(presenceQ);
                 }).catch(err => console.warn('Pointage API error:', err))
                   .finally(() => setLoading(false));
             }, []);
@@ -4309,6 +4327,66 @@
                     {(currentProfile === 'chef_f1' || currentProfile === 'chef_f5') && farmFilter && (
                         <ChefProductionWidget farmFilter={farmFilter} />
                     )}
+
+                    {/* Équipes sans entrée/sortie — Chef F1/F5 uniquement */}
+                    {(currentProfile === 'chef_f1' || currentProfile === 'chef_f5') && farmFilter && presenceQData && (() => {
+                        // Build set of allowed matricules from transportRows (ferme-filtered)
+                        const allowedMats = new Set(
+                            transportRows
+                                .filter(r => r.ferme === farmFilter)
+                                .map(r => (r.matricule || '').toUpperCase().trim())
+                        );
+                        // Per day: find workers missing entry or exit
+                        const daysWithIssues = (presenceQData.days || [])
+                            .map(d => {
+                                const filtered = d.rows.filter(r => {
+                                    const mat = (r.matricule || '').toUpperCase().trim();
+                                    // Only workers of this ferme (derived from transport)
+                                    if (allowedMats.size > 0 && !allowedMats.has(mat)) return false;
+                                    return !r.heureEntree || !r.heureSortie;
+                                });
+                                if (!filtered.length) return null;
+                                // Group by équipe
+                                const byEq = {};
+                                filtered.forEach(r => {
+                                    const prefix = getEqPrefix(r.matricule);
+                                    if (!byEq[prefix]) byEq[prefix] = { nom: eqNames[prefix] || prefix, count: 0, missing: new Set() };
+                                    byEq[prefix].count++;
+                                    if (!r.heureEntree) byEq[prefix].missing.add('entrée');
+                                    if (!r.heureSortie) byEq[prefix].missing.add('sortie');
+                                });
+                                return { date: d.date, equipes: Object.values(byEq).sort((a,b) => b.count - a.count) };
+                            })
+                            .filter(Boolean);
+                        if (!daysWithIssues.length) return null;
+                        return (
+                            <div style={{marginBottom:16,borderRadius:12,border:'1.5px solid rgba(231,76,60,0.25)',overflow:'hidden'}}>
+                                <div style={{padding:'10px 16px',background:'rgba(231,76,60,0.06)',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(231,76,60,0.15)'}}>
+                                    <i className="fa-solid fa-clock-rotate-left" style={{color:'#e74c3c',fontSize:14}}></i>
+                                    <span style={{fontWeight:700,fontSize:13,color:'#e74c3c'}}>Équipes sans entrée/sortie</span>
+                                    <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>Quinzaine en cours — {daysWithIssues.length} jour{daysWithIssues.length > 1 ? 's' : ''}</span>
+                                </div>
+                                <div style={{padding:'8px 12px',background:'#fff'}}>
+                                    {daysWithIssues.map((d, di) => {
+                                        const dt = new Date(d.date + 'T00:00:00');
+                                        const jourLabel = dt.toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'});
+                                        return (
+                                            <div key={di} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 4px',borderBottom: di < daysWithIssues.length - 1 ? '1px solid var(--gray-100)' : 'none',flexWrap:'wrap'}}>
+                                                <span style={{fontSize:11,fontWeight:700,color:'var(--dark)',minWidth:80}}>{jourLabel}</span>
+                                                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                                    {d.equipes.map((eq, ei) => (
+                                                        <span key={ei} style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:'rgba(231,76,60,0.08)',color:'#c0392b',fontWeight:600}}>
+                                                            {eq.nom} <span style={{opacity:0.6}}>({eq.count} — {[...eq.missing].join('/')})</span>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     <div style={{marginBottom:16,padding:'16px 20px',background:'linear-gradient(135deg, var(--berry) 0%, #6b1a3a 100%)',borderRadius:12,color:'white',display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12}}>
                         <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -10944,6 +11022,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 _qpWMap[mat] = {
                                     matricule: mat, nom: r.nom || mat, ferme: r.ferme || '—',
                                     jours: new Set(), operations: new Set(), parcelles: new Set(),
+                                    heures: 0, cout: 0,
                                 };
                             }
                             if (r.jour) _qpWMap[mat].jours.add(r.jour);
@@ -10951,6 +11030,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             if (op) _qpWMap[mat].operations.add(op);
                             if (r.parcelle) _qpWMap[mat].parcelles.add(r.parcelle);
                             if (r.refParcelle) _qpWMap[mat].parcelles.add(r.refParcelle);
+                            _qpWMap[mat].heures += r.heures || 0;
+                            _qpWMap[mat].cout += r.cout || 0;
                         });
                         const _qpWorkers = Object.values(_qpWMap)
                             .sort((a, b) => (a.nom || '').localeCompare(b.nom || ''))
@@ -10960,6 +11041,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 operationsStr: [...w.operations].join(', ') || '—',
                                 parcellesArr: [...w.parcelles],
                                 parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
+                                heuresTotal: Math.round(w.heures * 10) / 10,
+                                coutTotal: Math.round(w.cout),
                             }));
                         const _qpTotalJ = _qpWorkers.reduce((s, w) => s + w.journees, 0);
 
@@ -11029,6 +11112,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <th style={{padding:'6px 10px'}}>Opérations</th>
                                                     <th style={{padding:'6px 10px'}}>Parcelles</th>
                                                     <th style={{padding:'6px 10px',textAlign:'center'}}>Journées</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -11041,6 +11126,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
                                                             </td>
                                                             <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
+                                                            <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{Math.round(g.workers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>
+                                                            <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
                                                         </tr>
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
@@ -11052,6 +11139,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
                                                                 <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
+                                                                <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>
+                                                                <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{w.coutTotal > 0 ? w.coutTotal.toLocaleString('fr-FR') : '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </React.Fragment>
@@ -11061,6 +11150,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 <tr style={{background:'var(--gray-50)',fontWeight:700}}>
                                                     <td colSpan={4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
                                                     <td style={{textAlign:'center',padding:'6px 10px'}}>{_qpTotalJ}</td>
+                                                    <td style={{textAlign:'center',padding:'6px 10px'}}>{Math.round(_qpWorkers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>
+                                                    <td style={{textAlign:'right',padding:'6px 10px'}}>{_qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
                                                 </tr>
                                             </tfoot>
                                         </table>

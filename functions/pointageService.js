@@ -1515,10 +1515,14 @@ async function warmAllPointageCaches() {
       for (const p of targetPeriodes) { allRows.push(...await getPointageRowsForPeriode(p)); }
       const groups = {};
       for (const r of allRows) {
-        const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}`;
-        if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
+        const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}|${r.Ref_parcelle}`;
+        if (!groups[key]) {
+          groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale, Nombre_Hr: 0, Cout: 0 };
+        }
+        groups[key].Nombre_Hr += r.Nombre_Hr || 0;
+        groups[key].Cout += r.Cout || 0;
       }
-      const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+      const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim(), heures: r.Nombre_Hr || 0, cout: Math.round(r.Cout || 0) }));
       const holidays = await getJoursFeries();
       const extras = computeChargCond(allRows, holidays);
       return { success: true, periodes, rows, ...extras };
@@ -1777,6 +1781,37 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           rowCount: rows.length,
           syncedAt: data.syncedAt || null,
         });
+      }
+
+      // ------ PRESENCE-QUINZAINE: résumé absence entrée/sortie pour toute la quinzaine ------
+      if (action === "presence-quinzaine") {
+        const meta = await getPointageMeta();
+        const periodes = (meta && meta.periodes) || [];
+        const periodeMap = (meta && meta.periodeMap) || {};
+        const targetPeriode = periodes[0];
+        if (!targetPeriode) return res.json({ success: true, periode: null, days: [] });
+        const days = (periodeMap[targetPeriode] || []).slice().sort();
+        const dayResults = [];
+        for (let i = 0; i < days.length; i += 10) {
+          const batch = days.slice(i, i + 10);
+          const snaps = await Promise.all(batch.map(d => db_firestore.collection('prod_presence').doc(d).get()));
+          snaps.forEach((snap, idx) => {
+            const d = batch[idx];
+            let rows = snap.exists ? (snap.data().rows || []) : [];
+            // fermeFilter skipped: prod_presence n'a pas de parcelle exploitable.
+            // Le frontend filtre via transportRows (ferme dérivée de la parcelle BDP).
+            dayResults.push({
+              date: d,
+              rows: rows.map(r => ({
+                matricule: (r.matricule || '').trim(),
+                nom: (r.nom || '').trim(),
+                heureEntree: r.heureEntree || null,
+                heureSortie: r.heureSortie || null,
+              })),
+            });
+          });
+        }
+        return res.json({ success: true, periode: targetPeriode, days: dayResults });
       }
 
       // ------ SUMMARY: effectif today + yesterday + weekly trend + top ops ------
