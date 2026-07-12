@@ -10850,6 +10850,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             const [quinzRegistry, setQuinzRegistry] = useState({});
             const [quinzChargesPopup, setQuinzChargesPopup] = useState(null);
+            const [analytiqueView, setAnalytiqueView] = useState('jh');
+            const [analytiqueDetailCell, setAnalytiqueDetailCell] = useState(null);
 
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
@@ -11091,6 +11093,61 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                   ]
                 },
             ];
+
+            // ===== AFFECTATION ANALYTIQUE PAR CULTURE / HA =====
+            const _pcInfoMap = {};
+            (typeof PARCELLES_CULTURALES !== 'undefined' ? PARCELLES_CULTURALES : []).forEach(pc => {
+                (pc.designations || []).forEach(d => {
+                    const k = d.toUpperCase().trim();
+                    if (!_pcInfoMap[k]) _pcInfoMap[k] = { ha: pc.ha || 0, culture: pc.culture || 'Framboise', variete: pc.variete || '' };
+                });
+            });
+            const _avocatHaByFerme = { F2: 4.86, F3: 1.0, F4: 4.64, F6: 9.13, BAHIA: 1.0 };
+            const _getAnalytiqueRowInfo = (r) => {
+                const norm = (r.parcelle || '').toUpperCase().trim();
+                let info = _pcInfoMap[norm];
+                if (!info) {
+                    for (const [k, v] of Object.entries(_pcInfoMap)) {
+                        if (norm.includes(k) || k.includes(norm)) { info = v; break; }
+                    }
+                }
+                if (!info) {
+                    if (/CORINA|CASCADE|BREEZE|MYRTILL/i.test(r.parcelle)) info = { ha: 0, culture: 'Myrtille', variete: '' };
+                    else if (/HAAS|AVOCAT|BACON/i.test(r.parcelle)) info = { ha: 0, culture: 'Avocatier', variete: '' };
+                    else info = { ha: 0, culture: 'Framboise', variete: '' };
+                }
+                let ha = info.ha || 0;
+                if (info.culture === 'Avocatier' && ha === 0) ha = _avocatHaByFerme[r.ferme] || 0;
+                return { ...info, ha };
+            };
+            const _cultureGroups = { Myrtille: [], Framboise: [], Avocatier: [] };
+            analytiqueData.forEach(r => {
+                if (farmFilter && r.ferme !== farmFilter) return;
+                if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return;
+                const info = _getAnalytiqueRowInfo(r);
+                const culture = info.culture || 'Framboise';
+                if (!_cultureGroups[culture]) _cultureGroups[culture] = [];
+                _cultureGroups[culture].push({ ...r, ha: info.ha, culture });
+            });
+            const _buildAnalytiquePivot = (rows) => {
+                const parcelleSet = {};
+                const pivot = {};
+                rows.forEach(r => {
+                    parcelleSet[r.parcelle] = r.ha;
+                    if (!pivot[r.operationFamille]) pivot[r.operationFamille] = {};
+                    if (!pivot[r.operationFamille][r.parcelle]) {
+                        pivot[r.operationFamille][r.parcelle] = { jh: 0, cout: 0, ha: r.ha, detailRows: [] };
+                    }
+                    pivot[r.operationFamille][r.parcelle].jh += r.jh;
+                    pivot[r.operationFamille][r.parcelle].cout += r.cout;
+                    pivot[r.operationFamille][r.parcelle].detailRows.push(r);
+                });
+                const parcelles = Object.entries(parcelleSet).sort((a, b) => a[0].localeCompare(b[0]));
+                const operations = Object.keys(pivot).filter(op =>
+                    Object.values(pivot[op]).some(c => c.jh > 0)
+                ).sort();
+                return { parcelles, operations, pivot };
+            };
 
             return (
                 <div className="fade-in">
@@ -11469,6 +11526,75 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 </div>
                                             );
                                         })()}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Popup détail opérations Affectation Analytique */}
+                    {analytiqueDetailCell && (() => {
+                        const _adc = analytiqueDetailCell;
+                        const _opLabel = (op) => (op || '').replace(/^\d+\.\s*/, '');
+                        const _opMap = {};
+                        (_adc.detailRows || []).forEach(r => {
+                            if (!_opMap[r.operation]) _opMap[r.operation] = { operation: r.operation, jh: 0, cout: 0, nbOuv: 0 };
+                            _opMap[r.operation].jh += r.jh || 0;
+                            _opMap[r.operation].cout += r.cout || 0;
+                            _opMap[r.operation].nbOuv += r.nbOuv || 0;
+                        });
+                        const _opRows = Object.values(_opMap).sort((a, b) => b.jh - a.jh);
+                        const _haLabel = _adc.ha > 0 ? `${_adc.ha} Ha` : 'Ha inconnu';
+                        const _fmtHa = (v) => _adc.ha > 0 ? (Math.round(v / _adc.ha * 10) / 10).toFixed(1) : '—';
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setAnalytiqueDetailCell(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:680,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.35)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'16px 20px',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:15,fontWeight:700}}>{_adc.parcelle}</div>
+                                            <div style={{fontSize:11,opacity:0.85,marginTop:2}}>{_opLabel(_adc.operationFamille)} · {_haLabel}</div>
+                                        </div>
+                                        <button onClick={() => setAnalytiqueDetailCell(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 20px'}}>
+                                        <table className="data-table" style={{fontSize:12,margin:0}}>
+                                            <thead>
+                                                <tr style={{background:'var(--gray-50)'}}>
+                                                    <th style={{padding:'6px 10px'}}>Opération</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Ouvriers</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>JH</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>JH / Ha</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>DH / Ha</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {_opRows.map((row, i) => (
+                                                    <tr key={i} style={{background: i%2===0 ? '#fff' : 'var(--gray-50)'}}>
+                                                        <td style={{padding:'6px 10px',fontWeight:500}}>{row.operation || '—'}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'center'}}>{row.nbOuv}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',fontWeight:600}}>{(Math.round(row.jh * 10) / 10).toFixed(1)}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',color:'#3949ab'}}>{_fmtHa(row.jh)}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right'}}>{Math.round(row.cout).toLocaleString('fr-FR')}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',color:'#3949ab'}}>{_adc.ha > 0 ? Math.round(row.cout / _adc.ha).toLocaleString('fr-FR') : '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'#eef0fa',fontWeight:700}}>
+                                                    <td style={{padding:'8px 10px'}}>TOTAL</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'center'}}>{_opRows.reduce((s,r)=>s+r.nbOuv,0)}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right'}}>{(_opRows.reduce((s,r)=>s+r.jh,0)).toFixed(1)}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right',color:'#3949ab'}}>{_fmtHa(_opRows.reduce((s,r)=>s+r.jh,0))}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right'}}>{Math.round(_opRows.reduce((s,r)=>s+r.cout,0)).toLocaleString('fr-FR')}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right',color:'#3949ab'}}>{_adc.ha > 0 ? Math.round(_opRows.reduce((s,r)=>s+r.cout,0) / _adc.ha).toLocaleString('fr-FR') : '—'}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -11864,161 +11990,138 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     )}
 
                     {/* Affectation Analytique */}
-                    {analytiqueData.length > 0 && (() => {
-                        const filtered = farmFilter ? analytiqueData.filter(r => r.ferme === farmFilter && matchSub(r)) : analytiqueData;
-                        // Pretty parcelle label via PARCELLES_CULTURALES.designations
-                        const prettyParcelle = (raw, ferme) => {
-                            if (!raw) return raw;
-                            const lower = raw.toLowerCase().trim();
-                            const pc = PARCELLES_CULTURALES.find(p =>
-                                (!ferme || p.ferme === ferme) &&
-                                (p.designations || []).some(d => {
-                                    const dl = d.toLowerCase();
-                                    return dl === lower || lower.includes(dl) || dl.includes(lower);
-                                })
-                            );
-                            if (pc) {
-                                const sect = (pc.secteurs || []).join('/');
-                                return [sect, pc.variete, pc.sousVariete].filter(Boolean).join(' ');
-                            }
-                            // Fallback : nettoyage léger (suffixe ferme, casse)
-                            return raw.replace(/\s+F[1-9]\s*$/i, '').replace(/\s+/g, ' ').trim()
-                                .toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-                        };
-                        const parcLabel = {};
-                        filtered.forEach(r => { if (r.parcelle && !parcLabel[r.parcelle]) parcLabel[r.parcelle] = prettyParcelle(r.parcelle, r.ferme); });
-                        // Get unique parcelles (exclude empty) and operation families
-                        const parcelles = [...new Set(filtered.filter(r => r.parcelle && r.parcelle.trim()).map(r => r.parcelle))].sort();
-                        const opFamilles = [...new Set(filtered.filter(r => r.parcelle && r.parcelle.trim()).map(r => r.operationFamille))].sort();
-                        // Build pivot: parcelle → opFamille → {jh, cout}
-                        const pivot = {};
-                        const totByOp = {};
-                        filtered.filter(r => r.parcelle && r.parcelle.trim()).forEach(r => {
-                            if (!pivot[r.parcelle]) pivot[r.parcelle] = {};
-                            if (!pivot[r.parcelle][r.operationFamille]) pivot[r.parcelle][r.operationFamille] = { jh: 0, cout: 0 };
-                            pivot[r.parcelle][r.operationFamille].jh += r.jh;
-                            pivot[r.parcelle][r.operationFamille].cout += r.cout;
-                            if (!totByOp[r.operationFamille]) totByOp[r.operationFamille] = { jh: 0, cout: 0 };
-                            totByOp[r.operationFamille].jh += r.jh;
-                            totByOp[r.operationFamille].cout += r.cout;
-                        });
-                        const totByParc = {};
-                        parcelles.forEach(p => {
-                            totByParc[p] = { jh: 0, cout: 0 };
-                            opFamilles.forEach(op => {
-                                totByParc[p].jh += (pivot[p]?.[op]?.jh || 0);
-                                totByParc[p].cout += (pivot[p]?.[op]?.cout || 0);
-                            });
-                        });
-                        const activeParcelles = parcelles.filter(p => totByParc[p].jh > 0);
-                        const FIRST_COL = 220;
-                        const PARC_COL = 130;
-                        const TOT_COL = 140;
-                        const minWidth = FIRST_COL + activeParcelles.length * PARC_COL + TOT_COL;
-                        const grandJH = Object.values(totByOp).reduce((s, t) => s + t.jh, 0);
-                        const grandCout = Object.values(totByOp).reduce((s, t) => s + t.cout, 0);
-                        const stickyShadow = '2px 0 4px -2px rgba(0,0,0,0.08)';
-                        const renderTable = (maxH, fill) => (
-                                <div style={{overflowX:'auto',overflowY:'auto',maxHeight:fill?undefined:maxH,height:fill?'100%':undefined,minHeight:0,border:'1px solid var(--gray-100)',borderRadius:10,background:'#fff',WebkitOverflowScrolling:'touch'}}>
-                                <table style={{minWidth,width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12}}>
-                                    <thead>
-                                        <tr>
-                                            <th style={{position:'sticky',left:0,top:0,zIndex:3,background:'#f8f9fa',padding:'12px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--gray-200)',boxShadow:stickyShadow,minWidth:FIRST_COL}}>Opération</th>
-                                            {activeParcelles.map(p => (
-                                                <th key={p} title={p} style={{position:'sticky',top:0,zIndex:2,background:'#f8f9fa',padding:'12px 10px',textAlign:'center',fontSize:10,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.3,borderBottom:'2px solid var(--gray-200)',whiteSpace:'nowrap',minWidth:PARC_COL}}>{parcLabel[p] || p}</th>
-                                            ))}
-                                            <th style={{position:'sticky',top:0,right:0,zIndex:3,background:'#f5e6ec',padding:'12px 14px',textAlign:'center',fontSize:11,fontWeight:700,color:'var(--berry)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--berry)',minWidth:TOT_COL}}>Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {opFamilles.map((op, idx) => {
-                                            const rowTotal = activeParcelles.reduce((s, p) => s + (pivot[p]?.[op]?.jh || 0), 0);
-                                            if (rowTotal === 0) return null;
-                                            const rowBg = idx % 2 === 0 ? '#fff' : '#fafbfc';
-                                            return (
-                                            <tr key={op} className="aa-row">
-                                                <td style={{position:'sticky',left:0,zIndex:1,background:rowBg,padding:'10px 14px',fontWeight:600,fontSize:12,color:'var(--gray-800)',whiteSpace:'nowrap',borderBottom:'1px solid var(--gray-100)',boxShadow:stickyShadow}}>{op.replace(/^\d+\.\s*/, '')}</td>
-                                                {activeParcelles.map(p => {
-                                                    const cell = pivot[p]?.[op];
-                                                    return <td key={p} style={{padding:'10px',textAlign:'center',borderBottom:'1px solid var(--gray-100)',background:rowBg}}>
-                                                        {cell ? (
-                                                            <div>
-                                                                <div style={{fontWeight:600,fontSize:13,color:'var(--gray-800)'}}>{Math.round(cell.jh * 10) / 10}</div>
-                                                                <div style={{fontSize:10,color:'var(--gray-400)',marginTop:2}}>{Math.round(cell.cout).toLocaleString('fr-FR')} DH</div>
-                                                            </div>
-                                                        ) : <span style={{color:'var(--gray-200)'}}>—</span>}
-                                                    </td>;
-                                                })}
-                                                <td style={{padding:'10px 14px',textAlign:'center',background:'var(--berry-pale)',borderBottom:'1px solid var(--gray-100)',borderLeft:'1px solid var(--gray-100)'}}>
-                                                    <div style={{fontWeight:700,fontSize:13,color:'var(--berry)'}}>{Math.round((totByOp[op]?.jh || 0) * 10) / 10} JH</div>
-                                                    <div style={{fontSize:10,color:'var(--berry)',opacity:0.75,marginTop:2}}>{Math.round((totByOp[op]?.cout || 0)).toLocaleString('fr-FR')} DH</div>
-                                                </td>
-                                            </tr>);
-                                        })}
-                                        <tr>
-                                            <td style={{position:'sticky',left:0,bottom:0,zIndex:2,background:'var(--berry)',color:'#fff',padding:'12px 14px',fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:0.4,boxShadow:stickyShadow}}>Total</td>
-                                            {activeParcelles.map(p => (
-                                                <td key={p} style={{position:'sticky',bottom:0,zIndex:1,background:'var(--berry)',color:'#fff',padding:'12px 10px',textAlign:'center'}}>
-                                                    <div style={{fontWeight:700,fontSize:13}}>{Math.round(totByParc[p].jh * 10) / 10}</div>
-                                                    <div style={{fontSize:10,opacity:0.85,marginTop:2}}>{Math.round(totByParc[p].cout).toLocaleString('fr-FR')} DH</div>
-                                                </td>
-                                            ))}
-                                            <td style={{position:'sticky',bottom:0,right:0,zIndex:2,background:'var(--berry-dark, #5d1839)',color:'#fff',padding:'12px 14px',textAlign:'center',borderLeft:'1px solid rgba(255,255,255,0.2)'}}>
-                                                <div style={{fontWeight:800,fontSize:14}}>{Math.round(grandJH * 10) / 10} JH</div>
-                                                <div style={{fontSize:10,opacity:0.9,marginTop:2}}>{Math.round(grandCout).toLocaleString('fr-FR')} DH</div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                    {analytiqueData.length > 0 && (
+                        <div style={{marginBottom:16}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
+                                <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
+                                    <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
+                                    Affectation Analytique — par Ha
                                 </div>
-                        );
-                        return (
-                        <React.Fragment>
-                        <Panel title="Affectation Analytique" icon="fa-table-cells" actions={
-                            <button
-                                onClick={() => setAnalytiqueFullscreen(true)}
-                                title="Afficher en plein écran"
-                                style={{background:'var(--berry-pale)',color:'var(--berry)',border:'1px solid var(--berry)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}
-                            >
-                                <i className="fa-solid fa-up-right-and-down-left-from-center"></i>
-                                Plein écran
-                            </button>
-                        }>
-                            <div onClick={() => setAnalytiqueFullscreen(true)} style={{cursor:'zoom-in'}} title="Cliquez pour agrandir">
-                                {renderTable('70vh')}
-                            </div>
-                        </Panel>
-                        {analytiqueFullscreen && (
-                            <div
-                                onClick={() => setAnalytiqueFullscreen(false)}
-                                style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-                            >
-                                <div
-                                    onClick={e => e.stopPropagation()}
-                                    style={{background:'#fff',borderRadius:14,width:'min(1600px, 98vw)',height:'min(95vh, 95vh)',display:'flex',flexDirection:'column',boxShadow:'0 30px 80px rgba(0,0,0,0.4)',overflow:'hidden'}}
-                                >
-                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderBottom:'1px solid var(--gray-100)',background:'var(--gray-50)'}}>
-                                        <h3 style={{margin:0,fontSize:15,color:'var(--berry)',display:'flex',alignItems:'center',gap:10}}>
-                                            <i className="fa-solid fa-table-cells"></i>
-                                            Affectation Analytique
-                                        </h3>
-                                        <button
-                                            onClick={() => setAnalytiqueFullscreen(false)}
-                                            title="Fermer (Échap)"
-                                            style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'var(--gray-500)',padding:'4px 10px',borderRadius:6,lineHeight:1}}
-                                        >
-                                            <i className="fa-solid fa-xmark"></i>
+                                <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
+                                    {[['jh','JH / Ha'],['cout','Coût / Ha']].map(([v, label]) => (
+                                        <button key={v} onClick={() => setAnalytiqueView(v)}
+                                            style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
+                                                background: analytiqueView === v ? 'var(--berry)' : 'transparent',
+                                                color: analytiqueView === v ? '#fff' : 'var(--gray-500)',
+                                                transition:'all 0.15s'}}>
+                                            {label}
                                         </button>
-                                    </div>
-                                    <div style={{flex:1,minHeight:0,padding:16,display:'flex',flexDirection:'column'}}>
-                                        {renderTable(null, true)}
-                                    </div>
+                                    ))}
                                 </div>
                             </div>
-                        )}
-                        </React.Fragment>
-                        );
-                    })()}
+
+                            {[
+                                { culture: 'Framboise', color: '#8B2252', icon: 'fa-seedling' },
+                                { culture: 'Myrtille',  color: '#1565c0', icon: 'fa-circle-dot' },
+                                { culture: 'Avocatier', color: '#2e7d32', icon: 'fa-tree' },
+                            ].map(({ culture, color, icon }) => {
+                                const _rows = _cultureGroups[culture] || [];
+                                if (_rows.length === 0) return null;
+                                const { parcelles, operations, pivot } = _buildAnalytiquePivot(_rows);
+                                if (operations.length === 0) return null;
+                                const _totalHa = parcelles.reduce((s, [, ha]) => s + ha, 0);
+                                const _unit = analytiqueView === 'jh' ? 'JH/Ha' : 'DH/Ha';
+                                const _fmt = (val, ha) => {
+                                    if (ha === 0) return <span style={{fontSize:10,color:'var(--gray-400)'}}>—</span>;
+                                    const v = val / ha;
+                                    return analytiqueView === 'jh'
+                                        ? (Math.round(v * 10) / 10).toFixed(1)
+                                        : Math.round(v).toLocaleString('fr-FR');
+                                };
+                                const _opLabel = (op) => (op || '').replace(/^\d+\.\s*/, '');
+                                return (
+                                    <div key={culture} style={{marginBottom:20,background:'#fff',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
+                                        <div style={{padding:'10px 16px',background:`linear-gradient(135deg,${color}15,${color}08)`,borderBottom:`2px solid ${color}30`,display:'flex',alignItems:'center',gap:10}}>
+                                            <i className={`fa-solid ${icon}`} style={{color,fontSize:14}}></i>
+                                            <span style={{fontSize:13,fontWeight:700,color}}>{culture}</span>
+                                            <span style={{fontSize:11,color:'var(--gray-500)',fontWeight:400}}>
+                                                {parcelles.length} parcelle{parcelles.length > 1 ? 's' : ''}
+                                                {_totalHa > 0 ? ` · ${_totalHa.toFixed(2)} Ha total` : ''}
+                                            </span>
+                                        </div>
+                                        <div style={{overflowX:'auto'}}>
+                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                                <thead>
+                                                    <tr style={{background:'var(--gray-50)'}}>
+                                                        <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:0,background:'var(--gray-50)',minWidth:160,borderRight:'1px solid var(--gray-200)',zIndex:1}}>Opération</th>
+                                                        {parcelles.map(([pKey, ha]) => (
+                                                            <th key={pKey} style={{padding:'6px 10px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',minWidth:110,borderRight:'1px solid var(--gray-100)'}}>
+                                                                <div style={{color,fontWeight:700}}>{(typeof prettyParcelle === 'function' ? prettyParcelle(pKey) : pKey) || pKey}</div>
+                                                                <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{ha > 0 ? `${ha} Ha` : 'Ha ?'}</div>
+                                                            </th>
+                                                        ))}
+                                                        <th style={{padding:'6px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',minWidth:100,background:'var(--gray-100)',position:'sticky',right:0,zIndex:1}}>Total</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {operations.map((op, opIdx) => {
+                                                        const _rowTotal = parcelles.reduce((s, [pKey]) => {
+                                                            const c = pivot[op] && pivot[op][pKey];
+                                                            return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
+                                                        }, 0);
+                                                        const _totalHaForOp = parcelles.reduce((s, [, ha]) => s + ha, 0);
+                                                        return (
+                                                            <tr key={op} style={{background: opIdx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom:'1px solid var(--gray-100)'}}>
+                                                                <td style={{padding:'7px 12px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:0,background: opIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1}}>
+                                                                    {_opLabel(op)}
+                                                                </td>
+                                                                {parcelles.map(([pKey, ha]) => {
+                                                                    const c = pivot[op] && pivot[op][pKey];
+                                                                    if (!c) return <td key={pKey} style={{padding:'7px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
+                                                                    const _val = analytiqueView === 'jh' ? c.jh : c.cout;
+                                                                    return (
+                                                                        <td key={pKey}
+                                                                            onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: op, ha, detailRows: c.detailRows })}
+                                                                            style={{padding:'7px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid var(--gray-100)',transition:'background 0.1s'}}
+                                                                            onMouseEnter={e => e.currentTarget.style.background=`${color}18`}
+                                                                            onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                            <div style={{fontWeight:600,color:'var(--gray-800)'}}>{_fmt(_val, ha)}</div>
+                                                                            <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                                <td style={{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0}}>
+                                                                    <div>{_fmt(_rowTotal, _totalHaForOp)}</div>
+                                                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr style={{background:`${color}18`,fontWeight:700}}>
+                                                        <td style={{padding:'8px 12px',position:'sticky',left:0,background:`${color}18`,borderRight:'1px solid var(--gray-200)',zIndex:1,color}}>TOTAL</td>
+                                                        {parcelles.map(([pKey, ha]) => {
+                                                            const colTotal = operations.reduce((s, op) => {
+                                                                const c = pivot[op] && pivot[op][pKey];
+                                                                return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
+                                                            }, 0);
+                                                            return (
+                                                                <td key={pKey} style={{padding:'8px 10px',textAlign:'center',borderRight:'1px solid var(--gray-100)',color}}>
+                                                                    <div>{_fmt(colTotal, ha)}</div>
+                                                                    <div style={{fontSize:10,opacity:0.7}}>{_unit}</div>
+                                                                </td>
+                                                            );
+                                                        })}
+                                                        <td style={{padding:'8px 10px',textAlign:'center',background:`${color}28`,position:'sticky',right:0,color}}>
+                                                            {(() => {
+                                                                const gt = operations.reduce((s, op) =>
+                                                                    s + parcelles.reduce((ps, [pKey]) => {
+                                                                        const c = pivot[op] && pivot[op][pKey];
+                                                                        return ps + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
+                                                                    }, 0), 0);
+                                                                return <><div>{_fmt(gt, _totalHa)}</div><div style={{fontSize:10,opacity:0.7}}>{_unit}</div></>;
+                                                            })()}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
 
                     {/* Popup détail ouvriers transport */}
                     {transportPopup && (
