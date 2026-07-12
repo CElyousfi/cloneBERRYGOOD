@@ -33,6 +33,38 @@
 
 ---
 
+## Autonomie de l'agent — ce qui nécessite validation Omar
+
+### ✅ AUTONOME — exécuter sans demander
+
+**Exploration lecture seule** (jamais interrompre Omar) :
+- `grep`, `rg`, `find`, `fd`, `ls`, `tree`, `cat`, `head`, `tail`, `sed`, `awk`, `jq`
+- `git status`, `git diff`, `git log`, `git show`
+- `npm list`, lecture de fichiers, inspection de code
+
+**Développement courant** :
+- Écrire / éditer du code, créer des fichiers
+- `npm run build:frontend`, `npm run test:unit`
+- Commits, push sur feature branch
+- Deploy functions (backend) — changement non-régressif
+- Deploy hosting sur **preview channel** (pas prod)
+- Lancer Playwright / smoke tests
+- Corrections de bugs (crash, NaN, affichage cassé)
+
+### 🛑 GATED — STOP, attendre validation explicite Omar
+
+| Action | Raison |
+|---|---|
+| **Merge + deploy prod** (hosting live) | Visible par tous les utilisateurs |
+| **Changement de comportement produit** | Risque de régression métier |
+| **Migration / suppression de données Firestore** | Irréversible |
+| **Refonte architecturale** | Impact large |
+| **Suppression de données de production** | Irréversible |
+
+**Règle résumée** : Omar valide le **preview visuel** → l'agent merge dans main et déploie en prod. Pas de deuxième prompt pour les fonctions.
+
+---
+
 ## Scope actif
 
 **Sprint 3 — Rapprochement & Avances 🚧** sur l'écran Gestion de Caisse. Sprint 2 livré et déployé en prod le 2026-05-18 (PR #17, merge commit `6e00e4d`). Voir [ROADMAP.md](ROADMAP.md) pour l'historique et la suite.
@@ -157,7 +189,8 @@ Pour CHAQUE item de docs/backlog.md, dans l'ordre :
 
 POINTS GATED — STOP et demander Omar avant :
 - Toute migration / réécriture / suppression de données Firestore.
-- Tout déploiement prod (firebase deploy / deploy.sh) — Omar valide via le prompt.
+- Deploy prod hosting (merge main + scripts/deploy.sh hosting) — Omar valide via preview visuel.
+- Changement de comportement produit ou logique métier existante.
 
 La délégation auto aux subagents n'étant pas fiable, l'architecte les invoque
 EXPLICITEMENT par leur nom à chaque étape. Ne jamais fusionner les trois rôles.
