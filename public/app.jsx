@@ -10849,6 +10849,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [quinzSearch, setQuinzSearch] = useState('');
             const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
             const [quinzRegistry, setQuinzRegistry] = useState({});
+            const [quinzChargesPopup, setQuinzChargesPopup] = useState(null);
 
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
@@ -10998,7 +10999,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 if (lower.includes('poste')) return 'postes';
                 return 'horsRecolte';
             };
-            const moRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'recolte');
+            const moRecolteRows = []; // récolte workers comptés dans la carte Récolte — pas de double-comptage ici
             const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
             const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
 
@@ -11241,15 +11242,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             const p2 = m.substring(0, 2);
                             return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
                         };
+                        // Parcelle non disponible dans BDP pour les cartes MO → forcer 'equipe'
+                        const _effectiveGroupBy = (_isMoCard && quinzGroupBy === 'parcelle') ? 'equipe' : quinzGroupBy;
                         const _qpGroupMap = {};
                         _qpWorkers.forEach(w => {
                             let gKeys = [];
-                            if (quinzGroupBy === 'equipe') gKeys = [_qpGetEq(w.matricule)];
-                            else if (quinzGroupBy === 'ferme') gKeys = [w.ferme || '—'];
+                            if (_effectiveGroupBy === 'equipe') gKeys = [_qpGetEq(w.matricule)];
+                            else if (_effectiveGroupBy === 'ferme') gKeys = [w.ferme || '—'];
                             else gKeys = w.parcellesArr.length > 0 ? w.parcellesArr : ['—'];
                             gKeys.forEach(gk => {
                                 if (!_qpGroupMap[gk]) {
-                                    const gLabel = quinzGroupBy === 'equipe'
+                                    const gLabel = _effectiveGroupBy === 'equipe'
                                         ? (prefixToName[gk] || `Équipe ${gk}`)
                                         : gk;
                                     _qpGroupMap[gk] = { key: gk, label: gLabel, workers: [] };
@@ -11345,7 +11348,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
                                                             <td colSpan={_isMoCard ? 3 : 4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
                                                                 <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.key}</span>
-                                                                {quinzGroupBy === 'equipe' ? g.label : g.key}
+                                                                {_effectiveGroupBy === 'equipe' ? g.label : g.key}
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
                                                             </td>
                                                             <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
@@ -11399,8 +11402,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             const _smagQ = (_PU2 && _PU2.resolveSmagForDate)
                                                 ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDayQ)
                                                 : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
-                                            let totalNetDeclare = 0, totalBrutDeclare = 0, totalChargesDeclare = 0, totalCoutEmpDeclare = 0;
+                                            let totalBrutDeclare = 0, totalChargesDeclare = 0, totalCoutEmpDeclare = 0;
                                             let cntDeclare = 0, cntNonDeclare = 0;
+                                            const _workerPayeDetails = [];
                                             _qpWorkers.forEach(w => {
                                                 const _rw = quinzRegistry[numKey(w.matricule)] || {};
                                                 const _isDecl = !!(_rw.declare);
@@ -11420,11 +11424,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
                                                     primesOptionnelles: [], baremes: quinzPaieBaremes,
                                                 });
-                                                totalNetDeclare += _ps.net;
                                                 if (_isDecl) {
                                                     totalBrutDeclare += _ps.brut;
                                                     totalChargesDeclare += _ps.chargesPatronales;
                                                     totalCoutEmpDeclare += _ps.coutEmployeur;
+                                                    _workerPayeDetails.push({
+                                                        nom: w.nom, matricule: w.matricule, journees: w.journees,
+                                                        brut: _ps.brut, chargesPatronales: _ps.chargesPatronales,
+                                                        coutEmployeur: _ps.coutEmployeur,
+                                                        tauxCharges: _ps.tauxChargesPatronales || 0,
+                                                    });
                                                 }
                                             });
                                             if (Object.keys(quinzRegistry).length === 0) return null;
@@ -11446,12 +11455,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Brut total déclarés</div>
                                                             <div style={{fontSize:15,fontWeight:700,color:'var(--gray-700)'}}>{f2(totalBrutDeclare)} DH</div>
                                                         </div>
-                                                        <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
-                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Charges patronales</div>
+                                                        <div onClick={() => setQuinzChargesPopup(_workerPayeDetails.slice().sort((a,b) => b.chargesPatronales - a.chargesPatronales))}
+                                                            style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'2px solid #3949ab',cursor:'pointer'}}>
+                                                            <div style={{fontSize:11,color:'#3949ab',marginBottom:4,fontWeight:600}}>Charges patronales <i className="fa-solid fa-arrow-up-right-from-square" style={{fontSize:9}}></i></div>
                                                             <div style={{fontSize:15,fontWeight:700,color:'#3949ab'}}>+{f2(totalChargesDeclare)} DH</div>
                                                         </div>
-                                                        <div style={{flex:'1 1 160px',textAlign:'center',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:8,padding:'8px 12px',color:'#fff'}}>
-                                                            <div style={{fontSize:11,opacity:0.85,marginBottom:4}}>Coût employeur déclarés</div>
+                                                        <div onClick={() => setQuinzChargesPopup(_workerPayeDetails.slice().sort((a,b) => b.coutEmployeur - a.coutEmployeur))}
+                                                            style={{flex:'1 1 160px',textAlign:'center',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:8,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>
+                                                            <div style={{fontSize:11,opacity:0.85,marginBottom:4}}>Coût employeur déclarés <i className="fa-solid fa-arrow-up-right-from-square" style={{fontSize:9}}></i></div>
                                                             <div style={{fontSize:15,fontWeight:800}}>{f2(totalCoutEmpDeclare)} DH</div>
                                                         </div>
                                                     </div>
@@ -11617,6 +11628,59 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             </div>
                         );
                     })()}
+
+                    {/* Popup détail charges patronales par ouvrier déclaré */}
+                    {quinzChargesPopup && (
+                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.65)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                            onClick={() => setQuinzChargesPopup(null)}>
+                            <div style={{background:'#fff',borderRadius:16,maxWidth:760,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
+                                onClick={e => e.stopPropagation()}>
+                                <div style={{padding:'16px 20px',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                    <div>
+                                        <div style={{fontSize:16,fontWeight:700}}><i className="fa-solid fa-shield-halved" style={{marginRight:8}}></i>Détail Charges Patronales — Ouvriers Déclarés CNSS</div>
+                                        <div style={{fontSize:11,opacity:0.85,marginTop:3}}>{quinzChargesPopup.length} ouvrier{quinzChargesPopup.length !== 1 ? 's' : ''} déclaré{quinzChargesPopup.length !== 1 ? 's' : ''} · Total charges : {f2(quinzChargesPopup.reduce((s,w)=>s+w.chargesPatronales,0))} DH</div>
+                                    </div>
+                                    <button onClick={() => setQuinzChargesPopup(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div style={{padding:'16px 20px'}}>
+                                    <table className="data-table" style={{fontSize:12,margin:0}}>
+                                        <thead>
+                                            <tr style={{background:'var(--gray-50)'}}>
+                                                <th style={{padding:'6px 10px'}}>Matricule</th>
+                                                <th style={{padding:'6px 10px'}}>Nom</th>
+                                                <th style={{padding:'6px 10px',textAlign:'center'}}>Jours</th>
+                                                <th style={{padding:'6px 10px',textAlign:'right'}}>Brut (DH)</th>
+                                                <th style={{padding:'6px 10px',textAlign:'right'}}>Charges pat. (DH)</th>
+                                                <th style={{padding:'6px 10px',textAlign:'right'}}>Coût emp. (DH)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {quinzChargesPopup.map((w, i) => (
+                                                <tr key={i} style={{background: i % 2 === 0 ? '#fff' : 'var(--gray-50)'}}>
+                                                    <td style={{padding:'6px 10px',fontFamily:'monospace',fontSize:11}}>{w.matricule}</td>
+                                                    <td style={{padding:'6px 10px',fontWeight:600}}>{w.nom}</td>
+                                                    <td style={{padding:'6px 10px',textAlign:'center'}}>{w.journees}</td>
+                                                    <td style={{padding:'6px 10px',textAlign:'right'}}>{f2(w.brut)}</td>
+                                                    <td style={{padding:'6px 10px',textAlign:'right',color:'#3949ab',fontWeight:600}}>+{f2(w.chargesPatronales)} <span style={{fontSize:10,opacity:0.7}}>({((w.tauxCharges||0)*100).toFixed(1)}%)</span></td>
+                                                    <td style={{padding:'6px 10px',textAlign:'right',fontWeight:700}}>{f2(w.coutEmployeur)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{background:'#eef0fa',fontWeight:700}}>
+                                                <td colSpan={3} style={{padding:'8px 10px'}}>TOTAL ({quinzChargesPopup.length} ouvriers)</td>
+                                                <td style={{padding:'8px 10px',textAlign:'right'}}>{f2(quinzChargesPopup.reduce((s,w)=>s+w.brut,0))}</td>
+                                                <td style={{padding:'8px 10px',textAlign:'right',color:'#3949ab'}}>+{f2(quinzChargesPopup.reduce((s,w)=>s+w.chargesPatronales,0))}</td>
+                                                <td style={{padding:'8px 10px',textAlign:'right'}}>{f2(quinzChargesPopup.reduce((s,w)=>s+w.coutEmployeur,0))}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <Panel title="Répartition par Ferme" icon="fa-chart-bar">
                         <table className="data-table">
