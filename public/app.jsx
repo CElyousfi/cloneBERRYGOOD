@@ -11299,17 +11299,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             const p2 = m.substring(0, 2);
                             return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
                         };
-                        // Parcelle non disponible dans BDP pour les cartes MO → forcer 'equipe'
-                        const _effectiveGroupBy = (_isMoCard && quinzGroupBy === 'parcelle') ? 'equipe' : quinzGroupBy;
                         const _qpGroupMap = {};
                         _qpWorkers.forEach(w => {
                             let gKeys = [];
-                            if (_effectiveGroupBy === 'equipe') gKeys = [_qpGetEq(w.matricule)];
-                            else if (_effectiveGroupBy === 'ferme') gKeys = [w.ferme || '—'];
+                            if (quinzGroupBy === 'equipe') gKeys = [_qpGetEq(w.matricule)];
+                            else if (quinzGroupBy === 'ferme') gKeys = [w.ferme || '—'];
                             else gKeys = w.parcellesArr.length > 0 ? w.parcellesArr : ['—'];
                             gKeys.forEach(gk => {
                                 if (!_qpGroupMap[gk]) {
-                                    const gLabel = _effectiveGroupBy === 'equipe'
+                                    const gLabel = quinzGroupBy === 'equipe'
                                         ? (prefixToName[gk] || `Équipe ${gk}`)
                                         : gk;
                                     _qpGroupMap[gk] = { key: gk, label: gLabel, workers: [] };
@@ -11338,21 +11336,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     </div>
                                     <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                                         <span style={{fontSize:11,color:'var(--gray-500)',marginRight:4}}>Regrouper par :</span>
-                                        {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => {
-                                            const _disabledParcelle = mode === 'parcelle' && _isMoCard;
-                                            return (
+                                        {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => (
                                             <button key={mode}
-                                                onClick={() => !_disabledParcelle && setQuinzGroupBy(mode)}
-                                                title={_disabledParcelle ? 'Parcelle non disponible dans BDP pour les opérations MO' : undefined}
+                                                onClick={() => setQuinzGroupBy(mode)}
                                                 style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${quinzGroupBy === mode ? _qpColor : 'var(--gray-300)'}`,fontSize:11,
-                                                    cursor: _disabledParcelle ? 'not-allowed' : 'pointer',fontWeight:600,
+                                                    cursor:'pointer',fontWeight:600,
                                                     background: quinzGroupBy === mode ? _qpColor : 'transparent',
-                                                    color: _disabledParcelle ? 'var(--gray-300)' : quinzGroupBy === mode ? '#fff' : 'var(--gray-600)',
-                                                    opacity: _disabledParcelle ? 0.5 : 1}}>
+                                                    color: quinzGroupBy === mode ? '#fff' : 'var(--gray-600)'}}>
                                                 {label}
                                             </button>
-                                            );
-                                        })}
+                                        ))}
                                         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:'var(--gray-50)',borderRadius:8,border:'1px solid var(--gray-300)',padding:'4px 10px'}}>
                                             <i className="fa-solid fa-magnifying-glass" style={{fontSize:11,color:'var(--gray-400)'}}></i>
                                             <input
@@ -11405,7 +11398,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
                                                             <td colSpan={_isMoCard ? 3 : 4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
                                                                 <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.key}</span>
-                                                                {_effectiveGroupBy === 'equipe' ? g.label : g.key}
+                                                                {quinzGroupBy === 'equipe' ? g.label : g.key}
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
                                                             </td>
                                                             <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
