@@ -198,7 +198,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$TOOL_INPUT\" | grep -q 'firebase deploy'; then cd /Users/omarmaaouni/Desktop/berrygood-dashboard && BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js; fi"
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'firebase deploy'; then cd \"$CLAUDE_PROJECT_DIR\" && BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js; fi"
           }
         ]
       }
