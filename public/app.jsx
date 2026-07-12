@@ -11001,10 +11001,58 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const moRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'recolte');
             const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
             const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
-            // Coûts MO par type : proportion journées × coût ferme (parFerme est la source fiable)
-            const totalCoutRecolte = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.recolte || 0) / d.journees : 0), 0));
-            const totalCoutHorsRecolte = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.horsRecolte || 0) / d.journees : 0), 0));
-            const totalCoutPostes = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.postesFixes || 0) / d.journees : 0), 0));
+
+            // ===== MODÈLE COÛT SMART BERRY (computePayslip) — source unique pour MO =====
+            // On N'UTILISE PAS les coûts SQL BDP (parFerme.cout ou r.cout) qui ne sont qu'une
+            // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
+            // identiquement à Validation du Pointage. Les totaux cartes = somme des nets par ouvrier.
+            const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip);
+            const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
+
+            const sbNetForWorker = (mat, journees, firstDay) => {
+                if (!registryReady) return null;
+                const PU = window.PaieUtils;
+                const reg = quinzRegistry[numKey(mat)] || {};
+                const smag = PU.resolveSmagForDate
+                    ? PU.resolveSmagForDate(quinzPaieBaremes, firstDay || _firstDayQz || null)
+                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                const ancTaux = PU.trouverPalierAnciennete
+                    ? (PU.trouverPalierAnciennete(Number(reg.baselineJours || 0), quinzPaieBaremes.paliers || []).pourcentage || 0) / 100
+                    : 0;
+                return Math.round(PU.computePayslip({
+                    declare: !!(reg.declare),
+                    smagBrut: smag.smagBrutJournalier, smagNet: smag.smagNetJournalier,
+                    jT: journees, jF: 0,
+                    ancienneteTaux: ancTaux,
+                    primeFonctionJour: Number(reg.primeFonctionJournaliere || 0),
+                    primesOptionnelles: [], baremes: quinzPaieBaremes,
+                }).net);
+            };
+
+            // Agrège les rows en un map matricule→{jours, firstDay} pour le calcul de total par type
+            const sbTotalFromRows = (rows) => {
+                const wMap = {};
+                rows.forEach(r => {
+                    if (!r.matricule) return;
+                    if (!wMap[r.matricule]) wMap[r.matricule] = { mat: r.matricule, jours: new Set() };
+                    if (r.jour) wMap[r.matricule].jours.add(r.jour);
+                });
+                return Object.values(wMap).reduce((s, w) => {
+                    const firstDay = w.jours.size > 0 ? [...w.jours].sort()[0] : null;
+                    return s + (sbNetForWorker(w.mat, w.jours.size, firstDay) || 0);
+                }, 0);
+            };
+
+            // Totaux MO Smart Berry (fallback BDP si registry pas encore chargé)
+            const totalCoutRecolte = registryReady
+                ? sbTotalFromRows(moRecolteRows)
+                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.recolte || 0) / d.journees : 0), 0));
+            const totalCoutHorsRecolte = registryReady
+                ? sbTotalFromRows(moHorsRecolteRows)
+                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.horsRecolte || 0) / d.journees : 0), 0));
+            const totalCoutPostes = registryReady
+                ? sbTotalFromRows(moPostesRows)
+                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.postesFixes || 0) / d.journees : 0), 0));
 
             // Traitement (10 DH/ouvrier-jour)
             const traitRows = transportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
@@ -11172,9 +11220,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 parcellesArr: [...w.parcelles],
                                 parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
                                 heuresTotal: Math.round(w.heures * 10) / 10,
-                                coutTotal: _isMoCard
-                                    ? Math.round(Object.entries(w.fermeJours).reduce((s, [, ferme]) => s + (fermeRateMap[ferme] || 0), 0))
-                                    : Math.round(w.cout),
+                                coutTotal: (() => {
+                                    if (_isMoCard) {
+                                        // Smart Berry model — même calcul que les totaux cartes
+                                        const _firstDay = w.jours.size > 0 ? [...w.jours].sort()[0] : null;
+                                        const _sbNet = sbNetForWorker(w.matricule, w.jours.size, _firstDay);
+                                        if (_sbNet !== null) return _sbNet;
+                                        // Fallback BDP si registry pas encore chargé
+                                        return Math.round(Object.entries(w.fermeJours).reduce((s, [, ferme]) => s + (fermeRateMap[ferme] || 0), 0));
+                                    }
+                                    return Math.round(w.cout);
+                                })(),
                             }));
                         const _qpTotalJ = _qpWorkers.reduce((s, w) => s + w.journees, 0);
 
