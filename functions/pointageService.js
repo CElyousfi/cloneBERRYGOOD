@@ -3269,10 +3269,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
         if (!USE_MIRROR) {
           const db = await getPool();
-          const [r1, r2] = await Promise.all([
+          // Surfaces depuis BR_Parcelle (table de référence, champ Sup_Parcelle_Culturale)
+          const [r1, r2, rSup] = await Promise.all([
             db.request().query(`
-              SELECT DISTINCT Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme,
-                MAX(Parcelle_sup) AS Sup,
+              SELECT Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme,
                 MIN(CONVERT(date, Periode_Date)) AS Debut,
                 MAX(CONVERT(date, Periode_Date)) AS Fin
               FROM BR_Pointage
@@ -3281,8 +3281,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               GROUP BY Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme
               ORDER BY Parcelle_Culturale`),
             db.request().query(`
-              SELECT DISTINCT Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme,
-                MAX(Parcelle_sup) AS Sup,
+              SELECT Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme,
                 MIN(CONVERT(date, Periode_Date)) AS Debut,
                 MAX(CONVERT(date, Periode_Date)) AS Fin
               FROM BR_Pointage
@@ -3291,43 +3290,65 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
                 AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''
               GROUP BY Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme
               ORDER BY Parcelle_Culturale`),
+            // Surfaces depuis BR_Parcelle (source authoritative : Sup_Parcelle_Culturale)
+            db.request().query(`
+              SELECT Parcelle_Culturale, Sup_Parcelle_Culturale AS Sup
+              FROM BR_Parcelle
+              WHERE Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`),
           ]);
-          const toRow = (r) => ({
-            ref: (r.Ref_parcelle || "").trim(),
-            label: (r.Parcelle_Culturale || "").trim(),
-            culture: (r.Culture || "").trim(),
-            variete: (r.Variete || "").trim(),
-            ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-            sup: parseFloat(r.Sup) || 0,
-            debut: r.Debut ? String(r.Debut).slice(0, 10) : null,
-            fin: r.Fin ? String(r.Fin).slice(0, 10) : null,
-          });
+          // Map label → sup pour le join
+          const supMap = {};
+          rSup.recordset.forEach(r => { supMap[(r.Parcelle_Culturale || "").trim()] = parseFloat(r.Sup) || 0; });
+          const toRow = (r) => {
+            const lbl = (r.Parcelle_Culturale || "").trim();
+            return {
+              ref: (r.Ref_parcelle || "").trim(),
+              label: lbl,
+              culture: (r.Culture || "").trim(),
+              variete: (r.Variete || "").trim(),
+              ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+              sup: supMap[lbl] || 0,
+              debut: r.Debut ? String(r.Debut).slice(0, 10) : null,
+              fin: r.Fin ? String(r.Fin).slice(0, 10) : null,
+            };
+          };
           rows2627 = r1.recordset.map(toRow);
           rowsPrev = r2.recordset.map(toRow);
         } else {
           // Mirror path — Firestore sql_mirror_pointage
-          const [raw2627, rawPrev] = await Promise.all([
+          // Surfaces depuis parcelles_consommation (mirror de BR_Consommation)
+          const [raw2627, rawPrev, consoSnap] = await Promise.all([
             getPointageRowsForDateRange(CUT, today),
             getPointageRowsForDateRange(PREV_START, PREV_END),
+            db_firestore.collection("parcelles_consommation").get().catch(() => null),
           ]);
+          // Build supMap depuis le mirror Firestore de consommation
+          const supMap = {};
+          if (consoSnap) {
+            consoSnap.forEach(doc => {
+              const d = doc.data();
+              const lbl = (d.parcelle_culturale || d.Parcelle_Culturale || "").trim();
+              const sup = parseFloat(d.parcelle_sup || d.Parcelle_sup || d.sup || 0) || 0;
+              if (lbl && sup > 0) supMap[lbl] = Math.max(supMap[lbl] || 0, sup);
+            });
+          }
           const agg = (rows) => {
             const m = {};
             for (const r of rows) {
               const lbl = (r.Parcelle_Culturale || "").trim();
               if (!lbl) continue;
-              const k = lbl;
-              if (!m[k]) m[k] = {
+              if (!m[lbl]) m[lbl] = {
                 ref: (r.Ref_parcelle || "").trim(),
                 label: lbl,
                 culture: (r.Culture || r.culture || "").trim(),
                 variete: (r.Variete || r.variete || "").trim(),
                 ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-                sup: 0, debut: null, fin: null,
+                sup: supMap[lbl] || 0, debut: null, fin: null,
               };
               const d = r.DateStr || (r.jour ? String(r.jour).slice(0, 10) : null);
               if (d) {
-                if (!m[k].debut || d < m[k].debut) m[k].debut = d;
-                if (!m[k].fin || d > m[k].fin) m[k].fin = d;
+                if (!m[lbl].debut || d < m[lbl].debut) m[lbl].debut = d;
+                if (!m[lbl].fin || d > m[lbl].fin) m[lbl].fin = d;
               }
             }
             return Object.values(m).sort((a, b) => a.label.localeCompare(b.label));
