@@ -114,6 +114,46 @@ function filterByFermeField(rows, fermeFilter) {
 }
 
 /**
+ * Surfaces BR_Parcelle (source authoritative : Sup_Parcelle_Culturale) — même
+ * source que le tab Parcelles & Référentiel (action parcelles-campagne-list).
+ * Retourne { label Parcelle_Culturale (trim) → hectares > 0 }.
+ * Fallback silencieux {} si le serveur BDR est indisponible (USE_MIRROR=true en
+ * prod : le mirror Firestore ne porte pas les surfaces, seul BR_Parcelle les a).
+ *
+ * @returns {Promise<Object<string, number>>}
+ */
+async function fetchBrParcelleSupMap() {
+  try {
+    const db = await getPool();
+    const res = await db.request().query(`
+      SELECT Parcelle_Culturale, Sup_Parcelle_Culturale AS Sup
+      FROM BR_Parcelle
+      WHERE Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`);
+    const supMap = {};
+    res.recordset.forEach(r => {
+      const lbl = (r.Parcelle_Culturale || "").trim();
+      const sup = parseFloat(r.Sup) || 0;
+      if (lbl && sup > 0) supMap[lbl] = sup;
+    });
+    return supMap;
+  } catch (e) {
+    return {};
+  }
+}
+
+/**
+ * Enrichit des lignes analytique (portant `parcelle`) avec `haRef` = surface
+ * BR_Parcelle si connue (0 sinon). PUR — ne mute pas les lignes d'entrée.
+ *
+ * @param {Array<{parcelle?:string}>} rows
+ * @param {Object<string, number>} supMap
+ * @returns {Array}
+ */
+function enrichRowsWithHaRef(rows, supMap) {
+  return (rows || []).map(r => ({ ...r, haRef: (supMap && supMap[(r.parcelle || "").trim()]) || 0 }));
+}
+
+/**
  * Filtrage ferme PUR sur les lignes ARCHIVÉES (quinzaine_archive → analytique).
  * Ces lignes portent `parcelle` + `refParcelle` (grain parcelle/opération, agrégé
  * par variété en aval) → la ferme est dérivable via deriveFerme(). Même règle
@@ -2344,7 +2384,11 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const periodeCampagne = (meta && meta.periodeCampagne) || {};
           const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
           if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, rows: [] };
-          const rawRows = await getPointageRowsForPeriode(selectedPeriode);
+          // Surfaces BR_Parcelle en parallèle des rows (fallback {} si BDR down)
+          const [rawRows, supMap] = await Promise.all([
+            getPointageRowsForPeriode(selectedPeriode),
+            fetchBrParcelleSupMap(),
+          ]);
           if (rawRows.length === 0) {
             // Check Firestore archive
             const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
@@ -2353,7 +2397,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               // → ferme dérivable. Sans filtrage, un chef verrait les parcelles/coûts
               // de toutes les fermes. Fail-closed : ferme dérivée ≠ _fermeFilter → exclue.
               // _fermeFilter null (RH/DG/Finance) → passthrough (inchangé).
-              return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows: filterArchivedRowsByFerme(archiveDoc.data().analytique, _fermeFilter) };
+              return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows: enrichRowsWithHaRef(filterArchivedRowsByFerme(archiveDoc.data().analytique, _fermeFilter), supMap) };
             }
           }
           // Group by parcelle+ref+opFamille+operation
@@ -2366,7 +2410,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             groups[key].Cout += r.Cout || 0;
           }
           const rows = Object.values(groups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
-          return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows };
+          return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows: enrichRowsWithHaRef(rows, supMap) };
         }
         // SQL fallback
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
@@ -2377,7 +2421,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // `ferme` dérivé → on cloisonne sur la ferme du chef (fail-closed), cohérence avec
         // le chemin mirror/archive. _fermeFilter null (RH/DG/Finance) → passthrough.
         const rows = filterByFermeField(result.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), operationFamille: r.Operation_Famille, operation: r.Operation, nbOuv: r.nbOuv, jh: Math.round((r.JH || 0) * 100) / 100, cout: Math.round(r.Cout || 0) })), _fermeFilter);
-        return { success: true, periode: selectedPeriode, periodes, rows };
+        return { success: true, periode: selectedPeriode, periodes, rows: enrichRowsWithHaRef(rows, await fetchBrParcelleSupMap()) };
         }); // end withCache
         return res.json(cached);
       }
@@ -3365,6 +3409,38 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         rowsPrev = rowsPrev.filter(r => !labels2627.has(r.label));
 
         return res.json({ success: true, campagne_courante: rows2627, campagne_precedente: rowsPrev });
+      }
+
+      // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====
+      // Lecture du référentiel (noms SB + surfaces éditables)
+      if (action === "sb-referentiel-list") {
+        const snap = await db_firestore.collection("sb_parcelle_referentiel").get();
+        const parcelles = [];
+        snap.forEach(doc => parcelles.push({ id: doc.id, ...doc.data() }));
+        return res.json({ success: true, parcelles });
+      }
+
+      // Sauvegarde d'une entrée du référentiel (DG/RH uniquement)
+      if (action === "sb-referentiel-save" && req.method === "POST") {
+        const callerProfile = await resolveCallerProfile(req);
+        if (!callerProfile || !["dg", "rh"].includes(callerProfile.role)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
+        }
+        const { label_bee_one, nom_sb, ha } = req.body || {};
+        if (!label_bee_one || typeof label_bee_one !== "string") {
+          return res.status(400).json({ success: false, error: "label_bee_one requis" });
+        }
+        const key = label_bee_one.trim().toUpperCase();
+        const haNum = parseFloat(ha) || 0;
+        const docRef = db_firestore.collection("sb_parcelle_referentiel").doc(key);
+        await docRef.set({
+          label_bee_one: label_bee_one.trim(),
+          nom_sb: (nom_sb || "").trim(),
+          ha: haNum,
+          updated_by: { uid: callerProfile.uid, name: callerProfile.name || "", role: callerProfile.role },
+          updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return res.json({ success: true, key });
       }
 
       // la campagne sélectionnée (référentiel parcelle_ferme_referentiel encore vide,

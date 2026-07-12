@@ -462,6 +462,33 @@
             return m ? m[1].toUpperCase() : null;
         }
 
+        // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====
+        // window.SB_PARCELLE_REF = { 'LABEL BEE ONE UPPERCASE' : { nom_sb, ha, ... } }
+        // Chargé une fois au démarrage et mis à jour après chaque save.
+        function sbLoad() {
+            fetch('/api/pointage-rh?action=sb-referentiel-list')
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.success) return;
+                    window.SB_PARCELLE_REF = {};
+                    (d.parcelles || []).forEach(p => {
+                        window.SB_PARCELLE_REF[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
+                    });
+                })
+                .catch(() => {});
+        }
+        sbLoad();
+
+        function sbParcelleHa(labelBeeOne) {
+            const ref = window.SB_PARCELLE_REF && window.SB_PARCELLE_REF[(labelBeeOne || '').toUpperCase().trim()];
+            return (ref && ref.ha > 0) ? ref.ha : 0;
+        }
+
+        function sbParcelleNom(labelBeeOne) {
+            const ref = window.SB_PARCELLE_REF && window.SB_PARCELLE_REF[(labelBeeOne || '').toUpperCase().trim()];
+            return (ref && ref.nom_sb) ? ref.nom_sb : (labelBeeOne || '—');
+        }
+
         const NAV_ITEMS_RH = [
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
@@ -11106,19 +11133,28 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const _avocatHaByFerme = { F2: 4.86, F3: 1.0, F4: 4.64, F6: 9.13, BAHIA: 1.0 };
             const _getAnalytiqueRowInfo = (r) => {
                 const norm = (r.parcelle || '').toUpperCase().trim();
+                // 1. Référentiel SB (source prioritaire — saisi manuellement par RH/DG)
+                const sbHa = sbParcelleHa(r.parcelle);
+                // 2. Lookup PARCELLES_CULTURALES (désignations BDR statiques)
                 let info = _pcInfoMap[norm];
                 if (!info) {
                     for (const [k, v] of Object.entries(_pcInfoMap)) {
                         if (norm.includes(k) || k.includes(norm)) { info = v; break; }
                     }
                 }
+                // 3. Fallback culture par regex sur le label
                 if (!info) {
                     if (/CORINA|CASCADE|BREEZE|MYRTILL/i.test(r.parcelle)) info = { ha: 0, culture: 'Myrtille', variete: '' };
                     else if (/HAAS|AVOCAT|BACON/i.test(r.parcelle)) info = { ha: 0, culture: 'Avocatier', variete: '' };
                     else info = { ha: 0, culture: 'Framboise', variete: '' };
                 }
-                let ha = info.ha || 0;
-                if (info.culture === 'Avocatier' && ha === 0) ha = _avocatHaByFerme[r.ferme] || 0;
+                // Ha : SB référentiel > PARCELLES_CULTURALES > avocatHaByFerme (sub-ferme) > haRef BR_Parcelle
+                let ha = sbHa || info.ha || 0;
+                if (ha === 0 && info.culture === 'Avocatier') {
+                    const subFerme = deriveSubFerme(r.refParcelle, r.parcelle) || r.ferme;
+                    ha = _avocatHaByFerme[subFerme] || _avocatHaByFerme[r.ferme] || 0;
+                }
+                if (ha === 0 && r.haRef > 0) ha = r.haRef;
                 return { ...info, ha };
             };
             const _cultureGroups = { Myrtille: [], Framboise: [], Avocatier: [] };
@@ -11130,25 +11166,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 if (!_cultureGroups[culture]) _cultureGroups[culture] = [];
                 _cultureGroups[culture].push({ ...r, ha: info.ha, culture });
             });
-            const _buildAnalytiquePivot = (rows) => {
-                const parcelleSet = {};
-                const pivot = {};
-                rows.forEach(r => {
-                    parcelleSet[r.parcelle] = r.ha;
-                    if (!pivot[r.operationFamille]) pivot[r.operationFamille] = {};
-                    if (!pivot[r.operationFamille][r.parcelle]) {
-                        pivot[r.operationFamille][r.parcelle] = { jh: 0, cout: 0, ha: r.ha, detailRows: [] };
-                    }
-                    pivot[r.operationFamille][r.parcelle].jh += r.jh;
-                    pivot[r.operationFamille][r.parcelle].cout += r.cout;
-                    pivot[r.operationFamille][r.parcelle].detailRows.push(r);
-                });
-                const parcelles = Object.entries(parcelleSet).sort((a, b) => a[0].localeCompare(b[0]));
-                const operations = Object.keys(pivot).filter(op =>
-                    Object.values(pivot[op]).some(c => c.jh > 0)
-                ).sort();
-                return { parcelles, operations, pivot };
-            };
+            // Pivot délégué à la lib pure (public/lib/analytiqueUtils.js) — regroupe les
+            // familles d'opérations sur une clé normalisée (casse/tirets) pour supprimer
+            // les lignes dupliquées post-bascule BDP. Garde anti-crash si la lib n'est
+            // pas chargée (cf. mémoire projet : global manquant = crash React global).
+            const _buildAnalytiquePivot = (rows) => (window.AnalytiqueUtils && window.AnalytiqueUtils.buildAnalytiquePivot)
+                ? window.AnalytiqueUtils.buildAnalytiquePivot(rows)
+                : { parcelles: [], operations: [], pivot: {} };
 
             return (
                 <div className="fade-in">
@@ -12021,7 +12045,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         ? (Math.round(v * 10) / 10).toFixed(1)
                                         : Math.round(v).toLocaleString('fr-FR');
                                 };
-                                const _opLabel = (op) => (op || '').replace(/^\d+\.\s*/, '');
                                 return (
                                     <div key={culture} style={{marginBottom:20,background:'#fff',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
                                         <div style={{padding:'10px 16px',background:`linear-gradient(135deg,${color}15,${color}08)`,borderBottom:`2px solid ${color}30`,display:'flex',alignItems:'center',gap:10}}>
@@ -12049,22 +12072,22 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 <tbody>
                                                     {operations.map((op, opIdx) => {
                                                         const _rowTotal = parcelles.reduce((s, [pKey]) => {
-                                                            const c = pivot[op] && pivot[op][pKey];
+                                                            const c = pivot[op.key] && pivot[op.key][pKey];
                                                             return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
                                                         }, 0);
                                                         const _totalHaForOp = parcelles.reduce((s, [, ha]) => s + ha, 0);
                                                         return (
-                                                            <tr key={op} style={{background: opIdx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom:'1px solid var(--gray-100)'}}>
+                                                            <tr key={op.key} style={{background: opIdx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom:'1px solid var(--gray-100)'}}>
                                                                 <td style={{padding:'7px 12px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:0,background: opIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1}}>
-                                                                    {_opLabel(op)}
+                                                                    {op.label}
                                                                 </td>
                                                                 {parcelles.map(([pKey, ha]) => {
-                                                                    const c = pivot[op] && pivot[op][pKey];
+                                                                    const c = pivot[op.key] && pivot[op.key][pKey];
                                                                     if (!c) return <td key={pKey} style={{padding:'7px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
                                                                     const _val = analytiqueView === 'jh' ? c.jh : c.cout;
                                                                     return (
                                                                         <td key={pKey}
-                                                                            onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: op, ha, detailRows: c.detailRows })}
+                                                                            onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: op.label, ha, detailRows: c.detailRows })}
                                                                             style={{padding:'7px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid var(--gray-100)',transition:'background 0.1s'}}
                                                                             onMouseEnter={e => e.currentTarget.style.background=`${color}18`}
                                                                             onMouseLeave={e => e.currentTarget.style.background=''}>
@@ -12086,7 +12109,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         <td style={{padding:'8px 12px',position:'sticky',left:0,background:`${color}18`,borderRight:'1px solid var(--gray-200)',zIndex:1,color}}>TOTAL</td>
                                                         {parcelles.map(([pKey, ha]) => {
                                                             const colTotal = operations.reduce((s, op) => {
-                                                                const c = pivot[op] && pivot[op][pKey];
+                                                                const c = pivot[op.key] && pivot[op.key][pKey];
                                                                 return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
                                                             }, 0);
                                                             return (
@@ -12100,7 +12123,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             {(() => {
                                                                 const gt = operations.reduce((s, op) =>
                                                                     s + parcelles.reduce((ps, [pKey]) => {
-                                                                        const c = pivot[op] && pivot[op][pKey];
+                                                                        const c = pivot[op.key] && pivot[op.key][pKey];
                                                                         return ps + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
                                                                     }, 0), 0);
                                                                 return <><div>{_fmt(gt, _totalHa)}</div><div style={{fontSize:10,opacity:0.7}}>{_unit}</div></>;
@@ -67307,7 +67330,7 @@ ${rejetHtml}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
                                 {renderTab('primes_fixes', window.PrimesFixesTab, {}, 'Primes Fixes')}
-                                {renderTab('parcelles_referentiel', window.ParcellesReferentielTab, {}, 'Parcelles & Référentiel')}
+                                {renderTab('parcelles_referentiel', window.ParcellesReferentielTab, { userRole: currentProfile }, 'Parcelles & Référentiel')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
                                 {renderTab('suivi', SuiviTab, { data }, 'Suivi')}

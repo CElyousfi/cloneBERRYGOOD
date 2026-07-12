@@ -1,14 +1,11 @@
 /*
- * ParcellesReferentielTab.jsx — Parcelles & Référentiel MO (Phase 1 : visualisation)
+ * ParcellesReferentielTab.jsx — Parcelles & Référentiel MO
  *
- * Source : /api/pointage-rh?action=parcelles-campagne-list
- *   → BR_Pointage (base de production JH), pas BR_Consommation.
- *   → Campagne 2026/2027 : parcelles ayant du pointage >= 2026-07-01.
- *   → Campagne 2025/2026 : parcelles avec pointage 2025-07-01..2026-06-30
- *     NON présentes en 2026/2027.
+ * Phase 1 : visualisation (source BR_Pointage + BR_Parcelle)
+ * Phase 2 : référentiel SB éditable (nom + Ha par label BEE ONE)
  *
- * Auth : token Firebase injecté automatiquement par le wrapper global fetch.
- * IIFE + global unique window.ParcellesReferentielTab. Préfixe PRT_.
+ * Édition : RH/DG uniquement. Save → POST /api/pointage-rh?action=sb-referentiel-save
+ * Les Ha saisis ici alimentent l'Affectation Analytique (window.SB_PARCELLE_REF).
  */
 (function () {
   'use strict';
@@ -40,8 +37,6 @@
     Avocatier: { bg: '#d1fae5', text: '#065f46' },
   };
 
-  // Dérive la culture depuis le champ Culture OU le label de parcelle.
-  // BR_Pointage peut avoir Culture vide → fallback sur label.
   function normCulture(cultureField, labelFallback) {
     var src = (cultureField || labelFallback || '').toUpperCase();
     if (!src) return 'Framboise';
@@ -72,9 +67,102 @@
     }, culture);
   }
 
+  function PRT_EditRow(props) {
+    var r = props.row;
+    var sbEntry = props.sbEntry;
+    var onSaved = props.onSaved;
+    var onCancel = props.onCancel;
+
+    var _ha = useState(sbEntry ? String(sbEntry.ha || '') : '');
+    var haVal = _ha[0]; var setHaVal = _ha[1];
+    var _nom = useState(sbEntry ? (sbEntry.nom_sb || '') : '');
+    var nomVal = _nom[0]; var setNomVal = _nom[1];
+    var _saving = useState(false);
+    var saving = _saving[0]; var setSaving = _saving[1];
+    var _err = useState(null);
+    var err = _err[0]; var setErr = _err[1];
+
+    function handleSave() {
+      var haNum = parseFloat(haVal.replace(',', '.'));
+      if (isNaN(haNum) || haNum < 0) { setErr('Ha invalide'); return; }
+      setSaving(true);
+      setErr(null);
+      fetch('/api/pointage-rh?action=sb-referentiel-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label_bee_one: r.label, nom_sb: nomVal.trim(), ha: haNum }),
+      })
+        .then(function (res) { return res.json(); })
+        .then(function (d) {
+          if (!d.success) throw new Error(d.error || 'Erreur');
+          // Mettre à jour le cache global SB_PARCELLE_REF
+          if (window.SB_PARCELLE_REF) {
+            var key = (r.label || '').toUpperCase().trim();
+            window.SB_PARCELLE_REF[key] = { label_bee_one: r.label, nom_sb: nomVal.trim(), ha: haNum };
+          }
+          onSaved({ label_bee_one: r.label, nom_sb: nomVal.trim(), ha: haNum });
+        })
+        .catch(function (e) { setErr(e.message); setSaving(false); });
+    }
+
+    var inputStyle = {
+      border: '1px solid ' + PRT_C.border, borderRadius: 6, padding: '4px 8px',
+      fontSize: 12, outline: 'none', width: '100%', boxSizing: 'border-box',
+    };
+
+    return React.createElement('tr', { style: { background: '#fffbf0' } },
+      React.createElement('td', { style: { padding: '8px 10px', fontSize: 11, color: PRT_C.textTer, fontFamily: 'monospace' } }, r.ref || '—'),
+      React.createElement('td', { style: { padding: '8px 10px', fontSize: 12 } },
+        React.createElement('input', {
+          type: 'text', value: nomVal, placeholder: r.label,
+          onChange: function (e) { setNomVal(e.target.value); },
+          style: { ...inputStyle, maxWidth: 260 },
+        })
+      ),
+      React.createElement('td', { style: { padding: '8px 10px' } },
+        React.createElement(PRT_CultureBadge, { culture: normCulture(r.culture, r.label) })
+      ),
+      React.createElement('td', { style: { padding: '8px 10px', fontSize: 12, color: PRT_C.textSec } }, r.variete || '—'),
+      React.createElement('td', { style: { padding: '8px 10px' } },
+        React.createElement('span', { style: { fontWeight: 600, fontSize: 12 } }, r.ferme || '—')
+      ),
+      React.createElement('td', { style: { padding: '8px 10px' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+          React.createElement('input', {
+            type: 'number', value: haVal, placeholder: fmtHa(r.sup) || '0.00',
+            min: 0, step: 0.01,
+            onChange: function (e) { setHaVal(e.target.value); },
+            style: { ...inputStyle, width: 80, textAlign: 'right' },
+          }),
+          React.createElement('span', { style: { fontSize: 11, color: PRT_C.textTer } }, 'Ha')
+        )
+      ),
+      React.createElement('td', { style: { padding: '8px 10px', fontSize: 12, color: PRT_C.textSec } }, fmtDate(r.debut)),
+      React.createElement('td', { style: { padding: '8px 10px' } },
+        React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
+          err && React.createElement('span', { style: { fontSize: 11, color: '#dc2626' } }, err),
+          React.createElement('button', {
+            onClick: handleSave, disabled: saving,
+            style: { padding: '4px 12px', borderRadius: 6, border: 'none', background: PRT_C.green, color: '#fff', fontSize: 11, fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer' },
+          }, saving ? '…' : 'Sauver'),
+          React.createElement('button', {
+            onClick: onCancel,
+            style: { padding: '4px 10px', borderRadius: 6, border: '1px solid ' + PRT_C.border, background: PRT_C.surface, color: PRT_C.textSec, fontSize: 11, cursor: 'pointer' },
+          }, 'Annuler')
+        )
+      )
+    );
+  }
+
   function PRT_Table(props) {
     var rows = props.rows;
     var search = props.search;
+    var sbMap = props.sbMap;
+    var canEdit = props.canEdit;
+    var onRowSaved = props.onRowSaved;
+
+    var _editLabel = useState(null);
+    var editLabel = _editLabel[0]; var setEditLabel = _editLabel[1];
 
     var filtered = useMemo(function () {
       if (!search) return rows;
@@ -104,34 +192,63 @@
     };
 
     return React.createElement('div', { style: { overflowX: 'auto' } },
-      React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 540 } },
+      React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse', minWidth: 600 } },
         React.createElement('thead', null,
           React.createElement('tr', null,
             React.createElement('th', { style: thStyle }, 'Réf BEE ONE'),
-            React.createElement('th', { style: thStyle }, 'Parcelle (label BEE ONE)'),
+            React.createElement('th', { style: thStyle }, 'Parcelle'),
             React.createElement('th', { style: thStyle }, 'Culture'),
             React.createElement('th', { style: thStyle }, 'Variété'),
             React.createElement('th', { style: thStyle }, 'Ferme'),
-            React.createElement('th', { style: { ...thStyle, textAlign: 'right' } }, 'Ha (BEE ONE)'),
+            React.createElement('th', { style: { ...thStyle, textAlign: 'right' } }, 'Ha'),
             React.createElement('th', { style: thStyle }, '1er pointage'),
-            React.createElement('th', { style: thStyle }, 'Dernier pointage'),
+            canEdit && React.createElement('th', { style: { ...thStyle, width: 110 } }, '')
           )
         ),
         React.createElement('tbody', null,
           filtered.map(function (r, i) {
             var culture = normCulture(r.culture, r.label);
+            var sbKey = (r.label || '').toUpperCase().trim();
+            var sbEntry = sbMap && sbMap[sbKey];
+            var haDisplay = (sbEntry && sbEntry.ha > 0) ? sbEntry.ha : r.sup;
+            var nomDisplay = (sbEntry && sbEntry.nom_sb) ? sbEntry.nom_sb : r.label;
+            var isCustom = sbEntry && (sbEntry.ha > 0 || sbEntry.nom_sb);
+
+            if (editLabel === r.label) {
+              return React.createElement(PRT_EditRow, {
+                key: r.label,
+                row: r,
+                sbEntry: sbEntry || null,
+                onSaved: function (saved) {
+                  setEditLabel(null);
+                  if (onRowSaved) onRowSaved(saved);
+                },
+                onCancel: function () { setEditLabel(null); },
+              });
+            }
+
             return React.createElement('tr', {
               key: (r.ref || '') + '|' + (r.label || '') + i,
               style: { background: i % 2 === 0 ? PRT_C.surface : PRT_C.surface2 },
             },
               React.createElement('td', { style: { ...tdStyle, color: PRT_C.textTer, fontSize: 11, fontFamily: 'monospace' } }, r.ref || '—'),
-              React.createElement('td', { style: { ...tdStyle, fontWeight: 600, maxWidth: 280 } }, r.label || '—'),
+              React.createElement('td', { style: { ...tdStyle, fontWeight: 600, maxWidth: 280 } },
+                nomDisplay,
+                isCustom && React.createElement('span', {
+                  style: { marginLeft: 6, fontSize: 10, padding: '1px 5px', borderRadius: 6, background: '#e0f2fe', color: '#0369a1', fontWeight: 600, verticalAlign: 'middle' },
+                }, 'SB')
+              ),
               React.createElement('td', { style: tdStyle }, React.createElement(PRT_CultureBadge, { culture: culture })),
               React.createElement('td', { style: { ...tdStyle, color: PRT_C.textSec } }, r.variete || '—'),
               React.createElement('td', { style: tdStyle }, React.createElement('span', { style: { fontWeight: 600 } }, r.ferme || '—')),
-              React.createElement('td', { style: { ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 } }, fmtHa(r.sup)),
+              React.createElement('td', { style: { ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 } }, fmtHa(haDisplay)),
               React.createElement('td', { style: { ...tdStyle, color: PRT_C.textSec } }, fmtDate(r.debut)),
-              React.createElement('td', { style: { ...tdStyle, color: PRT_C.textSec } }, fmtDate(r.fin)),
+              canEdit && React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
+                React.createElement('button', {
+                  onClick: function () { setEditLabel(r.label); },
+                  style: { padding: '3px 10px', borderRadius: 6, border: '1px solid ' + PRT_C.border, background: PRT_C.surface, color: PRT_C.textSec, fontSize: 11, cursor: 'pointer' },
+                }, React.createElement('i', { className: 'fa-solid fa-pen-to-square', style: { marginRight: 4 } }), 'Éditer')
+              )
             );
           })
         )
@@ -144,7 +261,13 @@
     var rows = props.rows;
     var accent = props.accent;
     var subtitle = props.subtitle;
-    var totalHa = rows.reduce(function (s, r) { return s + (parseFloat(r.sup) || 0); }, 0);
+    var sbMap = props.sbMap;
+    var totalHa = rows.reduce(function (s, r) {
+      var sbKey = (r.label || '').toUpperCase().trim();
+      var sbEntry = sbMap && sbMap[sbKey];
+      var ha = (sbEntry && sbEntry.ha > 0) ? sbEntry.ha : (parseFloat(r.sup) || 0);
+      return s + ha;
+    }, 0);
     var byCulture = {};
     rows.forEach(function (r) {
       var c = normCulture(r.culture, r.label);
@@ -163,7 +286,7 @@
         React.createElement('span', { style: { fontSize: 13, fontWeight: 400, color: PRT_C.textSec, marginLeft: 6 } }, 'parcelles')
       ),
       totalHa > 0 && React.createElement('div', { style: { fontSize: 12, color: PRT_C.textSec, marginBottom: 8 } },
-        totalHa.toFixed(1) + ' Ha total (BEE ONE)'
+        totalHa.toFixed(1) + ' Ha total'
       ),
       React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
         Object.entries(byCulture).map(function (e) {
@@ -177,7 +300,10 @@
     );
   }
 
-  function ParcellesReferentielTab() {
+  function ParcellesReferentielTab(props) {
+    var userRole = (props.userRole || '').toLowerCase();
+    var canEdit = userRole === 'dg' || userRole === 'rh';
+
     var _data = useState(null);
     var data = _data[0]; var setData = _data[1];
     var _load = useState(false);
@@ -188,19 +314,41 @@
     var search = _search[0]; var setSearch = _search[1];
     var _camp = useState('2026/2027');
     var selectedCamp = _camp[0]; var setSelectedCamp = _camp[1];
+    var _sbMap = useState(window.SB_PARCELLE_REF || {});
+    var sbMap = _sbMap[0]; var setSbMap = _sbMap[1];
 
     useEffect(function () {
       setLoading(true);
       setError(null);
-      fetch('/api/pointage-rh?action=parcelles-campagne-list')
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
+      Promise.all([
+        fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function (r) { return r.json(); }),
+        fetch('/api/pointage-rh?action=sb-referentiel-list').then(function (r) { return r.json(); }),
+      ])
+        .then(function (results) {
+          var d = results[0]; var sb = results[1];
           if (!d.success) throw new Error(d.error || 'Erreur API');
           setData(d);
+          var map = {};
+          if (sb.success) {
+            (sb.parcelles || []).forEach(function (p) {
+              map[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
+            });
+            window.SB_PARCELLE_REF = map;
+          }
+          setSbMap(map);
         })
         .catch(function (e) { setError(e.message); })
         .finally(function () { setLoading(false); });
     }, []);
+
+    function handleRowSaved(saved) {
+      setSbMap(function (prev) {
+        var next = Object.assign({}, prev);
+        next[(saved.label_bee_one || '').toUpperCase().trim()] = saved;
+        window.SB_PARCELLE_REF = next;
+        return next;
+      });
+    }
 
     var rows2627 = (data && data.campagne_courante)  || [];
     var rowsPrev = (data && data.campagne_precedente) || [];
@@ -214,7 +362,7 @@
           'Parcelles & Référentiel MO'
         ),
         React.createElement('p', { style: { margin: '4px 0 0', fontSize: 12, color: PRT_C.textTer } },
-          'Classification des parcelles BEE ONE par campagne — source : BR_Pointage (base de production JH)'
+          'Surfaces et noms Smart Berry — éditables par RH/DG, propagés à l\'Affectation Analytique.'
         )
       ),
 
@@ -232,14 +380,12 @@
           React.createElement(PRT_CampagneCard, {
             label: 'Campagne 2026/2027',
             subtitle: 'Parcelles avec pointage depuis le 01/07/2026',
-            rows: rows2627,
-            accent: PRT_C.green,
+            rows: rows2627, accent: PRT_C.green, sbMap: sbMap,
           }),
           React.createElement(PRT_CampagneCard, {
             label: 'Campagne 2025/2026',
             subtitle: 'Parcelles sans pointage depuis le 01/07/2026',
-            rows: rowsPrev,
-            accent: PRT_C.amber,
+            rows: rowsPrev, accent: PRT_C.amber, sbMap: sbMap,
           })
         ),
 
@@ -280,22 +426,30 @@
                 border: '1px solid ' + PRT_C.border, fontSize: 12, outline: 'none',
               },
             })
+          ),
+
+          canEdit && React.createElement('div', { style: { fontSize: 11, color: PRT_C.textTer } },
+            React.createElement('i', { className: 'fa-solid fa-pen-to-square', style: { marginRight: 4, color: PRT_C.green } }),
+            'Cliquez Éditer pour saisir le Ha réel et le nom SB'
           )
         ),
 
         React.createElement('div', {
           style: { background: PRT_C.surface, border: '1px solid ' + PRT_C.border, borderRadius: 12, overflow: 'hidden' },
         },
-          React.createElement(PRT_Table, { rows: currentRows, search: search })
+          React.createElement(PRT_Table, {
+            rows: currentRows, search: search,
+            sbMap: sbMap, canEdit: canEdit,
+            onRowSaved: handleRowSaved,
+          })
         ),
 
         React.createElement('div', {
           style: { marginTop: 12, fontSize: 11, color: PRT_C.textTer },
         },
           React.createElement('i', { className: 'fa-solid fa-circle-info', style: { marginRight: 4 } }),
-          'Source : BR_Pointage (production). ',
-          'Campagne 2026/2027 = parcelles avec pointage depuis le 01/07/2026. ',
-          'Les noms affichés sont les labels BEE ONE bruts — le référentiel personnalisé (noms Smart Berry + surfaces) est prévu en Phase 2.'
+          'Ha saisis ici → propagés immédiatement à l\'Affectation Analytique (sans rechargement). ',
+          canEdit ? 'Badge "SB" = surface personnalisée.' : 'Saisie réservée aux profils RH/DG.'
         )
       )
     );
