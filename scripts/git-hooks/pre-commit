@@ -11,11 +11,21 @@
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
+LOG="$(mktemp)"
+trap 'rm -f "$LOG"' EXIT
+
+run_quiet() {
+  # Silencieux en succès, affiche le rapport de test complet en échec.
+  if ! "$@" > "$LOG" 2>&1; then
+    cat "$LOG"
+    return 1
+  fi
+}
 
 echo "[pre-commit] Tests unitaires frontend…"
-(cd "$ROOT" && find tests/unit -name '*.test.js' -print0 | xargs -0 node --test) > /dev/null
+(cd "$ROOT" && run_quiet bash -c "find tests/unit -name '*.test.js' -print0 | xargs -0 node --test")
 
 echo "[pre-commit] Tests backend…"
-(cd "$ROOT/functions" && find lib -path '*/__tests__/*.test.js' -print0 | xargs -0 node --test) > /dev/null
+(cd "$ROOT/functions" && run_quiet bash -c "find lib -path '*/__tests__/*.test.js' -print0 | xargs -0 node --test")
 
 echo "[pre-commit] OK ✅ (gate complète avec build : npm run qa)"
