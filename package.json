@@ -8,6 +8,7 @@
     "test:unit": "node --test 'tests/unit/**/*.test.js'",
     "qa": "bash scripts/qa.sh",
     "typecheck": "tsc -p jsconfig.json",
+    "coverage": "c8 --reporter=text --reporter=html npm run test:unit",
     "test": "node tests/test-workflows.js",
     "smoke": "BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js",
     "smoke:sprint-1": "node tests/smoke-sprint-1.js",
@@ -28,6 +29,7 @@
     "@babel/cli": "^7.28.6",
     "@babel/core": "^7.29.0",
     "@babel/preset-react": "^7.28.5",
+    "c8": "^11.0.0",
     "typescript": "^7.0.2"
   },
   "type": "commonjs"

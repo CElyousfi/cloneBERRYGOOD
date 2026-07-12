@@ -1186,3 +1186,16 @@ Gated : oui (écriture suppliers + régénération secrets).
 151 scans factures TIMAC legacy (scan_url public, ancien mécanisme) à rebrancher sur le viewer
 unifié (brique scan). Cohérence d'affichage de l'historique.
 Gated : oui (deploy).
+
+## ── COUVERTURE DE TESTS BACKEND (ajouté 2026-07-12, chantier claude-code-os) ──
+
+17 modules `functions/lib/` sans `__tests__/`. Convention : créer
+`functions/lib/<module>/__tests__/*.test.js` (node:test natif, pattern DI de
+`lib/irrigation/`) — découvert automatiquement par `npm run test:all` (aucun
+script npm à ajouter). Ordre de priorité (risque métier × volume de code) :
+
+## [ ] TESTS-P1 — stock (~40 KB, cœur métier), pointageValidation, primes (paie = argent), validation
+## [ ] TESTS-P2 — pointageBdp, caisseImport, bdc, stockMerge, valorisation
+## [ ] TESTS-P3 — auth, suppliers, fonctions, phone, bugReports, triage, probeStaleness, sentinel
+
+Non gated (tests purs, zéro comportement produit). Un module par item/PR.
