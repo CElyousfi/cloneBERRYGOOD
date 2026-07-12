@@ -3255,6 +3255,94 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ PARCELLES-PARAMS-LIST : écran « Paramètres Parcelles » (liste) ------
       // Source MAINTENANT : parcelles distinctes du mirror sql_mirror_pointage sur
+      // ---- parcelles-campagne-list : parcelles BR_Pointage classées par campagne ----
+      // Source : BR_Pointage (base de production JH), pas BR_Consommation.
+      // Campagne 2026/2027 : dates >= 2026-07-01 (parcelles actives campagne courante).
+      // Campagne 2025/2026 : dates 2025-07-01..2026-06-30 non présentes en 2026/2027.
+      if (action === "parcelles-campagne-list") {
+        const today = new Date().toISOString().slice(0, 10);
+        const CUT = "2026-07-01";
+        const PREV_START = "2025-07-01";
+        const PREV_END = "2026-06-30";
+
+        let rows2627 = [], rowsPrev = [];
+
+        if (!USE_MIRROR) {
+          const db = await getPool();
+          const [r1, r2] = await Promise.all([
+            db.request().query(`
+              SELECT DISTINCT Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme,
+                MAX(Parcelle_sup) AS Sup,
+                MIN(CONVERT(date, Periode_Date)) AS Debut,
+                MAX(CONVERT(date, Periode_Date)) AS Fin
+              FROM BR_Pointage
+              WHERE CONVERT(date, Periode_Date) >= '${CUT}'
+                AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''
+              GROUP BY Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme
+              ORDER BY Parcelle_Culturale`),
+            db.request().query(`
+              SELECT DISTINCT Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme,
+                MAX(Parcelle_sup) AS Sup,
+                MIN(CONVERT(date, Periode_Date)) AS Debut,
+                MAX(CONVERT(date, Periode_Date)) AS Fin
+              FROM BR_Pointage
+              WHERE CONVERT(date, Periode_Date) >= '${PREV_START}'
+                AND CONVERT(date, Periode_Date) <= '${PREV_END}'
+                AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''
+              GROUP BY Ref_parcelle, Parcelle_Culturale, Culture, Variete, Ferme
+              ORDER BY Parcelle_Culturale`),
+          ]);
+          const toRow = (r) => ({
+            ref: (r.Ref_parcelle || "").trim(),
+            label: (r.Parcelle_Culturale || "").trim(),
+            culture: (r.Culture || "").trim(),
+            variete: (r.Variete || "").trim(),
+            ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+            sup: parseFloat(r.Sup) || 0,
+            debut: r.Debut ? String(r.Debut).slice(0, 10) : null,
+            fin: r.Fin ? String(r.Fin).slice(0, 10) : null,
+          });
+          rows2627 = r1.recordset.map(toRow);
+          rowsPrev = r2.recordset.map(toRow);
+        } else {
+          // Mirror path — Firestore sql_mirror_pointage
+          const [raw2627, rawPrev] = await Promise.all([
+            getPointageRowsForDateRange(CUT, today),
+            getPointageRowsForDateRange(PREV_START, PREV_END),
+          ]);
+          const agg = (rows) => {
+            const m = {};
+            for (const r of rows) {
+              const lbl = (r.Parcelle_Culturale || "").trim();
+              if (!lbl) continue;
+              const k = lbl;
+              if (!m[k]) m[k] = {
+                ref: (r.Ref_parcelle || "").trim(),
+                label: lbl,
+                culture: (r.Culture || r.culture || "").trim(),
+                variete: (r.Variete || r.variete || "").trim(),
+                ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+                sup: 0, debut: null, fin: null,
+              };
+              const d = r.DateStr || (r.jour ? String(r.jour).slice(0, 10) : null);
+              if (d) {
+                if (!m[k].debut || d < m[k].debut) m[k].debut = d;
+                if (!m[k].fin || d > m[k].fin) m[k].fin = d;
+              }
+            }
+            return Object.values(m).sort((a, b) => a.label.localeCompare(b.label));
+          };
+          rows2627 = agg(raw2627);
+          rowsPrev = agg(rawPrev);
+        }
+
+        // Exclure de 2025/2026 les parcelles déjà dans 2026/2027 (label match)
+        const labels2627 = new Set(rows2627.map(r => r.label));
+        rowsPrev = rowsPrev.filter(r => !labels2627.has(r.label));
+
+        return res.json({ success: true, campagne_courante: rows2627, campagne_precedente: rowsPrev });
+      }
+
       // la campagne sélectionnée (référentiel parcelle_ferme_referentiel encore vide,
       // serveur BEE ONE down). LEFT-JOIN référentiel pour enrichir surface_ha /
       // campagne_assignee — surface « manquante » tant que le pull BEE ONE n'a pas

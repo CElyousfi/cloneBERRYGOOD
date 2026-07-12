@@ -1,18 +1,14 @@
 /*
  * ParcellesReferentielTab.jsx — Parcelles & Référentiel MO (Phase 1 : visualisation)
  *
- * Onglet RH. Affiche les parcelles BEE ONE classées par campagne :
- *   - Campagne 2026/2027 : parcelles actives à partir du 1er juillet 2026
- *     (Fin >= '2026-07-01'), considérées comme la campagne courante.
- *   - Campagne 2025/2026 : parcelles dont l'activité s'est arrêtée avant le
- *     1er juillet 2026 (Fin < '2026-07-01').
- *   - Si une parcelle apparaît dans les deux campagnes → uniquement 2026/2027.
+ * Source : /api/pointage-rh?action=parcelles-campagne-list
+ *   → BR_Pointage (base de production JH), pas BR_Consommation.
+ *   → Campagne 2026/2027 : parcelles ayant du pointage >= 2026-07-01.
+ *   → Campagne 2025/2026 : parcelles avec pointage 2025-07-01..2026-06-30
+ *     NON présentes en 2026/2027.
  *
- * Source : /api/parcelles (exports.parcelles, Cloud Function europe-west1).
  * Auth : token Firebase injecté automatiquement par le wrapper global fetch.
- *
- * Chargé en <script> séparé (build Babel) AVANT app.js. IIFE + global unique
- * window.ParcellesReferentielTab. Préfixe interne PRT_ (anti-collision globale).
+ * IIFE + global unique window.ParcellesReferentielTab. Préfixe PRT_.
  */
 (function () {
   'use strict';
@@ -22,8 +18,6 @@
   var useState = React.useState;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
-
-  // ── Palette ──────────────────────────────────────────────────────────────────
   var PRT_C = {
     berry: '#c0392b',
     green: '#1D9E75',
@@ -38,8 +32,6 @@
     textSec: '#5f5e5a',
     textTer: '#8a8985'
   };
-  var CAMPAGNE_CUT = '2026-07-01'; // ISO, frontière entre les deux campagnes
-
   var CULTURE_COLORS = {
     Framboise: {
       bg: '#fce4e4',
@@ -54,47 +46,25 @@
       text: '#065f46'
     }
   };
-
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-  function toDateStr(val) {
-    if (!val) return '';
-    if (typeof val === 'string') return val.slice(0, 10);
-    if (val instanceof Date) return val.toISOString().slice(0, 10);
-    return String(val).slice(0, 10);
+  function normCulture(raw) {
+    if (!raw) return 'Framboise';
+    var u = (raw || '').toUpperCase();
+    if (u.indexOf('MYRTILL') !== -1 || u.indexOf('BLUEBERRY') !== -1) return 'Myrtille';
+    if (u.indexOf('AVOCAT') !== -1 || u.indexOf('AVOCADO') !== -1) return 'Avocatier';
+    return 'Framboise';
   }
   function fmtDate(val) {
-    var s = toDateStr(val);
-    if (!s) return '—';
-    var parts = s.split('-');
-    if (parts.length !== 3) return s;
-    return parts[2] + '/' + parts[1] + '/' + parts[0];
+    if (!val) return '—';
+    var s = String(val).slice(0, 10);
+    var p = s.split('-');
+    if (p.length !== 3) return s;
+    return p[2] + '/' + p[1] + '/' + p[0];
   }
   function fmtHa(val) {
     var n = parseFloat(val) || 0;
     if (n === 0) return '—';
     return n.toFixed(2) + ' Ha';
   }
-  function classifyParcelle(p) {
-    var fin = toDateStr(p.Fin);
-    if (!fin) return '2026/2027'; // inconnu → courant par défaut
-    return fin >= CAMPAGNE_CUT ? '2026/2027' : '2025/2026';
-  }
-  function normCulture(raw) {
-    if (!raw) return 'Framboise';
-    var u = raw.toUpperCase();
-    if (u.indexOf('MYRTILL') !== -1 || u.indexOf('BLUEBERRY') !== -1) return 'Myrtille';
-    if (u.indexOf('AVOCAT') !== -1 || u.indexOf('AVOCADO') !== -1) return 'Avocatier';
-    return 'Framboise';
-  }
-  function normFerme(raw) {
-    if (!raw) return '—';
-    if (/bahia/i.test(raw)) return 'BAHIA';
-    var m = raw.match(/F(\d)/i);
-    if (m) return 'F' + m[1];
-    return raw;
-  }
-
-  // ── Badge culture ─────────────────────────────────────────────────────────
   function PRT_CultureBadge(props) {
     var culture = props.culture || 'Framboise';
     var col = CULTURE_COLORS[culture] || {
@@ -113,8 +83,6 @@
       }
     }, culture);
   }
-
-  // ── Tableau parcelles ─────────────────────────────────────────────────────
   function PRT_Table(props) {
     var rows = props.rows;
     var search = props.search;
@@ -122,7 +90,7 @@
       if (!search) return rows;
       var q = search.toUpperCase();
       return rows.filter(function (r) {
-        return (r.Parcelle_Physique || '').toUpperCase().indexOf(q) !== -1 || (r.Culture || '').toUpperCase().indexOf(q) !== -1 || (r.ferme || '').toUpperCase().indexOf(q) !== -1;
+        return (r.label || '').toUpperCase().indexOf(q) !== -1 || (r.culture || '').toUpperCase().indexOf(q) !== -1 || (r.ferme || '').toUpperCase().indexOf(q) !== -1 || (r.variete || '').toUpperCase().indexOf(q) !== -1;
       });
     }, [rows, search]);
     if (filtered.length === 0) {
@@ -133,7 +101,7 @@
           color: PRT_C.textTer,
           fontSize: 13
         }
-      }, search ? 'Aucune parcelle correspondant à "' + search + '"' : 'Aucune parcelle');
+      }, search ? 'Aucune parcelle pour "' + search + '"' : 'Aucune parcelle');
     }
     var thStyle = {
       textAlign: 'left',
@@ -160,41 +128,57 @@
       style: {
         width: '100%',
         borderCollapse: 'collapse',
-        minWidth: 520
+        minWidth: 540
       }
     }, React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', {
       style: thStyle
-    }, 'Parcelle'), React.createElement('th', {
+    }, 'Réf BEE ONE'), React.createElement('th', {
+      style: thStyle
+    }, 'Parcelle (label BEE ONE)'), React.createElement('th', {
       style: thStyle
     }, 'Culture'), React.createElement('th', {
+      style: thStyle
+    }, 'Variété'), React.createElement('th', {
       style: thStyle
     }, 'Ferme'), React.createElement('th', {
       style: {
         ...thStyle,
         textAlign: 'right'
       }
-    }, 'Surface (Ha)'), React.createElement('th', {
+    }, 'Ha (BEE ONE)'), React.createElement('th', {
       style: thStyle
-    }, '1ère activité'), React.createElement('th', {
+    }, '1er pointage'), React.createElement('th', {
       style: thStyle
-    }, 'Dernière activité'))), React.createElement('tbody', null, filtered.map(function (r, i) {
-      var culture = normCulture(r.Culture);
+    }, 'Dernier pointage'))), React.createElement('tbody', null, filtered.map(function (r, i) {
+      var culture = normCulture(r.culture);
       return React.createElement('tr', {
-        key: r.Parcelle_Physique || i,
+        key: (r.ref || '') + '|' + (r.label || '') + i,
         style: {
           background: i % 2 === 0 ? PRT_C.surface : PRT_C.surface2
         }
       }, React.createElement('td', {
         style: {
           ...tdStyle,
+          color: PRT_C.textTer,
+          fontSize: 11,
+          fontFamily: 'monospace'
+        }
+      }, r.ref || '—'), React.createElement('td', {
+        style: {
+          ...tdStyle,
           fontWeight: 600,
           maxWidth: 280
         }
-      }, r.Parcelle_Physique || '—'), React.createElement('td', {
+      }, r.label || '—'), React.createElement('td', {
         style: tdStyle
       }, React.createElement(PRT_CultureBadge, {
         culture: culture
       })), React.createElement('td', {
+        style: {
+          ...tdStyle,
+          color: PRT_C.textSec
+        }
+      }, r.variete || '—'), React.createElement('td', {
         style: tdStyle
       }, React.createElement('span', {
         style: {
@@ -207,32 +191,30 @@
           fontFamily: 'monospace',
           fontSize: 12
         }
-      }, fmtHa(r.Sup)), React.createElement('td', {
+      }, fmtHa(r.sup)), React.createElement('td', {
         style: {
           ...tdStyle,
           color: PRT_C.textSec
         }
-      }, fmtDate(r.Debut)), React.createElement('td', {
+      }, fmtDate(r.debut)), React.createElement('td', {
         style: {
           ...tdStyle,
           color: PRT_C.textSec
         }
-      }, fmtDate(r.Fin)));
+      }, fmtDate(r.fin)));
     }))));
   }
-
-  // ── Carte résumé campagne ─────────────────────────────────────────────────
   function PRT_CampagneCard(props) {
     var label = props.label;
     var rows = props.rows;
     var accent = props.accent;
     var subtitle = props.subtitle;
     var totalHa = rows.reduce(function (s, r) {
-      return s + (parseFloat(r.Sup) || 0);
+      return s + (parseFloat(r.sup) || 0);
     }, 0);
     var byCulture = {};
     rows.forEach(function (r) {
-      var c = normCulture(r.Culture);
+      var c = normCulture(r.culture);
       byCulture[c] = (byCulture[c] || 0) + 1;
     });
     return React.createElement('div', {
@@ -302,12 +284,10 @@
       }, e[0] + ' × ' + e[1]);
     })));
   }
-
-  // ── Composant principal ───────────────────────────────────────────────────
   function ParcellesReferentielTab() {
-    var _state = useState(null);
-    var parcelles = _state[0];
-    var setParcelles = _state[1];
+    var _data = useState(null);
+    var data = _data[0];
+    var setData = _data[1];
     var _load = useState(false);
     var loading = _load[0];
     var setLoading = _load[1];
@@ -323,54 +303,26 @@
     useEffect(function () {
       setLoading(true);
       setError(null);
-      fetch('/api/parcelles').then(function (r) {
+      fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function (r) {
         return r.json();
-      }).then(function (data) {
-        if (!data.success) throw new Error(data.error || 'Erreur API');
-        var enriched = (data.parcelles || []).map(function (p) {
-          return Object.assign({}, p, {
-            campagne: classifyParcelle(p),
-            ferme: normFerme(p.Ferme)
-          });
-        });
-        setParcelles(enriched);
+      }).then(function (d) {
+        if (!d.success) throw new Error(d.error || 'Erreur API');
+        setData(d);
       }).catch(function (e) {
         setError(e.message);
       }).finally(function () {
         setLoading(false);
       });
     }, []);
-    var grouped = useMemo(function () {
-      if (!parcelles) return {
-        '2026/2027': [],
-        '2025/2026': []
-      };
-      var g = {
-        '2026/2027': [],
-        '2025/2026': []
-      };
-      parcelles.forEach(function (p) {
-        g[p.campagne].push(p);
-      });
-      g['2026/2027'].sort(function (a, b) {
-        return (a.Parcelle_Physique || '').localeCompare(b.Parcelle_Physique || '');
-      });
-      g['2025/2026'].sort(function (a, b) {
-        return (a.Parcelle_Physique || '').localeCompare(b.Parcelle_Physique || '');
-      });
-      return g;
-    }, [parcelles]);
-    var currentRows = grouped[selectedCamp] || [];
-
-    // ── render ──
+    var rows2627 = data && data.campagne_courante || [];
+    var rowsPrev = data && data.campagne_precedente || [];
+    var currentRows = selectedCamp === '2026/2027' ? rows2627 : rowsPrev;
     return React.createElement('div', {
       style: {
         padding: '20px 24px',
-        maxWidth: 1100
+        maxWidth: 1200
       }
-    },
-    // En-tête
-    React.createElement('div', {
+    }, React.createElement('div', {
       style: {
         marginBottom: 20
       }
@@ -393,9 +345,7 @@
         fontSize: 12,
         color: PRT_C.textTer
       }
-    }, 'Classification des parcelles BEE ONE par campagne — source : BR_Consommation (MIN/MAX activité)')),
-    // Cartes résumé
-    loading && React.createElement('div', {
+    }, 'Classification des parcelles BEE ONE par campagne — source : BR_Pointage (base de production JH)')), loading && React.createElement('div', {
       style: {
         textAlign: 'center',
         padding: 40,
@@ -420,9 +370,7 @@
       style: {
         marginRight: 8
       }
-    }), error), !loading && !error && parcelles && React.createElement(React.Fragment, null,
-    // Cartes résumé
-    React.createElement('div', {
+    }), error), !loading && !error && data && React.createElement(React.Fragment, null, React.createElement('div', {
       style: {
         display: 'flex',
         gap: 16,
@@ -431,17 +379,15 @@
       }
     }, React.createElement(PRT_CampagneCard, {
       label: 'Campagne 2026/2027',
-      subtitle: 'Parcelles actives au 1er juillet 2026',
-      rows: grouped['2026/2027'],
+      subtitle: 'Parcelles avec pointage depuis le 01/07/2026',
+      rows: rows2627,
       accent: PRT_C.green
     }), React.createElement(PRT_CampagneCard, {
       label: 'Campagne 2025/2026',
-      subtitle: 'Parcelles terminées avant juillet 2026',
-      rows: grouped['2025/2026'],
+      subtitle: 'Parcelles sans pointage depuis le 01/07/2026',
+      rows: rowsPrev,
       accent: PRT_C.amber
-    })),
-    // Sélecteur de campagne + recherche
-    React.createElement('div', {
+    })), React.createElement('div', {
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -449,16 +395,16 @@
         marginBottom: 16,
         flexWrap: 'wrap'
       }
-    },
-    // Tabs campagne
-    React.createElement('div', {
+    }, React.createElement('div', {
       style: {
         display: 'flex',
         gap: 6
       }
-    }, ['2026/2027', '2025/2026'].map(function (camp) {
+    }, [['2026/2027', rows2627, PRT_C.green], ['2025/2026', rowsPrev, PRT_C.amber]].map(function (e) {
+      var camp = e[0];
+      var rws = e[1];
+      var color = e[2];
       var active = selectedCamp === camp;
-      var color = camp === '2026/2027' ? PRT_C.green : PRT_C.amber;
       return React.createElement('button', {
         key: camp,
         onClick: function () {
@@ -474,10 +420,8 @@
           background: active ? color : PRT_C.surface,
           color: active ? '#fff' : PRT_C.textSec
         }
-      }, camp + ' (' + grouped[camp].length + ')');
-    })),
-    // Recherche
-    React.createElement('div', {
+      }, camp + ' (' + rws.length + ')');
+    })), React.createElement('div', {
       style: {
         position: 'relative',
         flex: '1 1 200px',
@@ -495,7 +439,7 @@
       }
     }), React.createElement('input', {
       type: 'text',
-      placeholder: 'Rechercher une parcelle…',
+      placeholder: 'Parcelle, variété, ferme…',
       value: search,
       onChange: function (e) {
         setSearch(e.target.value);
@@ -509,20 +453,7 @@
         fontSize: 12,
         outline: 'none'
       }
-    })),
-    // Compteur
-    React.createElement('div', {
-      style: {
-        fontSize: 12,
-        color: PRT_C.textTer,
-        whiteSpace: 'nowrap'
-      }
-    }, (search ? currentRows.filter(function (r) {
-      var q = search.toUpperCase();
-      return (r.Parcelle_Physique || '').toUpperCase().indexOf(q) !== -1 || (r.Culture || '').toUpperCase().indexOf(q) !== -1 || (r.ferme || '').toUpperCase().indexOf(q) !== -1;
-    }).length : currentRows.length) + ' parcelles')),
-    // Tableau
-    React.createElement('div', {
+    }))), React.createElement('div', {
       style: {
         background: PRT_C.surface,
         border: '1px solid ' + PRT_C.border,
@@ -532,9 +463,7 @@
     }, React.createElement(PRT_Table, {
       rows: currentRows,
       search: search
-    })),
-    // Note de bas de page
-    React.createElement('div', {
+    })), React.createElement('div', {
       style: {
         marginTop: 12,
         fontSize: 11,
@@ -545,7 +474,7 @@
       style: {
         marginRight: 4
       }
-    }), 'Classification basée sur la dernière activité enregistrée dans BR_Consommation. ', 'Parcelles avec Fin ≥ 01/07/2026 → Campagne 2026/2027. Surface (Ha) = valeur BEE ONE (Parcelle_sup).')));
+    }), 'Source : BR_Pointage (production). ', 'Campagne 2026/2027 = parcelles avec pointage depuis le 01/07/2026. ', 'Les noms affichés sont les labels BEE ONE bruts — le référentiel personnalisé (noms Smart Berry + surfaces) est prévu en Phase 2.')));
   }
   window.ParcellesReferentielTab = ParcellesReferentielTab;
 })();
