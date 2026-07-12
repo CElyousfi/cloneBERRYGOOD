@@ -40,11 +40,13 @@
     Avocatier: { bg: '#d1fae5', text: '#065f46' },
   };
 
-  function normCulture(raw) {
-    if (!raw) return 'Framboise';
-    var u = (raw || '').toUpperCase();
-    if (u.indexOf('MYRTILL') !== -1 || u.indexOf('BLUEBERRY') !== -1) return 'Myrtille';
-    if (u.indexOf('AVOCAT') !== -1 || u.indexOf('AVOCADO') !== -1)    return 'Avocatier';
+  // Dérive la culture depuis le champ Culture OU le label de parcelle.
+  // BR_Pointage peut avoir Culture vide → fallback sur label.
+  function normCulture(cultureField, labelFallback) {
+    var src = (cultureField || labelFallback || '').toUpperCase();
+    if (!src) return 'Framboise';
+    if (/MYRTILL|BLUEBERRY|CORINA|CASCADE|BREEZE/.test(src)) return 'Myrtille';
+    if (/AVOCAT|AVOCADO|HAAS|BACON/.test(src))               return 'Avocatier';
     return 'Framboise';
   }
 
@@ -117,7 +119,7 @@
         ),
         React.createElement('tbody', null,
           filtered.map(function (r, i) {
-            var culture = normCulture(r.culture);
+            var culture = normCulture(r.culture, r.label);
             return React.createElement('tr', {
               key: (r.ref || '') + '|' + (r.label || '') + i,
               style: { background: i % 2 === 0 ? PRT_C.surface : PRT_C.surface2 },
@@ -145,7 +147,7 @@
     var totalHa = rows.reduce(function (s, r) { return s + (parseFloat(r.sup) || 0); }, 0);
     var byCulture = {};
     rows.forEach(function (r) {
-      var c = normCulture(r.culture);
+      var c = normCulture(r.culture, r.label);
       byCulture[c] = (byCulture[c] || 0) + 1;
     });
     return React.createElement('div', {
