@@ -11264,8 +11264,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             }
                             const op = r.operation || r.operationFamille;
                             if (op) _qpWMap[mat].operations.add(op);
-                            if (r.parcelle) _qpWMap[mat].parcelles.add(r.parcelle);
-                            if (r.refParcelle) _qpWMap[mat].parcelles.add(r.refParcelle);
+                            if (r.parcelle) _qpWMap[mat].parcelles.add(r.parcelle); // Parcelle_Culturale uniquement, pas refParcelle (n° BDP)
                             _qpWMap[mat].heures += r.heures || 0;
                             _qpWMap[mat].cout += r.cout || 0;
                         });
