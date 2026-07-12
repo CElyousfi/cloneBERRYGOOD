@@ -11297,7 +11297,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             <i className="fa-solid fa-magnifying-glass" style={{fontSize:11,color:'var(--gray-400)'}}></i>
                                             <input
                                                 type="text"
-                                                placeholder="Matricule ou nom…"
+                                                placeholder="Matricule, nom ou opération…"
                                                 value={quinzSearch}
                                                 onChange={e => setQuinzSearch(e.target.value)}
                                                 style={{border:'none',outline:'none',fontSize:12,background:'transparent',width:160,color:'var(--gray-700)'}}
@@ -11311,7 +11311,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         {(() => {
                                             const _sq = quinzSearch.trim().toLowerCase();
                                             return _sq
-                                                ? _qpWorkers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq)).length === 0
+                                                ? _qpWorkers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq) || (w.operationsStr || '').toLowerCase().includes(_sq)).length === 0
                                                 : _qpWorkers.length === 0;
                                         })() ? (
                                             <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Aucun ouvrier.</div>
@@ -11336,7 +11336,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     const _filteredGroups = _qpGroups.map(g => ({
                                                         ...g,
                                                         workers: _sq
-                                                            ? g.workers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq))
+                                                            ? g.workers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq) || (w.operationsStr || '').toLowerCase().includes(_sq))
                                                             : g.workers,
                                                     })).filter(g => g.workers.length > 0);
                                                     return _filteredGroups.map(g => (
@@ -25071,7 +25071,7 @@ ${rejetHtml}
                             </label>
                             <label style={{display:'flex', flexDirection:'column', gap:4, flex:1, minWidth:160}}>
                                 <span style={{color:'var(--gray-500)', fontWeight:600}}>Recherche</span>
-                                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Matricule ou nom…" style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
+                                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Matricule, nom ou opération…" style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
                             </label>
                         </div>
 
