@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "commonjs",
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": [
+    "public/lib/**/*.js",
+    "functions/lib/**/*.js",
+    "tests/unit/**/*.js"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "public/app.js",
+    "public/app.jsx",
+    "functions/index.js"
+  ]
+}

@@ -8,6 +8,8 @@
   "main": "index.js",
   "scripts": {
     "test": "node ../tests/test-workflows.js",
+    "test:all": "find lib -path '*/__tests__/*.test.js' -print0 | xargs -0 node --test",
+    "coverage": "c8 --reporter=text --reporter=html npm run test:all",
     "test:prod": "BASE_URL=https://berrygood-farms-dashboard.web.app node ../tests/test-workflows.js",
     "test:irrigation": "node --test 'lib/irrigation/__tests__/*.test.js'",
     "test:phenology": "node --test 'lib/phenology/__tests__/*.test.js'",
@@ -35,5 +37,8 @@
     "nodemailer": "^8.0.4",
     "pdf-parse": "^2.4.5",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "c8": "^11.0.0"
   }
 }

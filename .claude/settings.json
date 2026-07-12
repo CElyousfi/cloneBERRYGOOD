@@ -80,7 +80,6 @@
       "Bash(curl -s \"https://berrygood-farms-dashboard.web.app/api/farmroad?date=2026-03-10\")",
       "Bash(curl -s \"https://berrygood-farms-dashboard.web.app/index.html\")",
       "Bash(grep -E \"^\\\\-.*\\\\.\\(js|json|yaml|yml\\)$\")",
-      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f \\\\\\(-name *.config.js -o -name next.config.js -o -name .env* \\\\\\))",
       "Bash(time curl:*)",
       "Bash(curl -s \"https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/farmroad?date=2026-03-10\")",
       "Bash(python3 -c \"import json; d=json.load\\(open\\(''/tmp/fr1.json''\\)\\); print\\(''cached:'', d.get\\(''cached''\\), ''| devices:'', len\\(d.get\\(''devices'',[]\\)\\), ''| total:'', d.get\\(''totalMeasurements''\\)\\)\")",
@@ -123,7 +122,6 @@
       "Bash(curl -s \"https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/emailAnalysis?action=process-weekly-qr\")",
       "Bash(node -e \"const p = require\\(''pdf-parse''\\); console.log\\(typeof p, Object.keys\\(p\\)\\)\")",
       "Bash(node -e \"const { PDFParse } = require\\(''pdf-parse''\\); console.log\\(typeof PDFParse\\)\")",
-      "Bash(node -e \"const { PDFParse } = require\\(''''pdf-parse''''\\); const fs = require\\(''''fs''''\\); const buf = fs.readFileSync\\(''''/Users/omarmaaouni/Desktop/berrygood-dashboard/functions/check_imap.js''''\\); PDFParse\\(buf\\).then\\(d => console.log\\(''''ok''''\\)\\).catch\\(e => console.log\\(e.message\\)\\)\")",
       "Bash(node -e \"const { PDFParse } = require\\(''pdf-parse''\\); console.log\\(typeof PDFParse\\); const p = new PDFParse\\(\\); console.log\\(typeof p.parse, Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(p\\)\\).slice\\(0,20\\)\\)\")",
       "Bash(curl -s \"https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/dashboard?action=process-weekly-qr\")",
       "Bash(node -e \"process.stdin.resume\\(\\); let d=''''''''; process.stdin.on\\(''''data'''',c=>d+=c\\); process.stdin.on\\(''''end'''',\\(\\)=>console.log\\(JSON.stringify\\(JSON.parse\\(d\\),null,2\\)\\)\\)\")",
@@ -138,8 +136,6 @@
       "Bash(node /tmp/compare_weeks.js)",
       "Bash(node /tmp/check_exp_limit.js)",
       "Bash(node check_liq_dups.js)",
-      "Bash(grep -n \"case ''qualite_historique''\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/index.html)",
-      "Bash(ls -la /Users/omarmaaouni/Desktop/berrygood-dashboard/functions/*.js)",
       "Bash(node /tmp/compare_weeks2.js)",
       "Bash(curl -s -X POST 'https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/emailAnalysis?action=reanalyze-quality')",
       "Bash(curl -s -X POST https://europe-west1-berrygood-farms-dashboard.cloudfunctions.net/emailAnalysis?action=reanalyze-quality)",
@@ -150,11 +146,7 @@
       "Bash(node /tmp/check_emails_yesterday.js)",
       "Bash(node /tmp/import_liqs.js)",
       "Bash(node /tmp/compare_days.js)",
-      "Bash(grep -rn email-analysis /Users/omarmaaouni/Desktop/berrygood-dashboard/functions/*.js)",
-      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard/public -type f \\\\\\(-name *.js -o -name *.html \\\\\\))",
-      "Bash(grep -r composite /Users/omarmaaouni/Desktop/berrygood-dashboard --include=*.json)",
       "Bash(BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js)",
-      "Bash(jq '[.[] | {bonApport, designation: \\(.designation // .blocLabel\\), date, poidsLot}] | sort_by\\(.bonApport\\) | unique_by\\(.bonApport + \"\"_\"\" + .designation\\) | length' /Users/omarmaaouni/Desktop/berrygood-dashboard/public/bons_apport_export.json)",
       "Bash(npm run:*)",
       "Bash(export PATH=\"/opt/homebrew/opt/openjdk/bin:$PATH\")",
       "Bash(firebase emulators:start)",
@@ -171,19 +163,9 @@
       "Bash(curl -s -X POST 'https://berrygood-farms-dashboard.web.app/api/tasks?action=create' -H 'Content-Type: application/json' -d '{\"\"title\"\":\"\"test\"\"}')",
       "Bash(firebase functions:log --only pointageRH -n 20)",
       "Bash(firebase functions:log -n 50 --only pointageV3)",
-      "Bash(grep -n \"currentTab === ''achats_bdc\\\\|currentTab === ''chef_validations\\\\|currentTab === ''dg_validations\\\\|currentTab === ''fin_bdc\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/index.html)",
       "Bash(curl -s 'https://berrygood-farms-dashboard.web.app/index.html')",
       "Bash(firebase functions:log --only tasks -n 5)",
       "Bash(firebase functions:log -n 30)",
-      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f \\\\\\(-name *.xlsx -o -name *.xls -o -name *.csv -o -name *budget* -o -name *rendement* -o -name *data* \\\\\\))",
-      "Bash(ls -lh /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xls /Users/omarmaaouni/Desktop/berrygood-dashboard/*.csv)",
-      "Bash(ls -la /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xls)",
-      "Bash(ls -lh /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xls)",
-      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f -name *.json \\\\\\(! -path */node_modules/* -o -path */package.json \\\\\\))",
-      "Bash(grep -r \"Maravilla\\\\|Driscolls\\\\|rendement\\\\|BGF.*objectives\" /Users/omarmaaouni/Desktop/berrygood-dashboard/public/*.json)",
-      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard/public -name *.css)",
-      "Bash(file /Users/omarmaaouni/Desktop/berrygood-dashboard/*.xlsx)",
-      "Bash(find /Users/omarmaaouni/Desktop/berrygood-dashboard -type f \\\\\\(-name *.json -o -name *.csv \\\\\\) ! -path */node_modules/*)",
       "Bash(cat .firebase/*.log)",
       "Bash(firebase functions:log --only sqlToFirestoreSync --limit 10)"
     ],
@@ -198,7 +180,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$TOOL_INPUT\" | grep -q 'firebase deploy'; then cd /Users/omarmaaouni/Desktop/berrygood-dashboard && BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js; fi"
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'firebase deploy'; then cd \"$CLAUDE_PROJECT_DIR\" && BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js; fi"
           }
         ]
       }

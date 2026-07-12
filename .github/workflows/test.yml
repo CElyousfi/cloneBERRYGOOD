@@ -1,0 +1,41 @@
+# CI de test Smart Berry — tests unitaires + build sur chaque push/PR.
+# Indépendant des 2 workflows cron existants (fetch-fuel-data, fetch-telecom-data).
+# Node 20 = version des Cloud Functions (functions/package.json engines).
+# Les tests sont lancés en forme portable find|xargs : le glob quoté de
+# `npm run test:unit` exige Node >= 21.
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            functions/package-lock.json
+
+      - name: Install dependencies (racine)
+        run: npm ci
+
+      - name: Install dependencies (functions)
+        run: npm ci
+        working-directory: functions
+
+      - name: Tests unitaires frontend
+        run: find tests/unit -name '*.test.js' -print0 | xargs -0 node --test
+
+      - name: Tests backend (lib/*/__tests__)
+        run: npm run test:all
+        working-directory: functions
+
+      - name: Build frontend (Babel + sentinelles)
+        run: npm run build:frontend
