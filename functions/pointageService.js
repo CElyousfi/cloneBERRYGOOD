@@ -2572,13 +2572,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const pRows = await getPointageRowsForPeriode(p);
             allRows.push(...pRows);
           }
-          // Group by matricule+day+periode+operationFamille
+          // Group by matricule+day+periode+operation+parcelle (include parcelle in key to preserve all parcelles)
           const groups = {};
           for (const r of allRows) {
-            const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}`;
+            const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}|${r.Parcelle_Culturale||''}`;
             if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
           }
-          const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) }));
+          const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim() }));
           const holidays = await getJoursFeries();
           const extras = computeChargCond(allRows, holidays);
           return { success: true, periodes, periodeCampagne, rows, ...extras };
@@ -2590,7 +2590,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Rows NOMINATIVES avec
         // ferme dérivée → cloisonnement sur la ferme du chef (fail-closed), cohérence
         // avec le chemin mirror shadowé. _fermeFilter null (RH/DG/Finance) → passthrough.
-        const rows = filterByFermeField(result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) })), _fermeFilter);
+        const rows = filterByFermeField(result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim() })), _fermeFilter);
         return { success: true, periodes, rows };
         }); // end withCache
         return res.json(cached);
