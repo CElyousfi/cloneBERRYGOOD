@@ -57,6 +57,17 @@ if (!fs.readFileSync(STOCK_GUARD, "utf8").includes("canEditMovement")) {
   process.exit(2);
 }
 
+// 2ter-bis. Sibling lib check — analytiqueUtils.js (pivot Affectation Analytique, Quinzaine).
+const ANALYTIQUE_UTILS = path.join(ROOT, "public/lib/analytiqueUtils.js");
+if (!fs.existsSync(ANALYTIQUE_UTILS)) {
+  console.error("[build-frontend] missing public/lib/analytiqueUtils.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(ANALYTIQUE_UTILS, "utf8").includes("buildAnalytiquePivot")) {
+  console.error("[build-frontend] sentinel missing in public/lib/analytiqueUtils.js: buildAnalytiquePivot");
+  process.exit(2);
+}
+
 // 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
 // puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
 // <script> séparés et partagent le scope global (IIFE → un seul global unique).
