@@ -10846,6 +10846,35 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [quinzPopupKey, setQuinzPopupKey] = useState(null);
             const [quinzGroupBy, setQuinzGroupBy] = useState('equipe');
             const [quinzSubWorker, setQuinzSubWorker] = useState(null);
+            const [quinzSearch, setQuinzSearch] = useState('');
+            const [quinzPaieBaremes, setQuinzPaieBaremes] = useState((window.PaieUtils && window.PaieUtils.PAIE_BAREMES_DEFAULT) || {});
+            const [quinzRegistry, setQuinzRegistry] = useState({});
+            const [quinzChargesPopup, setQuinzChargesPopup] = useState(null);
+            const [analytiqueView, setAnalytiqueView] = useState('jh');
+            const [analytiqueDetailCell, setAnalytiqueDetailCell] = useState(null);
+
+            const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
+            const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
+
+            React.useEffect(() => {
+                const db = firebase.firestore();
+                let cancelled = false;
+                db.collection('app_settings').doc('paie_baremes').get()
+                    .then(doc => { if (!cancelled && doc.exists) setQuinzPaieBaremes(prev => ({ ...prev, ...doc.data() })); })
+                    .catch(e => console.warn('quinz paie_baremes:', e));
+                return () => { cancelled = true; };
+            }, []);
+
+            React.useEffect(() => {
+                let cancelled = false;
+                fetch('/api/registry?action=get-registry').then(r => r.json()).then(resp => {
+                    if (cancelled || !resp || !resp.success) return;
+                    const reg = {};
+                    (resp.ouvriers || []).forEach(o => { reg[numKey(o.matricule)] = o; });
+                    if (!cancelled) setQuinzRegistry(reg);
+                }).catch(e => console.warn('quinz registry:', e));
+                return () => { cancelled = true; };
+            }, []);
 
             // Transport config & prefix helper
             const transportConfig = data.transportConfig || [];
@@ -10972,13 +11001,61 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 if (lower.includes('poste')) return 'postes';
                 return 'horsRecolte';
             };
-            const moRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'recolte');
+            const moRecolteRows = []; // récolte workers comptés dans la carte Récolte — pas de double-comptage ici
             const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
             const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
-            // Coûts MO par type : proportion journées × coût ferme (parFerme est la source fiable)
-            const totalCoutRecolte = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.recolte || 0) / d.journees : 0), 0));
-            const totalCoutHorsRecolte = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.horsRecolte || 0) / d.journees : 0), 0));
-            const totalCoutPostes = Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.postesFixes || 0) / d.journees : 0), 0));
+
+            // ===== MODÈLE COÛT SMART BERRY (computePayslip) — source unique pour MO =====
+            // On N'UTILISE PAS les coûts SQL BDP (parFerme.cout ou r.cout) qui ne sont qu'une
+            // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
+            // identiquement à Validation du Pointage. Les totaux cartes = somme des nets par ouvrier.
+            const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip);
+            const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
+
+            const sbNetForWorker = (mat, journees, firstDay) => {
+                if (!registryReady) return null;
+                const PU = window.PaieUtils;
+                const reg = quinzRegistry[numKey(mat)] || {};
+                const smag = PU.resolveSmagForDate
+                    ? PU.resolveSmagForDate(quinzPaieBaremes, firstDay || _firstDayQz || null)
+                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                const ancTaux = PU.trouverPalierAnciennete
+                    ? (PU.trouverPalierAnciennete(Number(reg.baselineJours || 0), quinzPaieBaremes.paliers || []).pourcentage || 0) / 100
+                    : 0;
+                return Math.round(PU.computePayslip({
+                    declare: !!(reg.declare),
+                    smagBrut: smag.smagBrutJournalier, smagNet: smag.smagNetJournalier,
+                    jT: journees, jF: 0,
+                    ancienneteTaux: ancTaux,
+                    primeFonctionJour: Number(reg.primeFonctionJournaliere || 0),
+                    primesOptionnelles: [], baremes: quinzPaieBaremes,
+                }).net);
+            };
+
+            // Agrège les rows en un map matricule→{jours, firstDay} pour le calcul de total par type
+            const sbTotalFromRows = (rows) => {
+                const wMap = {};
+                rows.forEach(r => {
+                    if (!r.matricule) return;
+                    if (!wMap[r.matricule]) wMap[r.matricule] = { mat: r.matricule, jours: new Set() };
+                    if (r.jour) wMap[r.matricule].jours.add(r.jour);
+                });
+                return Object.values(wMap).reduce((s, w) => {
+                    const firstDay = w.jours.size > 0 ? [...w.jours].sort()[0] : null;
+                    return s + (sbNetForWorker(w.mat, w.jours.size, firstDay) || 0);
+                }, 0);
+            };
+
+            // Totaux MO Smart Berry (fallback BDP si registry pas encore chargé)
+            const totalCoutRecolte = registryReady
+                ? sbTotalFromRows(moRecolteRows)
+                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.recolte || 0) / d.journees : 0), 0));
+            const totalCoutHorsRecolte = registryReady
+                ? sbTotalFromRows(moHorsRecolteRows)
+                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.horsRecolte || 0) / d.journees : 0), 0));
+            const totalCoutPostes = registryReady
+                ? sbTotalFromRows(moPostesRows)
+                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.postesFixes || 0) / d.journees : 0), 0));
 
             // Traitement (10 DH/ouvrier-jour)
             const traitRows = transportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
@@ -11016,6 +11093,61 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                   ]
                 },
             ];
+
+            // ===== AFFECTATION ANALYTIQUE PAR CULTURE / HA =====
+            const _pcInfoMap = {};
+            (typeof PARCELLES_CULTURALES !== 'undefined' ? PARCELLES_CULTURALES : []).forEach(pc => {
+                (pc.designations || []).forEach(d => {
+                    const k = d.toUpperCase().trim();
+                    if (!_pcInfoMap[k]) _pcInfoMap[k] = { ha: pc.ha || 0, culture: pc.culture || 'Framboise', variete: pc.variete || '' };
+                });
+            });
+            const _avocatHaByFerme = { F2: 4.86, F3: 1.0, F4: 4.64, F6: 9.13, BAHIA: 1.0 };
+            const _getAnalytiqueRowInfo = (r) => {
+                const norm = (r.parcelle || '').toUpperCase().trim();
+                let info = _pcInfoMap[norm];
+                if (!info) {
+                    for (const [k, v] of Object.entries(_pcInfoMap)) {
+                        if (norm.includes(k) || k.includes(norm)) { info = v; break; }
+                    }
+                }
+                if (!info) {
+                    if (/CORINA|CASCADE|BREEZE|MYRTILL/i.test(r.parcelle)) info = { ha: 0, culture: 'Myrtille', variete: '' };
+                    else if (/HAAS|AVOCAT|BACON/i.test(r.parcelle)) info = { ha: 0, culture: 'Avocatier', variete: '' };
+                    else info = { ha: 0, culture: 'Framboise', variete: '' };
+                }
+                let ha = info.ha || 0;
+                if (info.culture === 'Avocatier' && ha === 0) ha = _avocatHaByFerme[r.ferme] || 0;
+                return { ...info, ha };
+            };
+            const _cultureGroups = { Myrtille: [], Framboise: [], Avocatier: [] };
+            analytiqueData.forEach(r => {
+                if (farmFilter && r.ferme !== farmFilter) return;
+                if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return;
+                const info = _getAnalytiqueRowInfo(r);
+                const culture = info.culture || 'Framboise';
+                if (!_cultureGroups[culture]) _cultureGroups[culture] = [];
+                _cultureGroups[culture].push({ ...r, ha: info.ha, culture });
+            });
+            const _buildAnalytiquePivot = (rows) => {
+                const parcelleSet = {};
+                const pivot = {};
+                rows.forEach(r => {
+                    parcelleSet[r.parcelle] = r.ha;
+                    if (!pivot[r.operationFamille]) pivot[r.operationFamille] = {};
+                    if (!pivot[r.operationFamille][r.parcelle]) {
+                        pivot[r.operationFamille][r.parcelle] = { jh: 0, cout: 0, ha: r.ha, detailRows: [] };
+                    }
+                    pivot[r.operationFamille][r.parcelle].jh += r.jh;
+                    pivot[r.operationFamille][r.parcelle].cout += r.cout;
+                    pivot[r.operationFamille][r.parcelle].detailRows.push(r);
+                });
+                const parcelles = Object.entries(parcelleSet).sort((a, b) => a[0].localeCompare(b[0]));
+                const operations = Object.keys(pivot).filter(op =>
+                    Object.values(pivot[op]).some(c => c.jh > 0)
+                ).sort();
+                return { parcelles, operations, pivot };
+            };
 
             return (
                 <div className="fade-in">
@@ -11073,6 +11205,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             : 'fa-spray-can-sparkles';
 
                         // Build source rows per card type
+                        // Note: r.cout dans les rows BDP transport est toujours 0 → calculé depuis coutMap.
+                        const _primeChargJour = data.primesConfig?.primeChargement?.coutParJour || 10;
                         let _qpSrc = [];
                         if (_qpKey === 'mo_recolte') {
                             _qpSrc = moRecolteRows;
@@ -11084,26 +11218,33 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             _qpSrc = qRecolteRows.map(r => ({
                                 matricule: r.matricule, nom: r.nom, ferme: r.ferme || '—',
                                 jour: r.jour, operation: 'Récolte',
-                                parcelle: r.parcelle || r.refParcelle || '—',
+                                parcelle: r.parcelle || r.refParcelle || '',
+                                cout: calcPrime(r.kg || 0, r.variete, r.jour),
                             }));
                         } else if (_qpKey === 'autres_primes') {
-                            const _trSrc = traitRows.map(r => ({ ...r, operation: 'Traitement' }));
+                            const _trSrc = traitRows.map(r => ({ ...r, operation: 'Traitement', cout: 10 }));
                             const _condSrc = condDetailQ.map(w => ({
                                 matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
-                                jour: w.jour || w.date || '', operation: 'Conditionnement', parcelle: w.parcelle || '—',
+                                jour: w.jour || w.date || '', operation: 'Conditionnement', parcelle: w.parcelle || '',
+                                cout: 10,
                             }));
                             const _chargSrc = chargDetailQ.map(w => ({
                                 matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
-                                jour: w.jour || w.date || '', operation: 'Chargement', parcelle: w.parcelle || '—',
+                                jour: w.jour || w.date || '', operation: 'Chargement', parcelle: w.parcelle || '',
+                                cout: _primeChargJour,
                             }));
                             const _ferieSrc = ferieDetailQ.map(w => ({
                                 matricule: w.matricule, nom: w.nom || w.matricule, ferme: w.ferme || '—',
-                                jour: w.date || w.jour || '', operation: 'Jour Férié', parcelle: '—',
+                                jour: w.date || w.jour || '', operation: 'Jour Férié', parcelle: '',
+                                cout: w.cout || 0,
                             }));
                             _qpSrc = [..._trSrc, ..._condSrc, ..._chargSrc, ..._ferieSrc];
                         } else {
-                            // transport: use transportRows
-                            _qpSrc = transportRows;
+                            // transport: r.cout BDP = 0 → coût = tarif journalier par équipe
+                            _qpSrc = transportRows.map(r => ({
+                                ...r,
+                                cout: coutMap[getEqPrefix(r.matricule)] || 0,
+                            }));
                         }
 
                         // Aggregate per worker
@@ -11137,9 +11278,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 parcellesArr: [...w.parcelles],
                                 parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
                                 heuresTotal: Math.round(w.heures * 10) / 10,
-                                coutTotal: _isMoCard
-                                    ? Math.round(Object.entries(w.fermeJours).reduce((s, [, ferme]) => s + (fermeRateMap[ferme] || 0), 0))
-                                    : Math.round(w.cout),
+                                coutTotal: (() => {
+                                    if (_isMoCard) {
+                                        // Smart Berry model — même calcul que les totaux cartes
+                                        const _firstDay = w.jours.size > 0 ? [...w.jours].sort()[0] : null;
+                                        const _sbNet = sbNetForWorker(w.matricule, w.jours.size, _firstDay);
+                                        if (_sbNet !== null) return _sbNet;
+                                        // Fallback BDP si registry pas encore chargé
+                                        return Math.round(Object.entries(w.fermeJours).reduce((s, [, ferme]) => s + (fermeRateMap[ferme] || 0), 0));
+                                    }
+                                    return Math.round(w.cout);
+                                })(),
                             }));
                         const _qpTotalJ = _qpWorkers.reduce((s, w) => s + w.journees, 0);
 
@@ -11173,7 +11322,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-                                onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); }}>
+                                onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); setQuinzSearch(''); }}>
                                 <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
                                     onClick={e => e.stopPropagation()}>
                                     <div style={{padding:'20px 24px',background:`linear-gradient(135deg, ${_qpColor} 0%, ${_qpColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
@@ -11181,23 +11330,43 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             <div style={{fontSize:18,fontWeight:700}}><i className={`fa-solid ${_qpIcon}`} style={{marginRight:8}}></i>{_qpTitle} — {currentPeriode}</div>
                                             <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''} — {_qpTotalJ} jours hommes{_isMoCard ? ' — ' + _qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR') + ' DH net' : ''}</div>
                                         </div>
-                                        <button onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); }} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                        <button onClick={() => { setQuinzPopupKey(null); setQuinzSubWorker(null); setQuinzSearch(''); }} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
                                             <i className="fa-solid fa-xmark"></i>
                                         </button>
                                     </div>
-                                    <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center'}}>
+                                    <div style={{padding:'12px 24px',borderBottom:'1px solid var(--gray-200)',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                                         <span style={{fontSize:11,color:'var(--gray-500)',marginRight:4}}>Regrouper par :</span>
                                         {[['equipe','Équipe'],['ferme','Ferme'],['parcelle','Parcelle']].map(([mode, label]) => (
-                                            <button key={mode} onClick={() => setQuinzGroupBy(mode)}
-                                                style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${quinzGroupBy === mode ? _qpColor : 'var(--gray-300)'}`,fontSize:11,cursor:'pointer',fontWeight:600,
+                                            <button key={mode}
+                                                onClick={() => setQuinzGroupBy(mode)}
+                                                style={{padding:'4px 12px',borderRadius:8,border:`1px solid ${quinzGroupBy === mode ? _qpColor : 'var(--gray-300)'}`,fontSize:11,
+                                                    cursor:'pointer',fontWeight:600,
                                                     background: quinzGroupBy === mode ? _qpColor : 'transparent',
                                                     color: quinzGroupBy === mode ? '#fff' : 'var(--gray-600)'}}>
                                                 {label}
                                             </button>
                                         ))}
+                                        <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:'var(--gray-50)',borderRadius:8,border:'1px solid var(--gray-300)',padding:'4px 10px'}}>
+                                            <i className="fa-solid fa-magnifying-glass" style={{fontSize:11,color:'var(--gray-400)'}}></i>
+                                            <input
+                                                type="text"
+                                                placeholder="Matricule, nom ou opération…"
+                                                value={quinzSearch}
+                                                onChange={e => setQuinzSearch(e.target.value)}
+                                                style={{border:'none',outline:'none',fontSize:12,background:'transparent',width:160,color:'var(--gray-700)'}}
+                                            />
+                                            {quinzSearch && (
+                                                <button onClick={() => setQuinzSearch('')} style={{border:'none',background:'none',cursor:'pointer',color:'var(--gray-400)',fontSize:12,padding:'0 2px',lineHeight:1}}>×</button>
+                                            )}
+                                        </div>
                                     </div>
                                     <div style={{padding:'16px 24px'}}>
-                                        {_qpWorkers.length === 0 ? (
+                                        {(() => {
+                                            const _sq = quinzSearch.trim().toLowerCase();
+                                            return _sq
+                                                ? _qpWorkers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq) || (w.operationsStr || '').toLowerCase().includes(_sq)).length === 0
+                                                : _qpWorkers.length === 0;
+                                        })() ? (
                                             <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Aucun ouvrier.</div>
                                         ) : (
                                         <div className="table-responsive">
@@ -11208,18 +11377,26 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <th style={{padding:'6px 10px'}}>Matricule</th>
                                                     <th style={{padding:'6px 10px'}}>Nom</th>
                                                     <th style={{padding:'6px 10px'}}>Opérations</th>
-                                                    <th style={{padding:'6px 10px'}}>Parcelles</th>
+                                                    {!_isMoCard && <th style={{padding:'6px 10px'}}>Parcelles</th>}
                                                     <th style={{padding:'6px 10px',textAlign:'center'}}>Jours</th>
                                                     {!_isMoCard && <th style={{padding:'6px 10px',textAlign:'center'}}>Heures</th>}
                                                     <th style={{padding:'6px 10px',textAlign:'right'}}>{_isMoCard ? 'Net à payer (DH)' : 'Coût (DH)'}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {_qpGroups.map(g => (
+                                                {(() => {
+                                                    const _sq = quinzSearch.trim().toLowerCase();
+                                                    const _filteredGroups = _qpGroups.map(g => ({
+                                                        ...g,
+                                                        workers: _sq
+                                                            ? g.workers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq) || (w.operationsStr || '').toLowerCase().includes(_sq))
+                                                            : g.workers,
+                                                    })).filter(g => g.workers.length > 0);
+                                                    return _filteredGroups.map(g => (
                                                     <React.Fragment key={g.key}>
                                                         <tr style={{background:'var(--green-pale, #eef7ef)'}}>
                                                             {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
-                                                            <td colSpan={4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
+                                                            <td colSpan={_isMoCard ? 3 : 4} style={{padding:'8px 10px',fontWeight:700,color:'var(--green, #2e7d32)'}}>
                                                                 <span style={{fontFamily:'monospace',fontSize:10,marginRight:6,opacity:0.7}}>{g.key}</span>
                                                                 {quinzGroupBy === 'equipe' ? g.label : g.key}
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
@@ -11234,23 +11411,31 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor})}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                {_isMoCard && <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:'#27ae60',fontSize:14}}>●</span></td>}
+                                                                {_isMoCard && (() => {
+                                                                    const _wr = quinzRegistry[numKey(w.matricule)] || {};
+                                                                    const _wDecl = !!(_wr.declare);
+                                                                    const _wHasReg = Object.keys(_wr).length > 0;
+                                                                    const _dotColor = _wHasReg ? (_wDecl ? '#27ae60' : '#e74c3c') : '#bbb';
+                                                                    const _dotTitle = _wHasReg ? (_wDecl ? 'Déclaré CNSS' : 'Non déclaré CNSS') : 'Statut CNSS inconnu';
+                                                                    return <td style={{padding:'6px 6px',textAlign:'center'}}><span style={{color:_dotColor,fontSize:14}} title={_dotTitle}>●</span></td>;
+                                                                })()}
                                                                 <td style={{fontFamily:'monospace',fontSize:10,padding:'6px 10px',color:'var(--gray-400)'}}>{w.matricule}</td>
                                                                 <td style={{fontWeight:600,padding:'6px 10px'}}>{w.nom}</td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
-                                                                <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>
+                                                                {!_isMoCard && <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>}
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
                                                                 {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>}
                                                                 <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{w.coutTotal > 0 ? w.coutTotal.toLocaleString('fr-FR') : '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </React.Fragment>
-                                                ))}
+                                                ));
+                                                })()}
                                             </tbody>
                                             <tfoot>
                                                 <tr style={{background:'var(--gray-50)',fontWeight:700}}>
                                                     {_isMoCard && <td style={{padding:'6px 6px'}}></td>}
-                                                    <td colSpan={4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
+                                                    <td colSpan={_isMoCard ? 3 : 4} style={{padding:'6px 10px'}}>Total — {_qpWorkers.length} ouvrier{_qpWorkers.length !== 1 ? 's' : ''}</td>
                                                     <td style={{textAlign:'center',padding:'6px 10px'}}>{_qpTotalJ}</td>
                                                     {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px'}}>{Math.round(_qpWorkers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>}
                                                     <td style={{textAlign:'right',padding:'6px 10px'}}>{_qpWorkers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
@@ -11259,6 +11444,150 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         </table>
                                         </div>
                                         )}
+
+                                        {/* Encadré Charges Sociales — uniquement cartes MO */}
+                                        {_isMoCard && (() => {
+                                            const _PU2 = window.PaieUtils;
+                                            const _firstDayQ = parJour.length > 0 ? parJour[0].jour : null;
+                                            const _smagQ = (_PU2 && _PU2.resolveSmagForDate)
+                                                ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDayQ)
+                                                : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                                            let totalBrutDeclare = 0, totalChargesDeclare = 0, totalCoutEmpDeclare = 0;
+                                            let cntDeclare = 0, cntNonDeclare = 0;
+                                            const _workerPayeDetails = [];
+                                            _qpWorkers.forEach(w => {
+                                                const _rw = quinzRegistry[numKey(w.matricule)] || {};
+                                                const _isDecl = !!(_rw.declare);
+                                                const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                                                const _anc = Number(_rw.baselineJours || 0);
+                                                const _ancP = (_PU2 && _PU2.trouverPalierAnciennete)
+                                                    ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
+                                                    : { pourcentage: 0 };
+                                                const _ancT = (_ancP.pourcentage || 0) / 100;
+                                                if (_isDecl) cntDeclare++; else cntNonDeclare++;
+                                                if (!_PU2 || !_PU2.computePayslip) return;
+                                                const _ps = _PU2.computePayslip({
+                                                    declare: _isDecl,
+                                                    smagBrut: _smagQ.smagBrutJournalier,
+                                                    smagNet: _smagQ.smagNetJournalier,
+                                                    jT: w.journees, jF: 0,
+                                                    ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
+                                                    primesOptionnelles: [], baremes: quinzPaieBaremes,
+                                                });
+                                                if (_isDecl) {
+                                                    totalBrutDeclare += _ps.brut;
+                                                    totalChargesDeclare += _ps.chargesPatronales;
+                                                    totalCoutEmpDeclare += _ps.coutEmployeur;
+                                                    _workerPayeDetails.push({
+                                                        nom: w.nom, matricule: w.matricule, journees: w.journees,
+                                                        brut: _ps.brut, chargesPatronales: _ps.chargesPatronales,
+                                                        coutEmployeur: _ps.coutEmployeur,
+                                                        tauxCharges: _ps.tauxChargesPatronales || 0,
+                                                    });
+                                                }
+                                            });
+                                            if (Object.keys(quinzRegistry).length === 0) return null;
+                                            return (
+                                                <div style={{marginTop:16,background:'#f0f4ff',borderRadius:10,padding:14,border:'1px solid #c5d0e6'}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:'#3949ab',textTransform:'uppercase',letterSpacing:0.5,marginBottom:10}}>
+                                                        <i className="fa-solid fa-shield-halved" style={{marginRight:6}}></i>Charges Sociales
+                                                    </div>
+                                                    <div style={{display:'flex',gap:16,flexWrap:'wrap'}}>
+                                                        <div style={{flex:'1 1 120px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Déclarés CNSS</div>
+                                                            <div style={{fontSize:18,fontWeight:800,color:'#27ae60'}}>{cntDeclare}</div>
+                                                        </div>
+                                                        <div style={{flex:'1 1 120px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Non déclarés</div>
+                                                            <div style={{fontSize:18,fontWeight:800,color:'#e74c3c'}}>{cntNonDeclare}</div>
+                                                        </div>
+                                                        <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'1px solid #e8ecf8'}}>
+                                                            <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Brut total déclarés</div>
+                                                            <div style={{fontSize:15,fontWeight:700,color:'var(--gray-700)'}}>{f2(totalBrutDeclare)} DH</div>
+                                                        </div>
+                                                        <div onClick={() => setQuinzChargesPopup(_workerPayeDetails.slice().sort((a,b) => b.chargesPatronales - a.chargesPatronales))}
+                                                            style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'8px 12px',border:'2px solid #3949ab',cursor:'pointer'}}>
+                                                            <div style={{fontSize:11,color:'#3949ab',marginBottom:4,fontWeight:600}}>Charges patronales <i className="fa-solid fa-arrow-up-right-from-square" style={{fontSize:9}}></i></div>
+                                                            <div style={{fontSize:15,fontWeight:700,color:'#3949ab'}}>+{f2(totalChargesDeclare)} DH</div>
+                                                        </div>
+                                                        <div onClick={() => setQuinzChargesPopup(_workerPayeDetails.slice().sort((a,b) => b.coutEmployeur - a.coutEmployeur))}
+                                                            style={{flex:'1 1 160px',textAlign:'center',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:8,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>
+                                                            <div style={{fontSize:11,opacity:0.85,marginBottom:4}}>Coût employeur déclarés <i className="fa-solid fa-arrow-up-right-from-square" style={{fontSize:9}}></i></div>
+                                                            <div style={{fontSize:15,fontWeight:800}}>{f2(totalCoutEmpDeclare)} DH</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Popup détail opérations Affectation Analytique */}
+                    {analytiqueDetailCell && (() => {
+                        const _adc = analytiqueDetailCell;
+                        const _opLabel = (op) => (op || '').replace(/^\d+\.\s*/, '');
+                        const _opMap = {};
+                        (_adc.detailRows || []).forEach(r => {
+                            if (!_opMap[r.operation]) _opMap[r.operation] = { operation: r.operation, jh: 0, cout: 0, nbOuv: 0 };
+                            _opMap[r.operation].jh += r.jh || 0;
+                            _opMap[r.operation].cout += r.cout || 0;
+                            _opMap[r.operation].nbOuv += r.nbOuv || 0;
+                        });
+                        const _opRows = Object.values(_opMap).sort((a, b) => b.jh - a.jh);
+                        const _haLabel = _adc.ha > 0 ? `${_adc.ha} Ha` : 'Ha inconnu';
+                        const _fmtHa = (v) => _adc.ha > 0 ? (Math.round(v / _adc.ha * 10) / 10).toFixed(1) : '—';
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setAnalytiqueDetailCell(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:680,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.35)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'16px 20px',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:15,fontWeight:700}}>{_adc.parcelle}</div>
+                                            <div style={{fontSize:11,opacity:0.85,marginTop:2}}>{_opLabel(_adc.operationFamille)} · {_haLabel}</div>
+                                        </div>
+                                        <button onClick={() => setAnalytiqueDetailCell(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 20px'}}>
+                                        <table className="data-table" style={{fontSize:12,margin:0}}>
+                                            <thead>
+                                                <tr style={{background:'var(--gray-50)'}}>
+                                                    <th style={{padding:'6px 10px'}}>Opération</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'center'}}>Ouvriers</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>JH</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>JH / Ha</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>Coût (DH)</th>
+                                                    <th style={{padding:'6px 10px',textAlign:'right'}}>DH / Ha</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {_opRows.map((row, i) => (
+                                                    <tr key={i} style={{background: i%2===0 ? '#fff' : 'var(--gray-50)'}}>
+                                                        <td style={{padding:'6px 10px',fontWeight:500}}>{row.operation || '—'}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'center'}}>{row.nbOuv}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',fontWeight:600}}>{(Math.round(row.jh * 10) / 10).toFixed(1)}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',color:'#3949ab'}}>{_fmtHa(row.jh)}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right'}}>{Math.round(row.cout).toLocaleString('fr-FR')}</td>
+                                                        <td style={{padding:'6px 10px',textAlign:'right',color:'#3949ab'}}>{_adc.ha > 0 ? Math.round(row.cout / _adc.ha).toLocaleString('fr-FR') : '—'}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'#eef0fa',fontWeight:700}}>
+                                                    <td style={{padding:'8px 10px'}}>TOTAL</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'center'}}>{_opRows.reduce((s,r)=>s+r.nbOuv,0)}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right'}}>{(_opRows.reduce((s,r)=>s+r.jh,0)).toFixed(1)}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right',color:'#3949ab'}}>{_fmtHa(_opRows.reduce((s,r)=>s+r.jh,0))}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right'}}>{Math.round(_opRows.reduce((s,r)=>s+r.cout,0)).toLocaleString('fr-FR')}</td>
+                                                    <td style={{padding:'8px 10px',textAlign:'right',color:'#3949ab'}}>{_adc.ha > 0 ? Math.round(_opRows.reduce((s,r)=>s+r.cout,0) / _adc.ha).toLocaleString('fr-FR') : '—'}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
@@ -11270,20 +11599,55 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         const _sw = quinzSubWorker;
                         const _swDays = (_sw.quinzaineDays || []);
                         const _swColor = _sw.popupColor || 'var(--berry)';
+                        // Pay bulletin compute
+                        const _reg = quinzRegistry[numKey(_sw.matricule)] || {};
+                        const _declare = !!(_reg.declare);
+                        const _primeFonctionJour = Number(_reg.primeFonctionJournaliere || 0);
+                        const _anciennete = Number(_reg.baselineJours || 0);
+                        const _PU = window.PaieUtils;
+                        const _firstDay = _sw.jours ? [..._sw.jours].sort()[0] : null;
+                        const _smag = (_PU && _PU.resolveSmagForDate)
+                            ? _PU.resolveSmagForDate(quinzPaieBaremes, _firstDay)
+                            : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                        const _ancPalier = (_PU && _PU.trouverPalierAnciennete)
+                            ? _PU.trouverPalierAnciennete(_anciennete, quinzPaieBaremes.paliers || [])
+                            : { pourcentage: 0 };
+                        const _ancTaux = (_ancPalier.pourcentage || 0) / 100;
+                        const _paie = (_PU && _PU.computePayslip)
+                            ? _PU.computePayslip({
+                                declare: _declare,
+                                smagBrut: _smag.smagBrutJournalier,
+                                smagNet: _smag.smagNetJournalier,
+                                jT: _sw.journees,
+                                jF: 0,
+                                ancienneteTaux: _ancTaux,
+                                primeFonctionJour: _primeFonctionJour,
+                                primesOptionnelles: [],
+                                baremes: quinzPaieBaremes,
+                            })
+                            : null;
+                        const _hasRegistry = Object.keys(_reg).length > 0;
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.6)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
                                 onClick={() => setQuinzSubWorker(null)}>
-                                <div style={{background:'#fff',borderRadius:16,maxWidth:560,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:600,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
                                     onClick={e => e.stopPropagation()}>
                                     <div style={{padding:'16px 20px',background:`linear-gradient(135deg, ${_swColor} 0%, ${_swColor}cc 100%)`,borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                                         <div>
-                                            <div style={{fontSize:16,fontWeight:700}}>{_sw.nom}</div>
+                                            <div style={{fontSize:16,fontWeight:700,display:'flex',alignItems:'center',gap:8}}>
+                                                {_sw.nom}
+                                                {_hasRegistry && (
+                                                    <span style={{fontSize:10,fontWeight:700,padding:'2px 7px',borderRadius:10,background: _declare ? 'rgba(255,255,255,0.25)' : 'rgba(231,76,60,0.7)',letterSpacing:0.5}}>
+                                                        {_declare ? 'DÉCLARÉ CNSS' : 'NON DÉCLARÉ'}
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div style={{fontSize:11,opacity:0.85,marginTop:2}}>
                                                 {_sw.matricule} · {_sw.operationsStr}
                                             </div>
                                             <div style={{fontSize:12,marginTop:4,display:'flex',gap:16}}>
                                                 <span><strong>{_sw.journees}</strong> / {_swDays.length} jours</span>
-                                                <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net</span>
+                                                <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net BDP</span>
                                             </div>
                                         </div>
                                         <button onClick={() => setQuinzSubWorker(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -11291,37 +11655,151 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         </button>
                                     </div>
                                     <div style={{padding:'16px 20px'}}>
-                                        <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:10}}>
-                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Jours déclarés en BDP ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})
+                                        {/* Jours travaillés */}
+                                        <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:8}}>
+                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Jours pointés ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})
                                         </div>
-                                        <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                                        <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}}>
                                             {[..._sw.jours].sort().map(day => {
                                                 const label = (() => { const d = new Date(day + 'T00:00:00'); return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}); })();
                                                 return (
-                                                    <div key={day} style={{
-                                                        display:'flex',alignItems:'center',gap:4,
-                                                        padding:'5px 10px',borderRadius:8,
-                                                        background:'#eafaf1',
-                                                        border:'1px solid #27ae60',
-                                                        fontSize:11,fontWeight:600,
-                                                        color:'#1a7a4a',
-                                                    }}>
+                                                    <div key={day} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:8,background:'#eafaf1',border:'1px solid #27ae60',fontSize:11,fontWeight:600,color:'#1a7a4a'}}>
                                                         <span style={{fontSize:12}}>●</span>{label}
                                                     </div>
                                                 );
                                             })}
                                         </div>
-                                        {_sw.coutTotal > 0 && (
-                                            <div style={{marginTop:16,padding:'10px 14px',background:'var(--gray-50)',borderRadius:8,display:'flex',justifyContent:'space-between',fontSize:12}}>
-                                                <span style={{color:'var(--gray-500)'}}>Net à payer estimé</span>
-                                                <strong style={{color:_swColor}}>{_sw.coutTotal.toLocaleString('fr-FR')} DH</strong>
+
+                                        {/* Pay bulletin */}
+                                        {_paie && (
+                                        <div style={{background:'var(--berry-pale)',borderRadius:10,padding:14}}>
+                                            <div style={{fontSize:11,color:'var(--gray-400)',marginBottom:10}}>
+                                                Estimation paie quinzaine — modèle complet ({_declare ? 'déclaré' : 'non déclaré'}).
                                             </div>
+                                            <div style={{display:'flex',flexWrap:'wrap',gap:16}}>
+                                                {/* Bulletin ouvrier */}
+                                                <div style={{flex:'1 1 180px',minWidth:180}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Bulletin ouvrier</div>
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>{_declare ? `SMAG base : ${f2(_paie.smagBase)} DH/j × ${_paie.jT} j` : `Base net (non déclaré) : ${f2(_paie.smagBase)} DH/j × ${_paie.jT} j`}</span>
+                                                        <span style={{fontWeight:600}}>{f2(_paie.base)}</span>
+                                                    </div>
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Ancienneté {Math.round(_paie.ancienneteTaux * 100)}% ({_anciennete} jr)</span>
+                                                        <span style={{fontWeight:600,color: _paie.anciennete > 0 ? 'var(--berry)' : 'var(--gray-400)'}}>{_paie.anciennete > 0 ? `+${f2(_paie.anciennete)}` : '0,00'}</span>
+                                                    </div>
+                                                    )}
+                                                    {_paie.primeFonction > 0 && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Prime fonction</span>
+                                                        <span style={{fontWeight:600,color:'var(--berry)'}}>+{f2(_paie.primeFonction)}</span>
+                                                    </div>
+                                                    )}
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',borderTop:'1px solid var(--gray-200)',paddingTop:8,marginTop:4,marginBottom:8}}>
+                                                        <span style={{fontWeight:700,color:'var(--gray-700)'}}>= Salaire brut</span>
+                                                        <span style={{fontWeight:700,fontSize:14,color:'var(--gray-700)'}}>{f2(_paie.brut)} DH</span>
+                                                    </div>
+                                                    )}
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>CNSS ({(_paie.tauxCnss * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                        <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(_paie.cnss)}</span>
+                                                    </div>
+                                                    )}
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>AMO ({(_paie.tauxAmo * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                        <span style={{fontWeight:600,color:'var(--red)'}}>−{f2(_paie.amo)}</span>
+                                                    </div>
+                                                    )}
+                                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--green)',paddingTop:8,marginTop:4}}>
+                                                        <span style={{fontWeight:800,color:'var(--green)',fontSize:13}}>= Net à payer</span>
+                                                        <span style={{fontWeight:800,fontSize:17,color:'var(--green)'}}>{f2(_paie.net)} DH</span>
+                                                    </div>
+                                                </div>
+                                                {/* Séparateur */}
+                                                <div style={{width:1,alignSelf:'stretch',background:'var(--gray-200)'}}></div>
+                                                {/* Coût employeur */}
+                                                <div style={{flex:'1 1 180px',minWidth:180}}>
+                                                    <div style={{fontSize:11,fontWeight:700,color:'var(--gray-500)',textTransform:'uppercase',letterSpacing:0.5,marginBottom:8}}>Coût employeur</div>
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Salaire brut</span>
+                                                        <span style={{fontWeight:600}}>{f2(_paie.brut)}</span>
+                                                    </div>
+                                                    {_declare && (
+                                                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+                                                        <span style={{fontSize:12,color:'var(--gray-500)'}}>Charges patronales ({(_paie.tauxChargesPatronales * 100).toFixed(2).replace('.', ',')}%)</span>
+                                                        <span style={{fontWeight:600,color:'var(--gray-500)'}}>+{f2(_paie.chargesPatronales)}</span>
+                                                    </div>
+                                                    )}
+                                                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',borderTop:'2px solid var(--berry)',paddingTop:8,marginTop:4}}>
+                                                        <span style={{fontWeight:800,color:'var(--berry)',fontSize:13}}>= Coût employeur</span>
+                                                        <span style={{fontWeight:800,fontSize:17,color:'var(--berry)'}}>{f2(_paie.coutEmployeur)} DH</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                         )}
                                     </div>
                                 </div>
                             </div>
                         );
                     })()}
+
+                    {/* Popup détail charges patronales par ouvrier déclaré */}
+                    {quinzChargesPopup && (
+                        <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.65)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                            onClick={() => setQuinzChargesPopup(null)}>
+                            <div style={{background:'#fff',borderRadius:16,maxWidth:760,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 24px 64px rgba(0,0,0,0.4)'}}
+                                onClick={e => e.stopPropagation()}>
+                                <div style={{padding:'16px 20px',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                    <div>
+                                        <div style={{fontSize:16,fontWeight:700}}><i className="fa-solid fa-shield-halved" style={{marginRight:8}}></i>Détail Charges Patronales — Ouvriers Déclarés CNSS</div>
+                                        <div style={{fontSize:11,opacity:0.85,marginTop:3}}>{quinzChargesPopup.length} ouvrier{quinzChargesPopup.length !== 1 ? 's' : ''} déclaré{quinzChargesPopup.length !== 1 ? 's' : ''} · Total charges : {f2(quinzChargesPopup.reduce((s,w)=>s+w.chargesPatronales,0))} DH</div>
+                                    </div>
+                                    <button onClick={() => setQuinzChargesPopup(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                        <i className="fa-solid fa-xmark"></i>
+                                    </button>
+                                </div>
+                                <div style={{padding:'16px 20px'}}>
+                                    <table className="data-table" style={{fontSize:12,margin:0}}>
+                                        <thead>
+                                            <tr style={{background:'var(--gray-50)'}}>
+                                                <th style={{padding:'6px 10px'}}>Matricule</th>
+                                                <th style={{padding:'6px 10px'}}>Nom</th>
+                                                <th style={{padding:'6px 10px',textAlign:'center'}}>Jours</th>
+                                                <th style={{padding:'6px 10px',textAlign:'right'}}>Brut (DH)</th>
+                                                <th style={{padding:'6px 10px',textAlign:'right'}}>Charges pat. (DH)</th>
+                                                <th style={{padding:'6px 10px',textAlign:'right'}}>Coût emp. (DH)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {quinzChargesPopup.map((w, i) => (
+                                                <tr key={i} style={{background: i % 2 === 0 ? '#fff' : 'var(--gray-50)'}}>
+                                                    <td style={{padding:'6px 10px',fontFamily:'monospace',fontSize:11}}>{w.matricule}</td>
+                                                    <td style={{padding:'6px 10px',fontWeight:600}}>{w.nom}</td>
+                                                    <td style={{padding:'6px 10px',textAlign:'center'}}>{w.journees}</td>
+                                                    <td style={{padding:'6px 10px',textAlign:'right'}}>{f2(w.brut)}</td>
+                                                    <td style={{padding:'6px 10px',textAlign:'right',color:'#3949ab',fontWeight:600}}>+{f2(w.chargesPatronales)} <span style={{fontSize:10,opacity:0.7}}>({((w.tauxCharges||0)*100).toFixed(1)}%)</span></td>
+                                                    <td style={{padding:'6px 10px',textAlign:'right',fontWeight:700}}>{f2(w.coutEmployeur)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{background:'#eef0fa',fontWeight:700}}>
+                                                <td colSpan={3} style={{padding:'8px 10px'}}>TOTAL ({quinzChargesPopup.length} ouvriers)</td>
+                                                <td style={{padding:'8px 10px',textAlign:'right'}}>{f2(quinzChargesPopup.reduce((s,w)=>s+w.brut,0))}</td>
+                                                <td style={{padding:'8px 10px',textAlign:'right',color:'#3949ab'}}>+{f2(quinzChargesPopup.reduce((s,w)=>s+w.chargesPatronales,0))}</td>
+                                                <td style={{padding:'8px 10px',textAlign:'right'}}>{f2(quinzChargesPopup.reduce((s,w)=>s+w.coutEmployeur,0))}</td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <Panel title="Répartition par Ferme" icon="fa-chart-bar">
                         <table className="data-table">
@@ -11505,161 +11983,138 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     )}
 
                     {/* Affectation Analytique */}
-                    {analytiqueData.length > 0 && (() => {
-                        const filtered = farmFilter ? analytiqueData.filter(r => r.ferme === farmFilter && matchSub(r)) : analytiqueData;
-                        // Pretty parcelle label via PARCELLES_CULTURALES.designations
-                        const prettyParcelle = (raw, ferme) => {
-                            if (!raw) return raw;
-                            const lower = raw.toLowerCase().trim();
-                            const pc = PARCELLES_CULTURALES.find(p =>
-                                (!ferme || p.ferme === ferme) &&
-                                (p.designations || []).some(d => {
-                                    const dl = d.toLowerCase();
-                                    return dl === lower || lower.includes(dl) || dl.includes(lower);
-                                })
-                            );
-                            if (pc) {
-                                const sect = (pc.secteurs || []).join('/');
-                                return [sect, pc.variete, pc.sousVariete].filter(Boolean).join(' ');
-                            }
-                            // Fallback : nettoyage léger (suffixe ferme, casse)
-                            return raw.replace(/\s+F[1-9]\s*$/i, '').replace(/\s+/g, ' ').trim()
-                                .toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-                        };
-                        const parcLabel = {};
-                        filtered.forEach(r => { if (r.parcelle && !parcLabel[r.parcelle]) parcLabel[r.parcelle] = prettyParcelle(r.parcelle, r.ferme); });
-                        // Get unique parcelles (exclude empty) and operation families
-                        const parcelles = [...new Set(filtered.filter(r => r.parcelle && r.parcelle.trim()).map(r => r.parcelle))].sort();
-                        const opFamilles = [...new Set(filtered.filter(r => r.parcelle && r.parcelle.trim()).map(r => r.operationFamille))].sort();
-                        // Build pivot: parcelle → opFamille → {jh, cout}
-                        const pivot = {};
-                        const totByOp = {};
-                        filtered.filter(r => r.parcelle && r.parcelle.trim()).forEach(r => {
-                            if (!pivot[r.parcelle]) pivot[r.parcelle] = {};
-                            if (!pivot[r.parcelle][r.operationFamille]) pivot[r.parcelle][r.operationFamille] = { jh: 0, cout: 0 };
-                            pivot[r.parcelle][r.operationFamille].jh += r.jh;
-                            pivot[r.parcelle][r.operationFamille].cout += r.cout;
-                            if (!totByOp[r.operationFamille]) totByOp[r.operationFamille] = { jh: 0, cout: 0 };
-                            totByOp[r.operationFamille].jh += r.jh;
-                            totByOp[r.operationFamille].cout += r.cout;
-                        });
-                        const totByParc = {};
-                        parcelles.forEach(p => {
-                            totByParc[p] = { jh: 0, cout: 0 };
-                            opFamilles.forEach(op => {
-                                totByParc[p].jh += (pivot[p]?.[op]?.jh || 0);
-                                totByParc[p].cout += (pivot[p]?.[op]?.cout || 0);
-                            });
-                        });
-                        const activeParcelles = parcelles.filter(p => totByParc[p].jh > 0);
-                        const FIRST_COL = 220;
-                        const PARC_COL = 130;
-                        const TOT_COL = 140;
-                        const minWidth = FIRST_COL + activeParcelles.length * PARC_COL + TOT_COL;
-                        const grandJH = Object.values(totByOp).reduce((s, t) => s + t.jh, 0);
-                        const grandCout = Object.values(totByOp).reduce((s, t) => s + t.cout, 0);
-                        const stickyShadow = '2px 0 4px -2px rgba(0,0,0,0.08)';
-                        const renderTable = (maxH, fill) => (
-                                <div style={{overflowX:'auto',overflowY:'auto',maxHeight:fill?undefined:maxH,height:fill?'100%':undefined,minHeight:0,border:'1px solid var(--gray-100)',borderRadius:10,background:'#fff',WebkitOverflowScrolling:'touch'}}>
-                                <table style={{minWidth,width:'100%',borderCollapse:'separate',borderSpacing:0,fontSize:12}}>
-                                    <thead>
-                                        <tr>
-                                            <th style={{position:'sticky',left:0,top:0,zIndex:3,background:'#f8f9fa',padding:'12px 14px',textAlign:'left',fontSize:11,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--gray-200)',boxShadow:stickyShadow,minWidth:FIRST_COL}}>Opération</th>
-                                            {activeParcelles.map(p => (
-                                                <th key={p} title={p} style={{position:'sticky',top:0,zIndex:2,background:'#f8f9fa',padding:'12px 10px',textAlign:'center',fontSize:10,fontWeight:600,color:'var(--gray-600)',textTransform:'uppercase',letterSpacing:0.3,borderBottom:'2px solid var(--gray-200)',whiteSpace:'nowrap',minWidth:PARC_COL}}>{parcLabel[p] || p}</th>
-                                            ))}
-                                            <th style={{position:'sticky',top:0,right:0,zIndex:3,background:'#f5e6ec',padding:'12px 14px',textAlign:'center',fontSize:11,fontWeight:700,color:'var(--berry)',textTransform:'uppercase',letterSpacing:0.4,borderBottom:'2px solid var(--berry)',minWidth:TOT_COL}}>Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {opFamilles.map((op, idx) => {
-                                            const rowTotal = activeParcelles.reduce((s, p) => s + (pivot[p]?.[op]?.jh || 0), 0);
-                                            if (rowTotal === 0) return null;
-                                            const rowBg = idx % 2 === 0 ? '#fff' : '#fafbfc';
-                                            return (
-                                            <tr key={op} className="aa-row">
-                                                <td style={{position:'sticky',left:0,zIndex:1,background:rowBg,padding:'10px 14px',fontWeight:600,fontSize:12,color:'var(--gray-800)',whiteSpace:'nowrap',borderBottom:'1px solid var(--gray-100)',boxShadow:stickyShadow}}>{op.replace(/^\d+\.\s*/, '')}</td>
-                                                {activeParcelles.map(p => {
-                                                    const cell = pivot[p]?.[op];
-                                                    return <td key={p} style={{padding:'10px',textAlign:'center',borderBottom:'1px solid var(--gray-100)',background:rowBg}}>
-                                                        {cell ? (
-                                                            <div>
-                                                                <div style={{fontWeight:600,fontSize:13,color:'var(--gray-800)'}}>{Math.round(cell.jh * 10) / 10}</div>
-                                                                <div style={{fontSize:10,color:'var(--gray-400)',marginTop:2}}>{Math.round(cell.cout).toLocaleString('fr-FR')} DH</div>
-                                                            </div>
-                                                        ) : <span style={{color:'var(--gray-200)'}}>—</span>}
-                                                    </td>;
-                                                })}
-                                                <td style={{padding:'10px 14px',textAlign:'center',background:'var(--berry-pale)',borderBottom:'1px solid var(--gray-100)',borderLeft:'1px solid var(--gray-100)'}}>
-                                                    <div style={{fontWeight:700,fontSize:13,color:'var(--berry)'}}>{Math.round((totByOp[op]?.jh || 0) * 10) / 10} JH</div>
-                                                    <div style={{fontSize:10,color:'var(--berry)',opacity:0.75,marginTop:2}}>{Math.round((totByOp[op]?.cout || 0)).toLocaleString('fr-FR')} DH</div>
-                                                </td>
-                                            </tr>);
-                                        })}
-                                        <tr>
-                                            <td style={{position:'sticky',left:0,bottom:0,zIndex:2,background:'var(--berry)',color:'#fff',padding:'12px 14px',fontWeight:700,fontSize:12,textTransform:'uppercase',letterSpacing:0.4,boxShadow:stickyShadow}}>Total</td>
-                                            {activeParcelles.map(p => (
-                                                <td key={p} style={{position:'sticky',bottom:0,zIndex:1,background:'var(--berry)',color:'#fff',padding:'12px 10px',textAlign:'center'}}>
-                                                    <div style={{fontWeight:700,fontSize:13}}>{Math.round(totByParc[p].jh * 10) / 10}</div>
-                                                    <div style={{fontSize:10,opacity:0.85,marginTop:2}}>{Math.round(totByParc[p].cout).toLocaleString('fr-FR')} DH</div>
-                                                </td>
-                                            ))}
-                                            <td style={{position:'sticky',bottom:0,right:0,zIndex:2,background:'var(--berry-dark, #5d1839)',color:'#fff',padding:'12px 14px',textAlign:'center',borderLeft:'1px solid rgba(255,255,255,0.2)'}}>
-                                                <div style={{fontWeight:800,fontSize:14}}>{Math.round(grandJH * 10) / 10} JH</div>
-                                                <div style={{fontSize:10,opacity:0.9,marginTop:2}}>{Math.round(grandCout).toLocaleString('fr-FR')} DH</div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                    {analytiqueData.length > 0 && (
+                        <div style={{marginBottom:16}}>
+                            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
+                                <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
+                                    <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
+                                    Affectation Analytique — par Ha
                                 </div>
-                        );
-                        return (
-                        <React.Fragment>
-                        <Panel title="Affectation Analytique" icon="fa-table-cells" actions={
-                            <button
-                                onClick={() => setAnalytiqueFullscreen(true)}
-                                title="Afficher en plein écran"
-                                style={{background:'var(--berry-pale)',color:'var(--berry)',border:'1px solid var(--berry)',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}
-                            >
-                                <i className="fa-solid fa-up-right-and-down-left-from-center"></i>
-                                Plein écran
-                            </button>
-                        }>
-                            <div onClick={() => setAnalytiqueFullscreen(true)} style={{cursor:'zoom-in'}} title="Cliquez pour agrandir">
-                                {renderTable('70vh')}
-                            </div>
-                        </Panel>
-                        {analytiqueFullscreen && (
-                            <div
-                                onClick={() => setAnalytiqueFullscreen(false)}
-                                style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.55)',backdropFilter:'blur(2px)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
-                            >
-                                <div
-                                    onClick={e => e.stopPropagation()}
-                                    style={{background:'#fff',borderRadius:14,width:'min(1600px, 98vw)',height:'min(95vh, 95vh)',display:'flex',flexDirection:'column',boxShadow:'0 30px 80px rgba(0,0,0,0.4)',overflow:'hidden'}}
-                                >
-                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'14px 20px',borderBottom:'1px solid var(--gray-100)',background:'var(--gray-50)'}}>
-                                        <h3 style={{margin:0,fontSize:15,color:'var(--berry)',display:'flex',alignItems:'center',gap:10}}>
-                                            <i className="fa-solid fa-table-cells"></i>
-                                            Affectation Analytique
-                                        </h3>
-                                        <button
-                                            onClick={() => setAnalytiqueFullscreen(false)}
-                                            title="Fermer (Échap)"
-                                            style={{background:'none',border:'none',fontSize:22,cursor:'pointer',color:'var(--gray-500)',padding:'4px 10px',borderRadius:6,lineHeight:1}}
-                                        >
-                                            <i className="fa-solid fa-xmark"></i>
+                                <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
+                                    {[['jh','JH / Ha'],['cout','Coût / Ha']].map(([v, label]) => (
+                                        <button key={v} onClick={() => setAnalytiqueView(v)}
+                                            style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
+                                                background: analytiqueView === v ? 'var(--berry)' : 'transparent',
+                                                color: analytiqueView === v ? '#fff' : 'var(--gray-500)',
+                                                transition:'all 0.15s'}}>
+                                            {label}
                                         </button>
-                                    </div>
-                                    <div style={{flex:1,minHeight:0,padding:16,display:'flex',flexDirection:'column'}}>
-                                        {renderTable(null, true)}
-                                    </div>
+                                    ))}
                                 </div>
                             </div>
-                        )}
-                        </React.Fragment>
-                        );
-                    })()}
+
+                            {[
+                                { culture: 'Framboise', color: '#8B2252', icon: 'fa-seedling' },
+                                { culture: 'Myrtille',  color: '#1565c0', icon: 'fa-circle-dot' },
+                                { culture: 'Avocatier', color: '#2e7d32', icon: 'fa-tree' },
+                            ].map(({ culture, color, icon }) => {
+                                const _rows = _cultureGroups[culture] || [];
+                                if (_rows.length === 0) return null;
+                                const { parcelles, operations, pivot } = _buildAnalytiquePivot(_rows);
+                                if (operations.length === 0) return null;
+                                const _totalHa = parcelles.reduce((s, [, ha]) => s + ha, 0);
+                                const _unit = analytiqueView === 'jh' ? 'JH/Ha' : 'DH/Ha';
+                                const _fmt = (val, ha) => {
+                                    if (ha === 0) return <span style={{fontSize:10,color:'var(--gray-400)'}}>—</span>;
+                                    const v = val / ha;
+                                    return analytiqueView === 'jh'
+                                        ? (Math.round(v * 10) / 10).toFixed(1)
+                                        : Math.round(v).toLocaleString('fr-FR');
+                                };
+                                const _opLabel = (op) => (op || '').replace(/^\d+\.\s*/, '');
+                                return (
+                                    <div key={culture} style={{marginBottom:20,background:'#fff',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
+                                        <div style={{padding:'10px 16px',background:`linear-gradient(135deg,${color}15,${color}08)`,borderBottom:`2px solid ${color}30`,display:'flex',alignItems:'center',gap:10}}>
+                                            <i className={`fa-solid ${icon}`} style={{color,fontSize:14}}></i>
+                                            <span style={{fontSize:13,fontWeight:700,color}}>{culture}</span>
+                                            <span style={{fontSize:11,color:'var(--gray-500)',fontWeight:400}}>
+                                                {parcelles.length} parcelle{parcelles.length > 1 ? 's' : ''}
+                                                {_totalHa > 0 ? ` · ${_totalHa.toFixed(2)} Ha total` : ''}
+                                            </span>
+                                        </div>
+                                        <div style={{overflowX:'auto'}}>
+                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                                                <thead>
+                                                    <tr style={{background:'var(--gray-50)'}}>
+                                                        <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:0,background:'var(--gray-50)',minWidth:160,borderRight:'1px solid var(--gray-200)',zIndex:1}}>Opération</th>
+                                                        {parcelles.map(([pKey, ha]) => (
+                                                            <th key={pKey} style={{padding:'6px 10px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',minWidth:110,borderRight:'1px solid var(--gray-100)'}}>
+                                                                <div style={{color,fontWeight:700}}>{(typeof prettyParcelle === 'function' ? prettyParcelle(pKey) : pKey) || pKey}</div>
+                                                                <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{ha > 0 ? `${ha} Ha` : 'Ha ?'}</div>
+                                                            </th>
+                                                        ))}
+                                                        <th style={{padding:'6px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',minWidth:100,background:'var(--gray-100)',position:'sticky',right:0,zIndex:1}}>Total</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {operations.map((op, opIdx) => {
+                                                        const _rowTotal = parcelles.reduce((s, [pKey]) => {
+                                                            const c = pivot[op] && pivot[op][pKey];
+                                                            return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
+                                                        }, 0);
+                                                        const _totalHaForOp = parcelles.reduce((s, [, ha]) => s + ha, 0);
+                                                        return (
+                                                            <tr key={op} style={{background: opIdx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom:'1px solid var(--gray-100)'}}>
+                                                                <td style={{padding:'7px 12px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:0,background: opIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1}}>
+                                                                    {_opLabel(op)}
+                                                                </td>
+                                                                {parcelles.map(([pKey, ha]) => {
+                                                                    const c = pivot[op] && pivot[op][pKey];
+                                                                    if (!c) return <td key={pKey} style={{padding:'7px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
+                                                                    const _val = analytiqueView === 'jh' ? c.jh : c.cout;
+                                                                    return (
+                                                                        <td key={pKey}
+                                                                            onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: op, ha, detailRows: c.detailRows })}
+                                                                            style={{padding:'7px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid var(--gray-100)',transition:'background 0.1s'}}
+                                                                            onMouseEnter={e => e.currentTarget.style.background=`${color}18`}
+                                                                            onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                            <div style={{fontWeight:600,color:'var(--gray-800)'}}>{_fmt(_val, ha)}</div>
+                                                                            <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                                <td style={{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0}}>
+                                                                    <div>{_fmt(_rowTotal, _totalHaForOp)}</div>
+                                                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                                <tfoot>
+                                                    <tr style={{background:`${color}18`,fontWeight:700}}>
+                                                        <td style={{padding:'8px 12px',position:'sticky',left:0,background:`${color}18`,borderRight:'1px solid var(--gray-200)',zIndex:1,color}}>TOTAL</td>
+                                                        {parcelles.map(([pKey, ha]) => {
+                                                            const colTotal = operations.reduce((s, op) => {
+                                                                const c = pivot[op] && pivot[op][pKey];
+                                                                return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
+                                                            }, 0);
+                                                            return (
+                                                                <td key={pKey} style={{padding:'8px 10px',textAlign:'center',borderRight:'1px solid var(--gray-100)',color}}>
+                                                                    <div>{_fmt(colTotal, ha)}</div>
+                                                                    <div style={{fontSize:10,opacity:0.7}}>{_unit}</div>
+                                                                </td>
+                                                            );
+                                                        })}
+                                                        <td style={{padding:'8px 10px',textAlign:'center',background:`${color}28`,position:'sticky',right:0,color}}>
+                                                            {(() => {
+                                                                const gt = operations.reduce((s, op) =>
+                                                                    s + parcelles.reduce((ps, [pKey]) => {
+                                                                        const c = pivot[op] && pivot[op][pKey];
+                                                                        return ps + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
+                                                                    }, 0), 0);
+                                                                return <><div>{_fmt(gt, _totalHa)}</div><div style={{fontSize:10,opacity:0.7}}>{_unit}</div></>;
+                                                            })()}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
 
                     {/* Popup détail ouvriers transport */}
                     {transportPopup && (
@@ -24776,7 +25231,7 @@ ${rejetHtml}
                             </label>
                             <label style={{display:'flex', flexDirection:'column', gap:4, flex:1, minWidth:160}}>
                                 <span style={{color:'var(--gray-500)', fontWeight:600}}>Recherche</span>
-                                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Matricule ou nom…" style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
+                                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Matricule, nom ou opération…" style={{padding:'4px 6px', borderRadius:6, border:'1px solid var(--gray-300)'}} />
                             </label>
                         </div>
 
