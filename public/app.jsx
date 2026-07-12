@@ -482,6 +482,7 @@
             { id: 'chef_agronomie', label: 'Agronomie', icon: 'fa-seedling' },
             { id: 'paie', label: 'Paie', icon: 'fa-money-bill-wave', rhOnly: true },
             { id: 'primes_fixes', label: 'Primes Fixes', icon: 'fa-award', rhOnly: true },
+            { id: 'parcelles_referentiel', label: 'Parcelles & Référentiel', icon: 'fa-map-location-dot', rhOnly: true },
             { id: 'parametres', label: 'Paramètres', icon: 'fa-sliders', rhOnly: true },
             { id: 'chef_production', label: 'Production', icon: 'fa-industry', chefOnly: true },
             { id: 'chef_tracking', label: 'Suivi Commandes', icon: 'fa-route', chefOnly: true },
@@ -67306,6 +67307,7 @@ ${rejetHtml}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
                                 {renderTab('primes_fixes', window.PrimesFixesTab, {}, 'Primes Fixes')}
+                                {renderTab('parcelles_referentiel', window.ParcellesReferentielTab, {}, 'Parcelles & Référentiel')}
                                 {renderTab('parametres', ParametresTab, { data }, 'Paramètres')}
                                 {renderTab('planification', PlanificationTab, { data }, 'Planification')}
                                 {renderTab('suivi', SuiviTab, { data }, 'Suivi')}
