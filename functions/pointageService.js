@@ -3316,20 +3316,23 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           rowsPrev = r2.recordset.map(toRow);
         } else {
           // Mirror path — Firestore sql_mirror_pointage
-          // Surfaces depuis parcelles_consommation (mirror de BR_Consommation)
-          const [raw2627, rawPrev, consoSnap] = await Promise.all([
+          // Surfaces depuis BR_Parcelle (SQL BDR) avec fallback silencieux si indisponible
+          const [raw2627, rawPrev, brParcelle] = await Promise.all([
             getPointageRowsForDateRange(CUT, today),
             getPointageRowsForDateRange(PREV_START, PREV_END),
-            db_firestore.collection("parcelles_consommation").get().catch(() => null),
+            getPool().then(db => db.request().query(`
+              SELECT Parcelle_Culturale, Sup_Parcelle_Culturale AS Sup
+              FROM BR_Parcelle
+              WHERE Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`
+            )).catch(() => null),
           ]);
-          // Build supMap depuis le mirror Firestore de consommation
+          // Build supMap depuis BR_Parcelle (label → hectares)
           const supMap = {};
-          if (consoSnap) {
-            consoSnap.forEach(doc => {
-              const d = doc.data();
-              const lbl = (d.parcelle_culturale || d.Parcelle_Culturale || "").trim();
-              const sup = parseFloat(d.parcelle_sup || d.Parcelle_sup || d.sup || 0) || 0;
-              if (lbl && sup > 0) supMap[lbl] = Math.max(supMap[lbl] || 0, sup);
+          if (brParcelle) {
+            brParcelle.recordset.forEach(r => {
+              const lbl = (r.Parcelle_Culturale || "").trim();
+              const sup = parseFloat(r.Sup) || 0;
+              if (lbl && sup > 0) supMap[lbl] = sup;
             });
           }
           const agg = (rows) => {
