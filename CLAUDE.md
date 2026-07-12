@@ -144,8 +144,8 @@ Pattern d'action sur `/api/caisse?action=<name>` (POST/GET selon) :
    - Tests unitaires sur les helpers purs obligatoires (cf. `caisseUtils.test.js`)
 
 3. **Avant merge** :
-   - `npm run test:unit` doit être vert
-   - `npm run build:frontend` doit passer (sentinelles)
+   - **Gate unique : `npm run qa`** — enchaîne `test:unit` (frontend), `test:all` (tous les modules `functions/lib/*/__tests__`) et `build:frontend` (sentinelles). Doit être 100 % vert. L'étape build laisse un diff cache-bust `?v=…` sur `index.html` — normal.
+   - `npm run typecheck` : informatif, NON bloquant (erreurs historiques dans les fichiers `@ts-check`, ≈271 au 2026-07-12) — la règle est de ne pas en introduire de NOUVELLES.
    - PR draft via `gh pr create --draft` avec body structuré (résumé, features, critères, limitations, commits)
 
 ---
@@ -162,11 +162,29 @@ Pattern d'action sur `/api/caisse?action=<name>` (POST/GET selon) :
 
 ---
 
+## Pièges connus (mémoire consolidée)
+
+> Leçons durement apprises, consolidées depuis la mémoire projet. Détail complet dans `~/.claude/projects/…/memory/` (fichier indiqué entre parenthèses).
+
+- **Collisions UMD scope global** : les scripts classiques de `public/lib/` partagent le scope global du navigateur — un nom top-level dupliqué crashe le boot React (erreur #200). Toujours faire un smoke-load navigateur réel avant de déclarer un preview prêt. (`umd-global-collision-smoke-load`)
+- **Backend jamais `require('../public/…')`** : Firebase ne déploie QUE `functions/` → `Cannot find module` → TOUTES les CF crashent au load, et les tests locaux ne le voient pas. Utiliser une copie backend dans `functions/lib/`. (`backend-jamais-require-public`)
+- **Tab bare global ref** : `renderTab(tabId, <ComponentGlobal>, …)` avec une référence nue crashe GLOBALEMENT si `window.X` n'est pas posé. Fix = `window.X` + garde `!Component`. (`tab-bare-global-ref-crash`)
+- **Specs/docs jamais untracked** : un fichier untracked est emporté quand une session parallèle change de branche dans le working dir partagé. Committer immédiatement. (`commit-specs-jamais-untracked`)
+- **WhatsApp proactif = template only** : toute notification proactive passe par `sendTemplateMessage` (ex. `general_alert`) — un message free-form est droppé silencieusement par Meta hors fenêtre de 24 h. (`whatsapp-proactif-doit-etre-template`)
+- **GO frais à chaque gate** : aucun write/deploy prod sans un GO explicite et récent à LA gate concernée — une autorisation large antérieure ne vaut pas GO permanent. (`gate-fresh-go-each-write`)
+
+---
+
 ## Pointeurs utiles
 
 - Routes API : [firebase.json](firebase.json) (`rewrites`)
 - Règles : [firestore.rules](firestore.rules)
 - Build front : [scripts/build-frontend.js](scripts/build-frontend.js)
+- Gate QA locale : [scripts/qa.sh](scripts/qa.sh) (`npm run qa`) — tests front + back + build
+- Typecheck opt-in : [jsconfig.json](jsconfig.json) (`npm run typecheck`, non bloquant) — seuls les fichiers `// @ts-check` sont vérifiés ; monolithes exclus
+- Pre-commit (opt-in) : [scripts/git-hooks/pre-commit](scripts/git-hooks/pre-commit) — activation : `git config core.hooksPath scripts/git-hooks` (config locale, partagée par tous les worktrees ; à refaire après clone)
+- CI de test : [.github/workflows/test.yml](.github/workflows/test.yml) (push + PR)
+- `.claude/settings.json.bak` : backup historique de la config Claude — ne pas charger, ne pas supprimer sans accord Omar
 - Dette technique : [TODO_REFACTO.md](TODO_REFACTO.md)
 - Roadmap sprints : [ROADMAP.md](ROADMAP.md)
 - Composant caisse principal : `public/app.jsx` — chercher `function CaisseTransactionsSub` (≈ ligne 50 800).
