@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Pre-commit Smart Berry — gate rapide (tests seulement, pas de build).
+#
+# Activation (config locale, non versionnée — à refaire après un clone) :
+#   git config core.hooksPath scripts/git-hooks
+# Échappatoire ponctuelle : git commit --no-verify
+#
+# La racine est résolue via git (compatible worktrees multiples) et les tests
+# sont lancés en forme portable find|xargs (fonctionne Node 20 et 24 — le glob
+# quoté de npm run test:unit exige Node >= 21).
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+
+echo "[pre-commit] Tests unitaires frontend…"
+(cd "$ROOT" && find tests/unit -name '*.test.js' -print0 | xargs -0 node --test) > /dev/null
+
+echo "[pre-commit] Tests backend…"
+(cd "$ROOT/functions" && find lib -path '*/__tests__/*.test.js' -print0 | xargs -0 node --test) > /dev/null
+
+echo "[pre-commit] OK ✅ (gate complète avec build : npm run qa)"
