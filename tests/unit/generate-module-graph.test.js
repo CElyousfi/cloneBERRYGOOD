@@ -397,3 +397,27 @@ test('unclassified contient inflightDedup', async () => {
   assert(filePaths.some(f => f.includes('inflightDedup')),
     'inflightDedup devrait être unclassified');
 });
+
+// --- 16. Root services (functions/*.js) scannés ---
+
+test('files index contient les services racine functions/*.js', async () => {
+  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
+  await generateGraph(ROOT);
+  const content = fs.readFileSync(outPath, 'utf8');
+  const graph = JSON.parse(content);
+  // pointageService.js est un service racine connu — doit apparaître dans files index
+  const keys = Object.keys(graph.files);
+  assert(keys.some(k => k === 'functions/pointageService.js'),
+    'functions/pointageService.js devrait être dans files index');
+});
+
+test('domains backend.services liste les services racine classifiés', async () => {
+  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
+  await generateGraph(ROOT);
+  const content = fs.readFileSync(outPath, 'utf8');
+  const graph = JSON.parse(content);
+  // Au moins un domaine doit avoir une clé backend.services non vide
+  const domainsWithServices = Object.values(graph.domains)
+    .filter(/** @param {{ backend: { services?: string[] } }} d */ d => d.backend && Array.isArray(d.backend.services) && d.backend.services.length > 0);
+  assert(domainsWithServices.length > 0, 'aucun domaine n\'a de backend.services — root services non scannés');
+});

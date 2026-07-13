@@ -7,7 +7,7 @@
     },
     "paie": {
       "label": "Paie & RH",
-      "keywords": ["paie", "salaire", "primes", "quinzaine", "smag", "cotisation", "anciennete", "charges", "bareme", "bulletin", "ouvrier"],
+      "keywords": ["paie", "salaire", "primes", "quinzaine", "smag", "cotisation", "anciennete", "charges", "bareme", "bulletin", "ouvrier", "paieaccess", "registryaccess", "fonctions"],
       "seedFiles": ["paieUtils", "paieDataCache", "primesV2", "primesImportParse", "quinzaineUtils", "PrimesFixesTab", "QuinzaineCampagneSelect", "QuinzaineRecapCards"]
     },
     "recolte": {

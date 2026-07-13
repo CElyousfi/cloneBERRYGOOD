@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const SCHEMA_VERSION = 1;
-const GENERATOR_VERSION = '1.0.0';
+const GENERATOR_VERSION = '1.0.1';
 
 // Fichiers exclus de l'analyse git coupling
 const GIT_COUPLING_EXCLUDE = [
@@ -309,6 +309,15 @@ function collectFingerprintSources(root) {
     sources.push({ path: 'functions/lib/__entries__', content: JSON.stringify(entries) });
   }
 
+  // functions/*.js racine (services, hors index.js) : liste des noms seulement
+  const functionsRootDir = path.join(root, 'functions');
+  if (fs.existsSync(functionsRootDir)) {
+    const rootServices = fs.readdirSync(functionsRootDir)
+      .filter(f => f.endsWith('.js') && f !== 'index.js')
+      .sort();
+    sources.push({ path: 'functions/__root_services__', content: JSON.stringify(rootServices) });
+  }
+
   return sources;
 }
 
@@ -454,6 +463,31 @@ async function generateGraph(root) {
     });
   }
 
+  // 9b. Scanner functions/*.js racine (services, hors index.js déjà scanné)
+  const functionsRootDir = path.join(root, 'functions');
+  const rootServiceFiles = fs.existsSync(functionsRootDir)
+    ? fs.readdirSync(functionsRootDir)
+        .filter(f => f.endsWith('.js') && f !== 'index.js')
+        .sort()
+    : [];
+
+  for (const f of rootServiceFiles) {
+    const baseName = f.replace('.js', '');
+    const classified = classifyByKeywords(baseName, domains);
+    const testFile = `tests/unit/${baseName}.test.js`;
+    const hasTests = fs.existsSync(path.join(root, testFile));
+    backendModules.push({
+      name: f,
+      filePath: `functions/${f}`,
+      isDir: false,
+      isRootService: true,
+      domain: classified.domain,
+      confidence: classified.confidence,
+      hasTests,
+      testFiles: hasTests ? [testFile] : [],
+    });
+  }
+
   // 10. Analyser git log pour heatmap et co-commits
   /** @type {Record<string, number>} */
   const fileCommitCount = {};
@@ -592,7 +626,8 @@ async function generateGraph(root) {
       backend: {
         cloudFunctions: domainCFs,
         routes: domainRoutes,
-        modules: domainBEModules.map(m => m.name).sort(),
+        modules: domainBEModules.filter(m => !m.isRootService).map(m => m.name).sort(),
+        services: domainBEModules.filter(m => m.isRootService).map(m => m.filePath).sort(),
       },
       firestore: {
         collections: domainCollections,
@@ -624,7 +659,8 @@ async function generateGraph(root) {
     filesIndex[`functions/index.js#${cf.name}`] = { domain: cf.domain, confidence: cf.confidence };
   }
   for (const m of backendModules) {
-    filesIndex[`functions/lib/${m.name}`] = { domain: m.domain, confidence: m.confidence };
+    const fileKey = m.isRootService ? m.filePath : `functions/lib/${m.name}`;
+    filesIndex[fileKey] = { domain: m.domain, confidence: m.confidence };
   }
 
   // Firestore collections index

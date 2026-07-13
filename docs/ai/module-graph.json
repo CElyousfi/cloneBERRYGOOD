@@ -1,12 +1,12 @@
 {
   "_meta": {
-    "generatorVersion": "1.0.0",
+    "generatorVersion": "1.0.1",
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "172/273 fichiers classifiés",
+          "detail": "190/327 fichiers classifiés",
           "max": 40,
-          "score": 25
+          "score": 23
         },
         "domainCompleteness": {
           "detail": "9/10 domaines avec frontend+backend+firestore",
@@ -14,12 +14,12 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "32/68 modules avec ≥1 test",
+          "detail": "33/122 modules avec ≥1 test",
           "max": 30,
-          "score": 14
+          "score": 8
         }
       },
-      "total": 66
+      "total": 58
     },
     "heatmap": [
       {
@@ -64,17 +64,17 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c48bc75bfc7608bd",
+    "sourceFingerprint": "sha256:6da770fdaac84697",
     "stats": {
-      "backendModules": 30,
+      "backendModules": 84,
       "cloudFunctions": 81,
-      "coverageScore": 47,
+      "coverageScore": 27,
       "domains": 10,
       "extractedComponents": 15,
       "firestoreCollections": 56,
       "libHelpers": 23,
       "tabFunctions": 124,
-      "unclassifiedFiles": 101,
+      "unclassifiedFiles": 137,
       "unitTestFiles": 22
     }
   },
@@ -85,10 +85,15 @@
         "modules": [
           "bdc"
         ],
-        "routes": []
+        "routes": [],
+        "services": [
+          "functions/bdcMirrorService.js",
+          "functions/bdcVirementService.js",
+          "functions/chefBdcBot.js"
+        ]
       },
       "confidence": "medium",
-      "coverageScore": 50,
+      "coverageScore": 36,
       "firestore": {
         "collections": [
           "scan_corrections",
@@ -173,10 +178,13 @@
             "functionId": "bugReports",
             "source": "/api/bug-reports"
           }
+        ],
+        "services": [
+          "functions/backupService.js"
         ]
       },
       "confidence": "medium",
-      "coverageScore": 20,
+      "coverageScore": 17,
       "firestore": {
         "collections": [
           "bug_reports",
@@ -238,7 +246,8 @@
             "functionId": "runDailyPhenologyJobNow",
             "source": "/api/run-daily-phenology-job-now"
           }
-        ]
+        ],
+        "services": []
       },
       "confidence": "medium",
       "coverageScore": 100,
@@ -332,7 +341,8 @@
             "functionId": "caisseManagement",
             "source": "/api/caisse"
           }
-        ]
+        ],
+        "services": []
       },
       "confidence": "high",
       "coverageScore": 75,
@@ -370,22 +380,30 @@
     "paie": {
       "backend": {
         "cloudFunctions": [
+          "fonctionsManagement",
           "primesManagement"
         ],
         "modules": [
+          "fonctions",
           "primes"
         ],
         "routes": [
           {
             "functionId": "primesManagement",
             "source": "/api/primes"
+          },
+          {
+            "functionId": "fonctionsManagement",
+            "source": "/api/fonctions"
           }
-        ]
+        ],
+        "services": []
       },
       "confidence": "medium",
-      "coverageScore": 67,
+      "coverageScore": 60,
       "firestore": {
         "collections": [
+          "fonctions",
           "ouvriers_registry",
           "quinzaine_archive"
         ]
@@ -488,10 +506,18 @@
             "functionId": "pointageValidation",
             "source": "/api/pointage-validation"
           }
+        ],
+        "services": [
+          "functions/bdcValidationService.js",
+          "functions/bdpIntrospectService.js",
+          "functions/equipesConfig.js",
+          "functions/pointageBdpSync.js",
+          "functions/pointageService.js",
+          "functions/update-bdc-validation-template.js"
         ]
       },
       "confidence": "high",
-      "coverageScore": 17,
+      "coverageScore": 8,
       "firestore": {
         "collections": [
           "pointage_validations_equipe",
@@ -531,7 +557,10 @@
       "backend": {
         "cloudFunctions": [],
         "modules": [],
-        "routes": []
+        "routes": [],
+        "services": [
+          "functions/reprocess-pfq-today.js"
+        ]
       },
       "confidence": "medium",
       "coverageScore": 0,
@@ -593,10 +622,15 @@
             "functionId": "climatProduction",
             "source": "/api/climat-production"
           }
+        ],
+        "services": [
+          "functions/audit-recolte-fallback.js",
+          "functions/dailyProductionReport.js",
+          "functions/recolteWhatsAppNotifier.js"
         ]
       },
       "confidence": "high",
-      "coverageScore": 67,
+      "coverageScore": 50,
       "firestore": {
         "collections": [
           "growth_measurements",
@@ -625,7 +659,9 @@
       "gitCoupling": [],
       "label": "Récolte & Production",
       "tests": {
-        "backend": [],
+        "backend": [
+          "tests/unit/recolteWhatsAppNotifier.test.js"
+        ],
         "unit": [
           "tests/unit/growthUtils.test.js",
           "tests/unit/recolteKpiUtils.test.js"
@@ -643,10 +679,14 @@
             "functionId": "parcelles",
             "source": "/api/parcelles"
           }
+        ],
+        "services": [
+          "functions/fix-cascade-ferme.js",
+          "functions/parcellesCulturales.js"
         ]
       },
       "confidence": "high",
-      "coverageScore": 50,
+      "coverageScore": 33,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -697,7 +737,8 @@
             "functionId": "stockManagement",
             "source": "/api/stock"
           }
-        ]
+        ],
+        "services": []
       },
       "confidence": "medium",
       "coverageScore": 50,
@@ -1241,6 +1282,150 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/add-url-buttons.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/agqParser.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/audioService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/audit-dqr.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/audit-recolte-fallback.js": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/backfill-liquidations-fruit.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/backfill-plant-invoices-culture.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/backfill-transport-fruit.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/backupService.js": {
+      "confidence": "high",
+      "domain": "admin"
+    },
+    "functions/bdcMirrorService.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "functions/bdcValidationService.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/bdcVirementService.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "functions/bdpIntrospectService.js": {
+      "confidence": "medium",
+      "domain": "pointage"
+    },
+    "functions/check_bulk.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/check_imap.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/check_w6.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/check_wa_errors.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/chefBdcBot.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "functions/cleanup-bad-foliar-recos.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/cleanup-duplicate-dqr.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/cleanup-duplicate-liquidations.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/create-whatsapp-templates.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/dailyProductionReport.js": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/dgAgent.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/dgBot.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/diag-liquidation-source.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/diag-old-liquidation.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/emailService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/equipesConfig.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/firestoreDataService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/fix-cascade-ferme.js": {
+      "confidence": "medium",
+      "domain": "referentiel"
+    },
+    "functions/forecastService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/import-agq-analyses.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/import-blue-reports.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/import-excel-kilos.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/import-receipt-blue.js": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/index.js#agroSummary": {
       "confidence": "medium",
       "domain": "agro"
@@ -1322,8 +1507,8 @@
       "domain": "agro"
     },
     "functions/index.js#fonctionsManagement": {
-      "confidence": "low",
-      "domain": null
+      "confidence": "high",
+      "domain": "paie"
     },
     "functions/index.js#fuel": {
       "confidence": "low",
@@ -1586,8 +1771,8 @@
       "domain": "caisse"
     },
     "functions/lib/fonctions": {
-      "confidence": "low",
-      "domain": null
+      "confidence": "high",
+      "domain": "paie"
     },
     "functions/lib/forecastConfirmation.js": {
       "confidence": "low",
@@ -1682,6 +1867,78 @@
       "domain": "pointage"
     },
     "functions/lib/valorisation": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/notificationDispatcher.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/ojraParser.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/parcellesCulturales.js": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "functions/pointageBdpSync.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/pointageService.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/prodSyncService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/recolteWhatsAppNotifier.js": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/refetch-liquidations-local.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/reprocess-dqr-week.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/reprocess-pfq-today.js": {
+      "confidence": "medium",
+      "domain": "qualite"
+    },
+    "functions/securityBot.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/seedJoursFeries.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/seed_divers.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/setup-whatsapp-profile.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/sqlSyncService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/update-bdc-validation-template.js": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/whatsappProcessor.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/whatsappService.js": {
       "confidence": "low",
       "domain": null
     },
@@ -1897,7 +2154,7 @@
     },
     "fonctions": {
       "accessLevel": "CF-only",
-      "domain": null
+      "domain": "paie"
     },
     "growth_measurements": {
       "accessLevel": "CF-only",
@@ -2292,6 +2549,110 @@
     },
     {
       "confidence": "low",
+      "file": "functions/add-url-buttons.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/agqParser.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/audioService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/audit-dqr.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/backfill-liquidations-fruit.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/backfill-plant-invoices-culture.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/backfill-transport-fruit.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/check_bulk.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/check_imap.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/check_w6.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/check_wa_errors.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/cleanup-bad-foliar-recos.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/cleanup-duplicate-dqr.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/cleanup-duplicate-liquidations.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/create-whatsapp-templates.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/dgAgent.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/dgBot.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/diag-liquidation-source.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/diag-old-liquidation.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/emailService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/firestoreDataService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/forecastService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/import-agq-analyses.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/import-blue-reports.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/import-excel-kilos.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/import-receipt-blue.js"
+    },
+    {
+      "confidence": "low",
       "file": "functions/index.js#alerts"
     },
     {
@@ -2313,10 +2674,6 @@
     {
       "confidence": "low",
       "file": "functions/index.js#farmroadRefresh"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/index.js#fonctionsManagement"
     },
     {
       "confidence": "low",
@@ -2460,10 +2817,6 @@
     },
     {
       "confidence": "low",
-      "file": "functions/lib/fonctions"
-    },
-    {
-      "confidence": "low",
       "file": "functions/lib/forecastConfirmation.js"
     },
     {
@@ -2505,6 +2858,54 @@
     {
       "confidence": "low",
       "file": "functions/lib/valorisation"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/notificationDispatcher.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/ojraParser.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/prodSyncService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/refetch-liquidations-local.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/reprocess-dqr-week.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/securityBot.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/seed_divers.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/seedJoursFeries.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/setup-whatsapp-profile.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/sqlSyncService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/whatsappProcessor.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/whatsappService.js"
     },
     {
       "confidence": "low",
