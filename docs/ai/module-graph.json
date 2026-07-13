@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "191/330 fichiers classifiés",
+          "detail": "191/331 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "33/125 modules avec ≥1 test",
+          "detail": "33/126 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -27,7 +27,7 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 9,
+        "commits": 8,
         "file": "scripts/build-frontend.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:858ca317df9a7cbc",
+    "sourceFingerprint": "sha256:8b7c8e60c7f5fb6a",
     "stats": {
       "backendModules": 86,
       "cloudFunctions": 81,
@@ -72,9 +72,9 @@
       "domains": 10,
       "extractedComponents": 16,
       "firestoreCollections": 56,
-      "libHelpers": 23,
+      "libHelpers": 24,
       "tabFunctions": 124,
-      "unclassifiedFiles": 139,
+      "unclassifiedFiles": 140,
       "unitTestFiles": 22
     }
   },
@@ -2035,6 +2035,10 @@
       "confidence": "high",
       "domain": "referentiel"
     },
+    "public/lib/emargementPdf.js": {
+      "confidence": "low",
+      "domain": null
+    },
     "public/lib/encaissementsCanevas.js": {
       "confidence": "high",
       "domain": "caisse"
@@ -2935,6 +2939,10 @@
     {
       "confidence": "low",
       "file": "public/components/MagMappingConsoTab.jsx"
+    },
+    {
+      "confidence": "low",
+      "file": "public/lib/emargementPdf.js"
     },
     {
       "confidence": "low",
