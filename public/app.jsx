@@ -464,18 +464,33 @@
 
         // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====
         // window.SB_PARCELLE_REF = { 'LABEL BEE ONE UPPERCASE' : { nom_sb, ha, ... } }
-        // Chargé une fois au démarrage et mis à jour après chaque save.
+        // Peuplé depuis parcelles-campagne-list (r.sup, priorité basse) puis écrasé par
+        // sb-referentiel-list (valeurs user-saved, priorité haute). Mis à jour après chaque save.
         function sbLoad() {
-            fetch('/api/pointage-rh?action=sb-referentiel-list')
-                .then(r => r.json())
-                .then(d => {
-                    if (!d.success) return;
-                    window.SB_PARCELLE_REF = {};
-                    (d.parcelles || []).forEach(p => {
-                        window.SB_PARCELLE_REF[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
+            Promise.all([
+                fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function(r){return r.json();}).catch(function(){return {};}),
+                fetch('/api/pointage-rh?action=sb-referentiel-list').then(function(r){return r.json();}).catch(function(){return {};})
+            ]).then(function(results) {
+                var campagne = results[0];
+                var sb = results[1];
+                var ref = {};
+                // Seed : superficie BEE ONE directe depuis la liste campagne (priorité basse)
+                if (campagne.success) {
+                    var rows = (campagne.campagne_courante || []).concat(campagne.campagne_precedente || []);
+                    rows.forEach(function(p) {
+                        var key = (p.label || '').toUpperCase().trim();
+                        if (key && p.sup > 0 && !ref[key]) ref[key] = { label_bee_one: p.label, ha: p.sup };
                     });
-                })
-                .catch(() => {});
+                }
+                // Overwrite : valeurs saisies manuellement dans Parcelles & Référentiel (priorité haute)
+                if (sb.success) {
+                    (sb.parcelles || []).forEach(function(p) {
+                        var key = (p.label_bee_one || p.id || '').toUpperCase().trim();
+                        if (key) ref[key] = p;
+                    });
+                }
+                window.SB_PARCELLE_REF = ref;
+            });
         }
         sbLoad();
 
