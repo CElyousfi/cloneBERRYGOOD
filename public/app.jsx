@@ -67445,7 +67445,7 @@ ${rejetHtml}
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
                                 {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
-                                {renderTab('campagne', CampagneTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
+                                {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}
