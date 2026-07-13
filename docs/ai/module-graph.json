@@ -1,0 +1,2526 @@
+{
+  "_meta": {
+    "generatorVersion": "1.0.0",
+    "healthScore": {
+      "subScores": {
+        "classification": {
+          "detail": "172/273 fichiers classifiés",
+          "max": 40,
+          "score": 25
+        },
+        "domainCompleteness": {
+          "detail": "9/10 domaines avec frontend+backend+firestore",
+          "max": 30,
+          "score": 27
+        },
+        "testCoverage": {
+          "detail": "32/68 modules avec ≥1 test",
+          "max": 30,
+          "score": 14
+        }
+      },
+      "total": 66
+    },
+    "heatmap": [
+      {
+        "commits": 74,
+        "file": "public/app.jsx"
+      },
+      {
+        "commits": 8,
+        "file": "scripts/build-frontend.js"
+      },
+      {
+        "commits": 7,
+        "file": "functions/sqlSyncService.js"
+      },
+      {
+        "commits": 6,
+        "file": "functions/index.js"
+      },
+      {
+        "commits": 5,
+        "file": "public/components/PrimesFixesTab.jsx"
+      },
+      {
+        "commits": 4,
+        "file": "functions/pointageBdpSync.js"
+      },
+      {
+        "commits": 4,
+        "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 4,
+        "file": "tests/unit/pointageBdpMap.test.js"
+      },
+      {
+        "commits": 3,
+        "file": "public/components/ParcellesReferentielTab.jsx"
+      },
+      {
+        "commits": 3,
+        "file": "public/components/PrimesFixesTab.js"
+      }
+    ],
+    "schemaVersion": 1,
+    "sourceFingerprint": "sha256:c48bc75bfc7608bd",
+    "stats": {
+      "backendModules": 30,
+      "cloudFunctions": 81,
+      "coverageScore": 47,
+      "domains": 10,
+      "extractedComponents": 15,
+      "firestoreCollections": 56,
+      "libHelpers": 23,
+      "tabFunctions": 124,
+      "unclassifiedFiles": 101,
+      "unitTestFiles": 22
+    }
+  },
+  "domains": {
+    "achats": {
+      "backend": {
+        "cloudFunctions": [],
+        "modules": [
+          "bdc"
+        ],
+        "routes": []
+      },
+      "confidence": "medium",
+      "coverageScore": 50,
+      "firestore": {
+        "collections": [
+          "scan_corrections",
+          "security_scan_registre"
+        ]
+      },
+      "frontend": {
+        "components": [
+          "public/components/FactureDetailPopup.jsx",
+          "public/components/ScanAttachmentButton.jsx"
+        ],
+        "libs": [
+          "public/lib/bdcWorkflow.js",
+          "public/lib/factureExportUtils.js",
+          "public/lib/scanAttachmentUtils.js",
+          "public/lib/scanClientUpload.js",
+          "public/lib/scanHistoryDisplay.js"
+        ],
+        "tabs": [
+          "AchatsAnalysesFoliairesTab",
+          "AchatsBDCTab",
+          "AchatsBonApportTab",
+          "AchatsCatalogueTab",
+          "AchatsConsultationTab",
+          "AchatsDATab",
+          "AchatsDashboardTab",
+          "AchatsFacturesTab",
+          "AchatsFournisseursTab",
+          "AchatsPaiementsTab",
+          "AchatsReceptionsValoriserTab",
+          "AchatsScanBLTab",
+          "AchatsScanFacturesTab",
+          "AchatsVentePlastiqueTab",
+          "FinBDCTab",
+          "FinFacturesTab",
+          "MagBdcReceptionTab",
+          "SecurityScanRegistreTab",
+          "StationnaireImportScanTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Achats & Fournisseurs",
+      "tests": {
+        "backend": [],
+        "unit": [
+          "tests/unit/bdcWorkflow.test.js",
+          "tests/unit/factureExportUtils.test.js",
+          "tests/unit/scanAttachmentUtils.test.js",
+          "tests/unit/scanHistoryDisplay.test.js"
+        ]
+      }
+    },
+    "admin": {
+      "backend": {
+        "cloudFunctions": [
+          "authApi",
+          "backupApi",
+          "bugReports",
+          "onBugReportCreate",
+          "onBugReportUpdate",
+          "scheduledBackup",
+          "whatsappAdmin"
+        ],
+        "modules": [
+          "auth",
+          "bugReports"
+        ],
+        "routes": [
+          {
+            "functionId": "authApi",
+            "source": "/api/auth"
+          },
+          {
+            "functionId": "backupApi",
+            "source": "/api/backup"
+          },
+          {
+            "functionId": "whatsappAdmin",
+            "source": "/api/whatsapp-admin"
+          },
+          {
+            "functionId": "bugReports",
+            "source": "/api/bug-reports"
+          }
+        ]
+      },
+      "confidence": "medium",
+      "coverageScore": 20,
+      "firestore": {
+        "collections": [
+          "bug_reports",
+          "connection_logs",
+          "whatsapp_logs"
+        ]
+      },
+      "frontend": {
+        "components": [
+          "public/components/BugReportButton.jsx",
+          "public/components/BugReportsAdmin.jsx"
+        ],
+        "libs": [
+          "public/lib/authResilience.js"
+        ],
+        "tabs": [
+          "AdminConsoleTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Administration & Sécurité",
+      "tests": {
+        "backend": [],
+        "unit": [
+          "tests/unit/authResilience.test.js"
+        ]
+      }
+    },
+    "agro": {
+      "backend": {
+        "cloudFunctions": [
+          "agroSummary",
+          "dailyPhenologyJob",
+          "fertigation",
+          "netafimSyncDaily",
+          "netafimSyncOnce",
+          "phytosanitaire",
+          "runDailyPhenologyJobNow"
+        ],
+        "modules": [
+          "irrigation",
+          "netafim",
+          "phenology"
+        ],
+        "routes": [
+          {
+            "functionId": "fertigation",
+            "source": "/api/fertigation"
+          },
+          {
+            "functionId": "phytosanitaire",
+            "source": "/api/phytosanitaire"
+          },
+          {
+            "functionId": "agroSummary",
+            "source": "/api/agro-summary"
+          },
+          {
+            "functionId": "runDailyPhenologyJobNow",
+            "source": "/api/run-daily-phenology-job-now"
+          }
+        ]
+      },
+      "confidence": "medium",
+      "coverageScore": 100,
+      "firestore": {
+        "collections": [
+          "irrigation_readings"
+        ]
+      },
+      "frontend": {
+        "components": [],
+        "libs": [
+          "public/lib/meteoCalc.js"
+        ],
+        "tabs": [
+          "AgroAnalyseFoliairesTab",
+          "AgroCompositionTab",
+          "AgroDashboardTab",
+          "AgroFarmroadTab",
+          "AgroFertilisationTab",
+          "AgroForecastTab",
+          "AgroHarvestPredictionTab",
+          "AgroIrrigationTab",
+          "AgroPhytoTab",
+          "AgroSurveillanceTab",
+          "ChefAgronomieTab",
+          "IrrigationIntelligenceTab",
+          "IrrigationRecoTab",
+          "MeteoTab",
+          "StationnaireIrrigationTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Agro & Environnement",
+      "tests": {
+        "backend": [
+          "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+          "functions/lib/irrigation/__tests__/dailySummary.test.js",
+          "functions/lib/irrigation/__tests__/dataAccess.test.js",
+          "functions/lib/irrigation/__tests__/drainTrend.test.js",
+          "functions/lib/irrigation/__tests__/driscollRules.test.js",
+          "functions/lib/irrigation/__tests__/enrich.test.js",
+          "functions/lib/irrigation/__tests__/nextPulse.test.js",
+          "functions/lib/irrigation/__tests__/normalize.test.js",
+          "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+          "functions/lib/irrigation/__tests__/recommendations.test.js",
+          "functions/lib/irrigation/__tests__/scenarios.test.js",
+          "functions/lib/irrigation/__tests__/weatherAdjustments.test.js",
+          "functions/lib/netafim/__tests__/auth.test.js",
+          "functions/lib/netafim/__tests__/client.test.js",
+          "functions/lib/netafim/__tests__/dataAccess.test.js",
+          "functions/lib/netafim/__tests__/endpoints.test.js",
+          "functions/lib/netafim/__tests__/mapper.test.js",
+          "functions/lib/netafim/__tests__/pagination.test.js",
+          "functions/lib/netafim/__tests__/parcelles.test.js",
+          "functions/lib/netafim/__tests__/rateLimiter.test.js",
+          "functions/lib/netafim/__tests__/syncBahia.test.js",
+          "functions/lib/phenology/__tests__/cronExports.test.js",
+          "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js",
+          "functions/lib/phenology/__tests__/farmroadStationResolver.test.js",
+          "functions/lib/phenology/__tests__/gddCalculator.test.js",
+          "functions/lib/phenology/__tests__/index.test.js",
+          "functions/lib/phenology/__tests__/irrigationRecipe.test.js",
+          "functions/lib/phenology/__tests__/outdoorWeatherFallback.test.js",
+          "functions/lib/phenology/__tests__/phenologyDailyWriter.test.js",
+          "functions/lib/phenology/__tests__/radiationFetcher.test.js",
+          "functions/lib/phenology/__tests__/radsumCalculator.test.js",
+          "functions/lib/phenology/__tests__/referenceLoader.test.js",
+          "functions/lib/phenology/__tests__/stageResolver.test.js"
+        ],
+        "unit": [
+          "tests/unit/meteoCalc.test.js"
+        ]
+      }
+    },
+    "caisse": {
+      "backend": {
+        "cloudFunctions": [
+          "avancementCulture",
+          "caisseManagement"
+        ],
+        "modules": [
+          "caisseImport",
+          "marcheLocalCaisse"
+        ],
+        "routes": [
+          {
+            "functionId": "avancementCulture",
+            "source": "/api/avancement"
+          },
+          {
+            "functionId": "caisseManagement",
+            "source": "/api/caisse"
+          }
+        ]
+      },
+      "confidence": "high",
+      "coverageScore": 75,
+      "firestore": {
+        "collections": [
+          "caisse_definitions",
+          "caisse_transactions"
+        ]
+      },
+      "frontend": {
+        "components": [],
+        "libs": [
+          "public/lib/caisseUtils.js",
+          "public/lib/encaissementsCanevas.js"
+        ],
+        "tabs": [
+          "AchatsRapprochementTab",
+          "AgroAvancementTab",
+          "CaisseTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Caisse & Finance",
+      "tests": {
+        "backend": [
+          "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js",
+          "functions/lib/marcheLocalCaisse/__tests__/marcheLocalCaisse.test.js"
+        ],
+        "unit": [
+          "tests/unit/caisseUtils.test.js",
+          "tests/unit/encaissementsCanevas.test.js"
+        ]
+      }
+    },
+    "paie": {
+      "backend": {
+        "cloudFunctions": [
+          "primesManagement"
+        ],
+        "modules": [
+          "primes"
+        ],
+        "routes": [
+          {
+            "functionId": "primesManagement",
+            "source": "/api/primes"
+          }
+        ]
+      },
+      "confidence": "medium",
+      "coverageScore": 67,
+      "firestore": {
+        "collections": [
+          "ouvriers_registry",
+          "quinzaine_archive"
+        ]
+      },
+      "frontend": {
+        "components": [
+          "public/components/PrimesFixesTab.jsx",
+          "public/components/QuinzaineCampagneSelect.jsx",
+          "public/components/QuinzaineRecapCards.jsx"
+        ],
+        "libs": [
+          "public/lib/paieDataCache.js",
+          "public/lib/paieUtils.js",
+          "public/lib/primesImportParse.js",
+          "public/lib/primesV2.js",
+          "public/lib/quinzaineUtils.js"
+        ],
+        "tabs": [
+          "FinPaiementsTab",
+          "PaieTab",
+          "PrimesTab",
+          "QuinzaineTab"
+        ]
+      },
+      "gitCoupling": [
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/PrimesFixesTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
+      "label": "Paie & RH",
+      "tests": {
+        "backend": [],
+        "unit": [
+          "tests/unit/QuinzaineCampagneSelect.test.js",
+          "tests/unit/paieDataCache.test.js",
+          "tests/unit/paieUtils.test.js",
+          "tests/unit/primesImportParse.test.js",
+          "tests/unit/primesV2.test.js",
+          "tests/unit/quinzaineUtils.test.js"
+        ]
+      }
+    },
+    "pointage": {
+      "backend": {
+        "cloudFunctions": [
+          "backfillPointageBdpLiveTrigger",
+          "backfillPresence",
+          "bdpIntrospect",
+          "pointageRH",
+          "pointageRH2",
+          "pointageV3",
+          "pointageValidation",
+          "syncPointageBdpTrigger",
+          "syncPresenceEntree",
+          "syncPresenceSortie",
+          "validatePointageBdpTrigger",
+          "validation",
+          "warmPointageCache"
+        ],
+        "modules": [
+          "pointage",
+          "pointageBdp",
+          "pointageValidation",
+          "validation"
+        ],
+        "routes": [
+          {
+            "functionId": "bdpIntrospect",
+            "source": "/api/bdp-introspect"
+          },
+          {
+            "functionId": "syncPointageBdpTrigger",
+            "source": "/api/sync-pointage-bdp-test"
+          },
+          {
+            "functionId": "validatePointageBdpTrigger",
+            "source": "/api/validate-pointage-bdp-test"
+          },
+          {
+            "functionId": "backfillPointageBdpLiveTrigger",
+            "source": "/api/backfill-pointage-bdp-live"
+          },
+          {
+            "functionId": "backfillPresence",
+            "source": "/api/backfill-presence"
+          },
+          {
+            "functionId": "pointageV3",
+            "source": "/api/pointage-rh"
+          },
+          {
+            "functionId": "validation",
+            "source": "/api/validation"
+          },
+          {
+            "functionId": "pointageValidation",
+            "source": "/api/pointage-validation"
+          }
+        ]
+      },
+      "confidence": "high",
+      "coverageScore": 17,
+      "firestore": {
+        "collections": [
+          "pointage_validations_equipe",
+          "sql_mirror_pointage",
+          "sql_mirror_pointage_meta",
+          "sql_mirror_pointage_workers",
+          "validations"
+        ]
+      },
+      "frontend": {
+        "components": [
+          "public/components/PointageValidationPanel.jsx",
+          "public/components/PointageValidationView.jsx"
+        ],
+        "libs": [],
+        "tabs": [
+          "ChefValidationBonsTab",
+          "ChefValidationsTab",
+          "DGValidationsTab",
+          "EquipesTab",
+          "PointageDiversTab",
+          "PointageTab",
+          "QualiteValidationBonsTab",
+          "SuiviPointageTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Pointage & Présence",
+      "tests": {
+        "backend": [
+          "functions/lib/pointage/__tests__/dedupeWorkersByMatricule.test.js"
+        ],
+        "unit": []
+      }
+    },
+    "qualite": {
+      "backend": {
+        "cloudFunctions": [],
+        "modules": [],
+        "routes": []
+      },
+      "confidence": "medium",
+      "coverageScore": 0,
+      "firestore": {
+        "collections": [
+          "pfq_interne"
+        ]
+      },
+      "frontend": {
+        "components": [],
+        "libs": [],
+        "tabs": [
+          "QualiteBonsApportTab",
+          "QualiteBrixTab",
+          "QualiteDashboardTab",
+          "QualiteEcartsTab",
+          "QualiteExpeditionsTab",
+          "QualiteHistoriqueTab",
+          "QualiteInspectionsTab",
+          "QualiteLiquidationsTab",
+          "QualiteMarcheLocalTab",
+          "QualitePFQInterneTab",
+          "QualiteReconciliationTab",
+          "QualiteSuiviCalibreTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Qualité",
+      "tests": {
+        "backend": [],
+        "unit": []
+      }
+    },
+    "recolte": {
+      "backend": {
+        "cloudFunctions": [
+          "climatProduction",
+          "dailyProductionDigest",
+          "dailyProductionReportTrigger",
+          "growthTracking",
+          "horsRecolteService",
+          "onProdRecolteWriteNotify",
+          "submitProductionDigestTemplate",
+          "syncRecolteFromProd"
+        ],
+        "modules": [
+          "productionEstimation.js"
+        ],
+        "routes": [
+          {
+            "functionId": "growthTracking",
+            "source": "/api/growth"
+          },
+          {
+            "functionId": "horsRecolteService",
+            "source": "/api/hors-recolte-suivi"
+          },
+          {
+            "functionId": "climatProduction",
+            "source": "/api/climat-production"
+          }
+        ]
+      },
+      "confidence": "high",
+      "coverageScore": 67,
+      "firestore": {
+        "collections": [
+          "growth_measurements",
+          "growth_plot_config",
+          "prod_tracabilite_recolte",
+          "sql_mirror_cueillette"
+        ]
+      },
+      "frontend": {
+        "components": [],
+        "libs": [
+          "public/lib/growthUtils.js",
+          "public/lib/recolteKpiUtils.js"
+        ],
+        "tabs": [
+          "AgroGrowthTab",
+          "ClimatProductionTab",
+          "CoutRecolteTab",
+          "HorsRecolteSuiviTab",
+          "HorsRecolteTab",
+          "PrimesRecolteTab",
+          "QualiteProductionTab",
+          "RecolteTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Récolte & Production",
+      "tests": {
+        "backend": [],
+        "unit": [
+          "tests/unit/growthUtils.test.js",
+          "tests/unit/recolteKpiUtils.test.js"
+        ]
+      }
+    },
+    "referentiel": {
+      "backend": {
+        "cloudFunctions": [
+          "parcelles"
+        ],
+        "modules": [],
+        "routes": [
+          {
+            "functionId": "parcelles",
+            "source": "/api/parcelles"
+          }
+        ]
+      },
+      "confidence": "high",
+      "coverageScore": 50,
+      "firestore": {
+        "collections": [
+          "mapping_campagne",
+          "netafim_parcelles_bahia",
+          "parcelle_ferme_referentiel",
+          "parcelle_ferme_referentiel_meta",
+          "parcelles_consommation",
+          "parcelles_culturales_charge"
+        ]
+      },
+      "frontend": {
+        "components": [
+          "public/components/ParcellesParamsTab.jsx",
+          "public/components/ParcellesReferentielTab.jsx"
+        ],
+        "libs": [
+          "public/lib/analytiqueUtils.js",
+          "public/lib/campagneUtils.js"
+        ],
+        "tabs": [
+          "AgroParcellesTab",
+          "CampagneTab",
+          "FinCodesAnalytiquesTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Référentiel & Analytique",
+      "tests": {
+        "backend": [],
+        "unit": [
+          "tests/unit/analytiqueUtils.test.js",
+          "tests/unit/campagneUtils.test.js"
+        ]
+      }
+    },
+    "stock": {
+      "backend": {
+        "cloudFunctions": [
+          "stockManagement"
+        ],
+        "modules": [
+          "stock",
+          "stockCaneva",
+          "stockMerge"
+        ],
+        "routes": [
+          {
+            "functionId": "stockManagement",
+            "source": "/api/stock"
+          }
+        ]
+      },
+      "confidence": "medium",
+      "coverageScore": 50,
+      "firestore": {
+        "collections": [
+          "security_mouvements",
+          "stock_balances",
+          "stock_movements",
+          "stock_requests"
+        ]
+      },
+      "frontend": {
+        "components": [
+          "public/components/InventaireMouvementsPopup.jsx",
+          "public/components/PmpDetailPopup.jsx"
+        ],
+        "libs": [
+          "public/lib/inventaireUtils.js",
+          "public/lib/stockMovementGuard.js",
+          "public/lib/useStockLocations.js"
+        ],
+        "tabs": [
+          "FinDeleteArticlesTab",
+          "FinStockTab",
+          "MagDashboardStockTab",
+          "MagFicheStockTab",
+          "MagInventaireTab",
+          "MagMouvementsTab",
+          "MagSortieTab",
+          "MagStockIntrantsTab"
+        ]
+      },
+      "gitCoupling": [],
+      "label": "Stock & Magasin",
+      "tests": {
+        "backend": [
+          "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+        ],
+        "unit": [
+          "tests/unit/inventaireUtils.test.js",
+          "tests/unit/stockMovementGuard.test.js",
+          "tests/unit/useStockLocations.test.js"
+        ]
+      }
+    }
+  },
+  "files": {
+    "app.jsx#AchatsAnalysesFoliairesTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsBDCTab": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsBonApportTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsCatalogueTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsConsultationTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsDATab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsDashboardTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsFacturesTab": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsFournisseursTab": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsPaiementsTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsRapprochementTab": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "app.jsx#AchatsReceptionsValoriserTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsScanBLTab": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsScanFacturesTab": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "app.jsx#AchatsVentePlastiqueTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#AdminConsoleTab": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "app.jsx#AgroAnalyseFoliairesTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroAvancementTab": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "app.jsx#AgroCompositionTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroDashboardTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroFarmroadTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroFertilisationTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroForecastTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroGrowthTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#AgroHarvestPredictionTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroIrrigationTab": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "app.jsx#AgroParcellesTab": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "app.jsx#AgroPhytoTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#AgroSurveillanceTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#BudgetVsReelTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#CaisseTab": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "app.jsx#CampagneTab": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "app.jsx#CaporalHistoriqueTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#CaporalSaisieTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#CaporalSuiviTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#ChefAgronomieTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#ChefDATab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#ChefTrackingTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#ChefValidationBonsTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#ChefValidationsTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#ClimatProductionTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#ComingSoonTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#CoutRecolteTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#DGAdoptionTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DGMeetingCRTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DGParametresTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DGSignatureTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DGTasksTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DGValidationsTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#DQRDailyTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DashboardAssocieTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#DashboardTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#EquipesTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#EvolutionTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinBDCTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#FinCATab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinCarburantTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinCodesAnalytiquesTab": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "app.jsx#FinDashboardTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinDeleteArticlesTab": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "app.jsx#FinFacturesTab": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "app.jsx#FinLiquidationsTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinOjraTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinPaiementsTab": {
+      "confidence": "medium",
+      "domain": "paie"
+    },
+    "app.jsx#FinPlantsTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinStockTab": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "app.jsx#FinTelecomTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinTresorerieTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinVirementsTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#FinanceMarcheLocalTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#GDDTrackingTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#HorsRecolteSuiviTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#HorsRecolteTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#IrrigationIntelligenceTab": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "app.jsx#IrrigationRecoTab": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "app.jsx#MagBCEngraisTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#MagBCPhytoTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#MagBCTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#MagBdcReceptionTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#MagDashboardStockTab": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "app.jsx#MagFicheStockTab": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "app.jsx#MagInventaireTab": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "app.jsx#MagMouvementsTab": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "app.jsx#MagParcTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#MagReceptionTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#MagSortieTab": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "app.jsx#MagStockIntrantsTab": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "app.jsx#MagTransfertTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#MeteoTab": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "app.jsx#PaieTab": {
+      "confidence": "medium",
+      "domain": "paie"
+    },
+    "app.jsx#ParametresTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#PlanificationTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#PointageDiversTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#PointageTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#PrimesRecolteTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#PrimesTab": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "app.jsx#ProductivityReportTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#QualiteBonsApportTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteBrixTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteDashboardTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteEcartsTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteExpeditionsTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteHistoriqueTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteInspectionsTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteLiquidationsTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteMarcheLocalTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualitePFQInterneTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteProductionTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#QualiteReconciliationTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteSuiviCalibreTab": {
+      "confidence": "high",
+      "domain": "qualite"
+    },
+    "app.jsx#QualiteValidationBonsTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#QuinzaineTab": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "app.jsx#RecolteTab": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "app.jsx#SecurityEnvoisWATab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#SecurityIncidentsTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#SecurityRegistreTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#SecurityScanRegistreTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#SecurityTunnelsTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#StationnaireAnalyseTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#StationnaireHistoriqueTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "app.jsx#StationnaireImportScanTab": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "app.jsx#StationnaireIrrigationTab": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "app.jsx#SuiviPointageTab": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "app.jsx#SuiviTab": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#agroSummary": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "functions/index.js#alerts": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#authApi": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/index.js#avancementCulture": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "functions/index.js#backfillPointageBdpLiveTrigger": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#backfillPresence": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#backupApi": {
+      "confidence": "high",
+      "domain": "admin"
+    },
+    "functions/index.js#bdpIntrospect": {
+      "confidence": "medium",
+      "domain": "pointage"
+    },
+    "functions/index.js#budgetService": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#bugReports": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/index.js#caisseManagement": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "functions/index.js#climatProduction": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#dailyPhenologyJob": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/index.js#dailyProductionDigest": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#dailyProductionReportTrigger": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#dashboard": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#ecarts": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#farmroad": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#farmroadRefresh": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#fertigation": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/index.js#fonctionsManagement": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#fuel": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#gddNightlyJob": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#gddTracking": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#growthTracking": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#harvestPrediction": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#harvestWeather": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#health": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#horsRecolteService": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#indoorForecast": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#indoorForecastRefresh": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#mappingConsoManagement": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#meetingCR": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#netafimSyncDaily": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/index.js#netafimSyncOnce": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/index.js#notifications": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#ojra": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#onAlertCreated": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#onAnalyseFoliaireWrite": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#onBugReportCreate": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/index.js#onBugReportUpdate": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/index.js#onProdRecolteWriteNotify": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#parcelles": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "functions/index.js#phytosanitaire": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/index.js#pointageRH": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#pointageRH2": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#pointageV3": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#pointageValidation": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#primesManagement": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "functions/index.js#probeAnalysisReport": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#probeAnalyzer": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#probeRawData": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#processWhatsappIncoming": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#productivityReportsCron": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#produits": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#recommandation": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#registryService": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#replicationProbe": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#runDailyPhenologyJobNow": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/index.js#runSyncJoursFeriesNow": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#scheduledBackup": {
+      "confidence": "high",
+      "domain": "admin"
+    },
+    "functions/index.js#sentinelRecipients": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#sqlSyncTrigger": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#sqlToFirestoreSync": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#stockManagement": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "functions/index.js#submitProductionDigestTemplate": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#syncJoursFeries": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#syncPointageBdpTrigger": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#syncPresenceEntree": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#syncPresenceSortie": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#syncProdTrigger": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#syncRecolteFromProd": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/index.js#tasks": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#telecom": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#uploadEcarts": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#uploadPhoto": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/index.js#validatePointageBdpTrigger": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#validation": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#warmPointageCache": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/index.js#whatsappAdmin": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/index.js#whatsappWebhook": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/auth": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/lib/bdc": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "functions/lib/budgetBgf.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/bugReports": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "functions/lib/caisseImport": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "functions/lib/fonctions": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/forecastConfirmation.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/heuresSup": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/irrigation": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/lib/joursFeries": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/mappingConso": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/marcheLocalCaisse": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "functions/lib/netafim": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/lib/phenology": {
+      "confidence": "high",
+      "domain": "agro"
+    },
+    "functions/lib/phone": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/pointage": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/lib/pointageBdp": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/lib/pointageValidation": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/lib/primes": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "functions/lib/probeStaleness": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/productionEstimation.js": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "functions/lib/productivity": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/sentinel": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/stock": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "functions/lib/stockCaneva": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "functions/lib/stockMerge": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "functions/lib/suppliers": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/triage": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/lib/validation": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "functions/lib/valorisation": {
+      "confidence": "low",
+      "domain": null
+    },
+    "public/components/BugReportButton.jsx": {
+      "confidence": "medium",
+      "domain": "admin"
+    },
+    "public/components/BugReportsAdmin.jsx": {
+      "confidence": "high",
+      "domain": "admin"
+    },
+    "public/components/ConsoValoriseeTab.jsx": {
+      "confidence": "low",
+      "domain": null
+    },
+    "public/components/FactureDetailPopup.jsx": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "public/components/InventaireMouvementsPopup.jsx": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "public/components/MagMappingConsoTab.jsx": {
+      "confidence": "low",
+      "domain": null
+    },
+    "public/components/ParcellesParamsTab.jsx": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/components/ParcellesReferentielTab.jsx": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/components/PmpDetailPopup.jsx": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "public/components/PointageValidationPanel.jsx": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "public/components/PointageValidationView.jsx": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
+    "public/components/PrimesFixesTab.jsx": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "public/components/QuinzaineCampagneSelect.jsx": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "public/components/QuinzaineRecapCards.jsx": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "public/components/ScanAttachmentButton.jsx": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "public/lib/analytiqueUtils.js": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/lib/authResilience.js": {
+      "confidence": "high",
+      "domain": "admin"
+    },
+    "public/lib/bdcWorkflow.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "public/lib/caisseUtils.js": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "public/lib/campagneUtils.js": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/lib/encaissementsCanevas.js": {
+      "confidence": "high",
+      "domain": "caisse"
+    },
+    "public/lib/factureExportUtils.js": {
+      "confidence": "high",
+      "domain": "achats"
+    },
+    "public/lib/growthUtils.js": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "public/lib/inflightDedup.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "public/lib/inventaireUtils.js": {
+      "confidence": "high",
+      "domain": "stock"
+    },
+    "public/lib/local-test-bypass.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "public/lib/meteoCalc.js": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "public/lib/paieDataCache.js": {
+      "confidence": "medium",
+      "domain": "paie"
+    },
+    "public/lib/paieUtils.js": {
+      "confidence": "medium",
+      "domain": "paie"
+    },
+    "public/lib/primesImportParse.js": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "public/lib/primesV2.js": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "public/lib/quinzaineUtils.js": {
+      "confidence": "high",
+      "domain": "paie"
+    },
+    "public/lib/recolteKpiUtils.js": {
+      "confidence": "high",
+      "domain": "recolte"
+    },
+    "public/lib/scanAttachmentUtils.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "public/lib/scanClientUpload.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "public/lib/scanHistoryDisplay.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "public/lib/stockMovementGuard.js": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "public/lib/useStockLocations.js": {
+      "confidence": "medium",
+      "domain": "stock"
+    }
+  },
+  "firestoreCollections": {
+    "api_cache": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "app_settings": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "bons_apport_saisie": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "budgets": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "bug_reports": {
+      "accessLevel": "CF-only",
+      "domain": "admin"
+    },
+    "caisse_definitions": {
+      "accessLevel": "CF-only",
+      "domain": "caisse"
+    },
+    "caisse_transactions": {
+      "accessLevel": "CF-only",
+      "domain": "caisse"
+    },
+    "clients_marche_local": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "config": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "connection_logs": {
+      "accessLevel": "CF-only",
+      "domain": "admin"
+    },
+    "consumption_costs_by_variety": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "cpc_snapshots": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "evolution_requests": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "expeditions": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "fonctions": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "growth_measurements": {
+      "accessLevel": "CF-only",
+      "domain": "recolte"
+    },
+    "growth_plot_config": {
+      "accessLevel": "CF-only",
+      "domain": "recolte"
+    },
+    "irrigation_readings": {
+      "accessLevel": "CF-only",
+      "domain": "agro"
+    },
+    "liquidation_forecasts": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "liquidations": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "mapping_campagne": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
+    "netafim_parcelles_bahia": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
+    "notifications": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "ouvriers_registry": {
+      "accessLevel": "CF-only",
+      "domain": "paie"
+    },
+    "parcelle_ferme_referentiel": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
+    "parcelle_ferme_referentiel_meta": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
+    "parcelles_consommation": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
+    "parcelles_culturales_charge": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
+    "pfq_interne": {
+      "accessLevel": "CF-only",
+      "domain": "qualite"
+    },
+    "pointage_validations_equipe": {
+      "accessLevel": "CF-only",
+      "domain": "pointage"
+    },
+    "prod_tracabilite_recolte": {
+      "accessLevel": "CF-only",
+      "domain": "recolte"
+    },
+    "productivity_reports": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "quinzaine_archive": {
+      "accessLevel": "CF-only",
+      "domain": "paie"
+    },
+    "rh_config": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "scan_corrections": {
+      "accessLevel": "CF-only",
+      "domain": "achats"
+    },
+    "security_envois_registre": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "security_incidents": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "security_mouvements": {
+      "accessLevel": "CF-only",
+      "domain": "stock"
+    },
+    "security_scan_registre": {
+      "accessLevel": "CF-only",
+      "domain": "achats"
+    },
+    "security_tunnel_photos": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "sql_mirror_consommation": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "sql_mirror_cueillette": {
+      "accessLevel": "CF-only",
+      "domain": "recolte"
+    },
+    "sql_mirror_pointage": {
+      "accessLevel": "CF-only",
+      "domain": "pointage"
+    },
+    "sql_mirror_pointage_meta": {
+      "accessLevel": "CF-only",
+      "domain": "pointage"
+    },
+    "sql_mirror_pointage_workers": {
+      "accessLevel": "CF-only",
+      "domain": "pointage"
+    },
+    "sql_sync_status": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "stock_balances": {
+      "accessLevel": "CF-only",
+      "domain": "stock"
+    },
+    "stock_movements": {
+      "accessLevel": "CF-only",
+      "domain": "stock"
+    },
+    "stock_requests": {
+      "accessLevel": "CF-only",
+      "domain": "stock"
+    },
+    "tasks": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "tresorerie_items": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "users": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "validations": {
+      "accessLevel": "CF-only",
+      "domain": "pointage"
+    },
+    "whatsapp_logs": {
+      "accessLevel": "CF-only",
+      "domain": "admin"
+    },
+    "whatsapp_messages": {
+      "accessLevel": "CF-only",
+      "domain": null
+    },
+    "whatsapp_sessions": {
+      "accessLevel": "CF-only",
+      "domain": null
+    }
+  },
+  "routes": {
+    "/api/agro-summary": "agroSummary",
+    "/api/alerts": "alerts",
+    "/api/auth": "authApi",
+    "/api/avancement": "avancementCulture",
+    "/api/backfill-pointage-bdp-live": "backfillPointageBdpLiveTrigger",
+    "/api/backfill-presence": "backfillPresence",
+    "/api/backup": "backupApi",
+    "/api/bdp-introspect": "bdpIntrospect",
+    "/api/budget": "budgetService",
+    "/api/bug-reports": "bugReports",
+    "/api/caisse": "caisseManagement",
+    "/api/climat-production": "climatProduction",
+    "/api/dashboard": "dashboard",
+    "/api/ecarts": "ecarts",
+    "/api/email-analysis": "emailAnalysis",
+    "/api/farmroad": "farmroad",
+    "/api/fertigation": "fertigation",
+    "/api/fonctions": "fonctionsManagement",
+    "/api/fuel": "fuel",
+    "/api/gdd-tracking": "gddTracking",
+    "/api/growth": "growthTracking",
+    "/api/harvest-prediction": "harvestPrediction",
+    "/api/harvest-weather": "harvestWeather",
+    "/api/health": "health",
+    "/api/hors-recolte-suivi": "horsRecolteService",
+    "/api/indoor-forecast": "indoorForecast",
+    "/api/mapping-conso": "mappingConsoManagement",
+    "/api/meeting-cr": "meetingCR",
+    "/api/notifications": "notifications",
+    "/api/ojra": "ojra",
+    "/api/parcelles": "parcelles",
+    "/api/phytosanitaire": "phytosanitaire",
+    "/api/pointage-rh": "pointageV3",
+    "/api/pointage-validation": "pointageValidation",
+    "/api/primes": "primesManagement",
+    "/api/produits": "produits",
+    "/api/recommandation": "recommandation",
+    "/api/registry": "registryService",
+    "/api/run-daily-phenology-job-now": "runDailyPhenologyJobNow",
+    "/api/run-sync-jours-feries-now": "runSyncJoursFeriesNow",
+    "/api/sentinel-recipients": "sentinelRecipients",
+    "/api/stock": "stockManagement",
+    "/api/sync-pointage-bdp-test": "syncPointageBdpTrigger",
+    "/api/tasks": "tasks",
+    "/api/telecom": "telecom",
+    "/api/upload-ecarts": "uploadEcarts",
+    "/api/upload-photo": "uploadPhoto",
+    "/api/validate-pointage-bdp-test": "validatePointageBdpTrigger",
+    "/api/validation": "validation",
+    "/api/whatsapp-admin": "whatsappAdmin",
+    "/api/whatsapp-webhook": "whatsappWebhook"
+  },
+  "unclassified": [
+    {
+      "confidence": "low",
+      "file": "app.jsx#BudgetVsReelTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#CaporalHistoriqueTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#CaporalSaisieTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#CaporalSuiviTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#ChefDATab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#ChefTrackingTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#ComingSoonTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DashboardAssocieTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DashboardTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DGAdoptionTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DGMeetingCRTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DGParametresTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DGSignatureTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DGTasksTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#DQRDailyTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#EvolutionTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinanceMarcheLocalTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinCarburantTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinCATab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinDashboardTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinLiquidationsTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinOjraTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinPlantsTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinTelecomTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinTresorerieTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#FinVirementsTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#GDDTrackingTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#MagBCEngraisTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#MagBCPhytoTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#MagBCTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#MagParcTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#MagReceptionTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#MagTransfertTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#ParametresTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#PlanificationTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#ProductivityReportTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#SecurityEnvoisWATab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#SecurityIncidentsTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#SecurityRegistreTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#SecurityTunnelsTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#StationnaireAnalyseTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#StationnaireHistoriqueTab"
+    },
+    {
+      "confidence": "low",
+      "file": "app.jsx#SuiviTab"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#alerts"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#budgetService"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#dashboard"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#ecarts"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#farmroad"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#farmroadRefresh"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#fonctionsManagement"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#fuel"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#gddNightlyJob"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#gddTracking"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#harvestPrediction"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#harvestWeather"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#health"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#indoorForecast"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#indoorForecastRefresh"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#mappingConsoManagement"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#meetingCR"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#notifications"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#ojra"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#onAlertCreated"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#onAnalyseFoliaireWrite"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#probeAnalysisReport"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#probeAnalyzer"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#probeRawData"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#processWhatsappIncoming"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#productivityReportsCron"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#produits"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#recommandation"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#registryService"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#replicationProbe"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#runSyncJoursFeriesNow"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#sentinelRecipients"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#sqlSyncTrigger"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#sqlToFirestoreSync"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#syncJoursFeries"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#syncProdTrigger"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#tasks"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#telecom"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#uploadEcarts"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#uploadPhoto"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#whatsappWebhook"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/budgetBgf.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/fonctions"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/forecastConfirmation.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/heuresSup"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/joursFeries"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/mappingConso"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/phone"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/probeStaleness"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/productivity"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/sentinel"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/suppliers"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/triage"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/lib/valorisation"
+    },
+    {
+      "confidence": "low",
+      "file": "public/components/ConsoValoriseeTab.jsx"
+    },
+    {
+      "confidence": "low",
+      "file": "public/components/MagMappingConsoTab.jsx"
+    },
+    {
+      "confidence": "low",
+      "file": "public/lib/inflightDedup.js"
+    },
+    {
+      "confidence": "low",
+      "file": "public/lib/local-test-bypass.js"
+    }
+  ]
+}
