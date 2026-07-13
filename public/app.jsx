@@ -10506,6 +10506,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
         }
 
         // ===================== HORS RECOLTE TAB =====================
+        const FAMILLE_ICONS = {
+            'Travaux du sol': 'fa-trowel',
+            'Ferti-irrigation': 'fa-droplet',
+            'Plantation': 'fa-seedling',
+            'Mise en valeur': 'fa-hammer',
+            'Entretien structure': 'fa-screwdriver-wrench',
+            'Traitement phyto': 'fa-spray-can',
+            'Tuteurage & palissage': 'fa-grip-lines-vertical',
+            'Taille': 'fa-scissors',
+            'Arrachage': 'fa-shovel',
+            'Services généraux': 'fa-people-group',
+        };
+
         function HorsRecolteTab({ data, farmFilter, avoSubFilter }) {
             const [fermeFilter, setFermeFilter] = useState('');
             const [operations, setOperations] = useState([]);
@@ -10545,7 +10558,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // Group by operation famille (heures/coût = sommes ; effectif = distinct backend)
             const byFamille = {};
             filtered.forEach(o => {
-                const key = o.operationFamille || 'Autre';
+                const key = o.famille || o.operationFamille || 'Autre';
                 if (!byFamille[key]) byFamille[key] = { famille: key, effectif: 0, heures: 0, cout: 0, ops: [] };
                 byFamille[key].effectif = familleEffectif(key);
                 byFamille[key].heures += o.heures || 0;
@@ -10586,6 +10599,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         {familles.map((fam, fi) => (
                             <div key={fi} style={{marginBottom:16}}>
                                 <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                                    {FAMILLE_ICONS[fam.famille] && <i className={`fa-solid ${FAMILLE_ICONS[fam.famille]}`} style={{color:'var(--berry)',fontSize:13}}></i>}
                                     <strong style={{fontSize:13,color:'var(--berry)'}}>{fam.famille}</strong>
                                     <span style={{fontSize:11,color:'var(--gray-400)'}}>{fam.effectif} ouvriers — {Math.round(fam.heures)}h — {Math.round(fam.cout).toLocaleString('fr-FR')} DH</span>
                                 </div>
