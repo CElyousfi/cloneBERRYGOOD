@@ -81,7 +81,7 @@
       var r = rows[i];
       var key = r.refParcelle || r.parcelle;
       if (!byParcelle[key]) {
-        var haKey = (r.refParcelle || '').toUpperCase();
+        var haKey = (r.parcelle || r.refParcelle || '').toUpperCase();
         byParcelle[key] = {
           parcelle: r.parcelle,
           refParcelle: r.refParcelle,
