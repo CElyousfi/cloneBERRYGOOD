@@ -1,0 +1,54 @@
+{
+  "domains": {
+    "pointage": {
+      "label": "Pointage & Présence",
+      "keywords": ["pointage", "presence", "worker", "bdp", "bdg", "journee", "equipe", "validation"],
+      "seedFiles": ["PointageTab", "PointageValidationPanel", "PointageValidationView"]
+    },
+    "paie": {
+      "label": "Paie & RH",
+      "keywords": ["paie", "salaire", "primes", "quinzaine", "smag", "cotisation", "anciennete", "charges", "bareme", "bulletin", "ouvrier"],
+      "seedFiles": ["paieUtils", "paieDataCache", "primesV2", "primesImportParse", "quinzaineUtils", "PrimesFixesTab", "QuinzaineCampagneSelect", "QuinzaineRecapCards"]
+    },
+    "recolte": {
+      "label": "Récolte & Production",
+      "keywords": ["recolte", "cueillette", "production", "variete", "tracabilite", "rendement", "growth", "croissance"],
+      "seedFiles": ["RecolteTab", "CoutRecolteTab", "PrimesRecolteTab", "growthUtils", "recolteKpiUtils"]
+    },
+    "qualite": {
+      "label": "Qualité",
+      "keywords": ["qualite", "calibre", "pfq", "inspection", "pick"],
+      "seedFiles": ["QualiteSuiviCalibreTab", "QualitePFQInterneTab", "QualiteBonsApportTab"]
+    },
+    "stock": {
+      "label": "Stock & Magasin",
+      "keywords": ["stock", "mouvement", "inventaire", "article", "pmp", "magasin", "sortie", "entree", "boncommande"],
+      "seedFiles": ["stockMovementGuard", "inventaireUtils", "useStockLocations", "MagMappingConsoTab", "ConsoValoriseeTab"]
+    },
+    "caisse": {
+      "label": "Caisse & Finance",
+      "keywords": ["caisse", "transaction", "depense", "avance", "rapprochement", "encaissement", "canevas"],
+      "seedFiles": ["caisseUtils", "encaissementsCanevas"]
+    },
+    "achats": {
+      "label": "Achats & Fournisseurs",
+      "keywords": ["achat", "bdc", "commande", "fournisseur", "timac", "facture", "scan"],
+      "seedFiles": ["bdcWorkflow", "factureExportUtils", "scanAttachmentUtils", "scanClientUpload", "scanHistoryDisplay", "FactureDetailPopup", "ScanAttachmentButton"]
+    },
+    "agro": {
+      "label": "Agro & Environnement",
+      "keywords": ["agro", "meteo", "irrigation", "netafim", "fertigation", "phytosanitaire", "phenology"],
+      "seedFiles": ["meteoCalc"]
+    },
+    "referentiel": {
+      "label": "Référentiel & Analytique",
+      "keywords": ["referentiel", "analytique", "campagne", "parcelle", "ferme"],
+      "seedFiles": ["analytiqueUtils", "campagneUtils", "ParcellesReferentielTab", "ParcellesParamsTab"]
+    },
+    "admin": {
+      "label": "Administration & Sécurité",
+      "keywords": ["auth", "bug", "backup", "log", "resilience", "admin", "bypasstest"],
+      "seedFiles": ["authResilience", "BugReportButton", "BugReportsAdmin"]
+    }
+  }
+}
