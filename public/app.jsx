@@ -10892,6 +10892,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [transportPopup, setTransportPopup] = useState(null);
             const [analytiqueData, setAnalytiqueData] = useState([]);
             const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
+            const [analytiqueCultureIdx, setAnalytiqueCultureIdx] = useState(0);
             useEffect(() => {
                 if (!analytiqueFullscreen) return;
                 const onKey = (e) => { if (e.key === 'Escape') setAnalytiqueFullscreen(false); };
@@ -11263,6 +11264,61 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const _buildAnalytiquePivot = (rows) => (window.AnalytiqueUtils && window.AnalytiqueUtils.buildAnalytiquePivot)
                 ? window.AnalytiqueUtils.buildAnalytiquePivot(rows)
                 : { parcelles: [], operations: [], pivot: {} };
+
+            const _globalMOCharges = useMemo(() => {
+                if (!quinzBaremesResolved || !quinzRegistryResolved || Object.keys(quinzRegistry).length === 0) return null;
+                const _PU2 = window.PaieUtils;
+                if (!_PU2 || !_PU2.computePayslip) return null;
+                const _firstDay = parJour.length > 0 ? parJour[0].jour : null;
+                const _smag = (_PU2.resolveSmagForDate)
+                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
+                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+
+                // Tous les workers MO de la période (hors récolte primes, transport)
+                const allMoSrc = [
+                    ...moHorsRecolteRows,
+                    ...moPostesRows,
+                    ...recolteEquipeRows
+                        .filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter))
+                        .map(r => ({ matricule: r.matricule, nom: r.nom, jour: r.jour })),
+                ];
+
+                const _wJH = {};
+                allMoSrc.forEach(r => {
+                    if (!r.matricule || !r.jour) return;
+                    if (!_wJH[r.matricule]) _wJH[r.matricule] = { nom: r.nom || r.matricule, jours: new Set() };
+                    _wJH[r.matricule].jours.add(r.jour);
+                });
+
+                let totalBrut = 0, totalCharges = 0, totalCoutEmp = 0, cntDecl = 0, cntNonDecl = 0;
+                Object.entries(_wJH).forEach(([mat, w]) => {
+                    const _rw = quinzRegistry[numKey(mat)] || {};
+                    const _isDecl = !!(_rw.declare);
+                    if (_isDecl) {
+                        cntDecl++;
+                        if (!_PU2.computePayslip) return;
+                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                        const _anc = Number(_rw.baselineJours || 0);
+                        const _ancP = (_PU2.trouverPalierAnciennete)
+                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
+                            : { pourcentage: 0 };
+                        const _ancT = (_ancP.pourcentage || 0) / 100;
+                        const _ps = _PU2.computePayslip({
+                            declare: true,
+                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
+                            jT: w.jours.size, jF: 0,
+                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
+                            primesOptionnelles: [], baremes: quinzPaieBaremes,
+                        });
+                        totalBrut += _ps.brut;
+                        totalCharges += _ps.chargesPatronales;
+                        totalCoutEmp += _ps.coutEmployeur;
+                    } else {
+                        cntNonDecl++;
+                    }
+                });
+                return { totalBrut, totalCharges, totalCoutEmp, cntDecl, cntNonDecl };
+            }, [quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, currentPeriode, farmFilter]);
 
             return (
                 <div className="fade-in">
@@ -12136,30 +12192,73 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                     {/* Affectation Analytique */}
                     {analytiqueData.length > 0 && (
-                        <div style={{marginBottom:16}}>
+                        <div style={analytiqueFullscreen ? {position:'fixed',inset:0,zIndex:9999,background:'#fff',overflowY:'auto',padding:24} : {}}>
+                        <div style={analytiqueFullscreen ? {marginBottom:16,position:'relative'} : {marginBottom:16}}>
+                            {analytiqueFullscreen && (
+                                <button onClick={() => setAnalytiqueFullscreen(false)}
+                                    style={{position:'absolute',top:12,right:12,padding:'6px 10px',borderRadius:6,border:'none',background:'var(--gray-200)',cursor:'pointer',fontSize:14}}>
+                                    <i className="fa-solid fa-xmark"></i>
+                                </button>
+                            )}
                             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
                                 <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
                                     <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
                                     Affectation Analytique — par Ha
                                 </div>
-                                <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
-                                    {[['jh','JH / Ha'],['cout','Coût / Ha']].map(([v, label]) => (
-                                        <button key={v} onClick={() => setAnalytiqueView(v)}
-                                            style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
-                                                background: analytiqueView === v ? 'var(--berry)' : 'transparent',
-                                                color: analytiqueView === v ? '#fff' : 'var(--gray-500)',
-                                                transition:'all 0.15s'}}>
-                                            {label}
-                                        </button>
-                                    ))}
+                                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                    <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
+                                        {[['jh','JH / Ha'],['cout','Coût BEE ONE / Ha']].map(([v, label]) => (
+                                            <button key={v} onClick={() => setAnalytiqueView(v)}
+                                                style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
+                                                    background: analytiqueView === v ? 'var(--berry)' : 'transparent',
+                                                    color: analytiqueView === v ? '#fff' : 'var(--gray-500)',
+                                                    transition:'all 0.15s'}}>
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={() => { setAnalytiqueFullscreen(f => !f); setAnalytiqueCultureIdx(0); }}
+                                        title={analytiqueFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
+                                        style={{padding:'5px 10px',borderRadius:6,border:'1px solid var(--gray-200)',background:'var(--gray-100)',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                        <i className={`fa-solid ${analytiqueFullscreen ? 'fa-compress' : 'fa-expand'}`}></i>
+                                    </button>
                                 </div>
                             </div>
 
-                            {[
-                                { culture: 'Framboise', color: '#8B2252', icon: 'fa-seedling' },
-                                { culture: 'Myrtille',  color: '#1565c0', icon: 'fa-circle-dot' },
-                                { culture: 'Avocatier', color: '#2e7d32', icon: 'fa-tree' },
-                            ].map(({ culture, color, icon }) => {
+                            {(() => {
+                                const _CULTURES_DEF = [
+                                    { culture: 'Framboise', color: '#8B2252', icon: 'fa-seedling' },
+                                    { culture: 'Myrtille',  color: '#1565c0', icon: 'fa-circle-dot' },
+                                    { culture: 'Avocatier', color: '#2e7d32', icon: 'fa-tree' },
+                                ];
+                                const _culturesWithData = _CULTURES_DEF.filter(({ culture }) => (_cultureGroups[culture] || []).length > 0);
+                                const _culturesToShow = analytiqueFullscreen
+                                    ? (_culturesWithData[analytiqueCultureIdx] ? [_culturesWithData[analytiqueCultureIdx]] : _culturesWithData.slice(0,1))
+                                    : _CULTURES_DEF;
+                                return (<>
+                                    {_culturesWithData.length > 1 && (
+                                        <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,marginBottom:12}}>
+                                            <button
+                                                onClick={() => setAnalytiqueCultureIdx(i => (i - 1 + _culturesWithData.length) % _culturesWithData.length)}
+                                                style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'#fff',cursor:'pointer',fontSize:14}}>
+                                                <i className="fa-solid fa-chevron-left"></i>
+                                            </button>
+                                            {_culturesWithData.map((c, i) => (
+                                                <button key={c.culture}
+                                                    onClick={() => setAnalytiqueCultureIdx(i)}
+                                                    style={{padding:'5px 14px',borderRadius:8,border:`1.5px solid ${i === analytiqueCultureIdx ? c.color : 'var(--gray-200)'}`,background: i === analytiqueCultureIdx ? c.color : '#fff',color: i === analytiqueCultureIdx ? '#fff' : 'var(--gray-600)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+                                                    <i className={`fa-solid ${c.icon}`} style={{marginRight:5}}></i>{c.culture}
+                                                </button>
+                                            ))}
+                                            <button
+                                                onClick={() => setAnalytiqueCultureIdx(i => (i + 1) % _culturesWithData.length)}
+                                                style={{padding:'6px 14px',borderRadius:8,border:'1px solid var(--gray-200)',background:'#fff',cursor:'pointer',fontSize:14}}>
+                                                <i className="fa-solid fa-chevron-right"></i>
+                                            </button>
+                                        </div>
+                                    )}
+                                    {_culturesToShow.map(({ culture, color, icon }) => {
                                 const _rows = _cultureGroups[culture] || [];
                                 if (_rows.length === 0) return null;
                                 const { parcelles, operations, pivot } = _buildAnalytiquePivot(_rows);
@@ -12264,6 +12363,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     </div>
                                 );
                             })}
+                                </>);
+                            })()}
+                        </div>
                         </div>
                     )}
 
@@ -12312,6 +12414,36 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             </tr>
                                         </tfoot>
                                     </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {_globalMOCharges && _globalMOCharges.cntDecl > 0 && (
+                        <div style={{marginBottom:16,background:'#f0f4ff',borderRadius:12,padding:'16px 20px',border:'1px solid #c5d0e6'}}>
+                            <div style={{fontSize:12,fontWeight:700,color:'#3949ab',textTransform:'uppercase',letterSpacing:0.5,marginBottom:12}}>
+                                <i className="fa-solid fa-shield-halved" style={{marginRight:6}}></i>
+                                Charges Patronales MO — Récolte · Hors Récolte · Postes Fixes
+                            </div>
+                            <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
+                                <div style={{flex:'1 1 120px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'1px solid #e8ecf8'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Déclarés CNSS</div>
+                                    <div style={{fontSize:22,fontWeight:800,color:'#27ae60'}}>{_globalMOCharges.cntDecl}</div>
+                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>{_globalMOCharges.cntNonDecl} non déclarés</div>
+                                </div>
+                                <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'1px solid #e8ecf8'}}>
+                                    <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Brut total déclarés</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'var(--gray-700)'}}>{f2(_globalMOCharges.totalBrut)} DH</div>
+                                </div>
+                                <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'2px solid #3949ab'}}>
+                                    <div style={{fontSize:11,color:'#3949ab',marginBottom:4,fontWeight:600}}>Charges patronales CNSS</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'#3949ab'}}>+{f2(_globalMOCharges.totalCharges)} DH</div>
+                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>≈ 19,26% du brut déclaré</div>
+                                </div>
+                                <div style={{flex:'1 1 160px',textAlign:'center',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:8,padding:'10px 14px',color:'#fff'}}>
+                                    <div style={{fontSize:11,opacity:0.85,marginBottom:4}}>Coût employeur MO total</div>
+                                    <div style={{fontSize:16,fontWeight:800}}>{f2(_globalMOCharges.totalCoutEmp)} DH</div>
+                                    <div style={{fontSize:10,opacity:0.7}}>Récolte + Hors Récolte + Postes</div>
                                 </div>
                             </div>
                         </div>
