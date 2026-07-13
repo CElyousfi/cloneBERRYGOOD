@@ -11174,7 +11174,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 }
                 if (ha === 0 && info.culture === 'Framboise') {
                     // Labels BEE ONE (ex: 'F1-S5 MARAVILLA MD') ne matchent pas les désignations BDR.
-                    // Fallback keyword : extraire variété + ferme et chercher dans PARCELLES_CULTURALES.
+                    // Fallback 1 : extraire variété par mot-clé + ferme.
                     const _normL = (r.parcelle || '').toUpperCase();
                     const _fmFr = ((_normL.match(/\b(F1|F5)\b/) || [])[0]);
                     const _varFr = _normL.includes('MARAVILLA') ? 'Maravilla'
@@ -11184,6 +11184,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         const _cand = (typeof PARCELLES_CULTURALES !== 'undefined' ? PARCELLES_CULTURALES : [])
                             .filter(pc => pc.culture === 'Framboise' && pc.variete === _varFr && pc.ferme === _fmFr && pc.ha > 0);
                         if (_cand.length > 0) ha = _cand[0].ha;
+                    }
+                    // Fallback 2 : variété abrégée inconnue (ex: 'MYA') — matcher ferme + numéro secteur
+                    if (ha === 0 && _fmFr) {
+                        const _secM = _normL.match(/\bS(\d+)\b/);
+                        if (_secM) {
+                            const _sec = _secM[1];
+                            const _cand2 = (typeof PARCELLES_CULTURALES !== 'undefined' ? PARCELLES_CULTURALES : [])
+                                .filter(pc => pc.culture === 'Framboise' && pc.ferme === _fmFr && pc.ha > 0
+                                    && Array.isArray(pc.secteurs) && pc.secteurs.some(s => s.replace(/^S/i, '') === _sec));
+                            if (_cand2.length > 0) ha = _cand2[0].ha;
+                        }
                     }
                 }
                 if (ha === 0 && r.haRef > 0) ha = r.haRef;
