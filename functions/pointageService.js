@@ -3431,7 +3431,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // Sauvegarde d'une entrée du référentiel (DG/RH uniquement)
       if (action === "sb-referentiel-save" && req.method === "POST") {
-        const callerProfile = await resolveCallerProfile(req);
+        const _authUser = await verifyAuth(req);
+        const callerProfile = await resolveCallerProfile(_authUser);
         if (!callerProfile || !["dg", "rh"].includes(callerProfile.role)) {
           return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
         }
