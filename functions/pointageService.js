@@ -3346,6 +3346,95 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         return res.json(cached);
       }
 
+      // ------ CAMPAGNE-ANALYTIQUE-DETAIL : granularité parcelle × quinzaine × opération ------
+      // Aggrège les données du miroir Firestore en gardant la granularité fine.
+      // Utilisé par CampagneAnalytiqueTab (Vue "Affectation par Ha" + "Par Variété").
+      // NE modifie PAS campagne-mo-variete.
+      if (action === "campagne-analytique-detail") {
+        const today = new Date();
+        const y = today.getFullYear();
+        const startYear = today.getMonth() >= 6 ? y : y - 1;
+        const campagne = {
+          start: `${startYear}-07-01`,
+          end: `${startYear + 1}-06-30`,
+          label: `${startYear}/${startYear + 1}`,
+        };
+
+        await warmRefTaches();
+
+        const cached = await withCache(
+          pointageCacheKey(`campagne_analytique_detail_v1_${campagne.start}`, _fermeFilter),
+          30 * 60 * 1000,
+          async () => {
+            const meta = await getPointageMeta();
+            const allPeriodes = (meta?.allPeriodes || []).filter(p => {
+              const dates = (meta?.periodeMap?.[p] || []);
+              return dates.some(d => d >= campagne.start && d <= campagne.end);
+            });
+
+            // Lire toutes les rows miroir de la campagne — granularité parcelle×quinzaine×opération
+            const rows = [];
+
+            for (const periode of allPeriodes) {
+              const dates = (meta?.periodeMap?.[periode] || []).filter(d => d >= campagne.start && d <= campagne.end);
+              for (let i = 0; i < dates.length; i += 10) {
+                const batch = dates.slice(i, i + 10);
+                const batchResults = await Promise.all(batch.map(d => getPointageRowsForDate(d)));
+                for (const dayRows of batchResults) {
+                  // Grouper par (parcelle, periode, operation, groupe) pour réduire le volume
+                  const groups = {};
+                  for (const r of dayRows) {
+                    const famille = resolveFamily(r.Operation_Groupe, r.Operation_Famille);
+                    const key = `${(r.Parcelle_Culturale || '').trim()}|${(r.Ref_parcelle || '').trim()}|${periode}|${(r.Operation || '').trim()}|${(r.Operation_Groupe || '').trim()}`;
+                    if (!groups[key]) groups[key] = {
+                      parcelle: (r.Parcelle_Culturale || '').trim(),
+                      refParcelle: (r.Ref_parcelle || '').trim(),
+                      ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+                      periode,
+                      operation: (r.Operation || '').trim(),
+                      groupe: (_refMap[r.Operation_Groupe] || {}).groupe || '',
+                      famille,
+                      code: (r.Operation_Groupe || '').trim(),
+                      jh: 0,
+                      cout: 0,
+                    };
+                    groups[key].jh += r.Nombre_Jr || 0;
+                    groups[key].cout += r.Cout || 0;
+                  }
+                  for (const g of Object.values(groups)) rows.push(g);
+                }
+              }
+            }
+
+            // Enrichir avec Ha depuis sb_parcelle_referentiel
+            const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
+            const haByRef = {};
+            refSnap.forEach(doc => {
+              const d = doc.data();
+              if (d.label_bee_one && d.ha) haByRef[d.label_bee_one.trim().toUpperCase()] = d.ha;
+            });
+
+            // Liste triée des périodes présentes
+            const periodeSet = new Set(rows.map(r => r.periode));
+            const periodes = [...periodeSet].sort();
+
+            // Liste des familles depuis référentiel complet
+            const refData = await loadReferentielTaches();
+            const famillesOrdered = [...new Set(refData.ops.map(o => o.famille))];
+
+            return {
+              success: true,
+              campagne: campagne.label,
+              periodes,
+              famillesOrdered,
+              haByRef,
+              rows: rows.filter(r => r.jh > 0 || r.cout > 0),
+            };
+          }
+        );
+        return res.json(cached);
+      }
+
       // ------ UPLOAD-TIMES: when was pointage uploaded to SQL per farm ------
       if (action === "upload-times") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
