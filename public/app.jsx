@@ -11161,11 +11161,30 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     else if (/HAAS|AVOCAT|BACON/i.test(r.parcelle)) info = { ha: 0, culture: 'Avocatier', variete: '' };
                     else info = { ha: 0, culture: 'Framboise', variete: '' };
                 }
-                // Ha : SB référentiel > PARCELLES_CULTURALES > avocatHaByFerme (sub-ferme) > haRef BR_Parcelle
+                // Ha : SB référentiel > PARCELLES_CULTURALES > avocatHaByFerme (sub-ferme) > keyword BEE ONE > haRef BR_Parcelle
                 let ha = sbHa || info.ha || 0;
                 if (ha === 0 && info.culture === 'Avocatier') {
                     const subFerme = deriveSubFerme(r.refParcelle, r.parcelle) || r.ferme;
-                    ha = _avocatHaByFerme[subFerme] || _avocatHaByFerme[r.ferme] || 0;
+                    ha = _avocatHaByFerme[subFerme] || 0;
+                    if (ha === 0) {
+                        // Labels BEE ONE peuvent contenir le code ferme : 'F2-0031-HASS', 'F6-BACON', etc.
+                        const _fmAvo = ((r.parcelle || '').match(/\b(F[2-6]|BAHIA)\b/i) || [])[1];
+                        if (_fmAvo) ha = _avocatHaByFerme[_fmAvo.toUpperCase()] || 0;
+                    }
+                }
+                if (ha === 0 && info.culture === 'Framboise') {
+                    // Labels BEE ONE (ex: 'F1-S5 MARAVILLA MD') ne matchent pas les désignations BDR.
+                    // Fallback keyword : extraire variété + ferme et chercher dans PARCELLES_CULTURALES.
+                    const _normL = (r.parcelle || '').toUpperCase();
+                    const _fmFr = ((_normL.match(/\b(F1|F5)\b/) || [])[0]);
+                    const _varFr = _normL.includes('MARAVILLA') ? 'Maravilla'
+                        : _normL.includes('YAZMIN') ? 'Yazmin'
+                        : _normL.includes('REYNA') ? 'Reyna' : null;
+                    if (_varFr && _fmFr) {
+                        const _cand = (typeof PARCELLES_CULTURALES !== 'undefined' ? PARCELLES_CULTURALES : [])
+                            .filter(pc => pc.culture === 'Framboise' && pc.variete === _varFr && pc.ferme === _fmFr && pc.ha > 0);
+                        if (_cand.length > 0) ha = _cand[0].ha;
+                    }
                 }
                 if (ha === 0 && r.haRef > 0) ha = r.haRef;
                 return { ...info, ha };
@@ -11466,7 +11485,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
                                                                 style={{transition:'background 0.15s', cursor:'pointer'}}
-                                                                onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor, parcelleJours: quinzGroupBy === 'parcelle' ? _gJours(w) : null, parcelleCout: quinzGroupBy === 'parcelle' ? _gCout(w) : null})}
+                                                                onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor, parcelleJours: quinzGroupBy === 'parcelle' ? _gJours(w) : null, parcelleCout: quinzGroupBy === 'parcelle' ? _gCout(w) : null, parcelleDays: quinzGroupBy === 'parcelle' ? [...(w.parcelleJours[g.key] || new Set())] : null})}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 {_isMoCard && (() => {
@@ -11679,7 +11698,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 declare: _declare,
                                 smagBrut: _smag.smagBrutJournalier,
                                 smagNet: _smag.smagNetJournalier,
-                                jT: _sw.journees,
+                                jT: (_sw.parcelleJours != null ? _sw.parcelleJours : _sw.journees),
                                 jF: 0,
                                 ancienneteTaux: _ancTaux,
                                 primeFonctionJour: _primeFonctionJour,
@@ -11724,14 +11743,22 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     <div style={{padding:'16px 20px'}}>
                                         {/* Jours travaillés */}
                                         <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:8}}>
-                                            <span style={{color:'#27ae60',marginRight:4}}>●</span>Jours pointés ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})
+                                            {_sw.parcelleDays
+                                                ? <><span style={{color:'#27ae60',marginRight:4}}>●</span><strong>{_sw.parcelleDays.length}</strong> jours sur cette parcelle <span style={{color:'var(--gray-400)'}}>({[..._sw.jours].length} au total)</span></>
+                                                : <><span style={{color:'#27ae60',marginRight:4}}>●</span>Jours pointés ({[..._sw.jours].length} jour{[..._sw.jours].length !== 1 ? 's' : ''})</>
+                                            }
                                         </div>
                                         <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:16}}>
                                             {[..._sw.jours].sort().map(day => {
                                                 const label = (() => { const d = new Date(day + 'T00:00:00'); return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'2-digit'}); })();
+                                                const _inParcelle = !_sw.parcelleDays || _sw.parcelleDays.includes(day);
                                                 return (
-                                                    <div key={day} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:8,background:'#eafaf1',border:'1px solid #27ae60',fontSize:11,fontWeight:600,color:'#1a7a4a'}}>
-                                                        <span style={{fontSize:12}}>●</span>{label}
+                                                    <div key={day} style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',borderRadius:8,
+                                                        background: _inParcelle ? '#eafaf1' : '#f0f0f0',
+                                                        border: `1px solid ${_inParcelle ? '#27ae60' : '#bbb'}`,
+                                                        fontSize:11, fontWeight: _inParcelle ? 600 : 400,
+                                                        color: _inParcelle ? '#1a7a4a' : '#888'}}>
+                                                        <span style={{fontSize:12}}>{_inParcelle ? '●' : '○'}</span>{label}
                                                     </div>
                                                 );
                                             })}
