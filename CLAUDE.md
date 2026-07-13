@@ -33,6 +33,26 @@
 
 ---
 
+## Discipline outils & permissions (réduire les prompts)
+
+Les permissions (.claude/settings.json) sont normalisées : allow = lectures et
+gates QA ; ask = écritures sensibles (push, rm/mv, deploy, gcloud) ; deny =
+irréversible (push --force, reset --hard, clean -fdx, rm -rf hors projet, sudo).
+Pour ne pas déclencher de confirmations inutiles :
+
+1. **Exploration = outils natifs** : utiliser Read / Grep / Glob, PAS `grep`,
+   `cat`, `find`, `sed -n`, `head`, `tail` via Bash. Les outils natifs ne sont
+   pas gatés ; les équivalents Bash ne sont volontairement pas allowlistés.
+2. **Pas de `cd` préfixé** : ne pas écrire `cd "$CLAUDE_PROJECT_DIR" && cmd`
+   quand le working directory est déjà le repo — le segment `cd` force un
+   prompt sur toute la commande composée. Utiliser des chemins relatifs.
+3. **Commandes simples** : découper les chaînes `a && b && c` en appels
+   séparés compatibles avec l'allowlist (chaque segment est évalué seul).
+4. Les scripts one-off d'analyse vont dans `/tmp` (déjà en
+   additionalDirectories), pas dans le repo.
+
+---
+
 ## Autonomie de l'agent — ce qui nécessite validation Omar
 
 ### ✅ AUTONOME — exécuter sans demander
