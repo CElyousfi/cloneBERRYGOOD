@@ -20,4 +20,21 @@ echo "== QA 2/3 — Tests backend (functions/lib/*/__tests__) =="
 echo "== QA 3/3 — Build frontend (Babel + sentinelles) =="
 (cd "$ROOT" && npm run build:frontend)
 
-echo "QA GATE: OK ✅"
+echo "== QA 4/4 — DIL fingerprint check =="
+DIL_GRAPH="$ROOT/docs/ai/module-graph.json"
+if [ -f "$DIL_GRAPH" ]; then
+  CURRENT_FP=$(node "$ROOT/scripts/generate-module-graph.js" --fingerprint-only 2>/dev/null || echo "")
+  STORED_FP=$(node -e "try{const g=require('$DIL_GRAPH');console.log(g._meta&&g._meta.sourceFingerprint||'')}catch(e){console.log('')}" 2>/dev/null || echo "")
+  if [ -n "$CURRENT_FP" ] && [ "$CURRENT_FP" != "$STORED_FP" ]; then
+    echo "DIL: module-graph.json est stale (fingerprint ne correspond pas aux sources actuelles)."
+    echo "  Régénérer avec : node scripts/generate-module-graph.js"
+    echo "  Puis : git add docs/ai/module-graph.json && git commit"
+    exit 1
+  else
+    echo "DIL: fingerprint OK"
+  fi
+else
+  echo "DIL: module-graph.json absent (premiere fois — generer avec : node scripts/generate-module-graph.js)"
+fi
+
+echo "QA GATE: OK"
