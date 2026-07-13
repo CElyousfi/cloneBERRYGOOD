@@ -11280,12 +11280,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 _qpWMap[mat] = {
                                     matricule: mat, nom: r.nom || mat, ferme: r.ferme || '—',
                                     jours: new Set(), operations: new Set(), parcelles: new Set(),
-                                    fermeJours: {}, heures: 0, cout: 0,
+                                    fermeJours: {}, parcelleJours: {}, heures: 0, cout: 0,
                                 };
                             }
                             if (r.jour) {
                                 _qpWMap[mat].jours.add(r.jour);
                                 if (r.ferme) _qpWMap[mat].fermeJours[r.jour] = r.ferme;
+                                // Jours pointés PAR parcelle — le regroupement « Parcelle » affiche la
+                                // part affectée à la parcelle, pas la quinzaine complète de l'ouvrier
+                                // (bug : sous-totaux gonflés ~3×, cf. comparaison Affectation Analytique).
+                                if (r.parcelle) {
+                                    if (!_qpWMap[mat].parcelleJours[r.parcelle]) _qpWMap[mat].parcelleJours[r.parcelle] = new Set();
+                                    _qpWMap[mat].parcelleJours[r.parcelle].add(r.jour);
+                                }
                             }
                             const op = r.operation || r.operationFamille;
                             if (op) _qpWMap[mat].operations.add(op);
@@ -11298,6 +11305,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             .map(w => ({
                                 ...w,
                                 journees: w.jours.size,
+                                parcelleJournees: Object.fromEntries(Object.entries(w.parcelleJours).map(([p, s]) => [p, s.size])),
                                 operationsStr: [...w.operations].join(', ') || '—',
                                 parcellesArr: [...w.parcelles],
                                 parcellesStr: (() => { const a = [...w.parcelles]; if (!a.length) return '—'; if (a.length <= 3) return a.join(', '); return a.slice(0, 2).join(', ') + ' +' + (a.length - 2); })(),
@@ -11370,6 +11378,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 {label}
                                             </button>
                                         ))}
+                                        {quinzGroupBy === 'parcelle' && (
+                                            <span style={{fontSize:10,color:'var(--gray-400)',fontStyle:'italic'}}>
+                                                Jours & DH = part affectée à la parcelle (jours / total quinzaine)
+                                            </span>
+                                        )}
                                         <div style={{marginLeft:'auto',display:'flex',alignItems:'center',gap:6,background:'var(--gray-50)',borderRadius:8,border:'1px solid var(--gray-300)',padding:'4px 10px'}}>
                                             <i className="fa-solid fa-magnifying-glass" style={{fontSize:11,color:'var(--gray-400)'}}></i>
                                             <input
@@ -11416,7 +11429,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             ? g.workers.filter(w => (w.nom || '').toLowerCase().includes(_sq) || (w.matricule || '').toLowerCase().includes(_sq) || (w.operationsStr || '').toLowerCase().includes(_sq))
                                                             : g.workers,
                                                     })).filter(g => g.workers.length > 0);
-                                                    return _filteredGroups.map(g => (
+                                                    return _filteredGroups.map(g => {
+                                                    // Mode « Parcelle » : jours = jours pointés SUR la parcelle ; net = prorata
+                                                    // (net quinzaine × jours parcelle / jours quinzaine). Les autres modes sont
+                                                    // des partitions (équipe/ferme) → valeurs quinzaine complètes inchangées.
+                                                    const _gJours = (w) => quinzGroupBy === 'parcelle' ? (w.parcelleJournees[g.key] || 0) : w.journees;
+                                                    const _gCout = (w) => (quinzGroupBy === 'parcelle' && w.journees > 0)
+                                                        ? Math.round(w.coutTotal * (w.parcelleJournees[g.key] || 0) / w.journees)
+                                                        : w.coutTotal;
+                                                    return (
                                                     <React.Fragment key={g.key}>
                                                         <tr style={{background:'var(--green-pale, #eef7ef)'}}>
                                                             {_isMoCard && <td style={{padding:'8px 6px'}}></td>}
@@ -11425,9 +11446,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 {quinzGroupBy === 'equipe' ? g.label : g.key}
                                                                 <span style={{fontWeight:600,color:'var(--gray-500)',marginLeft:8}}>— {g.workers.length} ouvrier{g.workers.length !== 1 ? 's' : ''}</span>
                                                             </td>
-                                                            <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.journees, 0)}</td>
+                                                            <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + _gJours(w), 0)}</td>
                                                             {!_isMoCard && <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--green, #2e7d32)'}}>{Math.round(g.workers.reduce((s, w) => s + w.heuresTotal, 0) * 10) / 10}h</td>}
-                                                            <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + w.coutTotal, 0).toLocaleString('fr-FR')}</td>
+                                                            <td style={{padding:'8px 10px',textAlign:'right',fontWeight:700,color:'var(--green, #2e7d32)'}}>{g.workers.reduce((s, w) => s + _gCout(w), 0).toLocaleString('fr-FR')}</td>
                                                         </tr>
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
@@ -11447,13 +11468,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 <td style={{fontWeight:600,padding:'6px 10px'}}>{w.nom}</td>
                                                                 <td style={{fontSize:11,color:'var(--gray-500)',padding:'6px 10px'}}>{w.operationsStr}</td>
                                                                 {!_isMoCard && <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>}
-                                                                <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>{w.journees}</td>
+                                                                <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>
+                                                                    {_gJours(w)}
+                                                                    {quinzGroupBy === 'parcelle' && _gJours(w) !== w.journees && (
+                                                                        <span style={{fontSize:9,color:'var(--gray-400)',fontWeight:400}}> / {w.journees}</span>
+                                                                    )}
+                                                                </td>
                                                                 {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>}
-                                                                <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{w.coutTotal > 0 ? w.coutTotal.toLocaleString('fr-FR') : '—'}</td>
+                                                                <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{_gCout(w) > 0 ? _gCout(w).toLocaleString('fr-FR') : '—'}</td>
                                                             </tr>
                                                         ))}
                                                     </React.Fragment>
-                                                ));
+                                                );
+                                                });
                                                 })()}
                                             </tbody>
                                             <tfoot>
