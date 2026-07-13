@@ -463,40 +463,30 @@
         }
 
         // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====
-        // window.SB_PARCELLE_REF = { 'LABEL BEE ONE UPPERCASE' : { nom_sb, ha, ... } }
-        // Peuplé depuis parcelles-campagne-list (r.sup, priorité basse) puis écrasé par
-        // sb-referentiel-list (valeurs user-saved, priorité haute). Mis à jour après chaque save.
+        // window.SB_PARCELLE_REF = { 'LABEL BEE ONE UPPERCASE' : { nom_sb, ha, ... } } — valeurs user-saved
+        // window.SB_PARCELLE_CAMPAGNE = { 'LABEL BEE ONE UPPERCASE' : sup (number) } — r.sup depuis campagne-list
+        // Chargé une fois au démarrage. Mis à jour après chaque save. Voir aussi loadData() dans QuinzaineTab.
         function sbLoad() {
-            Promise.all([
-                fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function(r){return r.json();}).catch(function(){return {};}),
-                fetch('/api/pointage-rh?action=sb-referentiel-list').then(function(r){return r.json();}).catch(function(){return {};})
-            ]).then(function(results) {
-                var campagne = results[0];
-                var sb = results[1];
-                var ref = {};
-                // Seed : superficie BEE ONE directe depuis la liste campagne (priorité basse)
-                if (campagne.success) {
-                    var rows = (campagne.campagne_courante || []).concat(campagne.campagne_precedente || []);
-                    rows.forEach(function(p) {
-                        var key = (p.label || '').toUpperCase().trim();
-                        if (key && p.sup > 0 && !ref[key]) ref[key] = { label_bee_one: p.label, ha: p.sup };
+            fetch('/api/pointage-rh?action=sb-referentiel-list')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (!d.success) return;
+                    window.SB_PARCELLE_REF = {};
+                    (d.parcelles || []).forEach(function(p) {
+                        window.SB_PARCELLE_REF[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
                     });
-                }
-                // Overwrite : valeurs saisies manuellement dans Parcelles & Référentiel (priorité haute)
-                if (sb.success) {
-                    (sb.parcelles || []).forEach(function(p) {
-                        var key = (p.label_bee_one || p.id || '').toUpperCase().trim();
-                        if (key) ref[key] = p;
-                    });
-                }
-                window.SB_PARCELLE_REF = ref;
-            });
+                })
+                .catch(function() {});
         }
         sbLoad();
 
         function sbParcelleHa(labelBeeOne) {
-            const ref = window.SB_PARCELLE_REF && window.SB_PARCELLE_REF[(labelBeeOne || '').toUpperCase().trim()];
-            return (ref && ref.ha > 0) ? ref.ha : 0;
+            const key = (labelBeeOne || '').toUpperCase().trim();
+            const ref = window.SB_PARCELLE_REF && window.SB_PARCELLE_REF[key];
+            if (ref && ref.ha > 0) return ref.ha;
+            const campHa = window.SB_PARCELLE_CAMPAGNE && window.SB_PARCELLE_CAMPAGNE[key];
+            if (campHa > 0) return campHa;
+            return 0;
         }
 
         function sbParcelleNom(labelBeeOne) {
@@ -10977,9 +10967,24 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
 
                 // Phase 2: supplementary data → appears when ready
-                fetchFn(`/api/pointage-rh?action=quinzaine-analytique${pq}`)
-                    .then(d => { if (d.success) setAnalytiqueData(d.rows || []); })
-                    .catch(e => console.warn('quinzaine-analytique:', e));
+                // parcelles-campagne-list est fetché en parallèle pour éviter le race condition avec sbLoad.
+                // SB_PARCELLE_CAMPAGNE est peuplé avant setAnalytiqueData pour que sbParcelleHa soit correct.
+                Promise.all([
+                    fetchFn(`/api/pointage-rh?action=quinzaine-analytique${pq}`),
+                    fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function(r){return r.json();}).catch(function(){return {};})
+                ]).then(function(results) {
+                    var d = results[0];
+                    var campagne = results[1];
+                    if (campagne.success) {
+                        var supMap = {};
+                        (campagne.campagne_courante || []).concat(campagne.campagne_precedente || []).forEach(function(p) {
+                            var key = (p.label || '').toUpperCase().trim();
+                            if (key && p.sup > 0) supMap[key] = p.sup;
+                        });
+                        window.SB_PARCELLE_CAMPAGNE = supMap;
+                    }
+                    if (d.success) setAnalytiqueData(d.rows || []);
+                }).catch(function(e) { console.warn('quinzaine-analytique:', e); });
                 fetchFn(`/api/pointage-rh?action=quinzaine-repos${pq}`)
                     .then(d => { if (d.success) setReposData(d); })
                     .catch(e => console.warn('quinzaine-repos:', e));
