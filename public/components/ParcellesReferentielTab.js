@@ -567,7 +567,7 @@
         return r.json();
       }).then(function (d) {
         if (!d.success) throw new Error(d.error || 'Erreur API');
-        setOpsData(d.ops || []);
+        setOpsData(d.operations || []);
         setLoaded(true);
       }).catch(function (e) {
         setErr(e.message);
