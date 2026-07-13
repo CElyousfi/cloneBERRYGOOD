@@ -11466,7 +11466,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         {g.workers.map((w, wi) => (
                                                             <tr key={g.key + '-' + wi}
                                                                 style={{transition:'background 0.15s', cursor:'pointer'}}
-                                                                onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor})}
+                                                                onClick={() => setQuinzSubWorker({...w, groupLabel: g.label, quinzaineDays: parJour.map(d => d.jour).sort(), popupColor: _qpColor, parcelleJours: quinzGroupBy === 'parcelle' ? _gJours(w) : null, parcelleCout: quinzGroupBy === 'parcelle' ? _gCout(w) : null})}
                                                                 onMouseEnter={e => e.currentTarget.style.background='#f0e6ec'}
                                                                 onMouseLeave={e => e.currentTarget.style.background=''}>
                                                                 {_isMoCard && (() => {
@@ -11483,9 +11483,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 {!_isMoCard && <td style={{fontSize:10,color:'var(--gray-400)',padding:'6px 10px'}}>{w.parcellesStr}</td>}
                                                                 <td style={{textAlign:'center',padding:'6px 10px',fontWeight:600}}>
                                                                     {_gJours(w)}
-                                                                    {quinzGroupBy === 'parcelle' && _gJours(w) !== w.journees && (
-                                                                        <span style={{fontSize:9,color:'var(--gray-400)',fontWeight:400}}> / {w.journees}</span>
-                                                                    )}
                                                                 </td>
                                                                 {!_isMoCard && <td style={{textAlign:'center',padding:'6px 10px',color:'var(--gray-600)'}}>{w.heuresTotal > 0 ? w.heuresTotal + 'h' : '—'}</td>}
                                                                 <td style={{textAlign:'right',padding:'6px 10px',fontWeight:700}}>{_gCout(w) > 0 ? _gCout(w).toLocaleString('fr-FR') : '—'}</td>
@@ -11710,8 +11707,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 {_sw.matricule} · {_sw.operationsStr}
                                             </div>
                                             <div style={{fontSize:12,marginTop:4,display:'flex',gap:16}}>
-                                                <span><strong>{_sw.journees}</strong> / {_swDays.length} jours</span>
-                                                <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net BDP</span>
+                                                {_sw.parcelleJours != null
+                                                    ? <span><strong>{_sw.parcelleJours}</strong> jours <span style={{fontSize:10,opacity:0.7}}>({_sw.journees} tot.)</span></span>
+                                                    : <span><strong>{_sw.journees}</strong> / {_swDays.length} jours</span>
+                                                }
+                                                {_sw.parcelleCout != null
+                                                    ? <span><strong>{_sw.parcelleCout.toLocaleString('fr-FR')}</strong> DH net <span style={{fontSize:10,opacity:0.7}}>(part parcelle)</span></span>
+                                                    : <span><strong>{_sw.coutTotal.toLocaleString('fr-FR')}</strong> DH net BDP</span>
+                                                }
                                             </div>
                                         </div>
                                         <button onClick={() => setQuinzSubWorker(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -55035,7 +55038,7 @@ ${rejetHtml}
             const [createArticleLineIdx, setCreateArticleLineIdx] = useState(null);
             const canCreateArticle = currentProfile === 'achats' || currentProfile === 'dg';
             const [parcelles, setParcelles] = useState([]);
-            const [parcellesConso, setParcellesConso] = useState([]);
+            const [refParcelles, setRefParcelles] = useState({ courante: [], precedente: [] });
             const FARMS = ['F1', 'F5'];
             // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
             const MAGASINS = useStockLocations().magasins;
@@ -55083,23 +55086,12 @@ ${rejetHtml}
             useEffect(() => { cachedFetch('/api/stock?action=stock-levels').then(json => { if (json.success) setStocks(json.stocks || []); }).catch(() => {}); }, []);
             useEffect(() => { fetch('/api/stock?action=list-articles').then(r=>r.json()).then(j=>{ if(j.success) { const seen = new Set(); setCatalogueArticles((j.articles||[]).filter(a => { if(seen.has(a.nom)) return false; seen.add(a.nom); return true; })); } }).catch(()=>{}); }, []);
             useEffect(() => { cachedFetch('/api/parcelles').then(json => { if (json.success) setParcelles(json.parcelles || []); }).catch(() => {}); }, []);
-            // Liste curée du magasinier (parcelles_consommation) — temps réel, S8 fusionné + S9-MIA présent
             useEffect(() => {
-                const db = firebase.firestore();
-                const unsub = db.collection('parcelles_consommation').onSnapshot(
-                    snap => setParcellesConso(snap.docs.map(d => d.data())),
-                    () => {}
-                );
-                return unsub;
+                fetch('/api/pointage-rh?action=parcelles-campagne-list')
+                    .then(r => r.json())
+                    .then(j => { if (j.success) setRefParcelles({ courante: j.campagne_courante || [], precedente: j.campagne_precedente || [] }); })
+                    .catch(() => {});
             }, []);
-            // famille (doc conso) -> culture affichée sur l'item BC
-            const bcFamilleToCulture = (famille) => {
-                const f = (famille || '').toLowerCase();
-                if (f.indexOf('avocat') !== -1) return 'Avocatier';
-                if (f.indexOf('frambois') !== -1) return 'Framboise';
-                if (f.indexOf('myrtille') !== -1) return 'Myrtille';
-                return '';
-            };
 
             const catalogUnit = (article) => { const a = catalogueArticles.find(x => (x.nom||'').toLowerCase() === (article||'').toLowerCase()); return a && a.unite ? (a.unite || '').toLowerCase() : null; };
             const suggestRef = (nom) => 'ART-' + (nom || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
@@ -55134,17 +55126,20 @@ ${rejetHtml}
             };
 
             const filteredParcelles = parcelles;
-            const useConsoSelector = currentProfile === 'magasinier' && parcellesConso.length > 0;
-            // Campagnes disponibles (calcul de render, pas un hook). Fallback = campagne du jour.
             const bcCampagneToday = bcCampagneOf(new Date().toISOString().slice(0, 10));
-            const bcCampagnesDispo = (() => { const s = [...new Set(parcellesConso.flatMap(c => c.campagnes || []))].sort(); return s.length ? s : [bcCampagneToday]; })();
-            // Parcelle sans champ campagnes → traitée comme campagne courante (fallback sûr).
-            const consoForCampagne = parcellesConso.filter(c => { const cc = (c.campagnes && c.campagnes.length) ? c.campagnes : [bcCampagneToday]; return cc.includes(bcCampagne); });
+            const campagnePrecedente = (() => { const y = parseInt(bcCampagneToday.slice(0, 4), 10) - 1; return y + '-' + (y + 1); })();
+            const useConsoSelector = currentProfile === 'magasinier' && (refParcelles.courante.length > 0 || refParcelles.precedente.length > 0);
+            const bcCampagnesDispo = [
+                ...(refParcelles.courante.length > 0 ? [bcCampagneToday] : []),
+                ...(refParcelles.precedente.length > 0 ? [campagnePrecedente] : []),
+            ];
+            if (!bcCampagnesDispo.length) bcCampagnesDispo.push(bcCampagneToday);
+            const refForCampagne = bcCampagne === bcCampagneToday ? refParcelles.courante : refParcelles.precedente;
             const selectParcelleForItem = (idx, val) => {
                 const items = [...form.items];
-                const conso = parcellesConso.find(c => c.libelle === val);
-                if (conso) {
-                    items[idx] = { ...items[idx], parcelle: val, culture: bcFamilleToCulture(conso.famille), ferme: conso.ferme || '' };
+                const ref = refForCampagne.find(p => p.label === val);
+                if (ref) {
+                    items[idx] = { ...items[idx], parcelle: val, culture: ref.culture || '', ferme: ref.ferme || '' };
                 } else {
                     const parc = parcelles.find(p => p.Parcelle_Physique === val);
                     items[idx] = { ...items[idx], parcelle: val, culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
@@ -55370,7 +55365,7 @@ ${rejetHtml}
                                                     {useConsoSelector ? (
                                                         <React.Fragment>
                                                             <optgroup label="Mes parcelles">
-                                                                {consoForCampagne.map(c => <option key={'conso-' + c.libelle} value={c.libelle}>{c.libelle}</option>)}
+                                                                {refForCampagne.map(p => <option key={'ref-' + p.label} value={p.label}>{p.label}</option>)}
                                                             </optgroup>
                                                         </React.Fragment>
                                                     ) : (
