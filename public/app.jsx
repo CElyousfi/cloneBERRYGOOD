@@ -11026,6 +11026,124 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             const handlePeriodeChange = (p) => { setSelectedPeriode(p); setLoading(true); loadData(p); };
 
+            // Ces deux useMemo DOIVENT être placés AVANT les early-returns (rules of hooks).
+            // Les variables dérivées (transportRows, parJour, currentPeriode, classifyMO)
+            // sont recalculées inline en utilisant uniquement les variables d'état.
+            const _globalMOCharges = useMemo(() => {
+                if (!apiData || !quinzBaremesResolved || !quinzRegistryResolved || Object.keys(quinzRegistry).length === 0) return null;
+                const _PU2 = window.PaieUtils;
+                if (!_PU2 || !_PU2.computePayslip) return null;
+                const _cp = selectedPeriode || (apiData.periodes || [])[0] || '';
+                const _pj = apiData.parJour || [];
+                const _firstDay = _pj.length > 0 ? _pj[0].jour : null;
+                const _smag = (_PU2.resolveSmagForDate)
+                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
+                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                const _classifyMO = (opFam) => {
+                    if (!opFam) return 'horsRecolte';
+                    const lower = opFam.toLowerCase();
+                    if (lower.includes('récolte') || lower.includes('recolte')) return 'recolte';
+                    if (lower.includes('poste')) return 'postes';
+                    return 'horsRecolte';
+                };
+                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter));
+                const _moHR = _tRows.filter(r => _classifyMO(r.operationFamille) === 'horsRecolte');
+                const _moPS = _tRows.filter(r => _classifyMO(r.operationFamille) === 'postes');
+                const allMoSrc = [
+                    ..._moHR,
+                    ..._moPS,
+                    ...recolteEquipeRows
+                        .filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter))
+                        .map(r => ({ matricule: r.matricule, nom: r.nom, jour: r.jour })),
+                ];
+                const _wJH = {};
+                allMoSrc.forEach(r => {
+                    if (!r.matricule || !r.jour) return;
+                    if (!_wJH[r.matricule]) _wJH[r.matricule] = { nom: r.nom || r.matricule, jours: new Set() };
+                    _wJH[r.matricule].jours.add(r.jour);
+                });
+                let totalBrut = 0, totalCharges = 0, totalCoutEmp = 0, cntDecl = 0, cntNonDecl = 0;
+                Object.entries(_wJH).forEach(([mat, w]) => {
+                    const _rw = quinzRegistry[numKey(mat)] || {};
+                    const _isDecl = !!(_rw.declare);
+                    if (_isDecl) {
+                        cntDecl++;
+                        if (!_PU2.computePayslip) return;
+                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                        const _anc = Number(_rw.baselineJours || 0);
+                        const _ancP = (_PU2.trouverPalierAnciennete)
+                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
+                            : { pourcentage: 0 };
+                        const _ancT = (_ancP.pourcentage || 0) / 100;
+                        const _ps = _PU2.computePayslip({
+                            declare: true,
+                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
+                            jT: w.jours.size, jF: 0,
+                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
+                            primesOptionnelles: [], baremes: quinzPaieBaremes,
+                        });
+                        totalBrut += _ps.brut;
+                        totalCharges += _ps.chargesPatronales;
+                        totalCoutEmp += _ps.coutEmployeur;
+                    } else {
+                        cntNonDecl++;
+                    }
+                });
+                return { totalBrut, totalCharges, totalCoutEmp, cntDecl, cntNonDecl };
+            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter]);
+
+            const _parcelleEmpCostMap = useMemo(() => {
+                if (!apiData || !quinzBaremesResolved || !quinzRegistryResolved) return { ready: false, byParcelle: {} };
+                const _PU2 = window.PaieUtils;
+                if (!_PU2 || !_PU2.computePayslip || Object.keys(quinzRegistry).length === 0) return { ready: false, byParcelle: {} };
+                const _cp = selectedPeriode || (apiData.periodes || [])[0] || '';
+                const _pj = apiData.parJour || [];
+                const _firstDay = _pj.length > 0 ? _pj[0].jour : null;
+                const _smag = (_PU2.resolveSmagForDate)
+                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
+                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter));
+                const _dailyEmpCost = {};
+                const allMats = new Set([
+                    ..._tRows.map(r => r.matricule),
+                    ...recolteEquipeRows.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter)).map(r => r.matricule),
+                ]);
+                allMats.forEach(mat => {
+                    if (!mat) return;
+                    const _rw = quinzRegistry[numKey(mat)] || {};
+                    const _isDecl = !!(_rw.declare);
+                    if (_isDecl) {
+                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                        const _anc = Number(_rw.baselineJours || 0);
+                        const _ancP = (_PU2.trouverPalierAnciennete)
+                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
+                            : { pourcentage: 0 };
+                        const _ancT = (_ancP.pourcentage || 0) / 100;
+                        const _ps = _PU2.computePayslip({
+                            declare: true,
+                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
+                            jT: 1, jF: 0,
+                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
+                            primesOptionnelles: [], baremes: quinzPaieBaremes,
+                        });
+                        _dailyEmpCost[mat] = _ps.coutEmployeur;
+                    } else {
+                        _dailyEmpCost[mat] = _smag.smagNetJournalier || 0;
+                    }
+                });
+                const byParcelle = {};
+                const addRow = (r, parcelle) => {
+                    if (!parcelle || !r.matricule) return;
+                    if (!byParcelle[parcelle]) byParcelle[parcelle] = 0;
+                    byParcelle[parcelle] += (_dailyEmpCost[r.matricule] || 0);
+                };
+                _tRows.forEach(r => addRow(r, r.parcelle));
+                recolteEquipeRows
+                    .filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter))
+                    .forEach(r => addRow(r, r.parcelle || r.refParcelle));
+                return { ready: true, byParcelle };
+            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter]);
+
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🍇</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement quinzaine...</div></div>;
             if (!apiData) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--red)'}}>Erreur chargement</div>;
 
@@ -11265,114 +11383,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const _buildAnalytiquePivot = (rows) => (window.AnalytiqueUtils && window.AnalytiqueUtils.buildAnalytiquePivot)
                 ? window.AnalytiqueUtils.buildAnalytiquePivot(rows)
                 : { parcelles: [], operations: [], pivot: {} };
-
-            const _globalMOCharges = useMemo(() => {
-                if (!quinzBaremesResolved || !quinzRegistryResolved || Object.keys(quinzRegistry).length === 0) return null;
-                const _PU2 = window.PaieUtils;
-                if (!_PU2 || !_PU2.computePayslip) return null;
-                const _firstDay = parJour.length > 0 ? parJour[0].jour : null;
-                const _smag = (_PU2.resolveSmagForDate)
-                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
-                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
-
-                // Tous les workers MO de la période (hors récolte primes, transport)
-                const allMoSrc = [
-                    ...moHorsRecolteRows,
-                    ...moPostesRows,
-                    ...recolteEquipeRows
-                        .filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter))
-                        .map(r => ({ matricule: r.matricule, nom: r.nom, jour: r.jour })),
-                ];
-
-                const _wJH = {};
-                allMoSrc.forEach(r => {
-                    if (!r.matricule || !r.jour) return;
-                    if (!_wJH[r.matricule]) _wJH[r.matricule] = { nom: r.nom || r.matricule, jours: new Set() };
-                    _wJH[r.matricule].jours.add(r.jour);
-                });
-
-                let totalBrut = 0, totalCharges = 0, totalCoutEmp = 0, cntDecl = 0, cntNonDecl = 0;
-                Object.entries(_wJH).forEach(([mat, w]) => {
-                    const _rw = quinzRegistry[numKey(mat)] || {};
-                    const _isDecl = !!(_rw.declare);
-                    if (_isDecl) {
-                        cntDecl++;
-                        if (!_PU2.computePayslip) return;
-                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
-                        const _anc = Number(_rw.baselineJours || 0);
-                        const _ancP = (_PU2.trouverPalierAnciennete)
-                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
-                            : { pourcentage: 0 };
-                        const _ancT = (_ancP.pourcentage || 0) / 100;
-                        const _ps = _PU2.computePayslip({
-                            declare: true,
-                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
-                            jT: w.jours.size, jF: 0,
-                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
-                            primesOptionnelles: [], baremes: quinzPaieBaremes,
-                        });
-                        totalBrut += _ps.brut;
-                        totalCharges += _ps.chargesPatronales;
-                        totalCoutEmp += _ps.coutEmployeur;
-                    } else {
-                        cntNonDecl++;
-                    }
-                });
-                return { totalBrut, totalCharges, totalCoutEmp, cntDecl, cntNonDecl };
-            }, [quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, currentPeriode, farmFilter]);
-
-            const _parcelleEmpCostMap = useMemo(() => {
-                if (!quinzBaremesResolved || !quinzRegistryResolved) return { ready: false, byParcelle: {} };
-                const _PU2 = window.PaieUtils;
-                if (!_PU2 || !_PU2.computePayslip || Object.keys(quinzRegistry).length === 0) return { ready: false, byParcelle: {} };
-                const _firstDay = parJour.length > 0 ? parJour[0].jour : null;
-                const _smag = (_PU2.resolveSmagForDate)
-                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
-                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
-                // Précompute coût employeur journalier par matricule (évite N appels computePayslip × M rows)
-                const _dailyEmpCost = {};
-                const allMats = new Set([
-                    ...transportRows.map(r => r.matricule),
-                    ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter)).map(r => r.matricule),
-                ]);
-                allMats.forEach(mat => {
-                    if (!mat) return;
-                    const _rw = quinzRegistry[numKey(mat)] || {};
-                    const _isDecl = !!(_rw.declare);
-                    if (_isDecl) {
-                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
-                        const _anc = Number(_rw.baselineJours || 0);
-                        const _ancP = (_PU2.trouverPalierAnciennete)
-                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
-                            : { pourcentage: 0 };
-                        const _ancT = (_ancP.pourcentage || 0) / 100;
-                        const _ps = _PU2.computePayslip({
-                            declare: true,
-                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
-                            jT: 1, jF: 0,
-                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
-                            primesOptionnelles: [], baremes: quinzPaieBaremes,
-                        });
-                        _dailyEmpCost[mat] = _ps.coutEmployeur;
-                    } else {
-                        _dailyEmpCost[mat] = _smag.smagNetJournalier || 0;
-                    }
-                });
-                // Agréger par parcelle (Parcelle_Culturale, normalisée = trimmed)
-                const byParcelle = {};
-                const addRow = (r, parcelle) => {
-                    if (!parcelle || !r.matricule) return;
-                    if (!byParcelle[parcelle]) byParcelle[parcelle] = 0;
-                    byParcelle[parcelle] += (_dailyEmpCost[r.matricule] || 0);
-                };
-                // transportRows : chaque row = 1 worker-day-parcelle
-                transportRows.forEach(r => addRow(r, r.parcelle));
-                // recolteEquipeRows : filtrer par période/ferme
-                recolteEquipeRows
-                    .filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter))
-                    .forEach(r => addRow(r, r.parcelle || r.refParcelle));
-                return { ready: true, byParcelle };
-            }, [quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportRows, recolteEquipeRows, currentPeriode, farmFilter, parJour]);
 
             return (
                 <div className="fade-in">
