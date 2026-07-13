@@ -251,9 +251,9 @@
         ? React.createElement('div', {
             style: { padding: '40px', textAlign: 'center', color: C.textSec, fontSize: '14px' }
           }, 'Aucune donnée pour cette sélection.')
-        : React.createElement('div', { style: { overflowX: 'auto' } },
+        : React.createElement('div', { style: { overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' } },
             React.createElement('table', {
-              style: { width: '100%', borderCollapse: 'collapse', fontSize: '13px' }
+              style: { minWidth: '600px', borderCollapse: 'collapse', fontSize: '13px' }
             },
               React.createElement('thead', null,
                 React.createElement('tr', null,
@@ -458,9 +458,9 @@
           ? React.createElement('div', {
               style: { padding: '40px', textAlign: 'center', color: C.textSec, fontSize: '14px' }
             }, 'Aucune donnée pour cette parcelle.')
-          : React.createElement('div', { style: { overflowX: 'auto' } },
+          : React.createElement('div', { style: { overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' } },
               React.createElement('table', {
-                style: { width: '100%', borderCollapse: 'collapse', fontSize: '12px' }
+                style: { minWidth: '600px', borderCollapse: 'collapse', fontSize: '12px' }
               },
                 React.createElement('thead', null,
                   React.createElement('tr', null,
