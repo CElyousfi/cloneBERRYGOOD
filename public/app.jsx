@@ -2613,16 +2613,16 @@
             { id: 'C2-S8-CAS',      cycle: 2, variete: 'Cascade',   sousVariete: null,          ferme: 'F5', ha: 1.5, culture: 'Myrtille',  nbTunnels: 34, nbPlants: 5028, secteurs: ['S8-1'],
               designations: ['CASCADE MYRTILLE S8-1'] },
             { id: 'C2-NP-BRZ',      cycle: 2, variete: 'Breeze',    sousVariete: 'Nouvelle plantation', ferme: 'F5', ha: 0.84, culture: 'Myrtille', nbTunnels: 0, nbPlants: 3425, secteurs: ['ex-S13'],
-              designations: ['F5 BREEZE'], enProduction: false },
+              designations: ['F5 BREEZE', 'F5- BREEZE -S13'], enProduction: false },
             { id: 'C2-NP-CAS',      cycle: 2, variete: 'Cascade',   sousVariete: 'Nouvelle plantation', ferme: 'F5', ha: 1.96, culture: 'Myrtille', nbTunnels: 0, nbPlants: 8540, secteurs: ['ex-S13'],
-              designations: ['F5 CASCADE'], enProduction: false },
+              designations: ['F5 CASCADE', 'F5- CASCADE -S13'], enProduction: false },
 
-            // === AVOCATIER — culture pérenne, une parcelle par sous-ferme (cycle unique) ===
-            { id: 'AVO-F2',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F2',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F2'],    designations: ['AVOCATIER F2'] },
-            { id: 'AVO-F3',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F3',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F3'],    designations: ['AVOCATIER F3'] },
-            { id: 'AVO-F4',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F4',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F4'],    designations: ['AVOCATIER F4'] },
-            { id: 'AVO-F6',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F6',    ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F6'],    designations: ['AVOCATIER F6'] },
-            { id: 'AVO-BAH', cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'BAHIA', ha: 0, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['BAHIA'], designations: ['AVOCATIER BAHIA'] },
+            // === AVOCATIER — ha réels issus du référentiel terrain (mis à jour ici quand nécessaire) ===
+            { id: 'AVO-F2',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F2',    ha: 4.86, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F2'],    designations: ['AVOCATIER F2'] },
+            { id: 'AVO-F3',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F3',    ha: 1.0,  culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F3'],    designations: ['AVOCATIER F3'] },
+            { id: 'AVO-F4',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F4',    ha: 4.64, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F4'],    designations: ['AVOCATIER F4'] },
+            { id: 'AVO-F6',  cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'F6',    ha: 9.13, culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['F6'],    designations: ['AVOCATIER F6'] },
+            { id: 'AVO-BAH', cycle: 1, variete: 'Avocat', sousVariete: null, ferme: 'BAHIA', ha: 1.0,  culture: 'Avocatier', nbTunnels: 0, nbPlants: 0, secteurs: ['BAHIA'], designations: ['AVOCATIER BAHIA'] },
         ];
 
         // Lookup plat : toute designation → { variete, sousVariete, ferme, culture }
@@ -11143,12 +11143,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     if (!_pcInfoMap[k]) _pcInfoMap[k] = { ha: pc.ha || 0, culture: pc.culture || 'Framboise', variete: pc.variete || '' };
                 });
             });
-            const _avocatHaByFerme = { F2: 4.86, F3: 1.0, F4: 4.64, F6: 9.13, BAHIA: 1.0 };
             const _getAnalytiqueRowInfo = (r) => {
                 const norm = (r.parcelle || '').toUpperCase().trim();
                 // 1. Référentiel SB (source prioritaire — saisi manuellement par RH/DG)
                 const sbHa = sbParcelleHa(r.parcelle);
-                // 2. Lookup PARCELLES_CULTURALES (désignations BDR statiques)
+                // 2. Lookup PARCELLES_CULTURALES (désignations — ajouter le label BEE ONE si manquant)
                 let info = _pcInfoMap[norm];
                 if (!info) {
                     for (const [k, v] of Object.entries(_pcInfoMap)) {
@@ -11161,15 +11160,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     else if (/HAAS|AVOCAT|BACON/i.test(r.parcelle)) info = { ha: 0, culture: 'Avocatier', variete: '' };
                     else info = { ha: 0, culture: 'Framboise', variete: '' };
                 }
-                // Ha : SB référentiel > PARCELLES_CULTURALES > avocatHaByFerme (sub-ferme) > keyword BEE ONE > haRef BR_Parcelle
+                // Ha : SB ref > PARCELLES_CULTURALES désignation > fallback ferme unique > framboise keyword/secteur > haRef
                 let ha = sbHa || info.ha || 0;
-                if (ha === 0 && info.culture === 'Avocatier') {
-                    const subFerme = deriveSubFerme(r.refParcelle, r.parcelle) || r.ferme;
-                    ha = _avocatHaByFerme[subFerme] || 0;
-                    if (ha === 0) {
-                        // Labels BEE ONE peuvent contenir le code ferme : 'F2-0031-HASS', 'F6-BACON', etc.
-                        const _fmAvo = ((r.parcelle || '').match(/\b(F[2-6]|BAHIA)\b/i) || [])[1];
-                        if (_fmAvo) ha = _avocatHaByFerme[_fmAvo.toUpperCase()] || 0;
+                if (ha === 0) {
+                    // Fallback universel : extraire le code ferme du label BEE ONE et chercher dans PARCELLES_CULTURALES.
+                    // Si une seule entrée (ex: avocatier — 1 par ferme) → utiliser son ha.
+                    const _fm = ((r.parcelle || '').toUpperCase().match(/\b(F[1-6]|BAHIA)\b/) || [])[1];
+                    if (_fm) {
+                        const _byFm = (typeof PARCELLES_CULTURALES !== 'undefined' ? PARCELLES_CULTURALES : [])
+                            .filter(pc => pc.culture === info.culture && pc.ferme === _fm && pc.ha > 0);
+                        if (_byFm.length === 1) ha = _byFm[0].ha;
                     }
                 }
                 if (ha === 0 && info.culture === 'Framboise') {
