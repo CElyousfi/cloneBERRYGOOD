@@ -10,6 +10,11 @@
 (function () {
   'use strict';
 
+  // Module-level cache — survives tab switches, cleared by Rafraîchir button
+  var _prtDataCache = null; // résultat du Promise.all (données parcelles)
+  var _prtSbCache = null; // map sbMap (label_bee_one -> entry)
+  var _moRefCache = null; // liste des opérations MO
+
   var React = window.React;
   if (!React) return;
   var useState = React.useState;
@@ -546,8 +551,11 @@
     'Services généraux': 'fa-people-group',
     'Récolte': 'fa-basket-shopping'
   };
-  function MOReferentielView() {
-    var _ops = useState(null);
+  function MOReferentielView(props) {
+    var forceRefresh = props.forceRefresh || 0;
+
+    // Initialise depuis le cache si dispo
+    var _ops = useState(_moRefCache);
     var opsData = _ops[0];
     var setOpsData = _ops[1];
     var _loading = useState(false);
@@ -556,25 +564,33 @@
     var _err = useState(null);
     var err = _err[0];
     var setErr = _err[1];
-    var _loaded = useState(false);
-    var loaded = _loaded[0];
-    var setLoaded = _loaded[1];
     useEffect(function () {
-      if (loaded) return;
+      // forceRefresh change => le cache a déjà été vidé par le parent
+      if (_moRefCache !== null && forceRefresh === 0) {
+        // Cache chaud et pas de refresh forcé : rien à faire
+        if (opsData === null) setOpsData(_moRefCache);
+        return;
+      }
+      if (_moRefCache !== null && forceRefresh > 0) {
+        // Cache rechargé depuis le dernier refresh : utiliser directement
+        setOpsData(_moRefCache);
+        return;
+      }
       setLoading(true);
       setErr(null);
       fetch('/api/pointage-rh?action=referentiel-taches-list').then(function (r) {
         return r.json();
       }).then(function (d) {
         if (!d.success) throw new Error(d.error || 'Erreur API');
-        setOpsData(d.operations || []);
-        setLoaded(true);
+        var ops = d.operations || [];
+        _moRefCache = ops;
+        setOpsData(ops);
       }).catch(function (e) {
         setErr(e.message);
       }).finally(function () {
         setLoading(false);
       });
-    }, []);
+    }, [forceRefresh]);
     if (loading) {
       return React.createElement('div', {
         style: {
@@ -750,10 +766,17 @@
     var _view = useState('parcelles');
     var view = _view[0];
     var setView = _view[1];
-    var _data = useState(null);
+
+    // refreshKey: incrémenté au clic Rafraîchir pour déclencher un re-fetch
+    var _refreshKey = useState(0);
+    var refreshKey = _refreshKey[0];
+    var setRefreshKey = _refreshKey[1];
+
+    // Initialise depuis le cache si dispo (affichage instantané sans spinner)
+    var _data = useState(_prtDataCache);
     var data = _data[0];
     var setData = _data[1];
-    var _load = useState(false);
+    var _load = useState(_prtDataCache === null);
     var loading = _load[0];
     var setLoading = _load[1];
     var _err = useState(null);
@@ -765,10 +788,17 @@
     var _camp = useState('2026/2027');
     var selectedCamp = _camp[0];
     var setSelectedCamp = _camp[1];
-    var _sbMap = useState(window.SB_PARCELLE_REF || {});
+    var _sbMap = useState(_prtSbCache || window.SB_PARCELLE_REF || {});
     var sbMap = _sbMap[0];
     var setSbMap = _sbMap[1];
     useEffect(function () {
+      // Cache chaud et pas de refresh forcé : utiliser directement
+      if (_prtDataCache !== null && refreshKey === 0) {
+        setData(_prtDataCache);
+        setSbMap(_prtSbCache || {});
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       setError(null);
       Promise.all([fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function (r) {
@@ -779,7 +809,6 @@
         var d = results[0];
         var sb = results[1];
         if (!d.success) throw new Error(d.error || 'Erreur API');
-        setData(d);
         var map = {};
         if (sb.success) {
           (sb.parcelles || []).forEach(function (p) {
@@ -787,17 +816,32 @@
           });
           window.SB_PARCELLE_REF = map;
         }
+        // Stocker dans le cache module-level
+        _prtDataCache = d;
+        _prtSbCache = map;
+        setData(d);
         setSbMap(map);
       }).catch(function (e) {
         setError(e.message);
       }).finally(function () {
         setLoading(false);
       });
-    }, []);
+    }, [refreshKey]);
+    function handleRefresh() {
+      // Vider les trois caches et déclencher un re-fetch
+      _prtDataCache = null;
+      _prtSbCache = null;
+      _moRefCache = null;
+      setRefreshKey(function (k) {
+        return k + 1;
+      });
+    }
     function handleRowSaved(saved) {
       setSbMap(function (prev) {
         var next = Object.assign({}, prev);
         next[(saved.label_bee_one || '').toUpperCase().trim()] = saved;
+        // Mettre à jour le cache pour garder la cohérence
+        _prtSbCache = next;
         window.SB_PARCELLE_REF = next;
         return next;
       });
@@ -863,7 +907,9 @@
       }
     }), 'Référentiel MO')),
     // MO view
-    view === 'mo' && React.createElement(MOReferentielView, null),
+    view === 'mo' && React.createElement(MOReferentielView, {
+      forceRefresh: refreshKey
+    }),
     // Parcelles view
     view === 'parcelles' && React.createElement(React.Fragment, null, loading && React.createElement('div', {
       style: {
@@ -943,7 +989,27 @@
           color: active ? '#fff' : PRT_C.textSec
         }
       }, camp + ' (' + rws.length + ')');
-    })), React.createElement('div', {
+    })), React.createElement('button', {
+      onClick: handleRefresh,
+      title: 'Rafraîchir les données',
+      style: {
+        padding: '6px 10px',
+        borderRadius: 8,
+        border: '1px solid ' + PRT_C.border,
+        background: PRT_C.surface,
+        color: PRT_C.textSec,
+        fontSize: 12,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 5
+      }
+    }, React.createElement('i', {
+      className: 'fa-solid fa-rotate',
+      style: {
+        fontSize: 12
+      }
+    }), 'Rafraîchir'), React.createElement('div', {
       style: {
         position: 'relative',
         flex: '1 1 200px',
