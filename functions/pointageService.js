@@ -805,7 +805,9 @@ async function loadReferentielTaches() {
       if (d.code && d.famille && !map[d.code]) {
         map[d.code] = { famille: d.famille.trim(), groupe: (d.groupe || '').trim() };
       }
-      ops.push({ code: d.code, groupe: (d.groupe || '').trim(), famille: d.famille.trim(), operation: d.operation.trim(), ordre: d.ordre || 0 });
+      if (d.famille && d.operation) {
+        ops.push({ code: d.code, groupe: (d.groupe || '').trim(), famille: d.famille.trim(), operation: d.operation.trim(), ordre: d.ordre || 0 });
+      }
     });
     _refTachesCache = { map, ops };
     _refTachesCacheAt = now;
@@ -1816,7 +1818,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // PAS un listing paie nominatif ; déjà cloisonnés côté client par ?ferme=.
       // On les exclut du gating paie pour ne pas casser l'écran caporal.
       // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
-      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true };
+      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true };
       let _fermeFilter = null; // null = accès global (all) ou action exemptée
       if (!GATING_EXEMPT_ACTIONS[action]) {
         const _authUser = await verifyAuth(req);
