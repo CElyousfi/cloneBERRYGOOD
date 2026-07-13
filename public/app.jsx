@@ -10506,6 +10506,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
         }
 
         // ===================== HORS RECOLTE TAB =====================
+        const FAMILLE_ICONS = {
+            'Travaux du sol': 'fa-trowel',
+            'Ferti-irrigation': 'fa-droplet',
+            'Plantation': 'fa-seedling',
+            'Mise en valeur': 'fa-hammer',
+            'Entretien structure': 'fa-screwdriver-wrench',
+            'Traitement phyto': 'fa-spray-can',
+            'Tuteurage & palissage': 'fa-grip-lines-vertical',
+            'Taille': 'fa-scissors',
+            'Arrachage': 'fa-shovel',
+            'Services généraux': 'fa-people-group',
+        };
+
         function HorsRecolteTab({ data, farmFilter, avoSubFilter }) {
             const [fermeFilter, setFermeFilter] = useState('');
             const [operations, setOperations] = useState([]);
@@ -10542,17 +10555,21 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 ? ((effDistinct.familleParFerme[activeFerme] || {})[key] || 0)
                 : (effDistinct.parFamille[key] || 0);
 
-            // Group by operation famille (heures/coût = sommes ; effectif = distinct backend)
-            const byFamille = {};
+            // Group by groupe -> famille -> ops (3 niveaux : groupe, famille, opérations)
+            const byGroupe = {};
             filtered.forEach(o => {
-                const key = o.operationFamille || 'Autre';
-                if (!byFamille[key]) byFamille[key] = { famille: key, effectif: 0, heures: 0, cout: 0, ops: [] };
-                byFamille[key].effectif = familleEffectif(key);
-                byFamille[key].heures += o.heures || 0;
-                byFamille[key].cout += o.cout || 0;
-                byFamille[key].ops.push(o);
+                const gKey = o.groupe || 'Hors récolte';
+                const fKey = o.famille || o.operationFamille || 'Autre';
+                if (!byGroupe[gKey]) byGroupe[gKey] = { groupe: gKey, familles: {}, heures: 0, cout: 0 };
+                if (!byGroupe[gKey].familles[fKey]) byGroupe[gKey].familles[fKey] = { famille: fKey, effectif: 0, heures: 0, cout: 0, ops: [] };
+                byGroupe[gKey].familles[fKey].effectif = familleEffectif(fKey);
+                byGroupe[gKey].familles[fKey].heures += o.heures || 0;
+                byGroupe[gKey].familles[fKey].cout += o.cout || 0;
+                byGroupe[gKey].familles[fKey].ops.push(o);
+                byGroupe[gKey].heures += o.heures || 0;
+                byGroupe[gKey].cout += o.cout || 0;
             });
-            const familles = Object.values(byFamille).sort((a, b) => b.effectif - a.effectif);
+            const groupes = Object.values(byGroupe).sort((a, b) => b.cout - a.cout);
 
             return (
                 <div className="fade-in">
@@ -10582,35 +10599,45 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         <KPICard icon="fa-coins" iconClass="orange" value={Math.round(totalCout).toLocaleString('fr-FR')} label="Coût Total (DH)" />
                     </div>
 
-                    <Panel title="Opérations par Famille" icon="fa-layer-group">
-                        {familles.map((fam, fi) => (
-                            <div key={fi} style={{marginBottom:16}}>
-                                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                                    <strong style={{fontSize:13,color:'var(--berry)'}}>{fam.famille}</strong>
-                                    <span style={{fontSize:11,color:'var(--gray-400)'}}>{fam.effectif} ouvriers — {Math.round(fam.heures)}h — {Math.round(fam.cout).toLocaleString('fr-FR')} DH</span>
+                    <Panel title="Opérations par Groupe et Famille" icon="fa-layer-group">
+                        {groupes.map((grp, gi) => (
+                            <div key={gi} style={{marginBottom:20}}>
+                                <div style={{background:'var(--gray-50,#f8f9fa)',borderRadius:8,padding:'8px 12px',marginBottom:10,display:'flex',alignItems:'center',gap:8}}>
+                                    <i className="fa-solid fa-folder-open" style={{color:'var(--berry)',fontSize:13}}></i>
+                                    <strong style={{fontSize:13,color:'var(--berry-dark,#6d1a3e)'}}>{grp.groupe}</strong>
+                                    <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>{Math.round(grp.heures)}h — {Math.round(grp.cout).toLocaleString('fr-FR')} DH</span>
                                 </div>
-                                <table className="data-table">
-                                    <thead><tr>
-                                        <th>Opération</th>
-                                        <th>Parcelle</th>
-                                        <th>Ferme</th>
-                                        <th>Effectif</th>
-                                        <th>Heures</th>
-                                        <th>Coût (DH)</th>
-                                    </tr></thead>
-                                    <tbody>
-                                        {fam.ops.sort((a, b) => b.effectif - a.effectif).map((o, i) => (
-                                            <tr key={i}>
-                                                <td style={{fontWeight:500}}>{o.operation}</td>
-                                                <td style={{fontSize:11,color:'var(--gray-400)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.parcelle}</td>
-                                                <td><span className="status-badge" style={{background: o.ferme==='F1' ? 'var(--berry-pale)' : (o.ferme==='F5' ? 'var(--green-pale)' : 'var(--orange-pale)'), color: o.ferme==='F1' ? 'var(--berry)' : (o.ferme==='F5' ? 'var(--green)' : 'var(--orange)'), fontSize:10}}>{o.ferme}</span></td>
-                                                <td><strong>{o.effectif}</strong></td>
-                                                <td>{Math.round(o.heures || 0)}h</td>
-                                                <td>{Math.round(o.cout || 0).toLocaleString('fr-FR')}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                {Object.values(grp.familles).sort((a, b) => b.effectif - a.effectif).map((fam, fi) => (
+                                    <div key={fi} style={{marginBottom:16,marginLeft:16}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                                            {FAMILLE_ICONS[fam.famille] && <i className={`fa-solid ${FAMILLE_ICONS[fam.famille]}`} style={{color:'var(--berry)',fontSize:13}}></i>}
+                                            <strong style={{fontSize:13,color:'var(--berry)'}}>{fam.famille}</strong>
+                                            <span style={{fontSize:11,color:'var(--gray-400)'}}>{fam.effectif} ouvriers — {Math.round(fam.heures)}h — {Math.round(fam.cout).toLocaleString('fr-FR')} DH</span>
+                                        </div>
+                                        <table className="data-table">
+                                            <thead><tr>
+                                                <th>Opération</th>
+                                                <th>Parcelle</th>
+                                                <th>Ferme</th>
+                                                <th>Effectif</th>
+                                                <th>Heures</th>
+                                                <th>Coût (DH)</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {fam.ops.sort((a, b) => b.effectif - a.effectif).map((o, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{fontWeight:500}}>{o.operation}</td>
+                                                        <td style={{fontSize:11,color:'var(--gray-400)',maxWidth:150,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{o.parcelle}</td>
+                                                        <td><span className="status-badge" style={{background: o.ferme==='F1' ? 'var(--berry-pale)' : (o.ferme==='F5' ? 'var(--green-pale)' : 'var(--orange-pale)'), color: o.ferme==='F1' ? 'var(--berry)' : (o.ferme==='F5' ? 'var(--green)' : 'var(--orange)'), fontSize:10}}>{o.ferme}</span></td>
+                                                        <td><strong>{o.effectif}</strong></td>
+                                                        <td>{Math.round(o.heures || 0)}h</td>
+                                                        <td>{Math.round(o.cout || 0).toLocaleString('fr-FR')}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ))}
                             </div>
                         ))}
                     </Panel>

@@ -771,6 +771,82 @@ function computeChargCond(allRows, holidays) {
   };
 }
 
+const REFERENTIEL_FAMILLES = {
+  'GB01': 'Travaux du sol',
+  'GB02': 'Ferti-irrigation',
+  'GB03': 'Plantation',
+  'GB04': 'Mise en valeur',
+  'GB05': 'Entretien structure',
+  'GB06': 'Traitement phyto',
+  'GB07': 'Tuteurage & palissage',
+  'GB08': 'Récolte',
+  'GB09': 'Taille',
+  'GB10': 'Arrachage',
+  'GB11': 'Services généraux',
+};
+
+// =============================================
+// Référentiel tâches — cache Firestore (1h)
+// =============================================
+
+// Cache en mémoire — rechargé toutes les heures (pas de hot-reload en prod)
+let _refTachesCache = null;
+let _refTachesCacheAt = 0;
+
+async function loadReferentielTaches() {
+  const now = Date.now();
+  if (_refTachesCache && (now - _refTachesCacheAt) < 60 * 60 * 1000) return _refTachesCache;
+  try {
+    const snap = await db_firestore.collection('referentiel_taches').get();
+    const map = {}; // code -> { famille, groupe }
+    const ops = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.code && d.famille && !map[d.code]) {
+        map[d.code] = { famille: d.famille.trim(), groupe: (d.groupe || '').trim() };
+      }
+      if (d.famille && d.operation) {
+        ops.push({ code: d.code, groupe: (d.groupe || '').trim(), famille: d.famille.trim(), operation: d.operation.trim(), ordre: d.ordre || 0 });
+      }
+    });
+    _refTachesCache = { map, ops };
+    _refTachesCacheAt = now;
+    return _refTachesCache;
+  } catch (e) {
+    // Fallback hardcodé si Firestore indisponible
+    return { map: {
+      GB01: { famille: 'Travaux du sol', groupe: 'M.O Hors récolte' },
+      GB02: { famille: 'Ferti-irrigation', groupe: 'M.O Hors récolte' },
+      GB03: { famille: 'Plantation', groupe: 'M.O Hors récolte' },
+      GB04: { famille: 'Mise en valeur', groupe: 'M.O Hors récolte' },
+      GB05: { famille: 'Entretien structure', groupe: 'M.O Hors récolte' },
+      GB06: { famille: 'Traitement phyto', groupe: 'M.O Hors récolte' },
+      GB07: { famille: 'Tuteurage & palissage', groupe: 'M.O Hors récolte' },
+      GB08: { famille: 'Récolte', groupe: 'M.O Récolte' },
+      GB09: { famille: 'Taille', groupe: 'M.O Hors récolte' },
+      GB10: { famille: 'Arrachage', groupe: 'M.O Hors récolte' },
+      GB11: { famille: 'Services généraux', groupe: 'M.O Service générale' },
+    }, ops: [] };
+  }
+}
+
+// _refMap : populé par warmRefTaches() — utilisé de manière synchrone dans resolveFamily
+let _refMap = {};
+
+async function warmRefTaches() {
+  const ref = await loadReferentielTaches();
+  _refMap = ref.map;
+}
+
+function resolveFamily(operation_groupe, operation_famille) {
+  if (operation_groupe) {
+    const key = operation_groupe.trim();
+    if (_refMap[key]) return _refMap[key].famille;
+    if (REFERENTIEL_FAMILLES[key]) return REFERENTIEL_FAMILLES[key]; // fallback const
+  }
+  return (operation_famille || 'Autre').replace(/^\d+\.\s*/, '').trim();
+}
+
 function classifyType(operationFamille) {
   if (!operationFamille) return "horsRecolte";
   if (operationFamille === "8. Récolte") return "recolte";
@@ -1742,7 +1818,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // PAS un listing paie nominatif ; déjà cloisonnés côté client par ?ferme=.
       // On les exclut du gating paie pour ne pas casser l'écran caporal.
       // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
-      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true };
+      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true };
       let _fermeFilter = null; // null = accès global (all) ou action exemptée
       if (!GATING_EXEMPT_ACTIONS[action]) {
         const _authUser = await verifyAuth(req);
@@ -2450,6 +2526,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
 
       // ------ HORS-RECOLTE: operations breakdown ------
       if (action === "hors-recolte") {
+        // Charger le référentiel Firestore avant de construire les opérations
+        await warmRefTaches();
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
         // Clé ferme-aware : operations/effectifs dépendent de _fermeFilter.
         const cached = await withCache(pointageCacheKey(`pointage_hors_recolte_${dateForCheck}`, _fermeFilter), 10 * 60 * 1000, async () => {
@@ -2459,13 +2537,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const groups = {};
             for (const r of filtered) {
               const key = `${r.Operation_Famille}|${r.Operation}|${r.Ref_parcelle}|${r.Parcelle_Culturale}`;
-              if (!groups[key]) groups[key] = { Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale, workers: new Set(), totalHr: 0, totalJr: 0, totalCout: 0 };
+              if (!groups[key]) groups[key] = { Operation_Famille: r.Operation_Famille, Operation_Groupe: r.Operation_Groupe, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale, workers: new Set(), totalHr: 0, totalJr: 0, totalCout: 0 };
               groups[key].workers.add(r.Personnel_Matricule);
               groups[key].totalHr += r.Nombre_Hr || 0;
               groups[key].totalJr += r.Nombre_Jr || 0;
               groups[key].totalCout += r.Cout || 0;
             }
-            const ops = Object.values(groups).map(g => ({ operationFamille: g.Operation_Famille, operation: g.Operation, effectif: g.workers.size, heures: g.totalHr, journees: g.totalJr, cout: Math.round(g.totalCout), parcelle: (g.Parcelle_Culturale || "").trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale) })).sort((a, b) => b.effectif - a.effectif);
+            const ops = Object.values(groups).map(g => ({ operationFamille: g.Operation_Famille, famille: resolveFamily(g.Operation_Groupe, g.Operation_Famille), groupe: (_refMap[g.Operation_Groupe && g.Operation_Groupe.trim()] || {}).groupe || '', operation: g.Operation, effectif: g.workers.size, heures: g.totalHr, journees: g.totalJr, cout: Math.round(g.totalCout), parcelle: (g.Parcelle_Culturale || "").trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale) })).sort((a, b) => b.effectif - a.effectif);
             // Effectifs DISTINCTS (Set de matricules) — le front ne peut pas dédupliquer car
             // operations[].effectif est par (op×parcelle). On expose ici l'effectif distinct
             // global, par operationFamille, et par (ferme, famille) pour les vues filtrées.
@@ -2476,7 +2554,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const fermeFamilleSets = {}; // ferme -> famille -> Set
             for (const r of filtered) {
               const mat = r.Personnel_Matricule;
-              const f = r.Operation_Famille || "Autre";
+              const f = resolveFamily(r.Operation_Groupe, r.Operation_Famille);
               const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
               globalSet.add(mat);
               if (!familleSets[f]) familleSets[f] = new Set();
@@ -2499,20 +2577,20 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             return { success: true, date: dateForCheck, operations: ops, effectifDistinct: globalSet.size, effectifParFamille, effectifDistinctParFerme, effectifFamilleParFerme };
           }
           const dateSQL = dateParam ? `'${dateParam}'` : "CONVERT(date, GETDATE())";
-          const result = await db.request().query(`SELECT Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Hr) AS totalHr, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes' GROUP BY Operation_Famille, Operation, Ref_parcelle, Parcelle_Culturale ORDER BY Operation_Famille, nbOuv DESC`);
+          const result = await db.request().query(`SELECT Operation_Famille, Operation_Groupe, Operation, Ref_parcelle, Parcelle_Culturale, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Hr) AS totalHr, SUM(Nombre_Jr) AS totalJr, SUM(Cout) AS totalCout FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes' GROUP BY Operation_Famille, Operation_Groupe, Operation, Ref_parcelle, Parcelle_Culturale ORDER BY Operation_Famille, nbOuv DESC`);
           // Fail-closed : cohérence avec le shadow. En prod USE_MIRROR=true, mais on
           // filtre aussi cette branche SQL fallback par la ferme du chef.
-          const ops = filterByFermeField(result.recordset.map(r => ({ operationFamille: r.Operation_Famille, operation: r.Operation, effectif: r.nbOuv, heures: r.totalHr, journees: r.totalJr, cout: Math.round(r.totalCout || 0), parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) })), _fermeFilter);
+          const ops = filterByFermeField(result.recordset.map(r => ({ operationFamille: r.Operation_Famille, famille: resolveFamily(r.Operation_Groupe, r.Operation_Famille), groupe: (_refMap[r.Operation_Groupe && r.Operation_Groupe.trim()] || {}).groupe || '', operation: r.Operation, effectif: r.nbOuv, heures: r.totalHr, journees: r.totalJr, cout: Math.round(r.totalCout || 0), parcelle: (r.Parcelle_Culturale || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale) })), _fermeFilter);
           // Effectifs DISTINCTS : on ramène les couples DISTINCTS (matricule, famille, parcelle)
           // pour dériver la ferme en JS et compter via Set (global / par famille / par ferme).
-          const matRes = await db.request().query(`SELECT DISTINCT Personnel_Matricule, Operation_Famille, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes'`);
+          const matRes = await db.request().query(`SELECT DISTINCT Personnel_Matricule, Operation_Famille, Operation_Groupe, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) = ${dateSQL} AND Operation_Famille != '8. Récolte' AND Operation_Famille != '11. Postes fixes'`);
           const globalSet = new Set();
           const familleSets = {};
           const fermeSets = {};
           const fermeFamilleSets = {};
           for (const r of matRes.recordset) {
             const mat = r.Personnel_Matricule;
-            const f = r.Operation_Famille || "Autre";
+            const f = resolveFamily(r.Operation_Groupe, r.Operation_Famille);
             const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
             // Fail-closed : un chef ne voit que sa ferme dans les effectifs distincts.
             if (_fermeFilter && ferme !== _fermeFilter) continue;
@@ -2537,6 +2615,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           return { success: true, date: dateForCheck, operations: ops, effectifDistinct: globalSet.size, effectifParFamille, effectifDistinctParFerme, effectifFamilleParFerme };
         });
         return res.json(cached);
+      }
+
+      // ------ REFERENTIEL-TACHES-LIST: liste complète des opérations du référentiel ------
+      if (action === 'referentiel-taches-list') {
+        const ref = await loadReferentielTaches();
+        return res.json({ success: true, operations: ref.ops.sort((a, b) => a.ordre - b.ordre) });
       }
 
       // ------ SUIVI-TUNNELS: hors-récolte progress by parcelle/tâche for caporal screens ------
