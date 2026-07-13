@@ -11320,6 +11320,59 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 return { totalBrut, totalCharges, totalCoutEmp, cntDecl, cntNonDecl };
             }, [quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, currentPeriode, farmFilter]);
 
+            const _parcelleEmpCostMap = useMemo(() => {
+                if (!quinzBaremesResolved || !quinzRegistryResolved) return { ready: false, byParcelle: {} };
+                const _PU2 = window.PaieUtils;
+                if (!_PU2 || !_PU2.computePayslip || Object.keys(quinzRegistry).length === 0) return { ready: false, byParcelle: {} };
+                const _firstDay = parJour.length > 0 ? parJour[0].jour : null;
+                const _smag = (_PU2.resolveSmagForDate)
+                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
+                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
+                // Précompute coût employeur journalier par matricule (évite N appels computePayslip × M rows)
+                const _dailyEmpCost = {};
+                const allMats = new Set([
+                    ...transportRows.map(r => r.matricule),
+                    ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter)).map(r => r.matricule),
+                ]);
+                allMats.forEach(mat => {
+                    if (!mat) return;
+                    const _rw = quinzRegistry[numKey(mat)] || {};
+                    const _isDecl = !!(_rw.declare);
+                    if (_isDecl) {
+                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                        const _anc = Number(_rw.baselineJours || 0);
+                        const _ancP = (_PU2.trouverPalierAnciennete)
+                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
+                            : { pourcentage: 0 };
+                        const _ancT = (_ancP.pourcentage || 0) / 100;
+                        const _ps = _PU2.computePayslip({
+                            declare: true,
+                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
+                            jT: 1, jF: 0,
+                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
+                            primesOptionnelles: [], baremes: quinzPaieBaremes,
+                        });
+                        _dailyEmpCost[mat] = _ps.coutEmployeur;
+                    } else {
+                        _dailyEmpCost[mat] = _smag.smagNetJournalier || 0;
+                    }
+                });
+                // Agréger par parcelle (Parcelle_Culturale, normalisée = trimmed)
+                const byParcelle = {};
+                const addRow = (r, parcelle) => {
+                    if (!parcelle || !r.matricule) return;
+                    if (!byParcelle[parcelle]) byParcelle[parcelle] = 0;
+                    byParcelle[parcelle] += (_dailyEmpCost[r.matricule] || 0);
+                };
+                // transportRows : chaque row = 1 worker-day-parcelle
+                transportRows.forEach(r => addRow(r, r.parcelle));
+                // recolteEquipeRows : filtrer par période/ferme
+                recolteEquipeRows
+                    .filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter))
+                    .forEach(r => addRow(r, r.parcelle || r.refParcelle));
+                return { ready: true, byParcelle };
+            }, [quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportRows, recolteEquipeRows, currentPeriode, farmFilter, parJour]);
+
             return (
                 <div className="fade-in">
                     <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
@@ -12207,7 +12260,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 </div>
                                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                                     <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
-                                        {[['jh','JH / Ha'],['cout','Coût BEE ONE / Ha']].map(([v, label]) => (
+                                        {[['jh','JH / Ha'],['cout', _parcelleEmpCostMap.ready ? 'Coût emp. / Ha' : 'Coût BEE ONE / Ha']].map(([v, label]) => (
                                             <button key={v} onClick={() => setAnalytiqueView(v)}
                                                 style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
                                                     background: analytiqueView === v ? 'var(--berry)' : 'transparent',
@@ -12264,7 +12317,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 const { parcelles, operations, pivot } = _buildAnalytiquePivot(_rows);
                                 if (operations.length === 0) return null;
                                 const _totalHa = parcelles.reduce((s, [, ha]) => s + ha, 0);
-                                const _unit = analytiqueView === 'jh' ? 'JH/Ha' : 'DH/Ha';
+                                const _unit = analytiqueView === 'jh' ? 'JH/Ha' : (_parcelleEmpCostMap.ready ? 'DH emp./Ha' : 'DH/Ha');
                                 const _fmt = (val, ha) => {
                                     if (ha === 0) return <span style={{fontSize:10,color:'var(--gray-400)'}}>—</span>;
                                     const v = val / ha;
@@ -12298,10 +12351,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 </thead>
                                                 <tbody>
                                                     {operations.map((op, opIdx) => {
-                                                        const _rowTotal = parcelles.reduce((s, [pKey]) => {
-                                                            const c = pivot[op.key] && pivot[op.key][pKey];
-                                                            return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
-                                                        }, 0);
+                                                        const _rowTotal = analytiqueView === 'jh'
+                                                            ? parcelles.reduce((s, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.jh : 0); }, 0)
+                                                            : (_parcelleEmpCostMap.ready
+                                                                ? parcelles.reduce((s, [pKey]) => {
+                                                                    const c = pivot[op.key] && pivot[op.key][pKey];
+                                                                    if (!c) return s;
+                                                                    const _parcelleBeeoneTot = operations.reduce((s2, op2) => { const c2 = pivot[op2.key] && pivot[op2.key][pKey]; return s2 + (c2 ? c2.cout : 0); }, 0);
+                                                                    const _empTotal = _parcelleEmpCostMap.byParcelle[pKey] || 0;
+                                                                    return s + (_parcelleBeeoneTot > 0 ? (c.cout / _parcelleBeeoneTot) * _empTotal : c.cout);
+                                                                }, 0)
+                                                                : parcelles.reduce((s, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.cout : 0); }, 0));
                                                         const _totalHaForOp = parcelles.reduce((s, [, ha]) => s + ha, 0);
                                                         return (
                                                             <tr key={op.key} style={{background: opIdx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom:'1px solid var(--gray-100)'}}>
@@ -12311,7 +12371,18 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                 {parcelles.map(([pKey, ha]) => {
                                                                     const c = pivot[op.key] && pivot[op.key][pKey];
                                                                     if (!c) return <td key={pKey} style={{padding:'7px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
-                                                                    const _val = analytiqueView === 'jh' ? c.jh : c.cout;
+                                                                    const _val = analytiqueView === 'jh' ? c.jh : (() => {
+                                                                        if (_parcelleEmpCostMap.ready) {
+                                                                            // Coût employeur proportionnel : part de cette op dans le total BEE ONE de la parcelle
+                                                                            const _parcelleBeeoneTot = operations.reduce((s, op2) => {
+                                                                                const c2 = pivot[op2.key] && pivot[op2.key][pKey];
+                                                                                return s + (c2 ? c2.cout : 0);
+                                                                            }, 0);
+                                                                            const _empTotal = _parcelleEmpCostMap.byParcelle[pKey] || 0;
+                                                                            return _parcelleBeeoneTot > 0 ? (c.cout / _parcelleBeeoneTot) * _empTotal : c.cout;
+                                                                        }
+                                                                        return c.cout;
+                                                                    })();
                                                                     return (
                                                                         <td key={pKey}
                                                                             onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: op.label, ha, detailRows: c.detailRows })}
@@ -12335,10 +12406,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <tr style={{background:`${color}18`,fontWeight:700}}>
                                                         <td style={{padding:'8px 12px',position:'sticky',left:0,background:`${color}18`,borderRight:'1px solid var(--gray-200)',zIndex:1,color}}>TOTAL</td>
                                                         {parcelles.map(([pKey, ha]) => {
-                                                            const colTotal = operations.reduce((s, op) => {
-                                                                const c = pivot[op.key] && pivot[op.key][pKey];
-                                                                return s + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
-                                                            }, 0);
+                                                            const colTotal = analytiqueView === 'jh'
+                                                                ? operations.reduce((s, op) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.jh : 0); }, 0)
+                                                                : (_parcelleEmpCostMap.ready
+                                                                    ? (_parcelleEmpCostMap.byParcelle[pKey] || 0)
+                                                                    : operations.reduce((s, op) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.cout : 0); }, 0));
                                                             return (
                                                                 <td key={pKey} style={{padding:'8px 10px',textAlign:'center',borderRight:'1px solid var(--gray-100)',color}}>
                                                                     <div>{_fmt(colTotal, ha)}</div>
@@ -12348,11 +12420,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         })}
                                                         <td style={{padding:'8px 10px',textAlign:'center',background:`${color}28`,position:'sticky',right:0,color}}>
                                                             {(() => {
-                                                                const gt = operations.reduce((s, op) =>
-                                                                    s + parcelles.reduce((ps, [pKey]) => {
-                                                                        const c = pivot[op.key] && pivot[op.key][pKey];
-                                                                        return ps + (c ? (analytiqueView === 'jh' ? c.jh : c.cout) : 0);
-                                                                    }, 0), 0);
+                                                                const gt = analytiqueView === 'jh'
+                                                                    ? operations.reduce((s, op) => s + parcelles.reduce((ps, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return ps + (c ? c.jh : 0); }, 0), 0)
+                                                                    : (_parcelleEmpCostMap.ready
+                                                                        ? parcelles.reduce((s, [pKey]) => s + (_parcelleEmpCostMap.byParcelle[pKey] || 0), 0)
+                                                                        : operations.reduce((s, op) => s + parcelles.reduce((ps, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return ps + (c ? c.cout : 0); }, 0), 0));
                                                                 return <><div>{_fmt(gt, _totalHa)}</div><div style={{fontSize:10,opacity:0.7}}>{_unit}</div></>;
                                                             })()}
                                                         </td>
