@@ -114,7 +114,12 @@
           fontWeight: 800,
           color: item.color
         }
-      }, Math.round(item.montant).toLocaleString('fr-FR'), " DH"), totalGlobal > 0 && /*#__PURE__*/React.createElement("div", {
+      }, item.montant === null ? /*#__PURE__*/React.createElement("span", {
+        style: {
+          opacity: 0.35,
+          letterSpacing: 2
+        }
+      }, "\xB7 \xB7 \xB7") : Math.round(item.montant).toLocaleString('fr-FR') + ' DH'), totalGlobal > 0 && item.montant !== null && /*#__PURE__*/React.createElement("div", {
         style: {
           display: 'flex',
           justifyContent: 'space-between',
