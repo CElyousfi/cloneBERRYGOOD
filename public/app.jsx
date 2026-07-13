@@ -55043,7 +55043,7 @@ ${rejetHtml}
             // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
             const MAGASINS = useStockLocations().magasins;
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
-            const emptyItem = { article: '', quantite: '', unite: 'kg', parcelle: '', culture: '', ferme: '' };
+            const emptyItem = { article: '', quantite: '', unite: 'kg', parcelle: '', parcelle_ref: '', culture: '', ferme: '' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] });
             const [scanFileBC, setScanFileBC] = useState(null);
             const [scanPreviewBC, setScanPreviewBC] = useState(null);
@@ -55139,10 +55139,10 @@ ${rejetHtml}
                 const items = [...form.items];
                 const ref = refForCampagne.find(p => p.label === val);
                 if (ref) {
-                    items[idx] = { ...items[idx], parcelle: val, culture: ref.culture || '', ferme: ref.ferme || '' };
+                    items[idx] = { ...items[idx], parcelle: val, parcelle_ref: ref.ref || '', culture: ref.culture || '', ferme: ref.ferme || '' };
                 } else {
                     const parc = parcelles.find(p => p.Parcelle_Physique === val);
-                    items[idx] = { ...items[idx], parcelle: val, culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
+                    items[idx] = { ...items[idx], parcelle: val, parcelle_ref: '', culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
                 }
                 setForm({ ...form, items });
             };
@@ -55174,7 +55174,7 @@ ${rejetHtml}
                 let scanUrl = null;
                 if (scanFileBC) { scanUrl = await uploadScanBC(scanFileBC); }
                 fetch('/api/stock?action=create-bc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: type || 'engrais', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, culture: i.culture, ferme: i.ferme })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
+                    body: JSON.stringify({ type: type || 'engrais', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, parcelle_ref: i.parcelle_ref || '', culture: i.culture, ferme: i.ferme })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
                 }).then(r => r.json()).then(json => {
                     if (json.success) { alert('Bon de consommation ' + json.numero + ' cree'); setShowForm(false); loadBcs(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
