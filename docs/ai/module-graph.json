@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "191/331 fichiers classifiés",
+          "detail": "191/329 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "33/126 modules avec ≥1 test",
+          "detail": "33/124 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -64,17 +64,17 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:00e47c74bebcb44d",
+    "sourceFingerprint": "sha256:3cc2d15804b7b0e3",
     "stats": {
-      "backendModules": 86,
+      "backendModules": 84,
       "cloudFunctions": 81,
-      "coverageScore": 26,
+      "coverageScore": 27,
       "domains": 10,
       "extractedComponents": 16,
       "firestoreCollections": 56,
       "libHelpers": 24,
       "tabFunctions": 124,
-      "unclassifiedFiles": 140,
+      "unclassifiedFiles": 138,
       "unitTestFiles": 22
     }
   },
@@ -1751,10 +1751,6 @@
       "confidence": "low",
       "domain": null
     },
-    "functions/lib/.DS_Store": {
-      "confidence": "low",
-      "domain": null
-    },
     "functions/lib/auth": {
       "confidence": "medium",
       "domain": "admin"
@@ -1932,10 +1928,6 @@
       "domain": null
     },
     "functions/sqlSyncService.js": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/test-whatsapp.js": {
       "confidence": "low",
       "domain": null
     },
@@ -2830,10 +2822,6 @@
     },
     {
       "confidence": "low",
-      "file": "functions/lib/.DS_Store"
-    },
-    {
-      "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
     },
     {
@@ -2919,10 +2907,6 @@
     {
       "confidence": "low",
       "file": "functions/sqlSyncService.js"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/test-whatsapp.js"
     },
     {
       "confidence": "low",
