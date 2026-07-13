@@ -91,8 +91,14 @@
             </div>
             <div style={{fontSize:12,fontWeight:700,color:'var(--gray-600)'}}>{item.label}</div>
           </div>
-          <div style={{fontSize:22,fontWeight:800,color:item.color}}>{Math.round(item.montant).toLocaleString('fr-FR')} DH</div>
-          {totalGlobal > 0 && (
+          {/* montant === null → donnée pas encore prête (registre/barèmes paie en cours de
+              chargement) : skeleton au lieu d'une valeur intermédiaire fausse (anti-flicker). */}
+          <div style={{fontSize:22,fontWeight:800,color:item.color}}>
+            {item.montant === null
+              ? <span style={{opacity:0.35,letterSpacing:2}}>· · ·</span>
+              : Math.round(item.montant).toLocaleString('fr-FR') + ' DH'}
+          </div>
+          {totalGlobal > 0 && item.montant !== null && (
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:4}}>
               <span style={{fontSize:10,color:'var(--gray-400)'}}>{Math.round(item.montant / totalGlobal * 100)}% du total</span>
               {clickable && (

@@ -117,12 +117,19 @@ function filterByFermeField(rows, fermeFilter) {
  * Surfaces BR_Parcelle (source authoritative : Sup_Parcelle_Culturale) — même
  * source que le tab Parcelles & Référentiel (action parcelles-campagne-list).
  * Retourne { label Parcelle_Culturale (trim) → hectares > 0 }.
- * Fallback silencieux {} si le serveur BDR est indisponible (USE_MIRROR=true en
- * prod : le mirror Firestore ne porte pas les surfaces, seul BR_Parcelle les a).
+ *
+ * RÉSILIENCE (bug « les superficies ont disparu », 2026-07-13) : le serveur
+ * BDR est instable ; un simple fallback {} faisait disparaître toutes les
+ * surfaces de l'Affectation Analytique pendant 5 min (durée du withCache) à
+ * chaque indisponibilité. On persiste donc la dernière carte NON VIDE dans
+ * sql_mirror_pointage_meta/br_parcelle_sup et on la sert quand le BDR ne
+ * répond pas (mémoire d'instance d'abord, Firestore ensuite, {} en dernier).
  *
  * @returns {Promise<Object<string, number>>}
  */
+let _supMapLastGood = null; // cache mémoire d'instance (survit entre requêtes)
 async function fetchBrParcelleSupMap() {
+  const SUP_DOC = () => db_firestore.collection("sql_mirror_pointage_meta").doc("br_parcelle_sup");
   try {
     const db = await getPool();
     const res = await db.request().query(`
@@ -135,8 +142,23 @@ async function fetchBrParcelleSupMap() {
       const sup = parseFloat(r.Sup) || 0;
       if (lbl && sup > 0) supMap[lbl] = sup;
     });
-    return supMap;
+    if (Object.keys(supMap).length > 0) {
+      _supMapLastGood = supMap;
+      // Persistance best-effort (ne bloque pas la réponse)
+      SUP_DOC().set({ supMap, updated_at: Date.now() }).catch(() => {});
+      return supMap;
+    }
+    // Requête OK mais vide (table purgée ?) → ne pas écraser le last-known-good
+    return _supMapLastGood || {};
   } catch (e) {
+    if (_supMapLastGood) return _supMapLastGood;
+    try {
+      const doc = await SUP_DOC().get();
+      if (doc.exists && doc.data().supMap) {
+        _supMapLastGood = doc.data().supMap;
+        return _supMapLastGood;
+      }
+    } catch (e2) { /* Firestore aussi KO → dégradé {} */ }
     return {};
   }
 }
@@ -3360,25 +3382,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           rowsPrev = r2.recordset.map(toRow);
         } else {
           // Mirror path — Firestore sql_mirror_pointage
-          // Surfaces depuis BR_Parcelle (SQL BDR) avec fallback silencieux si indisponible
-          const [raw2627, rawPrev, brParcelle] = await Promise.all([
+          // Surfaces via fetchBrParcelleSupMap (résilient : last-known-good si BDR down)
+          const [raw2627, rawPrev, supMap] = await Promise.all([
             getPointageRowsForDateRange(CUT, today),
             getPointageRowsForDateRange(PREV_START, PREV_END),
-            getPool().then(db => db.request().query(`
-              SELECT Parcelle_Culturale, Sup_Parcelle_Culturale AS Sup
-              FROM BR_Parcelle
-              WHERE Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`
-            )).catch(() => null),
+            fetchBrParcelleSupMap(),
           ]);
-          // Build supMap depuis BR_Parcelle (label → hectares)
-          const supMap = {};
-          if (brParcelle) {
-            brParcelle.recordset.forEach(r => {
-              const lbl = (r.Parcelle_Culturale || "").trim();
-              const sup = parseFloat(r.Sup) || 0;
-              if (lbl && sup > 0) supMap[lbl] = sup;
-            });
-          }
           const agg = (rows) => {
             const m = {};
             for (const r of rows) {

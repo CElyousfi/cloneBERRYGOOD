@@ -10884,12 +10884,21 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
 
+            // Anti-flicker cartes MO : tant que registre + barèmes ne sont pas résolus,
+            // les cartes MO affichent un skeleton (montant null) au lieu de l'estimation
+            // BDP qui sautait ensuite vers le net Smart Berry (2-3 valeurs successives).
+            // En cas d'échec réseau → resolved quand même → fallback BDP (comportement
+            // dégradé identique à avant).
+            const [quinzBaremesResolved, setQuinzBaremesResolved] = useState(false);
+            const [quinzRegistryResolved, setQuinzRegistryResolved] = useState(false);
+
             React.useEffect(() => {
                 const db = firebase.firestore();
                 let cancelled = false;
                 db.collection('app_settings').doc('paie_baremes').get()
                     .then(doc => { if (!cancelled && doc.exists) setQuinzPaieBaremes(prev => ({ ...prev, ...doc.data() })); })
-                    .catch(e => console.warn('quinz paie_baremes:', e));
+                    .catch(e => console.warn('quinz paie_baremes:', e))
+                    .finally(() => { if (!cancelled) setQuinzBaremesResolved(true); });
                 return () => { cancelled = true; };
             }, []);
 
@@ -10900,7 +10909,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     const reg = {};
                     (resp.ouvriers || []).forEach(o => { reg[numKey(o.matricule)] = o; });
                     if (!cancelled) setQuinzRegistry(reg);
-                }).catch(e => console.warn('quinz registry:', e));
+                }).catch(e => console.warn('quinz registry:', e))
+                  .finally(() => { if (!cancelled) setQuinzRegistryResolved(true); });
                 return () => { cancelled = true; };
             }, []);
 
@@ -11038,6 +11048,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
             // identiquement à Validation du Pointage. Les totaux cartes = somme des nets par ouvrier.
             const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip);
+            // Skeleton tant que les 2 fetch paie ne sont pas résolus (succès OU échec).
+            // Résolus mais registry vide/KO → registryReady false → fallback BDP (inchangé).
+            const _sbPending = !quinzRegistryResolved || !quinzBaremesResolved;
             const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
 
             const sbNetForWorker = (mat, journees, firstDay) => {
@@ -11107,9 +11120,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes;
 
             const recapItems = [
-                { label: 'MO Récolte', icon: 'fa-seedling', color: 'var(--berry)', montant: totalCoutRecolte, popupKey: 'mo_recolte' },
-                { label: 'MO Hors Récolte', icon: 'fa-person-digging', color: '#c0392b', montant: totalCoutHorsRecolte, popupKey: 'mo_horsrecolte' },
-                { label: 'Postes Fixes', icon: 'fa-user-tie', color: '#7f8c8d', montant: totalCoutPostes, popupKey: 'mo_postes' },
+                { label: 'MO Récolte', icon: 'fa-seedling', color: 'var(--berry)', montant: _sbPending ? null : totalCoutRecolte, popupKey: 'mo_recolte' },
+                { label: 'MO Hors Récolte', icon: 'fa-person-digging', color: '#c0392b', montant: _sbPending ? null : totalCoutHorsRecolte, popupKey: 'mo_horsrecolte' },
+                { label: 'Postes Fixes', icon: 'fa-user-tie', color: '#7f8c8d', montant: _sbPending ? null : totalCoutPostes, popupKey: 'mo_postes' },
                 { label: 'Prime Récolte', icon: 'fa-coins', color: '#e67e22', montant: totalPrimeRecolte, popupKey: 'recolte' },
                 { label: 'Prime Transport', icon: 'fa-bus', color: '#2D8B4E', montant: transportCoutTotal, popupKey: 'transport' },
                 { label: 'Autres Primes', icon: 'fa-layer-group', color: '#8e44ad', montant: totalAutresPrimes, popupKey: 'autres_primes',
