@@ -22,6 +22,26 @@ run_quiet() {
   fi
 }
 
+# DIL fingerprint check — régénère le graphe si les sources ont changé
+DIL_GRAPH="$ROOT/docs/ai/module-graph.json"
+if [ -f "$DIL_GRAPH" ]; then
+  CURRENT_FP=$(node "$ROOT/scripts/generate-module-graph.js" --fingerprint-only 2>/dev/null || echo "")
+  STORED_FP=$(node -e "try{const g=require('$DIL_GRAPH');console.log(g._meta&&g._meta.sourceFingerprint||'')}catch(e){console.log('')}" 2>/dev/null || echo "")
+  if [ -n "$CURRENT_FP" ] && [ "$CURRENT_FP" != "$STORED_FP" ]; then
+    echo "[pre-commit] DIL: sources modifiées, régénération de module-graph.json..."
+    node "$ROOT/scripts/generate-module-graph.js"
+    echo ""
+    echo "[pre-commit] DIL: diff du graphe régénéré :"
+    git -C "$ROOT" diff docs/ai/module-graph.json | head -50
+    echo ""
+    echo "[pre-commit] Commit bloqué : module-graph.json a été régénéré."
+    echo "   Vérifiez le diff ci-dessus, puis :"
+    echo "   git add docs/ai/module-graph.json"
+    echo "   git commit"
+    exit 1
+  fi
+fi
+
 echo "[pre-commit] Tests unitaires frontend…"
 (cd "$ROOT" && run_quiet bash -c "find tests/unit -name '*.test.js' -print0 | xargs -0 node --test")
 
