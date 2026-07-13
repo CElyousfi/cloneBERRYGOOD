@@ -294,11 +294,13 @@
       }
     }, 'Aucune donnée pour cette sélection.') : React.createElement('div', {
       style: {
-        overflowX: 'auto'
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        width: '100%'
       }
     }, React.createElement('table', {
       style: {
-        width: '100%',
+        minWidth: '600px',
         borderCollapse: 'collapse',
         fontSize: '13px'
       }
@@ -570,11 +572,13 @@
       }
     }, 'Aucune donnée pour cette parcelle.') : React.createElement('div', {
       style: {
-        overflowX: 'auto'
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        width: '100%'
       }
     }, React.createElement('table', {
       style: {
-        width: '100%',
+        minWidth: '600px',
         borderCollapse: 'collapse',
         fontSize: '12px'
       }
