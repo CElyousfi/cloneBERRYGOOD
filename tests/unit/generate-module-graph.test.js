@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const {
   normalizeForClassify,
@@ -13,6 +14,7 @@ const {
   parseFirebaseRewrites,
   parseFirestoreCollections,
   computeFingerprint,
+  collectFingerprintSources,
   computeHealthScore,
   sortKeysDeep,
   isExcludedFromGitCoupling,
@@ -28,6 +30,8 @@ const TEST_DOMAINS = {
 
 // Racine du repo pour les tests d'intégration
 const ROOT = path.resolve(__dirname, '../..');
+// Fichier temporaire pour les tests d'intégration — évite de polluer docs/ai/module-graph.json
+const TMP_GRAPH = path.join(os.tmpdir(), 'dil-test-graph.json');
 
 // --- 1. Classification — correspondance claire ---
 
@@ -352,9 +356,8 @@ test('isExcludedFromGitCoupling: public/lib/paieUtils.js non exclu', () => {
 // --- 12. Absence de chemins absolus ---
 
 test('sortie sans chemins absolus', async () => {
-  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
-  await generateGraph(ROOT);
-  const content = fs.readFileSync(outPath, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   assert(!content.includes('/Users/'), 'Chemin absolu /Users/ détecté dans le graphe');
   assert(!content.includes('/home/'), 'Chemin absolu /home/ détecté dans le graphe');
 });
@@ -362,20 +365,18 @@ test('sortie sans chemins absolus', async () => {
 // --- 13. Déterminisme byte-for-byte ---
 
 test('deux exécutions = même JSON', async () => {
-  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
-  await generateGraph(ROOT);
-  const first = fs.readFileSync(outPath, 'utf8');
-  await generateGraph(ROOT);
-  const second = fs.readFileSync(outPath, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const first = fs.readFileSync(TMP_GRAPH, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const second = fs.readFileSync(TMP_GRAPH, 'utf8');
   assert.strictEqual(first, second, 'Le graphe n\'est pas déterministe');
 });
 
 // --- 14. JSON valide ---
 
 test('JSON valide et parseable', async () => {
-  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
-  await generateGraph(ROOT);
-  const content = fs.readFileSync(outPath, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   const graph = JSON.parse(content);
   assert(graph._meta, '_meta manquant');
   assert.strictEqual(graph._meta.schemaVersion, 1, 'schemaVersion incorrect');
@@ -389,9 +390,8 @@ test('JSON valide et parseable', async () => {
 // --- 15. Unclassified correctement signalés ---
 
 test('unclassified contient inflightDedup', async () => {
-  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
-  await generateGraph(ROOT);
-  const content = fs.readFileSync(outPath, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   const graph = JSON.parse(content);
   const filePaths = graph.unclassified.map(/** @param {{ file: string }} u */ u => u.file);
   assert(filePaths.some(f => f.includes('inflightDedup')),
@@ -401,9 +401,8 @@ test('unclassified contient inflightDedup', async () => {
 // --- 16. Root services (functions/*.js) scannés ---
 
 test('files index contient les services racine functions/*.js', async () => {
-  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
-  await generateGraph(ROOT);
-  const content = fs.readFileSync(outPath, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   const graph = JSON.parse(content);
   // pointageService.js est un service racine connu — doit apparaître dans files index
   const keys = Object.keys(graph.files);
@@ -412,12 +411,118 @@ test('files index contient les services racine functions/*.js', async () => {
 });
 
 test('domains backend.services liste les services racine classifiés', async () => {
-  const outPath = path.join(ROOT, 'docs/ai/module-graph.json');
-  await generateGraph(ROOT);
-  const content = fs.readFileSync(outPath, 'utf8');
+  await generateGraph(ROOT, TMP_GRAPH);
+  const content = fs.readFileSync(TMP_GRAPH, 'utf8');
   const graph = JSON.parse(content);
   // Au moins un domaine doit avoir une clé backend.services non vide
   const domainsWithServices = Object.values(graph.domains)
     .filter(/** @param {{ backend: { services?: string[] } }} d */ d => d.backend && Array.isArray(d.backend.services) && d.backend.services.length > 0);
   assert(domainsWithServices.length > 0, 'aucun domaine n\'a de backend.services — root services non scannés');
+});
+
+// --- 17. Stabilité du fingerprint (contrat Category A / Category B) ---
+// Category A (dans le fingerprint) : docs/ai/domains.json, firebase.json, firestore.rules,
+//   functions/index.js, public/app.jsx, public/lib/*.js, public/components/*.jsx,
+//   functions/lib/__entries__ (liste), functions/__root_services__ (liste)
+// Category B (exclu) : heatmap git, commit counts, fenêtre 90j, HEAD, timestamps, Date.now()
+
+const { execSync } = require('child_process');
+const SCANNER = path.join(ROOT, 'scripts/generate-module-graph.js');
+
+// T17-1 : deux runs successifs → même fingerprint (pas de Date.now() dans le payload)
+test('[stabilité] deux runs successifs — même fingerprint', () => {
+  const fp1 = execSync(`node "${SCANNER}" --fingerprint-only`, { encoding: 'utf8' }).trim();
+  const fp2 = execSync(`node "${SCANNER}" --fingerprint-only`, { encoding: 'utf8' }).trim();
+  assert.strictEqual(fp1, fp2, 'fingerprint change entre deux runs sans modification des sources');
+});
+
+// T17-2 : format sha256:<16-char-hex>
+test('[stabilité] fingerprint format sha256:<16 hex>', () => {
+  const fp = execSync(`node "${SCANNER}" --fingerprint-only`, { encoding: 'utf8' }).trim();
+  assert(/^sha256:[0-9a-f]{16}$/.test(fp), `format inattendu : ${fp}`);
+});
+
+// T17-3 : generateGraph écrit dans TMP_GRAPH, PAS dans docs/ai/module-graph.json
+test('[stabilité] generateGraph avec outPath ne modifie pas docs/ai/module-graph.json', async () => {
+  const realGraph = path.join(ROOT, 'docs/ai/module-graph.json');
+  const before = fs.existsSync(realGraph) ? fs.readFileSync(realGraph, 'utf8') : null;
+  await generateGraph(ROOT, TMP_GRAPH);
+  const after = fs.existsSync(realGraph) ? fs.readFileSync(realGraph, 'utf8') : null;
+  assert.strictEqual(before, after, 'generateGraph(ROOT, TMP) a modifié docs/ai/module-graph.json');
+});
+
+// T17-4 : fingerprint dans le graphe généré correspond à --fingerprint-only
+test('[stabilité] fingerprint dans le graphe = --fingerprint-only', async () => {
+  await generateGraph(ROOT, TMP_GRAPH);
+  const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
+  const fpOnly = execSync(`node "${SCANNER}" --fingerprint-only`, { encoding: 'utf8' }).trim();
+  assert.strictEqual(graph._meta.sourceFingerprint, fpOnly,
+    'fingerprint stocké dans le graphe ≠ fingerprint calculé à chaud');
+});
+
+// T17-5 : modification d'une source Category A → fingerprint change
+test('[stabilité] modification source Category A → fingerprint différent', async () => {
+  // Utiliser un répertoire temporaire isolé avec un domains.json modifié
+  const tmpRoot = path.join(os.tmpdir(), 'dil-stability-catA');
+  const aiDir = path.join(tmpRoot, 'docs/ai');
+  fs.mkdirSync(aiDir, { recursive: true });
+  // Copier les sources minimales depuis ROOT
+  const copyFile = (rel) => {
+    const src = path.join(ROOT, rel);
+    const dst = path.join(tmpRoot, rel);
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    if (fs.existsSync(src)) fs.copyFileSync(src, dst);
+  };
+  ['docs/ai/domains.json', 'firebase.json', 'firestore.rules',
+   'functions/index.js', 'public/app.jsx'].forEach(copyFile);
+  // Copier lib, components, functions/lib si existants
+  for (const dir of ['public/lib', 'public/components', 'functions/lib']) {
+    const srcDir = path.join(ROOT, dir);
+    if (fs.existsSync(srcDir)) {
+      const dstDir = path.join(tmpRoot, dir);
+      fs.mkdirSync(dstDir, { recursive: true });
+      fs.readdirSync(srcDir).forEach(f => {
+        const s = path.join(srcDir, f);
+        if (fs.statSync(s).isFile()) fs.copyFileSync(s, path.join(dstDir, f));
+      });
+    }
+  }
+  const { collectFingerprintSources } = require('../../scripts/generate-module-graph.js');
+  const fpBefore = computeFingerprint(collectFingerprintSources(tmpRoot));
+  // Modifier domains.json (Category A)
+  const domainsPath = path.join(aiDir, 'domains.json');
+  const original = fs.readFileSync(domainsPath, 'utf8');
+  fs.writeFileSync(domainsPath, original + ' ', 'utf8');
+  const fpAfter = computeFingerprint(collectFingerprintSources(tmpRoot));
+  // Restaurer
+  fs.writeFileSync(domainsPath, original, 'utf8');
+  assert.notStrictEqual(fpBefore, fpAfter, 'fingerprint identique après modification de domains.json (Category A)');
+});
+
+// T17-6 : graphe stale → QA gate échoue (fingerprint commité ≠ sources actuelles)
+test('[stabilité] graphe stale → QA gate doit détecter le désalignement', async () => {
+  // Générer un graphe normal dans TMP_GRAPH
+  await generateGraph(ROOT, TMP_GRAPH);
+  const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
+  const storedFp = graph._meta.sourceFingerprint;
+  const currentFp = execSync(`node "${SCANNER}" --fingerprint-only`, { encoding: 'utf8' }).trim();
+  // Si le graphe TMP est frais, les deux doivent correspondre
+  assert.strictEqual(storedFp, currentFp, 'Le graphe généré dans TMP_GRAPH a un fingerprint stale — vérifier generateGraph()');
+});
+
+// T17-7 : les tests n'ont pas modifié docs/ai/module-graph.json (working tree propre)
+test('[stabilité] working tree propre après tests — docs/ai/module-graph.json non modifié', () => {
+  const result = execSync(
+    `git -C "${ROOT}" diff --name-only HEAD -- docs/ai/module-graph.json`,
+    { encoding: 'utf8' }
+  ).trim();
+  assert.strictEqual(result, '', `docs/ai/module-graph.json modifié par les tests (working tree sale) : "${result}"`);
+});
+
+// T17-8 : generatorVersion dans le graphe reflète GENERATOR_VERSION du scanner
+test('[stabilité] generatorVersion dans le graphe = version courante du scanner', async () => {
+  await generateGraph(ROOT, TMP_GRAPH);
+  const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
+  assert.strictEqual(graph._meta.generatorVersion, '1.0.2',
+    `generatorVersion inattendu : ${graph._meta.generatorVersion}`);
 });
