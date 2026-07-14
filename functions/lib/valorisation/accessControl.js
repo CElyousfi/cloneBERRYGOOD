@@ -40,6 +40,16 @@ const CHEF_PROFILE_FERME = {
 };
 
 /**
+ * Table profileId chef → filtre culture additionnel (null = pas de filtre culture).
+ * chef_f5 = Myrtille uniquement dans F5 (parcelles S8 : Corina, Breeze, Cascade).
+ * chef_f1 = null (F1 est 100 % Framboise, aucun filtre nécessaire).
+ * @type {Record<string,string>}
+ */
+const CHEF_PROFILE_CULTURE = {
+  chef_f5: 'Myrtille',
+};
+
+/**
  * Indique si un profileId correspond à un Chef de Ferme.
  * @param {*} profileId
  * @returns {boolean}
@@ -74,6 +84,9 @@ function resolveChefFerme(profileId, fermeUtilisateur) {
  *                                       ferme imposée (chef). '' si non résolue.
  * @property {(null|string)} ferme_filtre - ferme à injecter dans le filtre
  *                                       getConsommationRows (null = pas de filtre).
+ * @property {(null|string)} culture_filtre - culture additionnelle à filtrer en plus
+ *                                       de la ferme (ex. 'Myrtille' pour chef_f5).
+ *                                       null = pas de filtre culture (passthrough).
  * @property {(undefined|string)} error - message d'erreur si non autorisé.
  */
 
@@ -93,7 +106,7 @@ function resolvePerimetre(user, fermeDemandee) {
 
   // Admin système : accès global (toutes fermes).
   if (systemRole === 'admin') {
-    return { autorise: true, role: 'admin', perimetre_ferme: 'all', ferme_filtre: null };
+    return { autorise: true, role: 'admin', perimetre_ferme: 'all', ferme_filtre: null, culture_filtre: null };
   }
 
   // DG / Finance : toutes fermes, avec filtre optionnel côté client.
@@ -102,19 +115,23 @@ function resolvePerimetre(user, fermeDemandee) {
     // Tout autre type (objet, array, …) est ignoré → périmètre 'all'.
     const demande = typeof fermeDemandee === 'string' ? fermeDemandee.trim() : '';
     if (demande && demande.toLowerCase() !== 'all') {
-      return { autorise: true, role: profileId, perimetre_ferme: demande, ferme_filtre: demande };
+      return { autorise: true, role: profileId, perimetre_ferme: demande, ferme_filtre: demande, culture_filtre: null };
     }
-    return { autorise: true, role: profileId, perimetre_ferme: 'all', ferme_filtre: null };
+    return { autorise: true, role: profileId, perimetre_ferme: 'all', ferme_filtre: null, culture_filtre: null };
   }
 
   // Chef de Ferme : FORCÉ sur sa ferme. Tout param ?ferme= est ignoré.
   if (isChefProfile(profileId)) {
     const ferme = resolveChefFerme(profileId, u.ferme);
+    const cultureFiltre = Object.prototype.hasOwnProperty.call(CHEF_PROFILE_CULTURE, profileId)
+      ? CHEF_PROFILE_CULTURE[profileId]
+      : null;
     return {
       autorise: true,
       role: profileId,
       perimetre_ferme: ferme,
       ferme_filtre: ferme || '__none__', // ferme inconnue => périmètre vide (aucune ligne)
+      culture_filtre: cultureFiltre,
     };
   }
 
@@ -124,6 +141,7 @@ function resolvePerimetre(user, fermeDemandee) {
     role: profileId || 'inconnu',
     perimetre_ferme: '',
     ferme_filtre: null,
+    culture_filtre: null,
     error: 'Accès non autorisé',
   };
 }
@@ -131,6 +149,7 @@ function resolvePerimetre(user, fermeDemandee) {
 module.exports = {
   FULL_ACCESS_PROFILES,
   CHEF_PROFILE_FERME,
+  CHEF_PROFILE_CULTURE,
   isChefProfile,
   resolveChefFerme,
   resolvePerimetre,

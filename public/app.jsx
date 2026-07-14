@@ -382,8 +382,8 @@
         // ===================== CONFIGURATION =====================
         const PROFILES = [
             { id: 'rh', label: 'Resp. RH', name: 'Responsable RH', icon: 'fa-users-gear', fullName: 'Responsable RH' },
-            { id: 'chef_f1', label: 'Chef F1', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', fullName: 'Hamid AGOURAM' },
-            { id: 'chef_f5', label: 'Chef F5', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', fullName: 'Bouchra HABCHANE' },
+            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', fullName: 'Hamid AGOURAM' },
+            { id: 'chef_f5', label: 'Chef Myrtille', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', cultureFilter: 'Myrtille', fullName: 'Bouchra HABCHANE' },
             { id: 'chef_avo', label: 'Chef Avocatier', name: 'Azzeddine', icon: 'fa-tree', farm: 'Avocatier', fullName: 'Azzeddine' },
             { id: 'chef_bahia', label: 'Chef BAHIA', name: 'Chef BAHIA', icon: 'fa-tree', farm: 'BAHIA', fullName: 'Chef de ferme BAHIA' },
             { id: 'caporal_f1', label: 'Caporal F1', name: 'Caporal F1', icon: 'fa-hard-hat', farm: 'F1', fullName: 'Caporal F1' },
@@ -454,6 +454,21 @@
             'BAHIA': 'Bahia',
             'Avocatier': 'Avocatier'
         };
+
+        // Helper partagé : filtre par culture pour les profils chef-culture (ex. chef_f5=Myrtille).
+        // Si cultureFilter est null/vide → passthrough (aucun filtre culture).
+        // Fallback via variété si le champ Culture est absent de la ligne.
+        function matchCulture(row, cf) {
+            if (!cf) return true;
+            var rawC = (row.culture || row.Culture || '').trim();
+            if (rawC) return rawC.toLowerCase() === cf.toLowerCase();
+            var v = (row.variete || row.Variete || row.varieteLabel || '').toLowerCase();
+            var MYRTILLE = ['corina', 'breeze', 'cascade'];
+            var FRAMBOISE = ['yazmin', 'maravilla', 'reyna', 'adelita'];
+            if (cf === 'Myrtille') return MYRTILLE.some(function(n) { return v.includes(n); });
+            if (cf === 'Framboise') return FRAMBOISE.some(function(n) { return v.includes(n); });
+            return true;
+        }
 
         function deriveSubFerme(refParcelle, parcelle) {
             const ref = (refParcelle || '').trim();
@@ -4219,7 +4234,7 @@
             );
         }
 
-        function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile }) {
+        function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile, cultureFilter }) {
             const [apiData, setApiData] = useState(null);
             const [nouveauxData, setNouveauxData] = useState(null);
             const [detailRows, setDetailRows] = useState([]);
@@ -4590,7 +4605,7 @@
                         const totalAutresPrimes = totalTraitement + totalConditionnement + totalChargement + totalJourFerie;
 
                         // Prime récolte quinzaine
-                        const qRecolteRows = recolteEquipeRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
+                        const qRecolteRows = recolteEquipeRows.filter(r => r.periode === currentQuinz && (!farmFilter || r.ferme === farmFilter) && matchSub(r) && matchCulture(r, cultureFilter));
                         const totalPrimeRecolte = qRecolteRows.reduce((s, r) => s + calcPrime(r.kg || 0, r.variete, r.jour), 0);
 
                         // Cout main d'oeuvre from quinzaine API (totalCout = Coût M.O DH)
@@ -4929,11 +4944,11 @@
                             const month = new Date().getMonth(); // 0-indexed
                             return month >= 8 && month <= 11; // Sep(8) to Dec(11)
                         };
-                        const filtered = (farmFilter ? rw.filter(r => r.ferme === farmFilter && matchSub(r)) : rw).filter(r => !isLongCaneCycle1(r));
-                        const filteredCu = (farmFilter ? recolteCueillette.filter(c => c.ferme === farmFilter && matchSub(c)) : recolteCueillette).filter(c => !isLongCaneCycle1(c));
+                        const filtered = (farmFilter ? rw.filter(r => r.ferme === farmFilter && matchSub(r) && matchCulture(r, cultureFilter)) : rw).filter(r => !isLongCaneCycle1(r));
+                        const filteredCu = (farmFilter ? recolteCueillette.filter(c => c.ferme === farmFilter && matchSub(c) && matchCulture(c, cultureFilter)) : recolteCueillette).filter(c => !isLongCaneCycle1(c));
                         const isChefDash = currentProfile && currentProfile.startsWith('chef_');
                         const totalKg = isChefDash
-                            ? recolteEquipeRows.filter(r => r.ferme === farmFilter && matchSub(r) && r.jour === new Date().toISOString().slice(0,10)).reduce((s, r) => s + (r.kg || 0), 0)
+                            ? recolteEquipeRows.filter(r => r.ferme === farmFilter && matchSub(r) && matchCulture(r, cultureFilter) && r.jour === new Date().toISOString().slice(0,10)).reduce((s, r) => s + (r.kg || 0), 0)
                             : (filteredCu.length > 0 ? filteredCu.reduce((s, c) => s + c.totalKg, 0) : filtered.reduce((s, r) => s + r.kilos, 0));
                         const totalPrimes = filtered.reduce((s, r) => s + r.prime, 0);
                         // Ouvriers primés = matricules DISTINCTS ayant au moins une prime > 0
@@ -5009,7 +5024,7 @@
 
                                 {showPrimeTrend && (() => {
                                     // Compute % ouvriers avec prime per day — last 7 available days from data
-                                    const allEqRows = farmFilter ? recolteEquipeRows.filter(r => r.ferme === farmFilter && matchSub(r)) : recolteEquipeRows;
+                                    const allEqRows = farmFilter ? recolteEquipeRows.filter(r => r.ferme === farmFilter && matchSub(r) && matchCulture(r, cultureFilter)) : recolteEquipeRows;
                                     const allDates = [...new Set(allEqRows.map(r => r.jour))].sort().reverse().slice(0, 7).reverse();
                                     const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -7087,9 +7102,9 @@
         }
 
         // ===================== RECOLTE TAB =====================
-        function RecolteTab({ data, farmFilter, avoSubFilter, currentProfile }) {
+        function RecolteTab({ data, farmFilter, avoSubFilter, currentProfile, cultureFilter: propCultureFilter }) {
             const [fermeFilter, setFermeFilter] = useState(farmFilter || '');
-            const [cultureFilter, setCultureFilter] = useState('');
+            const [cultureFilter, setCultureFilter] = useState(propCultureFilter || '');
             const [workers, setWorkers] = useState([]);
             const [cueillette, setCueillette] = useState([]);
             const [totalKgCueillette, setTotalKgCueillette] = useState(0);
@@ -7335,12 +7350,12 @@
                             <button className={`chip c-green ${fermeFilter === 'F5' ? 'active' : ''}`} onClick={() => setFermeFilter('F5')}>F5</button>
                             <button className={`chip c-green ${fermeFilter === 'Avocatier' ? 'active' : ''}`} onClick={() => setFermeFilter('Avocatier')}>Avocatier</button>
                         </div>
-                        <div className="chip-group" style={{marginLeft:8}}>
+                        {!propCultureFilter && (<div className="chip-group" style={{marginLeft:8}}>
                             <span className="chip-group-label">Culture:</span>
                             <button className={`chip c-blue ${cultureFilter === '' ? 'active' : ''}`} onClick={() => setCultureFilter('')}>Toutes</button>
                             <button className={`chip c-blue ${cultureFilter === 'Framboise' ? 'active' : ''}`} onClick={() => setCultureFilter('Framboise')}>Framboise</button>
                             <button className={`chip c-blue ${cultureFilter === 'Myrtille' ? 'active' : ''}`} onClick={() => setCultureFilter('Myrtille')}>Myrtille</button>
-                        </div>
+                        </div>)}
                     </div>
                     )}
 
@@ -10905,7 +10920,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
         }
 
         // ===================== QUINZAINE TAB =====================
-        function QuinzaineTab({ data, farmFilter, avoSubFilter, onNavigateToPrimes }) {
+        function QuinzaineTab({ data, farmFilter, avoSubFilter, cultureFilter, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
             const [loading, setLoading] = useState(true);
             const [selectedPeriode, setSelectedPeriode] = useState('');
@@ -11124,14 +11139,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     if (lower.includes('poste')) return 'postes';
                     return 'horsRecolte';
                 };
-                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter));
+                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter) && matchCulture(r, cultureFilter));
                 const _moHR = _tRows.filter(r => _classifyMO(r.operationFamille) === 'horsRecolte');
                 const _moPS = _tRows.filter(r => _classifyMO(r.operationFamille) === 'postes');
                 const allMoSrc = [
                     ..._moHR,
                     ..._moPS,
                     ...recolteEquipeRows
-                        .filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter))
+                        .filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && matchCulture(r, cultureFilter))
                         .map(r => ({ matricule: r.matricule, nom: r.nom, jour: r.jour })),
                 ];
                 const _wJH = {};
@@ -11168,7 +11183,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     }
                 });
                 return { totalBrut, totalCharges, totalCoutEmp, cntDecl, cntNonDecl };
-            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter]);
+            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter, cultureFilter]);
 
             const _parcelleEmpCostMap = useMemo(() => {
                 if (!apiData || !quinzBaremesResolved || !quinzRegistryResolved) return { ready: false, byParcelle: {} };
@@ -11180,11 +11195,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 const _smag = (_PU2.resolveSmagForDate)
                     ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
                     : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
-                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter));
+                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter) && matchCulture(r, cultureFilter));
                 const _dailyEmpCost = {};
                 const allMats = new Set([
                     ..._tRows.map(r => r.matricule),
-                    ...recolteEquipeRows.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter)).map(r => r.matricule),
+                    ...recolteEquipeRows.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && matchCulture(r, cultureFilter)).map(r => r.matricule),
                 ]);
                 allMats.forEach(mat => {
                     if (!mat) return;
@@ -11220,7 +11235,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     .filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter))
                     .forEach(r => addRow(r, r.parcelle || r.refParcelle));
                 return { ready: true, byParcelle };
-            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter]);
+            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter, cultureFilter]);
 
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🍇</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement quinzaine...</div></div>;
             if (!apiData) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--red)'}}>Erreur chargement</div>;
@@ -11239,7 +11254,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             // Transport cost for quinzaine
             const currentPeriode = selectedPeriode || (apiData.periodes || [])[0] || '';
-            const transportRows = transportDetail.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
+            const transportRows = transportDetail.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter) && matchSub(r) && matchCulture(r, cultureFilter));
             // Count unique workers per equipe per day
             const transportByDay = {};
             transportRows.forEach(r => {
@@ -11273,7 +11288,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             // ===== PRIMES CALCULATIONS =====
             // Prime Récolte
-            const qRecolteRows = recolteEquipeRows.filter(r => r.periode === currentPeriode && (!farmFilter || r.ferme === farmFilter) && matchSub(r));
+            const qRecolteRows = recolteEquipeRows.filter(r => r.periode === currentPeriode && (!farmFilter || r.ferme === farmFilter) && matchSub(r) && matchCulture(r, cultureFilter));
             const totalPrimeRecolte = qRecolteRows.reduce((s, r) => s + calcPrime(r.kg || 0, r.variete, r.jour), 0);
 
             // Classification MO (mirrors backend classifyType)
@@ -11291,7 +11306,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // Jours réellement travaillés : distinct (matricule, jour) — méthode exacte.
             // On agrège les 3 sources MO pour éviter le double-comptage parcelles (un ouvrier
             // affecté à 2 parcelles le même jour = 1 seul JH, pas 2 lignes Nombre_Jr).
-            const _recolteRowsQz = recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter));
+            const _recolteRowsQz = recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter) && matchCulture(r, cultureFilter));
             const totalJourneesDistinct = (() => {
                 const wDays = {};
                 [...moHorsRecolteRows, ...moPostesRows, ..._recolteRowsQz].forEach(function(r) {
@@ -12838,7 +12853,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         const _allMoRowsDetail = [
                             ...moHorsRecolteRows,
                             ...moPostesRows,
-                            ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter)),
+                            ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter) && matchCulture(r, cultureFilter)),
                         ];
                         const _wDetailMap = {};
                         _allMoRowsDetail.forEach(function(r) {
@@ -13106,7 +13121,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         const _allMoRows = [
                             ...moHorsRecolteRows,
                             ...moPostesRows,
-                            ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter)),
+                            ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter) && matchCulture(r, cultureFilter)),
                         ];
                         const _wMap = {};
                         _allMoRows.forEach(function (r) {
@@ -67704,6 +67719,7 @@ ${rejetHtml}
             const farmFilter = (currentProfile === 'dt' || currentProfile === 'securite' || currentProfile === 'stationnaire_avo')
                 ? (profile?.switchableFarms && !profile.switchableFarms.includes(dtFarm) ? profile.switchableFarms[0] : dtFarm)
                 : (profile?.farm || null);
+            const cultureFilter = (profile && profile.cultureFilter) || null;
             const avoSubFilter = (currentProfile === 'chef_avo' || currentProfile === 'caporal_avo') && avoFarm !== 'Toutes' ? avoFarm : null;
 
             // DG Settings — hide Cycle 1 per profile
@@ -68368,17 +68384,17 @@ ${rejetHtml}
                                     </div>
                                 )}
                                 <MesTachesWidget currentProfile={currentProfile} />
-                                {renderTab('dashboard', DashboardTab, { data, farmFilter, avoSubFilter, currentProfile, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Dashboard')}
+                                {renderTab('dashboard', DashboardTab, { data, farmFilter, avoSubFilter, currentProfile, cultureFilter, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Dashboard')}
                                 {renderTab('pointage', PointageTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Pointage')}
                                 {/* Validation du pointage : nouveau workflow par équipe/ferme (PointageValidationView, composant séparé). Scoping ferme selon profil. */}
                                 {renderTab('validation_pointage', PointageValidationViewWrapper, { data, avoSubFilter, currentProfile }, 'Validation du pointage')}
                                 {renderTab('pointage_divers', PointageDiversTab, { currentProfile }, 'Pointage Divers')}
-                                {renderTab('recolte', RecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Récolte')}
+                                {renderTab('recolte', RecolteTab, { data, farmFilter, avoSubFilter, currentProfile, cultureFilter }, 'Récolte')}
                                 {renderTab('cout_recolte', CoutRecolteTab, { data, farmFilter, avoSubFilter, currentProfile }, 'Coût Récolte')}
 
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
-                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
+                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter, cultureFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
                                 {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}

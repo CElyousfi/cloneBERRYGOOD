@@ -100,6 +100,32 @@ function filterMirrorRowsByFerme(rows, fermeFilter) {
 }
 
 /**
+ * Filtrage culture PUR sur les lignes brutes du mirror BR_Pointage.
+ * Appliqué APRÈS filterMirrorRowsByFerme pour les chefs ayant un filtre culture
+ * additionnel (ex. chef_f5 = Myrtille uniquement dans F5).
+ * Fail-closed : si la culture ne peut pas être résolue → exclue.
+ * cultureFilter falsy → passthrough (RH/DG/Finance/chef_f1 = toutes cultures).
+ *
+ * @param {Array} rows          lignes brutes mirror BR_Pointage
+ * @param {string|null} cultureFilter  'Myrtille'|'Framboise' ou null
+ * @returns {Array}
+ */
+function filterMirrorRowsByCulture(rows, cultureFilter) {
+  if (!cultureFilter) return rows || [];
+  var MYRTILLE_VARIETES = ['corina', 'breeze', 'cascade'];
+  var FRAMBOISE_VARIETES = ['yazmin', 'maravilla', 'reyna', 'adelita'];
+  return (rows || []).filter(function(r) {
+    var rawCulture = (r.Culture || r.culture || '').trim();
+    if (rawCulture) return rawCulture.toLowerCase() === cultureFilter.toLowerCase();
+    // Fallback : résoudre via resolveVariete()
+    var resolved = resolveVariete(r.Parcelle_Culturale || r.parcelle || '', r.Ref_parcelle || r.refParcelle || '');
+    if (cultureFilter === 'Myrtille') return MYRTILLE_VARIETES.some(function(n) { return (resolved.variete || '').toLowerCase().includes(n); });
+    if (cultureFilter === 'Framboise') return FRAMBOISE_VARIETES.some(function(n) { return (resolved.variete || '').toLowerCase().includes(n); });
+    return true;
+  });
+}
+
+/**
  * Filtrage ferme PUR sur un payload DÉJÀ agrégé/enrichi portant un champ `ferme`
  * par élément (ex. snapshots, lignes recolte-equipes enrichies prod). Même règle
  * fail-closed : 'Autre'/mismatch exclu ; fermeFilter falsy → passthrough.
@@ -1214,6 +1240,7 @@ exports.deriveFerme = deriveFerme;
 exports.loadReferentielCache = loadReferentielCache;
 exports.invalidateReferentielCache = invalidateReferentielCache;
 exports.filterMirrorRowsByFerme = filterMirrorRowsByFerme;
+exports.filterMirrorRowsByCulture = filterMirrorRowsByCulture;
 exports.filterByFermeField = filterByFermeField;
 exports.filterArchivedRowsByFerme = filterArchivedRowsByFerme;
 exports.filterProdRowsByFerme = filterProdRowsByFerme;
@@ -1820,6 +1847,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
       const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true };
       let _fermeFilter = null; // null = accès global (all) ou action exemptée
+      let _cultureFilter = null; // null = pas de filtre culture additionnel
       if (!GATING_EXEMPT_ACTIONS[action]) {
         const _authUser = await verifyAuth(req);
         const _callerProfile = await resolveCallerProfile(_authUser);
@@ -1829,23 +1857,32 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           return res.status(403).json({ success: false, error: "Accès non autorisé" });
         }
         _fermeFilter = _access.fermeFilter; // null (all) ou 'F1'|'F5'|'Avocatier'|'BAHIA'
+        _cultureFilter = _perim.culture_filtre || null; // null ou 'Myrtille' (chef_f5)
       }
       // Chef : filtre ferme appliqué AU NIVEAU DES LIGNES BRUTES, avant toute
       // agrégation, en shadowant les fetchers. deriveFerme retourne 'Autre' si
       // indéterminé → exclu (fail-closed : jamais dans la ferme d'un chef).
-      const _keepPointage = (r) => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === _fermeFilter;
-      const _keepCueillette = (r) => deriveFerme(r.Reference_Technique, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === _fermeFilter;
-      const getPointageRowsForDate = _fermeFilter
-        ? async (...a) => (await _getPointageRowsForDate(...a)).filter(_keepPointage)
+      // Chef Myrtille (chef_f5) : filtre culture additionnel appliqué en plus du filtre ferme.
+      const _keepPointage = _fermeFilter
+        ? (r) => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === _fermeFilter
+        : () => true;
+      const _keepCulture = _cultureFilter
+        ? (r) => filterMirrorRowsByCulture([r], _cultureFilter).length > 0
+        : () => true;
+      const _keepCueillette = _fermeFilter
+        ? (r) => deriveFerme(r.Reference_Technique, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === _fermeFilter
+        : () => true;
+      const getPointageRowsForDate = (_fermeFilter || _cultureFilter)
+        ? async (...a) => (await _getPointageRowsForDate(...a)).filter(r => _keepPointage(r) && _keepCulture(r))
         : _getPointageRowsForDate;
-      const getPointageRowsForDateRange = _fermeFilter
-        ? async (...a) => (await _getPointageRowsForDateRange(...a)).filter(_keepPointage)
+      const getPointageRowsForDateRange = (_fermeFilter || _cultureFilter)
+        ? async (...a) => (await _getPointageRowsForDateRange(...a)).filter(r => _keepPointage(r) && _keepCulture(r))
         : _getPointageRowsForDateRange;
-      const getPointageRowsForPeriode = _fermeFilter
-        ? async (...a) => (await _getPointageRowsForPeriode(...a)).filter(_keepPointage)
+      const getPointageRowsForPeriode = (_fermeFilter || _cultureFilter)
+        ? async (...a) => (await _getPointageRowsForPeriode(...a)).filter(r => _keepPointage(r) && _keepCulture(r))
         : _getPointageRowsForPeriode;
-      const getWorkerHistory = _fermeFilter
-        ? async (...a) => (await _getWorkerHistory(...a)).filter(_keepPointage)
+      const getWorkerHistory = (_fermeFilter || _cultureFilter)
+        ? async (...a) => (await _getWorkerHistory(...a)).filter(r => _keepPointage(r) && _keepCulture(r))
         : _getWorkerHistory;
       const getCueilletteRows = _fermeFilter
         ? async (...a) => (await _getCueilletteRows(...a)).filter(_keepCueillette)
@@ -2052,11 +2089,12 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // CHAQUE recordset par la ferme du chef AVANT agrégation (effectifs/trend/topOps/
         // récolte), comme le chemin mirror via les fetchers shadowés. Fail-closed.
         // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
-        const todayRows = filterMirrorRowsByFerme(todayRes.recordset, _fermeFilter);
-        const yesterdayRows = filterMirrorRowsByFerme(yesterdayRes.recordset, _fermeFilter);
-        const trendRows = filterMirrorRowsByFerme(trendRes.recordset, _fermeFilter);
-        const topOpsRows = filterMirrorRowsByFerme(topOpsRes.recordset, _fermeFilter);
-        const recolteRows = filterMirrorRowsByFerme(recolteKgRes.recordset, _fermeFilter);
+        // _cultureFilter non null (chef_f5) → filtre culture additionnel après ferme.
+        const todayRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(todayRes.recordset, _fermeFilter), _cultureFilter);
+        const yesterdayRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(yesterdayRes.recordset, _fermeFilter), _cultureFilter);
+        const trendRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(trendRes.recordset, _fermeFilter), _cultureFilter);
+        const topOpsRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(topOpsRes.recordset, _fermeFilter), _cultureFilter);
+        const recolteRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(recolteKgRes.recordset, _fermeFilter), _cultureFilter);
 
         const fermes = countDistinctByFermeType(todayRows.map(row => ({
           matricule: row.Personnel_Matricule,
@@ -2393,7 +2431,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             // BRUTES par la ferme du chef AVANT toute agrégation (qFermes/parJour/totaux),
             // exactement comme le chemin mirror. Sans ça, un chef verrait toutes les fermes.
             // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
-            rows = filterMirrorRowsByFerme(rows, _fermeFilter);
+            // _cultureFilter non null (chef_f5) → filtre culture additionnel après ferme.
+            rows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(rows, _fermeFilter), _cultureFilter);
           }
           // Summary per ferme
           const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
@@ -2437,9 +2476,10 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // → ferme dérivable. On filtre CHAQUE recordset par la ferme du chef AVANT
         // agrégation (qFermes/parJour/totaux) pour cloisonner, cohérence fail-closed.
         // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
-        const summaryRows = filterMirrorRowsByFerme(summaryRes.recordset, _fermeFilter);
-        const perDayRows = filterMirrorRowsByFerme(perDayRes.recordset, _fermeFilter);
-        const perDayMatRows = filterMirrorRowsByFerme(perDayMatRes.recordset, _fermeFilter);
+        // _cultureFilter non null (chef_f5) → filtre culture additionnel après ferme.
+        const summaryRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(summaryRes.recordset, _fermeFilter), _cultureFilter);
+        const perDayRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(perDayRes.recordset, _fermeFilter), _cultureFilter);
+        const perDayMatRows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(perDayMatRes.recordset, _fermeFilter), _cultureFilter);
         const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
         for (const row of summaryRows) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); const type = classifyType(row.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += row.totalJr || 0; qFermes[ferme].cout += row.totalCout || 0; qFermes[ferme][type] += row.totalJr || 0; } }
         // journees/cout = SOMMES sur les groupes (parcelle × op-famille) — INCHANGÉ.
@@ -2782,7 +2822,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // jour en JS. _fermeFilter null (RH/DG/Finance) → passthrough (tous comptés).
         const result = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour, Personnel_Matricule, Ref_parcelle, Parcelle_Culturale FROM BR_Pointage WHERE CONVERT(date, Periode_Date) >= DATEADD(day, -60, CONVERT(date, GETDATE()))`);
         const dateSets = {};
-        for (const r of filterMirrorRowsByFerme(result.recordset, _fermeFilter)) {
+        for (const r of filterMirrorRowsByCulture(filterMirrorRowsByFerme(result.recordset, _fermeFilter), _cultureFilter)) {
           const key = new Date(r.jour).toISOString().slice(0, 10);
           if (!dateSets[key]) dateSets[key] = new Set();
           if (r.Personnel_Matricule) dateSets[key].add(r.Personnel_Matricule);
@@ -2842,7 +2882,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // filtre les LIGNES BRUTES par la ferme du chef AVANT agrégation (byFarm/byDay/
         // workers nominatifs). Fail-closed : ferme dérivée ≠ _fermeFilter → exclue.
         // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
-        const rows = filterMirrorRowsByFerme(result.recordset, _fermeFilter);
+        // _cultureFilter non null (chef_f5) → filtre culture additionnel après ferme.
+        const rows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(result.recordset, _fermeFilter), _cultureFilter);
         const today = new Date().toISOString().slice(0, 10);
         const qStart = rows.length > 0 ? new Date(rows[0].q_start).toISOString().slice(0, 10) : null;
         const qEnd = rows.length > 0 ? new Date(rows[0].q_end).toISOString().slice(0, 10) : null;
@@ -3460,7 +3501,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // par la ferme du chef AVANT de peupler farmData → un chef ne voit que le nbOuv de
         // sa ferme (autres fermes = 0), comme le chemin mirror shadowé (fail-closed).
         // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
-        for (const row of filterMirrorRowsByFerme(result.recordset, _fermeFilter)) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].add(row.Personnel_Matricule); }
+        for (const row of filterMirrorRowsByCulture(filterMirrorRowsByFerme(result.recordset, _fermeFilter), _cultureFilter)) { const ferme = deriveFerme(row.Ref_parcelle, row.Parcelle_Culturale); if (farmData[ferme]) farmData[ferme].add(row.Personnel_Matricule); }
         const uploads = Object.entries(farmData).map(([ferme, workers]) => ({ ferme, nbOuv: workers.size }));
         return res.json({ success: true, date: dateForCheck, lastTableWrite: lastTableWrite ? new Date(lastTableWrite).toISOString() : null, uploads });
       }
