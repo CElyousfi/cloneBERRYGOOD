@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 72,
+        "commits": 73,
         "file": "public/app.jsx"
       },
       {
@@ -40,6 +40,10 @@
       },
       {
         "commits": 5,
+        "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 5,
         "file": "public/components/ParcellesReferentielTab.jsx"
       },
       {
@@ -49,10 +53,6 @@
       {
         "commits": 4,
         "file": "functions/pointageBdpSync.js"
-      },
-      {
-        "commits": 4,
-        "file": "functions/pointageService.js"
       },
       {
         "commits": 4,
