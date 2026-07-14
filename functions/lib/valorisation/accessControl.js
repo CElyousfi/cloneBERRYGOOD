@@ -33,7 +33,7 @@ const FULL_ACCESS_PROFILES = { dg: true, finance: true, rh: true };
  * @type {Record<string,string>}
  */
 const CHEF_PROFILE_FERME = {
-  chef_f1: 'F1',
+  chef_f1: null,        // Accès culture seulement (Framboise, F1 + F5-Framboise)
   chef_f5: 'F5',
   chef_avo: 'Avocatier',
   chef_bahia: 'BAHIA',
@@ -46,7 +46,8 @@ const CHEF_PROFILE_FERME = {
  * @type {Record<string,string>}
  */
 const CHEF_PROFILE_CULTURE = {
-  chef_f5: 'Myrtille',
+  chef_f1: 'Framboise', // F1 + parcelles Framboise de F5 (S9/S10/S13)
+  chef_f5: 'Myrtille',  // F5 uniquement, parcelles S8 (Corina, Breeze, Cascade)
 };
 
 /**
@@ -70,6 +71,7 @@ function resolveChefFerme(profileId, fermeUtilisateur) {
     typeof profileId === 'string' &&
     Object.prototype.hasOwnProperty.call(CHEF_PROFILE_FERME, profileId)
   ) {
+    // null = accès culture-only (ex. chef_f1 : Framboise sur toutes fermes)
     return CHEF_PROFILE_FERME[profileId];
   }
   const f = fermeUtilisateur == null ? '' : String(fermeUtilisateur).trim();
@@ -120,17 +122,21 @@ function resolvePerimetre(user, fermeDemandee) {
     return { autorise: true, role: profileId, perimetre_ferme: 'all', ferme_filtre: null, culture_filtre: null };
   }
 
-  // Chef de Ferme : FORCÉ sur sa ferme. Tout param ?ferme= est ignoré.
+  // Chef de Ferme : périmètre FORCÉ. Tout param ?ferme= est ignoré.
   if (isChefProfile(profileId)) {
     const ferme = resolveChefFerme(profileId, u.ferme);
     const cultureFiltre = Object.prototype.hasOwnProperty.call(CHEF_PROFILE_CULTURE, profileId)
       ? CHEF_PROFILE_CULTURE[profileId]
       : null;
+    // ferme === null  → accès culture-only (chef_f1 : Framboise toutes fermes)
+    // ferme === ''    → chef inconnu, périmètre vide (fail-closed)
+    // ferme === 'F5'  → filtre ferme strict
+    const fermeFiltre = ferme === null ? null : (ferme || '__none__');
     return {
       autorise: true,
       role: profileId,
-      perimetre_ferme: ferme,
-      ferme_filtre: ferme || '__none__', // ferme inconnue => périmètre vide (aucune ligne)
+      perimetre_ferme: ferme === null ? 'all' : (ferme || ''),
+      ferme_filtre: fermeFiltre,
       culture_filtre: cultureFiltre,
     };
   }
