@@ -32,11 +32,11 @@
       },
       {
         "commits": 7,
-        "file": "functions/sqlSyncService.js"
+        "file": "functions/pointageService.js"
       },
       {
-        "commits": 6,
-        "file": "functions/pointageService.js"
+        "commits": 7,
+        "file": "functions/sqlSyncService.js"
       },
       {
         "commits": 6,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c966c82eaff21081",
+    "sourceFingerprint": "sha256:454bdf17ec7f285d",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,

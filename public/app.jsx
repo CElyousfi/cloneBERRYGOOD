@@ -382,8 +382,8 @@
         // ===================== CONFIGURATION =====================
         const PROFILES = [
             { id: 'rh', label: 'Resp. RH', name: 'Responsable RH', icon: 'fa-users-gear', fullName: 'Responsable RH' },
-            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', fullName: 'Hamid AGOURAM' },
-            { id: 'chef_f5', label: 'Chef Myrtille', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', cultureFilter: 'Myrtille', fullName: 'Bouchra HABCHANE' },
+            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', farmLabel: 'Framboise', fullName: 'Hamid AGOURAM' },
+            { id: 'chef_f5', label: 'Chef Myrtille', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', farmLabel: 'Myrtille', cultureFilter: 'Myrtille', fullName: 'Bouchra HABCHANE' },
             { id: 'chef_avo', label: 'Chef Avocatier', name: 'Azzeddine', icon: 'fa-tree', farm: 'Avocatier', fullName: 'Azzeddine' },
             { id: 'chef_bahia', label: 'Chef BAHIA', name: 'Chef BAHIA', icon: 'fa-tree', farm: 'BAHIA', fullName: 'Chef de ferme BAHIA' },
             { id: 'caporal_f1', label: 'Caporal F1', name: 'Caporal F1', icon: 'fa-hard-hat', farm: 'F1', fullName: 'Caporal F1' },
@@ -10920,7 +10920,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
         }
 
         // ===================== QUINZAINE TAB =====================
-        function QuinzaineTab({ data, farmFilter, avoSubFilter, cultureFilter, onNavigateToPrimes }) {
+        function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
             const [loading, setLoading] = useState(true);
             const [selectedPeriode, setSelectedPeriode] = useState('');
@@ -11528,7 +11528,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     </div>
 
                     <div className="quinzaine-card">
-                        <h3>Quinzaine {selectedPeriode || (apiData.periodes || [])[0] || ''}{(cultureFilter || farmFilter) ? ' — ' + (cultureFilter || farmFilter) : ''}</h3>
+                        <h3>{selectedPeriode || (apiData.periodes || [])[0] || ''}{(farmLabel || cultureFilter || farmFilter) ? ' — ' + (farmLabel || cultureFilter || farmFilter) : ''}</h3>
                         <window.QuinzaineRecapCards
                             recapItems={recapItems}
                             totalGlobal={totalGlobal}
@@ -67720,6 +67720,7 @@ ${rejetHtml}
                 ? (profile?.switchableFarms && !profile.switchableFarms.includes(dtFarm) ? profile.switchableFarms[0] : dtFarm)
                 : (profile?.farm || null);
             const cultureFilter = (profile && profile.cultureFilter) || null;
+            const farmLabel = (profile && profile.farmLabel) || cultureFilter || farmFilter;
             const avoSubFilter = (currentProfile === 'chef_avo' || currentProfile === 'caporal_avo') && avoFarm !== 'Toutes' ? avoFarm : null;
 
             // DG Settings — hide Cycle 1 per profile
@@ -68206,7 +68207,7 @@ ${rejetHtml}
                                     <div className="user-avatar">{(userProfile.displayName || userProfile.email || 'U').charAt(0).toUpperCase()}</div>
                                     <div className="user-info">
                                         <div className="name">{userProfile.displayName || userProfile.email}</div>
-                                        <div className="role">{profile?.label || currentProfile}{farmFilter && !cultureFilter ? ' — ' + (avoSubFilter || farmFilter) : ''}</div>
+                                        <div className="role">{profile?.label || currentProfile}</div>
                                     </div>
                                 </div>
                                 <button onClick={() => firebaseAuth.signOut()}
@@ -68228,7 +68229,7 @@ ${rejetHtml}
                                     </button>
                                     <h1>
                                         {navItems.find(n => n.id === currentTab)?.label}
-                                        <span>{farmFilter ? ` - ${cultureFilter ? cultureFilter + ' Laaouamra' : FARM_NAMES[farmFilter]}` : ''}</span>
+                                        <span>{farmLabel ? ` - ${farmLabel}` : (farmFilter ? ` - ${FARM_NAMES[farmFilter]}` : '')}</span>
                                     </h1>
                                 </div>
                                 <div className="header-actions">
@@ -68394,7 +68395,7 @@ ${rejetHtml}
 
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
-                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, avoSubFilter, cultureFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
+                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, farmLabel, avoSubFilter, cultureFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
                                 {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
