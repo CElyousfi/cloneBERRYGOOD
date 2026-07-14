@@ -13089,7 +13089,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     var ref = personnelRef[String(w.matricule)] || {};
                                                     return Object.assign({}, w, { cin: ref.cin || null, cnss: ref.cnss || null });
                                                 });
-                                                await window.EmargementPdf.genBulletins(enrichedWorkers, currentPeriode, _smag.smagBrutJournalier);
+                                                var _parJourDays = parJour.map(function(d) { return d.jour; }).filter(Boolean).sort();
+                                                var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
+                                                var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length - 1] : null;
+                                                await window.EmargementPdf.genBulletins(enrichedWorkers, currentPeriode, _smag.smagBrutJournalier, { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin });
                                             }}
                                             style={_btnStyle(_declared.length > 0 ? '#8B2252' : '#aaa')}>
                                             <i className="fa-solid fa-file-lines" style={{fontSize:16}}></i>

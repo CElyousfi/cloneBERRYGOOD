@@ -200,7 +200,14 @@
     //    Format : Smart Berry / Berry Good Farms
     //    NOTE : fonction async — le caller doit l'appeler avec await
     // ─────────────────────────────────────────────────────────────────────────────
-    async function genBulletins(workers, periode, smagBrutJournalier) {
+    function formatDateFR(dateStr) {
+        if (!dateStr) return '';
+        var d = new Date(dateStr);
+        var mois = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+        return d.getDate().toString().padStart(2,'0') + ' ' + mois[d.getMonth()] + ' ' + d.getFullYear();
+    }
+
+    async function genBulletins(workers, periode, smagBrutJournalier, options) {
         // workers: [{
         //   matricule, nom, prenom, equipe, journees, declare,
         //   cin,               // peut être null/undefined
@@ -244,6 +251,10 @@
         // Taux légaux CNSS / AMO
         var TAUX_CNSS = 0.0448;
         var TAUX_AMO  = 0.0226;
+
+        var periodeLabel = (options && options.dateDebut && options.dateFin)
+            ? 'Du ' + formatDateFR(options.dateDebut) + ' au ' + formatDateFR(options.dateFin)
+            : 'Période : ' + String(periode || '');
 
         if (!workers || workers.length === 0) { alert('Aucun ouvrier déclaré pour cette période.'); return; }
 
@@ -319,7 +330,7 @@
             // Période dans la même bande, à droite
             doc.setFontSize(8);
             doc.setFont('helvetica', 'normal');
-            doc.text('Période : ' + (periode || '—'), 193, y + 5, { align: 'right' });
+            doc.text(periodeLabel, 193, y + 5, { align: 'right' });
             y += 12;
 
             // ── BLOC 3 : Info salarié (2 colonnes côte à côte) ──
@@ -331,26 +342,26 @@
             var yBlock = y;
             var lineH = 5.5;
 
-            // Fond léger pour les deux blocs
+            // Fond léger pour les deux blocs (hauteur 32 pour éviter le chevauchement)
             doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
-            doc.rect(xLeft, yBlock - 2, colW, 26, 'F');
-            doc.rect(xRight, yBlock - 2, colW, 26, 'F');
+            doc.rect(xLeft, yBlock - 2, colW, 32, 'F');
+            doc.rect(xRight, yBlock - 2, colW, 32, 'F');
 
-            // En-têtes des deux blocs (fond berry brand, texte blanc)
+            // En-têtes des deux blocs (fond vert brand, texte blanc, hauteur 8 pour texte visible)
             doc.setFillColor(C.greenBrand[0], C.greenBrand[1], C.greenBrand[2]);
-            doc.rect(xLeft, yBlock - 2, colW, 6, 'F');
-            doc.rect(xRight, yBlock - 2, colW, 6, 'F');
+            doc.rect(xLeft, yBlock - 2, colW, 8, 'F');
+            doc.rect(xRight, yBlock - 2, colW, 8, 'F');
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(7.5);
             doc.setTextColor(C.white[0], C.white[1], C.white[2]);
-            doc.text('SALARIÉ', xLeft + 2, yBlock + 2);
-            doc.text('IDENTIFICATION', xRight + 2, yBlock + 2);
+            doc.text('SALARIÉ', xLeft + 2, yBlock + 3);
+            doc.text('IDENTIFICATION', xRight + 2, yBlock + 3);
 
-            // Contenu colonne gauche
+            // Contenu colonne gauche (commence 3mm sous la fin du header)
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(7.5);
             doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            var yL = yBlock + 6;
+            var yL = yBlock + 9;
             doc.setFont('helvetica', 'bold'); doc.text('Nom', xLeft + 2, yL);
             doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.nom || '—').toUpperCase(), xLeft + 20, yL);
             yL += lineH;
@@ -366,7 +377,7 @@
             doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.declare ? 'Ouvrier CNSS' : 'Ouvrier Sans CNSS'), xLeft + 20, yL);
 
             // Contenu colonne droite
-            var yR = yBlock + 6;
+            var yR = yBlock + 9;
             doc.setFont('helvetica', 'bold'); doc.text('Matricule', xRight + 2, yR);
             doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.matricule || '—'), xRight + 28, yR);
             yR += lineH;
@@ -389,7 +400,7 @@
                     '—', '—', '—', '—', '—',
                     fmtDH(dailyRate),
                     fmtDH(sHoraire),
-                    periode || '—',
+                    periodeLabel,
                 ]],
                 styles:     { fontSize: 7, cellPadding: 2 },
                 headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'bold', fontSize: 7 },
@@ -591,7 +602,7 @@
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(8);
             doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('Situation congé au : ' + (periode || '—'), 14, y);
+            doc.text('Situation congé au : ' + periodeLabel, 14, y);
             y += 3;
 
             doc.autoTable({
@@ -605,15 +616,6 @@
             });
             y = doc.lastAutoTable.finalY + 5;
 
-            // ── BLOC 7 : Réf. Règlement ──
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8);
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('Réf. Règlement', 14, y);
-            y += 5;
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(8);
-            doc.text('[ ] ESPECE     [ ] CHEQUE N° : ___________________________     [ ] VIREMENT DU : ___________________________', 14, y);
         });
 
         var periodeSafe = (periode || 'quinzaine').replace(/[^a-zA-Z0-9_-]/g, '_');
