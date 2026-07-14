@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 74,
+        "commits": 76,
         "file": "public/app.jsx"
       },
       {
@@ -35,7 +35,7 @@
         "file": "functions/sqlSyncService.js"
       },
       {
-        "commits": 7,
+        "commits": 6,
         "file": "scripts/build-frontend.js"
       },
       {
@@ -51,20 +51,20 @@
         "file": "public/components/PrimesFixesTab.jsx"
       },
       {
+        "commits": 5,
+        "file": "public/lib/analytiqueUtils.js"
+      },
+      {
         "commits": 4,
         "file": "functions/pointageBdpSync.js"
       },
       {
         "commits": 4,
         "file": "tests/unit/pointageBdpMap.test.js"
-      },
-      {
-        "commits": 3,
-        "file": "public/components/PrimesFixesTab.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c35f93112e666af7",
+    "sourceFingerprint": "sha256:c27d4b96a4ba6a34",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
@@ -715,7 +715,22 @@
           "FinCodesAnalytiquesTab"
         ]
       },
-      "gitCoupling": [],
+      "gitCoupling": [
+        {
+          "coCommits": 5,
+          "domain": null,
+          "file": "public/app.jsx",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/analytiqueUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
       "label": "Référentiel & Analytique",
       "tests": {
         "backend": [],

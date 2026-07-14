@@ -10917,7 +10917,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
             const [analytiqueCultureIdx, setAnalytiqueCultureIdx] = useState(0);
             const [analytiqueTotalMode, setAnalytiqueTotalMode] = useState(false);
-            const [analytiqueFamilleMode, setAnalytiqueFamilleMode] = useState(false);
             const [detailEquipeFilter, setDetailEquipeFilter] = useState('');
             const [detailSearch, setDetailSearch] = useState('');
             useEffect(() => {
@@ -11477,13 +11476,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // les lignes dupliquées post-bascule BDP. Garde anti-crash si la lib n'est
             // pas chargée (cf. mémoire projet : global manquant = crash React global).
             const _buildAnalytiquePivot = (rows) => {
-                if (!window.AnalytiqueUtils) return { parcelles: [], operations: [], pivot: {} };
-                if (analytiqueFamilleMode) {
-                    return window.AnalytiqueUtils.buildAnalytiquePivotByFamille
-                        ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows)
-                        : window.AnalytiqueUtils.buildAnalytiquePivot(rows);
-                }
-                return window.AnalytiqueUtils.buildAnalytiquePivot(rows);
+                if (!window.AnalytiqueUtils) return { parcelles: [], groupedRows: [] };
+                return window.AnalytiqueUtils.buildAnalytiquePivotByFamille
+                    ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows)
+                    : { parcelles: [], groupedRows: [] };
             };
 
             return (
@@ -12481,7 +12477,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
                                 <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
                                     <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
-                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'}{analytiqueFamilleMode ? ' · Famille' : ' · Sous-famille'}
+                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'} · Famille
                                 </div>
                                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                                     <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
@@ -12497,21 +12493,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 {label}
                                             </button>
                                         ))}
-                                    </div>
-                                    <div style={{display:'flex',gap:4,background:'#f3f4f6',borderRadius:8,padding:'3px'}}>
-                                        {['Sous-famille', 'Famille'].map(function(label, i) {
-                                            var isActive = i === 0 ? !analytiqueFamilleMode : analytiqueFamilleMode;
-                                            return (
-                                                <button key={label}
-                                                    onClick={() => setAnalytiqueFamilleMode(i === 1)}
-                                                    style={{
-                                                        padding: '4px 12px', borderRadius: 8, border: 'none',
-                                                        background: isActive ? 'var(--berry)' : 'transparent',
-                                                        color: isActive ? '#fff' : '#6b7280',
-                                                        fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s'
-                                                    }}>{label}</button>
-                                            );
-                                        })}
                                     </div>
                                     <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
                                         {[['ha', 'Ha'], ['total', 'Total']].map(([v, label]) => (
@@ -12578,9 +12559,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 const parcelles = _pivotResult.parcelles;
                                 // Mode Famille → groupedRows ; Mode Sous-famille → operations + pivot
                                 const groupedRows = _pivotResult.groupedRows || null;
-                                const operations = _pivotResult.operations || null;
-                                const pivot = _pivotResult.pivot || null;
-                                const _hasRows = groupedRows ? groupedRows.length > 0 : (operations && operations.length > 0);
+                                const _hasRows = groupedRows && groupedRows.length > 0;
                                 if (!_hasRows) return null;
                                 const _totalHa = parcelles.reduce((s, [, ha]) => s + ha, 0);
                                 const _unit = analytiqueView === 'jh'
@@ -12625,9 +12604,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    {groupedRows ? (
-                                                        /* ---- MODE FAMILLE : groupe → familles (clic = popup détail) ---- */
-                                                        groupedRows.map((row) => {
+                                                    {(groupedRows || []).map((row) => {
                                                             const _totalHaForRow = parcelles.reduce((s, [, ha]) => s + ha, 0);
                                                             const _rowTotal = analytiqueView === 'jh'
                                                                 ? parcelles.reduce((s, [pKey]) => { const c = row.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
@@ -12703,74 +12680,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                     </td>
                                                                 </tr>
                                                             );
-                                                        })
-                                                    ) : (
-                                                        /* ---- MODE SOUS-FAMILLE : rendu classique (inchangé) ---- */
-                                                        (operations || []).map((op, opIdx) => {
-                                                            const _rowTotal = analytiqueView === 'jh'
-                                                                ? parcelles.reduce((s, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.jh : 0); }, 0)
-                                                                : (_parcelleEmpCostMap.ready
-                                                                    ? parcelles.reduce((s, [pKey]) => {
-                                                                        const c = pivot[op.key] && pivot[op.key][pKey];
-                                                                        if (!c) return s;
-                                                                        const _parcelleBeeoneTot = (operations || []).reduce((s2, op2) => { const c2 = pivot[op2.key] && pivot[op2.key][pKey]; return s2 + (c2 ? c2.cout : 0); }, 0);
-                                                                        const _empTotal = _parcelleEmpCostMap.byParcelle[pKey] || 0;
-                                                                        return s + (_parcelleBeeoneTot > 0 ? (c.cout / _parcelleBeeoneTot) * _empTotal : c.cout);
-                                                                    }, 0)
-                                                                    : parcelles.reduce((s, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.cout : 0); }, 0));
-                                                            const _totalHaForOp = parcelles.reduce((s, [, ha]) => s + ha, 0);
-                                                            return (
-                                                                <tr key={op.key} style={{background: opIdx % 2 === 0 ? '#fff' : '#fafbfc', borderBottom:'1px solid var(--gray-100)'}}>
-                                                                    <td style={{padding:'7px 12px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:0,background: opIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1}}>
-                                                                        {op.label}
-                                                                    </td>
-                                                                    {parcelles.map(([pKey, ha]) => {
-                                                                        const c = pivot[op.key] && pivot[op.key][pKey];
-                                                                        if (!c) return <td key={pKey} style={{padding:'7px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
-                                                                        const _val = analytiqueView === 'jh' ? c.jh : (() => {
-                                                                            if (_parcelleEmpCostMap.ready) {
-                                                                                const _parcelleBeeoneTot = (operations || []).reduce((s, op2) => {
-                                                                                    const c2 = pivot[op2.key] && pivot[op2.key][pKey];
-                                                                                    return s + (c2 ? c2.cout : 0);
-                                                                                }, 0);
-                                                                                const _empTotal = _parcelleEmpCostMap.byParcelle[pKey] || 0;
-                                                                                return _parcelleBeeoneTot > 0 ? (c.cout / _parcelleBeeoneTot) * _empTotal : c.cout;
-                                                                            }
-                                                                            return c.cout;
-                                                                        })();
-                                                                        return (
-                                                                            <td key={pKey}
-                                                                                onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: op.label, ha, detailRows: c.detailRows })}
-                                                                                style={{padding:'7px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid var(--gray-100)',transition:'background 0.1s'}}
-                                                                                onMouseEnter={e => e.currentTarget.style.background=`${color}18`}
-                                                                                onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                                <div style={{fontWeight:600,color:'var(--gray-800)'}}>{_fmt(_val, ha)}</div>
-                                                                                <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
-                                                                            </td>
-                                                                        );
-                                                                    })}
-                                                                    <td style={{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0}}>
-                                                                        <div>{_fmt(_rowTotal, _totalHaForOp)}</div>
-                                                                        <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })
-                                                    )}
+                                                        })}
                                                 </tbody>
                                                 <tfoot>
                                                     <tr style={{background:`${color}18`,fontWeight:700}}>
                                                         <td style={{padding:'8px 12px',position:'sticky',left:0,background:`${color}18`,borderRight:'1px solid var(--gray-200)',zIndex:1,color}}>TOTAL</td>
                                                         {parcelles.map(([pKey, ha]) => {
-                                                            const colTotal = groupedRows
-                                                                ? (analytiqueView === 'jh'
-                                                                    ? groupedRows.filter(r => r.type === 'famille').reduce((s, r) => { const c = r.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
-                                                                    : groupedRows.filter(r => r.type === 'famille').reduce((s, r) => { const c = r.pivot[pKey]; return s + (c ? c.cout : 0); }, 0))
-                                                                : (analytiqueView === 'jh'
-                                                                    ? (operations || []).reduce((s, op) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.jh : 0); }, 0)
-                                                                    : (_parcelleEmpCostMap.ready
-                                                                        ? (_parcelleEmpCostMap.byParcelle[pKey] || 0)
-                                                                        : (operations || []).reduce((s, op) => { const c = pivot[op.key] && pivot[op.key][pKey]; return s + (c ? c.cout : 0); }, 0)));
+                                                            const colTotal = analytiqueView === 'jh'
+                                                                ? (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => { const c = r.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
+                                                                : (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => { const c = r.pivot[pKey]; return s + (c ? c.cout : 0); }, 0);
                                                             return (
                                                                 <td key={pKey} style={{padding:'8px 10px',textAlign:'center',borderRight:'1px solid var(--gray-100)',color}}>
                                                                     <div>{_fmt(colTotal, ha)}</div>
@@ -12780,15 +12698,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         })}
                                                         <td style={{padding:'8px 10px',textAlign:'center',background:`${color}28`,position:'sticky',right:0,color}}>
                                                             {(() => {
-                                                                const gt = groupedRows
-                                                                    ? (analytiqueView === 'jh'
-                                                                        ? groupedRows.filter(r => r.type === 'famille').reduce((s, r) => s + parcelles.reduce((ps, [pKey]) => { const c = r.pivot[pKey]; return ps + (c ? c.jh : 0); }, 0), 0)
-                                                                        : groupedRows.filter(r => r.type === 'famille').reduce((s, r) => s + parcelles.reduce((ps, [pKey]) => { const c = r.pivot[pKey]; return ps + (c ? c.cout : 0); }, 0), 0))
-                                                                    : (analytiqueView === 'jh'
-                                                                        ? (operations || []).reduce((s, op) => s + parcelles.reduce((ps, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return ps + (c ? c.jh : 0); }, 0), 0)
-                                                                        : (_parcelleEmpCostMap.ready
-                                                                            ? parcelles.reduce((s, [pKey]) => s + (_parcelleEmpCostMap.byParcelle[pKey] || 0), 0)
-                                                                            : (operations || []).reduce((s, op) => s + parcelles.reduce((ps, [pKey]) => { const c = pivot[op.key] && pivot[op.key][pKey]; return ps + (c ? c.cout : 0); }, 0), 0)));
+                                                                const gt = analytiqueView === 'jh'
+                                                                    ? (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => s + parcelles.reduce((ps, [pKey]) => { const c = r.pivot[pKey]; return ps + (c ? c.jh : 0); }, 0), 0)
+                                                                    : (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => s + parcelles.reduce((ps, [pKey]) => { const c = r.pivot[pKey]; return ps + (c ? c.cout : 0); }, 0), 0);
                                                                 return <><div>{_fmt(gt, _totalHa)}</div><div style={{fontSize:10,opacity:0.7}}>{_unit}</div></>;
                                                             })()}
                                                         </td>
