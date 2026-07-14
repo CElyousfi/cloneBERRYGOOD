@@ -10916,6 +10916,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueView, setAnalytiqueView] = useState('jh');
             const [analytiqueDetailCell, setAnalytiqueDetailCell] = useState(null);
             const [emargementOpen, setEmargementOpen] = useState(false);
+            const [diversData, setDiversData] = useState(null); // {total, dates, byDate, rows} — Location & Engins
+            const [diversPopupOpen, setDiversPopupOpen] = useState(false);
 
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
@@ -11025,6 +11027,47 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             };
 
             React.useEffect(() => { loadData(); }, []);
+
+            // Fetch Pointage Divers (Location & Engins) pour la quinzaine affichée.
+            // useEffect séparé car loadData() n'est pas async — déclenché par selectedPeriode
+            // qui change à chaque changement de quinzaine via handlePeriodeChange.
+            // Rules of Hooks : placé avant tout early-return.
+            React.useEffect(() => {
+                var periode = selectedPeriode;
+                // On attend que apiData soit chargé pour connaître la période par défaut.
+                if (!periode && !apiData) return;
+                var pUrl = '/api/validation?action=divers-entries-range' + (periode ? '&periode=' + encodeURIComponent(periode) : '');
+                fetch(pUrl).then(function(r) { return r.json(); }).then(function(j) {
+                    if (!j || !j.success) return;
+                    var totalDivers = 0;
+                    var prestSet = {};
+                    var rowsByDate = {};
+                    (j.dates || []).forEach(function(d) {
+                        var dayData = (j.byDate || {})[d] || { entries: [], totalMontant: 0 };
+                        totalDivers += dayData.totalMontant || 0;
+                        rowsByDate[d] = dayData;
+                        (dayData.entries || []).forEach(function(e) {
+                            var key = (e.beneficiaire || e.matricule || '?') + '|' + (e.fonction || '');
+                            if (key) prestSet[key] = { beneficiaire: e.beneficiaire || '', matricule: e.matricule || '', fonction: e.fonction || '' };
+                        });
+                    });
+                    // Calcul des agrégats (même logique que DiversQuinzaineSub)
+                    var bySt = {};
+                    (j.dates || []).forEach(function(d) {
+                        ((rowsByDate[d] || {}).entries || []).forEach(function(e) {
+                            var key = (e.matricule || e.beneficiaire || '?') + '|' + (e.fonction || '');
+                            if (!bySt[key]) bySt[key] = { matricule: e.matricule || '', beneficiaire: e.beneficiaire || '', fonction: e.fonction || '', byDay: {}, totQ: 0, totM: 0 };
+                            var cur = bySt[key].byDay[d] || { q: 0, m: 0 };
+                            cur.q += Number(e.quantite) || 0; cur.m += Number(e.montant) || 0;
+                            bySt[key].byDay[d] = cur;
+                            bySt[key].totQ += Number(e.quantite) || 0; bySt[key].totM += Number(e.montant) || 0;
+                        });
+                    });
+                    var rows = Object.values(bySt).sort(function(a, b) { return b.totM - a.totM; });
+                    setDiversData({ total: Math.round(totalDivers), dates: j.dates || [], byDate: rowsByDate, rows: rows });
+                }).catch(function(e) { console.warn('quinzaine divers:', e); });
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+            }, [selectedPeriode, apiData && (apiData.periodes || [])[0]]);
 
             const handlePeriodeChange = (p) => { setSelectedPeriode(p); setLoading(true); loadData(p); };
 
@@ -11286,7 +11329,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const totalJourFerie = Math.round(ferieDetailQ.reduce((s, w) => s + (w.cout || 0), 0));
 
             const totalAutresPrimes = totalTraitement + totalConditionnement + totalChargement + totalJourFerie;
-            const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes;
+            const totalDivers = diversData ? diversData.total : 0;
+            const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes + totalDivers;
 
             const recapItems = [
                 { label: 'MO Récolte', icon: 'fa-seedling', color: 'var(--berry)', montant: _sbPending ? null : totalCoutRecolte, popupKey: 'mo_recolte' },
@@ -11302,6 +11346,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     { label: 'Jour Férié', montant: totalJourFerie },
                   ]
                 },
+                { label: 'Location & Engins', icon: 'fa-truck', color: '#16a085', montant: totalDivers, popupKey: 'location_engins' },
             ];
 
             // ===== AFFECTATION ANALYTIQUE PAR CULTURE / HA =====
@@ -11448,7 +11493,85 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         </div>
                     )}
 
-                    {quinzPopupKey && (() => {
+                    {quinzPopupKey === 'location_engins' && (() => {
+                        const _divRows = diversData ? diversData.rows : [];
+                        const _divDates = diversData ? diversData.dates : [];
+                        const _divByDate = diversData ? diversData.byDate : {};
+                        const _divDailyTot = _divDates.map(function(d) { return _divRows.reduce(function(s, r) { return s + ((r.byDay[d] && r.byDay[d].m) || 0); }, 0); });
+                        const _divGrandTot = _divRows.reduce(function(s, r) { return s + r.totM; }, 0);
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzPopupKey(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:'linear-gradient(135deg, #16a085 0%, #1abc9ccc 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className="fa-solid fa-truck" style={{marginRight:8}}></i>Location & Engins — {currentPeriode}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{_divRows.length} prestataire{_divRows.length !== 1 ? 's' : ''} — {Math.round(_divGrandTot).toLocaleString('fr-FR')} DH</div>
+                                        </div>
+                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        {!diversData || _divRows.length === 0 ? (
+                                            <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Pas de données Location & Engins pour cette quinzaine.</div>
+                                        ) : (
+                                        <div className="table-responsive">
+                                        <table className="data-table" style={{fontSize:11,margin:0}}>
+                                            <thead>
+                                                <tr>
+                                                    <th>Jour</th>
+                                                    {_divRows.map(function(r, i) {
+                                                        return (
+                                                            <th key={i} style={{textAlign:'center'}}>
+                                                                {r.beneficiaire || r.matricule || '—'}
+                                                                <div style={{fontSize:9,fontWeight:400,color:'rgba(255,255,255,0.7)'}}>{r.fonction || '—'}{r.matricule ? ' · ' + r.matricule : ''}</div>
+                                                            </th>
+                                                        );
+                                                    })}
+                                                    <th style={{textAlign:'center',fontWeight:700}}>Total jour</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {_divDates.map(function(d, di) {
+                                                    return (
+                                                        <tr key={d}>
+                                                            <td style={{fontWeight:600,whiteSpace:'nowrap'}}>{new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})}</td>
+                                                            {_divRows.map(function(r, i) {
+                                                                var c = r.byDay[d];
+                                                                if (!c || (!c.q && !c.m)) return <td key={i} style={{textAlign:'center',color:'var(--gray-200)'}}>-</td>;
+                                                                return <td key={i} style={{textAlign:'center',fontSize:10}}><div style={{fontWeight:600}}>{c.q}</div><div style={{fontSize:9,color:'var(--gray-400)'}}>{Math.round(c.m).toLocaleString('fr-FR')} DH</div></td>;
+                                                            })}
+                                                            <td style={{textAlign:'center',fontWeight:700,color:_divDailyTot[di]>0?'var(--berry)':'var(--gray-300)'}}>{_divDailyTot[di] > 0 ? Math.round(_divDailyTot[di]).toLocaleString('fr-FR') + ' DH' : '—'}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'var(--gray-50)',fontWeight:700}}>
+                                                    <td style={{textAlign:'right',padding:'6px 10px'}}>Total</td>
+                                                    {_divRows.map(function(r, i) {
+                                                        return (
+                                                            <td key={i} style={{textAlign:'center',fontSize:10,color:'var(--berry)',padding:'6px 10px'}}>
+                                                                <div>{Math.round(r.totQ*100)/100}</div>
+                                                                <div>{Math.round(r.totM).toLocaleString('fr-FR')} DH</div>
+                                                            </td>
+                                                        );
+                                                    })}
+                                                    <td style={{textAlign:'center',color:'var(--berry)',fontSize:13,padding:'6px 10px'}}>{Math.round(_divGrandTot).toLocaleString('fr-FR')} DH</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {quinzPopupKey && quinzPopupKey !== 'location_engins' && (() => {
                         const _qpKey = quinzPopupKey;
                         const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
                         const _qpTitle = _qpKey === 'mo_recolte' ? 'MO Récolte'
