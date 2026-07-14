@@ -10893,6 +10893,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueData, setAnalytiqueData] = useState([]);
             const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
             const [analytiqueCultureIdx, setAnalytiqueCultureIdx] = useState(0);
+            const [analytiqueTotalMode, setAnalytiqueTotalMode] = useState(false);
+            const [detailEquipeFilter, setDetailEquipeFilter] = useState('');
             useEffect(() => {
                 if (!analytiqueFullscreen) return;
                 const onKey = (e) => { if (e.key === 'Escape') setAnalytiqueFullscreen(false); };
@@ -12286,6 +12288,23 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             </button>
                                         ))}
                                     </div>
+                                    <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
+                                        {[['ha', 'Ha'], ['total', 'Total']].map(([v, label]) => (
+                                            <button key={v}
+                                                onClick={() => setAnalytiqueTotalMode(v === 'total')}
+                                                style={{
+                                                    padding: '4px 12px',
+                                                    borderRadius: 8,
+                                                    border: 'none',
+                                                    background: (analytiqueTotalMode ? v === 'total' : v === 'ha') ? 'var(--berry)' : 'transparent',
+                                                    color: (analytiqueTotalMode ? v === 'total' : v === 'ha') ? '#fff' : 'var(--gray-500)',
+                                                    fontSize: 12,
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s',
+                                                }}>{label}</button>
+                                        ))}
+                                    </div>
                                     <button
                                         onClick={() => { setAnalytiqueFullscreen(f => !f); setAnalytiqueCultureIdx(0); }}
                                         title={analytiqueFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
@@ -12333,9 +12352,18 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 const { parcelles, operations, pivot } = _buildAnalytiquePivot(_rows);
                                 if (operations.length === 0) return null;
                                 const _totalHa = parcelles.reduce((s, [, ha]) => s + ha, 0);
-                                const _unit = analytiqueView === 'jh' ? 'JH/Ha' : (_parcelleEmpCostMap.ready ? 'DH emp./Ha' : 'DH/Ha');
+                                const _unit = analytiqueView === 'jh'
+                                    ? (analytiqueTotalMode ? 'JH' : 'JH/Ha')
+                                    : (_parcelleEmpCostMap.ready
+                                        ? (analytiqueTotalMode ? 'DH emp.' : 'DH emp./Ha')
+                                        : (analytiqueTotalMode ? 'DH' : 'DH/Ha'));
                                 const _fmt = (val, ha) => {
-                                    if (ha === 0) return <span style={{fontSize:10,color:'var(--gray-400)'}}>—</span>;
+                                    if (!analytiqueTotalMode && ha === 0) return <span style={{fontSize:10,color:'var(--gray-400)'}}>—</span>;
+                                    if (analytiqueTotalMode) {
+                                        return analytiqueView === 'jh'
+                                            ? (Math.round(val * 10) / 10).toFixed(1)
+                                            : Math.round(val).toLocaleString('fr-FR');
+                                    }
                                     const v = val / ha;
                                     return analytiqueView === 'jh'
                                         ? (Math.round(v * 10) / 10).toFixed(1)
@@ -12570,6 +12598,155 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             </tbody>
                         </table>
                     </Panel>
+
+                    {/* ─── Détail par Ouvrier ───────────────────────────────────────────── */}
+                    {(() => {
+                        // Build map: matricule → { equipe, equipePrefix, nom, joursSet }
+                        // Sources: moHorsRecolteRows + moPostesRows + recolteEquipeRows (filtrés période/ferme)
+                        const _allMoRowsDetail = [
+                            ...moHorsRecolteRows,
+                            ...moPostesRows,
+                            ...recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter)),
+                        ];
+                        const _wDetailMap = {};
+                        _allMoRowsDetail.forEach(function(r) {
+                            if (!r.matricule) return;
+                            const _key = numKey(r.matricule);
+                            if (!_wDetailMap[_key]) {
+                                const _prefix = getEqPrefix(r.matricule) || 'NV';
+                                const _reg = quinzRegistry[_key] || {};
+                                const _nom = ((_reg.prenom || '') + ' ' + (_reg.nom || '')).trim() || r.nom || r.matricule;
+                                _wDetailMap[_key] = {
+                                    matricule: r.matricule,
+                                    nom: _nom,
+                                    equipePrefix: _prefix,
+                                    equipe: prefixToName[_prefix] || _prefix,
+                                    joursSet: new Set(),
+                                };
+                            }
+                            if (r.jour) _wDetailMap[_key].joursSet.add(r.jour);
+                        });
+
+                        // Collect all days from parJour
+                        const _days = parJour.map(function(d) { return d.jour; });
+
+                        // Build sorted worker list
+                        let _workerList = Object.values(_wDetailMap)
+                            .sort(function(a, b) {
+                                const eq = a.equipe.localeCompare(b.equipe);
+                                if (eq !== 0) return eq;
+                                return a.matricule.localeCompare(b.matricule);
+                            });
+
+                        // Collect distinct equipes for filter dropdown
+                        const _equipes = [];
+                        const _equipesSeen = new Set();
+                        _workerList.forEach(function(w) {
+                            if (!_equipesSeen.has(w.equipe)) { _equipesSeen.add(w.equipe); _equipes.push(w.equipe); }
+                        });
+
+                        // Apply equipe filter
+                        if (detailEquipeFilter) {
+                            _workerList = _workerList.filter(function(w) { return w.equipe === detailEquipeFilter; });
+                        }
+
+                        const _exceeded = _workerList.length > 500;
+                        if (_exceeded) _workerList = _workerList.slice(0, 500);
+
+                        // Group by equipe for sub-totals
+                        const _groupedEquipes = [];
+                        let _curEq = null;
+                        _workerList.forEach(function(w) {
+                            if (w.equipe !== _curEq) {
+                                _curEq = w.equipe;
+                                _groupedEquipes.push({ equipe: w.equipe, workers: [] });
+                            }
+                            _groupedEquipes[_groupedEquipes.length - 1].workers.push(w);
+                        });
+
+                        if (_days.length === 0 || _workerList.length === 0) return null;
+
+                        return (
+                            <div style={{marginTop:24}}>
+                                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
+                                    <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
+                                        <i className="fa-solid fa-users" style={{color:'var(--berry)'}}></i>
+                                        Détail par Ouvrier
+                                        <span style={{fontSize:12,fontWeight:400,color:'var(--gray-500)'}}>— {currentPeriode}</span>
+                                    </div>
+                                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                        <select value={detailEquipeFilter} onChange={function(e){setDetailEquipeFilter(e.target.value);}}
+                                            style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,color:'var(--gray-700)',background:'#fff',cursor:'pointer'}}>
+                                            <option value="">Toutes les équipes</option>
+                                            {_equipes.map(function(eq) { return <option key={eq} value={eq}>{eq}</option>; })}
+                                        </select>
+                                    </div>
+                                </div>
+                                {_exceeded && (
+                                    <div style={{marginBottom:8,padding:'6px 12px',background:'#fff3cd',borderRadius:8,fontSize:12,color:'#856404',border:'1px solid #ffc107'}}>
+                                        <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                        Affichage limité à 500 ouvriers.
+                                    </div>
+                                )}
+                                <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',borderRadius:10,border:'1px solid var(--gray-200)'}}>
+                                    <table style={{borderCollapse:'collapse',fontSize:12,minWidth:'100%'}}>
+                                        <thead>
+                                            <tr style={{background:'var(--gray-50)',position:'sticky',top:0,zIndex:2}}>
+                                                <th style={{padding:'7px 10px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:0,background:'var(--gray-50)',borderRight:'1px solid var(--gray-200)',zIndex:3,whiteSpace:'nowrap',minWidth:90}}>Équipe</th>
+                                                <th style={{padding:'7px 8px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',whiteSpace:'nowrap',minWidth:64,borderRight:'1px solid var(--gray-100)'}}>Mat.</th>
+                                                <th style={{padding:'7px 10px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:154,background:'var(--gray-50)',borderRight:'1px solid var(--gray-200)',zIndex:3,whiteSpace:'nowrap',minWidth:160}}>Nom</th>
+                                                {_days.map(function(jour) {
+                                                    const _d = new Date(jour);
+                                                    const _dow = _d.getDay();
+                                                    const _isWE = _dow === 0 || _dow === 6;
+                                                    const _dayNum = _d.getDate();
+                                                    return (
+                                                        <th key={jour} style={{padding:'4px 2px',textAlign:'center',fontWeight:600,color: _isWE ? 'var(--berry)' : 'var(--gray-600)',width:26,minWidth:26,maxWidth:26,background: _isWE ? '#fdf2f8' : 'var(--gray-50)',borderRight:'1px solid var(--gray-100)'}}>
+                                                            {_dayNum}
+                                                        </th>
+                                                    );
+                                                })}
+                                                <th style={{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0,zIndex:3,whiteSpace:'nowrap',minWidth:52}}>Total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {_groupedEquipes.map(function(grp) {
+                                                const _grpTotalDays = grp.workers.reduce(function(s, w) { return s + w.joursSet.size; }, 0);
+                                                return [
+                                                    <tr key={'eq-' + grp.equipe} style={{background:'var(--gray-100)'}}>
+                                                        <td colSpan={3 + _days.length + 1} style={{padding:'5px 10px',fontWeight:700,fontSize:11,color:'var(--gray-600)',position:'sticky',left:0,borderBottom:'1px solid var(--gray-200)'}}>
+                                                            {grp.equipe} — {grp.workers.length} ouvrier{grp.workers.length > 1 ? 's' : ''} — {_grpTotalDays} jour{_grpTotalDays > 1 ? 's' : ''} totaux
+                                                        </td>
+                                                    </tr>,
+                                                    ...grp.workers.map(function(w, wIdx) {
+                                                        return (
+                                                            <tr key={w.matricule} style={{background: wIdx % 2 === 0 ? '#fff' : '#fafbfc',borderBottom:'1px solid var(--gray-100)'}}>
+                                                                <td style={{padding:'5px 10px',color:'var(--gray-500)',fontSize:11,position:'sticky',left:0,background: wIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1,whiteSpace:'nowrap'}}>{w.equipe}</td>
+                                                                <td style={{padding:'5px 8px',fontFamily:'monospace',fontSize:11,color:'var(--gray-600)',whiteSpace:'nowrap',borderRight:'1px solid var(--gray-100)'}}>{w.matricule}</td>
+                                                                <td style={{padding:'5px 10px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:154,background: wIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1,whiteSpace:'nowrap'}}>{w.nom}</td>
+                                                                {_days.map(function(jour) {
+                                                                    const _d = new Date(jour);
+                                                                    const _dow = _d.getDay();
+                                                                    const _isWE = _dow === 0 || _dow === 6;
+                                                                    const _worked = w.joursSet.has(jour);
+                                                                    return (
+                                                                        <td key={jour} style={{padding:'4px 2px',textAlign:'center',width:26,minWidth:26,maxWidth:26,color: _worked ? 'var(--berry)' : 'var(--gray-300)',background: _isWE ? '#fdf2f818' : '',fontWeight: _worked ? 700 : 400,borderRight:'1px solid var(--gray-100)'}}>
+                                                                            {_worked ? '✓' : ''}
+                                                                        </td>
+                                                                    );
+                                                                })}
+                                                                <td style={{padding:'5px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0,zIndex:1}}>{w.joursSet.size}</td>
+                                                            </tr>
+                                                        );
+                                                    }),
+                                                ];
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* ─── Popup États d'émargement ─────────────────────────────────────── */}
                     {emargementOpen && (() => {
