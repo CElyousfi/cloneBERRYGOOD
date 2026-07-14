@@ -193,19 +193,35 @@
 
     // ─────────────────────────────────────────────────────────────────────────────
     // 4. BULLETINS DE PAIE (un PDF, une page par ouvrier déclaré)
+    //    Format : Smart Berry / Berry Good Farms
     // ─────────────────────────────────────────────────────────────────────────────
     function genBulletins(workers, periode, smagBrutJournalier) {
         // workers: [{
-        //   matricule, nom, equipe, journees,
-        //   brut,               // total brut = salaire de base + prime fonction + ancienneté
-        //   salaireBase,        // smagBrutJournalier × journees
-        //   primeFonctionTotal, // primeFonctionJour × journees (0 si aucune)
-        //   ancienneteTotal,    // montant ancienneté
-        //   anciennetePct,      // taux ancienneté en %
-        //   primeFonctionJour,  // tarif journalier prime fonction
-        //   transportJour,      // tarif transport journalier (0 si pas de transport)
-        //   transportTotal,     // transportJour × journees
+        //   matricule, nom, equipe, journees, declare,
+        //   salaireBase,       // smagBrutJournalier × journees (déjà calculé dans app.jsx)
+        //   primeFonctionTotal,
+        //   primeFonctionJour,
+        //   ancienneteTotal,
+        //   anciennetePct,
+        //   transportJour,
+        //   transportTotal,
+        //   brut,              // brut du modèle dashboard (non utilisé pour le calcul bulletin)
         // }]
+        // Constantes entreprise
+        var ENTREPRISE = {
+            nom:       'Berry Good Farms',
+            adresse:   'N44 IMMEUBLE A RESIDENCE AL BOSTAN CITE DAKHLA',
+            noCnss:    '3633882',
+            tel:       '',
+            idFiscale: '',
+            patente:   '',
+            rc:        '',
+        };
+
+        // Taux légaux CNSS / AMO
+        var TAUX_CNSS = 0.0448;
+        var TAUX_AMO  = 0.0226;
+
         if (!workers || workers.length === 0) { alert('Aucun ouvrier déclaré pour cette période.'); return; }
 
         var doc = newDoc();
@@ -216,186 +232,268 @@
             if (!isFirst) doc.addPage();
             isFirst = false;
 
-            var y = 14;
+            var jours            = w.journees || 0;
+            var dailyRate        = smagBrutJournalier || 0;
+            var sHoraire         = dailyRate / 8;
+            var smagBaseTotal    = dailyRate * jours;                          // code 111
+            var primeFonctionTot = (w.primeFonctionJour || 0) * jours;        // code 499
+            // Ancienneté: base = smagBaseTotal + primeFonctionTotal
+            var ancPct           = w.anciennetePct || 0;
+            var ancBase          = smagBaseTotal + primeFonctionTot;
+            var ancMontant       = ancBase * ancPct / 100;                     // code 121
+            var brutTotal        = smagBaseTotal + ancMontant + primeFonctionTot;
+            var cnssRetenue      = brutTotal * TAUX_CNSS;                     // code 601
+            var amoRetenue       = brutTotal * TAUX_AMO;                      // code 631
+            var totalRetenues    = cnssRetenue + amoRetenue;
+            var netImposable     = brutTotal - totalRetenues;
+            var netAPayer        = Math.round(netImposable);
+            var arrondi          = netAPayer - netImposable;                   // code 9999
 
-            // ── Header ──
+            var y = 12;
+
+            // ── BLOC 1 : Header entreprise (2 colonnes) ──
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(11);
             doc.setTextColor(C.berry[0], C.berry[1], C.berry[2]);
-            doc.text('Berry Good Farms', 14, y);
+            doc.text(ENTREPRISE.nom, 14, y);
 
-            doc.setFontSize(13);
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('BULLETIN DE PAIE', 105, y, { align: 'center' });
-
-            doc.setFontSize(9);
             doc.setFont('helvetica', 'normal');
-            doc.setTextColor(C.gray[0], C.gray[1], C.gray[2]);
-            doc.text('Période : ' + (periode || '—'), 196, y, { align: 'right' });
+            doc.setFontSize(8);
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            doc.text(ENTREPRISE.adresse, 196, y, { align: 'right' });
             y += 5;
 
+            doc.setFontSize(7.5);
+            doc.setTextColor(C.gray[0], C.gray[1], C.gray[2]);
+            if (ENTREPRISE.tel) { doc.text('Tél. : ' + ENTREPRISE.tel, 14, y); }
+            doc.text('N° CNSS : ' + ENTREPRISE.noCnss, 196, y, { align: 'right' });
+            y += 4;
+            doc.text('ID. Fiscale : ' + (ENTREPRISE.idFiscale || ''), 196, y, { align: 'right' });
+            y += 4;
+            doc.text('Patente : ' + (ENTREPRISE.patente || ''), 196, y, { align: 'right' });
+            y += 4;
+            doc.text('R.C : ' + (ENTREPRISE.rc || ''), 196, y, { align: 'right' });
+            y += 3;
+
+            // Séparateur
             doc.setDrawColor(C.berry[0], C.berry[1], C.berry[2]);
             doc.setLineWidth(0.5);
             doc.line(14, y, 196, y);
-            y += 5;
+            y += 6;
 
-            // ── Infos ouvrier ──
-            doc.setFontSize(9);
+            // ── BLOC 2 : Titre ──
             doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
             doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('Matricule : ', 14, y);
-            doc.setFont('helvetica', 'normal');
-            doc.text(String(w.matricule || '—'), 38, y);
+            doc.text('BULLETIN DE PAIE', 105, y, { align: 'center' });
+            y += 8;
 
-            doc.setFont('helvetica', 'bold');
-            doc.text('Nom : ', 100, y);
-            doc.setFont('helvetica', 'normal');
-            doc.text((w.nom || '—').toUpperCase(), 112, y);
-            y += 5;
+            // ── BLOC 3 : Info salarié (2 lignes, style tableau) ──
+            // Ligne 1 : Matricule | Nom et Prénom | Fonction | N° CNSS | N°CIN
+            doc.autoTable({
+                startY: y,
+                head: [['MATR.', 'Nom et Prénom', 'Fonction', 'N° CNSS', 'N° CIN']],
+                body: [[
+                    String(w.matricule || '—'),
+                    (w.nom || '—').toUpperCase(),
+                    w.equipe || '—',
+                    '—',
+                    w.cin || '—',
+                ]],
+                styles:     { fontSize: 7.5, cellPadding: 2 },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'bold', fontSize: 7.5 },
+                columnStyles: {
+                    0: { cellWidth: 18 },
+                    1: { cellWidth: 60 },
+                    2: { cellWidth: 40 },
+                    3: { cellWidth: 30 },
+                    4: { cellWidth: 34 },
+                },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 1;
 
-            doc.setFont('helvetica', 'bold');
-            doc.text('Équipe : ', 14, y);
-            doc.setFont('helvetica', 'normal');
-            doc.text(w.equipe || '—', 32, y);
+            // Ligne 2 : Sit.F. | Nb.Enf. | Déduc. | Date Naiss. | Date Entrée | Sal.base | S.Horaire | Période
+            doc.autoTable({
+                startY: y,
+                head: [['Sit. F.', 'Nb. Enf.', 'Déduc.', 'Date Naiss.', 'Date Entrée', 'Sal. de base', 'S. Horaire', 'Période Paie']],
+                body: [[
+                    '—', '—', '—', '—', '—',
+                    fmtDH(dailyRate),
+                    fmtDH(sHoraire),
+                    periode || '—',
+                ]],
+                styles:     { fontSize: 7, cellPadding: 2 },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'bold', fontSize: 7 },
+                columnStyles: {
+                    0: { cellWidth: 15 },
+                    1: { cellWidth: 17 },
+                    2: { cellWidth: 15 },
+                    3: { cellWidth: 23 },
+                    4: { cellWidth: 23 },
+                    5: { cellWidth: 26, halign: 'right' },
+                    6: { cellWidth: 24, halign: 'right' },
+                    7: { cellWidth: 39, halign: 'right' },
+                },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 4;
 
-            doc.setFont('helvetica', 'bold');
-            doc.text('Nbr jours : ', 100, y);
-            doc.setFont('helvetica', 'normal');
-            doc.text(String(w.journees || 0), 120, y);
-            y += 6;
+            // ── BLOC 4 : Table des lignes de paie ──
+            var bodyRows  = [];
+            var boldRows  = [];   // indices des lignes "Total..." à mettre en gras + fond gris
+            var totalRows = [];   // indices pour ligne "Totaux" et "NET À PAYER" (fond berry)
 
-            // ── Section Rémunération ──
-            doc.setFillColor(C.berry[0], C.berry[1], C.berry[2]);
-            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8);
-            doc.rect(14, y, 182, 5, 'F');
-            doc.text('RÉMUNÉRATION', 16, y + 3.5);
-            y += 6;
+            // 111 — Salaire de base
+            bodyRows.push(['111', 'Salaire de base', fmtDH(dailyRate), String(jours), fmtDH(smagBaseTotal), '']);
 
-            var remuRows = [];
-            var _smagBrut = smagBrutJournalier || (w.journees > 0 ? (w.brut / w.journees) : 0);
-            remuRows.push([
-                'Salaire de base',
-                String(w.journees || 0) + ' j × ' + fmtDH(_smagBrut) + ' DH',
-                fmtDH(w.salaireBase || (_smagBrut * (w.journees || 0))) + ' DH',
-            ]);
-            if ((w.primeFonctionTotal || 0) > 0) {
-                remuRows.push([
-                    'Prime de fonction',
-                    String(w.journees || 0) + ' j × ' + fmtDH(w.primeFonctionJour || 0) + ' DH',
-                    fmtDH(w.primeFonctionTotal) + ' DH',
-                ]);
+            // 121 — Prime d'ancienneté (si applicable)
+            if (ancPct > 0) {
+                bodyRows.push(['121', 'Prime d\'ancienneté', fmtDH(ancBase), ancPct + '%', fmtDH(ancMontant), '']);
             }
-            if ((w.ancienneteTotal || 0) > 0) {
-                remuRows.push([
-                    'Majoration ancienneté (' + (w.anciennetePct || 0) + '%)',
-                    '',
-                    fmtDH(w.ancienneteTotal) + ' DH',
-                ]);
+
+            // Total Traitements & Salaires
+            var totalTraitements = smagBaseTotal + ancMontant;
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', 'Total Traitements & Salaires', '', '', fmtDH(totalTraitements), '']);
+
+            // 499 — Prime de fonction (si applicable)
+            if (primeFonctionTot > 0) {
+                bodyRows.push(['499', 'Prime de fonction', '', '', fmtDH(primeFonctionTot), '']);
             }
+
+            // Total Autres Indemnités
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', 'Total Autres Indemnités', '', '', fmtDH(primeFonctionTot), '']);
+
+            // 601 — CNSS
+            bodyRows.push(['601', 'Cotisation CNSS', fmtDH(brutTotal), '4,48%', '', fmtDH(cnssRetenue)]);
+
+            // 631 — AMO
+            bodyRows.push(['631', 'Cotisation Mutuelle/AMO', fmtDH(brutTotal), '2,26%', '', fmtDH(amoRetenue)]);
+
+            // Total Retenues Sociales
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', 'Total Retenues Sociales', '', '', '', fmtDH(totalRetenues)]);
+
+            // 792 — IR (0 pour ouvriers agricoles)
+            bodyRows.push(['792', 'Prélèvement Impôt IR', fmtDH(netImposable), '', '', '0,00']);
+
+            // Total Impôts
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', 'Total Impôts', '', '', '', '0,00']);
+
+            // 9999 — Arrondi (si non nul)
+            if (Math.abs(arrondi) >= 0.005) {
+                bodyRows.push(['9999', 'Arrondi', '', '', '', fmtDH(arrondi)]);
+            }
+
+            // Ligne Totaux
+            var totauxIdx = bodyRows.length;
+            totalRows.push(totauxIdx);
+            bodyRows.push(['', 'Totaux', '', '', fmtDH(brutTotal), fmtDH(totalRetenues)]);
+
+            // Ligne NET À PAYER
+            var netIdx = bodyRows.length;
+            totalRows.push(netIdx);
+            bodyRows.push(['', 'NET À PAYER', '', '', fmtDH(netAPayer), '']);
 
             doc.autoTable({
                 startY: y,
-                body: remuRows,
-                styles: { fontSize: 8, cellPadding: 2 },
+                head: [['CODE', 'DÉSIGNATION', 'Base', 'Taux', 'Gain', 'Retenu']],
+                body: bodyRows,
+                styles:     { fontSize: 8, cellPadding: 2 },
+                headStyles: { fillColor: C.berry, textColor: C.white, fontStyle: 'bold', fontSize: 8 },
                 columnStyles: {
-                    0: { cellWidth: 90 },
-                    1: { cellWidth: 60, halign: 'center', textColor: C.gray },
-                    2: { cellWidth: 32, halign: 'right', fontStyle: 'bold' },
+                    0: { cellWidth: 16, halign: 'center' },
+                    1: { cellWidth: 72 },
+                    2: { cellWidth: 28, halign: 'right' },
+                    3: { cellWidth: 20, halign: 'center' },
+                    4: { cellWidth: 28, halign: 'right' },
+                    5: { cellWidth: 28, halign: 'right' },
+                },
+                didParseCell: function (data) {
+                    if (data.section !== 'body') return;
+                    var row = data.row.index;
+                    if (boldRows.indexOf(row) !== -1) {
+                        data.cell.styles.fontStyle  = 'bold';
+                        data.cell.styles.fillColor  = C.lightGray;
+                    }
+                    if (totalRows.indexOf(row) !== -1) {
+                        data.cell.styles.fontStyle  = 'bold';
+                        data.cell.styles.fillColor  = [220, 230, 220];
+                    }
+                    // NET À PAYER : colonne Gain en berry
+                    if (row === netIdx && data.column.index === 4) {
+                        data.cell.styles.textColor = C.berry;
+                        data.cell.styles.fontSize  = 9;
+                    }
                 },
                 margin: { left: 14, right: 14 },
-                theme: 'plain',
-                showHead: false,
+                theme: 'grid',
             });
+            y = doc.lastAutoTable.finalY + 5;
 
-            y = doc.lastAutoTable.finalY + 2;
-
-            // Ligne BRUT
-            doc.setDrawColor(C.gray[0], C.gray[1], C.gray[2]);
-            doc.setLineWidth(0.3);
-            doc.line(14, y, 196, y);
-            y += 4;
+            // ── BLOC 5 : Tableau des cumuls ──
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(9);
+            doc.setFontSize(8);
             doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('BRUT :', 14, y);
-            doc.text(fmtDH(w.brut) + ' DH', 196, y, { align: 'right' });
-            y += 6;
+            doc.text('Cumuls de la période', 14, y);
+            y += 3;
 
-            // ── Section Transport (si applicable) ──
-            if ((w.transportTotal || 0) > 0) {
-                doc.setFillColor(52, 73, 171);
-                doc.setTextColor(C.white[0], C.white[1], C.white[2]);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(8);
-                doc.rect(14, y, 182, 5, 'F');
-                doc.text('INDEMNITÉS (non imposables)', 16, y + 3.5);
-                y += 6;
+            doc.autoTable({
+                startY: y,
+                head: [['Jours travaillés', 'Salaire Brut Imposable', 'Sal. net imposable', 'Retenues sociales', 'Impôt (IR)']],
+                body: [[
+                    String(jours),
+                    fmtDH(brutTotal),
+                    fmtDH(netAPayer),
+                    fmtDH(totalRetenues),
+                    '0,00',
+                ]],
+                styles:     { fontSize: 8, cellPadding: 2, halign: 'right' },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'bold', fontSize: 7.5 },
+                columnStyles: {
+                    0: { halign: 'center' },
+                    1: { halign: 'right' },
+                    2: { halign: 'right' },
+                    3: { halign: 'right' },
+                    4: { halign: 'right' },
+                },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 5;
 
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-                doc.setFontSize(8);
+            // ── BLOC 6 : Situation congés ──
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            doc.text('Situation congé au : ' + (periode || '—'), 14, y);
+            y += 3;
 
-                doc.text('Indemnité de transport', 16, y);
-                doc.text(String(w.journees || 0) + ' j × ' + fmtDH(w.transportJour || 0) + ' DH', 106, y, { align: 'center' });
-                doc.setFont('helvetica', 'bold');
-                doc.text(fmtDH(w.transportTotal) + ' DH', 196, y, { align: 'right' });
-                y += 7;
+            doc.autoTable({
+                startY: y,
+                head: [['Solde Ex précédent', 'Droit Ex. encours', 'Congé pris Ex. encours', 'Solde congé']],
+                body: [['—', '—', '—', '—']],
+                styles:     { fontSize: 8, cellPadding: 2, halign: 'center' },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'bold', fontSize: 7.5 },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 5;
 
-                doc.setFont('helvetica', 'normal');
-                doc.setFontSize(8);
-                doc.setTextColor(C.gray[0], C.gray[1], C.gray[2]);
-                doc.text('Total brut + indemnités :', 14, y);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-                doc.text(fmtDH((w.brut || 0) + (w.transportTotal || 0)) + ' DH', 196, y, { align: 'right' });
-                y += 7;
-            }
-
-            // ── Retenues (aucune dans le modèle validé) ──
-            // Commenté selon modèle validé Omar 2026-06 : AUCUNE retenue salariale
-            // CNSS salariale = 0 pour tous les ouvriers
-
-            // ── Section Avances (transport) ──
-            if ((w.transportTotal || 0) > 0) {
-                doc.setFillColor(231, 76, 60);
-                doc.setTextColor(C.white[0], C.white[1], C.white[2]);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(8);
-                doc.rect(14, y, 182, 5, 'F');
-                doc.text('AVANCES', 16, y + 3.5);
-                y += 6;
-
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-                doc.setFontSize(8);
-                doc.text('Avance transport (déjà versée)', 16, y);
-                doc.setFont('helvetica', 'bold');
-                doc.setTextColor(231, 76, 60);
-                doc.text('- ' + fmtDH(w.transportTotal) + ' DH', 196, y, { align: 'right' });
-                y += 7;
-            }
-
-            // ── NET À PAYER ──
-            doc.setDrawColor(C.berry[0], C.berry[1], C.berry[2]);
-            doc.setLineWidth(0.8);
-            doc.line(14, y, 196, y);
+            // ── BLOC 7 : Réf. Règlement ──
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8);
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            doc.text('Réf. Règlement', 14, y);
             y += 5;
-
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('NET À PAYER :', 14, y);
-            doc.setTextColor(C.berry[0], C.berry[1], C.berry[2]);
-            doc.text(fmtDH(w.brut) + ' DH', 196, y, { align: 'right' });
-            y += 8;
-
-            // Note
-            doc.setFont('helvetica', 'italic');
-            doc.setFontSize(7);
-            doc.setTextColor(C.gray[0], C.gray[1], C.gray[2]);
-            doc.text('* Modèle validé : aucune retenue salariale CNSS. Indemnité transport non imposable neutralisée par l\'avance.', 14, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.text('[ ] ESPECE     [ ] CHEQUE N° : ___________________________     [ ] VIREMENT DU : ___________________________', 14, y);
         });
 
         var periodeSafe = (periode || 'quinzaine').replace(/[^a-zA-Z0-9_-]/g, '_');
