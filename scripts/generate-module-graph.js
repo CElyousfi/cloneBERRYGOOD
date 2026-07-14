@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const SCHEMA_VERSION = 1;
-const GENERATOR_VERSION = '1.0.1';
+const GENERATOR_VERSION = '1.0.2';
 
 // Fichiers exclus de l'analyse git coupling
 const GIT_COUPLING_EXCLUDE = [
@@ -326,7 +326,7 @@ function collectFingerprintSources(root) {
  * @param {string} root
  * @returns {Promise<void>}
  */
-async function generateGraph(root) {
+async function generateGraph(root, outPath) {
   // 1. Charger domains.json
   const domainsConfig = JSON.parse(
     fs.readFileSync(path.join(root, 'docs/ai/domains.json'), 'utf8')
@@ -748,9 +748,10 @@ async function generateGraph(root) {
   // sortKeysDeep a déjà mis _meta en place (tri alpha), on peut juste écrire sorted
   // (puisque _ vient avant les lettres en ASCII, _meta sera premier)
 
-  fs.mkdirSync(path.join(root, 'docs/ai'), { recursive: true });
+  const graphPath = outPath || path.join(root, 'docs/ai/module-graph.json');
+  fs.mkdirSync(path.dirname(graphPath), { recursive: true });
   fs.writeFileSync(
-    path.join(root, 'docs/ai/module-graph.json'),
+    graphPath,
     JSON.stringify(sorted, null, 2) + '\n',
     'utf8'
   );
@@ -787,6 +788,7 @@ module.exports = {
   parseFirebaseRewrites,
   parseFirestoreCollections,
   computeFingerprint,
+  collectFingerprintSources,
   isExcludedFromGitCoupling,
   computeHealthScore,
   sortKeysDeep,

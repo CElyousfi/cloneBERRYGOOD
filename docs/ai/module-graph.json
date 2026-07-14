@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "generatorVersion": "1.0.1",
+    "generatorVersion": "1.0.2",
     "healthScore": {
       "subScores": {
         "classification": {
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 75,
+        "commits": 74,
         "file": "public/app.jsx"
       },
       {
