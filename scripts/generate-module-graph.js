@@ -303,18 +303,40 @@ function collectFingerprintSources(root) {
   }
 
   // functions/lib/ : liste des entrées seulement (pas le contenu)
+  // git ls-files pour exclure .DS_Store et autres artefacts filesystem non-trackés
   const flDir = path.join(root, 'functions/lib');
   if (fs.existsSync(flDir)) {
-    const entries = fs.readdirSync(flDir).sort();
+    let entries;
+    try {
+      const raw = execSync(`git -C "${root}" ls-files functions/lib/`, { encoding: 'utf8' }).trim().split('\n');
+      const firstLevel = raw
+        .map(f => { const m = f.match(/^functions\/lib\/([^/]+)/); return m ? m[1] : null; })
+        .filter(Boolean);
+      entries = [...new Set(firstLevel)].sort();
+    } catch (e) {
+      entries = fs.readdirSync(flDir).filter(e => !e.startsWith('.')).sort();
+    }
     sources.push({ path: 'functions/lib/__entries__', content: JSON.stringify(entries) });
   }
 
-  // functions/*.js racine (services, hors index.js) : liste des noms seulement
+  // functions/*.js racine (services, hors index.js) : liste des noms trackés seulement
+  // On utilise git ls-files pour exclure les fichiers gitignorés (ex. test-whatsapp.js)
+  // qui varieraient par machine et rendraient le fingerprint non déterministe.
   const functionsRootDir = path.join(root, 'functions');
   if (fs.existsSync(functionsRootDir)) {
-    const rootServices = fs.readdirSync(functionsRootDir)
-      .filter(f => f.endsWith('.js') && f !== 'index.js')
-      .sort();
+    let rootServices;
+    try {
+      rootServices = execSync(`git -C "${root}" ls-files functions/`, { encoding: 'utf8' })
+        .trim().split('\n')
+        .filter(f => /^functions\/[^/]+\.js$/.test(f) && !f.endsWith('/index.js') && f !== 'functions/index.js')
+        .map(f => path.basename(f))
+        .sort();
+    } catch (e) {
+      // Fallback si git indisponible
+      rootServices = fs.readdirSync(functionsRootDir)
+        .filter(f => f.endsWith('.js') && f !== 'index.js')
+        .sort();
+    }
     sources.push({ path: 'functions/__root_services__', content: JSON.stringify(rootServices) });
   }
 
