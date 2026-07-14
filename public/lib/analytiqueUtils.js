@@ -147,18 +147,76 @@
     'GB11': 'Services généraux',
   };
 
+  // Inverted lookup : normalized(operationFamille) → GB code
+  // Sert de fallback quand Operation_Groupe est NULL dans BEE ONE.
+  var _OP_FAM_TO_GB = (function () {
+    function norm(s) {
+      return String(s || '').toLowerCase()
+        .replace(/[éèêë]/g, 'e').replace(/[àâ]/g, 'a').replace(/[ùû]/g, 'u')
+        .replace(/[^a-z0-9]/g, '');
+    }
+    var m = {};
+    // Noms canoniques
+    Object.keys(GROUPE_FAMILLE_MAP).forEach(function (code) {
+      m[norm(GROUPE_FAMILLE_MAP[code])] = code;
+    });
+    // Variantes BEE ONE fréquentes
+    [
+      ['GB02', 'Ferti Irrigation'], ['GB02', 'Fertirrigation'], ['GB02', 'Fert irrigation'],
+      ['GB05', 'Entretien cultures'], ['GB05', 'Entretien culture'],
+      ['GB05', 'Nettoyage'], ['GB05', 'Désherbage'], ['GB05', 'Desherbage'],
+      ['GB05', 'Entretien des serres'], ['GB05', 'Entretien serres'],
+      ['GB06', 'Traitement phyto/Désherbage'], ['GB06', 'Traitement phyto desherbage'],
+      ['GB06', 'Traitement'], ['GB06', 'Phyto'],
+      ['GB07', 'Tuteurage'], ['GB07', 'Palissage'], ['GB07', 'PALISSAGE'],
+      ['GB07', 'Elimination des rejets'], ['GB07', 'élimination des rejets'],
+      ['GB07', 'Elimination rejets'],
+      ['GB08', 'Recolte'],
+      ['GB11', 'Services generaux'], ['GB11', 'Service générale'],
+      ['GB11', 'Service general'], ['GB11', 'Service généraux'],
+      ['GB11', 'Postes fixes'], ['GB11', 'Poste fixe'],
+    ].forEach(function (pair) { m[norm(pair[1])] = pair[0]; });
+    return m;
+  })();
+
+  /** Normalise une chaîne pour la comparaison de noms de familles. */
+  function _normFam(s) {
+    return String(s || '').toLowerCase()
+      .replace(/[éèêë]/g, 'e').replace(/[àâ]/g, 'a').replace(/[ùû]/g, 'u')
+      .replace(/[^a-z0-9]/g, '');
+  }
+
   /**
-   * Résout le code GB normalisé à partir du champ operationGroupe.
-   * Retourne null si le code n'est pas reconnu dans GROUPE_FAMILLE_MAP.
+   * Résout le code GB à partir du champ operationGroupe (code GB direct) ou,
+   * en fallback, depuis le libellé operationFamille via le dictionnaire inversé.
+   * Retourne le code GB (ex: 'GB05') ou null si non reconnu.
+   */
+  function resolveGbCode(operationGroupe, operationFamille) {
+    var code = String(operationGroupe || '').trim().toUpperCase();
+    if (GROUPE_FAMILLE_MAP[code]) return code;
+    // Nettoyer le libellé : retirer préfixe "N. " et suffixe " GBxx" avant lookup
+    var famClean = String(operationFamille || '')
+      .replace(/^\s*\d+\.\s*/, '')
+      .replace(/\s*GB\d+\s*$/i, '')
+      .trim();
+    return _OP_FAM_TO_GB[_normFam(famClean)] || null;
+  }
+
+  /**
+   * Résout le libellé famille à partir du champ operationGroupe.
+   * Fallback : lookup par nom de famille, puis strip suffixe GBxx.
    *
    * @param {string|null|undefined} operationGroupe  ex: "GB01", "gb08 "
-   * @returns {string|null}
+   * @returns {string}
    */
   function resolveGroupeFamille(operationGroupe, operationFamille) {
-    var code = String(operationGroupe || '').trim().toUpperCase();
-    if (GROUPE_FAMILLE_MAP[code]) return GROUPE_FAMILLE_MAP[code];
-    // Fallback : retirer le suffixe code GB du libellé de famille
-    var fam = String(operationFamille || '').replace(/\s*GB\d+\s*$/i, '').trim();
+    var gb = resolveGbCode(operationGroupe, operationFamille);
+    if (gb) return GROUPE_FAMILLE_MAP[gb];
+    // Dernier recours : retirer préfixe numéroté et suffixe GBxx du libellé brut
+    var fam = String(operationFamille || '')
+      .replace(/^\s*\d+\.\s*/, '')
+      .replace(/\s*GB\d+\s*$/i, '')
+      .trim();
     return fam || 'Autre';
   }
 
@@ -202,9 +260,8 @@
     var familleOrder = []; // ordre d'apparition
 
     (rows || []).forEach(function (r) {
-      var rawCode = String(r.operationGroupe || '').trim().toUpperCase();
-      var gbCode = (rawCode && GROUPE_FAMILLE_MAP[rawCode]) ? rawCode : 'AUTRE';
-      var gbNom = GROUPE_FAMILLE_MAP[gbCode] || opLabel(r.operationFamille) || 'Autre';
+      var gbCode = resolveGbCode(r.operationGroupe, r.operationFamille) || 'AUTRE';
+      var gbNom = GROUPE_FAMILLE_MAP[gbCode] || String(r.operationFamille || 'Autre');
       var opFam = String(r.operationFamille || 'Autre').replace(/^\s*\d+\.\s*/, '').trim();
       var parc = r.parcelle;
       var jh = r.jh || 0;
@@ -246,7 +303,7 @@
     return { parcelles: parcelles, groupedRows: groupedRows };
   }
 
-  const __analytiqueUtilsApi = { opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, buildAnalytiquePivotByFamille };
+  const __analytiqueUtilsApi = { opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = __analytiqueUtilsApi;
   if (typeof window !== 'undefined') window.AnalytiqueUtils = __analytiqueUtilsApi;

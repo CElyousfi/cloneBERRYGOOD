@@ -6895,6 +6895,10 @@
                             'GB11': { famille: 'Services généraux', groupe: 'M.O Service générale' },
                         };
                         var _gbRef = _GB_REF[String(r.groupe || '').trim().toUpperCase()] || null;
+                        if (!_gbRef && r.operationFamille && window.AnalytiqueUtils) {
+                            var _gbCodeFallback = window.AnalytiqueUtils.resolveGbCode('', r.operationFamille);
+                            if (_gbCodeFallback) _gbRef = _GB_REF[_gbCodeFallback] || null;
+                        }
                         return (
                         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => closeWorkerPopup()}>
                             <div style={{background:'#fff',borderRadius:12,maxWidth:480,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
