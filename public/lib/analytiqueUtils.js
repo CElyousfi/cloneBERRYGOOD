@@ -175,6 +175,8 @@
       ['GB11', 'Services generaux'], ['GB11', 'Service générale'],
       ['GB11', 'Service general'], ['GB11', 'Service généraux'],
       ['GB11', 'Postes fixes'], ['GB11', 'Poste fixe'],
+      ['GB11', 'Caporal hors récolte'], ['GB11', 'Caporal hors recolte'],
+      ['GB11', 'Caporal'], ['GB11', 'Caporales'],
     ].forEach(function (pair) { m[norm(pair[1])] = pair[0]; });
     return m;
   })();

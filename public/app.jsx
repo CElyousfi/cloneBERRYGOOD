@@ -12611,8 +12611,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 </thead>
                                                 <tbody>
                                                     {groupedRows ? (
-                                                        /* ---- MODE FAMILLE : rendu hiérarchique (famille → opérations) ---- */
-                                                        groupedRows.map((row) => {
+                                                        /* ---- MODE FAMILLE : uniquement les lignes famille (violet), sans sous-ops ---- */
+                                                        groupedRows.filter(row => row.type === 'famille').map((row) => {
                                                             const _totalHaForRow = parcelles.reduce((s, [, ha]) => s + ha, 0);
                                                             const _rowTotal = analytiqueView === 'jh'
                                                                 ? parcelles.reduce((s, [pKey]) => { const c = row.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
