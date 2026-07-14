@@ -407,8 +407,10 @@ function filterPresenceRowsByAllowed(rows, allowedMatricules) {
  * @param {string|null|undefined} fermeFilter ferme du chef, ou null/undefined = 'all'
  * @returns {string} clé ferme-aware
  */
-function pointageCacheKey(base, fermeFilter) {
-  return `${base}_${fermeFilter || 'all'}`;
+function pointageCacheKey(base, fermeFilter, cultureFilter) {
+  const fermeKey = fermeFilter || 'all';
+  const cultureKey = cultureFilter ? `_${cultureFilter.toLowerCase()}` : '';
+  return `${base}_${fermeKey}${cultureKey}`;
 }
 
 // =============================================
@@ -1993,7 +1995,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       if (action === "summary") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
         // Clé ferme-aware : le payload est filtré par _fermeFilter (shadow des fetchers).
-        const cacheKey = pointageCacheKey(`pointage_summary_${dateForCheck}`, _fermeFilter);
+        const cacheKey = pointageCacheKey(`pointage_summary_${dateForCheck}`, _fermeFilter, _cultureFilter);
         const cached = await withCache(cacheKey, 2 * 60 * 1000, async () => {
         const submittedFermes = await getSubmittedFermes(dateForCheck);
 
@@ -2235,7 +2237,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       if (action === "recolte") {
         const dateForCheck = dateParam || new Date().toISOString().slice(0, 10);
         // Clé ferme-aware : le payload est filtré par _fermeFilter (shadow des fetchers).
-        const cached = await withCache(pointageCacheKey(`pointage_recolte_${dateForCheck}`, _fermeFilter), 2 * 60 * 1000, async () => {
+        const cached = await withCache(pointageCacheKey(`pointage_recolte_${dateForCheck}`, _fermeFilter, _cultureFilter), 2 * 60 * 1000, async () => {
         let workers, cueillette;
 
         if (USE_MIRROR) {
@@ -2362,7 +2364,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       if (action === "quinzaine") {
         const periodeParam = req.query.periode;
         // Clé ferme-aware : le payload (parFerme/parJour) dépend de _fermeFilter.
-        const cacheKey = pointageCacheKey(`pointage_quinzaine_${periodeParam || "latest"}`, _fermeFilter);
+        const cacheKey = pointageCacheKey(`pointage_quinzaine_${periodeParam || "latest"}`, _fermeFilter, _cultureFilter);
         const cached = await withCache(cacheKey, 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
@@ -2514,7 +2516,7 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
       if (action === "quinzaine-analytique") {
         const periodeParam = req.query.periode;
         // Clé ferme-aware : les rows par parcelle/op dépendent de _fermeFilter.
-        const cacheKey = pointageCacheKey(`pointage_quinzaine_analytique_${periodeParam || "latest"}`, _fermeFilter);
+        const cacheKey = pointageCacheKey(`pointage_quinzaine_analytique_${periodeParam || "latest"}`, _fermeFilter, _cultureFilter);
         const cached = await withCache(cacheKey, 5 * 60 * 1000, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();

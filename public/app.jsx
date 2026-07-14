@@ -11528,7 +11528,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     </div>
 
                     <div className="quinzaine-card">
-                        <h3>Quinzaine {selectedPeriode || (apiData.periodes || [])[0] || ''}{farmFilter ? ' — ' + farmFilter : ''}</h3>
+                        <h3>Quinzaine {selectedPeriode || (apiData.periodes || [])[0] || ''}{(cultureFilter || farmFilter) ? ' — ' + (cultureFilter || farmFilter) : ''}</h3>
                         <window.QuinzaineRecapCards
                             recapItems={recapItems}
                             totalGlobal={totalGlobal}
@@ -68206,7 +68206,7 @@ ${rejetHtml}
                                     <div className="user-avatar">{(userProfile.displayName || userProfile.email || 'U').charAt(0).toUpperCase()}</div>
                                     <div className="user-info">
                                         <div className="name">{userProfile.displayName || userProfile.email}</div>
-                                        <div className="role">{profile?.label || currentProfile}{farmFilter ? ' — ' + (avoSubFilter || farmFilter) : ''}</div>
+                                        <div className="role">{profile?.label || currentProfile}{farmFilter && !cultureFilter ? ' — ' + (avoSubFilter || farmFilter) : ''}</div>
                                     </div>
                                 </div>
                                 <button onClick={() => firebaseAuth.signOut()}
@@ -68228,7 +68228,7 @@ ${rejetHtml}
                                     </button>
                                     <h1>
                                         {navItems.find(n => n.id === currentTab)?.label}
-                                        <span>{farmFilter ? ` - ${FARM_NAMES[farmFilter]}` : ''}</span>
+                                        <span>{farmFilter ? ` - ${cultureFilter ? cultureFilter + ' Laaouamra' : FARM_NAMES[farmFilter]}` : ''}</span>
                                     </h1>
                                 </div>
                                 <div className="header-actions">

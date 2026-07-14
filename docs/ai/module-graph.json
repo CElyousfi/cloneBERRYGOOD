@@ -36,11 +36,11 @@
       },
       {
         "commits": 6,
-        "file": "scripts/build-frontend.js"
+        "file": "functions/pointageService.js"
       },
       {
-        "commits": 5,
-        "file": "functions/pointageService.js"
+        "commits": 6,
+        "file": "scripts/build-frontend.js"
       },
       {
         "commits": 5,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:0ed1716324b05dff",
+    "sourceFingerprint": "sha256:c966c82eaff21081",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
