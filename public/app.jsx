@@ -11289,6 +11289,21 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
             const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
 
+            // Jours réellement travaillés : distinct (matricule, jour) — méthode exacte.
+            // On agrège les 3 sources MO pour éviter le double-comptage parcelles (un ouvrier
+            // affecté à 2 parcelles le même jour = 1 seul JH, pas 2 lignes Nombre_Jr).
+            const _recolteRowsQz = recolteEquipeRows.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter));
+            const totalJourneesDistinct = (() => {
+                const wDays = {};
+                [...moHorsRecolteRows, ...moPostesRows, ..._recolteRowsQz].forEach(function(r) {
+                    if (!r.matricule || !r.jour) return;
+                    const k = numKey(r.matricule);
+                    if (!wDays[k]) wDays[k] = new Set();
+                    wDays[k].add(r.jour);
+                });
+                return Object.values(wDays).reduce(function(s, days) { return s + days.size; }, 0);
+            })();
+
             // ===== MODÈLE COÛT SMART BERRY (computePayslip) — source unique pour MO =====
             // On N'UTILISE PAS les coûts SQL BDP (parFerme.cout ou r.cout) qui ne sont qu'une
             // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
@@ -11509,7 +11524,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             nbJours={parJour.length}
                             badges={[
                                 { bg: 'var(--berry-pale)', color: 'var(--berry)', icon: 'fa-calendar', text: parJour.length + ' jours' },
-                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-users', text: totalJournees.toLocaleString('fr-FR') + ' journées' },
+                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-users', text: totalJourneesDistinct.toLocaleString('fr-FR') + ' JH' },
                                 { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
                                 ...(parJour.length > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
                             ]}
@@ -12297,7 +12312,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 ))}
                                 <tr style={{background:'var(--berry-pale)',fontWeight:700}}>
                                     <td>TOTAL</td>
-                                    <td>{displayData.reduce((s,d)=>s+d.journees,0)}</td>
+                                    <td>{totalJourneesDistinct}</td>
                                     <td>{displayData.reduce((s,d)=>s+d.cout,0).toLocaleString('fr-FR')}</td>
                                     <td>{displayData.reduce((s,d)=>s+d.recolte,0)}</td>
                                     <td>{displayData.reduce((s,d)=>s+d.horsRecolte,0)}</td>
