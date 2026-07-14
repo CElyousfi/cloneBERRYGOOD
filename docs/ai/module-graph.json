@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 71,
+        "commits": 73,
         "file": "public/app.jsx"
       },
       {
@@ -40,6 +40,10 @@
       },
       {
         "commits": 5,
+        "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 5,
         "file": "public/components/ParcellesReferentielTab.jsx"
       },
       {
@@ -52,10 +56,6 @@
       },
       {
         "commits": 4,
-        "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 4,
         "file": "tests/unit/pointageBdpMap.test.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:e22f7591fe6c555b",
+    "sourceFingerprint": "sha256:018fdfa76ce5f740",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,

@@ -1567,12 +1567,12 @@ async function warmAllPointageCaches() {
       const groups = {};
       for (const r of rawRows) {
         const key = `${r.Parcelle_Culturale}|${r.Ref_parcelle}|${r.Operation_Famille}|${r.Operation}`;
-        if (!groups[key]) groups[key] = { Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Operation_Famille: r.Operation_Famille, Operation: r.Operation, workers: new Set(), JH: 0, Cout: 0 };
+        if (!groups[key]) groups[key] = { Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Operation_Famille: r.Operation_Famille, Operation_Groupe: r.Operation_Groupe, Operation: r.Operation, workers: new Set(), JH: 0, Cout: 0 };
         groups[key].workers.add(r.Personnel_Matricule);
         groups[key].JH += r.Nombre_Jr || 0;
         groups[key].Cout += r.Cout || 0;
       }
-      const rows = Object.values(groups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
+      const rows = Object.values(groups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operationGroupe: g.Operation_Groupe || '', operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
       return { success: true, periode: selectedPeriode, periodes, rows };
     });
     results.push("quinzaine-analytique:ok");
@@ -2502,23 +2502,23 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const groups = {};
           for (const r of rawRows) {
             const key = `${r.Parcelle_Culturale}|${r.Ref_parcelle}|${r.Operation_Famille}|${r.Operation}`;
-            if (!groups[key]) groups[key] = { Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Operation_Famille: r.Operation_Famille, Operation: r.Operation, workers: new Set(), JH: 0, Cout: 0 };
+            if (!groups[key]) groups[key] = { Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Operation_Famille: r.Operation_Famille, Operation_Groupe: r.Operation_Groupe, Operation: r.Operation, workers: new Set(), JH: 0, Cout: 0 };
             groups[key].workers.add(r.Personnel_Matricule);
             groups[key].JH += r.Nombre_Jr || 0;
             groups[key].Cout += r.Cout || 0;
           }
-          const rows = Object.values(groups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
+          const rows = Object.values(groups).map(g => ({ parcelle: (g.Parcelle_Culturale || '').trim(), refParcelle: (g.Ref_parcelle || '').trim(), ferme: deriveFerme(g.Ref_parcelle, g.Parcelle_Culturale), operationFamille: g.Operation_Famille, operationGroupe: g.Operation_Groupe || '', operation: g.Operation, nbOuv: g.workers.size, jh: Math.round(g.JH * 100) / 100, cout: Math.round(g.Cout) }));
           return { success: true, periode: selectedPeriode, periodes, periodeCampagne, rows: enrichRowsWithHaRef(rows, supMap) };
         }
         // SQL fallback
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
         const periodes = periodesRes.recordset.map(r => r.Periode_paie);
         const selectedPeriode = periodeParam || periodes[0];
-        const result = await db.request().query(`SELECT Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS JH, SUM(Cout) AS Cout FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation ORDER BY Parcelle_Culturale, Operation_Famille`);
+        const result = await db.request().query(`SELECT Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation_Groupe, Operation, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS JH, SUM(Cout) AS Cout FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation_Groupe, Operation ORDER BY Parcelle_Culturale, Operation_Famille`);
         // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Les rows portent un champ
         // `ferme` dérivé → on cloisonne sur la ferme du chef (fail-closed), cohérence avec
         // le chemin mirror/archive. _fermeFilter null (RH/DG/Finance) → passthrough.
-        const rows = filterByFermeField(result.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), operationFamille: r.Operation_Famille, operation: r.Operation, nbOuv: r.nbOuv, jh: Math.round((r.JH || 0) * 100) / 100, cout: Math.round(r.Cout || 0) })), _fermeFilter);
+        const rows = filterByFermeField(result.recordset.map(r => ({ parcelle: (r.Parcelle_Culturale || '').trim(), refParcelle: (r.Ref_parcelle || '').trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), operationFamille: r.Operation_Famille, operationGroupe: r.Operation_Groupe || '', operation: r.Operation, nbOuv: r.nbOuv, jh: Math.round((r.JH || 0) * 100) / 100, cout: Math.round(r.Cout || 0) })), _fermeFilter);
         return { success: true, periode: selectedPeriode, periodes, rows: enrichRowsWithHaRef(rows, await fetchBrParcelleSupMap()) };
         }); // end withCache
         return res.json(cached);
