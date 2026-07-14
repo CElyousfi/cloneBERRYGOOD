@@ -242,11 +242,12 @@
             var ancBase          = smagBaseTotal + primeFonctionTot;
             var ancMontant       = ancBase * ancPct / 100;                     // code 121
             var brutTotal        = smagBaseTotal + ancMontant + primeFonctionTot;
-            var cnssRetenue      = brutTotal * TAUX_CNSS;                     // code 601
-            var amoRetenue       = brutTotal * TAUX_AMO;                      // code 631
+            var transportTotal   = w.transportTotal || 0;                      // non imposable
+            var cnssRetenue      = brutTotal * TAUX_CNSS;                     // code 601 — base = brutTotal (hors transport)
+            var amoRetenue       = brutTotal * TAUX_AMO;                      // code 631 — base = brutTotal (hors transport)
             var totalRetenues    = cnssRetenue + amoRetenue;
             var netImposable     = brutTotal - totalRetenues;
-            var netAPayer        = Math.round(netImposable);
+            var netAPayer        = Math.round(netImposable);                   // transport + avance se neutralisent
             var arrondi          = netAPayer - netImposable;                   // code 9999
 
             var y = 12;
@@ -342,9 +343,15 @@
             y = doc.lastAutoTable.finalY + 4;
 
             // ── BLOC 4 : Table des lignes de paie ──
-            var bodyRows  = [];
-            var boldRows  = [];   // indices des lignes "Total..." à mettre en gras + fond gris
-            var totalRows = [];   // indices pour ligne "Totaux" et "NET À PAYER" (fond berry)
+            var bodyRows       = [];
+            var boldRows       = [];   // indices des lignes "Total..." à mettre en gras + fond gris
+            var totalRows      = [];   // indices pour ligne "Totaux" et "NET À PAYER" (fond berry)
+            var niHeaderRows   = [];   // indices header "INDEMNITÉS NON IMPOSABLES" (bleu pâle)
+            var niTotalRows    = [];   // indices total indemnités non imposables (bleu très pâle, gras)
+            var avHeaderRows   = [];   // indices header "AVANCES PERÇUES" (rouge pâle)
+            var avTotalRows    = [];   // indices total avances (rouge pâle, gras)
+
+            var hasTransport = transportTotal > 0;
 
             // 111 — Salaire de base
             bodyRows.push(['111', 'Salaire de base', fmtDH(dailyRate), String(jours), fmtDH(smagBaseTotal), '']);
@@ -368,10 +375,21 @@
             boldRows.push(bodyRows.length);
             bodyRows.push(['', 'Total Autres Indemnités', '', '', fmtDH(primeFonctionTot), '']);
 
-            // 601 — CNSS
+            // ── Section Indemnités non imposables (transport) ──
+            if (hasTransport) {
+                niHeaderRows.push(bodyRows.length);
+                bodyRows.push(['', 'INDEMNITÉS NON IMPOSABLES', '', '', '', '']);
+
+                bodyRows.push(['', 'Indemnité de transport', fmtDH(w.transportJour || 0), String(jours), fmtDH(transportTotal), '']);
+
+                niTotalRows.push(bodyRows.length);
+                bodyRows.push(['', 'Total Indemnités n.i.', '', '', fmtDH(transportTotal), '']);
+            }
+
+            // 601 — CNSS (base = brutTotal, hors transport non imposable)
             bodyRows.push(['601', 'Cotisation CNSS', fmtDH(brutTotal), '4,48%', '', fmtDH(cnssRetenue)]);
 
-            // 631 — AMO
+            // 631 — AMO (base = brutTotal, hors transport non imposable)
             bodyRows.push(['631', 'Cotisation Mutuelle/AMO', fmtDH(brutTotal), '2,26%', '', fmtDH(amoRetenue)]);
 
             // Total Retenues Sociales
@@ -385,17 +403,30 @@
             boldRows.push(bodyRows.length);
             bodyRows.push(['', 'Total Impôts', '', '', '', '0,00']);
 
-            // 9999 — Arrondi (si non nul)
+            // ── Section Avances perçues (avance transport en espèces) ──
+            if (hasTransport) {
+                avHeaderRows.push(bodyRows.length);
+                bodyRows.push(['', 'AVANCES PERÇUES', '', '', '', '']);
+
+                bodyRows.push(['', 'Avance transport (espèces)', '', '', '', fmtDH(transportTotal)]);
+
+                avTotalRows.push(bodyRows.length);
+                bodyRows.push(['', 'Total Avances', '', '', '', fmtDH(transportTotal)]);
+            }
+
+            // 9999 — Arrondi (si non nul) — calculé après avances
             if (Math.abs(arrondi) >= 0.005) {
                 bodyRows.push(['9999', 'Arrondi', '', '', '', fmtDH(arrondi)]);
             }
 
-            // Ligne Totaux
-            var totauxIdx = bodyRows.length;
+            // Ligne Totaux — gains = brutTotal + transport, retenues = totalRetenues + transport
+            var totauxIdx    = bodyRows.length;
+            var totauxGains  = brutTotal + transportTotal;
+            var totauxRetenu = totalRetenues + transportTotal;
             totalRows.push(totauxIdx);
-            bodyRows.push(['', 'Totaux', '', '', fmtDH(brutTotal), fmtDH(totalRetenues)]);
+            bodyRows.push(['', 'Totaux', '', '', fmtDH(totauxGains), fmtDH(totauxRetenu)]);
 
-            // Ligne NET À PAYER
+            // Ligne NET À PAYER — transport et avance se neutralisent, NET inchangé
             var netIdx = bodyRows.length;
             totalRows.push(netIdx);
             bodyRows.push(['', 'NET À PAYER', '', '', fmtDH(netAPayer), '']);
@@ -424,6 +455,29 @@
                     if (totalRows.indexOf(row) !== -1) {
                         data.cell.styles.fontStyle  = 'bold';
                         data.cell.styles.fillColor  = [220, 230, 220];
+                    }
+                    // Header "INDEMNITÉS NON IMPOSABLES" — bleu très pâle
+                    if (niHeaderRows.indexOf(row) !== -1) {
+                        data.cell.styles.fillColor  = [230, 244, 255];
+                        data.cell.styles.textColor  = [52, 73, 171];
+                        data.cell.styles.fontStyle  = 'bold';
+                    }
+                    // Total indemnités non imposables — bleu pâle, gras
+                    if (niTotalRows.indexOf(row) !== -1) {
+                        data.cell.styles.fillColor  = [240, 248, 255];
+                        data.cell.styles.fontStyle  = 'bold';
+                    }
+                    // Header "AVANCES PERÇUES" — rouge très pâle
+                    if (avHeaderRows.indexOf(row) !== -1) {
+                        data.cell.styles.fillColor  = [255, 235, 235];
+                        data.cell.styles.textColor  = [192, 57, 43];
+                        data.cell.styles.fontStyle  = 'bold';
+                    }
+                    // Total avances — rouge pâle, gras, texte rouge
+                    if (avTotalRows.indexOf(row) !== -1) {
+                        data.cell.styles.fillColor  = [255, 245, 245];
+                        data.cell.styles.textColor  = [192, 57, 43];
+                        data.cell.styles.fontStyle  = 'bold';
                     }
                     // NET À PAYER : colonne Gain en berry
                     if (row === netIdx && data.column.index === 4) {
