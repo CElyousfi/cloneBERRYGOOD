@@ -169,23 +169,27 @@ test('pivotByFamille: retourne groupedRows (pas operations/pivot)', () => {
   assert.ok(!result.pivot, 'pivot ne doit pas être présent en mode famille');
 });
 
-test('pivotByFamille: ligne famille avant ses opérations (type correct)', () => {
+test('pivotByFamille: lignes groupe + famille (types corrects, pas de operation)', () => {
   const { groupedRows } = buildAnalytiquePivotByFamille([
     rowFam('P1', 2, '1. Travaux du sol', 3, 300, 'GB01'),
     rowFam('P1', 2, '2. Ferti-irrigation', 2, 200, 'GB02'),
     rowFam('P1', 2, '8. Récolte', 5, 500, 'GB08'),
   ]);
-  // GB01 → famille 'Travaux du sol', GB02 → 'Ferti-irrigation', GB08 → 'Récolte'
-  // Chaque famille a son propre gbCode → 3 familles distinctes
+  // Pas de rows de type 'operation' dans le mode Famille
+  assert.ok(!groupedRows.some(r => r.type === 'operation'), 'pas de type operation');
+  // Rows groupe et famille uniquement
+  groupedRows.forEach(r => assert.ok(r.type === 'groupe' || r.type === 'famille'));
+  // 3 familles distinctes (GB01, GB02, GB08)
   const famRows = groupedRows.filter(r => r.type === 'famille');
   assert.strictEqual(famRows.length, 3);
   const famGB01 = famRows.find(r => r.key === 'GB01');
   assert.ok(famGB01, 'ligne famille GB01 doit exister');
   assert.strictEqual(famGB01.label, 'Travaux du sol');
-  // la ligne famille doit être suivie de sa ligne opération
+  assert.strictEqual(famGB01.groupeKey, 'M.O Hors récolte', 'GB01 appartient à M.O Hors récolte');
+  // Chaque famille est précédée de son groupe
   const idxFam = groupedRows.indexOf(famGB01);
-  assert.strictEqual(groupedRows[idxFam + 1].type, 'operation');
-  assert.strictEqual(groupedRows[idxFam + 1].familleKey, 'GB01');
+  assert.ok(idxFam > 0, 'famille GB01 a une ligne avant elle');
+  assert.strictEqual(groupedRows[idxFam - 1].type, 'groupe', 'ligne précédente est un groupe');
 });
 
 test('pivotByFamille: pivot famille agrège JH/coût de toutes les ops de la famille', () => {

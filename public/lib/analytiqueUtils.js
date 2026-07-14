@@ -133,6 +133,21 @@
    * Source : référentiel Firestore referentiel_taches (11 familles).
    * Utilisé par buildAnalytiquePivotByFamille.
    */
+  /** Mapping GB code → groupe MO (3 groupes). */
+  var GB_GROUPE_MAP = {
+    'GB01': 'M.O Hors récolte', 'GB02': 'M.O Hors récolte', 'GB03': 'M.O Hors récolte',
+    'GB04': 'M.O Hors récolte', 'GB05': 'M.O Hors récolte', 'GB06': 'M.O Hors récolte',
+    'GB07': 'M.O Hors récolte', 'GB09': 'M.O Hors récolte', 'GB10': 'M.O Hors récolte',
+    'GB08': 'M.O Récolte',
+    'GB11': 'M.O Service générale',
+  };
+
+  /** Ordre d'affichage des 3 groupes MO. */
+  var GROUPE_ORDER = ['M.O Hors récolte', 'M.O Récolte', 'M.O Service générale'];
+
+  /** Ordre canonique des familles GB01→GB11 dans le tableau. */
+  var GB_ORDER = ['GB01','GB02','GB03','GB04','GB05','GB06','GB07','GB08','GB09','GB10','GB11'];
+
   var GROUPE_FAMILLE_MAP = {
     'GB01': 'Travaux du sol',
     'GB02': 'Ferti-irrigation',
@@ -224,88 +239,86 @@
 
   /**
    * @typedef {Object} AnalytiqueGroupedRow
-   * @property {'famille'|'operation'} type
-   * @property {string} key
+   * @property {'groupe'|'famille'} type
+   * @property {string} key          — groupe: nom du groupe ; famille: code GB (GB01…GB11) ou 'AUTRE'
    * @property {string} label
    * @property {Object<string, {jh:number, cout:number, ha:number, detailRows:AnalytiqueRow[]}>} pivot
-   * @property {string} [familleKey]   présent uniquement quand type==='operation'
+   * @property {string} [groupeKey]  — présent uniquement quand type==='famille'
    */
 
   /**
-   * Construit un pivot hiérarchique parcelle × famille → opérations (mode Famille).
+   * Construit un pivot hiérarchique 3 groupes → 11 familles pour le mode Famille.
    *
-   * Retourne `groupedRows` : liste plate alternant lignes en-tête famille
-   * (type='famille') et lignes opération indentées (type='operation').
-   * La clé de famille est le code GB (GB01…GB11) ; le libellé est résolu
-   * depuis GROUPE_FAMILLE_MAP ou en fallback sur operationFamille.
+   * Retourne `groupedRows` : liste plate alternant lignes en-tête groupe (type='groupe')
+   * et lignes famille (type='famille', indentées). Le détail opération est accessible
+   * via detailRows dans chaque cellule pivot, pour popup au clic.
    *
-   * @param {Array<AnalytiqueRow & {operationGroupe?: string, haRef?: number, refParcelle?: string, ferme?: string}>} rows
-   * @returns {{
-   *   parcelles: Array<[string, number]>,
-   *   groupedRows: AnalytiqueGroupedRow[]
-   * }}
+   * @param {Array<AnalytiqueRow & {operationGroupe?: string, haRef?: number}>} rows
+   * @returns {{ parcelles: Array<[string, number]>, groupedRows: AnalytiqueGroupedRow[] }}
    */
   function buildAnalytiquePivotByFamille(rows) {
     // 1. Parcelles
     var parcelleMap = {};
     (rows || []).forEach(function (r) {
       var ha = r.ha || r.haRef || 0;
-      if (!(r.parcelle in parcelleMap) || (parcelleMap[r.parcelle] === 0 && ha > 0)) {
+      if (!(r.parcelle in parcelleMap) || (parcelleMap[r.parcelle] === 0 && ha > 0))
         parcelleMap[r.parcelle] = ha;
-      }
     });
     var parcelles = Object.entries(parcelleMap).sort(function (a, b) { return a[0].localeCompare(b[0]); });
 
-    // 2. Construire pivot par code GB → opFamille
-    // famillePivot[gbCode] = { nom, total: {[parc]: cell}, ops: {[opFam]: {[parc]: cell}}, opsOrder: [] }
-    var famillePivot = {};
-    var familleOrder = []; // ordre d'apparition
+    // 2. Agréger par famille (GB code) et par groupe
+    var famillePivot = {}; // { [gbCode]: { nom, groupeName, total: {[parc]: cell} } }
+    var groupePivot  = {}; // { [groupeName]: { total: {[parc]: cell} } }
 
     (rows || []).forEach(function (r) {
-      var gbCode = resolveGbCode(r.operationGroupe, r.operationFamille) || 'AUTRE';
-      var gbNom = GROUPE_FAMILLE_MAP[gbCode] || String(r.operationFamille || 'Autre');
-      var opFam = String(r.operationFamille || 'Autre').replace(/^\s*\d+\.\s*/, '').trim();
+      var gbCode     = resolveGbCode(r.operationGroupe, r.operationFamille) || 'AUTRE';
+      var gbNom      = GROUPE_FAMILLE_MAP[gbCode] || String(r.operationFamille || 'Autre').replace(/^\s*\d+\.\s*/, '').trim();
+      var groupeName = GB_GROUPE_MAP[gbCode] || 'M.O Service générale';
       var parc = r.parcelle;
-      var jh = r.jh || 0;
-      var cout = r.cout || 0;
-      var ha = r.ha || r.haRef || 0;
+      var jh   = r.jh   || 0;
+      var cout = r.cout  || 0;
+      var ha   = r.ha || r.haRef || 0;
 
-      if (!famillePivot[gbCode]) {
-        famillePivot[gbCode] = { nom: gbNom, total: {}, ops: {}, opsOrder: [] };
-        familleOrder.push(gbCode);
-      }
+      // Famille
+      if (!famillePivot[gbCode]) famillePivot[gbCode] = { nom: gbNom, groupeName: groupeName, total: {} };
       var fam = famillePivot[gbCode];
-
-      // Aggregate famille total par parcelle
       if (!fam.total[parc]) fam.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
-      fam.total[parc].jh += jh;
+      fam.total[parc].jh   += jh;
       fam.total[parc].cout += cout;
       if (fam.total[parc].ha === 0 && ha > 0) fam.total[parc].ha = ha;
       fam.total[parc].detailRows.push(r);
 
-      // Aggregate par opération sous cette famille
-      if (!fam.ops[opFam]) { fam.ops[opFam] = {}; fam.opsOrder.push(opFam); }
-      if (!fam.ops[opFam][parc]) fam.ops[opFam][parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
-      fam.ops[opFam][parc].jh += jh;
-      fam.ops[opFam][parc].cout += cout;
-      if (fam.ops[opFam][parc].ha === 0 && ha > 0) fam.ops[opFam][parc].ha = ha;
-      fam.ops[opFam][parc].detailRows.push(r);
+      // Groupe
+      if (!groupePivot[groupeName]) groupePivot[groupeName] = { total: {} };
+      var grp = groupePivot[groupeName];
+      if (!grp.total[parc]) grp.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      grp.total[parc].jh   += jh;
+      grp.total[parc].cout += cout;
+      if (grp.total[parc].ha === 0 && ha > 0) grp.total[parc].ha = ha;
+      grp.total[parc].detailRows.push(r);
     });
 
-    // 3. Liste plate groupedRows pour le rendu
+    // 3. Liste plate : groupe header → familles triées GB01..GB11, puis AUTRE
     var groupedRows = [];
-    familleOrder.forEach(function (gbCode) {
-      var fam = famillePivot[gbCode];
-      groupedRows.push({ type: 'famille', key: gbCode, label: fam.nom, pivot: fam.total });
-      fam.opsOrder.forEach(function (opFam) {
-        groupedRows.push({ type: 'operation', key: gbCode + '|' + opFam, familleKey: gbCode, label: opFam, pivot: fam.ops[opFam] });
+    var allGroupes = GROUPE_ORDER.slice();
+    Object.keys(groupePivot).forEach(function(g) {
+      if (allGroupes.indexOf(g) < 0) allGroupes.push(g);
+    });
+
+    allGroupes.forEach(function (groupeName) {
+      if (!groupePivot[groupeName]) return;
+      groupedRows.push({ type: 'groupe', key: groupeName, label: groupeName, pivot: groupePivot[groupeName].total });
+      GB_ORDER.concat(['AUTRE']).forEach(function (gbCode) {
+        var fam = famillePivot[gbCode];
+        if (!fam || fam.groupeName !== groupeName) return;
+        groupedRows.push({ type: 'famille', key: gbCode, label: fam.nom, pivot: fam.total, groupeKey: groupeName });
       });
     });
 
     return { parcelles: parcelles, groupedRows: groupedRows };
   }
 
-  const __analytiqueUtilsApi = { opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille };
+  const __analytiqueUtilsApi = { opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille, GB_GROUPE_MAP, GROUPE_ORDER, GB_ORDER };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = __analytiqueUtilsApi;
   if (typeof window !== 'undefined') window.AnalytiqueUtils = __analytiqueUtilsApi;

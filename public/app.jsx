@@ -12611,45 +12611,65 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 </thead>
                                                 <tbody>
                                                     {groupedRows ? (
-                                                        /* ---- MODE FAMILLE : uniquement les lignes famille (violet), sans sous-ops ---- */
-                                                        groupedRows.filter(row => row.type === 'famille').map((row) => {
+                                                        /* ---- MODE FAMILLE : groupe → familles (clic = popup détail) ---- */
+                                                        groupedRows.map((row) => {
                                                             const _totalHaForRow = parcelles.reduce((s, [, ha]) => s + ha, 0);
                                                             const _rowTotal = analytiqueView === 'jh'
                                                                 ? parcelles.reduce((s, [pKey]) => { const c = row.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
                                                                 : parcelles.reduce((s, [pKey]) => { const c = row.pivot[pKey]; return s + (c ? c.cout : 0); }, 0);
-                                                            if (row.type === 'famille') {
+
+                                                            // ── Ligne groupe (en-tête de section) ──
+                                                            if (row.type === 'groupe') {
                                                                 return (
-                                                                    <tr key={row.key} style={{background:'#f3e8ff', borderBottom:'2px solid var(--gray-200)'}}>
-                                                                        <td style={{padding:'8px 12px',fontWeight:700,color:'var(--berry)',position:'sticky',left:0,background:'#f3e8ff',borderRight:'1px solid var(--gray-200)',zIndex:1}}>
-                                                                            {row.label} <span style={{fontSize:10,fontWeight:400,color:'var(--gray-500)',marginLeft:4}}>({row.key})</span>
-                                                                        </td>
-                                                                        {parcelles.map(([pKey, ha]) => {
-                                                                            const c = row.pivot[pKey];
-                                                                            if (!c) return <td key={pKey} style={{padding:'7px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
-                                                                            const _val = analytiqueView === 'jh' ? c.jh : c.cout;
-                                                                            return (
-                                                                                <td key={pKey} style={{padding:'7px 10px',textAlign:'center',borderRight:'1px solid var(--gray-100)'}}>
-                                                                                    <div style={{fontWeight:700,color:'var(--berry)'}}>{_fmt(_val, ha)}</div>
-                                                                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
-                                                                                </td>
-                                                                            );
-                                                                        })}
-                                                                        <td style={{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--berry)',background:'#ede9fe',position:'sticky',right:0}}>
-                                                                            <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
-                                                                            <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                    <tr key={row.key}>
+                                                                        <td colSpan={parcelles.length + 2} style={{padding:'8px 14px',fontWeight:700,fontSize:12,background:'var(--berry)',color:'white',letterSpacing:'0.04em',textTransform:'uppercase',position:'sticky',left:0}}>
+                                                                            {row.label}
+                                                                            <span style={{fontWeight:400,fontSize:10,opacity:0.75,marginLeft:8}}>
+                                                                                {analytiqueView === 'jh'
+                                                                                    ? `${Math.round(_rowTotal)} JH total`
+                                                                                    : `${Math.round(_rowTotal).toLocaleString('fr-FR')} DH`}
+                                                                            </span>
                                                                         </td>
                                                                     </tr>
                                                                 );
                                                             }
-                                                            // type === 'operation'
+
+                                                            // ── Ligne famille (clic sur cellule → popup) ──
                                                             return (
-                                                                <tr key={row.key} style={{background:'#fff', borderBottom:'1px solid var(--gray-100)'}}>
-                                                                    <td style={{padding:'6px 12px',paddingLeft:24,color:'var(--gray-600)',position:'sticky',left:0,background:'#fff',borderRight:'1px solid var(--gray-200)',zIndex:1,fontSize:11}}>
+                                                                <tr key={row.key} style={{background:'#fff',borderBottom:'1px solid #f0e6ef'}}>
+                                                                    <td style={{padding:'9px 14px',fontWeight:600,color:'var(--berry)',position:'sticky',left:0,background:'#fff',borderRight:'2px solid var(--berry)',zIndex:1,borderLeft:'3px solid var(--berry)'}}>
                                                                         {row.label}
+                                                                        <span style={{fontSize:10,fontWeight:400,color:'var(--gray-400)',marginLeft:6}}>{row.key}</span>
                                                                     </td>
                                                                     {parcelles.map(([pKey, ha]) => {
                                                                         const c = row.pivot[pKey];
-                                                                        if (!c) return <td key={pKey} style={{padding:'6px 10px',textAlign:'center',color:'var(--gray-300)',borderRight:'1px solid var(--gray-100)'}}>—</td>;
+                                                                        if (!c) return <td key={pKey} style={{padding:'8px 10px',textAlign:'center',color:'var(--gray-200)',borderRight:'1px solid #f5edf4',fontSize:13}}>—</td>;
+                                                                        const _val = analytiqueView === 'jh' ? c.jh : c.cout;
+                                                                        return (
+                                                                            <td key={pKey}
+                                                                                onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: row.label, ha, detailRows: c.detailRows })}
+                                                                                title={`Voir le détail de ${row.label} sur ${pKey}`}
+                                                                                style={{padding:'8px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid #f5edf4',transition:'background 0.12s'}}
+                                                                                onMouseEnter={e => e.currentTarget.style.background='#fdf4f8'}
+                                                                                onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                                <div style={{fontWeight:700,color:'var(--gray-700)'}}>{_fmt(_val, ha)}</div>
+                                                                                <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                            </td>
+                                                                        );
+                                                                    })}
+                                                                    <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--berry)',background:'#fdf4f8',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef'}}>
+                                                                        <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
+                                                                        <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{_unit}</div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                            // (dead code placeholder for linter — was type=operation branch)
+                                                            return (
+                                                                <tr key={row.key}>
+                                                                    <td></td>
+                                                                    {parcelles.map(([pKey, ha]) => {
+                                                                        const c = row.pivot[pKey];
+                                                                        if (!c) return <td key={pKey}></td>;
                                                                         const _val = analytiqueView === 'jh' ? c.jh : c.cout;
                                                                         return (
                                                                             <td key={pKey}
