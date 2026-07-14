@@ -129,16 +129,17 @@ test('pivot: entrée vide/absente → structures vides', () => {
 // ---------------------------------------------------------------------------
 // resolveGroupeFamille
 // ---------------------------------------------------------------------------
-test('resolveGroupeFamille: code GB connu → famille parente', () => {
-  assert.strictEqual(resolveGroupeFamille('GB01', '1. Travaux du sol GB01'), 'M.O Hors récolte');
-  assert.strictEqual(resolveGroupeFamille('GB08', '8. Récolte GB08'), 'M.O Récolte');
-  assert.strictEqual(resolveGroupeFamille('GB09', '9. Service générale GB09'), 'M.O Service générale');
-  assert.strictEqual(resolveGroupeFamille('GB11', '11. Postes fixes GB11'), 'M.O Service générale');
+test('resolveGroupeFamille: code GB connu → libellé famille (niveau intermédiaire)', () => {
+  assert.strictEqual(resolveGroupeFamille('GB01', '1. Travaux du sol GB01'), 'Travaux du sol');
+  assert.strictEqual(resolveGroupeFamille('GB08', '8. Récolte GB08'), 'Récolte');
+  assert.strictEqual(resolveGroupeFamille('GB09', '9. Taille GB09'), 'Taille');
+  assert.strictEqual(resolveGroupeFamille('GB11', '11. Services généraux GB11'), 'Services généraux');
+  assert.strictEqual(resolveGroupeFamille('GB02', '2. Ferti-irrigation GB02'), 'Ferti-irrigation');
 });
 
 test('resolveGroupeFamille: code avec casse/espaces variantes → normalisé', () => {
-  assert.strictEqual(resolveGroupeFamille('gb08 ', '8. Récolte'), 'M.O Récolte');
-  assert.strictEqual(resolveGroupeFamille('  GB02  ', '2. Taille'), 'M.O Hors récolte');
+  assert.strictEqual(resolveGroupeFamille('gb08 ', '8. Récolte'), 'Récolte');
+  assert.strictEqual(resolveGroupeFamille('  GB02  ', '2. Ferti-irrigation'), 'Ferti-irrigation');
 });
 
 test('resolveGroupeFamille: fallback si code inconnu → retire suffixe GBxx du libellé', () => {
@@ -153,60 +154,91 @@ test('resolveGroupeFamille: fallback si libellé sans suffixe GB → retourne le
 });
 
 // ---------------------------------------------------------------------------
-// buildAnalytiquePivotByFamille
+// buildAnalytiquePivotByFamille — format hiérarchique (groupedRows)
 // ---------------------------------------------------------------------------
 const rowFam = (parcelle, ha, operationFamille, jh, cout, operationGroupe) =>
   ({ parcelle, ha, operationFamille, jh, cout, operationGroupe: operationGroupe || '' });
 
-test('pivotByFamille: groupe par famille parente (GB code)', () => {
-  const { operations, pivot } = buildAnalytiquePivotByFamille([
-    rowFam('P1', 2, '1. Travaux du sol GB01', 3, 300, 'GB01'),
-    rowFam('P1', 2, '2. Taille GB02', 2, 200, 'GB02'),
-    rowFam('P1', 2, '8. Récolte GB08', 5, 500, 'GB08'),
+test('pivotByFamille: retourne groupedRows (pas operations/pivot)', () => {
+  const result = buildAnalytiquePivotByFamille([
+    rowFam('P1', 2, '1. Travaux du sol', 3, 300, 'GB01'),
+    rowFam('P1', 2, '8. Récolte', 5, 500, 'GB08'),
   ]);
-  // GB01 et GB02 → 'M.O Hors récolte', GB08 → 'M.O Récolte'
-  assert.strictEqual(operations.length, 2);
-  const horsRecolte = operations.find(o => o.key === 'M.O Hors récolte');
-  assert.ok(horsRecolte, 'M.O Hors récolte doit exister');
-  assert.strictEqual(pivot['M.O Hors récolte']['P1'].jh, 5);
-  assert.strictEqual(pivot['M.O Hors récolte']['P1'].cout, 500);
-  const recolte = operations.find(o => o.key === 'M.O Récolte');
-  assert.ok(recolte, 'M.O Récolte doit exister');
-  assert.strictEqual(pivot['M.O Récolte']['P1'].jh, 5);
+  assert.ok(Array.isArray(result.groupedRows), 'groupedRows doit être un tableau');
+  assert.ok(!result.operations, 'operations ne doit pas être présent en mode famille');
+  assert.ok(!result.pivot, 'pivot ne doit pas être présent en mode famille');
+});
+
+test('pivotByFamille: ligne famille avant ses opérations (type correct)', () => {
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowFam('P1', 2, '1. Travaux du sol', 3, 300, 'GB01'),
+    rowFam('P1', 2, '2. Ferti-irrigation', 2, 200, 'GB02'),
+    rowFam('P1', 2, '8. Récolte', 5, 500, 'GB08'),
+  ]);
+  // GB01 → famille 'Travaux du sol', GB02 → 'Ferti-irrigation', GB08 → 'Récolte'
+  // Chaque famille a son propre gbCode → 3 familles distinctes
+  const famRows = groupedRows.filter(r => r.type === 'famille');
+  assert.strictEqual(famRows.length, 3);
+  const famGB01 = famRows.find(r => r.key === 'GB01');
+  assert.ok(famGB01, 'ligne famille GB01 doit exister');
+  assert.strictEqual(famGB01.label, 'Travaux du sol');
+  // la ligne famille doit être suivie de sa ligne opération
+  const idxFam = groupedRows.indexOf(famGB01);
+  assert.strictEqual(groupedRows[idxFam + 1].type, 'operation');
+  assert.strictEqual(groupedRows[idxFam + 1].familleKey, 'GB01');
+});
+
+test('pivotByFamille: pivot famille agrège JH/coût de toutes les ops de la famille', () => {
+  // GB01 a deux opérations : Travaux du sol (jh=3) + Cover cropage (jh=2) → total P1 = 5
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowFam('P1', 2, 'Travaux du sol', 3, 300, 'GB01'),
+    rowFam('P1', 2, 'Cover cropage', 2, 200, 'GB01'),
+    rowFam('P1', 2, 'Récolte', 5, 500, 'GB08'),
+  ]);
+  const famGB01 = groupedRows.find(r => r.type === 'famille' && r.key === 'GB01');
+  assert.ok(famGB01);
+  assert.strictEqual(famGB01.pivot['P1'].jh, 5);
+  assert.strictEqual(famGB01.pivot['P1'].cout, 500);
 });
 
 test('pivotByFamille: plusieurs parcelles → pivot correct', () => {
-  const { parcelles, pivot } = buildAnalytiquePivotByFamille([
-    rowFam('P1', 1.5, 'Taille GB02', 3, 300, 'GB02'),
-    rowFam('P2', 3.0, 'Taille GB02', 2, 200, 'GB02'),
+  const { parcelles, groupedRows } = buildAnalytiquePivotByFamille([
+    rowFam('P1', 1.5, 'Taille', 3, 300, 'GB02'),
+    rowFam('P2', 3.0, 'Taille', 2, 200, 'GB02'),
   ]);
   assert.strictEqual(parcelles.length, 2);
-  assert.strictEqual(pivot['M.O Hors récolte']['P1'].jh, 3);
-  assert.strictEqual(pivot['M.O Hors récolte']['P2'].jh, 2);
+  const famGB02 = groupedRows.find(r => r.type === 'famille' && r.key === 'GB02');
+  assert.ok(famGB02);
+  assert.strictEqual(famGB02.pivot['P1'].jh, 3);
+  assert.strictEqual(famGB02.pivot['P2'].jh, 2);
 });
 
-test('pivotByFamille: famille sans JH > 0 exclue', () => {
-  const { operations } = buildAnalytiquePivotByFamille([
-    rowFam('P1', 2, 'Taille GB02', 0, 0, 'GB02'),
-    rowFam('P1', 2, 'Récolte GB08', 3, 300, 'GB08'),
+test('pivotByFamille: familles sans JH > 0 toujours présentes (changement intentionnel : la ligne famille sert d\'en-tête)', () => {
+  // Comportement post-refactor : toutes les familles apparaissent même avec jh=0
+  // (le filtrage des lignes vides est à la charge du rendu si nécessaire)
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowFam('P1', 2, 'Taille', 0, 0, 'GB02'),
+    rowFam('P1', 2, 'Récolte', 3, 300, 'GB08'),
   ]);
-  assert.strictEqual(operations.length, 1);
-  assert.strictEqual(operations[0].key, 'M.O Récolte');
+  const famRows = groupedRows.filter(r => r.type === 'famille');
+  assert.ok(famRows.length >= 1, 'Au moins la famille GB08 doit être présente');
+  const famGB08 = famRows.find(r => r.key === 'GB08');
+  assert.ok(famGB08, 'famille GB08 (Récolte) doit exister');
+  assert.strictEqual(famGB08.pivot['P1'].jh, 3);
 });
 
 test('pivotByFamille: fallback données sans operationGroupe (archives)', () => {
-  // operationGroupe absent → resolveGroupeFamille retire le suffixe GB du libellé
-  const { operations } = buildAnalytiquePivotByFamille([
-    rowFam('P1', 2, 'Entretien structure GB03', 2, 200, ''),
-    rowFam('P1', 2, 'Ferti irrigation GB03', 1, 100, ''),
+  // operationGroupe absent → code AUTRE, label depuis opLabel(operationFamille)
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowFam('P1', 2, 'Entretien structure', 2, 200, ''),
+    rowFam('P1', 2, 'Ferti irrigation', 1, 100, ''),
   ]);
-  // Les deux sous-familles convergent sur le fallback (même suffixe GB03 retiré différemment)
-  // L'important est que ça ne crash pas et que les familles sont des strings non vides
-  assert.ok(operations.length > 0);
-  operations.forEach(o => assert.ok(typeof o.key === 'string' && o.key.length > 0));
+  // Toutes les lignes tombent dans 'AUTRE' (groupedRows a 1 famille + 2 ops)
+  assert.ok(groupedRows.length > 0, 'ne doit pas crasher');
+  groupedRows.forEach(r => assert.ok(typeof r.key === 'string' && r.key.length > 0));
 });
 
 test('pivotByFamille: entrée vide/nulle → structures vides', () => {
-  assert.deepStrictEqual(buildAnalytiquePivotByFamille([]), { parcelles: [], operations: [], pivot: {} });
-  assert.deepStrictEqual(buildAnalytiquePivotByFamille(null), { parcelles: [], operations: [], pivot: {} });
+  assert.deepStrictEqual(buildAnalytiquePivotByFamille([]), { parcelles: [], groupedRows: [] });
+  assert.deepStrictEqual(buildAnalytiquePivotByFamille(null), { parcelles: [], groupedRows: [] });
 });

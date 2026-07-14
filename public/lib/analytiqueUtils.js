@@ -129,30 +129,30 @@
   }
 
   /**
-   * Mapping Operation_Groupe (code GB) → Famille parente.
-   * Source : référentiel BEE ONE (opérations M.O). Utilisé par buildAnalytiquePivotByFamille.
+   * Mapping Operation_Groupe (code GB) → Famille (niveau intermédiaire).
+   * Source : référentiel Firestore referentiel_taches (11 familles).
+   * Utilisé par buildAnalytiquePivotByFamille.
    */
   var GROUPE_FAMILLE_MAP = {
-    'GB01': 'M.O Hors récolte',
-    'GB02': 'M.O Hors récolte',
-    'GB03': 'M.O Hors récolte',
-    'GB04': 'M.O Hors récolte',
-    'GB05': 'M.O Hors récolte',
-    'GB06': 'M.O Hors récolte',
-    'GB07': 'M.O Hors récolte',
-    'GB08': 'M.O Récolte',
-    'GB09': 'M.O Service générale',
-    'GB10': 'M.O Hors récolte',
-    'GB11': 'M.O Service générale',
+    'GB01': 'Travaux du sol',
+    'GB02': 'Ferti-irrigation',
+    'GB03': 'Plantation',
+    'GB04': 'Mise en valeur',
+    'GB05': 'Entretien structure',
+    'GB06': 'Traitement phyto',
+    'GB07': 'Tuteurage & palissage',
+    'GB08': 'Récolte',
+    'GB09': 'Taille',
+    'GB10': 'Arrachage',
+    'GB11': 'Services généraux',
   };
 
   /**
-   * Résout la famille parente à partir du code groupe (GB01…GB11) ou en
-   * fallback sur operationFamille (données archivées sans operationGroupe).
+   * Résout le code GB normalisé à partir du champ operationGroupe.
+   * Retourne null si le code n'est pas reconnu dans GROUPE_FAMILLE_MAP.
    *
    * @param {string|null|undefined} operationGroupe  ex: "GB01", "gb08 "
-   * @param {string|null|undefined} operationFamille ex: "1. Travaux du sol GB01"
-   * @returns {string}
+   * @returns {string|null}
    */
   function resolveGroupeFamille(operationGroupe, operationFamille) {
     var code = String(operationGroupe || '').trim().toUpperCase();
@@ -163,54 +163,87 @@
   }
 
   /**
-   * Construit le pivot parcelle × famille parente (M.O Hors récolte, M.O Récolte…).
-   * Même logique que buildAnalytiquePivot, mais la clé de colonne est la famille
-   * parente résolue par resolveGroupeFamille() au lieu de opKey(operationFamille).
+   * @typedef {Object} AnalytiqueGroupedRow
+   * @property {'famille'|'operation'} type
+   * @property {string} key
+   * @property {string} label
+   * @property {Object<string, {jh:number, cout:number, ha:number, detailRows:AnalytiqueRow[]}>} pivot
+   * @property {string} [familleKey]   présent uniquement quand type==='operation'
+   */
+
+  /**
+   * Construit un pivot hiérarchique parcelle × famille → opérations (mode Famille).
    *
-   * Les données archivées sans operationGroupe sont couvertes par le fallback de
-   * resolveGroupeFamille (extraction du suffixe GBxx du libellé de famille).
+   * Retourne `groupedRows` : liste plate alternant lignes en-tête famille
+   * (type='famille') et lignes opération indentées (type='operation').
+   * La clé de famille est le code GB (GB01…GB11) ; le libellé est résolu
+   * depuis GROUPE_FAMILLE_MAP ou en fallback sur operationFamille.
    *
-   * @param {Array<AnalytiqueRow & {operationGroupe?: string}>} rows
+   * @param {Array<AnalytiqueRow & {operationGroupe?: string, haRef?: number, refParcelle?: string, ferme?: string}>} rows
    * @returns {{
    *   parcelles: Array<[string, number]>,
-   *   operations: Array<{key: string, label: string}>,
-   *   pivot: Object<string, Object<string, AnalytiquePivotCell>>
+   *   groupedRows: AnalytiqueGroupedRow[]
    * }}
    */
   function buildAnalytiquePivotByFamille(rows) {
-    const parcelleSet = {};
-    const pivot = {};
-    const labels = {};   // key → libellé (= clé elle-même, déjà lisible)
-    const sortKeys = {}; // key → ordre d'insertion (premier vu = référence)
-    var insertOrder = 0;
+    // 1. Parcelles
+    var parcelleMap = {};
     (rows || []).forEach(function (r) {
-      const ha = r.ha || 0;
-      if (!(r.parcelle in parcelleSet) || (parcelleSet[r.parcelle] === 0 && ha > 0)) {
-        parcelleSet[r.parcelle] = ha;
+      var ha = r.ha || r.haRef || 0;
+      if (!(r.parcelle in parcelleMap) || (parcelleMap[r.parcelle] === 0 && ha > 0)) {
+        parcelleMap[r.parcelle] = ha;
       }
-      const key = resolveGroupeFamille(r.operationGroupe, r.operationFamille);
-      if (!(key in labels)) {
-        labels[key] = key;
-        sortKeys[key] = insertOrder++;
-      }
-      if (!pivot[key]) pivot[key] = {};
-      if (!pivot[key][r.parcelle]) {
-        pivot[key][r.parcelle] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
-      }
-      const cell = pivot[key][r.parcelle];
-      cell.jh += r.jh || 0;
-      cell.cout += r.cout || 0;
-      if (cell.ha === 0 && ha > 0) cell.ha = ha;
-      cell.detailRows.push(r);
     });
-    const parcelles = Object.entries(parcelleSet).sort(function (a, b) { return a[0].localeCompare(b[0]); });
-    const operations = Object.keys(pivot)
-      .filter(function (key) {
-        return Object.values(pivot[key]).some(function (c) { return c.jh > 0; });
-      })
-      .sort(function (a, b) { return sortKeys[a] - sortKeys[b]; })
-      .map(function (key) { return { key: key, label: labels[key] }; });
-    return { parcelles: parcelles, operations: operations, pivot: pivot };
+    var parcelles = Object.entries(parcelleMap).sort(function (a, b) { return a[0].localeCompare(b[0]); });
+
+    // 2. Construire pivot par code GB → opFamille
+    // famillePivot[gbCode] = { nom, total: {[parc]: cell}, ops: {[opFam]: {[parc]: cell}}, opsOrder: [] }
+    var famillePivot = {};
+    var familleOrder = []; // ordre d'apparition
+
+    (rows || []).forEach(function (r) {
+      var rawCode = String(r.operationGroupe || '').trim().toUpperCase();
+      var gbCode = (rawCode && GROUPE_FAMILLE_MAP[rawCode]) ? rawCode : 'AUTRE';
+      var gbNom = GROUPE_FAMILLE_MAP[gbCode] || opLabel(r.operationFamille) || 'Autre';
+      var opFam = String(r.operationFamille || 'Autre').replace(/^\s*\d+\.\s*/, '').trim();
+      var parc = r.parcelle;
+      var jh = r.jh || 0;
+      var cout = r.cout || 0;
+      var ha = r.ha || r.haRef || 0;
+
+      if (!famillePivot[gbCode]) {
+        famillePivot[gbCode] = { nom: gbNom, total: {}, ops: {}, opsOrder: [] };
+        familleOrder.push(gbCode);
+      }
+      var fam = famillePivot[gbCode];
+
+      // Aggregate famille total par parcelle
+      if (!fam.total[parc]) fam.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      fam.total[parc].jh += jh;
+      fam.total[parc].cout += cout;
+      if (fam.total[parc].ha === 0 && ha > 0) fam.total[parc].ha = ha;
+      fam.total[parc].detailRows.push(r);
+
+      // Aggregate par opération sous cette famille
+      if (!fam.ops[opFam]) { fam.ops[opFam] = {}; fam.opsOrder.push(opFam); }
+      if (!fam.ops[opFam][parc]) fam.ops[opFam][parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      fam.ops[opFam][parc].jh += jh;
+      fam.ops[opFam][parc].cout += cout;
+      if (fam.ops[opFam][parc].ha === 0 && ha > 0) fam.ops[opFam][parc].ha = ha;
+      fam.ops[opFam][parc].detailRows.push(r);
+    });
+
+    // 3. Liste plate groupedRows pour le rendu
+    var groupedRows = [];
+    familleOrder.forEach(function (gbCode) {
+      var fam = famillePivot[gbCode];
+      groupedRows.push({ type: 'famille', key: gbCode, label: fam.nom, pivot: fam.total });
+      fam.opsOrder.forEach(function (opFam) {
+        groupedRows.push({ type: 'operation', key: gbCode + '|' + opFam, familleKey: gbCode, label: opFam, pivot: fam.ops[opFam] });
+      });
+    });
+
+    return { parcelles: parcelles, groupedRows: groupedRows };
   }
 
   const __analytiqueUtilsApi = { opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, buildAnalytiquePivotByFamille };
