@@ -16578,3 +16578,49 @@ exports.validatePointageBdpTrigger = functions
       return res.status(500).json({ success: false, error: err.message });
     }
   });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// rh — Référentiel personnel RH depuis BEE ONE (BEE_BERRY_GOOD).
+// Action : GET /api/rh?action=personnel-ref
+//   Retourne { success: true, data: { [matricule]: { cin, cnss, nom, prenom } } }
+// Auth Firebase requise. Accès restreint aux profils full-access (dg/finance/rh/admin).
+// READ-ONLY : uniquement des SELECT sur la table Personnel de BEE ONE.
+// ─────────────────────────────────────────────────────────────────────────────
+const rhBdpService = require('./rhBdpService');
+
+exports.rh = functions
+  .region('europe-west1')
+  .runWith({ timeoutSeconds: 60, memory: '256MB' })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === 'OPTIONS') return res.status(204).send('');
+
+    // Auth Firebase requise
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return; // requireAuth a déjà répondu 401
+
+    // Rôle résolu côté serveur (token → users/{uid}), jamais depuis le body.
+    const callerProfile = await resolveCallerProfile(authUser);
+    const perim = consoAccessControl.resolvePerimetre(callerProfile, null);
+    if (!paieAccess.canAccessDivers(perim)) {
+      return res.status(403).json({ success: false, error: 'Accès non autorisé' });
+    }
+
+    const action = (req.query && req.query.action) || '';
+
+    if (action === 'personnel-ref' && req.method === 'GET') {
+      try {
+        const result = await rhBdpService.getPersonnelRef();
+        if (!result.success) {
+          console.error('[rh] personnel-ref error:', result.error);
+          return res.status(500).json({ success: false, error: result.error });
+        }
+        return res.json({ success: true, data: result.data, count: result.count });
+      } catch (err) {
+        console.error('[rh] personnel-ref unexpected error:', err.message);
+        return res.status(500).json({ success: false, error: err.message });
+      }
+    }
+
+    return res.status(400).json({ success: false, error: 'Action inconnue ou méthode invalide' });
+  });

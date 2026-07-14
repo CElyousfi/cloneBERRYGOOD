@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "191/331 fichiers classifiés",
+          "detail": "192/333 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "33/126 modules avec ≥1 test",
+          "detail": "34/127 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 72,
+        "commits": 71,
         "file": "public/app.jsx"
       },
       {
@@ -64,17 +64,17 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:d0adc662241e92b6",
+    "sourceFingerprint": "sha256:62f7759a6c6cf3a5",
     "stats": {
-      "backendModules": 86,
-      "cloudFunctions": 81,
-      "coverageScore": 26,
+      "backendModules": 87,
+      "cloudFunctions": 82,
+      "coverageScore": 27,
       "domains": 10,
       "extractedComponents": 16,
       "firestoreCollections": 56,
       "libHelpers": 24,
       "tabFunctions": 124,
-      "unclassifiedFiles": 140,
+      "unclassifiedFiles": 141,
       "unitTestFiles": 22
     }
   },
@@ -513,11 +513,12 @@
           "functions/equipesConfig.js",
           "functions/pointageBdpSync.js",
           "functions/pointageService.js",
+          "functions/rhBdpService.js",
           "functions/update-bdc-validation-template.js"
         ]
       },
       "confidence": "high",
-      "coverageScore": 8,
+      "coverageScore": 15,
       "firestore": {
         "collections": [
           "pointage_validations_equipe",
@@ -548,7 +549,8 @@
       "label": "Pointage & Présence",
       "tests": {
         "backend": [
-          "functions/lib/pointage/__tests__/dedupeWorkersByMatricule.test.js"
+          "functions/lib/pointage/__tests__/dedupeWorkersByMatricule.test.js",
+          "tests/unit/rhBdpService.test.js"
         ],
         "unit": []
       }
@@ -1659,6 +1661,10 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/index.js#rh": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/index.js#runDailyPhenologyJobNow": {
       "confidence": "high",
       "domain": "agro"
@@ -1914,6 +1920,10 @@
     "functions/reprocess-pfq-today.js": {
       "confidence": "medium",
       "domain": "qualite"
+    },
+    "functions/rhBdpService.js": {
+      "confidence": "medium",
+      "domain": "pointage"
     },
     "functions/securityBot.js": {
       "confidence": "low",
@@ -2377,6 +2387,7 @@
     "/api/produits": "produits",
     "/api/recommandation": "recommandation",
     "/api/registry": "registryService",
+    "/api/rh": "rh",
     "/api/run-daily-phenology-job-now": "runDailyPhenologyJobNow",
     "/api/run-sync-jours-feries-now": "runSyncJoursFeriesNow",
     "/api/sentinel-recipients": "sentinelRecipients",
@@ -2783,6 +2794,10 @@
     {
       "confidence": "low",
       "file": "functions/index.js#replicationProbe"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/index.js#rh"
     },
     {
       "confidence": "low",

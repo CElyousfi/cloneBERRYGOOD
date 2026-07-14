@@ -1,12 +1,16 @@
 'use strict';
 (function () {
     var C = {
-        berry: [192, 57, 43],
-        green: [29, 158, 117],
-        gray:  [102, 102, 102],
+        berry:     [192, 57, 43],
+        green:     [29, 158, 117],
+        gray:      [102, 102, 102],
         lightGray: [240, 240, 240],
-        white: [255, 255, 255],
-        black: [0, 0, 0],
+        white:     [255, 255, 255],
+        black:     [0, 0, 0],
+        // Berry Good brand colors (bulletins)
+        berryBrand:     [144, 39, 143],
+        greenBrand:     [130, 179, 58],
+        berryPaleBg:    [248, 240, 248],
     };
 
     function newDoc() {
@@ -194,10 +198,13 @@
     // ─────────────────────────────────────────────────────────────────────────────
     // 4. BULLETINS DE PAIE (un PDF, une page par ouvrier déclaré)
     //    Format : Smart Berry / Berry Good Farms
+    //    NOTE : fonction async — le caller doit l'appeler avec await
     // ─────────────────────────────────────────────────────────────────────────────
-    function genBulletins(workers, periode, smagBrutJournalier) {
+    async function genBulletins(workers, periode, smagBrutJournalier) {
         // workers: [{
-        //   matricule, nom, equipe, journees, declare,
+        //   matricule, nom, prenom, equipe, journees, declare,
+        //   cin,               // peut être null/undefined
+        //   cnss,              // peut être null/undefined
         //   salaireBase,       // smagBrutJournalier × journees (déjà calculé dans app.jsx)
         //   primeFonctionTotal,
         //   primeFonctionJour,
@@ -207,15 +214,31 @@
         //   transportTotal,
         //   brut,              // brut du modèle dashboard (non utilisé pour le calcul bulletin)
         // }]
+
+        // ── Chargement logo ──
+        var logoDataUrl = null;
+        try {
+            var resp = await fetch('/assets/icon-512.png');
+            var blob = await resp.blob();
+            logoDataUrl = await new Promise(function (resolve) {
+                var reader = new FileReader();
+                reader.onloadend = function () { resolve(reader.result); };
+                reader.readAsDataURL(blob);
+            });
+        } catch (e) {
+            // Logo non disponible, continuer sans
+        }
+
         // Constantes entreprise
         var ENTREPRISE = {
-            nom:       'Berry Good Farms',
-            adresse:   'N44 IMMEUBLE A RESIDENCE AL BOSTAN CITE DAKHLA',
-            noCnss:    '3633882',
-            tel:       '',
-            idFiscale: '',
-            patente:   '',
-            rc:        '',
+            nom:      'BERRY GOOD FARMS',
+            forme:    'Sarl au capital de 100 000,00 Dhs',
+            adresse1: '44 Imm. A, Rés. Al Boustane, cité Dakhla - Agadir',
+            tp:       '67500683',
+            rc:       '38125',
+            if_:      '26107029',
+            ice:      '002106859000069',
+            noCnss:   '3633882',
         };
 
         // Taux légaux CNSS / AMO
@@ -250,72 +273,115 @@
             var netAPayer        = Math.round(netImposable);                   // transport + avance se neutralisent
             var arrondi          = netAPayer - netImposable;                   // code 9999
 
-            var y = 12;
+            var y = 10;
 
-            // ── BLOC 1 : Header entreprise (2 colonnes) ──
+            // ── BLOC 1 : Header société ──
+            // Fond violet très pâle sur toute la bande
+            var headerH = 30;
+            doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
+            doc.rect(14, y - 4, 182, headerH, 'F');
+
+            // Logo (35mm × 20mm) — colonne gauche
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, 'PNG', 16, y - 2, 35, 20);
+            }
+
+            // Nom société — colonne droite (à partir de x=55)
+            var xSoc = 55;
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.setTextColor(C.berry[0], C.berry[1], C.berry[2]);
-            doc.text(ENTREPRISE.nom, 14, y);
+            doc.setFontSize(13);
+            doc.setTextColor(C.berryBrand[0], C.berryBrand[1], C.berryBrand[2]);
+            doc.text(ENTREPRISE.nom, xSoc, y + 2);
 
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(8);
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text(ENTREPRISE.adresse, 196, y, { align: 'right' });
-            y += 5;
-
             doc.setFontSize(7.5);
-            doc.setTextColor(C.gray[0], C.gray[1], C.gray[2]);
-            if (ENTREPRISE.tel) { doc.text('Tél. : ' + ENTREPRISE.tel, 14, y); }
-            doc.text('N° CNSS : ' + ENTREPRISE.noCnss, 196, y, { align: 'right' });
-            y += 4;
-            doc.text('ID. Fiscale : ' + (ENTREPRISE.idFiscale || ''), 196, y, { align: 'right' });
-            y += 4;
-            doc.text('Patente : ' + (ENTREPRISE.patente || ''), 196, y, { align: 'right' });
-            y += 4;
-            doc.text('R.C : ' + (ENTREPRISE.rc || ''), 196, y, { align: 'right' });
-            y += 3;
-
-            // Séparateur
-            doc.setDrawColor(C.berry[0], C.berry[1], C.berry[2]);
-            doc.setLineWidth(0.5);
-            doc.line(14, y, 196, y);
-            y += 6;
-
-            // ── BLOC 2 : Titre ──
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(14);
             doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text('BULLETIN DE PAIE', 105, y, { align: 'center' });
-            y += 8;
+            doc.text(ENTREPRISE.forme, xSoc, y + 7);
+            doc.text(ENTREPRISE.adresse1, xSoc, y + 11);
+            doc.text(
+                'TP: ' + ENTREPRISE.tp + '  |  RC: ' + ENTREPRISE.rc,
+                xSoc, y + 15
+            );
+            doc.text(
+                'IF: ' + ENTREPRISE.if_ + '  |  ICE: ' + ENTREPRISE.ice,
+                xSoc, y + 19
+            );
+            y += headerH;
 
-            // ── BLOC 3 : Info salarié (2 lignes, style tableau) ──
-            // Ligne 1 : Matricule | Nom et Prénom | Fonction | N° CNSS | N°CIN
-            doc.autoTable({
-                startY: y,
-                head: [['MATR.', 'Nom et Prénom', 'Fonction', 'N° CNSS', 'N° CIN']],
-                body: [[
-                    String(w.matricule || '—'),
-                    (w.nom || '—').toUpperCase(),
-                    w.equipe || '—',
-                    '—',
-                    w.cin || '—',
-                ]],
-                styles:     { fontSize: 7.5, cellPadding: 2 },
-                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'bold', fontSize: 7.5 },
-                columnStyles: {
-                    0: { cellWidth: 18 },
-                    1: { cellWidth: 60 },
-                    2: { cellWidth: 40 },
-                    3: { cellWidth: 30 },
-                    4: { cellWidth: 34 },
-                },
-                margin: { left: 14, right: 14 },
-                theme: 'grid',
-            });
-            y = doc.lastAutoTable.finalY + 1;
+            // ── BLOC 2 : Bande titre "BULLETIN DE PAIE" ──
+            doc.setFillColor(C.berryBrand[0], C.berryBrand[1], C.berryBrand[2]);
+            doc.rect(14, y - 1, 182, 9, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
+            doc.text('BULLETIN DE PAIE', 105, y + 5, { align: 'center' });
 
-            // Ligne 2 : Sit.F. | Nb.Enf. | Déduc. | Date Naiss. | Date Entrée | Sal.base | S.Horaire | Période
+            // Période dans la même bande, à droite
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Période : ' + (periode || '—'), 193, y + 5, { align: 'right' });
+            y += 12;
+
+            // ── BLOC 3 : Info salarié (2 colonnes côte à côte) ──
+            // Colonne gauche : identité civile / professionnelle
+            // Colonne droite : identification CNSS / CIN
+            var colW = 88;
+            var xLeft = 14;
+            var xRight = 14 + colW + 6;
+            var yBlock = y;
+            var lineH = 5.5;
+
+            // Fond léger pour les deux blocs
+            doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
+            doc.rect(xLeft, yBlock - 2, colW, 26, 'F');
+            doc.rect(xRight, yBlock - 2, colW, 26, 'F');
+
+            // En-têtes des deux blocs (fond berry brand, texte blanc)
+            doc.setFillColor(C.greenBrand[0], C.greenBrand[1], C.greenBrand[2]);
+            doc.rect(xLeft, yBlock - 2, colW, 6, 'F');
+            doc.rect(xRight, yBlock - 2, colW, 6, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
+            doc.text('SALARIÉ', xLeft + 2, yBlock + 2);
+            doc.text('IDENTIFICATION', xRight + 2, yBlock + 2);
+
+            // Contenu colonne gauche
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7.5);
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            var yL = yBlock + 6;
+            doc.setFont('helvetica', 'bold'); doc.text('Nom', xLeft + 2, yL);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.nom || '—').toUpperCase(), xLeft + 20, yL);
+            yL += lineH;
+            if (w.prenom) {
+                doc.setFont('helvetica', 'bold'); doc.text('Prénom', xLeft + 2, yL);
+                doc.setFont('helvetica', 'normal'); doc.text(': ' + w.prenom, xLeft + 20, yL);
+                yL += lineH;
+            }
+            doc.setFont('helvetica', 'bold'); doc.text('Équipe', xLeft + 2, yL);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.equipe || '—'), xLeft + 20, yL);
+            yL += lineH;
+            doc.setFont('helvetica', 'bold'); doc.text('Catégorie', xLeft + 2, yL);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.declare ? 'Ouvrier CNSS' : 'Ouvrier Sans CNSS'), xLeft + 20, yL);
+
+            // Contenu colonne droite
+            var yR = yBlock + 6;
+            doc.setFont('helvetica', 'bold'); doc.text('Matricule', xRight + 2, yR);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.matricule || '—'), xRight + 28, yR);
+            yR += lineH;
+            doc.setFont('helvetica', 'bold'); doc.text('CIN', xRight + 2, yR);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.cin || '—'), xRight + 28, yR);
+            yR += lineH;
+            doc.setFont('helvetica', 'bold'); doc.text('CNSS', xRight + 2, yR);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + (w.cnss || '—'), xRight + 28, yR);
+            yR += lineH;
+            doc.setFont('helvetica', 'bold'); doc.text('N° CNSS Emp.', xRight + 2, yR);
+            doc.setFont('helvetica', 'normal'); doc.text(': ' + ENTREPRISE.noCnss, xRight + 28, yR);
+
+            y = Math.max(yL, yR) + 8;
+
+            // ── BLOC 3b : Ligne Sal. de base / S. Horaire / Période (compact) ──
             doc.autoTable({
                 startY: y,
                 head: [['Sit. F.', 'Nb. Enf.', 'Déduc.', 'Date Naiss.', 'Date Entrée', 'Sal. de base', 'S. Horaire', 'Période Paie']],

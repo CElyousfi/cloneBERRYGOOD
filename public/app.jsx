@@ -12927,7 +12927,25 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         </button>
 
                                         <button disabled={!_hasPdf || _declared.length === 0}
-                                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genBulletins(_declared, currentPeriode, _smag.smagBrutJournalier); }}
+                                            onClick={async function () {
+                                                if (!window.EmargementPdf) return;
+                                                var personnelRef = {};
+                                                try {
+                                                    var token = await firebase.auth().currentUser.getIdToken();
+                                                    var rhResp = await fetch('/api/rh?action=personnel-ref', {
+                                                        headers: { 'Authorization': 'Bearer ' + token }
+                                                    });
+                                                    var rhData = await rhResp.json();
+                                                    if (rhData.success) personnelRef = rhData.data || {};
+                                                } catch(e) {
+                                                    // silencieux — on génère sans CIN/CNSS
+                                                }
+                                                var enrichedWorkers = _declared.map(function(w) {
+                                                    var ref = personnelRef[String(w.matricule)] || {};
+                                                    return Object.assign({}, w, { cin: ref.cin || null, cnss: ref.cnss || null });
+                                                });
+                                                await window.EmargementPdf.genBulletins(enrichedWorkers, currentPeriode, _smag.smagBrutJournalier);
+                                            }}
                                             style={_btnStyle(_declared.length > 0 ? '#8B2252' : '#aaa')}>
                                             <i className="fa-solid fa-file-lines" style={{fontSize:16}}></i>
                                             <div style={{textAlign:'left'}}>
