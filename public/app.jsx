@@ -6880,6 +6880,21 @@
                         // Coût total employeur incluant le transport (séparé du coutEmployeur pur du helper).
                         const coutTotalEmployeur = (paie.coutEmployeur || 0) + (Number(primeTransport) || 0);
                         const navActive = !!(workerNav && workerNav.list && workerNav.list.length > 1);
+                        // Résolution GB → Famille / Groupe MO (même référentiel qu'analytiqueUtils.js)
+                        var _GB_REF = {
+                            'GB01': { famille: 'Travaux du sol', groupe: 'M.O Hors récolte' },
+                            'GB02': { famille: 'Ferti-irrigation', groupe: 'M.O Hors récolte' },
+                            'GB03': { famille: 'Plantation', groupe: 'M.O Hors récolte' },
+                            'GB04': { famille: 'Mise en valeur', groupe: 'M.O Hors récolte' },
+                            'GB05': { famille: 'Entretien structure', groupe: 'M.O Hors récolte' },
+                            'GB06': { famille: 'Traitement phyto', groupe: 'M.O Hors récolte' },
+                            'GB07': { famille: 'Tuteurage & palissage', groupe: 'M.O Hors récolte' },
+                            'GB08': { famille: 'Récolte', groupe: 'M.O Récolte' },
+                            'GB09': { famille: 'Taille', groupe: 'M.O Hors récolte' },
+                            'GB10': { famille: 'Arrachage', groupe: 'M.O Hors récolte' },
+                            'GB11': { famille: 'Services généraux', groupe: 'M.O Service générale' },
+                        };
+                        var _gbRef = _GB_REF[String(r.groupe || '').trim().toUpperCase()] || null;
                         return (
                         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={() => closeWorkerPopup()}>
                             <div style={{background:'#fff',borderRadius:12,maxWidth:480,width:'100%',maxHeight:'80vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}} onClick={e => e.stopPropagation()}>
@@ -6916,6 +6931,10 @@
                                             {[
                                                 ['Ferme', <span style={{fontWeight:600}}>{r.ferme}</span>],
                                                 ['Opération', <span>{r.operationFamille} — {r.operation}</span>],
+                                                ...(_gbRef ? [
+                                                    ['Famille', _gbRef.famille],
+                                                    ['Groupe', _gbRef.groupe],
+                                                ] : []),
                                                 ['Parcelle', r.parcelle || '-'],
                                                 ['Variété', r.variete || '-'],
                                                 ['Journées', r.jours],
@@ -10896,6 +10915,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueTotalMode, setAnalytiqueTotalMode] = useState(false);
             const [analytiqueFamilleMode, setAnalytiqueFamilleMode] = useState(false);
             const [detailEquipeFilter, setDetailEquipeFilter] = useState('');
+            const [detailSearch, setDetailSearch] = useState('');
             useEffect(() => {
                 if (!analytiqueFullscreen) return;
                 const onKey = (e) => { if (e.key === 'Escape') setAnalytiqueFullscreen(false); };
@@ -12944,6 +12964,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             _workerList = _workerList.filter(function(w) { return w.equipe === detailEquipeFilter; });
                         }
 
+                        // Apply search filter (matricule or nom, case-insensitive)
+                        if (detailSearch.trim()) {
+                            const _sq = detailSearch.trim().toLowerCase();
+                            _workerList = _workerList.filter(function(w) {
+                                return (w.matricule || '').toLowerCase().includes(_sq) || (w.nom || '').toLowerCase().includes(_sq);
+                            });
+                        }
+
                         const _exceeded = _workerList.length > 500;
                         if (_exceeded) _workerList = _workerList.slice(0, 500);
 
@@ -13025,6 +13053,23 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 ];
                                             })}
                                         </tbody>
+                                        <tfoot>
+                                            {(() => {
+                                                const _totalJH = _workerList.reduce(function(s, w) { return s + w.joursSet.size; }, 0);
+                                                const _totalNetQ = _workerList.reduce(function(s, w) { return s + _calcNet(w).netTotal; }, 0);
+                                                return (
+                                                    <tr style={{background:'var(--berry)',color:'#fff',fontWeight:700}}>
+                                                        <td colSpan={3} style={{padding:'8px 12px',textAlign:'left',position:'sticky',left:0,background:'var(--berry)',zIndex:2}}>TOTAL QUINZAINE</td>
+                                                        {_days.map(function(jour) {
+                                                            return <td key={jour} style={{width:26,minWidth:26,maxWidth:26}}></td>;
+                                                        })}
+                                                        <td style={{padding:'8px 8px',textAlign:'right',background:'rgba(0,0,0,0.15)',fontWeight:700}}>{_totalJH} j</td>
+                                                        <td style={{padding:'8px 8px',textAlign:'right',background:'#fffde7',color:'#7c6b00'}}></td>
+                                                        <td style={{padding:'8px 12px',textAlign:'right',background:'#e8f5e9',color:'var(--berry)',position:'sticky',right:0,zIndex:2,fontWeight:700}}>{_totalNetQ.toLocaleString('fr-FR')} DH</td>
+                                                    </tr>
+                                                );
+                                            })()}
+                                        </tfoot>
                                     </table>
                                 </div>
                             );
@@ -13041,7 +13086,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 Détail par Ouvrier
                                                 <span style={{fontSize:13,fontWeight:400,color:'var(--gray-500)'}}>— {currentPeriode}</span>
                                             </div>
-                                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                            <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                                <input type="text" placeholder="Rechercher matricule ou nom…" value={detailSearch} onChange={function(e){setDetailSearch(e.target.value);}}
+                                                    style={{border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 12px',fontSize:13,width:220,outline:'none'}} />
                                                 <select value={detailEquipeFilter} onChange={function(e){setDetailEquipeFilter(e.target.value);}}
                                                     style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,color:'var(--gray-700)',background:'#fff',cursor:'pointer'}}>
                                                     <option value="">Toutes les équipes</option>
@@ -13070,7 +13117,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             Détail par Ouvrier
                                             <span style={{fontSize:12,fontWeight:400,color:'var(--gray-500)'}}>— {currentPeriode}</span>
                                         </div>
-                                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                                            <input type="text" placeholder="Rechercher matricule ou nom…" value={detailSearch} onChange={function(e){setDetailSearch(e.target.value);}}
+                                                style={{border:'1px solid #e5e7eb',borderRadius:8,padding:'6px 12px',fontSize:13,width:220,outline:'none'}} />
                                             <select value={detailEquipeFilter} onChange={function(e){setDetailEquipeFilter(e.target.value);}}
                                                 style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,color:'var(--gray-700)',background:'#fff',cursor:'pointer'}}>
                                                 <option value="">Toutes les équipes</option>
