@@ -10919,6 +10919,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [emargementOpen, setEmargementOpen] = useState(false);
             const [diversData, setDiversData] = useState(null); // {total, dates, byDate, rows} — Location & Engins
             const [diversPopupOpen, setDiversPopupOpen] = useState(false);
+            const [detailOuvrierFullscreen, setDetailOuvrierFullscreen] = useState(false);
+            useEffect(() => {
+                if (!detailOuvrierFullscreen) return;
+                const onKey = (e) => { if (e.key === 'Escape') setDetailOuvrierFullscreen(false); };
+                window.addEventListener('keydown', onKey);
+                const prev = document.body.style.overflow;
+                document.body.style.overflow = 'hidden';
+                return () => { window.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+            }, [detailOuvrierFullscreen]);
 
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
@@ -11460,6 +11469,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             onClick={() => setAnalytiqueFullscreen(true)}
                             style={{padding:'4px 12px',borderRadius:8,border:'1px solid #27ae60',background:'#27ae60',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
                             <i className="fa-solid fa-chart-area"></i>Affectation Analytique
+                        </button>
+                        <button
+                            onClick={() => setDetailOuvrierFullscreen(true)}
+                            style={{padding:'4px 12px',borderRadius:8,border:'1px solid #6366f1',background:'#6366f1',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                            <i className="fa-solid fa-users"></i>Détail par Ouvrier
                         </button>
                     </div>
 
@@ -12869,10 +12883,43 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     equipePrefix: _prefix,
                                     equipe: prefixToName[_prefix] || _prefix,
                                     joursSet: new Set(),
+                                    declare: !!(_reg.declare),
+                                    primeFonctionJournaliere: Number(_reg.primeFonctionJournaliere || 0),
+                                    baselineJours: Number(_reg.baselineJours || 0),
                                 };
                             }
                             if (r.jour) _wDetailMap[_key].joursSet.add(r.jour);
                         });
+
+                        // Résoudre SMAG pour la période (même pattern que _globalMOCharges)
+                        const _PUd = window.PaieUtils;
+                        const _firstDayD = parJour.length > 0 ? parJour[0].jour : null;
+                        const _smagD = (_PUd && _PUd.resolveSmagForDate)
+                            ? _PUd.resolveSmagForDate(quinzPaieBaremes, _firstDayD)
+                            : { smagBrutJournalier: (quinzPaieBaremes.smagBrutJournalier || 97.44), smagNetJournalier: (quinzPaieBaremes.smagNetJournalier || 0) };
+                        const _smagBrutJ = _smagD.smagBrutJournalier || 97.44;
+                        const TAUX_CNSS = 0.0448;
+                        const TAUX_AMO = 0.0226;
+
+                        // Calcule net/jour et net quinzaine pour un worker
+                        const _calcNet = function(w) {
+                            var jours = w.joursSet.size;
+                            if (jours === 0) return { netJour: 0, netTotal: 0 };
+                            var ancTaux = 0;
+                            if (_PUd && _PUd.trouverPalierAnciennete) {
+                                var pal = _PUd.trouverPalierAnciennete(w.baselineJours, quinzPaieBaremes.paliers || []);
+                                ancTaux = (pal.pourcentage || 0) / 100;
+                            }
+                            var smagBase = _smagBrutJ * jours;
+                            var primeFonc = w.primeFonctionJournaliere * jours;
+                            var anciennete = smagBase * ancTaux;
+                            var brutTotal = smagBase + primeFonc + anciennete;
+                            var cnss = w.declare ? brutTotal * TAUX_CNSS : 0;
+                            var amo = w.declare ? brutTotal * TAUX_AMO : 0;
+                            var netTotal = Math.round(brutTotal - cnss - amo);
+                            var netJour = jours > 0 ? Math.round((brutTotal - cnss - amo) / jours) : 0;
+                            return { netJour: netJour, netTotal: netTotal };
+                        };
 
                         // Collect all days from parJour
                         const _days = parJour.map(function(d) { return d.jour; });
@@ -12913,35 +12960,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
                         if (_days.length === 0 || _workerList.length === 0) return null;
 
-                        return (
-                            <div style={{marginTop:24}}>
-                                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
-                                    <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
-                                        <i className="fa-solid fa-users" style={{color:'var(--berry)'}}></i>
-                                        Détail par Ouvrier
-                                        <span style={{fontSize:12,fontWeight:400,color:'var(--gray-500)'}}>— {currentPeriode}</span>
-                                    </div>
-                                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                        <select value={detailEquipeFilter} onChange={function(e){setDetailEquipeFilter(e.target.value);}}
-                                            style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,color:'var(--gray-700)',background:'#fff',cursor:'pointer'}}>
-                                            <option value="">Toutes les équipes</option>
-                                            {_equipes.map(function(eq) { return <option key={eq} value={eq}>{eq}</option>; })}
-                                        </select>
-                                    </div>
-                                </div>
-                                {_exceeded && (
-                                    <div style={{marginBottom:8,padding:'6px 12px',background:'#fff3cd',borderRadius:8,fontSize:12,color:'#856404',border:'1px solid #ffc107'}}>
-                                        <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
-                                        Affichage limité à 500 ouvriers.
-                                    </div>
-                                )}
-                                <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',borderRadius:10,border:'1px solid var(--gray-200)'}}>
+                        // ─ Tableau réutilisable (normal + fullscreen) ─
+                        const _renderTable = function(isFS) {
+                            return (
+                                <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch',borderRadius: isFS ? 0 : 10,border: isFS ? 'none' : '1px solid var(--gray-200)'}}>
                                     <table style={{borderCollapse:'collapse',fontSize:12,minWidth:'100%'}}>
                                         <thead>
                                             <tr style={{background:'var(--gray-50)',position:'sticky',top:0,zIndex:2}}>
-                                                <th style={{padding:'7px 10px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:0,background:'var(--gray-50)',borderRight:'1px solid var(--gray-200)',zIndex:3,whiteSpace:'nowrap',minWidth:90}}>Équipe</th>
-                                                <th style={{padding:'7px 8px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',whiteSpace:'nowrap',minWidth:64,borderRight:'1px solid var(--gray-100)'}}>Mat.</th>
-                                                <th style={{padding:'7px 10px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:154,background:'var(--gray-50)',borderRight:'1px solid var(--gray-200)',zIndex:3,whiteSpace:'nowrap',minWidth:160}}>Nom</th>
+                                                <th style={{padding:'7px 8px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:0,background:'var(--gray-50)',borderRight:'1px solid var(--gray-200)',zIndex:3,whiteSpace:'nowrap',minWidth:70,maxWidth:90,overflow:'hidden',textOverflow:'ellipsis'}}>Équipe</th>
+                                                <th style={{padding:'7px 6px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',whiteSpace:'nowrap',minWidth:55,maxWidth:55,borderRight:'1px solid var(--gray-100)'}}>Mat.</th>
+                                                <th style={{padding:'7px 8px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:125,background:'var(--gray-50)',borderRight:'1px solid var(--gray-200)',zIndex:3,whiteSpace:'nowrap',minWidth:100,maxWidth:140,overflow:'hidden',textOverflow:'ellipsis'}}>Nom</th>
                                                 {_days.map(function(jour) {
                                                     const _d = new Date(jour);
                                                     const _dow = _d.getDay();
@@ -12953,24 +12981,30 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                         </th>
                                                     );
                                                 })}
-                                                <th style={{padding:'7px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0,zIndex:3,whiteSpace:'nowrap',minWidth:52}}>Total</th>
+                                                <th style={{padding:'7px 8px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',whiteSpace:'nowrap',minWidth:52,borderRight:'1px solid var(--gray-200)'}}>Total</th>
+                                                <th style={{padding:'7px 6px',textAlign:'center',fontWeight:700,color:'#7c6b00',background:'#fffde7',whiteSpace:'nowrap',minWidth:55,borderRight:'1px solid #e8d500'}}>Net/j</th>
+                                                <th style={{padding:'7px 8px',textAlign:'center',fontWeight:700,color:'var(--berry)',background:'#e8f5e9',whiteSpace:'nowrap',minWidth:65,position:'sticky',right:0,zIndex:3}}>Net Q</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {_groupedEquipes.map(function(grp) {
                                                 const _grpTotalDays = grp.workers.reduce(function(s, w) { return s + w.joursSet.size; }, 0);
+                                                const _grpNetTotal = grp.workers.reduce(function(s, w) { return s + _calcNet(w).netTotal; }, 0);
                                                 return [
                                                     <tr key={'eq-' + grp.equipe} style={{background:'var(--gray-100)'}}>
-                                                        <td colSpan={3 + _days.length + 1} style={{padding:'5px 10px',fontWeight:700,fontSize:11,color:'var(--gray-600)',position:'sticky',left:0,borderBottom:'1px solid var(--gray-200)'}}>
+                                                        <td colSpan={3 + _days.length + 3} style={{padding:'5px 10px',fontWeight:700,fontSize:11,color:'var(--gray-600)',position:'sticky',left:0,borderBottom:'1px solid var(--gray-200)'}}>
                                                             {grp.equipe} — {grp.workers.length} ouvrier{grp.workers.length > 1 ? 's' : ''} — {_grpTotalDays} jour{_grpTotalDays > 1 ? 's' : ''} totaux
+                                                            <span style={{marginLeft:12,color:'var(--berry)',fontWeight:700}}>{_grpNetTotal.toLocaleString('fr-FR')} DH net</span>
                                                         </td>
                                                     </tr>,
                                                     ...grp.workers.map(function(w, wIdx) {
+                                                        const _net = _calcNet(w);
+                                                        const _bg = wIdx % 2 === 0 ? '#fff' : '#fafbfc';
                                                         return (
-                                                            <tr key={w.matricule} style={{background: wIdx % 2 === 0 ? '#fff' : '#fafbfc',borderBottom:'1px solid var(--gray-100)'}}>
-                                                                <td style={{padding:'5px 10px',color:'var(--gray-500)',fontSize:11,position:'sticky',left:0,background: wIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1,whiteSpace:'nowrap'}}>{w.equipe}</td>
-                                                                <td style={{padding:'5px 8px',fontFamily:'monospace',fontSize:11,color:'var(--gray-600)',whiteSpace:'nowrap',borderRight:'1px solid var(--gray-100)'}}>{w.matricule}</td>
-                                                                <td style={{padding:'5px 10px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:154,background: wIdx % 2 === 0 ? '#fff' : '#fafbfc',borderRight:'1px solid var(--gray-200)',zIndex:1,whiteSpace:'nowrap'}}>{w.nom}</td>
+                                                            <tr key={w.matricule} style={{background: _bg,borderBottom:'1px solid var(--gray-100)'}}>
+                                                                <td style={{padding:'5px 8px',color:'var(--gray-500)',fontSize:11,position:'sticky',left:0,background: _bg,borderRight:'1px solid var(--gray-200)',zIndex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:90}}>{w.equipe}</td>
+                                                                <td style={{padding:'5px 6px',fontFamily:'monospace',fontSize:11,color:'var(--gray-600)',whiteSpace:'nowrap',borderRight:'1px solid var(--gray-100)',maxWidth:55}}>{w.matricule}</td>
+                                                                <td style={{padding:'5px 8px',fontWeight:500,color:'var(--gray-700)',position:'sticky',left:125,background: _bg,borderRight:'1px solid var(--gray-200)',zIndex:1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:140}}>{w.nom}</td>
                                                                 {_days.map(function(jour) {
                                                                     const _d = new Date(jour);
                                                                     const _dow = _d.getDay();
@@ -12982,7 +13016,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                         </td>
                                                                     );
                                                                 })}
-                                                                <td style={{padding:'5px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',position:'sticky',right:0,zIndex:1}}>{w.joursSet.size}</td>
+                                                                <td style={{padding:'5px 8px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',background:'var(--gray-100)',borderRight:'1px solid var(--gray-200)'}}>{w.joursSet.size}</td>
+                                                                <td style={{padding:'5px 6px',textAlign:'center',fontWeight:500,color:'#7c6b00',background:'#fffde7',borderRight:'1px solid #e8d500'}}>{_net.netJour}</td>
+                                                                <td style={{padding:'5px 8px',textAlign:'center',fontWeight:700,color:'var(--berry)',background:'#e8f5e9',position:'sticky',right:0,zIndex:1}}>{_net.netTotal.toLocaleString('fr-FR')}</td>
                                                             </tr>
                                                         );
                                                     }),
@@ -12991,7 +13027,70 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         </tbody>
                                     </table>
                                 </div>
-                            </div>
+                            );
+                        };
+
+                        return (
+                            <>
+                                {/* Vue plein écran */}
+                                {detailOuvrierFullscreen && (
+                                    <div style={{position:'fixed',inset:0,zIndex:1000,background:'#fff',overflowY:'auto',padding:24}}>
+                                        <div style={{marginBottom:16,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:8}}>
+                                            <div style={{fontSize:16,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
+                                                <i className="fa-solid fa-users" style={{color:'var(--berry)'}}></i>
+                                                Détail par Ouvrier
+                                                <span style={{fontSize:13,fontWeight:400,color:'var(--gray-500)'}}>— {currentPeriode}</span>
+                                            </div>
+                                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                                <select value={detailEquipeFilter} onChange={function(e){setDetailEquipeFilter(e.target.value);}}
+                                                    style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,color:'var(--gray-700)',background:'#fff',cursor:'pointer'}}>
+                                                    <option value="">Toutes les équipes</option>
+                                                    {_equipes.map(function(eq) { return <option key={eq} value={eq}>{eq}</option>; })}
+                                                </select>
+                                                <button onClick={function(){setDetailOuvrierFullscreen(false);}}
+                                                    style={{background:'#f44336',color:'#fff',border:'none',borderRadius:8,padding:'7px 14px',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+                                                    <i className="fa-solid fa-xmark"></i> Fermer
+                                                </button>
+                                            </div>
+                                        </div>
+                                        {_exceeded && (
+                                            <div style={{marginBottom:8,padding:'6px 12px',background:'#fff3cd',borderRadius:8,fontSize:12,color:'#856404',border:'1px solid #ffc107'}}>
+                                                <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                                Affichage limité à 500 ouvriers.
+                                            </div>
+                                        )}
+                                        {_renderTable(true)}
+                                    </div>
+                                )}
+                                {/* Vue normale */}
+                                <div style={{marginTop:24}}>
+                                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:8}}>
+                                        <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
+                                            <i className="fa-solid fa-users" style={{color:'var(--berry)'}}></i>
+                                            Détail par Ouvrier
+                                            <span style={{fontSize:12,fontWeight:400,color:'var(--gray-500)'}}>— {currentPeriode}</span>
+                                        </div>
+                                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                            <select value={detailEquipeFilter} onChange={function(e){setDetailEquipeFilter(e.target.value);}}
+                                                style={{padding:'5px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,color:'var(--gray-700)',background:'#fff',cursor:'pointer'}}>
+                                                <option value="">Toutes les équipes</option>
+                                                {_equipes.map(function(eq) { return <option key={eq} value={eq}>{eq}</option>; })}
+                                            </select>
+                                            <button onClick={function(){setDetailOuvrierFullscreen(true);}} title="Plein écran"
+                                                style={{background:'#6366f1',color:'#fff',border:'none',borderRadius:8,padding:'5px 10px',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
+                                                <i className="fa-solid fa-expand"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {_exceeded && (
+                                        <div style={{marginBottom:8,padding:'6px 12px',background:'#fff3cd',borderRadius:8,fontSize:12,color:'#856404',border:'1px solid #ffc107'}}>
+                                            <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                            Affichage limité à 500 ouvriers.
+                                        </div>
+                                    )}
+                                    {_renderTable(false)}
+                                </div>
+                            </>
                         );
                     })()}
 
