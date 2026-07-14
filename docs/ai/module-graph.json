@@ -27,12 +27,12 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 8,
-        "file": "scripts/build-frontend.js"
+        "commits": 7,
+        "file": "functions/sqlSyncService.js"
       },
       {
         "commits": 7,
-        "file": "functions/sqlSyncService.js"
+        "file": "scripts/build-frontend.js"
       },
       {
         "commits": 6,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8b7c8e60c7f5fb6a",
+    "sourceFingerprint": "sha256:8af126e6cfcfa44e",
     "stats": {
       "backendModules": 86,
       "cloudFunctions": 81,
