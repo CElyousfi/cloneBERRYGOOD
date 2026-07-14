@@ -1199,3 +1199,20 @@ script npm à ajouter). Ordre de priorité (risque métier × volume de code) :
 ## [ ] TESTS-P3 — auth, suppliers, fonctions, phone, bugReports, triage, probeStaleness, sentinel
 
 Non gated (tests purs, zéro comportement produit). Un module par item/PR.
+
+## ── OUTILLAGE DIL (ajouté 2026-07-14) ──
+
+## [ ] DIL-OT1 — QA Zero Dirty Tree
+Objectif : une exécution complète de `npm run qa` doit laisser un `git status` entièrement
+propre (0 fichier modifié), y compris `public/index.html`.
+
+Actuellement : l'étape `build:frontend` bumpe le cache-bust `?v=…` dans `public/index.html`,
+ce qui laisse systématiquement ce fichier en état modifié après chaque QA.
+
+Pistes :
+- Le cache-bust pourrait être dérivé du hash du build (stable si les sources ne changent pas),
+  au lieu de générer une valeur aléatoire/temporelle à chaque build.
+- Ou exclure `public/index.html` du build si les sources n'ont pas changé (build idempotent).
+- Ou ne modifier `public/index.html` que si le contenu de `public/app.js` a effectivement changé.
+
+Non gated (outillage pur, zéro comportement produit).
