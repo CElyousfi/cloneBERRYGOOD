@@ -10894,6 +10894,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
             const [analytiqueCultureIdx, setAnalytiqueCultureIdx] = useState(0);
             const [analytiqueTotalMode, setAnalytiqueTotalMode] = useState(false);
+            const [analytiqueFamilleMode, setAnalytiqueFamilleMode] = useState(false);
             const [detailEquipeFilter, setDetailEquipeFilter] = useState('');
             useEffect(() => {
                 if (!analytiqueFullscreen) return;
@@ -11427,9 +11428,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // familles d'opérations sur une clé normalisée (casse/tirets) pour supprimer
             // les lignes dupliquées post-bascule BDP. Garde anti-crash si la lib n'est
             // pas chargée (cf. mémoire projet : global manquant = crash React global).
-            const _buildAnalytiquePivot = (rows) => (window.AnalytiqueUtils && window.AnalytiqueUtils.buildAnalytiquePivot)
-                ? window.AnalytiqueUtils.buildAnalytiquePivot(rows)
-                : { parcelles: [], operations: [], pivot: {} };
+            const _buildAnalytiquePivot = (rows) => {
+                if (!window.AnalytiqueUtils) return { parcelles: [], operations: [], pivot: {} };
+                if (analytiqueFamilleMode) {
+                    return window.AnalytiqueUtils.buildAnalytiquePivotByFamille
+                        ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows)
+                        : window.AnalytiqueUtils.buildAnalytiquePivot(rows);
+                }
+                return window.AnalytiqueUtils.buildAnalytiquePivot(rows);
+            };
 
             return (
                 <div className="fade-in">
@@ -12421,7 +12428,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
                                 <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
                                     <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
-                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'}
+                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'}{analytiqueFamilleMode ? ' · Famille' : ' · Sous-famille'}
                                 </div>
                                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                                     <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
@@ -12437,6 +12444,21 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 {label}
                                             </button>
                                         ))}
+                                    </div>
+                                    <div style={{display:'flex',gap:4,background:'#f3f4f6',borderRadius:8,padding:'3px'}}>
+                                        {['Sous-famille', 'Famille'].map(function(label, i) {
+                                            var isActive = i === 0 ? !analytiqueFamilleMode : analytiqueFamilleMode;
+                                            return (
+                                                <button key={label}
+                                                    onClick={() => setAnalytiqueFamilleMode(i === 1)}
+                                                    style={{
+                                                        padding: '4px 12px', borderRadius: 8, border: 'none',
+                                                        background: isActive ? 'var(--berry)' : 'transparent',
+                                                        color: isActive ? '#fff' : '#6b7280',
+                                                        fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s'
+                                                    }}>{label}</button>
+                                            );
+                                        })}
                                     </div>
                                     <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
                                         {[['ha', 'Ha'], ['total', 'Total']].map(([v, label]) => (
