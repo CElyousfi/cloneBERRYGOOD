@@ -11404,6 +11404,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             style={{padding:'4px 12px',borderRadius:8,border:'1px solid #3949ab',background:'#3949ab',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
                             <i className="fa-solid fa-file-signature"></i>États d'émargement
                         </button>
+                        <button
+                            onClick={() => setAnalytiqueFullscreen(true)}
+                            style={{padding:'4px 12px',borderRadius:8,border:'1px solid #27ae60',background:'#27ae60',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                            <i className="fa-solid fa-chart-area"></i>Affectation Analytique
+                        </button>
                     </div>
 
                     <div className="quinzaine-card">
@@ -12293,11 +12298,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
                                 <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
                                     <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
-                                    Affectation Analytique — par Ha
+                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'}
                                 </div>
                                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                                     <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
-                                        {[['jh','JH / Ha'],['cout', _parcelleEmpCostMap.ready ? 'Coût emp. / Ha' : 'Coût BEE ONE / Ha']].map(([v, label]) => (
+                                        {(analytiqueTotalMode
+                                        ? [['jh', 'JH'], ['cout', 'Coût emp.']]
+                                        : [['jh', 'JH / Ha'], ['cout', _parcelleEmpCostMap.ready ? 'Coût emp. / Ha' : 'Coût BEE ONE / Ha']]
+                                    ).map(([v, label]) => (
                                             <button key={v} onClick={() => setAnalytiqueView(v)}
                                                 style={{padding:'5px 14px',borderRadius:6,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
                                                     background: analytiqueView === v ? 'var(--berry)' : 'transparent',
