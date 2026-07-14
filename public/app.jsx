@@ -11424,6 +11424,25 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         />
                     </div>
 
+                    {_globalMOCharges && _globalMOCharges.cntDecl > 0 && (
+                        <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16,marginBottom:4}}>
+                            <div style={{border:'2px solid #3949ab',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'#f5f7ff',minWidth:220}}>
+                                <span style={{fontSize:12,fontWeight:700,color:'#3949ab',letterSpacing:0.3}}>
+                                    Charges patronales CNSS
+                                </span>
+                                <span style={{fontSize:20,fontWeight:800,color:'#3949ab'}}>
+                                    +{f2(_globalMOCharges.totalCharges)} DH
+                                </span>
+                                <span style={{fontSize:11,color:'var(--gray-500)'}}>
+                                    ≈ {(_globalMOCharges.totalBrut > 0 ? (_globalMOCharges.totalCharges / _globalMOCharges.totalBrut * 100).toFixed(2) : '19.26').replace('.', ',')}% du brut déclaré
+                                </span>
+                            </div>
+                            <span style={{fontSize:11,color:'var(--gray-400)',fontStyle:'italic',maxWidth:180}}>
+                                Non inclus dans le total — coût employeur additionnel
+                            </span>
+                        </div>
+                    )}
+
                     {quinzPopupKey && (() => {
                         const _qpKey = quinzPopupKey;
                         const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
