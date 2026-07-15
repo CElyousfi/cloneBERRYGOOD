@@ -156,13 +156,15 @@ test('INTÉGRATION: dg (scope all) → autorisé, fermeFilter null → projectio
   assert.equal(out.length, 3);
 });
 
-test('INTÉGRATION: chef_f1 → autorisé, filtré F1 → projection CHEF réduite', () => {
+test('INTÉGRATION: chef_f1 → autorisé, filtre culture Framboise (fermeFilter null) → projection CHEF réduite', () => {
   const access = resolvePointageRHAccess(perim('chef_f1'));
   assert.equal(access.allowed, true);
-  assert.equal(access.fermeFilter, 'F1');
-  // Handler dérive le set F1 depuis le mirror puis normalise. Simulé ici.
-  const setF1 = RA.normalizeAllowedSet(new Set(['DD10502']));
-  const out = RA.projectRegistryForChef(DOCS, setF1);
+  // chef_f1 = accès culture-only (Framboise, F1+F5) → perimetre_ferme='all' → fermeFilter null
+  // Le handler dérive le set de matricules via culture_filtre (pas via ferme)
+  assert.equal(access.fermeFilter, null);
+  // Handler dérive le set Framboise depuis le mirror puis normalise. Simulé ici.
+  const setFramboise = RA.normalizeAllowedSet(new Set(['DD10502']));
+  const out = RA.projectRegistryForChef(DOCS, setFramboise);
   assert.equal(out.length, 1);
   assert.equal(out[0].prime_history, undefined); // jamais d'historique pour un chef
 });

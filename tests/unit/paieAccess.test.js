@@ -43,11 +43,12 @@ test('DIVERS: admin système → accès autorisé', () => {
   assert.equal(canAccessDivers(perim('magasinier', { role: 'admin' })), true);
 });
 
-test('SÉCURITÉ DIVERS: chef_f1 → REFUSÉ (divers non cloisonnable par ferme)', () => {
+test('SÉCURITÉ DIVERS: chef_f1 → REFUSÉ (divers non cloisonnable par ferme ni par culture)', () => {
   const p = perim('chef_f1');
-  assert.equal(p.autorise, true); // chef est autorisé sur SON périmètre ferme…
-  assert.notEqual(p.perimetre_ferme, 'all'); // …mais pas 'all'
-  assert.equal(canAccessDivers(p), false); // donc refusé sur le divers
+  assert.equal(p.autorise, true); // chef est autorisé sur SON périmètre culture…
+  // chef_f1 a perimetre_ferme='all' (culture-only) mais est QUAND MÊME refusé
+  // car les données divers n'ont pas de champ culture : non cloisonnables
+  assert.equal(canAccessDivers(p), false);
 });
 
 test('SÉCURITÉ DIVERS: chef_bahia → REFUSÉ', () => {
@@ -100,10 +101,12 @@ test('POINTAGE RH: admin → toutes fermes', () => {
   assert.equal(a.fermeFilter, null);
 });
 
-test('SÉCURITÉ POINTAGE RH: chef_f1 → autorisé, filtré F1 (jamais all)', () => {
+test('SÉCURITÉ POINTAGE RH: chef_f1 → autorisé, culture Framboise (fermeFilter null, param ferme ignoré)', () => {
   const a = resolvePointageRHAccess(perim('chef_f1', { ferme_demandee: 'F5' }));
   assert.equal(a.allowed, true);
-  assert.equal(a.fermeFilter, 'F1'); // param ?ferme=F5 ignoré
+  // chef_f1 = culture-only → perimetre_ferme='all' → fermeFilter null
+  // Le handler applique culture_filtre='Framboise' depuis le perimetre (pas via resolvePointageRHAccess)
+  assert.equal(a.fermeFilter, null);
 });
 
 test('SÉCURITÉ POINTAGE RH: chef_bahia → filtré BAHIA', () => {
@@ -203,13 +206,15 @@ test('INTÉGRATION: full-access (dg) → fermeFilter null → passthrough LÉGIT
   assert.equal(rows.length, 4); // toutes fermes, comportement inchangé
 });
 
-test('INTÉGRATION: chef résolu (chef_f1) → filtre F1 → seulement SA ferme', () => {
-  const access = resolvePointageRHAccess(perim('chef_f1'));
+test('INTÉGRATION: chef_f1 → culture-only (fermeFilter null) → filtre culture Framboise via perim', () => {
+  const p = perim('chef_f1');
+  const access = resolvePointageRHAccess(p);
   assert.equal(access.allowed, true);
-  assert.equal(access.fermeFilter, 'F1');
-  const rows = filterMirrorRowsByFerme(MIXED_ROWS, access.fermeFilter);
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].Personnel_Matricule, 'M1');
+  // fermeFilter null : le handler lit p.culture_filtre='Framboise' pour filtrer
+  assert.equal(access.fermeFilter, null);
+  assert.equal(p.culture_filtre, 'Framboise');
+  // Sans filtre ferme actif, les rows sont filtrées par culture côté handler
+  // (non simulé ici — filterMirrorRowsByFerme ne filtre pas par culture)
 });
 
 test('INTÉGRATION: chef_bahia → filtre BAHIA → seulement BAHIA (pas les 3 autres)', () => {

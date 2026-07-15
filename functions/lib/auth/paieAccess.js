@@ -26,13 +26,20 @@
 /**
  * Accès aux données de sous-traitance nominative (pointage_divers).
  * Autorisé UNIQUEMENT si périmètre global ('all' : dg/finance/rh/admin).
- * Un chef (ferme spécifique) ou un profil non autorisé → refusé (fail-closed).
+ * Un chef (ferme spécifique OU culture-only) ou un profil non autorisé → refusé (fail-closed).
+ * chef_f1 a perimetre_ferme='all' (culture-only) mais reste REFUSÉ : les données divers
+ * n'ont pas de champ ferme NI de champ culture → non cloisonnables.
  *
  * @param {Perimetre|null|undefined} perim - sortie de resolvePerimetre.
  * @returns {boolean}
  */
 function canAccessDivers(perim) {
-  return !!(perim && perim.autorise === true && perim.perimetre_ferme === 'all');
+  if (!perim || perim.autorise !== true) return false;
+  if (perim.perimetre_ferme !== 'all') return false;
+  // Chefs avec accès culture-only (chef_f1 : perimetre_ferme='all' mais role='chef_f1')
+  // → refusés : les données divers n'ont pas de champ culture.
+  if (typeof perim.role === 'string' && perim.role.indexOf('chef_') === 0) return false;
+  return true;
 }
 
 /**

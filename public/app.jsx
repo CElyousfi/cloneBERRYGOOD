@@ -382,7 +382,7 @@
         // ===================== CONFIGURATION =====================
         const PROFILES = [
             { id: 'rh', label: 'Resp. RH', name: 'Responsable RH', icon: 'fa-users-gear', fullName: 'Responsable RH' },
-            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', farmLabel: 'Framboise', fullName: 'Hamid AGOURAM' },
+            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farmLabel: 'Framboise', cultureFilter: 'Framboise', fullName: 'Hamid AGOURAM' },
             { id: 'chef_f5', label: 'Chef Myrtille', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', farmLabel: 'Myrtille', cultureFilter: 'Myrtille', fullName: 'Bouchra HABCHANE' },
             { id: 'chef_avo', label: 'Chef Avocatier', name: 'Azzeddine', icon: 'fa-tree', farm: 'Avocatier', fullName: 'Azzeddine' },
             { id: 'chef_bahia', label: 'Chef BAHIA', name: 'Chef BAHIA', icon: 'fa-tree', farm: 'BAHIA', fullName: 'Chef de ferme BAHIA' },

@@ -52,11 +52,12 @@ test('finance → filtre optionnel ?ferme=F5 respecté', () => {
   assert.equal(r.ferme_filtre, 'F5');
 });
 
-test('SÉCURITÉ: chef_f1 qui demande F5 → FORCÉ F1, jamais F5', () => {
+test('SÉCURITÉ: chef_f1 → accès culture Framboise toutes fermes (param ferme ignoré)', () => {
   const r = AC.resolvePerimetre({ profileId: 'chef_f1', role: 'user' }, 'F5');
   assert.equal(r.autorise, true);
-  assert.equal(r.perimetre_ferme, 'F1');
-  assert.equal(r.ferme_filtre, 'F1');
+  assert.equal(r.perimetre_ferme, 'all');
+  assert.equal(r.ferme_filtre, null);
+  assert.equal(r.culture_filtre, 'Framboise');
 });
 
 test('chef_f5 → sa ferme F5 (param ferme ignoré)', () => {
@@ -154,14 +155,13 @@ test('fermeDemandee non-string (objet/array) pour un dg → all, pas d\'erreur',
 // (régression bug « Chef F1 voit toutes les fermes » : la cause était frontend,
 //  mais on verrouille ici l'invariant backend qui garantit le cloisonnement.)
 
-test('SÉCURITÉ: chef_f1 → ferme_filtre === perimetre_ferme === F1 (jamais Avocatier/F5)', () => {
+test('SÉCURITÉ: chef_f1 → culture_filtre Framboise, ferme_filtre null (param ferme ignoré)', () => {
   const r = AC.resolvePerimetre({ profileId: 'chef_f1', role: 'user' }, 'Avocatier');
-  assert.equal(r.perimetre_ferme, 'F1');
-  assert.equal(r.ferme_filtre, 'F1');
-  // Le filtre injecté dans getConsommationRows (r.Ferme === filtre) ne peut donc
-  // matcher que les lignes Ferme==='F1' : aucune parcelle Avocatier/F5 ne fuit.
-  assert.notEqual(r.ferme_filtre, 'Avocatier');
-  assert.notEqual(r.ferme_filtre, 'F5');
+  assert.equal(r.perimetre_ferme, 'all');
+  assert.equal(r.ferme_filtre, null);
+  assert.equal(r.culture_filtre, 'Framboise');
+  // Seules les parcelles Framboise sont accessibles (via culture_filtre, pas via ferme_filtre)
+  assert.notEqual(r.culture_filtre, 'Myrtille');
 });
 
 test('SÉCURITÉ: chef_avo demandant F1 → reste Avocatier (param ignoré)', () => {
@@ -170,14 +170,22 @@ test('SÉCURITÉ: chef_avo demandant F1 → reste Avocatier (param ignoré)', ()
   assert.equal(r.ferme_filtre, 'Avocatier');
 });
 
-test('INVARIANT: pour tout chef autorisé, ferme_filtre === perimetre_ferme', () => {
-  ['chef_f1', 'chef_f5', 'chef_avo', 'chef_bahia'].forEach((pid) => {
+test('INVARIANT: chefs à base ferme → ferme_filtre === perimetre_ferme (pas all)', () => {
+  ['chef_f5', 'chef_avo', 'chef_bahia'].forEach((pid) => {
     const r = AC.resolvePerimetre({ profileId: pid, role: 'user' }, 'F5');
     assert.equal(r.autorise, true);
     assert.equal(r.ferme_filtre, r.perimetre_ferme,
       pid + ' : le filtre doit être exactement le périmètre annoncé');
     assert.notEqual(r.perimetre_ferme, 'all');
   });
+});
+
+test('INVARIANT: chef_f1 → accès culture-only (ferme_filtre null, culture_filtre Framboise)', () => {
+  const r = AC.resolvePerimetre({ profileId: 'chef_f1', role: 'user' }, 'F5');
+  assert.equal(r.autorise, true);
+  assert.equal(r.perimetre_ferme, 'all');
+  assert.equal(r.ferme_filtre, null);
+  assert.equal(r.culture_filtre, 'Framboise');
 });
 
 test('admin système → autorisé, toutes fermes', () => {
