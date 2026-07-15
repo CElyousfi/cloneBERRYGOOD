@@ -39,10 +39,6 @@
         "file": "functions/sqlSyncService.js"
       },
       {
-        "commits": 6,
-        "file": "scripts/build-frontend.js"
-      },
-      {
         "commits": 5,
         "file": "public/components/ParcellesReferentielTab.jsx"
       },
@@ -55,6 +51,10 @@
         "file": "public/lib/analytiqueUtils.js"
       },
       {
+        "commits": 5,
+        "file": "scripts/build-frontend.js"
+      },
+      {
         "commits": 4,
         "file": "functions/pointageBdpSync.js"
       },
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:dda5da2ee4f94ff6",
+    "sourceFingerprint": "sha256:285a25f2c6718a0c",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,

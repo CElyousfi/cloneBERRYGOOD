@@ -382,8 +382,8 @@
         // ===================== CONFIGURATION =====================
         const PROFILES = [
             { id: 'rh', label: 'Resp. RH', name: 'Responsable RH', icon: 'fa-users-gear', fullName: 'Responsable RH' },
-            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farm: 'F1', farmLabel: 'Framboise', fullName: 'Hamid AGOURAM' },
-            { id: 'chef_f5', label: 'Chef Myrtille', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farm: 'F5', farmLabel: 'Myrtille', cultureFilter: 'Myrtille', fullName: 'Bouchra HABCHANE' },
+            { id: 'chef_f1', label: 'Chef Framboise', name: 'Hamid AGOURAM', icon: 'fa-seedling', farmLabel: 'Framboise', cultureFilter: 'Framboise', fullName: 'Hamid AGOURAM' },
+            { id: 'chef_f5', label: 'Chef Myrtille', name: 'Bouchra HABCHANE', icon: 'fa-seedling', farmLabel: 'Myrtille', cultureFilter: 'Myrtille', fullName: 'Bouchra HABCHANE' },
             { id: 'chef_avo', label: 'Chef Avocatier', name: 'Azzeddine', icon: 'fa-tree', farm: 'Avocatier', fullName: 'Azzeddine' },
             { id: 'chef_bahia', label: 'Chef BAHIA', name: 'Chef BAHIA', icon: 'fa-tree', farm: 'BAHIA', fullName: 'Chef de ferme BAHIA' },
             { id: 'caporal_f1', label: 'Caporal F1', name: 'Caporal F1', icon: 'fa-hard-hat', farm: 'F1', fullName: 'Caporal F1' },
@@ -11257,10 +11257,18 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             const matchSub = (r) => !avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter;
             const parFerme = apiData.parFerme || [];
+            const _apiParCulture = apiData.parCulture || [];
             const displayData = farmFilter ? parFerme.filter(f => f.ferme === farmFilter) : parFerme;
             const parJour = apiData.parJour || [];
-            const totalJournees = farmFilter ? displayData.reduce((s, d) => s + d.journees, 0) : apiData.totalJournees;
-            const totalCout = farmFilter ? displayData.reduce((s, d) => s + d.cout, 0) : apiData.totalCout;
+            // Totaux : culture-first pour chefs culture-only (Framboise/Myrtille), ferme-based sinon
+            const _cultureData = cultureFilter ? _apiParCulture.find(function(c) { return c.culture === cultureFilter; }) : null;
+            const hasCultureData = !!_cultureData;
+            const totalJournees = _cultureData ? _cultureData.journees
+                : farmFilter ? displayData.reduce(function(s, d) { return s + d.journees; }, 0)
+                : apiData.totalJournees;
+            const totalCout = _cultureData ? _cultureData.cout
+                : farmFilter ? displayData.reduce(function(s, d) { return s + d.cout; }, 0)
+                : apiData.totalCout;
             // Taux coût journalier moyen par ferme (pour net à payer des ouvriers MO)
             const fermeRateMap = {};
             parFerme.forEach(d => { if (d.journees > 0) fermeRateMap[d.ferme] = d.cout / d.journees; });
@@ -11542,6 +11550,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         </button>
                     </div>
 
+                    {cultureFilter && !hasCultureData && (
+                        <div style={{background:'#fff3cd',color:'#856404',padding:'8px 16px',borderRadius:6,marginBottom:12,fontSize:13,display:'flex',alignItems:'center',gap:8}}>
+                            <i className="fa-solid fa-triangle-exclamation"></i>
+                            Totaux culture non disponibles (archive ancienne). Cliquez <strong style={{marginLeft:4}}>Rafraîchir Firestore Cache</strong> pour les recalculer.
+                        </div>
+                    )}
                     <div className="quinzaine-card">
                         <h3>{selectedPeriode || (apiData.periodes || [])[0] || ''}{(farmLabel || cultureFilter || farmFilter) ? ' — ' + (farmLabel || cultureFilter || farmFilter) : ''}</h3>
                         <window.QuinzaineRecapCards

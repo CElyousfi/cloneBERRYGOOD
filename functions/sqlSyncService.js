@@ -16,6 +16,7 @@ const whatsappService = require("./whatsappService");
 const probeStaleness = require("./lib/probeStaleness/probeStaleness");
 const pullHealth = require("./lib/pointage/pullHealth");
 const { resolveFermeFromParcelle } = require("./lib/pointage/refParcelleFerme");
+const { buildParCulture } = require("./pointageService");
 
 // Ré-alerte staleness : rappel toutes les 24h tant que la donnée reste gelée.
 const STALENESS_RE_ALERT_HOURS = 24;
@@ -1093,6 +1094,8 @@ async function archiveQuinzaines(sqlDb, allPeriodes, mirrorPeriodes) {
     const parJour = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size })).sort((a, b) => a.jour.localeCompare(b.jour));
     const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
     const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
+    // parCulture — agrégats par culture pour les chefs Framboise/Myrtille
+    const parCulture = buildParCulture(periodeRows);
 
     // === Analytique (action: quinzaine-analytique) ===
     const analytiqueGroups = {};
@@ -1134,6 +1137,7 @@ async function archiveQuinzaines(sqlDb, allPeriodes, mirrorPeriodes) {
         totalJournees: Math.round(totalJournees),
         totalCout: Math.round(totalCout),
         parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })),
+        parCulture: parCulture,
         parJour,
       },
       analytique,

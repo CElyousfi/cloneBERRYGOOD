@@ -883,6 +883,33 @@ function classifyType(operationFamille) {
   return "horsRecolte";
 }
 
+/**
+ * Agrège des rows de pointage par culture (Framboise / Myrtille / Avocat).
+ * Utilise resolveVariete pour classifier chaque parcelle.
+ * Propriété garantie : Σ(parCulture[i].cout) === Σ(rows[j].Cout) (pas de perte).
+ * @param {Array} rows — lignes BEE ONE (Parcelle_Culturale, Ref_parcelle, Nombre_Jr, Cout, Operation_Famille)
+ * @returns {Array<{culture, journees, cout, recolte, horsRecolte, postesFixes}>}
+ */
+function buildParCulture(rows) {
+  if (!rows || !rows.length) return [];
+  const qCultures = {};
+  for (const r of rows) {
+    const _rc = resolveVariete(r.Parcelle_Culturale, r.Ref_parcelle);
+    const _ferme = _rc.ferme;
+    const _culture = (_rc.culture && _rc.culture !== 'Autre') ? _rc.culture
+      : (_ferme === 'Avocatier' || _ferme === 'BAHIA') ? 'Avocat' : 'Framboise';
+    if (!qCultures[_culture]) qCultures[_culture] = { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 };
+    const _type = classifyType(r.Operation_Famille);
+    qCultures[_culture].journees += r.Nombre_Jr || 0;
+    qCultures[_culture].cout += r.Cout || 0;
+    qCultures[_culture][_type] += r.Nombre_Jr || 0;
+  }
+  return Object.entries(qCultures).map(function(e) {
+    const culture = e[0], d = e[1];
+    return { culture: culture, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) };
+  });
+}
+
 // =============================================
 // Heures supplémentaires
 // =============================================
@@ -1243,6 +1270,7 @@ exports.deriveFerme = deriveFerme;
 exports.loadReferentielCache = loadReferentielCache;
 exports.invalidateReferentielCache = invalidateReferentielCache;
 exports.filterMirrorRowsByFerme = filterMirrorRowsByFerme;
+exports.buildParCulture = buildParCulture;
 exports.filterMirrorRowsByCulture = filterMirrorRowsByCulture;
 exports.filterByFermeField = filterByFermeField;
 exports.filterArchivedRowsByFerme = filterArchivedRowsByFerme;
@@ -2393,10 +2421,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               const parFerme = filterArchivedParFerme(arch.parFerme, _fermeFilter);
               const parJour = filterArchivedParJour(arch.parJour, _fermeFilter);
               const totals = recomposeArchivedTotals(parFerme, arch, _fermeFilter);
+              // parCulture : présent dans les nouvelles archives, null dans les anciennes
+              // (le frontend dégrade gracieusement si null — bouton Rafraîchir Firestore Cache)
+              const parCulture = arch.parCulture || null;
               return {
                 success: true, periode: selectedPeriode, periodes, periodeCampagne,
                 totalJournees: totals.totalJournees, totalCout: totals.totalCout,
-                parFerme, parJour,
+                parFerme, parJour, parCulture,
               };
             }
             // Fallback: fetch directly from SQL for older quinzaines
@@ -2458,7 +2489,8 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
           const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size, BAHIA: d.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
           const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
           const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
-          return { success: true, periode: selectedPeriode, periodes, periodeCampagne, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
+          const parCulture = buildParCulture(rows);
+          return { success: true, periode: selectedPeriode, periodes, periodeCampagne, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay, parCulture: parCulture };
         }
 
         // === FALLBACK SQL PATH ===
@@ -2508,7 +2540,9 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         const perDay = Object.values(dayMap).sort((a, b) => a.jour.localeCompare(b.jour));
         const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
         const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
-        return { success: true, periode: periodeParam || "latest", periodes: periodesRes.recordset.map(r => r.Periode_paie), totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
+        // summaryRows champs: totalJr / totalCout (SQL agrégé) → mapper pour buildParCulture
+        const parCulture = buildParCulture(summaryRows.map(function(r) { return { Parcelle_Culturale: r.Parcelle_Culturale, Ref_parcelle: r.Ref_parcelle, Nombre_Jr: r.totalJr, Cout: r.totalCout, Operation_Famille: r.Operation_Famille }; }));
+        return { success: true, periode: periodeParam || "latest", periodes: periodesRes.recordset.map(r => r.Periode_paie), totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay, parCulture: parCulture };
         }); // end withCache
         return res.json(cached);
       }
