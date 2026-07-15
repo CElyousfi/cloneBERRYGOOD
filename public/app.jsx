@@ -460,21 +460,28 @@
         // Fallback via variété si le champ Culture est absent de la ligne.
         function matchCulture(row, cf) {
             if (!cf) return true;
+            // 1. Champ culture explicite (peuplé par le backend pour toutes les lignes transport/MO)
             var rawC = (row.culture || row.Culture || '').trim();
             if (rawC) return rawC.toLowerCase() === cf.toLowerCase();
-            var MYRTILLE = ['corina', 'breeze', 'cascade'];
-            var FRAMBOISE = ['yazmin', 'maravilla', 'reyna', 'adelita'];
+            // 2. Variete directe (lignes Récolte — pas de champ culture côté recolte-equipes)
+            var MYRTILLE_V = ['corina', 'breeze', 'cascade'];
+            var FRAMBOISE_V = ['yazmin', 'maravilla', 'reyna', 'adelita'];
             var v = (row.variete || row.Variete || row.varieteLabel || '').toLowerCase();
             if (v) {
-                if (cf === 'Myrtille') return MYRTILLE.some(function(n) { return v.includes(n); });
-                if (cf === 'Framboise') return FRAMBOISE.some(function(n) { return v.includes(n); });
+                if (cf === 'Myrtille') return MYRTILLE_V.some(function(n) { return v.includes(n); });
+                if (cf === 'Framboise') return FRAMBOISE_V.some(function(n) { return v.includes(n); });
                 return true;
             }
-            // Fallback lignes MO (pas de variete) : dériver la culture depuis le nom de la parcelle
-            // comme le backend resolveVariete(Parcelle_Culturale) — "Corina S8" → Myrtille, etc.
+            // 3. Fallback : nom de variété dans la parcelle ou secteur (récolte sans variete explicite)
             var p = (row.parcelle || row.Parcelle_Culturale || '').toUpperCase();
-            if (cf === 'Myrtille') return MYRTILLE.some(function(n) { return p.includes(n.toUpperCase()); });
-            if (cf === 'Framboise') return FRAMBOISE.some(function(n) { return p.includes(n.toUpperCase()); });
+            if (MYRTILLE_V.some(function(n) { return p.includes(n.toUpperCase()); })) return cf === 'Myrtille';
+            if (FRAMBOISE_V.some(function(n) { return p.includes(n.toUpperCase()); })) return cf === 'Framboise';
+            var sM = p.match(/\bS(\d{1,2})\b/);
+            if (sM) {
+                var sN = parseInt(sM[1], 10);
+                if (sN === 8) return cf === 'Myrtille';
+                if ([1,2,3,4,5,6,7,9,10,13].indexOf(sN) >= 0) return cf === 'Framboise';
+            }
             return true;
         }
 

@@ -2771,7 +2771,14 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
             const key = `${r.Personnel_Matricule}|${r.DateStr}|${r.Periode_paie}|${r.Operation_Famille}|${r.Operation}|${r.Parcelle_Culturale||''}`;
             if (!groups[key]) groups[key] = { Personnel_Matricule: r.Personnel_Matricule, Personnel_Nom: r.Personnel_Nom, DateStr: r.DateStr, Periode_paie: r.Periode_paie, Operation_Famille: r.Operation_Famille, Operation: r.Operation, Ref_parcelle: r.Ref_parcelle, Parcelle_Culturale: r.Parcelle_Culturale };
           }
-          const rows = Object.values(groups).map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim() }));
+          const rows = Object.values(groups).map(r => {
+            const _ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+            const _resolved = resolveVariete(r.Parcelle_Culturale, r.Ref_parcelle);
+            // Décision métier : parcelle non identifiable sur F1/F5 → Framboise (cf. réaffectation Yasmin/Maravilla F5→F1)
+            const _culture = (_resolved.culture && _resolved.culture !== 'Autre') ? _resolved.culture
+              : (_ferme === 'Avocatier' || _ferme === 'BAHIA') ? 'Avocat' : 'Framboise';
+            return { matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: r.DateStr, periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: _ferme, culture: _culture, parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim() };
+          });
           const holidays = await getJoursFeries();
           const extras = computeChargCond(allRows, holidays);
           return { success: true, periodes, periodeCampagne, rows, ...extras };
@@ -2783,7 +2790,13 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Rows NOMINATIVES avec
         // ferme dérivée → cloisonnement sur la ferme du chef (fail-closed), cohérence
         // avec le chemin mirror shadowé. _fermeFilter null (RH/DG/Finance) → passthrough.
-        const rows = filterByFermeField(result.recordset.map(r => ({ matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale), parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim() })), _fermeFilter);
+        const rows = filterByFermeField(result.recordset.map(r => {
+          const _ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale);
+          const _resolved = resolveVariete(r.Parcelle_Culturale, r.Ref_parcelle);
+          const _culture = (_resolved.culture && _resolved.culture !== 'Autre') ? _resolved.culture
+            : (_ferme === 'Avocatier' || _ferme === 'BAHIA') ? 'Avocat' : 'Framboise';
+          return { matricule: (r.Personnel_Matricule || "").trim(), nom: (r.Personnel_Nom || "").trim(), jour: new Date(r.jour).toISOString().slice(0, 10), periode: r.Periode_paie, operationFamille: (r.Operation_Famille || "").trim(), operation: (r.Operation || "").trim(), ferme: _ferme, culture: _culture, parcelle: (r.Parcelle_Culturale || "").trim(), refParcelle: (r.Ref_parcelle || "").trim() };
+        }), _fermeFilter);
         return { success: true, periodes, rows };
         }); // end withCache
         return res.json(cached);
