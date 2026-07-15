@@ -68154,6 +68154,19 @@ ${rejetHtml}
                 }
             }, [currentProfile, dtStationMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+            // Réinitialise le pull-to-refresh au retour de tab (iOS Safari : touchcancel
+            // ne suffit pas quand l'user switche d'app en plein touch).
+            useEffect(() => {
+                const onVisible = () => {
+                    if (document.visibilityState === 'visible') {
+                        setPullDist(0);
+                        pullStartY.current = null;
+                    }
+                };
+                document.addEventListener('visibilitychange', onVisible);
+                return () => document.removeEventListener('visibilitychange', onVisible);
+            }, []);
+
             // Helper : enveloppe chaque onglet dans un TabErrorBoundary
             const renderTab = (tabId, Component, props, label) => {
                 if (currentTab !== tabId) return null;
@@ -68423,7 +68436,8 @@ ${rejetHtml}
                             <div className="content-scroll" ref={pullRef}
                                 onTouchStart={e => { if (pullRef.current && pullRef.current.scrollTop === 0) pullStartY.current = e.touches[0].clientY; else pullStartY.current = null; }}
                                 onTouchMove={e => { if (pullStartY.current !== null) { const dy = e.touches[0].clientY - pullStartY.current; setPullDist(dy > 0 ? Math.min(dy, 120) : 0); }}}
-                                onTouchEnd={() => { if (pullDist > 60) { if (window.PaieDataCache) window.PaieDataCache.invalidate(); setRefreshKey(k => k + 1); } setPullDist(0); pullStartY.current = null; }}>
+                                onTouchEnd={() => { if (pullDist > 60) { if (window.PaieDataCache) window.PaieDataCache.invalidate(); setRefreshKey(k => k + 1); } setPullDist(0); pullStartY.current = null; }}
+                                onTouchCancel={() => { setPullDist(0); pullStartY.current = null; }}>
                                 {pullDist > 0 && (
                                     <div style={{display:'flex', justifyContent:'center', alignItems:'center', height: pullDist * 0.5, overflow:'hidden', transition: pullDist > 60 ? 'none' : 'height 0.2s'}}>
                                         <i className={`fa-solid fa-arrow-rotate-right${pullDist > 60 ? ' fa-spin' : ''}`} style={{fontSize:18, color: pullDist > 60 ? 'var(--berry)' : 'var(--gray-400)', transform:`rotate(${pullDist * 3}deg)`, transition:'color 0.2s'}}></i>
