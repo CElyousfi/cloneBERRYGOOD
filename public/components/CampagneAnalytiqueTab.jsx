@@ -1,12 +1,12 @@
 /*
- * CampagneAnalytiqueTab.jsx — Campagne analytique (Affectation par Ha + Par Variété)
+ * CampagneAnalytiqueTab.jsx — Campagne analytique (MO + Engrais + Pesticides)
  *
- * Remplace CampagneTab dans l'onglet "Campagne".
- * 2 vues toggleables :
- *   - "Affectation par Ha"  : tableau parcelles × familles MO
- *   - "Par Variété"         : pivot quinzaines × opérations pour une parcelle
+ * 3 sub-tabs : Main Oeuvre | Engrais | Pesticides
+ * 4 culture filters : Toutes | Framboise | Myrtille | Avocatier
  *
- * Source : GET /api/pointage-rh?action=campagne-analytique-detail
+ * Sources :
+ *   GET /api/pointage-rh?action=campagne-analytique-detail  (MO)
+ *   GET /api/pointage-rh?action=campagne-conso-parcelle     (Engrais/Pesticides)
  *
  * Pattern UMD — expose window.CampagneAnalytiqueTab
  */
@@ -75,6 +75,26 @@
     return Math.round(cout / ha).toLocaleString('fr-MA');
   }
 
+  function fmtQty(v) {
+    if (!v || v === 0) return '—';
+    return (Math.round(v * 100) / 100).toLocaleString('fr-MA');
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* deriveCulture — dérive la culture d'une ligne à partir de la ferme  */
+  /* et du nom de parcelle. Utilisé pour le filtre culture côté frontend. */
+  /* ------------------------------------------------------------------ */
+  function deriveCulture(ferme, parcelle) {
+    if (ferme === 'Avocatier' || ferme === 'BAHIA') return 'Avocatier';
+    if (ferme === 'F1') return 'Framboise';
+    if (ferme === 'F5') {
+      var p = (parcelle || '').toLowerCase();
+      if (p.includes('myrtille') || p.includes('corina') || p.includes('breeze') || p.includes('cascade')) return 'Myrtille';
+      return 'Framboise';
+    }
+    return 'Autre';
+  }
+
   /* ------------------------------------------------------------------ */
   /* Helpers de calcul pivot                                              */
   /* ------------------------------------------------------------------ */
@@ -139,6 +159,7 @@
   function HaView(props) {
     var data = props.data;
     var farmFilter = props.farmFilter;
+    var cultureFilter = props.cultureFilter;
     var metric = props.metric; // 'cout' | 'jh'
     var setMetric = props.setMetric;
 
@@ -164,11 +185,15 @@
       return ordered;
     }, [rows, data.famillesOrdered]);
 
-    // Filtrer par ferme
+    // Filtrer par ferme puis par culture
     var filteredRows = useMemo(function () {
-      if (!farmFilter) return rows;
-      return rows.filter(function (r) { return r.ferme === farmFilter; });
-    }, [rows, farmFilter]);
+      var r = rows;
+      if (farmFilter) r = r.filter(function (row) { return row.ferme === farmFilter; });
+      if (cultureFilter && cultureFilter !== 'Toutes') {
+        r = r.filter(function (row) { return deriveCulture(row.ferme, row.parcelle) === cultureFilter; });
+      }
+      return r;
+    }, [rows, farmFilter, cultureFilter]);
 
     // Totaux colonnes
     var colTotals = useMemo(function () {
@@ -326,21 +351,27 @@
   /* ------------------------------------------------------------------ */
   function VarieteView(props) {
     var data = props.data;
+    var farmFilter = props.farmFilter;
+    var cultureFilter = props.cultureFilter;
     var selectedParcelle = props.selectedParcelle;
     var setSelectedParcelle = props.setSelectedParcelle;
     var metric = props.metric;
     var setMetric = props.setMetric;
 
-    // Liste distincte des parcelles
+    // Liste distincte des parcelles (filtrée par farmFilter + cultureFilter)
     var parcelles = useMemo(function () {
       var seen = {};
       var list = [];
       (data.rows || []).forEach(function (r) {
         var key = r.parcelle || r.refParcelle;
-        if (key && !seen[key]) { seen[key] = true; list.push(key); }
+        if (!key || seen[key]) return;
+        if (farmFilter && r.ferme !== farmFilter) return;
+        if (cultureFilter && cultureFilter !== 'Toutes' && deriveCulture(r.ferme, r.parcelle) !== cultureFilter) return;
+        seen[key] = true;
+        list.push(key);
       });
       return list.sort();
-    }, [data]);
+    }, [data, farmFilter, cultureFilter]);
 
     // Quinzaines de la campagne présentes dans les données
     var periodes = data.periodes || [];
@@ -574,13 +605,224 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Sous-composant : Vue Conso (Engrais / Pesticides)                   */
+  /* ------------------------------------------------------------------ */
+  function ConsoView(props) {
+    var consoData = props.consoData;
+    var subTab = props.subTab; // 'engrais' | 'pesticides'
+    var farmFilter = props.farmFilter;
+    var cultureFilter = props.cultureFilter;
+
+    var _metric = useState('perha');
+    var metric = _metric[0]; var setMetric = _metric[1];
+
+    // Parcelles filtrées
+    var parcelles = useMemo(function () {
+      if (!consoData) return [];
+      return (consoData.parcelles || []).filter(function (p) {
+        if (farmFilter && p.ferme !== farmFilter) return false;
+        if (cultureFilter && cultureFilter !== 'Toutes' && deriveCulture(p.ferme, p.parcelle) !== cultureFilter) return false;
+        return true;
+      });
+    }, [consoData, farmFilter, cultureFilter]);
+
+    // Articles dynamiques selon le sub-tab
+    var articles = useMemo(function () {
+      var seen = {};
+      var list = [];
+      parcelles.forEach(function (p) {
+        var items = subTab === 'engrais' ? (p.engrais || []) : (p.pesticides || []);
+        items.forEach(function (item) {
+          if (!seen[item.article]) {
+            seen[item.article] = { unite: item.unite };
+            list.push(item.article);
+          }
+        });
+      });
+      return list.sort();
+    }, [parcelles, subTab]);
+
+    var thStyle = {
+      padding: '8px 10px',
+      borderBottom: '2px solid ' + C.border,
+      background: C.surface2,
+      fontSize: '12px',
+      fontWeight: 600,
+      color: C.textSec,
+      whiteSpace: 'nowrap',
+      textAlign: 'right',
+    };
+    var thFirstStyle = Object.assign({}, thStyle, { textAlign: 'left' });
+    var tdStyle = {
+      padding: '7px 10px',
+      borderBottom: '1px solid ' + C.border,
+      fontSize: '13px',
+      color: C.text,
+      textAlign: 'right',
+      whiteSpace: 'nowrap',
+    };
+    var tdFirstStyle = Object.assign({}, tdStyle, { textAlign: 'left', fontWeight: 500 });
+    var tdDashStyle = Object.assign({}, tdStyle, { color: C.textSec });
+    var totalCellStyle = {
+      padding: '8px 10px',
+      fontSize: '13px',
+      fontWeight: 700,
+      textAlign: 'right',
+      whiteSpace: 'nowrap',
+      color: '#fff',
+    };
+
+    // Totaux colonnes
+    var colTotals = useMemo(function () {
+      var byArticle = {};
+      var totalDH = 0;
+      parcelles.forEach(function (p) {
+        var items = subTab === 'engrais' ? (p.engrais || []) : (p.pesticides || []);
+        var ha = p.ha || 0;
+        items.forEach(function (item) {
+          if (!byArticle[item.article]) byArticle[item.article] = { qty: 0, cout: 0 };
+          byArticle[item.article].qty += item.qty || 0;
+          byArticle[item.article].cout += item.coutTotal || 0;
+        });
+        var total = subTab === 'engrais' ? (p.totalEngraisCout || 0) : (p.totalPesticidesCout || 0);
+        totalDH += total;
+      });
+      return { byArticle: byArticle, totalDH: totalDH };
+    }, [parcelles, subTab]);
+
+    // Ha total (pour DH/Ha colonne totaux)
+    var totalHa = useMemo(function () {
+      return parcelles.reduce(function (sum, p) { return sum + (p.ha || 0); }, 0);
+    }, [parcelles]);
+
+    return React.createElement('div', null,
+      // Barre de contrôle (métrique)
+      React.createElement('div', {
+        style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }
+      },
+        React.createElement('span', { style: { fontSize: '13px', color: C.textSec, marginRight: '4px' } }, 'Afficher :'),
+        ['perha', 'total'].map(function (m) {
+          var label = m === 'perha' ? 'Par Ha' : 'Total';
+          return React.createElement('button', {
+            key: m,
+            onClick: function () { setMetric(m); },
+            style: {
+              padding: '5px 14px',
+              border: '1.5px solid ' + (metric === m ? C.berry : C.border),
+              borderRadius: '16px',
+              background: metric === m ? C.berry : C.surface,
+              color: metric === m ? '#fff' : C.text,
+              fontSize: '12px',
+              fontWeight: metric === m ? 700 : 400,
+              cursor: 'pointer',
+            }
+          }, label);
+        })
+      ),
+      parcelles.length === 0
+        ? React.createElement('div', {
+            style: { padding: '40px', textAlign: 'center', color: C.textSec, fontSize: '14px' }
+          }, 'Aucune donnée pour cette sélection.')
+        : React.createElement('div', { style: { overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' } },
+            React.createElement('table', {
+              style: { minWidth: '600px', borderCollapse: 'collapse', fontSize: '13px' }
+            },
+              React.createElement('thead', null,
+                React.createElement('tr', null,
+                  React.createElement('th', { style: thFirstStyle }, 'Parcelle'),
+                  React.createElement('th', { style: thStyle }, 'Ferme'),
+                  React.createElement('th', { style: thStyle }, 'Ha'),
+                  articles.map(function (art) {
+                    // Trouver l'unité dans les données
+                    var unite = '';
+                    for (var pi = 0; pi < parcelles.length; pi++) {
+                      var items = subTab === 'engrais' ? (parcelles[pi].engrais || []) : (parcelles[pi].pesticides || []);
+                      for (var ii = 0; ii < items.length; ii++) {
+                        if (items[ii].article === art) { unite = items[ii].unite || ''; break; }
+                      }
+                      if (unite) break;
+                    }
+                    return React.createElement('th', { key: art, style: thStyle },
+                      art + (unite ? ' (' + unite + ')' : '')
+                    );
+                  }),
+                  React.createElement('th', { style: thStyle }, 'Total DH'),
+                  React.createElement('th', { style: thStyle }, 'DH/Ha')
+                )
+              ),
+              React.createElement('tbody', null,
+                parcelles.map(function (p, idx) {
+                  var itemMap = {};
+                  var items = subTab === 'engrais' ? (p.engrais || []) : (p.pesticides || []);
+                  items.forEach(function (item) { itemMap[item.article] = item; });
+                  var totalParcelle = subTab === 'engrais' ? (p.totalEngraisCout || 0) : (p.totalPesticidesCout || 0);
+                  return React.createElement('tr', {
+                    key: p.parcelle,
+                    style: { background: idx % 2 === 0 ? C.surface : C.surface2 }
+                  },
+                    React.createElement('td', { style: tdFirstStyle }, p.parcelle),
+                    React.createElement('td', { style: tdStyle }, p.ferme || '—'),
+                    React.createElement('td', { style: tdStyle }, fmtHa(p.ha)),
+                    articles.map(function (art) {
+                      var item = itemMap[art];
+                      if (!item || !item.qty) return React.createElement('td', { key: art, style: tdDashStyle }, '—');
+                      if (metric === 'perha') {
+                        var ha = p.ha || 0;
+                        if (!ha) return React.createElement('td', { key: art, style: tdDashStyle }, '—');
+                        return React.createElement('td', { key: art, style: tdStyle },
+                          fmtQty(item.qty / ha)
+                        );
+                      }
+                      return React.createElement('td', { key: art, style: tdStyle }, fmtQty(item.qty));
+                    }),
+                    React.createElement('td', { style: Object.assign({}, tdStyle, { fontWeight: 700 }) },
+                      fmtDH(totalParcelle)
+                    ),
+                    React.createElement('td', { style: tdStyle },
+                      fmtDHPerHa(totalParcelle, p.ha)
+                    )
+                  );
+                }),
+                // Ligne de total
+                React.createElement('tr', { style: { background: C.berry } },
+                  React.createElement('td', { style: Object.assign({}, totalCellStyle, { textAlign: 'left' }) }, 'TOTAL'),
+                  React.createElement('td', { style: totalCellStyle }, ''),
+                  React.createElement('td', { style: totalCellStyle }, fmtHa(totalHa)),
+                  articles.map(function (art) {
+                    var cell = colTotals.byArticle[art];
+                    if (!cell || !cell.qty) return React.createElement('td', { key: art, style: totalCellStyle }, '—');
+                    if (metric === 'perha') {
+                      return React.createElement('td', { key: art, style: totalCellStyle },
+                        totalHa ? fmtQty(cell.qty / totalHa) : '—'
+                      );
+                    }
+                    return React.createElement('td', { key: art, style: totalCellStyle }, fmtQty(cell.qty));
+                  }),
+                  React.createElement('td', { style: totalCellStyle }, fmtDH(colTotals.totalDH)),
+                  React.createElement('td', { style: totalCellStyle },
+                    fmtDHPerHa(colTotals.totalDH, totalHa)
+                  )
+                )
+              )
+            )
+          )
+    );
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Composant principal                                                  */
   /* ------------------------------------------------------------------ */
   function CampagneAnalytiqueTab(props) {
     var farmFilter = props.farmFilter || null;
 
+    var _subTab = useState('mo');
+    var subTab = _subTab[0]; var setSubTab = _subTab[1];
+
     var _view = useState('ha');
     var view = _view[0]; var setView = _view[1];
+
+    var _cultureFilter = useState('Toutes');
+    var cultureFilter = _cultureFilter[0]; var setCultureFilter = _cultureFilter[1];
 
     var _data = useState(null);
     var data = _data[0]; var setData = _data[1];
@@ -594,9 +836,23 @@
     var _selectedParcelle = useState('');
     var selectedParcelle = _selectedParcelle[0]; var setSelectedParcelle = _selectedParcelle[1];
 
-    // Métrique partagée entre les 2 vues
+    // Métrique partagée entre les 2 vues MO
     var _metric = useState('cout');
     var metric = _metric[0]; var setMetric = _metric[1];
+
+    // Données conso (lazy — chargées à la première activation engrais/pesticides)
+    var _consoData = useState(null);
+    var consoData = _consoData[0]; var setConsoData = _consoData[1];
+
+    var _consoLoading = useState(false);
+    var consoLoading = _consoLoading[0]; var setConsoLoading = _consoLoading[1];
+
+    var _consoErr = useState(null);
+    var consoErr = _consoErr[0]; var setConsoErr = _consoErr[1];
+
+    // Suivi du premier chargement conso
+    var _consoFetched = useState(false);
+    var consoFetched = _consoFetched[0]; var setConsoFetched = _consoFetched[1];
 
     useEffect(function () {
       setLoading(true);
@@ -613,6 +869,25 @@
         .catch(function (e) { setErr(e.message || 'Erreur réseau.'); })
         .finally(function () { setLoading(false); });
     }, []);
+
+    // Chargement conso (paresseux — uniquement à la première transition vers engrais/pesticides)
+    useEffect(function () {
+      if (subTab === 'mo' || consoFetched) return;
+      setConsoFetched(true);
+      setConsoLoading(true);
+      setConsoErr(null);
+      fetch('/api/pointage-rh?action=campagne-conso-parcelle')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.success) {
+            setConsoData(d);
+          } else {
+            setConsoErr((d && d.error) || 'Erreur lors du chargement de la consommation.');
+          }
+        })
+        .catch(function (e) { setConsoErr(e.message || 'Erreur réseau.'); })
+        .finally(function () { setConsoLoading(false); });
+    }, [subTab]);
 
     // Styles communs
     var containerStyle = {
@@ -656,52 +931,125 @@
       return React.createElement('div', { style: containerStyle }, 'Aucune donnée disponible.');
     }
 
+    // Sous-tabs definition
+    var subTabs = [
+      { id: 'mo',         label: 'Main Oeuvre',  icon: 'fa-person-digging' },
+      { id: 'engrais',    label: 'Engrais',       icon: 'fa-flask' },
+      { id: 'pesticides', label: 'Pesticides',    icon: 'fa-spray-can' },
+    ];
+
+    var cultures = ['Toutes', 'Framboise', 'Myrtille', 'Avocatier'];
+
     return React.createElement('div', { style: containerStyle },
-      // En-tête
-      React.createElement('div', {
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }
-      },
-        React.createElement('div', null,
-          React.createElement('h2', {
-            style: { margin: 0, fontSize: '18px', fontWeight: 700, color: C.text }
-          }, 'Campagne analytique MO'),
-          React.createElement('p', {
-            style: { margin: '2px 0 0', fontSize: '13px', color: C.textSec }
-          }, 'Campagne ' + data.campagne + ' — ' + (data.rows || []).length + ' lignes')
-        ),
-        // Toggle vue
-        React.createElement('div', { style: { display: 'flex', gap: '8px' } },
-          React.createElement('button', {
-            onClick: function () { setView('ha'); },
-            style: toggleBtnStyle(view === 'ha'),
-          },
-            React.createElement('i', { className: 'fa-solid fa-chart-bar', style: { marginRight: '6px' } }),
-            'Affectation par Ha'
-          ),
-          React.createElement('button', {
-            onClick: function () { setView('variete'); },
-            style: toggleBtnStyle(view === 'variete'),
-          },
-            React.createElement('i', { className: 'fa-solid fa-table', style: { marginRight: '6px' } }),
-            'Par Variété / Quinzaine'
-          )
-        )
+      // En-tête : info campagne
+      React.createElement('div', { style: { marginBottom: '12px' } },
+        React.createElement('p', {
+          style: { margin: 0, fontSize: '13px', color: C.textSec }
+        }, 'Campagne ' + data.campagne + ' — ' + (data.rows || []).length + ' lignes MO')
       ),
+
+      // Ligne 1 : Sub-tabs (MO | Engrais | Pesticides) + toggle vue (si MO)
+      React.createElement('div', {
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '12px' }
+      },
+        // Sub-tab buttons
+        React.createElement('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+          subTabs.map(function (st) {
+            return React.createElement('button', {
+              key: st.id,
+              onClick: function () { setSubTab(st.id); },
+              style: toggleBtnStyle(subTab === st.id),
+            },
+              React.createElement('i', { className: 'fa-solid ' + st.icon, style: { marginRight: '6px' } }),
+              st.label
+            );
+          })
+        ),
+        // Vue toggle (uniquement en MO)
+        subTab === 'mo'
+          ? React.createElement('div', { style: { display: 'flex', gap: '8px' } },
+              React.createElement('button', {
+                onClick: function () { setView('ha'); },
+                style: toggleBtnStyle(view === 'ha'),
+              },
+                React.createElement('i', { className: 'fa-solid fa-chart-bar', style: { marginRight: '6px' } }),
+                'Affectation par Ha'
+              ),
+              React.createElement('button', {
+                onClick: function () { setView('variete'); },
+                style: toggleBtnStyle(view === 'variete'),
+              },
+                React.createElement('i', { className: 'fa-solid fa-table', style: { marginRight: '6px' } }),
+                'Par Variété / Quinzaine'
+              )
+            )
+          : null
+      ),
+
+      // Ligne 2 : Filtre culture (toujours visible)
+      React.createElement('div', {
+        style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }
+      },
+        React.createElement('span', { style: { fontSize: '13px', color: C.textSec, marginRight: '4px' } }, 'Culture :'),
+        cultures.map(function (c) {
+          return React.createElement('button', {
+            key: c,
+            onClick: function () { setCultureFilter(c); },
+            style: {
+              padding: '5px 14px',
+              border: '1.5px solid ' + (cultureFilter === c ? C.berry : C.border),
+              borderRadius: '16px',
+              background: cultureFilter === c ? C.berry : C.surface,
+              color: cultureFilter === c ? '#fff' : C.text,
+              fontSize: '12px',
+              fontWeight: cultureFilter === c ? 700 : 400,
+              cursor: 'pointer',
+            }
+          }, c);
+        })
+      ),
+
       // Contenu
-      view === 'ha'
-        ? React.createElement(HaView, {
-            data: data,
-            farmFilter: farmFilter,
-            metric: metric,
-            setMetric: setMetric,
-          })
-        : React.createElement(VarieteView, {
-            data: data,
-            selectedParcelle: selectedParcelle,
-            setSelectedParcelle: setSelectedParcelle,
-            metric: metric,
-            setMetric: setMetric,
-          })
+      subTab === 'mo'
+        ? (view === 'ha'
+            ? React.createElement(HaView, {
+                data: data,
+                farmFilter: farmFilter,
+                cultureFilter: cultureFilter,
+                metric: metric,
+                setMetric: setMetric,
+              })
+            : React.createElement(VarieteView, {
+                data: data,
+                farmFilter: farmFilter,
+                cultureFilter: cultureFilter,
+                selectedParcelle: selectedParcelle,
+                setSelectedParcelle: setSelectedParcelle,
+                metric: metric,
+                setMetric: setMetric,
+              })
+          )
+        : (consoLoading
+            ? React.createElement('div', {
+                style: { display: 'flex', alignItems: 'center', gap: '10px', color: C.textSec, padding: '24px' }
+              },
+                React.createElement('i', { className: 'fa-solid fa-spinner fa-spin' }),
+                'Chargement de la consommation…'
+              )
+            : consoErr
+              ? React.createElement('div', {
+                  style: { color: '#c0392b', padding: '24px' }
+                },
+                  React.createElement('i', { className: 'fa-solid fa-triangle-exclamation', style: { marginRight: '8px' } }),
+                  consoErr
+                )
+              : React.createElement(ConsoView, {
+                  consoData: consoData,
+                  subTab: subTab,
+                  farmFilter: farmFilter,
+                  cultureFilter: cultureFilter,
+                })
+          )
     );
   }
 
