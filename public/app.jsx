@@ -68154,6 +68154,11 @@ ${rejetHtml}
                 }
             }, [currentProfile, dtStationMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
+            // Mémoire d'onglet par profil — sauvegarde lastTab_{profileId} à chaque changement
+            useEffect(() => {
+                try { localStorage.setItem('lastTab_' + currentProfile, currentTab); } catch(e) {}
+            }, [currentTab, currentProfile]);
+
             // Réinitialise le pull-to-refresh au retour de tab (iOS Safari : touchcancel
             // ne suffit pas quand l'user switche d'app en plein touch).
             useEffect(() => {
@@ -68189,8 +68194,13 @@ ${rejetHtml}
                                     key={p.id}
                                     className={`profile-chip ${currentProfile === p.id ? 'active' : ''}`}
                                     onClick={() => {
+                                        // Sauvegarder l'onglet courant pour le profil qu'on quitte
+                                        try { localStorage.setItem('lastTab_' + currentProfile, currentTab); } catch(e) {}
                                         setCurrentProfile(p.id);
                                         try { localStorage.setItem('lastProfile', p.id); } catch(e) {}
+                                        // Profils à onglet de démarrage forcé ; sinon restaurer le dernier
+                                        // onglet utilisé sur ce profil (lastTab_{p.id}), ou garder le courant.
+                                        const savedTabForProfile = (() => { try { return localStorage.getItem('lastTab_' + p.id); } catch(e) { return null; } })();
                                         const tab = p.id === 'qualite' ? 'qualite_dashboard'
                                             : p.id === 'magasinier' ? 'mag_dashboard'
                                             : p.id.startsWith('caporal_') ? 'caporal_suivi'
@@ -68198,7 +68208,7 @@ ${rejetHtml}
                                             : p.id === 'agronomie' ? 'agro_dashboard'
                                             : p.id === 'achats' ? 'achats_dashboard'
                                             : p.id === 'chef_bahia' ? 'pointage'
-                                            : currentTab; // conserver l'onglet courant si disponible dans le nouveau profil
+                                            : (savedTabForProfile || currentTab);
                                         setCurrentTab(tab);
                                         try { localStorage.setItem('lastTab', tab); } catch(e) {}
                                     }}
