@@ -164,6 +164,24 @@
         };
 
         const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+        const CACHE_MAX_ENTRIES = 25; // max localStorage cache_ entries before LRU trim
+        function _purgeLSCache() {
+            try {
+                Object.keys(localStorage).forEach(function(k) { if (k.startsWith('cache_')) localStorage.removeItem(k); });
+            } catch(e) {}
+        }
+        function _trimLSCacheIfNeeded() {
+            try {
+                var keys = Object.keys(localStorage).filter(function(k) { return k.startsWith('cache_'); });
+                if (keys.length <= CACHE_MAX_ENTRIES) return;
+                // Remove oldest entries (sort by stored ts, drop the tail)
+                var entries = keys.map(function(k) {
+                    try { return { k: k, ts: JSON.parse(localStorage.getItem(k)).ts || 0 }; } catch(e) { return { k: k, ts: 0 }; }
+                });
+                entries.sort(function(a, b) { return a.ts - b.ts; });
+                entries.slice(0, entries.length - CACHE_MAX_ENTRIES).forEach(function(e) { localStorage.removeItem(e.k); });
+            } catch(e) {}
+        }
         function cachedFetch(url) {
             const now = Date.now();
             // 1. Memory cache hit (< 5 min)
@@ -184,7 +202,16 @@
             // 3. Cache miss or expired — fetch fresh from network
             return fetch(url).then(r => r.json()).then(data => {
                 _apiCache[url] = { data, ts: Date.now() };
-                try { localStorage.setItem('cache_' + url, JSON.stringify({ data, ts: Date.now() })); } catch(e) {}
+                try {
+                    _trimLSCacheIfNeeded();
+                    localStorage.setItem('cache_' + url, JSON.stringify({ data, ts: Date.now() }));
+                } catch(e) {
+                    // Quota exceeded — purge all cache_ entries then retry once
+                    try {
+                        _purgeLSCache();
+                        localStorage.setItem('cache_' + url, JSON.stringify({ data, ts: Date.now() }));
+                    } catch(e2) {}
+                }
                 return data;
             });
         }
@@ -68123,7 +68150,7 @@ ${rejetHtml}
                 if (!navItems.some(n => n.id === currentTab)) {
                     const fallback = navItems[0] ? navItems[0].id : 'dashboard';
                     setCurrentTab(fallback);
-                    localStorage.setItem('lastTab', fallback);
+                    try { localStorage.setItem('lastTab', fallback); } catch(e) {}
                 }
             }, [currentProfile, dtStationMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -68150,7 +68177,7 @@ ${rejetHtml}
                                     className={`profile-chip ${currentProfile === p.id ? 'active' : ''}`}
                                     onClick={() => {
                                         setCurrentProfile(p.id);
-                                        localStorage.setItem('lastProfile', p.id);
+                                        try { localStorage.setItem('lastProfile', p.id); } catch(e) {}
                                         const tab = p.id === 'qualite' ? 'qualite_dashboard'
                                             : p.id === 'magasinier' ? 'mag_dashboard'
                                             : p.id.startsWith('caporal_') ? 'caporal_suivi'
@@ -68160,7 +68187,7 @@ ${rejetHtml}
                                             : p.id === 'chef_bahia' ? 'pointage'
                                             : currentTab; // conserver l'onglet courant si disponible dans le nouveau profil
                                         setCurrentTab(tab);
-                                        localStorage.setItem('lastTab', tab);
+                                        try { localStorage.setItem('lastTab', tab); } catch(e) {}
                                     }}
                                 >
                                     <i className={`fa-solid ${p.icon}`}></i>
