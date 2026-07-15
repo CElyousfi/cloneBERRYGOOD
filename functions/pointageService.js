@@ -24,6 +24,7 @@ const {
   getWorkerHistory,
   getCueilletteRows,
   getSyncStatus,
+  getConsommationRows,
 } = require("./firestoreDataService");
 
 // Aliases bruts (non filtrés) des fetchers de lignes, pour le gating chef
@@ -3472,6 +3473,99 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
               famillesOrdered,
               haByRef,
               rows: rows.filter(r => r.jh > 0 || r.cout > 0),
+            };
+          }
+        );
+        return res.json(cached);
+      }
+
+      // ------ CAMPAGNE-CONSO-PARCELLE : consommation Engrais+Pesticides par parcelle ------
+      // Lit sql_mirror_consommation, agrège par parcelle × article, enrichit avec Ha.
+      // Note: les lignes miroir n'ont pas de champ Cout — seules les quantités sont disponibles.
+      if (action === "campagne-conso-parcelle") {
+        const today = new Date();
+        const y = today.getFullYear();
+        const startYear = today.getMonth() >= 6 ? y : y - 1;
+        const campagne = {
+          start: `${startYear}-07-01`,
+          end: `${startYear + 1}-06-30`,
+          label: `${startYear}/${startYear + 1}`,
+        };
+
+        const cached = await withCache(
+          pointageCacheKey(`campagne_conso_parcelle_v1_${campagne.start}`, _fermeFilter),
+          30 * 60 * 1000,
+          async () => {
+            // Lire toutes les lignes conso de la collection miroir (toutes catégories)
+            const allRows = await getConsommationRows({});
+
+            // Filtrer sur la campagne (champ Date : YYYY-MM-DD)
+            const campagneRows = allRows.filter(r => r.Date >= campagne.start && r.Date <= campagne.end);
+
+            // Enrichir avec Ha depuis sb_parcelle_referentiel
+            const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
+            const haByRef = {};
+            refSnap.forEach(doc => {
+              const d = doc.data();
+              if (d.label_bee_one && d.ha) haByRef[d.label_bee_one.trim().toUpperCase()] = d.ha;
+            });
+
+            // Grouper par parcelle
+            const byParcelle = {};
+            for (const r of campagneRows) {
+              const parcelle = (r.Parcelle_Culturale || '').trim();
+              if (!parcelle) continue;
+              // Dériver la ferme : les lignes conso ont un champ Ferme (ex. 'F1', 'F5', 'BAHIA')
+              // On s'appuie sur deriveFerme via Parcelle_Culturale comme fallback
+              const ferme = deriveFerme(null, parcelle);
+              if (!byParcelle[parcelle]) {
+                const haKey = parcelle.toUpperCase();
+                byParcelle[parcelle] = {
+                  parcelle,
+                  ferme,
+                  ha: haByRef[haKey] || 0,
+                  engraisMap: {},
+                  pesticidesMap: {},
+                };
+              }
+              const art = (r.Article || '').trim();
+              const cat = (r.Article_Categorie || '').trim();
+              const qty = r.Quantite || 0;
+              const unite = (r.Article_unite || '').trim();
+              if (cat === 'Engrais') {
+                if (!byParcelle[parcelle].engraisMap[art]) {
+                  byParcelle[parcelle].engraisMap[art] = { article: art, qty: 0, unite, coutTotal: 0 };
+                }
+                byParcelle[parcelle].engraisMap[art].qty += qty;
+              } else if (cat === 'Pesticides') {
+                if (!byParcelle[parcelle].pesticidesMap[art]) {
+                  byParcelle[parcelle].pesticidesMap[art] = { article: art, qty: 0, unite, coutTotal: 0 };
+                }
+                byParcelle[parcelle].pesticidesMap[art].qty += qty;
+              }
+            }
+
+            const parcelles = Object.values(byParcelle)
+              .map(p => {
+                const engrais = Object.values(p.engraisMap).sort((a, b) => a.article.localeCompare(b.article));
+                const pesticides = Object.values(p.pesticidesMap).sort((a, b) => a.article.localeCompare(b.article));
+                return {
+                  parcelle: p.parcelle,
+                  ferme: p.ferme,
+                  ha: p.ha,
+                  engrais,
+                  pesticides,
+                  totalEngraisCout: 0,
+                  totalPesticidesCout: 0,
+                };
+              })
+              .filter(p => p.engrais.length > 0 || p.pesticides.length > 0)
+              .sort((a, b) => a.parcelle.localeCompare(b.parcelle));
+
+            return {
+              success: true,
+              campagne: campagne.label,
+              parcelles,
             };
           }
         );
