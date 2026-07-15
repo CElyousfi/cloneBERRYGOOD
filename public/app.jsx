@@ -11712,8 +11712,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         _qpSrc.forEach(r => {
                             const mat = r.matricule;
                             if (!_qpWMap[mat]) {
+                                const _qpReg = quinzRegistry[numKey(mat)] || {};
+                                const _qpNom = ((_qpReg.prenom || '') + ' ' + (_qpReg.nom || r.nom || mat)).trim() || mat;
                                 _qpWMap[mat] = {
-                                    matricule: mat, nom: r.nom || mat, ferme: r.ferme || '—',
+                                    matricule: mat, nom: _qpNom, ferme: r.ferme || '—',
                                     jours: new Set(), operations: new Set(), parcelles: new Set(),
                                     fermeJours: {}, parcelleJours: {}, heures: 0, cout: 0,
                                 };

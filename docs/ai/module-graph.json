@@ -27,12 +27,12 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 7,
-        "file": "functions/index.js"
+        "commits": 8,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 7,
-        "file": "functions/pointageService.js"
+        "file": "functions/index.js"
       },
       {
         "commits": 7,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:b8c3a3c677696de7",
+    "sourceFingerprint": "sha256:30ee6c86b6eda413",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
