@@ -462,11 +462,19 @@
             if (!cf) return true;
             var rawC = (row.culture || row.Culture || '').trim();
             if (rawC) return rawC.toLowerCase() === cf.toLowerCase();
-            var v = (row.variete || row.Variete || row.varieteLabel || '').toLowerCase();
             var MYRTILLE = ['corina', 'breeze', 'cascade'];
             var FRAMBOISE = ['yazmin', 'maravilla', 'reyna', 'adelita'];
-            if (cf === 'Myrtille') return MYRTILLE.some(function(n) { return v.includes(n); });
-            if (cf === 'Framboise') return FRAMBOISE.some(function(n) { return v.includes(n); });
+            var v = (row.variete || row.Variete || row.varieteLabel || '').toLowerCase();
+            if (v) {
+                if (cf === 'Myrtille') return MYRTILLE.some(function(n) { return v.includes(n); });
+                if (cf === 'Framboise') return FRAMBOISE.some(function(n) { return v.includes(n); });
+                return true;
+            }
+            // Fallback lignes MO (pas de variete) : dériver la culture depuis le nom de la parcelle
+            // comme le backend resolveVariete(Parcelle_Culturale) — "Corina S8" → Myrtille, etc.
+            var p = (row.parcelle || row.Parcelle_Culturale || '').toUpperCase();
+            if (cf === 'Myrtille') return MYRTILLE.some(function(n) { return p.includes(n.toUpperCase()); });
+            if (cf === 'Framboise') return FRAMBOISE.some(function(n) { return p.includes(n.toUpperCase()); });
             return true;
         }
 
