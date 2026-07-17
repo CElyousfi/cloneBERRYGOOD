@@ -86,12 +86,12 @@
             headStyles: { fillColor: C.berry, textColor: C.white, fontStyle: 'bold' },
             footStyles: { fillColor: C.lightGray, fontStyle: 'bold' },
             columnStyles: {
-                0: { cellWidth: 22 },
-                1: { cellWidth: 60 },
-                2: { cellWidth: 28 },
-                3: { cellWidth: 20, halign: 'center' },
-                4: { cellWidth: 28, halign: 'right' },
-                5: { cellWidth: 35 },
+                0: { cellWidth: 16 },
+                1: { cellWidth: 68 },
+                2: { cellWidth: 22 },
+                3: { cellWidth: 14, halign: 'center' },
+                4: { cellWidth: 22, halign: 'right' },
+                5: { cellWidth: 40 },
             },
             alternateRowStyles: { fillColor: [252, 252, 252] },
             margin: { left: 14, right: 14 },
@@ -133,12 +133,12 @@
             headStyles: { fillColor: C.green, textColor: C.white, fontStyle: 'bold' },
             footStyles: { fillColor: C.lightGray, fontStyle: 'bold' },
             columnStyles: {
-                0: { cellWidth: 22 },
-                1: { cellWidth: 60 },
-                2: { cellWidth: 28 },
-                3: { cellWidth: 20, halign: 'center' },
-                4: { cellWidth: 28, halign: 'right' },
-                5: { cellWidth: 35 },
+                0: { cellWidth: 16 },
+                1: { cellWidth: 68 },
+                2: { cellWidth: 22 },
+                3: { cellWidth: 14, halign: 'center' },
+                4: { cellWidth: 22, halign: 'right' },
+                5: { cellWidth: 40 },
             },
             alternateRowStyles: { fillColor: [252, 252, 252] },
             margin: { left: 14, right: 14 },
@@ -180,12 +180,12 @@
             headStyles: { fillColor: [52, 73, 171], textColor: C.white, fontStyle: 'bold' },
             footStyles: { fillColor: C.lightGray, fontStyle: 'bold' },
             columnStyles: {
-                0: { cellWidth: 42 },
-                1: { cellWidth: 42 },
-                2: { cellWidth: 28, halign: 'right' },
-                3: { cellWidth: 20, halign: 'center' },
-                4: { cellWidth: 28, halign: 'right' },
-                5: { cellWidth: 35 },
+                0: { cellWidth: 38 },
+                1: { cellWidth: 38 },
+                2: { cellWidth: 24, halign: 'right' },
+                3: { cellWidth: 14, halign: 'center' },
+                4: { cellWidth: 24, halign: 'right' },
+                5: { cellWidth: 44 },
             },
             alternateRowStyles: { fillColor: [252, 252, 252] },
             margin: { left: 14, right: 14 },
@@ -622,5 +622,461 @@
         download(doc, 'Bulletins_Paie_Declares_' + periodeSafe + '.pdf');
     }
 
-    window.EmargementPdf = { genSansCnss: genSansCnss, genAvecCnss: genAvecCnss, genTransporteurs: genTransporteurs, genBulletins: genBulletins };
+    // ─────────────────────────────────────────────────────────────────────────────
+    // ARABIC SUPPORT — reshaper + font loader + genBulletinsAr
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    // Arabic letter → [isolated, final, initial, medial] Unicode Presentation Forms-B
+    var _AR_FORMS = {
+        'ء':['ﺀ',null,null,null],
+        'آ':['ﺁ','ﺂ',null,null],
+        'أ':['ﺃ','ﺄ',null,null],
+        'ؤ':['ﺅ','ﺆ',null,null],
+        'إ':['ﺇ','ﺈ',null,null],
+        'ئ':['ﺉ','ﺊ','ﺋ','ﺌ'],
+        'ا':['ﺍ','ﺎ',null,null],
+        'ب':['ﺏ','ﺐ','ﺑ','ﺒ'],
+        'ة':['ﺓ','ﺔ',null,null],
+        'ت':['ﺕ','ﺖ','ﺗ','ﺘ'],
+        'ث':['ﺙ','ﺚ','ﺛ','ﺜ'],
+        'ج':['ﺝ','ﺞ','ﺟ','ﺠ'],
+        'ح':['ﺡ','ﺢ','ﺣ','ﺤ'],
+        'خ':['ﺥ','ﺦ','ﺧ','ﺨ'],
+        'د':['ﺩ','ﺪ',null,null],
+        'ذ':['ﺫ','ﺬ',null,null],
+        'ر':['ﺭ','ﺮ',null,null],
+        'ز':['ﺯ','ﺰ',null,null],
+        'س':['ﺱ','ﺲ','ﺳ','ﺴ'],
+        'ش':['ﺵ','ﺶ','ﺷ','ﺸ'],
+        'ص':['ﺹ','ﺺ','ﺻ','ﺼ'],
+        'ض':['ﺽ','ﺾ','ﺿ','ﻀ'],
+        'ط':['ﻁ','ﻂ','ﻃ','ﻄ'],
+        'ظ':['ﻅ','ﻆ','ﻇ','ﻈ'],
+        'ع':['ﻉ','ﻊ','ﻋ','ﻌ'],
+        'غ':['ﻍ','ﻎ','ﻏ','ﻐ'],
+        'ف':['ﻑ','ﻒ','ﻓ','ﻔ'],
+        'ق':['ﻕ','ﻖ','ﻗ','ﻘ'],
+        'ك':['ﻙ','ﻚ','ﻛ','ﻜ'],
+        'ل':['ﻝ','ﻞ','ﻟ','ﻠ'],
+        'م':['ﻡ','ﻢ','ﻣ','ﻤ'],
+        'ن':['ﻥ','ﻦ','ﻧ','ﻨ'],
+        'ه':['ﻩ','ﻪ','ﻫ','ﻬ'],
+        'و':['ﻭ','ﻮ',null,null],
+        'ى':['ﻯ','ﻰ',null,null],
+        'ي':['ﻱ','ﻲ','ﻳ','ﻴ'],
+    };
+    // Letters that only connect to the right (no initial/medial form with next letter)
+    var _AR_RJOIN = {'ء':1,'آ':1,'أ':1,'ؤ':1,'إ':1,'ا':1,'ة':1,'د':1,'ذ':1,'ر':1,'ز':1,'و':1,'ى':1};
+
+    function _isAr(ch) { var c = ch.charCodeAt(0); return (c >= 0x0600 && c <= 0x06FF) || (c >= 0xFE70 && c <= 0xFEFF); }
+
+    // Reshape Arabic text and reverse for LTR jsPDF rendering
+    function _reshapeAr(text) {
+        if (!text) return '';
+        var chars = Array.from(String(text));
+        var out = [];
+        for (var i = 0; i < chars.length; i++) {
+            var ch = chars[i];
+            var forms = _AR_FORMS[ch];
+            if (!forms) { out.push(ch); continue; }
+            var prevConn = i > 0 && _isAr(chars[i-1]) && !_AR_RJOIN[chars[i-1]];
+            var nextConn = i < chars.length-1 && _isAr(chars[i+1]) && !!_AR_FORMS[chars[i+1]];
+            var fi = (!prevConn && !nextConn) ? 0 : (!prevConn && nextConn) ? 2 : (prevConn && nextConn) ? 3 : 1;
+            out.push(forms[fi] !== null && forms[fi] !== undefined ? forms[fi] : (forms[0] || ch));
+        }
+        return out.reverse().join('');
+    }
+
+    // Cache the font ArrayBuffer once loaded
+    var _arFontBase64 = null;
+
+    async function _loadArFont(doc) {
+        if (!_arFontBase64) {
+            var urls = [
+                '/assets/fonts/Amiri-Regular.ttf',
+                'https://cdn.jsdelivr.net/npm/amiri@0.113.0/Amiri-Regular.ttf',
+            ];
+            var buf = null;
+            for (var i = 0; i < urls.length && !buf; i++) {
+                try {
+                    var r = await fetch(urls[i]);
+                    if (r.ok) buf = await r.arrayBuffer();
+                } catch(e) {}
+            }
+            if (!buf) throw new Error('Impossible de charger la police Amiri. Vérifiez votre connexion.');
+            // Convert ArrayBuffer to base64
+            var bytes = new Uint8Array(buf);
+            var binary = '';
+            for (var j = 0; j < bytes.byteLength; j++) binary += String.fromCharCode(bytes[j]);
+            _arFontBase64 = window.btoa(binary);
+        }
+        doc.addFileToVFS('Amiri-Regular.ttf', _arFontBase64);
+        doc.addFont('Amiri-Regular.ttf', 'Amiri', 'normal');
+    }
+
+    // Arabic label map
+    var _AR = {
+        companyName:    _reshapeAr('بيري قود فارمز'),
+        bulletinTitle:  _reshapeAr('كشف الراتب'),
+        salarie:        _reshapeAr('بيانات الموظف'),
+        identification: _reshapeAr('التعريف'),
+        nom:            _reshapeAr('الاسم'),
+        prenom:         _reshapeAr('اللقب'),
+        equipe:         _reshapeAr('الفريق'),
+        categorie:      _reshapeAr('الفئة'),
+        matricule:      _reshapeAr('رقم التسجيل'),
+        cin:            _reshapeAr('رقم بطاقة التعريف'),
+        cnss:           _reshapeAr('رقم CNSS'),
+        cnssEmp:        _reshapeAr('رقم CNSS المشغل'),
+        ouvrierCnss:    _reshapeAr('عامل مصرح CNSS'),
+        ouvrierSansCnss:_reshapeAr('عامل غير مصرح'),
+        code:           _reshapeAr('الرمز'),
+        designation:    _reshapeAr('البيان'),
+        base:           _reshapeAr('الأساس'),
+        taux:           _reshapeAr('النسبة'),
+        gain:           _reshapeAr('المكسب'),
+        retenu:         _reshapeAr('المقتطع'),
+        salaireBase:    _reshapeAr('الراتب الأساسي'),
+        primeAnc:       _reshapeAr('علاوة الأقدمية'),
+        totalTraitements:_reshapeAr('مجموع الأجور'),
+        primeFonction:  _reshapeAr('علاوة المهمة'),
+        totalIndemnites:_reshapeAr('مجموع التعويضات'),
+        indemNi:        _reshapeAr('تعويضات غير خاضعة'),
+        indemTransport: _reshapeAr('تعويض النقل'),
+        totalNi:        _reshapeAr('مجموع غير خاضع'),
+        cnssRet:        _reshapeAr('اشتراك CNSS'),
+        amo:            _reshapeAr('اشتراك AMO'),
+        totalRetenues:  _reshapeAr('مجموع الاشتراكات'),
+        ir:             _reshapeAr('الضريبة على الدخل'),
+        totalImpots:    _reshapeAr('مجموع الضرائب'),
+        avances:        _reshapeAr('السلفات'),
+        avanceTransp:   _reshapeAr('سلفة النقل'),
+        totalAvances:   _reshapeAr('مجموع السلفات'),
+        arrondi:        _reshapeAr('التقريب'),
+        totaux:         _reshapeAr('المجاميع'),
+        netAPayer:      _reshapeAr('الصافي للصرف'),
+        cumuls:         _reshapeAr('مجاميع الفترة'),
+        joursTravailles:_reshapeAr('أيام العمل'),
+        brutImposable:  _reshapeAr('الأجر الإجمالي'),
+        netImposable:   _reshapeAr('الصافي الخاضع'),
+        retSociales:    _reshapeAr('الاشتراكات'),
+        impotIr:        _reshapeAr('الضريبة'),
+        conge:          _reshapeAr('وضعية الإجازة'),
+        soldePrev:      _reshapeAr('رصيد سنة سابقة'),
+        droitEnc:       _reshapeAr('حق السنة الجارية'),
+        congePris:      _reshapeAr('إجازة مأخوذة'),
+        soldeConge:     _reshapeAr('رصيد الإجازة'),
+        sitF:           _reshapeAr('وضع عائلي'),
+        nbEnf:          _reshapeAr('عدد الأطفال'),
+        deduc:          _reshapeAr('تخفيضات'),
+        dateNaiss:      _reshapeAr('تاريخ الميلاد'),
+        dateEntree:     _reshapeAr('تاريخ الالتحاق'),
+        salBase:        _reshapeAr('الأجر الأساسي'),
+        salHoraire:     _reshapeAr('الأجر الساعي'),
+        periodePaie:    _reshapeAr('فترة الأجر'),
+        de:             _reshapeAr('من'),
+        au_:            _reshapeAr('إلى'),
+        periode_:       _reshapeAr('الفترة'),
+        congeAu:        _reshapeAr('وضعية الإجازة بتاريخ'),
+    };
+
+    // Helper: reshape dynamic text (worker names, equipe, etc.)
+    function _ar(text) { return _reshapeAr(String(text || '—')); }
+
+    async function genBulletinsAr(workers, periode, smagBrutJournalier, options) {
+        if (!workers || workers.length === 0) { alert('Aucun ouvrier déclaré pour cette période.'); return; }
+
+        var doc = newDoc();
+        if (!doc) return;
+
+        try {
+            await _loadArFont(doc);
+        } catch(e) {
+            alert(e.message || 'Erreur chargement police arabe.');
+            return;
+        }
+
+        // Logo
+        var logoDataUrl = null;
+        try {
+            var resp = await fetch('/assets/icon-512.png');
+            var blob = await resp.blob();
+            logoDataUrl = await new Promise(function (resolve) {
+                var reader = new FileReader();
+                reader.onloadend = function () { resolve(reader.result); };
+                reader.readAsDataURL(blob);
+            });
+        } catch(e) {}
+
+        var ENTREPRISE = {
+            nom: 'BERRY GOOD FARMS', forme: 'Sarl au capital de 100 000,00 Dhs',
+            adresse1: '44 Imm. A, Rés. Al Boustane, cité Dakhla - Agadir',
+            tp: '67500683', rc: '38125', if_: '26107029', ice: '002106859000069', noCnss: '3633882',
+        };
+        var TAUX_CNSS = 0.0448;
+        var TAUX_AMO  = 0.0226;
+
+        // Build period label in Arabic
+        function _fmtDateAr(dateStr) {
+            if (!dateStr) return '';
+            var d = new Date(dateStr);
+            return d.getDate().toString().padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+        }
+        var periodeLabel;
+        if (options && options.dateDebut && options.dateFin) {
+            periodeLabel = _reshapeAr('إلى') + ' ' + _fmtDateAr(options.dateFin) + ' ' + _reshapeAr('من') + ' ' + _fmtDateAr(options.dateDebut);
+        } else {
+            periodeLabel = _reshapeAr('الفترة') + ' : ' + (periode || '');
+        }
+
+        var isFirst = true;
+
+        workers.forEach(function (w) {
+            if (!isFirst) doc.addPage();
+            isFirst = false;
+
+            var jours            = w.journees || 0;
+            var dailyRate        = smagBrutJournalier || 0;
+            var sHoraire         = dailyRate / 8;
+            var smagBaseTotal    = dailyRate * jours;
+            var primeFonctionTot = (w.primeFonctionJour || 0) * jours;
+            var ancPct           = w.anciennetePct || 0;
+            var ancBase          = smagBaseTotal + primeFonctionTot;
+            var ancMontant       = ancBase * ancPct / 100;
+            var brutTotal        = smagBaseTotal + ancMontant + primeFonctionTot;
+            var transportTotal   = w.transportTotal || 0;
+            var cnssRetenue      = brutTotal * TAUX_CNSS;
+            var amoRetenue       = brutTotal * TAUX_AMO;
+            var totalRetenues    = cnssRetenue + amoRetenue;
+            var netImposable     = brutTotal - totalRetenues;
+            var netAPayer        = Math.round(netImposable);
+            var arrondi          = netAPayer - netImposable;
+            var hasTransport     = transportTotal > 0;
+
+            var y = 10;
+
+            // Helper to set Amiri font
+            function setAr(size, style) {
+                doc.setFont('Amiri', style || 'normal');
+                doc.setFontSize(size || 10);
+            }
+
+            // ── BLOC 1 : Header société ──
+            var headerH = 30;
+            doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
+            doc.rect(14, y - 4, 182, headerH, 'F');
+
+            if (logoDataUrl) {
+                doc.addImage(logoDataUrl, 'PNG', 16, y - 2, 35, 20);
+            }
+
+            // Company name in Arabic (right side)
+            setAr(13, 'normal');
+            doc.setTextColor(C.berryBrand[0], C.berryBrand[1], C.berryBrand[2]);
+            doc.text(_AR.companyName, 196, y + 2, { align: 'right' });
+
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            setAr(8);
+            doc.text(ENTREPRISE.forme, 196, y + 7, { align: 'right' });
+            doc.text(ENTREPRISE.adresse1, 196, y + 11, { align: 'right' });
+            doc.text('TP: ' + ENTREPRISE.tp + '  |  RC: ' + ENTREPRISE.rc, 196, y + 15, { align: 'right' });
+            doc.text('IF: ' + ENTREPRISE.if_ + '  |  ICE: ' + ENTREPRISE.ice, 196, y + 19, { align: 'right' });
+            y += headerH;
+
+            // ── BLOC 2 : Titre ──
+            doc.setFillColor(C.berryBrand[0], C.berryBrand[1], C.berryBrand[2]);
+            doc.rect(14, y - 1, 182, 9, 'F');
+            setAr(11, 'normal');
+            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
+            doc.text(_AR.bulletinTitle, 105, y + 5, { align: 'center' });
+            setAr(8);
+            doc.text(periodeLabel, 16, y + 5, { align: 'left' });
+            y += 12;
+
+            // ── BLOC 3 : Info salarié ──
+            var colW = 88;
+            var xLeft = 14;
+            var xRight = 14 + colW + 6;
+            var yBlock = y;
+            var lineH = 5.5;
+
+            doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
+            doc.rect(xLeft, yBlock - 2, colW, 32, 'F');
+            doc.rect(xRight, yBlock - 2, colW, 32, 'F');
+
+            doc.setFillColor(C.greenBrand[0], C.greenBrand[1], C.greenBrand[2]);
+            doc.rect(xLeft, yBlock - 2, colW, 8, 'F');
+            doc.rect(xRight, yBlock - 2, colW, 8, 'F');
+            setAr(7.5, 'normal');
+            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
+            doc.text(_AR.salarie, xLeft + colW - 2, yBlock + 3, { align: 'right' });
+            doc.text(_AR.identification, xRight + colW - 2, yBlock + 3, { align: 'right' });
+
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            setAr(7.5);
+            var yL = yBlock + 9;
+            // Right-align all content in blocks
+            doc.text(_ar(w.nom || '—').toUpperCase(), xLeft + colW - 2, yL, { align: 'right' });
+            doc.text(_AR.nom + ' :', xLeft + 2, yL);
+            yL += lineH;
+            if (w.prenom) {
+                doc.text(_ar(w.prenom), xLeft + colW - 2, yL, { align: 'right' });
+                doc.text(_AR.prenom + ' :', xLeft + 2, yL);
+                yL += lineH;
+            }
+            doc.text(_ar(w.equipe || '—'), xLeft + colW - 2, yL, { align: 'right' });
+            doc.text(_AR.equipe + ' :', xLeft + 2, yL);
+            yL += lineH;
+            var catLabel = w.declare ? _AR.ouvrierCnss : _AR.ouvrierSansCnss;
+            doc.text(catLabel, xLeft + colW - 2, yL, { align: 'right' });
+            doc.text(_AR.categorie + ' :', xLeft + 2, yL);
+
+            var yR = yBlock + 9;
+            doc.text(String(w.matricule || '—'), xRight + colW - 2, yR, { align: 'right' });
+            doc.text(_AR.matricule + ' :', xRight + 2, yR);
+            yR += lineH;
+            doc.text(String(w.cin || '—'), xRight + colW - 2, yR, { align: 'right' });
+            doc.text(_AR.cin + ' :', xRight + 2, yR);
+            yR += lineH;
+            doc.text(String(w.cnss || '—'), xRight + colW - 2, yR, { align: 'right' });
+            doc.text(_AR.cnss + ' :', xRight + 2, yR);
+            yR += lineH;
+            doc.text(ENTREPRISE.noCnss, xRight + colW - 2, yR, { align: 'right' });
+            doc.text(_AR.cnssEmp + ' :', xRight + 2, yR);
+
+            y = Math.max(yL, yR) + 8;
+
+            // ── BLOC 3b : Ligne salaire de base ──
+            doc.autoTable({
+                startY: y,
+                head: [[_AR.sitF, _AR.nbEnf, _AR.deduc, _AR.dateNaiss, _AR.dateEntree, _AR.salBase, _AR.salHoraire, _AR.periodePaie]],
+                body: [['—','—','—','—','—', fmtDH(dailyRate), fmtDH(sHoraire), periodeLabel]],
+                styles:     { fontSize: 7, cellPadding: 2, font: 'Amiri', halign: 'right' },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'normal', fontSize: 7 },
+                columnStyles: {
+                    0:{cellWidth:15}, 1:{cellWidth:17}, 2:{cellWidth:15},
+                    3:{cellWidth:23}, 4:{cellWidth:23},
+                    5:{cellWidth:26,halign:'right'}, 6:{cellWidth:24,halign:'right'}, 7:{cellWidth:39,halign:'right'},
+                },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 4;
+
+            // ── BLOC 4 : Lignes de paie ──
+            var bodyRows = [];
+            var boldRows = [], totalRows = [], niHeaderRows = [], niTotalRows = [], avHeaderRows = [], avTotalRows = [];
+
+            bodyRows.push(['111', _AR.salaireBase, fmtDH(dailyRate), String(jours), fmtDH(smagBaseTotal), '']);
+            if (ancPct > 0) {
+                bodyRows.push(['121', _AR.primeAnc, fmtDH(ancBase), ancPct + '%', fmtDH(ancBase * ancPct / 100), '']);
+            }
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', _AR.totalTraitements, '', '', fmtDH(smagBaseTotal + ancMontant), '']);
+            if (primeFonctionTot > 0) {
+                bodyRows.push(['499', _AR.primeFonction, '', '', fmtDH(primeFonctionTot), '']);
+            }
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', _AR.totalIndemnites, '', '', fmtDH(primeFonctionTot), '']);
+
+            if (hasTransport) {
+                niHeaderRows.push(bodyRows.length);
+                bodyRows.push(['', _AR.indemNi, '', '', '', '']);
+                bodyRows.push(['', _AR.indemTransport, fmtDH(w.transportJour || 0), String(jours), fmtDH(transportTotal), '']);
+                niTotalRows.push(bodyRows.length);
+                bodyRows.push(['', _AR.totalNi, '', '', fmtDH(transportTotal), '']);
+            }
+
+            bodyRows.push(['601', _AR.cnssRet, fmtDH(brutTotal), '4.48%', '', fmtDH(cnssRetenue)]);
+            bodyRows.push(['631', _AR.amo, fmtDH(brutTotal), '2.26%', '', fmtDH(amoRetenue)]);
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', _AR.totalRetenues, '', '', '', fmtDH(totalRetenues)]);
+            bodyRows.push(['792', _AR.ir, fmtDH(netImposable), '', '', '0,00']);
+            boldRows.push(bodyRows.length);
+            bodyRows.push(['', _AR.totalImpots, '', '', '', '0,00']);
+
+            if (hasTransport) {
+                avHeaderRows.push(bodyRows.length);
+                bodyRows.push(['', _AR.avances, '', '', '', '']);
+                bodyRows.push(['', _AR.avanceTransp, '', '', '', fmtDH(transportTotal)]);
+                avTotalRows.push(bodyRows.length);
+                bodyRows.push(['', _AR.totalAvances, '', '', '', fmtDH(transportTotal)]);
+            }
+
+            if (Math.abs(arrondi) >= 0.005) {
+                bodyRows.push(['9999', _AR.arrondi, '', '', '', fmtDH(arrondi)]);
+            }
+
+            var totauxIdx = bodyRows.length;
+            totalRows.push(totauxIdx);
+            bodyRows.push(['', _AR.totaux, '', '', fmtDH(brutTotal + transportTotal), fmtDH(totalRetenues + transportTotal)]);
+            var netIdx = bodyRows.length;
+            totalRows.push(netIdx);
+            bodyRows.push(['', _AR.netAPayer, '', '', fmtDH(netAPayer), '']);
+
+            doc.autoTable({
+                startY: y,
+                head: [[_AR.code, _AR.designation, _AR.base, _AR.taux, _AR.gain, _AR.retenu]],
+                body: bodyRows,
+                styles:     { fontSize: 8, cellPadding: 2, font: 'Amiri', halign: 'right' },
+                headStyles: { fillColor: C.berry, textColor: C.white, fontStyle: 'normal', fontSize: 8 },
+                columnStyles: {
+                    0:{cellWidth:16,halign:'center'}, 1:{cellWidth:72},
+                    2:{cellWidth:28,halign:'right'}, 3:{cellWidth:20,halign:'center'},
+                    4:{cellWidth:28,halign:'right'}, 5:{cellWidth:28,halign:'right'},
+                },
+                didParseCell: function (data) {
+                    if (data.section !== 'body') return;
+                    var row = data.row.index;
+                    if (boldRows.indexOf(row) !== -1) { data.cell.styles.fontStyle='normal'; data.cell.styles.fillColor=C.lightGray; }
+                    if (totalRows.indexOf(row) !== -1) { data.cell.styles.fontStyle='normal'; data.cell.styles.fillColor=[220,230,220]; }
+                    if (niHeaderRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[230,244,255]; data.cell.styles.textColor=[52,73,171]; }
+                    if (niTotalRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[240,248,255]; }
+                    if (avHeaderRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[255,235,235]; data.cell.styles.textColor=[192,57,43]; }
+                    if (avTotalRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[255,245,245]; data.cell.styles.textColor=[192,57,43]; }
+                    if (row === netIdx && data.column.index === 4) { data.cell.styles.textColor=C.berry; data.cell.styles.fontSize=9; }
+                },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 5;
+
+            // ── BLOC 5 : Cumuls ──
+            setAr(8);
+            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
+            doc.text(_AR.cumuls, 196, y, { align: 'right' });
+            y += 3;
+
+            doc.autoTable({
+                startY: y,
+                head: [[_AR.joursTravailles, _AR.brutImposable, _AR.netImposable, _AR.retSociales, _AR.impotIr]],
+                body: [[String(jours), fmtDH(brutTotal), fmtDH(netAPayer), fmtDH(totalRetenues), '0,00']],
+                styles:     { fontSize: 8, cellPadding: 2, font: 'Amiri', halign: 'right' },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'normal', fontSize: 7.5 },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+            y = doc.lastAutoTable.finalY + 5;
+
+            // ── BLOC 6 : Congés ──
+            setAr(8);
+            doc.text(_AR.congeAu + ' : ' + periodeLabel, 196, y, { align: 'right' });
+            y += 3;
+
+            doc.autoTable({
+                startY: y,
+                head: [[_AR.soldePrev, _AR.droitEnc, _AR.congePris, _AR.soldeConge]],
+                body: [['—','—','—','—']],
+                styles:     { fontSize: 8, cellPadding: 2, font: 'Amiri', halign: 'center' },
+                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'normal', fontSize: 7.5 },
+                margin: { left: 14, right: 14 },
+                theme: 'grid',
+            });
+        });
+
+        var periodeSafe = (periode || 'quinzaine').replace(/[^a-zA-Z0-9_-]/g, '_');
+        download(doc, 'Bulletins_Paie_AR_' + periodeSafe + '.pdf');
+    }
+
+    window.EmargementPdf = { genSansCnss: genSansCnss, genAvecCnss: genAvecCnss, genTransporteurs: genTransporteurs, genBulletins: genBulletins, genBulletinsAr: genBulletinsAr };
 })();

@@ -13375,6 +13375,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genBulletinsXlsx(_declared, currentPeriode); }}>
                                                 <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
                                             </button>
+                                            <button disabled={!_hasPdf || _declared.length === 0} style={_fmtBtn(!_hasPdf || _declared.length === 0, 'AR')}
+                                                onClick={async function () {
+                                                    if (!window.EmargementPdf || !window.EmargementPdf.genBulletinsAr) return;
+                                                    var _parJourDays = parJour.map(function(d){return d.jour;}).filter(Boolean).sort();
+                                                    var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
+                                                    var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length-1] : null;
+                                                    await window.EmargementPdf.genBulletinsAr(_declared, currentPeriode, _smag.smagBrutJournalier, { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin });
+                                                }}>
+                                                <i className="fa-solid fa-language" style={{marginRight:3}}></i>AR
+                                            </button>
                                         </div>
                                     </div>
 
