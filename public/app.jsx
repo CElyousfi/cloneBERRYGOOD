@@ -11592,7 +11592,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             nbJours={parJour.length}
                             badges={[
                                 { bg: 'var(--berry-pale)', color: 'var(--berry)', icon: 'fa-calendar', text: parJour.length + ' jours' },
-                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-users', text: totalJourneesDistinct.toLocaleString('fr-FR') + ' JH' },
+                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-users', text: (totalJournees || totalJourneesDistinct).toLocaleString('fr-FR') + ' JH' },
                                 { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
                                 ...(parJour.length > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
                             ]}

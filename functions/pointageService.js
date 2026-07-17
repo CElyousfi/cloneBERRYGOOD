@@ -3891,6 +3891,70 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         return res.json({ success: true, ref, campagne_assignee: campagneCible });
       }
 
+      // ---- GET referentiel-unresolved : liste les Ref_parcelle non résolus ----
+      // Requiert auth role 'dg' ou 'rh'.
+      if (action === 'referentiel-unresolved' && req.method === 'GET') {
+        const _au = await verifyAuth(req);
+        const _cp = await resolveCallerProfile(_au);
+        const _pid = _cp && (_cp.profileId || _cp.role || '');
+        const _allowed = _pid === 'dg' || _pid === 'rh' || _pid === 'admin';
+        if (!_allowed) {
+          return res.status(403).json({ success: false, error: 'Réservé DG/RH' });
+        }
+        const metaSnap = await db_firestore.collection('parcelle_ferme_referentiel_meta').doc('state').get();
+        if (!metaSnap.exists) {
+          return res.json({ success: true, unresolvedRefs: [], unresolvedCount: 0, campagne: null, lastSyncAt: null });
+        }
+        const meta = metaSnap.data();
+        return res.json({
+          success: true,
+          unresolvedRefs: meta.unresolvedRefs || [],
+          unresolvedCount: typeof meta.unresolvedCount === 'number' ? meta.unresolvedCount : (meta.unresolvedRefs || []).length,
+          campagne: meta.campagne || null,
+          lastSyncAt: meta.lastSyncAt || null,
+        });
+      }
+
+      // ---- POST referentiel-override-ferme : rattachement manuel d'une parcelle à une ferme ----
+      // Requiert auth role 'dg' (admin uniquement).
+      if (action === 'referentiel-override-ferme' && req.method === 'POST') {
+        const _au = await verifyAuth(req);
+        const _cp = await resolveCallerProfile(_au);
+        const _pid = _cp && (_cp.profileId || _cp.role || '');
+        if (_pid !== 'dg' && _pid !== 'admin') {
+          return res.status(403).json({ success: false, error: 'Réservé DG/admin' });
+        }
+        const VALID_FERMES = ['F1', 'F5', 'Avocatier', 'BAHIA'];
+        const body = req.body || {};
+        const refParcelle = (body.ref_parcelle == null ? '' : String(body.ref_parcelle)).trim();
+        const ferme = (body.ferme == null ? '' : String(body.ferme)).trim();
+        const campagne = (body.campagne == null ? '' : String(body.campagne)).trim();
+        if (!refParcelle) return res.status(400).json({ success: false, error: 'ref_parcelle manquant' });
+        if (!ferme || VALID_FERMES.indexOf(ferme) < 0) {
+          return res.status(400).json({ success: false, error: 'ferme invalide. Valeurs acceptées : ' + VALID_FERMES.join(', ') });
+        }
+        if (!campagne || !isValidCampagneLabel(campagne)) {
+          return res.status(400).json({ success: false, error: 'campagne invalide (ex: 2026-2027)' });
+        }
+        const docId = `${campagne}__${refParcelle}`;
+        try {
+          await db_firestore.collection('parcelle_ferme_referentiel').doc(docId).set({
+            source: 'manual',
+            ferme,
+            confidence: 'manual',
+            updated_at: admin.firestore.FieldValue.serverTimestamp(),
+            ref_parcelle: refParcelle,
+            campagne,
+          }, { merge: true });
+        } catch (e) {
+          console.error('[referentiel-override-ferme] échec écriture:', e.message);
+          return res.status(500).json({ success: false, error: 'Échec de l\'écriture' });
+        }
+        // Invalide le cache référentiel mémoire pour que le nouvel override soit pris en compte.
+        invalidateReferentielCache();
+        return res.json({ success: true, docId, ferme });
+      }
+
       return res.status(400).json({ success: false, error: "Unknown action: " + action });
     } catch (err) {
       console.error("Erreur pointageRH:", err);
