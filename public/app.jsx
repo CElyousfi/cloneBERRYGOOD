@@ -13239,9 +13239,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             });
 
                         const _hasPdf = !!(window.EmargementPdf);
+                        const _hasXlsx = !!(window.EmargementExcel && window.XLSX);
 
-                        const _btnStyle = function (color) {
-                            return { width: '100%', padding: '10px 16px', borderRadius: 8, border: 'none', background: color, color: '#fff', fontSize: 13, fontWeight: 600, cursor: _hasPdf ? 'pointer' : 'not-allowed', opacity: _hasPdf ? 1 : 0.5, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 };
+                        const _rowStyle = function (color) {
+                            return { width: '100%', padding: '10px 16px', borderRadius: 8, background: color, color: '#fff', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 };
+                        };
+                        const _fmtBtn = function (disabled, title) {
+                            return { border: '1px solid rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.15)', color: '#fff', borderRadius: 5, padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.45 : 1, whiteSpace: 'nowrap', flexShrink: 0 };
                         };
 
                         return (
@@ -13288,66 +13292,90 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             </div>
                                         )}
 
-                                        <button disabled={!_hasPdf}
-                                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genSansCnss(_nonDeclared, currentPeriode); }}
-                                            style={_btnStyle('#e74c3c')}>
-                                            <i className="fa-solid fa-file-arrow-down" style={{fontSize:16}}></i>
-                                            <div style={{textAlign:'left'}}>
+                                        {/* Ouvriers SANS CNSS */}
+                                        <div style={_rowStyle('#e74c3c')}>
+                                            <i className="fa-solid fa-file-arrow-down" style={{fontSize:16,flexShrink:0}}></i>
+                                            <div style={{flex:1,textAlign:'left'}}>
                                                 <div>Ouvriers SANS CNSS</div>
                                                 <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_nonDeclared.length} ouvriers — {_nonDeclared.reduce(function (s,w){return s+w.journees;},0)} jours — {(_nonDeclared.reduce(function (s,w){return s+w.net;},0)).toLocaleString('fr-FR')} DH</div>
                                             </div>
-                                        </button>
+                                            <button disabled={!_hasPdf} style={_fmtBtn(!_hasPdf, 'PDF')}
+                                                onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genSansCnss(_nonDeclared, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
+                                            </button>
+                                            <button disabled={!_hasXlsx} style={_fmtBtn(!_hasXlsx, 'XLS')}
+                                                onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genSansCnssXlsx(_nonDeclared, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
+                                            </button>
+                                        </div>
 
-                                        <button disabled={!_hasPdf}
-                                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genAvecCnss(_declared, currentPeriode); }}
-                                            style={_btnStyle('#27ae60')}>
-                                            <i className="fa-solid fa-file-arrow-down" style={{fontSize:16}}></i>
-                                            <div style={{textAlign:'left'}}>
+                                        {/* Ouvriers Déclarés CNSS */}
+                                        <div style={_rowStyle('#27ae60')}>
+                                            <i className="fa-solid fa-file-arrow-down" style={{fontSize:16,flexShrink:0}}></i>
+                                            <div style={{flex:1,textAlign:'left'}}>
                                                 <div>Ouvriers Déclarés CNSS</div>
                                                 <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_declared.length} ouvriers — {_declared.reduce(function (s,w){return s+w.journees;},0)} jours — {(_declared.reduce(function (s,w){return s+w.net;},0)).toLocaleString('fr-FR')} DH</div>
                                             </div>
-                                        </button>
+                                            <button disabled={!_hasPdf} style={_fmtBtn(!_hasPdf, 'PDF')}
+                                                onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genAvecCnss(_declared, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
+                                            </button>
+                                            <button disabled={!_hasXlsx} style={_fmtBtn(!_hasXlsx, 'XLS')}
+                                                onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genAvecCnssXlsx(_declared, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
+                                            </button>
+                                        </div>
 
-                                        <button disabled={!_hasPdf}
-                                            onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genTransporteurs(_transportEquipes, currentPeriode); }}
-                                            style={_btnStyle('#3949ab')}>
-                                            <i className="fa-solid fa-file-arrow-down" style={{fontSize:16}}></i>
-                                            <div style={{textAlign:'left'}}>
+                                        {/* Transporteurs */}
+                                        <div style={_rowStyle('#3949ab')}>
+                                            <i className="fa-solid fa-file-arrow-down" style={{fontSize:16,flexShrink:0}}></i>
+                                            <div style={{flex:1,textAlign:'left'}}>
                                                 <div>Transporteurs</div>
                                                 <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_transportEquipes.length} équipes — {(_transportEquipes.reduce(function (s,e){return s+e.montant;},0)).toLocaleString('fr-FR')} DH</div>
                                             </div>
-                                        </button>
+                                            <button disabled={!_hasPdf} style={_fmtBtn(!_hasPdf, 'PDF')}
+                                                onClick={function () { if (window.EmargementPdf) window.EmargementPdf.genTransporteurs(_transportEquipes, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
+                                            </button>
+                                            <button disabled={!_hasXlsx} style={_fmtBtn(!_hasXlsx, 'XLS')}
+                                                onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genTransporteursXlsx(_transportEquipes, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
+                                            </button>
+                                        </div>
 
-                                        <button disabled={!_hasPdf || _declared.length === 0}
-                                            onClick={async function () {
-                                                if (!window.EmargementPdf) return;
-                                                var personnelRef = {};
-                                                try {
-                                                    var token = await firebase.auth().currentUser.getIdToken();
-                                                    var rhResp = await fetch('/api/rh?action=personnel-ref', {
-                                                        headers: { 'Authorization': 'Bearer ' + token }
-                                                    });
-                                                    var rhData = await rhResp.json();
-                                                    if (rhData.success) personnelRef = rhData.data || {};
-                                                } catch(e) {
-                                                    // silencieux — on génère sans CIN/CNSS
-                                                }
-                                                var enrichedWorkers = _declared.map(function(w) {
-                                                    var ref = personnelRef[String(w.matricule)] || {};
-                                                    return Object.assign({}, w, { cin: ref.cin || null, cnss: ref.cnss || null });
-                                                });
-                                                var _parJourDays = parJour.map(function(d) { return d.jour; }).filter(Boolean).sort();
-                                                var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
-                                                var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length - 1] : null;
-                                                await window.EmargementPdf.genBulletins(enrichedWorkers, currentPeriode, _smag.smagBrutJournalier, { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin });
-                                            }}
-                                            style={_btnStyle(_declared.length > 0 ? '#8B2252' : '#aaa')}>
-                                            <i className="fa-solid fa-file-lines" style={{fontSize:16}}></i>
-                                            <div style={{textAlign:'left'}}>
+                                        {/* Bulletins de paie — Déclarés */}
+                                        <div style={_rowStyle(_declared.length > 0 ? '#8B2252' : '#aaa')}>
+                                            <i className="fa-solid fa-file-lines" style={{fontSize:16,flexShrink:0}}></i>
+                                            <div style={{flex:1,textAlign:'left'}}>
                                                 <div>Bulletins de paie — Déclarés</div>
                                                 <div style={{fontSize:11,fontWeight:400,opacity:0.85}}>{_declared.length} bulletins · 1 page/ouvrier</div>
                                             </div>
-                                        </button>
+                                            <button disabled={!_hasPdf || _declared.length === 0} style={_fmtBtn(!_hasPdf || _declared.length === 0, 'PDF')}
+                                                onClick={async function () {
+                                                    if (!window.EmargementPdf) return;
+                                                    var personnelRef = {};
+                                                    try {
+                                                        var token = await firebase.auth().currentUser.getIdToken();
+                                                        var rhResp = await fetch('/api/rh?action=personnel-ref', { headers: { 'Authorization': 'Bearer ' + token } });
+                                                        var rhData = await rhResp.json();
+                                                        if (rhData.success) personnelRef = rhData.data || {};
+                                                    } catch(e) {}
+                                                    var enrichedWorkers = _declared.map(function(w) {
+                                                        var ref = personnelRef[String(w.matricule)] || {};
+                                                        return Object.assign({}, w, { cin: ref.cin || null, cnss: ref.cnss || null });
+                                                    });
+                                                    var _parJourDays = parJour.map(function(d) { return d.jour; }).filter(Boolean).sort();
+                                                    var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
+                                                    var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length - 1] : null;
+                                                    await window.EmargementPdf.genBulletins(enrichedWorkers, currentPeriode, _smag.smagBrutJournalier, { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin });
+                                                }}>
+                                                <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
+                                            </button>
+                                            <button disabled={!_hasXlsx || _declared.length === 0} style={_fmtBtn(!_hasXlsx || _declared.length === 0, 'XLS')}
+                                                onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genBulletinsXlsx(_declared, currentPeriode); }}>
+                                                <i className="fa-solid fa-file-excel" style={{marginRight:3}}></i>XLS
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div style={{padding:'0 20px 14px',fontSize:10,color:'var(--gray-400)',textAlign:'center'}}>
