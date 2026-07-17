@@ -987,8 +987,8 @@
                 bodyRows.push(['', _AR.totalNi, '', '', fmtDH(transportTotal), '']);
             }
 
-            bodyRows.push(['601', _AR.cnssRet, fmtDH(brutTotal), '4.48%', '', fmtDH(cnssRetenue)]);
-            bodyRows.push(['631', _AR.amo, fmtDH(brutTotal), '2.26%', '', fmtDH(amoRetenue)]);
+            bodyRows.push(['601', _AR.cnssRet, fmtDH(brutTotal), '4,48%', '', fmtDH(cnssRetenue)]);
+            bodyRows.push(['631', _AR.amo, fmtDH(brutTotal), '2,26%', '', fmtDH(amoRetenue)]);
             boldRows.push(bodyRows.length);
             bodyRows.push(['', _AR.totalRetenues, '', '', '', fmtDH(totalRetenues)]);
             bodyRows.push(['792', _AR.ir, fmtDH(netImposable), '', '', '0,00']);
