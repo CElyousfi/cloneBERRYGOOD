@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 84,
+        "commits": 85,
         "file": "public/app.jsx"
       },
       {
@@ -52,7 +52,7 @@
       },
       {
         "commits": 5,
-        "file": "scripts/build-frontend.js"
+        "file": "public/lib/emargementPdf.js"
       },
       {
         "commits": 4,
@@ -60,11 +60,11 @@
       },
       {
         "commits": 4,
-        "file": "tests/unit/pointageBdpMap.test.js"
+        "file": "scripts/build-frontend.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c3f0f0e3ff7426fc",
+    "sourceFingerprint": "sha256:4422137fd95507a2",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
