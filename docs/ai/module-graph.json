@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "192/333 fichiers classifiés",
+          "detail": "192/334 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "34/127 modules avec ≥1 test",
+          "detail": "34/128 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 83,
+        "commits": 84,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c6971211644cb9f8",
+    "sourceFingerprint": "sha256:c3f0f0e3ff7426fc",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
@@ -72,9 +72,9 @@
       "domains": 10,
       "extractedComponents": 16,
       "firestoreCollections": 56,
-      "libHelpers": 24,
+      "libHelpers": 25,
       "tabFunctions": 124,
-      "unclassifiedFiles": 141,
+      "unclassifiedFiles": 142,
       "unitTestFiles": 22
     }
   },
@@ -2060,6 +2060,10 @@
       "confidence": "high",
       "domain": "referentiel"
     },
+    "public/lib/emargementExcel.js": {
+      "confidence": "low",
+      "domain": null
+    },
     "public/lib/emargementPdf.js": {
       "confidence": "low",
       "domain": null
@@ -2969,6 +2973,10 @@
     {
       "confidence": "low",
       "file": "public/components/MagMappingConsoTab.jsx"
+    },
+    {
+      "confidence": "low",
+      "file": "public/lib/emargementExcel.js"
     },
     {
       "confidence": "low",
