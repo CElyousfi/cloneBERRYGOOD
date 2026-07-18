@@ -786,55 +786,43 @@
     async function genBulletinsAr(workers, periode, smagBrutJournalier, options) {
         if (!workers || workers.length === 0) { alert('Aucun ouvrier déclaré pour cette période.'); return; }
 
-        var doc = newDoc();
-        if (!doc) return;
-
-        try {
-            await _loadArFont(doc);
-        } catch(e) {
-            alert(e.message || 'Erreur chargement police arabe.');
-            return;
+        // Lazy-load html2canvas
+        if (!window.html2canvas) {
+            await new Promise(function(resolve, reject) {
+                var s = document.createElement('script');
+                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+                s.onload = resolve;
+                s.onerror = function() { reject(new Error('Impossible de charger html2canvas.')); };
+                document.head.appendChild(s);
+            });
         }
 
-        // Logo
-        var logoDataUrl = null;
-        try {
-            var resp = await fetch('/assets/icon-512.png');
-            var blob = await resp.blob();
-            logoDataUrl = await new Promise(function (resolve) {
-                var reader = new FileReader();
-                reader.onloadend = function () { resolve(reader.result); };
-                reader.readAsDataURL(blob);
-            });
-        } catch(e) {}
+        var TAUX_CNSS = 0.0448;
+        var TAUX_AMO  = 0.0226;
+
+        function fmtDHAr(n) {
+            return Number(n || 0).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        }
+        function fmtDateAr(dateStr) {
+            if (!dateStr) return '';
+            var d = new Date(dateStr);
+            return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+        }
 
         var ENTREPRISE = {
             nom: 'BERRY GOOD FARMS', forme: 'Sarl au capital de 100 000,00 Dhs',
             adresse1: '44 Imm. A, Rés. Al Boustane, cité Dakhla - Agadir',
             tp: '67500683', rc: '38125', if_: '26107029', ice: '002106859000069', noCnss: '3633882',
         };
-        var TAUX_CNSS = 0.0448;
-        var TAUX_AMO  = 0.0226;
 
-        // Build period label in Arabic
-        function _fmtDateAr(dateStr) {
-            if (!dateStr) return '';
-            var d = new Date(dateStr);
-            return d.getDate().toString().padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
-        }
         var periodeLabel;
         if (options && options.dateDebut && options.dateFin) {
-            periodeLabel = _reshapeAr('إلى') + ' ' + _fmtDateAr(options.dateFin) + ' ' + _reshapeAr('من') + ' ' + _fmtDateAr(options.dateDebut);
+            periodeLabel = 'من ' + fmtDateAr(options.dateDebut) + ' إلى ' + fmtDateAr(options.dateFin);
         } else {
-            periodeLabel = _reshapeAr('الفترة') + ' : ' + (periode || '');
+            periodeLabel = 'الفترة : ' + String(periode || '');
         }
 
-        var isFirst = true;
-
-        workers.forEach(function (w) {
-            if (!isFirst) doc.addPage();
-            isFirst = false;
-
+        function buildHtml(w) {
             var jours            = w.journees || 0;
             var dailyRate        = smagBrutJournalier || 0;
             var sHoraire         = dailyRate / 8;
@@ -850,229 +838,192 @@
             var totalRetenues    = cnssRetenue + amoRetenue;
             var netImposable     = brutTotal - totalRetenues;
             var netAPayer        = Math.round(netImposable);
-            var arrondi          = netAPayer - netImposable;
             var hasTransport     = transportTotal > 0;
 
-            var y = 10;
-
-            // Helper to set Amiri font
-            function setAr(size, style) {
-                doc.setFont('Amiri', style || 'normal');
-                doc.setFontSize(size || 10);
-            }
-
-            // ── BLOC 1 : Header société ──
-            var headerH = 30;
-            doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
-            doc.rect(14, y - 4, 182, headerH, 'F');
-
-            if (logoDataUrl) {
-                doc.addImage(logoDataUrl, 'PNG', 16, y - 2, 35, 20);
-            }
-
-            // Company name in Arabic (right side)
-            setAr(13, 'normal');
-            doc.setTextColor(C.berryBrand[0], C.berryBrand[1], C.berryBrand[2]);
-            doc.text(_AR.companyName, 196, y + 2, { align: 'right' });
-
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            setAr(8);
-            doc.text(ENTREPRISE.forme, 196, y + 7, { align: 'right' });
-            doc.text(ENTREPRISE.adresse1, 196, y + 11, { align: 'right' });
-            doc.text('TP: ' + ENTREPRISE.tp + '  |  RC: ' + ENTREPRISE.rc, 196, y + 15, { align: 'right' });
-            doc.text('IF: ' + ENTREPRISE.if_ + '  |  ICE: ' + ENTREPRISE.ice, 196, y + 19, { align: 'right' });
-            y += headerH;
-
-            // ── BLOC 2 : Titre ──
-            doc.setFillColor(C.berryBrand[0], C.berryBrand[1], C.berryBrand[2]);
-            doc.rect(14, y - 1, 182, 9, 'F');
-            setAr(11, 'normal');
-            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
-            doc.text(_AR.bulletinTitle, 105, y + 5, { align: 'center' });
-            setAr(8);
-            doc.text(periodeLabel, 16, y + 5, { align: 'left' });
-            y += 12;
-
-            // ── BLOC 3 : Info salarié ──
-            var colW = 88;
-            var xLeft = 14;
-            var xRight = 14 + colW + 6;
-            var yBlock = y;
-            var lineH = 5.5;
-
-            doc.setFillColor(C.berryPaleBg[0], C.berryPaleBg[1], C.berryPaleBg[2]);
-            doc.rect(xLeft, yBlock - 2, colW, 32, 'F');
-            doc.rect(xRight, yBlock - 2, colW, 32, 'F');
-
-            doc.setFillColor(C.greenBrand[0], C.greenBrand[1], C.greenBrand[2]);
-            doc.rect(xLeft, yBlock - 2, colW, 8, 'F');
-            doc.rect(xRight, yBlock - 2, colW, 8, 'F');
-            setAr(7.5, 'normal');
-            doc.setTextColor(C.white[0], C.white[1], C.white[2]);
-            doc.text(_AR.salarie, xLeft + colW - 2, yBlock + 3, { align: 'right' });
-            doc.text(_AR.identification, xRight + colW - 2, yBlock + 3, { align: 'right' });
-
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            setAr(7.5);
-            var yL = yBlock + 9;
-            // Right-align all content in blocks
-            doc.text(_ar(w.nom || '—').toUpperCase(), xLeft + colW - 2, yL, { align: 'right' });
-            doc.text(_AR.nom + ' :', xLeft + 2, yL);
-            yL += lineH;
-            if (w.prenom) {
-                doc.text(_ar(w.prenom), xLeft + colW - 2, yL, { align: 'right' });
-                doc.text(_AR.prenom + ' :', xLeft + 2, yL);
-                yL += lineH;
-            }
-            doc.text(_ar(w.equipe || '—'), xLeft + colW - 2, yL, { align: 'right' });
-            doc.text(_AR.equipe + ' :', xLeft + 2, yL);
-            yL += lineH;
-            var catLabel = w.declare ? _AR.ouvrierCnss : _AR.ouvrierSansCnss;
-            doc.text(catLabel, xLeft + colW - 2, yL, { align: 'right' });
-            doc.text(_AR.categorie + ' :', xLeft + 2, yL);
-
-            var yR = yBlock + 9;
-            doc.text(String(w.matricule || '—'), xRight + colW - 2, yR, { align: 'right' });
-            doc.text(_AR.matricule + ' :', xRight + 2, yR);
-            yR += lineH;
-            doc.text(String(w.cin || '—'), xRight + colW - 2, yR, { align: 'right' });
-            doc.text(_AR.cin + ' :', xRight + 2, yR);
-            yR += lineH;
-            doc.text(String(w.cnss || '—'), xRight + colW - 2, yR, { align: 'right' });
-            doc.text(_AR.cnss + ' :', xRight + 2, yR);
-            yR += lineH;
-            doc.text(ENTREPRISE.noCnss, xRight + colW - 2, yR, { align: 'right' });
-            doc.text(_AR.cnssEmp + ' :', xRight + 2, yR);
-
-            y = Math.max(yL, yR) + 8;
-
-            // ── BLOC 3b : Ligne salaire de base ──
-            doc.autoTable({
-                startY: y,
-                head: [[_AR.sitF, _AR.nbEnf, _AR.deduc, _AR.dateNaiss, _AR.dateEntree, _AR.salBase, _AR.salHoraire, _AR.periodePaie]],
-                body: [['—','—','—','—','—', fmtDH(dailyRate), fmtDH(sHoraire), periodeLabel]],
-                styles:     { fontSize: 7, cellPadding: 2, font: 'Amiri', halign: 'right' },
-                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'normal', fontSize: 7 },
-                columnStyles: {
-                    0:{cellWidth:15}, 1:{cellWidth:17}, 2:{cellWidth:15},
-                    3:{cellWidth:23}, 4:{cellWidth:23},
-                    5:{cellWidth:26,halign:'right'}, 6:{cellWidth:24,halign:'right'}, 7:{cellWidth:39,halign:'right'},
-                },
-                margin: { left: 14, right: 14 },
-                theme: 'grid',
-            });
-            y = doc.lastAutoTable.finalY + 4;
-
-            // ── BLOC 4 : Lignes de paie ──
-            var bodyRows = [];
-            var boldRows = [], totalRows = [], niHeaderRows = [], niTotalRows = [], avHeaderRows = [], avTotalRows = [];
-
-            bodyRows.push(['111', _AR.salaireBase, fmtDH(dailyRate), String(jours), fmtDH(smagBaseTotal), '']);
+            var payRows = '';
+            payRows += '<tr><td>111</td><td>الراتب الأساسي</td><td>' + fmtDHAr(dailyRate) + '</td><td>' + jours + '</td><td>' + fmtDHAr(smagBaseTotal) + '</td><td></td></tr>';
             if (ancPct > 0) {
-                bodyRows.push(['121', _AR.primeAnc, fmtDH(ancBase), ancPct + '%', fmtDH(ancBase * ancPct / 100), '']);
+                payRows += '<tr><td>121</td><td>علاوة الأقدمية</td><td>' + fmtDHAr(ancBase) + '</td><td>' + ancPct + '%</td><td>' + fmtDHAr(ancMontant) + '</td><td></td></tr>';
             }
-            boldRows.push(bodyRows.length);
-            bodyRows.push(['', _AR.totalTraitements, '', '', fmtDH(smagBaseTotal + ancMontant), '']);
+            payRows += '<tr class="subtotal"><td></td><td>مجموع الأجور</td><td></td><td></td><td>' + fmtDHAr(smagBaseTotal + ancMontant) + '</td><td></td></tr>';
             if (primeFonctionTot > 0) {
-                bodyRows.push(['499', _AR.primeFonction, '', '', fmtDH(primeFonctionTot), '']);
+                payRows += '<tr><td>499</td><td>علاوة المهمة</td><td></td><td></td><td>' + fmtDHAr(primeFonctionTot) + '</td><td></td></tr>';
             }
-            boldRows.push(bodyRows.length);
-            bodyRows.push(['', _AR.totalIndemnites, '', '', fmtDH(primeFonctionTot), '']);
-
+            payRows += '<tr class="subtotal"><td></td><td>مجموع التعويضات</td><td></td><td></td><td>' + fmtDHAr(primeFonctionTot) + '</td><td></td></tr>';
             if (hasTransport) {
-                niHeaderRows.push(bodyRows.length);
-                bodyRows.push(['', _AR.indemNi, '', '', '', '']);
-                bodyRows.push(['', _AR.indemTransport, fmtDH(w.transportJour || 0), String(jours), fmtDH(transportTotal), '']);
-                niTotalRows.push(bodyRows.length);
-                bodyRows.push(['', _AR.totalNi, '', '', fmtDH(transportTotal), '']);
+                payRows += '<tr class="ni-header"><td></td><td colspan="5">تعويضات غير خاضعة للضريبة</td></tr>';
+                payRows += '<tr><td></td><td>تعويض النقل</td><td>' + fmtDHAr(w.transportJour||0) + '</td><td>' + jours + '</td><td>' + fmtDHAr(transportTotal) + '</td><td></td></tr>';
+                payRows += '<tr class="subtotal ni"><td></td><td>مجموع غير خاضع</td><td></td><td></td><td>' + fmtDHAr(transportTotal) + '</td><td></td></tr>';
             }
-
-            bodyRows.push(['601', _AR.cnssRet, fmtDH(brutTotal), '4,48%', '', fmtDH(cnssRetenue)]);
-            bodyRows.push(['631', _AR.amo, fmtDH(brutTotal), '2,26%', '', fmtDH(amoRetenue)]);
-            boldRows.push(bodyRows.length);
-            bodyRows.push(['', _AR.totalRetenues, '', '', '', fmtDH(totalRetenues)]);
-            bodyRows.push(['792', _AR.ir, fmtDH(netImposable), '', '', '0,00']);
-            boldRows.push(bodyRows.length);
-            bodyRows.push(['', _AR.totalImpots, '', '', '', '0,00']);
-
+            payRows += '<tr><td>601</td><td>اشتراك CNSS</td><td>' + fmtDHAr(brutTotal) + '</td><td>4,48%</td><td></td><td>' + fmtDHAr(cnssRetenue) + '</td></tr>';
+            payRows += '<tr><td>631</td><td>اشتراك AMO</td><td>' + fmtDHAr(brutTotal) + '</td><td>2,26%</td><td></td><td>' + fmtDHAr(amoRetenue) + '</td></tr>';
+            payRows += '<tr class="subtotal"><td></td><td>مجموع الاشتراكات</td><td></td><td></td><td></td><td>' + fmtDHAr(totalRetenues) + '</td></tr>';
+            payRows += '<tr><td>792</td><td>الضريبة على الدخل (IR)</td><td>' + fmtDHAr(netImposable) + '</td><td></td><td></td><td>0,00</td></tr>';
+            payRows += '<tr class="subtotal"><td></td><td>مجموع الضرائب</td><td></td><td></td><td></td><td>0,00</td></tr>';
             if (hasTransport) {
-                avHeaderRows.push(bodyRows.length);
-                bodyRows.push(['', _AR.avances, '', '', '', '']);
-                bodyRows.push(['', _AR.avanceTransp, '', '', '', fmtDH(transportTotal)]);
-                avTotalRows.push(bodyRows.length);
-                bodyRows.push(['', _AR.totalAvances, '', '', '', fmtDH(transportTotal)]);
+                payRows += '<tr class="av-header"><td></td><td colspan="5">السلفات المقبوضة</td></tr>';
+                payRows += '<tr><td></td><td>سلفة النقل</td><td></td><td></td><td></td><td>' + fmtDHAr(transportTotal) + '</td></tr>';
+                payRows += '<tr class="subtotal av"><td></td><td>مجموع السلفات</td><td></td><td></td><td></td><td>' + fmtDHAr(transportTotal) + '</td></tr>';
             }
+            payRows += '<tr class="total"><td></td><td>المجاميع</td><td></td><td></td><td>' + fmtDHAr(brutTotal + transportTotal) + '</td><td>' + fmtDHAr(totalRetenues + transportTotal) + '</td></tr>';
+            payRows += '<tr class="net"><td></td><td>الصافي للصرف</td><td></td><td></td><td class="net-amount">' + fmtDHAr(netAPayer) + '</td><td></td></tr>';
 
-            if (Math.abs(arrondi) >= 0.005) {
-                bodyRows.push(['9999', _AR.arrondi, '', '', '', fmtDH(arrondi)]);
-            }
+            return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
+                '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+                '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+                '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">' +
+                '<style>' +
+                '* { margin:0; padding:0; box-sizing:border-box; }' +
+                'body { font-family: Cairo, Arial, sans-serif; font-size: 9pt; color: #111; background:#fff; width:210mm; }' +
+                '.page { width:210mm; min-height:297mm; padding:8mm 10mm; }' +
+                /* Header */
+                '.header { background:#F8F0F8; padding:6mm 4mm; display:flex; align-items:center; gap:8mm; margin-bottom:3mm; }' +
+                '.header img { width:28mm; height:18mm; object-fit:contain; }' +
+                '.header-info { flex:1; }' +
+                '.company-name { color:#90278F; font-size:13pt; font-weight:700; }' +
+                '.company-sub { font-size:7.5pt; color:#333; margin-top:1mm; }' +
+                /* Title banner */
+                '.title-bar { background:#90278F; color:#fff; text-align:center; padding:3mm; font-size:12pt; font-weight:700; margin-bottom:3mm; border-radius:2px; display:flex; justify-content:space-between; align-items:center; }' +
+                '.title-bar .periode { font-size:8pt; font-weight:400; }' +
+                /* Employee info */
+                '.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-bottom:3mm; }' +
+                '.info-box { background:#F8F0F8; padding:3mm; }' +
+                '.info-box-header { background:#82B33A; color:#fff; padding:2mm 3mm; font-size:8pt; font-weight:700; margin-bottom:2mm; }' +
+                '.info-row { display:flex; gap:2mm; font-size:8pt; padding:0.5mm 0; }' +
+                '.info-label { font-weight:600; white-space:nowrap; }' +
+                '.info-value { color:#333; }' +
+                /* Salary base row */
+                'table { width:100%; border-collapse:collapse; margin-bottom:3mm; font-size:8pt; }' +
+                'th { background:#EFEFEF; padding:2mm; font-weight:600; border:1px solid #ccc; text-align:center; font-size:7.5pt; }' +
+                'td { padding:2mm; border:1px solid #ddd; text-align:center; }' +
+                /* Pay lines */
+                '.pay-table td:nth-child(2) { text-align:right; }' +
+                '.pay-table td:nth-child(1) { text-align:center; width:10mm; }' +
+                '.pay-table td:nth-child(3), .pay-table td:nth-child(4), .pay-table td:nth-child(5), .pay-table td:nth-child(6) { text-align:left; direction:ltr; }' +
+                'tr.subtotal td { background:#EFEFEF; font-weight:600; }' +
+                'tr.total td { background:#DCE6DC; font-weight:700; }' +
+                'tr.net td { background:#DCE6DC; font-weight:700; }' +
+                'td.net-amount { color:#C0392B; font-size:10pt; font-weight:700; }' +
+                'tr.ni-header td { background:#E6F4FF; color:#3449AB; font-weight:600; }' +
+                'tr.av-header td { background:#FFEBEB; color:#C0392B; font-weight:600; }' +
+                'tr.ni.subtotal td { background:#F0F8FF; }' +
+                'tr.av.subtotal td { background:#FFF5F5; color:#C0392B; }' +
+                '.section-label { font-size:8pt; font-weight:700; margin:2mm 0 1mm; }' +
+                '</style></head><body><div class="page">' +
 
-            var totauxIdx = bodyRows.length;
-            totalRows.push(totauxIdx);
-            bodyRows.push(['', _AR.totaux, '', '', fmtDH(brutTotal + transportTotal), fmtDH(totalRetenues + transportTotal)]);
-            var netIdx = bodyRows.length;
-            totalRows.push(netIdx);
-            bodyRows.push(['', _AR.netAPayer, '', '', fmtDH(netAPayer), '']);
+                /* Header */
+                '<div class="header">' +
+                (w._logoDataUrl ? '<img src="' + w._logoDataUrl + '" alt="logo">' : '') +
+                '<div class="header-info">' +
+                '<div class="company-name">بيري قود فارمز — BERRY GOOD FARMS</div>' +
+                '<div class="company-sub">' + ENTREPRISE.forme + '</div>' +
+                '<div class="company-sub">' + ENTREPRISE.adresse1 + '</div>' +
+                '<div class="company-sub">TP: ' + ENTREPRISE.tp + ' | RC: ' + ENTREPRISE.rc + ' | IF: ' + ENTREPRISE.if_ + ' | ICE: ' + ENTREPRISE.ice + '</div>' +
+                '</div></div>' +
 
-            doc.autoTable({
-                startY: y,
-                head: [[_AR.code, _AR.designation, _AR.base, _AR.taux, _AR.gain, _AR.retenu]],
-                body: bodyRows,
-                styles:     { fontSize: 8, cellPadding: 2, font: 'Amiri', halign: 'right' },
-                headStyles: { fillColor: C.berry, textColor: C.white, fontStyle: 'normal', fontSize: 8 },
-                columnStyles: {
-                    0:{cellWidth:16,halign:'center'}, 1:{cellWidth:72},
-                    2:{cellWidth:28,halign:'right'}, 3:{cellWidth:20,halign:'center'},
-                    4:{cellWidth:28,halign:'right'}, 5:{cellWidth:28,halign:'right'},
-                },
-                didParseCell: function (data) {
-                    if (data.section !== 'body') return;
-                    var row = data.row.index;
-                    if (boldRows.indexOf(row) !== -1) { data.cell.styles.fontStyle='normal'; data.cell.styles.fillColor=C.lightGray; }
-                    if (totalRows.indexOf(row) !== -1) { data.cell.styles.fontStyle='normal'; data.cell.styles.fillColor=[220,230,220]; }
-                    if (niHeaderRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[230,244,255]; data.cell.styles.textColor=[52,73,171]; }
-                    if (niTotalRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[240,248,255]; }
-                    if (avHeaderRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[255,235,235]; data.cell.styles.textColor=[192,57,43]; }
-                    if (avTotalRows.indexOf(row) !== -1) { data.cell.styles.fillColor=[255,245,245]; data.cell.styles.textColor=[192,57,43]; }
-                    if (row === netIdx && data.column.index === 4) { data.cell.styles.textColor=C.berry; data.cell.styles.fontSize=9; }
-                },
-                margin: { left: 14, right: 14 },
-                theme: 'grid',
+                /* Title */
+                '<div class="title-bar"><span class="periode">' + periodeLabel + '</span><span>كشف الراتب</span></div>' +
+
+                /* Employee info */
+                '<div class="info-grid">' +
+                '<div class="info-box"><div class="info-box-header">بيانات الموظف</div>' +
+                '<div class="info-row"><span class="info-label">الاسم الكامل :</span><span class="info-value">' + (w.nom || '—').toUpperCase() + (w.prenom ? ' ' + w.prenom : '') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">الفريق :</span><span class="info-value">' + (w.equipe || '—') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">الفئة :</span><span class="info-value">' + (w.declare ? 'عامل مصرح CNSS' : 'عامل غير مصرح') + '</span></div>' +
+                '</div>' +
+                '<div class="info-box"><div class="info-box-header">التعريف</div>' +
+                '<div class="info-row"><span class="info-label">رقم التسجيل :</span><span class="info-value">' + (w.matricule || '—') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">رقم بطاقة التعريف :</span><span class="info-value">' + (w.cin || '—') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">رقم CNSS :</span><span class="info-value">' + (w.cnss || '—') + '</span></div>' +
+                '<div class="info-row"><span class="info-label">رقم CNSS المشغل :</span><span class="info-value">' + ENTREPRISE.noCnss + '</span></div>' +
+                '</div></div>' +
+
+                /* Salary base row */
+                '<table><thead><tr>' +
+                '<th>وضع عائلي</th><th>عدد الأطفال</th><th>تخفيضات</th><th>تاريخ الميلاد</th><th>تاريخ الالتحاق</th><th>الأجر الأساسي</th><th>الأجر الساعي</th><th>فترة الأجر</th>' +
+                '</tr></thead><tbody><tr>' +
+                '<td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>' +
+                '<td style="direction:ltr">' + fmtDHAr(dailyRate) + '</td>' +
+                '<td style="direction:ltr">' + fmtDHAr(sHoraire) + '</td>' +
+                '<td>' + periodeLabel + '</td>' +
+                '</tr></tbody></table>' +
+
+                /* Pay lines */
+                '<table class="pay-table"><thead><tr>' +
+                '<th>الرمز</th><th>البيان</th><th>الأساس</th><th>النسبة</th><th>المكسب</th><th>المقتطع</th>' +
+                '</tr></thead><tbody>' + payRows + '</tbody></table>' +
+
+                /* Cumuls */
+                '<div class="section-label">مجاميع الفترة</div>' +
+                '<table><thead><tr>' +
+                '<th>أيام العمل</th><th>الأجر الإجمالي</th><th>الصافي الخاضع</th><th>الاشتراكات</th><th>الضريبة (IR)</th>' +
+                '</tr></thead><tbody><tr>' +
+                '<td>' + jours + '</td>' +
+                '<td style="direction:ltr">' + fmtDHAr(brutTotal) + '</td>' +
+                '<td style="direction:ltr">' + fmtDHAr(netAPayer) + '</td>' +
+                '<td style="direction:ltr">' + fmtDHAr(totalRetenues) + '</td>' +
+                '<td>0,00</td>' +
+                '</tr></tbody></table>' +
+
+                /* Congés */
+                '<div class="section-label">وضعية الإجازة — ' + periodeLabel + '</div>' +
+                '<table><thead><tr>' +
+                '<th>رصيد سنة سابقة</th><th>حق السنة الجارية</th><th>إجازة مأخوذة</th><th>رصيد الإجازة</th>' +
+                '</tr></thead><tbody><tr><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table>' +
+
+                '</div></body></html>';
+        }
+
+        // Load logo once
+        var logoDataUrl = null;
+        try {
+            var resp = await fetch('/assets/icon-512.png');
+            var blob = await resp.blob();
+            logoDataUrl = await new Promise(function(resolve) {
+                var reader = new FileReader();
+                reader.onloadend = function() { resolve(reader.result); };
+                reader.readAsDataURL(blob);
             });
-            y = doc.lastAutoTable.finalY + 5;
+        } catch(e) {}
 
-            // ── BLOC 5 : Cumuls ──
-            setAr(8);
-            doc.setTextColor(C.black[0], C.black[1], C.black[2]);
-            doc.text(_AR.cumuls, 196, y, { align: 'right' });
-            y += 3;
+        // Create hidden iframe for rendering
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;height:1123px;border:none;visibility:hidden;';
+        document.body.appendChild(iframe);
 
-            doc.autoTable({
-                startY: y,
-                head: [[_AR.joursTravailles, _AR.brutImposable, _AR.netImposable, _AR.retSociales, _AR.impotIr]],
-                body: [[String(jours), fmtDH(brutTotal), fmtDH(netAPayer), fmtDH(totalRetenues), '0,00']],
-                styles:     { fontSize: 8, cellPadding: 2, font: 'Amiri', halign: 'right' },
-                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'normal', fontSize: 7.5 },
-                margin: { left: 14, right: 14 },
-                theme: 'grid',
+        var doc = newDoc();
+        var isFirst = true;
+
+        for (var i = 0; i < workers.length; i++) {
+            var w = Object.assign({}, workers[i], { _logoDataUrl: logoDataUrl });
+            var html = buildHtml(w);
+
+            // Write HTML into iframe
+            iframe.contentDocument.open();
+            iframe.contentDocument.write(html);
+            iframe.contentDocument.close();
+
+            // Wait for fonts to load
+            await new Promise(function(resolve) { setTimeout(resolve, 600); });
+
+            // Capture
+            var canvas = await window.html2canvas(iframe.contentDocument.body, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: false,
+                backgroundColor: '#ffffff',
+                width: 794,
+                height: 1123,
+                windowWidth: 794,
+                windowHeight: 1123,
             });
-            y = doc.lastAutoTable.finalY + 5;
 
-            // ── BLOC 6 : Congés ──
-            setAr(8);
-            doc.text(_AR.congeAu + ' : ' + periodeLabel, 196, y, { align: 'right' });
-            y += 3;
+            if (!isFirst) doc.addPage();
+            isFirst = false;
+            doc.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
+        }
 
-            doc.autoTable({
-                startY: y,
-                head: [[_AR.soldePrev, _AR.droitEnc, _AR.congePris, _AR.soldeConge]],
-                body: [['—','—','—','—']],
-                styles:     { fontSize: 8, cellPadding: 2, font: 'Amiri', halign: 'center' },
-                headStyles: { fillColor: C.lightGray, textColor: C.black, fontStyle: 'normal', fontSize: 7.5 },
-                margin: { left: 14, right: 14 },
-                theme: 'grid',
-            });
-        });
+        document.body.removeChild(iframe);
 
         var periodeSafe = (periode || 'quinzaine').replace(/[^a-zA-Z0-9_-]/g, '_');
         download(doc, 'Bulletins_Paie_AR_' + periodeSafe + '.pdf');
