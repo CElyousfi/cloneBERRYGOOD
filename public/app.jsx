@@ -11045,6 +11045,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             async function handleEmargementChefsFerme() {
               if (emargChefs.loading) return;
+              // Ouvrir la fenêtre AVANT tout await — Safari bloque window.open() appelé
+              // après une opération async (hors contexte du geste utilisateur).
+              var _pw = window.open('', '_blank', 'width=1300,height=900');
+              if (!_pw) { setEmargChefs({ loading: false, error: 'Popup bloquée — autorisez les popups pour ce site' }); return; }
               setEmargChefs({ loading: true, error: null });
               try {
                 var _token = await firebase.auth().currentUser.getIdToken();
@@ -11053,14 +11057,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 });
                 var _data = await _resp.json();
                 if (!_data.success) throw new Error(_data.error || 'Erreur génération');
-                _openEmargChefsPrintWindow(_data);
+                _openEmargChefsPrintWindow(_data, _pw);
                 setEmargChefs({ loading: false, error: null });
               } catch(_e2) {
+                _pw.close();
                 setEmargChefs({ loading: false, error: _e2.message });
               }
             }
 
-            function _openEmargChefsPrintWindow(_d) {
+            function _openEmargChefsPrintWindow(_d, _pw) {
               var _dates = _d.dates || [];
               var _fermes = _d.fermes || {};
               var _divers = _d.divers || {};
@@ -11170,8 +11175,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 _buildDiversSection() +
                 '</body></html>';
 
-              var pw = window.open('', '_blank', 'width=1300,height=900');
-              if (!pw) { setEmargChefs({ loading: false, error: 'Popup bloquée — autorisez les popups pour ce site' }); return; }
+              var pw = _pw;
               pw.document.write(html);
               pw.document.close();
               setTimeout(function(){ pw.print(); }, 700);
