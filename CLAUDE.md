@@ -51,6 +51,9 @@ Pour ne pas déclencher de confirmations inutiles :
 4. Les scripts one-off d'analyse vont dans `/tmp` (déjà en
    additionalDirectories), pas dans le repo.
 
+**Bash Discipline Gate** (hook PreToolUse) : `scripts/bash-discipline-gate.js` — bloque
+grep/rg/cat/find/ls/head/tail/wc/sed-n/cd-chain/pipes vers grep-head-tail. Périmètre V1.
+
 ---
 
 ## Autonomie de l'agent — ce qui nécessite validation Omar
