@@ -11003,6 +11003,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [diversPopupOpen, setDiversPopupOpen] = useState(false);
             const [syncingBeeOne, setSyncingBeeOne] = useState(false);
             const [syncBeeOneResult, setSyncBeeOneResult] = useState(null);
+            const [emargChefs, setEmargChefs] = React.useState({ loading: false, error: null });
             const [detailOuvrierFullscreen, setDetailOuvrierFullscreen] = useState(false);
             useEffect(() => {
                 if (!detailOuvrierFullscreen) return;
@@ -11040,6 +11041,140 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 } finally {
                     setSyncingBeeOne(false);
                 }
+            }
+
+            async function handleEmargementChefsFerme() {
+              if (emargChefs.loading) return;
+              setEmargChefs({ loading: true, error: null });
+              try {
+                var _token = await firebase.auth().currentUser.getIdToken();
+                var _resp = await fetch('/api/pointage-rh?action=emargement-chefs-ferme&periode=' + encodeURIComponent(currentPeriode || selectedPeriode || ''), {
+                  headers: { 'Authorization': 'Bearer ' + _token }
+                });
+                var _data = await _resp.json();
+                if (!_data.success) throw new Error(_data.error || 'Erreur génération');
+                _openEmargChefsPrintWindow(_data);
+                setEmargChefs({ loading: false, error: null });
+              } catch(_e2) {
+                setEmargChefs({ loading: false, error: _e2.message });
+              }
+            }
+
+            function _openEmargChefsPrintWindow(_d) {
+              var _dates = _d.dates || [];
+              var _fermes = _d.fermes || {};
+              var _divers = _d.divers || {};
+              var _periode = _d.periode || '';
+
+              function _fmtD(iso) { return iso ? iso.slice(8,10)+'/'+iso.slice(5,7) : ''; }
+              function _n(v) { return Number(v)||0; }
+
+              function _buildFermeSection(fk, isLast) {
+                var f = _fermes[fk];
+                if (!f || !f.equipes || f.equipes.length === 0) return '';
+                var FLABELS = { F1:'Framboise (F1)', F5:'Myrtille (F5)', Avocatier:'Avocatier' };
+                var thDates = _dates.map(function(d){return '<th>'+_fmtD(d)+'</th>';}).join('');
+
+                var bodyRows = '';
+                f.equipes.forEach(function(eq) {
+                  // Ligne équipe (header groupe)
+                  bodyRows += '<tr class="eq-row"><td class="lbl eq-lbl" colspan="'+(2+_dates.length)+'">&#9654; '+eq.nom+'</td></tr>';
+                  // Lignes parcelles
+                  (eq.parcelles||[]).forEach(function(p) {
+                    var cells = _dates.map(function(d) {
+                      var day = p.byDay && p.byDay[d];
+                      if (!day || _n(day.ouvriers)===0) return '<td class="empty">&mdash;</td>';
+                      var jhStr = _n(day.jh)%1===0 ? _n(day.jh).toFixed(0) : _n(day.jh).toFixed(1);
+                      return '<td>'+day.ouvriers+'<br><small>'+jhStr+' JH</small></td>';
+                    }).join('');
+                    var totOuv = Object.values(p.byDay||{}).reduce(function(s,day){return s+_n(day.ouvriers);},0);
+                    var totJH = p.totalJH||0;
+                    bodyRows += '<tr><td class="lbl parc-lbl">&nbsp;&nbsp;'+p.label+'</td>'+cells+'<td class="tot">'+totOuv+'<br><small>'+(totJH%1===0?totJH.toFixed(0):totJH.toFixed(1))+' JH</small></td></tr>';
+                  });
+                });
+
+                // Ligne total ferme
+                var totCells = _dates.map(function(d) {
+                  var tJH = 0, tOuv = 0;
+                  f.equipes.forEach(function(eq){ (eq.parcelles||[]).forEach(function(p){ var day=p.byDay&&p.byDay[d]; if(day){tJH+=_n(day.jh);tOuv+=_n(day.ouvriers);} }); });
+                  if (tJH===0) return '<td class="empty tot">&mdash;</td>';
+                  return '<td class="tot"><strong>'+tOuv+'</strong><br><small>'+(tJH%1===0?tJH.toFixed(0):tJH.toFixed(1))+' JH</small></td>';
+                }).join('');
+                var gTot = _n(f.totalJH);
+                bodyRows += '<tr class="total-row"><td class="lbl"><strong>TOTAL '+FLABELS[fk].toUpperCase()+'</strong></td>'+totCells+'<td class="tot"><strong>'+(gTot%1===0?gTot.toFixed(0):gTot.toFixed(1))+' JH</strong></td></tr>';
+
+                return '<section style="'+(isLast?'':'page-break-after:always;')+'">' +
+                  '<div class="titre">BERRYGOOD FARMS &mdash; &Eacute;tat d\'&eacute;margement</div>' +
+                  '<div class="stit">'+FLABELS[fk]+' &mdash; '+_periode+'</div>' +
+                  '<table><thead><tr><th class="lcol">&Eacute;quipe / Parcelle</th>'+thDates+'<th>TOTAL</th></tr></thead>' +
+                  '<tbody>'+bodyRows+'</tbody></table>' +
+                  '<div class="sign">Signature Chef de Ferme : ___________________________________ &nbsp;&nbsp; Date : ___________</div>' +
+                  '</section>';
+              }
+
+              function _buildDiversSection() {
+                var lignes = _divers.lignes || [];
+                var thDates = _dates.map(function(d){return '<th>'+_fmtD(d)+'</th>';}).join('');
+                var bodyRows = '';
+                if (lignes.length === 0) {
+                  bodyRows = '<tr><td colspan="'+(2+_dates.length)+'" style="color:#888;padding:16px;text-align:center">Aucune entr&eacute;e Location &amp; Engins pour cette p&eacute;riode.</td></tr>';
+                } else {
+                  lignes.forEach(function(l) {
+                    var cells = _dates.map(function(d) {
+                      var day = l.byDay && l.byDay[d];
+                      if (!day || _n(day.q)===0) return '<td class="empty">&mdash;</td>';
+                      return '<td>'+_n(day.q)+'<br><small>'+_n(day.m).toFixed(0)+' DH</small></td>';
+                    }).join('');
+                    bodyRows += '<tr><td class="lbl parc-lbl">'+(l.beneficiaire||'')+'<br><small style="color:#555">'+((l.fonction||''))+'</small></td>'+cells+'<td class="tot">'+_n(l.totQ).toFixed(1)+'<br><small>'+_n(l.totM).toFixed(0)+' DH</small></td></tr>';
+                  });
+                  var totCells = _dates.map(function(d) {
+                    var tM = lignes.reduce(function(s,l){ return s+(_n((l.byDay&&l.byDay[d]&&l.byDay[d].m)||0)); },0);
+                    if (tM===0) return '<td class="empty tot">&mdash;</td>';
+                    return '<td class="tot"><strong>'+tM.toFixed(0)+' DH</strong></td>';
+                  }).join('');
+                  bodyRows += '<tr class="total-row"><td class="lbl"><strong>TOTAL</strong></td>'+totCells+'<td class="tot"><strong>'+_n(_divers.totalMontant).toFixed(0)+' DH</strong></td></tr>';
+                }
+                return '<section>' +
+                  '<div class="titre">BERRYGOOD FARMS &mdash; Location &amp; Engins</div>' +
+                  '<div class="stit">'+_periode+'</div>' +
+                  '<table><thead><tr><th class="lcol">B&eacute;n&eacute;ficiaire / Fonction</th>'+thDates+'<th>TOTAL</th></tr></thead>' +
+                  '<tbody>'+bodyRows+'</tbody></table>' +
+                  '<div class="sign">Signature : ___________________________________ &nbsp;&nbsp; Date : ___________</div>' +
+                  '</section>';
+              }
+
+              var html = '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">' +
+                '<title>Emargement Chefs &mdash; '+_periode+'</title><style>' +
+                'body{font-family:Arial,sans-serif;font-size:9pt;margin:0;padding:0}' +
+                'section{padding:10px 14px;box-sizing:border-box}' +
+                '@media print{section{page-break-after:always}section:last-child{page-break-after:auto}@page{size:A4 landscape;margin:8mm}}' +
+                '.titre{font-size:13pt;font-weight:bold;color:#1a237e;margin-bottom:2px}' +
+                '.stit{font-size:10pt;color:#555;margin-bottom:8px}' +
+                'table{border-collapse:collapse;width:100%;table-layout:fixed}' +
+                'th,td{border:1px solid #ccc;padding:3px 4px;text-align:center;font-size:8pt;vertical-align:middle}' +
+                'th{background:#e8eaf6;font-size:7.5pt}' +
+                '.lcol{width:200px;text-align:left}' +
+                '.lbl{text-align:left;padding-left:5px}' +
+                '.parc-lbl{padding-left:14px}' +
+                '.eq-lbl{background:#c5cae9;font-weight:bold;font-size:8.5pt;padding-left:5px}' +
+                '.eq-row td{background:#c5cae9}' +
+                '.tot{background:#f5f5f5;font-weight:bold}' +
+                '.total-row td{background:#e8f5e9;font-weight:bold}' +
+                '.empty{color:#bbb}' +
+                'small{font-size:7pt;color:#555}' +
+                '.sign{margin-top:20px;font-size:10pt;color:#333;border-top:1px solid #ccc;padding-top:10px}' +
+                '</style></head><body>' +
+                _buildFermeSection('F1', false) +
+                _buildFermeSection('F5', false) +
+                _buildFermeSection('Avocatier', false) +
+                _buildDiversSection() +
+                '</body></html>';
+
+              var pw = window.open('', '_blank', 'width=1300,height=900');
+              if (!pw) { setEmargChefs({ loading: false, error: 'Popup bloquée — autorisez les popups pour ce site' }); return; }
+              pw.document.write(html);
+              pw.document.close();
+              setTimeout(function(){ pw.print(); }, 700);
             }
 
             // Anti-flicker cartes MO : tant que registre + barèmes ne sont pas résolus,
@@ -11617,6 +11752,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             <span style={{fontSize:11,color:syncBeeOneResult.ok ? 'green' : 'red',marginLeft:4}}>
                                 {syncBeeOneResult.msg}
                             </span>
+                        )}
+                        {(currentProfile === 'chef_rh' || currentProfile === 'rh' || currentProfile === 'dg') && (
+                            <button
+                                onClick={handleEmargementChefsFerme}
+                                disabled={emargChefs.loading}
+                                style={{padding:'4px 12px',borderRadius:8,border:'none',background:emargChefs.loading ? '#ccc' : '#3949ab',color:'#fff',fontSize:11,fontWeight:600,cursor:emargChefs.loading ? 'wait' : 'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                                {emargChefs.loading ? '⏳ Génération…' : '📋 Émargement Chefs'}
+                            </button>
+                        )}
+                        {emargChefs.error && (
+                            <span style={{fontSize:11,color:'red',marginLeft:4}}>{emargChefs.error}</span>
                         )}
                     </div>
 
