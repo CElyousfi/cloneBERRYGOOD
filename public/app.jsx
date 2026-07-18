@@ -11369,7 +11369,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     if (_isDecl) {
                         cntDecl++;
                         if (!_PU2.computePayslip) return;
-                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                        const _pfJ = (function(history, currentPrime, dateStr) {
+                            if (!dateStr || !Array.isArray(history) || history.length === 0) return Number(currentPrime || 0);
+                            var applicable = history.filter(function(h) { return h.effectiveFrom && h.effectiveFrom <= dateStr; });
+                            if (applicable.length === 0) { var s = history.slice().sort(function(a,b){return a.effectiveFrom<b.effectiveFrom?-1:1;}); return Number(s[0].previousMontant||0); }
+                            var s2 = applicable.slice().sort(function(a,b){return a.effectiveFrom<b.effectiveFrom?1:-1;}); return Number(s2[0].montant||0);
+                        })(_rw.prime_history, _rw.primeFonctionJournaliere, _firstDay);
                         const _anc = Number(_rw.baselineJours || 0);
                         const _ancP = (_PU2.trouverPalierAnciennete)
                             ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
@@ -11413,7 +11418,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     const _rw = quinzRegistry[numKey(mat)] || {};
                     const _isDecl = !!(_rw.declare);
                     if (_isDecl) {
-                        const _pfJ = Number(_rw.primeFonctionJournaliere || 0);
+                        const _pfJ = (function(history, currentPrime, dateStr) {
+                            if (!dateStr || !Array.isArray(history) || history.length === 0) return Number(currentPrime || 0);
+                            var applicable = history.filter(function(h) { return h.effectiveFrom && h.effectiveFrom <= dateStr; });
+                            if (applicable.length === 0) { var s = history.slice().sort(function(a,b){return a.effectiveFrom<b.effectiveFrom?-1:1;}); return Number(s[0].previousMontant||0); }
+                            var s2 = applicable.slice().sort(function(a,b){return a.effectiveFrom<b.effectiveFrom?1:-1;}); return Number(s2[0].montant||0);
+                        })(_rw.prime_history, _rw.primeFonctionJournaliere, _firstDay);
                         const _anc = Number(_rw.baselineJours || 0);
                         const _ancP = (_PU2.trouverPalierAnciennete)
                             ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
@@ -11543,6 +11553,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const _sbPending = !quinzRegistryResolved || !quinzBaremesResolved;
             const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
 
+            const _getPrimeForDate = (history, currentPrime, dateStr) => {
+                if (!dateStr || !Array.isArray(history) || history.length === 0) {
+                    return Number(currentPrime || 0);
+                }
+                const applicable = history.filter(function(h) { return h.effectiveFrom && h.effectiveFrom <= dateStr; });
+                if (applicable.length === 0) {
+                    const sorted = history.slice().sort(function(a, b) { return a.effectiveFrom < b.effectiveFrom ? -1 : 1; });
+                    return Number(sorted[0].previousMontant || 0);
+                }
+                const sorted = applicable.slice().sort(function(a, b) { return a.effectiveFrom < b.effectiveFrom ? 1 : -1; });
+                return Number(sorted[0].montant || 0);
+            };
+
             const sbNetForWorker = (mat, journees, firstDay) => {
                 if (!registryReady) return null;
                 const PU = window.PaieUtils;
@@ -11558,7 +11581,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     smagBrut: smag.smagBrutJournalier, smagNet: smag.smagNetJournalier,
                     jT: journees, jF: 0,
                     ancienneteTaux: ancTaux,
-                    primeFonctionJour: Number(reg.primeFonctionJournaliere || 0),
+                    primeFonctionJour: _getPrimeForDate(reg.prime_history, reg.primeFonctionJournaliere, firstDay || _firstDayQz),
                     primesOptionnelles: [], baremes: quinzPaieBaremes,
                 }).net);
             };

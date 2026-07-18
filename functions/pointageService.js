@@ -4154,6 +4154,141 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         }
       }
 
+      // ── action: check-primes-quinzaine ──────────────────────────────────────
+      if (action === 'check-primes-quinzaine') {
+        const _uid3 = verifyAuth(req);
+        const _prof3 = resolveCallerProfile(_uid3);
+        const _fpid3 = (_prof3 && _prof3.profileId) || '';
+        if (!['rh', 'chef_rh', 'dg'].includes(_fpid3)) {
+          return res.status(403).json({ success: false, error: 'Réservé RH/DG' });
+        }
+        const _periode3 = (req.query && req.query.periode) || '';
+        if (!_periode3) return res.status(400).json({ success: false, error: 'periode requis' });
+
+        function getPrimeForDateBackend(history, currentPrime, dateStr) {
+          if (!dateStr || !Array.isArray(history) || history.length === 0) return Number(currentPrime || 0);
+          const applicable = history.filter(function(h) { return h.effectiveFrom && h.effectiveFrom <= dateStr; });
+          if (applicable.length === 0) {
+            const sorted = history.slice().sort(function(a, b) { return a.effectiveFrom < b.effectiveFrom ? -1 : 1; });
+            return Number(sorted[0].previousMontant || 0);
+          }
+          const sorted = applicable.slice().sort(function(a, b) { return a.effectiveFrom < b.effectiveFrom ? 1 : -1; });
+          return Number(sorted[0].montant || 0);
+        }
+
+        try {
+          // 1) Lire periodeMap depuis sql_mirror_pointage_meta/config
+          const _metaSnap3 = await db_firestore.collection('sql_mirror_pointage_meta').doc('config').get();
+          const _pMap3 = (_metaSnap3.exists && _metaSnap3.data().periodeMap) || {};
+          const _pEntry3 = _pMap3[_periode3];
+          if (!_pEntry3) return res.json({ success: false, error: 'Période inconnue' });
+
+          let _dates3;
+          if (Array.isArray(_pEntry3)) {
+            _dates3 = _pEntry3.filter(function(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d); }).sort();
+          } else {
+            const _f3 = _pEntry3.from || _pEntry3.dateFrom || '';
+            const _t3 = _pEntry3.to || _pEntry3.dateTo || '';
+            _dates3 = [];
+            for (var _d3 = new Date(_f3 + 'T00:00:00Z'); _d3 <= new Date(_t3 + 'T00:00:00Z'); _d3.setUTCDate(_d3.getUTCDate() + 1)) {
+              _dates3.push(_d3.toISOString().slice(0, 10));
+            }
+          }
+          if (!_dates3.length) return res.json({ success: false, error: 'Aucune date trouvée pour cette période' });
+
+          const _firstDay3 = _dates3[0];
+
+          // 2) Lire tous les docs pointage pour la période
+          const _moSnaps3 = await Promise.all(_dates3.map(function(d) {
+            return db_firestore.collection('sql_mirror_pointage').doc(d).get();
+          }));
+
+          // 3) Collecter les matricules UNIQUES des workers poste fixe
+          const _postseMats = new Set();
+          for (var _si = 0; _si < _moSnaps3.length; _si++) {
+            if (!_moSnaps3[_si].exists) continue;
+            var _rows3 = _moSnaps3[_si].data().rows || [];
+            for (var _ri3 = 0; _ri3 < _rows3.length; _ri3++) {
+              var _r3 = _rows3[_ri3];
+              var _opFam = (_r3.Operation_Famille || '').toLowerCase();
+              if (_opFam.includes('poste') && _r3.Personnel_Matricule) {
+                _postseMats.add(String(_r3.Personnel_Matricule));
+              }
+            }
+          }
+
+          // 4) Lire ouvriers_registry en parallel (batch de 20)
+          const _matsArr = Array.from(_postseMats);
+          const _BATCH = 20;
+          const _regDocs = {};
+          for (var _bi = 0; _bi < _matsArr.length; _bi += _BATCH) {
+            var _chunk = _matsArr.slice(_bi, _bi + _BATCH);
+            var _snaps = await Promise.all(_chunk.map(function(m) {
+              return db_firestore.collection('ouvriers_registry').doc(m).get();
+            }));
+            for (var _ci = 0; _ci < _chunk.length; _ci++) {
+              if (_snaps[_ci].exists) {
+                _regDocs[_chunk[_ci]] = _snaps[_ci].data();
+              }
+            }
+          }
+
+          // 5) Compter les journées par matricule pour la quinzaine
+          const _joureesByMat = {};
+          for (var _si2 = 0; _si2 < _moSnaps3.length; _si2++) {
+            if (!_moSnaps3[_si2].exists) continue;
+            var _rows3b = _moSnaps3[_si2].data().rows || [];
+            for (var _ri3b = 0; _ri3b < _rows3b.length; _ri3b++) {
+              var _r3b = _rows3b[_ri3b];
+              var _opFam2 = (_r3b.Operation_Famille || '').toLowerCase();
+              if (!_opFam2.includes('poste')) continue;
+              var _mat3 = _r3b.Personnel_Matricule ? String(_r3b.Personnel_Matricule) : null;
+              if (!_mat3) continue;
+              if (!_joureesByMat[_mat3]) _joureesByMat[_mat3] = new Set();
+              var _jour3 = _dates3[_si2];
+              _joureesByMat[_mat3].add(_jour3);
+            }
+          }
+
+          // 6) Calculer discrepancies
+          const _impacted = [];
+          var _coutDelta = 0;
+          for (var _mi = 0; _mi < _matsArr.length; _mi++) {
+            var _mat4 = _matsArr[_mi];
+            var _rw3 = _regDocs[_mat4];
+            if (!_rw3) continue;
+            var _primeActuelle = Number(_rw3.primeFonctionJournaliere || 0);
+            var _primePeriode = getPrimeForDateBackend(_rw3.prime_history, _primeActuelle, _firstDay3);
+            if (_primePeriode !== _primeActuelle) {
+              var _journeesQz = _joureesByMat[_mat4] ? _joureesByMat[_mat4].size : 0;
+              var _delta = _primeActuelle - _primePeriode;
+              _coutDelta += _delta * _journeesQz;
+              _impacted.push({
+                matricule: _mat4,
+                nom: _rw3.nom || _rw3.name || _mat4,
+                primeActuelle: _primeActuelle,
+                primePeriode: _primePeriode,
+                delta: _delta,
+                journeesQz: _journeesQz
+              });
+            }
+          }
+
+          return res.json({
+            success: true,
+            periode: _periode3,
+            firstDay: _firstDay3,
+            totalWorkersFixed: _matsArr.length,
+            impacted: _impacted.length,
+            coutDelta: Math.round(_coutDelta * 100) / 100,
+            ouvriers: _impacted
+          });
+        } catch (_err3) {
+          console.error('[check-primes-quinzaine]', _err3.message);
+          return res.status(500).json({ success: false, error: _err3.message });
+        }
+      }
+
       return res.status(400).json({ success: false, error: "Unknown action: " + action });
     } catch (err) {
       console.error("Erreur pointageRH:", err);
