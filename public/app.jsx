@@ -10962,7 +10962,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
         }
 
         // ===================== QUINZAINE TAB =====================
-        function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, onNavigateToPrimes }) {
+        function QuinzaineTab({ data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes }) {
             const [apiData, setApiData] = useState(null);
             const [loading, setLoading] = useState(true);
             const [selectedPeriode, setSelectedPeriode] = useState('');
@@ -11001,6 +11001,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [emargementLoading, setEmargementLoading] = useState(false);
             const [diversData, setDiversData] = useState(null); // {total, dates, byDate, rows} — Location & Engins
             const [diversPopupOpen, setDiversPopupOpen] = useState(false);
+            const [syncingBeeOne, setSyncingBeeOne] = useState(false);
+            const [syncBeeOneResult, setSyncBeeOneResult] = useState(null);
             const [detailOuvrierFullscreen, setDetailOuvrierFullscreen] = useState(false);
             useEffect(() => {
                 if (!detailOuvrierFullscreen) return;
@@ -11013,6 +11015,32 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             const numKey = (m) => String(m || '').toUpperCase().replace(/[^0-9]/g, '');
             const f2 = (n) => (Number(n) || 0).toFixed(2).replace('.', ',');
+
+            async function handleSyncDepuisBeeOne() {
+                if (syncingBeeOne) return;
+                setSyncingBeeOne(true);
+                setSyncBeeOneResult(null);
+                try {
+                    const token = await firebase.auth().currentUser.getIdToken();
+                    const currentPeriode = selectedPeriode || (apiData && (apiData.periodes || [])[0]) || '';
+                    const resp = await fetch('/api/pointage-rh?action=force-sync-periode', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                        body: JSON.stringify({ periode: currentPeriode }),
+                    });
+                    const d = await resp.json();
+                    if (d.success) {
+                        setSyncBeeOneResult({ ok: true, msg: 'Sync terminée — ' + d.totalRows + ' lignes (' + d.from + ' → ' + d.to + ')' });
+                        setApiData(null); // force re-fetch quinzaine
+                    } else {
+                        setSyncBeeOneResult({ ok: false, msg: d.error || 'Erreur sync' });
+                    }
+                } catch (e) {
+                    setSyncBeeOneResult({ ok: false, msg: e.message });
+                } finally {
+                    setSyncingBeeOne(false);
+                }
+            }
 
             // Anti-flicker cartes MO : tant que registre + barèmes ne sont pas résolus,
             // les cartes MO affichent un skeleton (montant null) au lieu de l'estimation
@@ -11577,6 +11605,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             style={{padding:'4px 12px',borderRadius:8,border:'1px solid #6366f1',background:'#6366f1',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
                             <i className="fa-solid fa-users"></i>Détail par Ouvrier
                         </button>
+                        {(currentProfile === 'dg' || currentProfile === 'rh') && (
+                            <button
+                                onClick={handleSyncDepuisBeeOne}
+                                disabled={syncingBeeOne}
+                                style={{padding:'4px 12px',borderRadius:8,border:'none',background:syncingBeeOne ? '#ccc' : '#1565C0',color:'#fff',fontSize:11,fontWeight:600,cursor:syncingBeeOne ? 'wait' : 'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                                {syncingBeeOne ? '⏳ Synchro en cours…' : '🔄 Sync BEE ONE'}
+                            </button>
+                        )}
+                        {syncBeeOneResult && (
+                            <span style={{fontSize:11,color:syncBeeOneResult.ok ? 'green' : 'red',marginLeft:4}}>
+                                {syncBeeOneResult.msg}
+                            </span>
+                        )}
                     </div>
 
                     {cultureFilter && !hasCultureData && (
@@ -68530,7 +68571,7 @@ ${rejetHtml}
 
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
-                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, farmLabel, avoSubFilter, cultureFilter, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
+                                {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
                                 {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}

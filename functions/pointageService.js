@@ -11,6 +11,7 @@ const {
   mergeReferentiel,
   isValidCampagneLabel,
 } = require("./lib/pointage/parcellesParams");
+const { syncPointageFromProd } = require("./pointageBdpSync");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -1849,7 +1850,7 @@ exports.warmPointageCache = functions
 // =============================================
 // API: pointageRH
 // =============================================
-exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res) => {
+exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 180, memory: "512MB" }).https.onRequest((req, res) => {
   cors(req, res, async () => {
     try {
       const action = req.query.action || "summary";
@@ -3953,6 +3954,72 @@ exports.pointageRH = functions.region("europe-west1").https.onRequest((req, res)
         // Invalide le cache référentiel mémoire pour que le nouvel override soit pris en compte.
         invalidateReferentielCache();
         return res.json({ success: true, docId, ferme });
+      }
+
+      // ---- POST force-sync-periode : déclenche un pull BDP → mirror live sur une période ----
+      // Réservé DG. Permet de ré-synchroniser une quinzaine depuis BEE ONE sans passer par admin secret.
+      if (action === 'force-sync-periode' && req.method === 'POST') {
+        const _fau = await verifyAuth(req);
+        const _fcp = await resolveCallerProfile(_fau);
+        const _fpid = _fcp && (_fcp.profileId || _fcp.role || '');
+        if (_fpid !== 'dg') {
+          return res.status(403).json({ success: false, error: 'Réservé DG uniquement' });
+        }
+
+        const body = req.body || {};
+        let syncFrom = (body.from == null ? '' : String(body.from)).trim();
+        let syncTo = (body.to == null ? '' : String(body.to)).trim();
+
+        // Si from/to absents, résoudre via periodeMap dans le meta Firestore.
+        if (!syncFrom || !syncTo) {
+          const periode = (body.periode == null ? '' : String(body.periode)).trim();
+          if (!periode) {
+            return res.status(400).json({ success: false, error: 'Fournir soit {from, to} soit {periode}' });
+          }
+          const metaDoc = await db_firestore.collection('sql_mirror_pointage_meta').doc('config').get();
+          if (!metaDoc.exists) {
+            return res.status(404).json({ success: false, error: 'Meta Firestore introuvable (sql_mirror_pointage_meta/config)' });
+          }
+          const metaData = metaDoc.data() || {};
+          const periodeMap = metaData.periodeMap || {};
+          const dates = periodeMap[periode];
+          if (!dates || !Array.isArray(dates) || dates.length === 0) {
+            return res.status(404).json({ success: false, error: 'Période introuvable dans periodeMap : ' + periode });
+          }
+          const sorted = dates.slice().sort();
+          syncFrom = sorted[0];
+          syncTo = sorted[sorted.length - 1];
+        }
+
+        // Validation format YYYY-MM-DD
+        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+        if (!DATE_RE.test(syncFrom) || !DATE_RE.test(syncTo)) {
+          return res.status(400).json({ success: false, error: 'Format de date invalide — attendu YYYY-MM-DD' });
+        }
+        if (syncFrom > syncTo) {
+          return res.status(400).json({ success: false, error: 'from doit être <= to' });
+        }
+        // Plage max 16 jours (quinzaine + marge)
+        const msPerDay = 86400000;
+        const diffDays = Math.round((new Date(syncTo) - new Date(syncFrom)) / msPerDay);
+        if (diffDays > 16) {
+          return res.status(400).json({ success: false, error: 'Plage trop large (' + diffDays + ' jours). Maximum 16 jours.' });
+        }
+
+        console.log('[force-sync-periode] DG ' + (_fcp.name || _fau.uid) + ' → ' + syncFrom + ' → ' + syncTo + ' (live)');
+        try {
+          const result = await syncPointageFromProd(db_firestore, { from: syncFrom, to: syncTo, target: 'live' });
+          return res.json({
+            success: true,
+            from: syncFrom,
+            to: syncTo,
+            daysProcessed: result.jours || 0,
+            totalRows: result.lignes || 0,
+          });
+        } catch (syncErr) {
+          console.error('[force-sync-periode] échec sync:', syncErr.message);
+          return res.status(500).json({ success: false, error: 'Échec de la synchronisation : ' + syncErr.message });
+        }
       }
 
       return res.status(400).json({ success: false, error: "Unknown action: " + action });
