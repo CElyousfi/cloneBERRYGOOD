@@ -4067,12 +4067,23 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             return db_firestore.collection('sql_mirror_pointage').doc(d).get();
           }));
 
-          // 3) Grouper ferme → equipe → parcelle → date → {jh, _set}
+          // 3) Grouper ferme → parcelle → equipe de transport → date → {jh, _set}
           var _fermeMap = {
-            F1: { label: 'Framboise', equipeMap: {} },
-            F5: { label: 'Myrtille', equipeMap: {} },
-            Avocatier: { label: 'Avocatier', equipeMap: {} }
+            F1: { label: 'Framboise', parcelleMap: {}, totalJH: 0 },
+            F5: { label: 'Myrtille', parcelleMap: {}, totalJH: 0 },
+            Avocatier: { label: 'Avocatier', parcelleMap: {}, totalJH: 0 },
           };
+
+          // Charger les noms d'équipes de transport depuis Firestore
+          const _tpSnap = await db_firestore.collection('rh_config').doc('transport_primes').get();
+          const _tpEquipes = (_tpSnap.exists && _tpSnap.data().equipes) || [];
+          const _prefixToName = {};
+          _tpEquipes.forEach(function(e) {
+            if (e.prefix && e.equipe) _prefixToName[e.prefix.toUpperCase()] = e.equipe;
+          });
+          function _getEquipeName(prefix) {
+            return _prefixToName[prefix] || prefix || 'Sans équipe';
+          }
 
           for (var _i = 0; _i < _dates.length; _i++) {
             var _date = _dates[_i];
@@ -4083,51 +4094,51 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               var _res = resolveFermeFromParcelle({ refParcelle: _r.Ref_parcelle, label: _r.Parcelle_Culturale, variete: _r.Variete });
               var _ferme = _res && _res.ferme;
               if (!_fermeMap[_ferme]) continue;
-              var _eq = _r.Operation_Groupe || _r.Operation_Famille || 'Divers';
               var _pl = _r.Parcelle_Culturale || _r.Ref_parcelle || '?';
+              var _mat = (_r.Personnel_Matricule || '').trim();
               var _jh = Number(_r.Nombre_Jr || 0);
-              var _mat = _r.Personnel_Matricule || '';
+              // Dériver le préfixe équipe de transport (miroir de getEqPrefix frontend)
+              var _prefix = _mat.substring(0, 2).toUpperCase() || 'NV';
+              var _matUp = _mat.toUpperCase();
+              if (_matUp.startsWith('HAFI') || (_matUp.startsWith('HA') && !_matUp.startsWith('HAF'))) _prefix = 'HA';
+              if (_matUp.startsWith('DD')) _prefix = 'NV';
+              var _eqName = _getEquipeName(_prefix);
               var _fm = _fermeMap[_ferme];
-              if (!_fm.equipeMap[_eq]) _fm.equipeMap[_eq] = { nom: _eq, parcelleMap: {} };
-              var _em = _fm.equipeMap[_eq];
-              if (!_em.parcelleMap[_pl]) _em.parcelleMap[_pl] = { label: _pl, byDay: {}, totalJH: 0 };
-              var _pm = _em.parcelleMap[_pl];
-              if (!_pm.byDay[_date]) _pm.byDay[_date] = { jh: 0, ouvriers: 0, _set: [] };
-              _pm.byDay[_date]._set.push(_mat);
-              _pm.byDay[_date].jh += _jh;
+              if (!_fm.parcelleMap[_pl]) _fm.parcelleMap[_pl] = { label: _pl, equipeMap: {}, totalJH: 0 };
+              var _pm = _fm.parcelleMap[_pl];
+              if (!_pm.equipeMap[_prefix]) _pm.equipeMap[_prefix] = { nom: _eqName, byDay: {}, totalJH: 0 };
+              var _em = _pm.equipeMap[_prefix];
+              if (!_em.byDay[_date]) _em.byDay[_date] = { jh: 0, _set: [] };
+              _em.byDay[_date]._set.push(_mat);
+              _em.byDay[_date].jh += _jh;
+              _em.totalJH += _jh;
               _pm.totalJH += _jh;
+              _fm.totalJH += _jh;
             }
           }
 
-          // 4) Sérialiser _set → ouvriers + trier équipes
+          // 4) Sérialiser _set → ouvriers + construire parcelles → equipes
           var _fermes = {};
           var _FERME_ORDER = ['F1', 'F5', 'Avocatier'];
-          for (var _fi = 0; _fi < _FERME_ORDER.length; _fi++) {
-            var _fk = _FERME_ORDER[_fi];
+          _FERME_ORDER.forEach(function(_fk) {
             var _fm2 = _fermeMap[_fk];
-            var _eqs = Object.values(_fm2.equipeMap).sort(function(a, b) {
-              // Récolte en premier
-              var _ra = /r.colte/i.test(a.nom) ? 0 : 1;
-              var _rb = /r.colte/i.test(b.nom) ? 0 : 1;
-              if (_ra !== _rb) return _ra - _rb;
-              return a.nom.localeCompare(b.nom);
-            });
-            for (var _ei = 0; _ei < _eqs.length; _ei++) {
-              var _eq2 = _eqs[_ei];
-              var _parcelles = Object.values(_eq2.parcelleMap).sort(function(a, b) { return a.label.localeCompare(b.label); });
-              for (var _pi = 0; _pi < _parcelles.length; _pi++) {
-                var _p = _parcelles[_pi];
-                for (var _dk in _p.byDay) {
-                  var _day = _p.byDay[_dk];
-                  _day.ouvriers = new Set(_day._set).size;
-                  delete _day._set;
-                }
-              }
-              _eq2.parcelles = _parcelles;
-              delete _eq2.parcelleMap;
-            }
-            _fermes[_fk] = { label: _fm2.label, equipes: _eqs, totalJH: Object.values(_fm2.equipeMap).reduce(function(s,e){return s+e.parcelles.reduce(function(s2,p){return s2+p.totalJH;},0);},0) };
-          }
+            var _parcelles = Object.values(_fm2.parcelleMap)
+              .sort(function(a, b) { return a.label.localeCompare(b.label); })
+              .map(function(pm) {
+                var _equipes = Object.values(pm.equipeMap)
+                  .sort(function(a, b) { return a.nom.localeCompare(b.nom); })
+                  .map(function(em) {
+                    var byDay = {};
+                    Object.entries(em.byDay).forEach(function(_entry) {
+                      var d = _entry[0], v = _entry[1];
+                      byDay[d] = { jh: v.jh, ouvriers: new Set(v._set).size };
+                    });
+                    return { nom: em.nom, byDay: byDay, totalJH: em.totalJH };
+                  });
+                return { label: pm.label, totalJH: pm.totalJH, equipes: _equipes };
+              });
+            _fermes[_fk] = { label: _fm2.label, parcelles: _parcelles, totalJH: _fm2.totalJH };
+          });
 
           // 5) Parallel reads pointage_divers
           var _dSnaps = await Promise.all(_dates.map(function(d) {

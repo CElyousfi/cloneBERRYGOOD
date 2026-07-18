@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "192/332 fichiers classifiés",
+          "detail": "192/334 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "34/126 modules avec ≥1 test",
+          "detail": "34/128 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 86,
+        "commits": 87,
         "file": "public/app.jsx"
       },
       {
@@ -48,10 +48,6 @@
       },
       {
         "commits": 4,
-        "file": "functions/index.js"
-      },
-      {
-        "commits": 4,
         "file": "functions/pointageBdpSync.js"
       },
       {
@@ -61,12 +57,16 @@
       {
         "commits": 4,
         "file": "tests/unit/pointageBdpMap.test.js"
+      },
+      {
+        "commits": 3,
+        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8c7b3cbaa111f983",
+    "sourceFingerprint": "sha256:95209616dc8019b4",
     "stats": {
-      "backendModules": 85,
+      "backendModules": 87,
       "cloudFunctions": 82,
       "coverageScore": 27,
       "domains": 10,
@@ -74,7 +74,7 @@
       "firestoreCollections": 56,
       "libHelpers": 25,
       "tabFunctions": 124,
-      "unclassifiedFiles": 140,
+      "unclassifiedFiles": 142,
       "unitTestFiles": 22
     }
   },
@@ -1764,6 +1764,10 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/lib/.DS_Store": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/lib/auth": {
       "confidence": "medium",
       "domain": "admin"
@@ -1945,6 +1949,10 @@
       "domain": null
     },
     "functions/sqlSyncService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/test-whatsapp.js": {
       "confidence": "low",
       "domain": null
     },
@@ -2848,6 +2856,10 @@
     },
     {
       "confidence": "low",
+      "file": "functions/lib/.DS_Store"
+    },
+    {
+      "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
     },
     {
@@ -2933,6 +2945,10 @@
     {
       "confidence": "low",
       "file": "functions/sqlSyncService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/test-whatsapp.js"
     },
     {
       "confidence": "low",
