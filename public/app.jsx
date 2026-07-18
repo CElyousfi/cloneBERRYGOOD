@@ -11748,11 +11748,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 <i className="fa-solid fa-coins"></i>Voir les Primes
                             </button>
                         )}
+                        {(currentProfile === 'chef_rh' || currentProfile === 'rh' || currentProfile === 'dg') && (
                         <button
                             onClick={() => setEmargementOpen(true)}
                             style={{padding:'4px 12px',borderRadius:8,border:'1px solid #3949ab',background:'#3949ab',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
                             <i className="fa-solid fa-file-signature"></i>États d'émargement
                         </button>
+                        )}
                         <button
                             onClick={() => setAnalytiqueFullscreen(true)}
                             style={{padding:'4px 12px',borderRadius:8,border:'1px solid #27ae60',background:'#27ae60',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
