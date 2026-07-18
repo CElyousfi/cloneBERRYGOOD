@@ -4022,6 +4022,138 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         }
       }
 
+      // ── action: emargement-chefs-ferme ──────────────────────────────────────
+      if (action === 'emargement-chefs-ferme') {
+        const _uid2 = verifyAuth(req);
+        const _prof2 = resolveCallerProfile(_uid2);
+        const _fpid2 = (_prof2 && _prof2.profileId) || '';
+        if (!['chef_rh', 'rh', 'dg'].includes(_fpid2)) {
+          return res.status(403).json({ success: false, error: 'Réservé RH/DG' });
+        }
+        const _periode = (req.query && req.query.periode) || '';
+        if (!_periode) return res.status(400).json({ success: false, error: 'periode requis' });
+
+        try {
+          // 1) Résoudre les dates de la période
+          const _metaSnap = await db_firestore.collection('sql_mirror_pointage_meta').doc('config').get();
+          const _pMap = (_metaSnap.exists && _metaSnap.data().periodeMap) || {};
+          const _pEntry = _pMap[_periode];
+          if (!_pEntry) return res.status(404).json({ success: false, error: 'Période introuvable: ' + _periode });
+
+          let _dates;
+          if (Array.isArray(_pEntry)) {
+            _dates = _pEntry.filter(function(d) { return /^\d{4}-\d{2}-\d{2}$/.test(d); }).sort();
+          } else {
+            const _f = _pEntry.from || _pEntry.dateFrom || '';
+            const _t = _pEntry.to || _pEntry.dateTo || '';
+            _dates = [];
+            for (var _d = new Date(_f + 'T00:00:00Z'); _d <= new Date(_t + 'T00:00:00Z'); _d.setUTCDate(_d.getUTCDate() + 1)) {
+              _dates.push(_d.toISOString().slice(0, 10));
+            }
+          }
+          if (!_dates.length) return res.status(400).json({ success: false, error: 'Aucune date trouvée pour cette période' });
+
+          // 2) Parallel reads MO mirror
+          const _moSnaps = await Promise.all(_dates.map(function(d) {
+            return db_firestore.collection('sql_mirror_pointage').doc(d).get();
+          }));
+
+          // 3) Grouper ferme → equipe → parcelle → date → {jh, _set}
+          var _fermeMap = {
+            F1: { label: 'Framboise', equipeMap: {} },
+            F5: { label: 'Myrtille', equipeMap: {} },
+            Avocatier: { label: 'Avocatier', equipeMap: {} }
+          };
+
+          for (var _i = 0; _i < _dates.length; _i++) {
+            var _date = _dates[_i];
+            if (!_moSnaps[_i].exists) continue;
+            var _rows = _moSnaps[_i].data().rows || [];
+            for (var _ri = 0; _ri < _rows.length; _ri++) {
+              var _r = _rows[_ri];
+              var _res = resolveFermeFromParcelle({ refParcelle: _r.Ref_parcelle, label: _r.Parcelle_Culturale, variete: _r.Variete });
+              var _ferme = _res && _res.ferme;
+              if (!_fermeMap[_ferme]) continue;
+              var _eq = _r.Operation_Groupe || _r.Operation_Famille || 'Divers';
+              var _pl = _r.Parcelle_Culturale || _r.Ref_parcelle || '?';
+              var _jh = Number(_r.Nombre_Jr || 0);
+              var _mat = _r.Personnel_Matricule || '';
+              var _fm = _fermeMap[_ferme];
+              if (!_fm.equipeMap[_eq]) _fm.equipeMap[_eq] = { nom: _eq, parcelleMap: {} };
+              var _em = _fm.equipeMap[_eq];
+              if (!_em.parcelleMap[_pl]) _em.parcelleMap[_pl] = { label: _pl, byDay: {}, totalJH: 0 };
+              var _pm = _em.parcelleMap[_pl];
+              if (!_pm.byDay[_date]) _pm.byDay[_date] = { jh: 0, ouvriers: 0, _set: [] };
+              _pm.byDay[_date]._set.push(_mat);
+              _pm.byDay[_date].jh += _jh;
+              _pm.totalJH += _jh;
+            }
+          }
+
+          // 4) Sérialiser _set → ouvriers + trier équipes
+          var _fermes = {};
+          var _FERME_ORDER = ['F1', 'F5', 'Avocatier'];
+          for (var _fi = 0; _fi < _FERME_ORDER.length; _fi++) {
+            var _fk = _FERME_ORDER[_fi];
+            var _fm2 = _fermeMap[_fk];
+            var _eqs = Object.values(_fm2.equipeMap).sort(function(a, b) {
+              // Récolte en premier
+              var _ra = /r.colte/i.test(a.nom) ? 0 : 1;
+              var _rb = /r.colte/i.test(b.nom) ? 0 : 1;
+              if (_ra !== _rb) return _ra - _rb;
+              return a.nom.localeCompare(b.nom);
+            });
+            for (var _ei = 0; _ei < _eqs.length; _ei++) {
+              var _eq2 = _eqs[_ei];
+              var _parcelles = Object.values(_eq2.parcelleMap).sort(function(a, b) { return a.label.localeCompare(b.label); });
+              for (var _pi = 0; _pi < _parcelles.length; _pi++) {
+                var _p = _parcelles[_pi];
+                for (var _dk in _p.byDay) {
+                  var _day = _p.byDay[_dk];
+                  _day.ouvriers = new Set(_day._set).size;
+                  delete _day._set;
+                }
+              }
+              _eq2.parcelles = _parcelles;
+              delete _eq2.parcelleMap;
+            }
+            _fermes[_fk] = { label: _fm2.label, equipes: _eqs, totalJH: Object.values(_fm2.equipeMap).reduce(function(s,e){return s+e.parcelles.reduce(function(s2,p){return s2+p.totalJH;},0);},0) };
+          }
+
+          // 5) Parallel reads pointage_divers
+          var _dSnaps = await Promise.all(_dates.map(function(d) {
+            return db_firestore.collection('pointage_divers').doc(d).get();
+          }));
+          var _diversMap = {};
+          for (var _di = 0; _di < _dates.length; _di++) {
+            var _ddate = _dates[_di];
+            if (!_dSnaps[_di].exists) continue;
+            var _entries = _dSnaps[_di].data().entries || [];
+            for (var _eni = 0; _eni < _entries.length; _eni++) {
+              var _e = _entries[_eni];
+              var _key = (_e.beneficiaire || '') + '|' + (_e.fonction || '');
+              if (!_diversMap[_key]) _diversMap[_key] = { key: _key, beneficiaire: _e.beneficiaire || '', fonction: _e.fonction || '', byDay: {}, totQ: 0, totM: 0 };
+              if (!_diversMap[_key].byDay[_ddate]) _diversMap[_key].byDay[_ddate] = { q: 0, m: 0 };
+              _diversMap[_key].byDay[_ddate].q += Number(_e.quantite || 0);
+              _diversMap[_key].byDay[_ddate].m += Number(_e.montant || 0);
+              _diversMap[_key].totQ += Number(_e.quantite || 0);
+              _diversMap[_key].totM += Number(_e.montant || 0);
+            }
+          }
+          var _diversLignes = Object.values(_diversMap).sort(function(a, b) { return a.beneficiaire.localeCompare(b.beneficiaire); });
+          var _diversTotal = _diversLignes.reduce(function(s, l) { return s + l.totM; }, 0);
+
+          return res.json({
+            success: true, periode: _periode, dates: _dates,
+            fermes: _fermes,
+            divers: { lignes: _diversLignes, totalMontant: _diversTotal }
+          });
+        } catch (_err2) {
+          console.error('[emargement-chefs-ferme]', _err2.message);
+          return res.status(500).json({ success: false, error: _err2.message });
+        }
+      }
+
       return res.status(400).json({ success: false, error: "Unknown action: " + action });
     } catch (err) {
       console.error("Erreur pointageRH:", err);
