@@ -130,7 +130,7 @@
         children.push(React.createElement('option', { key: flat[i], value: flat[i] }, flat[i]));
       }
     } else {
-      var groups = QCS_group(periodes, campMap);
+      var groups = QCS_group(periodes, campMap).filter(function(g) { return g.campagne; }).slice(0, 1);
       for (var g = 0; g < groups.length; g++) {
         var grp = groups[g];
         var optChildren = grp.periodes.map(function (p) {
