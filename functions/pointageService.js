@@ -4024,8 +4024,8 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
       // ── action: emargement-chefs-ferme ──────────────────────────────────────
       if (action === 'emargement-chefs-ferme') {
-        const _uid2 = verifyAuth(req);
-        const _prof2 = resolveCallerProfile(_uid2);
+        const _uid2 = await verifyAuth(req);
+        const _prof2 = await resolveCallerProfile(_uid2);
         const _fpid2 = (_prof2 && _prof2.profileId) || '';
         if (!['chef_rh', 'rh', 'dg'].includes(_fpid2)) {
           return res.status(403).json({ success: false, error: 'Réservé RH/DG' });
@@ -4156,8 +4156,8 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
       // ── action: check-primes-quinzaine ──────────────────────────────────────
       if (action === 'check-primes-quinzaine') {
-        const _uid3 = verifyAuth(req);
-        const _prof3 = resolveCallerProfile(_uid3);
+        const _uid3 = await verifyAuth(req);
+        const _prof3 = await resolveCallerProfile(_uid3);
         const _fpid3 = (_prof3 && _prof3.profileId) || '';
         if (!['rh', 'chef_rh', 'dg'].includes(_fpid3)) {
           return res.status(403).json({ success: false, error: 'Réservé RH/DG' });
