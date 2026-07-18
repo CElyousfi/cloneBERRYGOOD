@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 85,
+        "commits": 84,
         "file": "public/app.jsx"
       },
       {
@@ -35,8 +35,12 @@
         "file": "functions/sqlSyncService.js"
       },
       {
-        "commits": 7,
+        "commits": 6,
         "file": "functions/index.js"
+      },
+      {
+        "commits": 6,
+        "file": "public/lib/emargementPdf.js"
       },
       {
         "commits": 5,
@@ -51,10 +55,6 @@
         "file": "public/lib/analytiqueUtils.js"
       },
       {
-        "commits": 5,
-        "file": "public/lib/emargementPdf.js"
-      },
-      {
         "commits": 4,
         "file": "functions/pointageBdpSync.js"
       },
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:4422137fd95507a2",
+    "sourceFingerprint": "sha256:579ebc997794b77f",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,

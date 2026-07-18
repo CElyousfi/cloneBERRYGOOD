@@ -10998,6 +10998,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueDetailCell, setAnalytiqueDetailCell] = useState(null);
             const [emargementOpen, setEmargementOpen] = useState(false);
             const [emargementLang, setEmargementLang] = useState('fr'); // 'fr' | 'ar'
+            const [emargementLoading, setEmargementLoading] = useState(false);
             const [diversData, setDiversData] = useState(null); // {total, dates, byDate, rows} — Location & Engins
             const [diversPopupOpen, setDiversPopupOpen] = useState(false);
             const [detailOuvrierFullscreen, setDetailOuvrierFullscreen] = useState(false);
@@ -13353,40 +13354,47 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                             </div>
                                             {/* Sélecteur de langue FR / AR */}
                                             <div style={{display:'flex',gap:2,flexShrink:0,marginRight:4}}>
-                                                <button onClick={function(e){e.stopPropagation();setEmargementLang('fr');}}
-                                                    style={{border:'1px solid rgba(255,255,255,0.6)',background:emargementLang==='fr'?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.15)',color:emargementLang==='fr'?'#8B2252':'#fff',borderRadius:4,padding:'3px 7px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                                <button onClick={function(e){e.stopPropagation();if(!emargementLoading)setEmargementLang('fr');}}
+                                                    disabled={emargementLoading}
+                                                    style={{border:'1px solid rgba(255,255,255,0.6)',background:emargementLang==='fr'?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.15)',color:emargementLang==='fr'?'#8B2252':'#fff',borderRadius:4,padding:'3px 7px',fontSize:11,fontWeight:700,cursor:emargementLoading?'not-allowed':'pointer',opacity:emargementLoading?0.45:1}}>
                                                     FR
                                                 </button>
-                                                <button onClick={function(e){e.stopPropagation();setEmargementLang('ar');}}
-                                                    style={{border:'1px solid rgba(255,255,255,0.6)',background:emargementLang==='ar'?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.15)',color:emargementLang==='ar'?'#8B2252':'#fff',borderRadius:4,padding:'3px 7px',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                                <button onClick={function(e){e.stopPropagation();if(!emargementLoading)setEmargementLang('ar');}}
+                                                    disabled={emargementLoading}
+                                                    style={{border:'1px solid rgba(255,255,255,0.6)',background:emargementLang==='ar'?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.15)',color:emargementLang==='ar'?'#8B2252':'#fff',borderRadius:4,padding:'3px 7px',fontSize:11,fontWeight:700,cursor:emargementLoading?'not-allowed':'pointer',opacity:emargementLoading?0.45:1}}>
                                                     AR
                                                 </button>
                                             </div>
-                                            <button disabled={!_hasPdf || _declared.length === 0} style={_fmtBtn(!_hasPdf || _declared.length === 0, 'PDF')}
+                                            <button disabled={!_hasPdf || _declared.length === 0 || emargementLoading} style={_fmtBtn(!_hasPdf || _declared.length === 0 || emargementLoading, 'PDF')}
                                                 onClick={async function () {
                                                     if (!window.EmargementPdf) return;
-                                                    var personnelRef = {};
+                                                    setEmargementLoading(true);
                                                     try {
-                                                        var token = await firebase.auth().currentUser.getIdToken();
-                                                        var rhResp = await fetch('/api/rh?action=personnel-ref', { headers: { 'Authorization': 'Bearer ' + token } });
-                                                        var rhData = await rhResp.json();
-                                                        if (rhData.success) personnelRef = rhData.data || {};
-                                                    } catch(e) {}
-                                                    var enriched = _declared.map(function(w) {
-                                                        var ref = personnelRef[String(w.matricule)] || {};
-                                                        return Object.assign({}, w, { cin: ref.cin || null, cnss: ref.cnss || null });
-                                                    });
-                                                    var _parJourDays = parJour.map(function(d) { return d.jour; }).filter(Boolean).sort();
-                                                    var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
-                                                    var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length - 1] : null;
-                                                    var opts = { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin };
-                                                    if (emargementLang === 'ar' && window.EmargementPdf.genBulletinsAr) {
-                                                        await window.EmargementPdf.genBulletinsAr(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
-                                                    } else {
-                                                        await window.EmargementPdf.genBulletins(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
+                                                        var personnelRef = {};
+                                                        try {
+                                                            var token = await firebase.auth().currentUser.getIdToken();
+                                                            var rhResp = await fetch('/api/rh?action=personnel-ref', { headers: { 'Authorization': 'Bearer ' + token } });
+                                                            var rhData = await rhResp.json();
+                                                            if (rhData.success) personnelRef = rhData.data || {};
+                                                        } catch(e) {}
+                                                        var enriched = _declared.map(function(w) {
+                                                            var ref = personnelRef[String(w.matricule)] || {};
+                                                            return Object.assign({}, w, { cin: ref.cin || null, cnss: ref.cnss || null });
+                                                        });
+                                                        var _parJourDays = parJour.map(function(d) { return d.jour; }).filter(Boolean).sort();
+                                                        var _bulletinDateDebut = _parJourDays.length > 0 ? _parJourDays[0] : null;
+                                                        var _bulletinDateFin   = _parJourDays.length > 0 ? _parJourDays[_parJourDays.length - 1] : null;
+                                                        var opts = { dateDebut: _bulletinDateDebut, dateFin: _bulletinDateFin };
+                                                        if (emargementLang === 'ar' && window.EmargementPdf.genBulletinsAr) {
+                                                            await window.EmargementPdf.genBulletinsAr(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
+                                                        } else {
+                                                            await window.EmargementPdf.genBulletins(enriched, currentPeriode, _smag.smagBrutJournalier, opts);
+                                                        }
+                                                    } finally {
+                                                        setEmargementLoading(false);
                                                     }
                                                 }}>
-                                                <i className="fa-solid fa-file-pdf" style={{marginRight:3}}></i>PDF
+                                                <i className={emargementLoading ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-pdf'} style={{marginRight:3}}></i>{emargementLoading ? '...' : 'PDF'}
                                             </button>
                                             <button disabled={!_hasXlsx || _declared.length === 0} style={_fmtBtn(!_hasXlsx || _declared.length === 0, 'XLS')}
                                                 onClick={function () { if (window.EmargementExcel) window.EmargementExcel.genBulletinsXlsx(_declared, currentPeriode); }}>
