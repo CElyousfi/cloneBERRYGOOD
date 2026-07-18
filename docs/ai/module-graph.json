@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 84,
+        "commits": 86,
         "file": "public/app.jsx"
       },
       {
@@ -35,20 +35,16 @@
         "file": "functions/sqlSyncService.js"
       },
       {
-        "commits": 6,
-        "file": "functions/index.js"
-      },
-      {
-        "commits": 6,
+        "commits": 7,
         "file": "public/lib/emargementPdf.js"
       },
       {
         "commits": 5,
-        "file": "public/components/ParcellesReferentielTab.jsx"
+        "file": "functions/index.js"
       },
       {
         "commits": 5,
-        "file": "public/components/PrimesFixesTab.jsx"
+        "file": "public/components/ParcellesReferentielTab.jsx"
       },
       {
         "commits": 5,
@@ -61,10 +57,14 @@
       {
         "commits": 4,
         "file": "scripts/build-frontend.js"
+      },
+      {
+        "commits": 4,
+        "file": "tests/unit/pointageBdpMap.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:579ebc997794b77f",
+    "sourceFingerprint": "sha256:faac1307291ca219",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
@@ -428,15 +428,7 @@
           "QuinzaineTab"
         ]
       },
-      "gitCoupling": [
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/PrimesFixesTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        }
-      ],
+      "gitCoupling": [],
       "label": "Paie & RH",
       "tests": {
         "backend": [],
