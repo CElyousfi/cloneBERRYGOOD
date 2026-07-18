@@ -786,17 +786,6 @@
     async function genBulletinsAr(workers, periode, smagBrutJournalier, options) {
         if (!workers || workers.length === 0) { alert('Aucun ouvrier déclaré pour cette période.'); return; }
 
-        // Lazy-load html2canvas
-        if (!window.html2canvas) {
-            await new Promise(function(resolve, reject) {
-                var s = document.createElement('script');
-                s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-                s.onload = resolve;
-                s.onerror = function() { reject(new Error('Impossible de charger html2canvas.')); };
-                document.head.appendChild(s);
-            });
-        }
-
         var TAUX_CNSS = 0.0448;
         var TAUX_AMO  = 0.0226;
 
@@ -810,8 +799,9 @@
         }
 
         var ENTREPRISE = {
-            nom: 'BERRY GOOD FARMS', forme: 'Sarl au capital de 100 000,00 Dhs',
-            adresse1: '44 Imm. A, Rés. Al Boustane, cité Dakhla - Agadir',
+            nom:     'بيري قود فارمز',
+            forme:   'ش.ذ.م.م — رأس المال: 100.000,00 درهم',
+            adresse: '44، عمارة A، حي البستان، مدينة الداخلة — أكادير',
             tp: '67500683', rc: '38125', if_: '26107029', ice: '002106859000069', noCnss: '3633882',
         };
 
@@ -822,7 +812,7 @@
             periodeLabel = 'الفترة : ' + String(periode || '');
         }
 
-        function buildHtml(w) {
+        function buildPage(w) {
             var jours            = w.journees || 0;
             var dailyRate        = smagBrutJournalier || 0;
             var sHoraire         = dailyRate / 8;
@@ -868,63 +858,16 @@
             payRows += '<tr class="total"><td></td><td>المجاميع</td><td></td><td></td><td>' + fmtDHAr(brutTotal + transportTotal) + '</td><td>' + fmtDHAr(totalRetenues + transportTotal) + '</td></tr>';
             payRows += '<tr class="net"><td></td><td>الصافي للصرف</td><td></td><td></td><td class="net-amount">' + fmtDHAr(netAPayer) + '</td><td></td></tr>';
 
-            return '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8">' +
-                '<link rel="preconnect" href="https://fonts.googleapis.com">' +
-                '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
-                '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">' +
-                '<style>' +
-                '* { margin:0; padding:0; box-sizing:border-box; }' +
-                'body { font-family: Cairo, Arial, sans-serif; font-size: 9pt; color: #111; background:#fff; width:210mm; }' +
-                '.page { width:210mm; min-height:297mm; padding:8mm 10mm; }' +
-                /* Header */
-                '.header { background:#F8F0F8; padding:6mm 4mm; display:flex; align-items:center; gap:8mm; margin-bottom:3mm; }' +
-                '.header img { width:28mm; height:18mm; object-fit:contain; }' +
-                '.header-info { flex:1; }' +
-                '.company-name { color:#90278F; font-size:13pt; font-weight:700; }' +
-                '.company-sub { font-size:7.5pt; color:#333; margin-top:1mm; }' +
-                /* Title banner */
-                '.title-bar { background:#90278F; color:#fff; text-align:center; padding:3mm; font-size:12pt; font-weight:700; margin-bottom:3mm; border-radius:2px; display:flex; justify-content:space-between; align-items:center; }' +
-                '.title-bar .periode { font-size:8pt; font-weight:400; }' +
-                /* Employee info */
-                '.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-bottom:3mm; }' +
-                '.info-box { background:#F8F0F8; padding:3mm; }' +
-                '.info-box-header { background:#82B33A; color:#fff; padding:2mm 3mm; font-size:8pt; font-weight:700; margin-bottom:2mm; }' +
-                '.info-row { display:flex; gap:2mm; font-size:8pt; padding:0.5mm 0; }' +
-                '.info-label { font-weight:600; white-space:nowrap; }' +
-                '.info-value { color:#333; }' +
-                /* Salary base row */
-                'table { width:100%; border-collapse:collapse; margin-bottom:3mm; font-size:8pt; }' +
-                'th { background:#EFEFEF; padding:2mm; font-weight:600; border:1px solid #ccc; text-align:center; font-size:7.5pt; }' +
-                'td { padding:2mm; border:1px solid #ddd; text-align:center; }' +
-                /* Pay lines */
-                '.pay-table td:nth-child(2) { text-align:right; }' +
-                '.pay-table td:nth-child(1) { text-align:center; width:10mm; }' +
-                '.pay-table td:nth-child(3), .pay-table td:nth-child(4), .pay-table td:nth-child(5), .pay-table td:nth-child(6) { text-align:left; direction:ltr; }' +
-                'tr.subtotal td { background:#EFEFEF; font-weight:600; }' +
-                'tr.total td { background:#DCE6DC; font-weight:700; }' +
-                'tr.net td { background:#DCE6DC; font-weight:700; }' +
-                'td.net-amount { color:#C0392B; font-size:10pt; font-weight:700; }' +
-                'tr.ni-header td { background:#E6F4FF; color:#3449AB; font-weight:600; }' +
-                'tr.av-header td { background:#FFEBEB; color:#C0392B; font-weight:600; }' +
-                'tr.ni.subtotal td { background:#F0F8FF; }' +
-                'tr.av.subtotal td { background:#FFF5F5; color:#C0392B; }' +
-                '.section-label { font-size:8pt; font-weight:700; margin:2mm 0 1mm; }' +
-                '</style></head><body><div class="page">' +
-
-                /* Header */
+            return '<div class="page">' +
                 '<div class="header">' +
                 (w._logoDataUrl ? '<img src="' + w._logoDataUrl + '" alt="logo">' : '') +
                 '<div class="header-info">' +
-                '<div class="company-name">بيري قود فارمز — BERRY GOOD FARMS</div>' +
+                '<div class="company-name">' + ENTREPRISE.nom + '</div>' +
                 '<div class="company-sub">' + ENTREPRISE.forme + '</div>' +
-                '<div class="company-sub">' + ENTREPRISE.adresse1 + '</div>' +
-                '<div class="company-sub">TP: ' + ENTREPRISE.tp + ' | RC: ' + ENTREPRISE.rc + ' | IF: ' + ENTREPRISE.if_ + ' | ICE: ' + ENTREPRISE.ice + '</div>' +
+                '<div class="company-sub">' + ENTREPRISE.adresse + '</div>' +
+                '<div class="company-sub">م.م: ' + ENTREPRISE.tp + ' | س.ت.ت: ' + ENTREPRISE.rc + ' | م.ض: ' + ENTREPRISE.if_ + ' | ICE: ' + ENTREPRISE.ice + '</div>' +
                 '</div></div>' +
-
-                /* Title */
                 '<div class="title-bar"><span class="periode">' + periodeLabel + '</span><span>كشف الراتب</span></div>' +
-
-                /* Employee info */
                 '<div class="info-grid">' +
                 '<div class="info-box"><div class="info-box-header">بيانات الموظف</div>' +
                 '<div class="info-row"><span class="info-label">الاسم الكامل :</span><span class="info-value">' + (w.nom || '—').toUpperCase() + (w.prenom ? ' ' + w.prenom : '') + '</span></div>' +
@@ -937,8 +880,6 @@
                 '<div class="info-row"><span class="info-label">رقم CNSS :</span><span class="info-value">' + (w.cnss || '—') + '</span></div>' +
                 '<div class="info-row"><span class="info-label">رقم CNSS المشغل :</span><span class="info-value">' + ENTREPRISE.noCnss + '</span></div>' +
                 '</div></div>' +
-
-                /* Salary base row */
                 '<table><thead><tr>' +
                 '<th>وضع عائلي</th><th>عدد الأطفال</th><th>تخفيضات</th><th>تاريخ الميلاد</th><th>تاريخ الالتحاق</th><th>الأجر الأساسي</th><th>الأجر الساعي</th><th>فترة الأجر</th>' +
                 '</tr></thead><tbody><tr>' +
@@ -947,13 +888,9 @@
                 '<td style="direction:ltr">' + fmtDHAr(sHoraire) + '</td>' +
                 '<td>' + periodeLabel + '</td>' +
                 '</tr></tbody></table>' +
-
-                /* Pay lines */
                 '<table class="pay-table"><thead><tr>' +
                 '<th>الرمز</th><th>البيان</th><th>الأساس</th><th>النسبة</th><th>المكسب</th><th>المقتطع</th>' +
                 '</tr></thead><tbody>' + payRows + '</tbody></table>' +
-
-                /* Cumuls */
                 '<div class="section-label">مجاميع الفترة</div>' +
                 '<table><thead><tr>' +
                 '<th>أيام العمل</th><th>الأجر الإجمالي</th><th>الصافي الخاضع</th><th>الاشتراكات</th><th>الضريبة (IR)</th>' +
@@ -964,14 +901,11 @@
                 '<td style="direction:ltr">' + fmtDHAr(totalRetenues) + '</td>' +
                 '<td>0,00</td>' +
                 '</tr></tbody></table>' +
-
-                /* Congés */
                 '<div class="section-label">وضعية الإجازة — ' + periodeLabel + '</div>' +
                 '<table><thead><tr>' +
                 '<th>رصيد سنة سابقة</th><th>حق السنة الجارية</th><th>إجازة مأخوذة</th><th>رصيد الإجازة</th>' +
                 '</tr></thead><tbody><tr><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table>' +
-
-                '</div></body></html>';
+                '</div>';
         }
 
         // Load logo once
@@ -986,47 +920,60 @@
             });
         } catch(e) {}
 
-        // Create hidden iframe for rendering
-        var iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:794px;height:1123px;border:none;visibility:hidden;';
-        document.body.appendChild(iframe);
+        var pages = workers.map(function(w) {
+            return buildPage(Object.assign({}, w, { _logoDataUrl: logoDataUrl }));
+        });
 
-        var doc = newDoc();
-        var isFirst = true;
+        var css = [
+            '* { margin:0; padding:0; box-sizing:border-box; }',
+            'body { font-family: Cairo, Arial, sans-serif; font-size: 9pt; color: #111; background:#fff; }',
+            '@page { size: A4; margin: 0; }',
+            '@media print { * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
+            '.page { width:210mm; min-height:297mm; padding:8mm 10mm; page-break-after:always; overflow:hidden; }',
+            '.header { background:#F8F0F8; padding:6mm 4mm; display:flex; align-items:center; gap:8mm; margin-bottom:3mm; }',
+            '.header img { width:28mm; height:18mm; object-fit:contain; }',
+            '.header-info { flex:1; }',
+            '.company-name { color:#90278F; font-size:13pt; font-weight:700; }',
+            '.company-sub { font-size:7.5pt; color:#333; margin-top:1mm; }',
+            '.title-bar { background:#90278F; color:#fff; text-align:center; padding:3mm; font-size:12pt; font-weight:700; margin-bottom:3mm; border-radius:2px; display:flex; justify-content:space-between; align-items:center; }',
+            '.title-bar .periode { font-size:8pt; font-weight:400; }',
+            '.info-grid { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-bottom:3mm; }',
+            '.info-box { background:#F8F0F8; padding:3mm; }',
+            '.info-box-header { background:#82B33A; color:#fff; padding:2mm 3mm; font-size:8pt; font-weight:700; margin-bottom:2mm; }',
+            '.info-row { display:flex; gap:2mm; font-size:8pt; padding:0.5mm 0; }',
+            '.info-label { font-weight:600; white-space:nowrap; }',
+            '.info-value { color:#333; }',
+            'table { width:100%; border-collapse:collapse; margin-bottom:3mm; font-size:8pt; }',
+            'th { background:#EFEFEF; padding:2mm; font-weight:600; border:1px solid #ccc; text-align:center; font-size:7.5pt; }',
+            'td { padding:2mm; border:1px solid #ddd; text-align:center; }',
+            '.pay-table td:nth-child(2) { text-align:right; }',
+            '.pay-table td:nth-child(1) { text-align:center; width:10mm; }',
+            '.pay-table td:nth-child(3), .pay-table td:nth-child(4), .pay-table td:nth-child(5), .pay-table td:nth-child(6) { text-align:left; direction:ltr; }',
+            'tr.subtotal td { background:#EFEFEF; font-weight:600; }',
+            'tr.total td { background:#DCE6DC; font-weight:700; }',
+            'tr.net td { background:#DCE6DC; font-weight:700; }',
+            'td.net-amount { color:#C0392B; font-size:10pt; font-weight:700; }',
+            'tr.ni-header td { background:#E6F4FF; color:#3449AB; font-weight:600; }',
+            'tr.av-header td { background:#FFEBEB; color:#C0392B; font-weight:600; }',
+            'tr.ni.subtotal td { background:#F0F8FF; }',
+            'tr.av.subtotal td { background:#FFF5F5; color:#C0392B; }',
+            '.section-label { font-size:8pt; font-weight:700; margin:2mm 0 1mm; }',
+        ].join('\n');
 
-        for (var i = 0; i < workers.length; i++) {
-            var w = Object.assign({}, workers[i], { _logoDataUrl: logoDataUrl });
-            var html = buildHtml(w);
+        var printHtml = '<!DOCTYPE html><html lang="ar" dir="rtl"><head>' +
+            '<meta charset="UTF-8">' +
+            '<link rel="preconnect" href="https://fonts.googleapis.com">' +
+            '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
+            '<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">' +
+            '<style>' + css + '</style>' +
+            '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});<\/script>' +
+            '</head><body>' + pages.join('') + '</body></html>';
 
-            // Write HTML into iframe
-            iframe.contentDocument.open();
-            iframe.contentDocument.write(html);
-            iframe.contentDocument.close();
-
-            // Wait for fonts to load
-            await new Promise(function(resolve) { setTimeout(resolve, 600); });
-
-            // Capture
-            var canvas = await window.html2canvas(iframe.contentDocument.body, {
-                scale: 2,
-                useCORS: true,
-                allowTaint: false,
-                backgroundColor: '#ffffff',
-                width: 794,
-                height: 1123,
-                windowWidth: 794,
-                windowHeight: 1123,
-            });
-
-            if (!isFirst) doc.addPage();
-            isFirst = false;
-            doc.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297);
-        }
-
-        document.body.removeChild(iframe);
-
-        var periodeSafe = (periode || 'quinzaine').replace(/[^a-zA-Z0-9_-]/g, '_');
-        download(doc, 'Bulletins_Paie_AR_' + periodeSafe + '.pdf');
+        var win = window.open('', '_blank', 'width=900,height=700');
+        if (!win) { alert('Autorisez les popups pour générer le PDF en arabe (cliquer le bouton dans la barre d\'adresse).'); return; }
+        win.document.open();
+        win.document.write(printHtml);
+        win.document.close();
     }
 
     window.EmargementPdf = { genSansCnss: genSansCnss, genAvecCnss: genAvecCnss, genTransporteurs: genTransporteurs, genBulletins: genBulletins, genBulletinsAr: genBulletinsAr };
