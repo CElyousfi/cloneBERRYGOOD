@@ -2399,7 +2399,16 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.allPeriodes || meta?.periodes || [];
-          const periodeCampagne = (meta && meta.periodeCampagne) || {};
+          let periodeCampagne = (meta && meta.periodeCampagne) || {};
+          // Dériver periodeCampagne depuis periodeMap si vide (nouvelle campagne ou sync incomplet)
+          if (Object.keys(periodeCampagne).length === 0 && meta?.periodeMap) {
+            const { campagneOf: _campagneOf } = require('./lib/mappingConso/campagneUtils');
+            periodeCampagne = {};
+            for (const [periode, dates] of Object.entries(meta.periodeMap)) {
+              const sorted = (dates || []).filter(Boolean).sort();
+              if (sorted.length) periodeCampagne[periode] = _campagneOf(sorted[0]);
+            }
+          }
           const mirrorPeriodes = meta?.periodes || [];
           const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
           if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
