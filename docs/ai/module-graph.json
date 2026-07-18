@@ -48,10 +48,6 @@
       },
       {
         "commits": 4,
-        "file": "functions/index.js"
-      },
-      {
-        "commits": 4,
         "file": "functions/pointageBdpSync.js"
       },
       {
@@ -61,10 +57,14 @@
       {
         "commits": 4,
         "file": "tests/unit/pointageBdpMap.test.js"
+      },
+      {
+        "commits": 3,
+        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:13128ed9448cd07e",
+    "sourceFingerprint": "sha256:95209616dc8019b4",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
