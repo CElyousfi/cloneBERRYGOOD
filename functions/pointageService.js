@@ -4093,7 +4093,26 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               var _r = _rows[_ri];
               var _res = resolveFermeFromParcelle({ refParcelle: _r.Ref_parcelle, label: _r.Parcelle_Culturale, variete: _r.Variete });
               var _ferme = _res && _res.ferme;
-              if (!_fermeMap[_ferme]) continue;
+              // Router par culture, pas seulement par ferme : F5 contient Myrtille ET Framboise ET Avocatier
+              var _varRes = resolveVariete(_r.Parcelle_Culturale || '', _r.Ref_parcelle || '');
+              var _labelUp = (_r.Parcelle_Culturale || '').toUpperCase();
+              var _varUp = (_r.Variete || '').toUpperCase();
+              var _isAvo = _ferme === 'Avocatier'
+                || _labelUp.includes('HAAS') || _labelUp.includes('HASS') || _labelUp.includes('AVOCAT')
+                || _varUp.includes('HAAS') || _varUp.includes('AVOCAT');
+              var _bucketKey;
+              if (_isAvo) {
+                _bucketKey = 'Avocatier';
+              } else if (_varRes.culture === 'Myrtille') {
+                _bucketKey = 'F5';
+              } else if (_varRes.culture === 'Framboise') {
+                _bucketKey = 'F1';
+              } else if (_ferme === 'F1') {
+                _bucketKey = 'F1';
+              } else {
+                continue; // ferme inconnue / culture non résolue → fail-closed
+              }
+              if (!_fermeMap[_bucketKey]) continue;
               var _pl = _r.Parcelle_Culturale || _r.Ref_parcelle || '?';
               var _mat = (_r.Personnel_Matricule || '').trim();
               var _jh = Number(_r.Nombre_Jr || 0);
@@ -4110,7 +4129,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
                 if (_matUp.startsWith('DD')) _prefix = 'NV';
                 _eqName = _getEquipeName(_prefix);
               }
-              var _fm = _fermeMap[_ferme];
+              var _fm = _fermeMap[_bucketKey];
               if (!_fm.parcelleMap[_pl]) _fm.parcelleMap[_pl] = { label: _pl, equipeMap: {}, totalJH: 0 };
               var _pm = _fm.parcelleMap[_pl];
               if (!_pm.equipeMap[_prefix]) _pm.equipeMap[_prefix] = { nom: _eqName, byDay: {}, totalJH: 0 };
