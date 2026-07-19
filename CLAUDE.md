@@ -35,17 +35,20 @@
 
 ## Discipline outils & permissions (réduire les prompts)
 
-Les permissions (.claude/settings.json) sont normalisées : allow = lectures et
-gates QA ; ask = écritures sensibles (push, rm/mv, deploy, gcloud) ; deny =
-irréversible (push --force, reset --hard, clean -fdx, rm -rf hors projet, sudo).
-Pour ne pas déclencher de confirmations inutiles :
+Politique complète : [docs/ai/PERMISSIONS.md](docs/ai/PERMISSIONS.md). Résumé :
+allow = lectures, dev courant (add/commit), gates QA ; ask = écritures
+sensibles (push, merge, rm/mv, deploy, gcloud, dépendances) ; deny =
+irréversible (push --force[-with-lease], reset --hard, clean -fdx, rm -rf hors
+projet, sudo, `firebase deploy` brut, `--project production`, lecture de
+`.env`/secrets). Pour ne pas déclencher de confirmations inutiles :
 
 1. **Exploration = outils natifs** : utiliser Read / Grep / Glob, PAS `grep`,
    `cat`, `find`, `sed -n`, `head`, `tail` via Bash. Les outils natifs ne sont
    pas gatés ; les équivalents Bash ne sont volontairement pas allowlistés.
 2. **Pas de `cd` préfixé** : ne pas écrire `cd "$CLAUDE_PROJECT_DIR" && cmd`
    quand le working directory est déjà le repo — le segment `cd` force un
-   prompt sur toute la commande composée. Utiliser des chemins relatifs.
+   prompt sur toute la commande composée. Utiliser des chemins relatifs
+   (autre repo/worktree : `git -C <chemin>`).
 3. **Commandes simples** : découper les chaînes `a && b && c` en appels
    séparés compatibles avec l'allowlist (chaque segment est évalué seul).
 4. Les scripts one-off d'analyse vont dans `/tmp` (déjà en
@@ -54,9 +57,42 @@ Pour ne pas déclencher de confirmations inutiles :
 **Bash Discipline Gate** (hook PreToolUse) : `scripts/bash-discipline-gate.js` — bloque
 grep/rg/cat/find/ls/head/tail/wc/sed-n/cd-chain/pipes vers grep-head-tail. Périmètre V1.
 
+**Garde-fous commit** (`git add`/`git commit` sont en allow) — avant CHAQUE commit :
+- `git branch --show-current` : bonne branche (jamais `main` sauf gouvernance) ;
+- `git status` : état complet du working tree ;
+- staging **ciblé** (fichiers nommés) — jamais `git add .` ni `git add -A` par défaut ;
+- relire `git diff --cached` ;
+- vérifier qu'aucun secret n'est stagé (`.env`, tokens, credentials).
+
+---
+
+## Règles de compatibilité Vite (A1 — Pipeline IA Phase 1)
+
+> S'appliquent à TOUT nouveau code et TOUTE extraction depuis `public/app.jsx`.
+> **Aucune extraction du monolithe n'est faite en Phase 1** (contrainte de
+> périmètre explicite) — ces règles posent la convention à l'avance pour ne
+> pas diverger le jour où l'extraction démarre. `src/` n'existe pas encore.
+
+- **ESM uniquement** : `import`/`export` explicites, jamais `require`, jamais
+  de globale implicite (`window.X = ...`) sauf couche de compatibilité UMD
+  documentée (comme `public/lib/caisseUtils.js` aujourd'hui).
+- **Aucun import à effet de bord** : un import ne doit rien exécuter, seulement
+  exposer.
+- **Un point d'entrée `index.js` par feature**, exportant l'API publique du
+  module.
+- **Alias de chemins** déclarés dès maintenant dans `jsconfig.json` :
+  `@features/*`, `@shared/*`, `@app/*` — identiques à la future config Vite.
+- **Structure cible** pour toute extraction future :
+  `src/features/<domaine>/{components,api,hooks,tests,index.js}` et
+  `src/shared/{components,hooks,api,utils}`.
+
 ---
 
 ## Autonomie de l'agent — ce qui nécessite validation Omar
+
+Vocabulaire (brief Pipeline IA Phase 1, A2) : **autonome** = jamais de demande
+d'autorisation ; **approbation humaine obligatoire** = STOP, attendre le GO
+explicite d'Omar. Correspond exactement aux deux catégories ci-dessous.
 
 ### ✅ AUTONOME — exécuter sans demander
 
@@ -67,11 +103,16 @@ grep/rg/cat/find/ls/head/tail/wc/sed-n/cd-chain/pipes vers grep-head-tail. Péri
 
 **Développement courant** :
 - Écrire / éditer du code, créer des fichiers
-- `npm run build:frontend`, `npm run test:unit`
+- Création de branche/worktree dédiée à un ticket
+- `npm run build:frontend`, `npm run test:unit`, `npm run qa`, lint (à venir Chantier D)
 - Commits, push sur feature branch
 - Deploy functions (backend) — changement non-régressif
 - Deploy hosting sur **preview channel** (pas prod)
-- Lancer Playwright / smoke tests
+- Deploy preview channel sur le **projet Firebase staging** — *actif seulement
+  à partir du Chantier B (Isolation staging) ; l'alias `staging` n'existe pas
+  encore dans `.firebaserc` à ce jour, cette ligne est donc inerte tant que B
+  n'est pas livré*
+- Lancer Playwright / smoke tests, captures d'écran
 - Corrections de bugs (crash, NaN, affichage cassé)
 
 ### 🛑 GATED — STOP, attendre validation explicite Omar
@@ -83,8 +124,32 @@ grep/rg/cat/find/ls/head/tail/wc/sed-n/cd-chain/pipes vers grep-head-tail. Péri
 | **Migration / suppression de données Firestore** | Irréversible |
 | **Refonte architecturale** | Impact large |
 | **Suppression de données de production** | Irréversible |
+| **Modification de `firestore.rules` en prod** | Sécurité/accès données |
+| **Force push, secrets, modification hors scope du ticket** | Irréversible / dérive de scope |
 
 **Règle résumée** : Omar valide le **preview visuel** → l'agent merge dans main et déploie en prod. Pas de deuxième prompt pour les fonctions.
+
+---
+
+## Discipline worktree + verrous fichier (A3 — Pipeline IA Phase 1)
+
+> Convention posée pour le futur système de tickets (Chantier C, pas encore
+> livré). S'applique dès maintenant à tout travail organisé "par ticket".
+
+- **Un ticket = un worktree = une branche `sb/<ticket-id>`.**
+- Avant de commencer un ticket : acquérir un verrou par fichier modifié dans
+  la collection Firestore `ai_locks` (TTL 4h, renouvelable). **Cette
+  collection n'existe pas encore — elle arrive au Chantier C.** Cette section
+  documente la règle en amont pour que C n'ait qu'à câbler le mécanisme
+  technique ; en attendant, la coordination inter-tickets reste manuelle
+  (coordination via Omar / un seul ticket actif à la fois sur les ressources
+  exclusives ci-dessous).
+- **Ressources exclusives** (un seul ticket à la fois, quel que soit le diff) :
+  `public/app.jsx`, `package.json`, `firebase.json`, `firestore.rules`,
+  `CLAUDE.md`, `.claude/**`.
+- **Limites par ticket** : max 2 tentatives d'implémentation, max 2
+  corrections post-QA, max 8 fichiers modifiés. Dépassement d'une limite →
+  statut `NEEDS_HUMAN`, on s'arrête et on remonte à Omar.
 
 ---
 
@@ -200,6 +265,7 @@ Pattern d'action sur `/api/caisse?action=<name>` (POST/GET selon) :
 
 ## Pointeurs utiles
 
+- Politique de permissions : [docs/ai/PERMISSIONS.md](docs/ai/PERMISSIONS.md) — audit : `/permission-audit` ([scripts/permission-audit.js](scripts/permission-audit.js))
 - Routes API : [firebase.json](firebase.json) (`rewrites`)
 - Règles : [firestore.rules](firestore.rules)
 - Build front : [scripts/build-frontend.js](scripts/build-frontend.js)

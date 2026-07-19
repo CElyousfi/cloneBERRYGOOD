@@ -6,7 +6,12 @@
     "target": "ES2022",
     "module": "commonjs",
     "skipLibCheck": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "paths": {
+      "@features/*": ["src/features/*"],
+      "@shared/*": ["src/shared/*"],
+      "@app/*": ["src/*"]
+    }
   },
   "include": [
     "public/lib/**/*.js",
