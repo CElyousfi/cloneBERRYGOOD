@@ -16,6 +16,7 @@ const {
   computeFingerprint,
   collectFingerprintSources,
   computeHealthScore,
+  buildMonolithIndex,
   sortKeysDeep,
   isExcludedFromGitCoupling,
   generateGraph,
@@ -523,6 +524,61 @@ test('[stabilité] working tree propre après tests — docs/ai/module-graph.jso
 test('[stabilité] generatorVersion dans le graphe = version courante du scanner', async () => {
   await generateGraph(ROOT, TMP_GRAPH);
   const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
-  assert.strictEqual(graph._meta.generatorVersion, '1.0.2',
+  assert.strictEqual(graph._meta.generatorVersion, '1.0.3',
     `generatorVersion inattendu : ${graph._meta.generatorVersion}`);
+});
+
+// --- 18. buildMonolithIndex — unit ---
+
+test('buildMonolithIndex: tab → { domain, file, line }', () => {
+  const tabs = [{ name: 'QuinzaineTab', approxLine: 10965, domain: 'paie' }];
+  const index = buildMonolithIndex(tabs);
+  assert.deepStrictEqual(index['QuinzaineTab'], {
+    domain: 'paie',
+    file: 'public/app.jsx',
+    line: 10965,
+  });
+});
+
+test('buildMonolithIndex: tableau vide → objet vide', () => {
+  assert.deepStrictEqual(buildMonolithIndex([]), {});
+});
+
+// --- 19. monolithIndex dans le graphe généré ---
+
+test('monolithIndex présent dans le graphe et non vide', async () => {
+  await generateGraph(ROOT, TMP_GRAPH);
+  const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
+  assert(graph.monolithIndex, 'monolithIndex manquant dans le graphe');
+  assert(Object.keys(graph.monolithIndex).length > 0, 'monolithIndex vide');
+  assert.strictEqual(
+    graph._meta.stats.monolithSymbols,
+    Object.keys(graph.monolithIndex).length,
+    'stats.monolithSymbols incohérent'
+  );
+});
+
+test('monolithIndex: tous les symboles pointent vers public/app.jsx avec line > 0', async () => {
+  await generateGraph(ROOT, TMP_GRAPH);
+  const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
+  const bad = Object.entries(graph.monolithIndex).filter(
+    ([, v]) => v.file !== 'public/app.jsx' || typeof v.line !== 'number' || v.line < 1
+  );
+  assert.strictEqual(bad.length, 0,
+    `symboles avec file ou line invalides : ${bad.map(([k]) => k).join(', ')}`);
+});
+
+test('monolithIndex: cohérence des lignes — symbole trouvable dans app.jsx à ±2 lignes', async () => {
+  await generateGraph(ROOT, TMP_GRAPH);
+  const graph = JSON.parse(fs.readFileSync(TMP_GRAPH, 'utf8'));
+  const appLines = fs.readFileSync(path.join(ROOT, 'public/app.jsx'), 'utf8').split('\n');
+  const failures = [];
+  for (const [name, entry] of Object.entries(graph.monolithIndex)) {
+    const lineIdx = entry.line - 1; // 0-based
+    const window = appLines.slice(Math.max(0, lineIdx - 2), lineIdx + 3);
+    const found = window.some(l => l.includes(`function ${name}`));
+    if (!found) failures.push(`${name} @ line ${entry.line}`);
+  }
+  assert.strictEqual(failures.length, 0,
+    `${failures.length} symboles non trouvés dans la fenêtre ±2 :\n${failures.slice(0, 10).join('\n')}`);
 });

@@ -80,6 +80,9 @@ Afficher la sortie au format suivant :
 - **Composants** : `<liste>`
 - **Libs** : `<liste>`
 
+### Symboles probables (app.jsx)
+Lister tous les symboles du domaine filtrés depuis `monolithIndex`, format : `- **<nom>** — \`<file>:L<line>\``
+
 ### Backend
 - **Cloud Functions** : `<liste CF>` (routes : `/api/<route>`)
 - **Modules lib** : `<liste functions/lib/<module>>`
