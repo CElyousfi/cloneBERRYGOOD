@@ -7,7 +7,7 @@ const crypto = require('crypto');
 const { execSync } = require('child_process');
 
 const SCHEMA_VERSION = 1;
-const GENERATOR_VERSION = '1.0.2';
+const GENERATOR_VERSION = '1.0.3';
 
 // Fichiers exclus de l'analyse git coupling
 const GIT_COUPLING_EXCLUDE = [
@@ -223,6 +223,26 @@ function computeHealthScore(data) {
 }
 
 /**
+ * Construit l'index symbole → localisation dans public/app.jsx.
+ * Seule la première occurrence de chaque nom est retenue.
+ * @param {Array<{ name: string, approxLine: number, domain: string|null }>} tabs
+ * @returns {Record<string, { domain: string|null, file: string, line: number }>}
+ */
+function buildMonolithIndex(tabs) {
+  const index = {};
+  for (const tab of tabs) {
+    if (!index[tab.name]) {
+      index[tab.name] = {
+        domain: tab.domain,
+        file: 'public/app.jsx',
+        line: tab.approxLine,
+      };
+    }
+  }
+  return index;
+}
+
+/**
  * Tri récursif des clés d'objets pour sérialisation JSON déterministe.
  * Les tableaux de strings sont triés alphabétiquement.
  * Les tableaux d'objets gardent leur ordre d'insertion.
@@ -425,6 +445,9 @@ async function generateGraph(root, outPath) {
     const classified = classifyByKeywords(name, domains);
     tabs.push({ name, approxLine, domain: classified.domain, confidence: classified.confidence });
   }
+
+  // 5b. Construire l'index symboles du monolithe
+  const monolithIndex = buildMonolithIndex(tabs);
 
   // 6. Scanner functions/index.js
   const cfSource = readFileSafe(path.join(root, 'functions/index.js')) || '';
@@ -749,6 +772,7 @@ async function generateGraph(root, outPath) {
       unitTestFiles: unitTestCount,
       coverageScore: coverageScoreGlobal,
       unclassifiedFiles: unclassified.length,
+      monolithSymbols: Object.keys(monolithIndex).length,
     },
     heatmap: heatmapEntries,
   };
@@ -759,6 +783,7 @@ async function generateGraph(root, outPath) {
     domains: domainObjects,
     files: filesIndex,
     firestoreCollections: firestoreCollectionsIndex,
+    monolithIndex,
     routes: routesIndex,
     unclassified,
   };
@@ -813,6 +838,7 @@ module.exports = {
   collectFingerprintSources,
   isExcludedFromGitCoupling,
   computeHealthScore,
+  buildMonolithIndex,
   sortKeysDeep,
   generateGraph,
 };
