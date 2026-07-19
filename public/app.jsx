@@ -4291,6 +4291,10 @@
             const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
             const [presenceQData, setPresenceQData] = useState(null);
             const [sansSortiePopup, setSansSortiePopup] = useState(null); // {date, jourLabel, equipeNom, workers}
+            // Ferme pour le filtre "sans entrée/sortie" : chef_f1/chef_f5 n'ont pas farm dans PROFILES
+            const presenceFerme = farmFilter ||
+                (currentProfile === 'chef_f1' ? 'F1' :
+                 currentProfile === 'chef_f5' ? 'F5' : null);
             const [workerPopup, setWorkerPopup] = useState(null);
             const [workerLoading, setWorkerLoading] = useState(false);
             const [kpiPopup, setKpiPopup] = useState(null); // { title, ferme, type }
@@ -4420,14 +4424,14 @@
                     )}
 
                     {/* Équipes sans entrée/sortie — Chef F1/F5 uniquement */}
-                    {(currentProfile === 'chef_f1' || currentProfile === 'chef_f5') && farmFilter && presenceQData && (() => {
+                    {(currentProfile === 'chef_f1' || currentProfile === 'chef_f5') && presenceFerme && presenceQData && (() => {
                         // Per day: find workers missing entry or exit
                         const daysWithIssues = (presenceQData.days || [])
                             .map(d => {
                                 // Workers who worked in THIS farm on THIS specific day (not the whole quinzaine)
                                 const allowedMatsForDay = new Set(
                                     transportRows
-                                        .filter(r => r.ferme === farmFilter && r.jour === d.date)
+                                        .filter(r => r.ferme === presenceFerme && r.jour === d.date)
                                         .map(r => (r.matricule || '').toUpperCase().trim())
                                 );
                                 if (allowedMatsForDay.size === 0) return null;
@@ -4458,6 +4462,65 @@
                                 <div style={{padding:'10px 16px',background:'rgba(231,76,60,0.06)',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(231,76,60,0.15)'}}>
                                     <i className="fa-solid fa-clock-rotate-left" style={{color:'#e74c3c',fontSize:14}}></i>
                                     <span style={{fontWeight:700,fontSize:13,color:'#e74c3c'}}>Équipes sans entrée/sortie</span>
+                                    <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>Quinzaine en cours — {daysWithIssues.length} jour{daysWithIssues.length > 1 ? 's' : ''}</span>
+                                </div>
+                                <div style={{padding:'8px 12px',background:'#fff'}}>
+                                    {daysWithIssues.map((d, di) => (
+                                        <div key={di} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 4px',borderBottom: di < daysWithIssues.length - 1 ? '1px solid var(--gray-100)' : 'none',flexWrap:'wrap'}}>
+                                            <span style={{fontSize:11,fontWeight:700,color:'var(--dark)',minWidth:80}}>{d.jourLabel}</span>
+                                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                                                {d.equipes.map((eq, ei) => (
+                                                    <span key={ei} onClick={() => setSansSortiePopup({ date: d.date, jourLabel: d.jourLabel, equipeNom: eq.nom, workers: eq.workers.sort((a,b) => (a.nom||'').localeCompare(b.nom||'')) })}
+                                                        style={{fontSize:10,padding:'2px 8px',borderRadius:10,background:'rgba(231,76,60,0.08)',color:'#c0392b',fontWeight:600,cursor:'pointer',transition:'background 0.15s'}}
+                                                        onMouseEnter={e => e.currentTarget.style.background='rgba(231,76,60,0.18)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background='rgba(231,76,60,0.08)'}>
+                                                        {eq.nom} <span style={{opacity:0.6}}>({eq.count} — {[...eq.missing].join('/')})</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Équipes sans entrée/sortie — RH : toutes fermes */}
+                    {currentProfile === 'rh' && presenceQData && (() => {
+                        const daysWithIssues = (presenceQData.days || [])
+                            .map(d => {
+                                const allowedMatsForDay = new Set(
+                                    transportRows
+                                        .filter(r => r.jour === d.date)
+                                        .map(r => (r.matricule || '').toUpperCase().trim())
+                                );
+                                if (allowedMatsForDay.size === 0) return null;
+                                const filtered = d.rows.filter(r => {
+                                    const mat = (r.matricule || '').toUpperCase().trim();
+                                    return allowedMatsForDay.has(mat) && (!r.heureEntree || !r.heureSortie);
+                                });
+                                if (!filtered.length) return null;
+                                const byEq = {};
+                                filtered.forEach(r => {
+                                    const prefix = getEqPrefix(r.matricule);
+                                    if (!byEq[prefix]) byEq[prefix] = { nom: eqNames[prefix] || prefix, count: 0, missing: new Set(), workers: [] };
+                                    byEq[prefix].count++;
+                                    if (!r.heureEntree) byEq[prefix].missing.add('entrée');
+                                    if (!r.heureSortie) byEq[prefix].missing.add('sortie');
+                                    byEq[prefix].workers.push(r);
+                                });
+                                const dt2 = new Date(d.date + 'T00:00:00');
+                                const jourLabel2 = dt2.toLocaleDateString('fr-FR', {weekday:'short',day:'numeric',month:'short'});
+                                return { date: d.date, jourLabel: jourLabel2, equipes: Object.values(byEq).sort((a,b) => b.count - a.count) };
+                            })
+                            .filter(Boolean);
+                        if (!daysWithIssues.length) return null;
+                        return (
+                            <div style={{marginBottom:16,borderRadius:12,border:'1.5px solid rgba(231,76,60,0.25)',overflow:'hidden'}}>
+                                <div style={{padding:'10px 16px',background:'rgba(231,76,60,0.06)',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(231,76,60,0.15)'}}>
+                                    <i className="fa-solid fa-clock-rotate-left" style={{color:'#e74c3c',fontSize:14}}></i>
+                                    <span style={{fontWeight:700,fontSize:13,color:'#e74c3c'}}>Équipes sans entrée/sortie</span>
+                                    <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:8,opacity:0.7}}>— Toutes fermes</span>
                                     <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>Quinzaine en cours — {daysWithIssues.length} jour{daysWithIssues.length > 1 ? 's' : ''}</span>
                                 </div>
                                 <div style={{padding:'8px 12px',background:'#fff'}}>
