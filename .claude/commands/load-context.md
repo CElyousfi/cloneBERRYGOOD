@@ -43,6 +43,10 @@ Domaines disponibles (10) : `pointage`, `paie`, `recolte`, `qualite`, `stock`, `
 
 Extraire depuis `domains.<domaine>` les sections `frontend`, `backend`, `firestore`, `tests`, `gitCoupling`.
 
+Lire `monolithIndex` du graphe JSON. Filtrer les entrées dont `domain` correspond
+au domaine principal détecté. Trier alphabétiquement par nom. Si `monolithIndex`
+est absent du graphe (graphe ancien), ignorer cette section.
+
 **Notes cross-domaine obligatoires selon le domaine principal :**
 
 - **`referentiel`** : `ParcellesReferentielTab.jsx` appelle aussi `/api/pointage-rh` (CF `pointageV3`, domaine `pointage`). Compléter avec une exploration minimale sur le composant principal pour détecter les routes additionnelles :
