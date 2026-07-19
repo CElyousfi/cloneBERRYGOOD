@@ -4098,11 +4098,18 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               var _mat = (_r.Personnel_Matricule || '').trim();
               var _jh = Number(_r.Nombre_Jr || 0);
               // Dériver le préfixe équipe de transport (miroir de getEqPrefix frontend)
-              var _prefix = _mat.substring(0, 2).toUpperCase() || 'NV';
-              var _matUp = _mat.toUpperCase();
-              if (_matUp.startsWith('HAFI') || (_matUp.startsWith('HA') && !_matUp.startsWith('HAF'))) _prefix = 'HA';
-              if (_matUp.startsWith('DD')) _prefix = 'NV';
-              var _eqName = _getEquipeName(_prefix);
+              // Matricules commençant par un chiffre → regrouper dans "Autre"
+              var _prefix, _eqName;
+              if (/^\d/.test(_mat)) {
+                _prefix = '__autre__';
+                _eqName = 'Autre';
+              } else {
+                _prefix = _mat.substring(0, 2).toUpperCase() || 'NV';
+                var _matUp = _mat.toUpperCase();
+                if (_matUp.startsWith('HAFI') || (_matUp.startsWith('HA') && !_matUp.startsWith('HAF'))) _prefix = 'HA';
+                if (_matUp.startsWith('DD')) _prefix = 'NV';
+                _eqName = _getEquipeName(_prefix);
+              }
               var _fm = _fermeMap[_ferme];
               if (!_fm.parcelleMap[_pl]) _fm.parcelleMap[_pl] = { label: _pl, equipeMap: {}, totalJH: 0 };
               var _pm = _fm.parcelleMap[_pl];
