@@ -26482,7 +26482,7 @@ ${rejetHtml}
                         __palier: declare ? __pal.palier : '—',
                         __pourcentage: declare ? (__pal.pourcentage || 0) : 0,
                     });
-                    list.push({ matricule, nom: r.nom || pt.nom || '', declare,
+                    list.push({ matricule, nom: r.nom || pt.nom || '', prenom: r.prenom || '', declare,
                         primeFonctionJournaliere: primeFonctionJour,
                         baselineJours, baselineDate, joursDepuisBaseline, anciennete,
                         joursPeriode, joursFeriesPeriode, paie });
@@ -26572,6 +26572,30 @@ ${rejetHtml}
                 } catch (e) {
                     console.error('savePrimeFonction:', e);
                     setRegistry(prevReg => ({ ...prevReg, [docId]: prev }));
+                    alert('Erreur enregistrement: ' + e.message);
+                }
+            };
+
+            // Correction manuelle du prénom (ouvriers non déclarés sans CNSS, donc absents
+            // du référentiel BDP Personnel — aucun backfill automatique possible).
+            // Refs non contrôlées (comme les inputs de prime) : le bouton "Enregistrer"
+            // lit la valeur courante au clic, jamais de re-render à chaque frappe.
+            const prenomRefs = React.useRef({});
+            const saveIdentite = async (matricule) => {
+                const docId = numKey(matricule);
+                const prev = registry[docId] || { matricule: docId };
+                const inputEl = prenomRefs.current[docId];
+                const prenom = ((inputEl && inputEl.value) || '').trim();
+                if (!prenom) { alert('Prénom vide.'); return; }
+                const prevPrenom = prev.prenom || '';
+                setRegistry(prevReg => ({ ...prevReg, [docId]: { ...prev, prenom } }));
+                try {
+                    // Écriture via Cloud Function gated (RH/DG), jamais Firestore direct.
+                    await callPrimesCF('update-identite', { matricule: docId, prenom });
+                    __PaieDataCache.invalidate('paie:registry');
+                } catch (e) {
+                    console.error('saveIdentite:', e);
+                    setRegistry(prevReg => ({ ...prevReg, [docId]: { ...prev, prenom: prevPrenom } }));
                     alert('Erreur enregistrement: ' + e.message);
                 }
             };
@@ -26748,6 +26772,7 @@ ${rejetHtml}
                                         <tr>
                                             <th>Matricule</th>
                                             <th>Nom</th>
+                                            <th>Prénom</th>
                                             <th style={{textAlign:'center'}}>Déclaré</th>
                                             <th style={{textAlign:'right'}}>Prime fct (DH/j)</th>
                                             <th style={{textAlign:'right'}}>Baseline (j)</th>
@@ -26769,6 +26794,17 @@ ${rejetHtml}
                                             <tr key={r.matricule}>
                                                 <td style={{fontWeight:600, color:'var(--gray-500)'}}>{r.matricule}</td>
                                                 <td>{r.nom || <span style={{color:'var(--gray-300)'}}>—</span>}</td>
+                                                <td>
+                                                    <div style={{display:'flex', gap:4, alignItems:'center'}}>
+                                                        <input type="text" defaultValue={r.prenom} placeholder="Prénom"
+                                                            ref={el => { prenomRefs.current[numKey(r.matricule)] = el; }}
+                                                            style={{width:80, padding:'2px 4px', borderRadius:4, border:'1px solid var(--gray-200)', fontSize:10}} />
+                                                        <button onClick={() => saveIdentite(r.matricule)} title="Enregistrer le prénom"
+                                                            style={{padding:'2px 6px', background:'var(--berry)', color:'white', border:'none', borderRadius:4, fontSize:9, cursor:'pointer'}}>
+                                                            <i className="fa-solid fa-check"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
                                                 <td style={{textAlign:'center'}}>
                                                     <input type="checkbox" checked={r.declare} onChange={e => toggleDeclare(r.matricule, e.target.checked)} />
                                                 </td>
@@ -26792,12 +26828,12 @@ ${rejetHtml}
                                             </tr>
                                         ))}
                                         {filteredRows.length === 0 && (
-                                            <tr><td colSpan={16} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
+                                            <tr><td colSpan={17} style={{textAlign:'center', color:'var(--gray-400)', padding:20}}>Aucun ouvrier trouvé pour cette période / ce filtre.</td></tr>
                                         )}
                                     </tbody>
                                     <tfoot>
                                         <tr style={{fontWeight:700, background:'var(--gray-50)'}}>
-                                            <td colSpan={10} style={{textAlign:'right'}}>Totaux ({filteredRows.length} ouvrier{filteredRows.length > 1 ? 's' : ''})</td>
+                                            <td colSpan={11} style={{textAlign:'right'}}>Totaux ({filteredRows.length} ouvrier{filteredRows.length > 1 ? 's' : ''})</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.brut)}</td>
                                             <td style={{textAlign:'right'}}>{fmt(totals.prime)}</td>
                                             <td style={{textAlign:'right', color: totals.retenues > 0 ? 'var(--red)' : 'inherit'}}>{totals.retenues > 0 ? '-' : ''}{fmt(totals.retenues)}</td>
