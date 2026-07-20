@@ -15417,6 +15417,27 @@ exports.primesManagement = functions
         return res.json({ success: true, matricule });
       }
 
+      // ---------- update-identite : correction manuelle prenom/nom (ouvriers non déclarés) ----------
+      if (action === "update-identite" && req.method === "POST") {
+        const matricule = normalizeMatricule(req.body && req.body.matricule);
+        if (!matricule) return res.status(400).json({ success: false, error: "matricule requis" });
+        const prenom = String((req.body && req.body.prenom) || "").trim();
+        const nom = String((req.body && req.body.nom) || "").trim();
+        if (!prenom && !nom) {
+          return res.status(400).json({ success: false, error: "prenom ou nom requis" });
+        }
+        const ref = REGISTRY.doc(matricule);
+        const snap = await ref.get();
+        if (!snap.exists) {
+          return res.status(404).json({ success: false, error: "ouvrier introuvable dans ouvriers_registry" });
+        }
+        const upd = { updatedAt: now, updatedBy: actor };
+        if (prenom) upd.prenom = prenom;
+        if (nom) upd.nom = nom;
+        await ref.update(upd);
+        return res.json({ success: true, matricule, prenom, nom });
+      }
+
       // ---------- import-declares : batch "liste déclarés" ----------
       if (action === "import-declares" && req.method === "POST") {
         const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
