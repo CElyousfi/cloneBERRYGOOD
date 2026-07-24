@@ -26300,6 +26300,7 @@ ${rejetHtml}
             const baselineFileRef = React.useRef(null);
             const [registryError, setRegistryError] = useState(false);
             const [reloadRegistryTick, setReloadRegistryTick] = useState(0);
+            const [syncingIdentite, setSyncingIdentite] = useState(false);
 
             // Live subscription on barèmes
             useEffect(() => {
@@ -26600,6 +26601,29 @@ ${rejetHtml}
                 }
             };
 
+            // Backfill AUTO des prénoms/noms manquants depuis BEE ONE (rh|dg).
+            // Complète saveIdentite (saisie manuelle) : ne modifie que les
+            // ouvriers dont le prenom Firestore est vide ET résolu côté BEE ONE.
+            // Le champ manuel reste le filet de sécurité pour les notFoundInBdp.
+            const handleSyncIdentiteBdp = async () => {
+                if (syncingIdentite) return;
+                setSyncingIdentite(true);
+                try {
+                    const res = await callPrimesCF('sync-identite-bdp', {});
+                    const nbUpdated = res.updated || 0;
+                    const nbNotFound = (res.notFoundInBdp || []).length;
+                    alert(`Synchronisation prénoms BEE ONE terminée : ${nbUpdated} prénom(s) mis à jour, ${nbNotFound} non trouvé(s) dans BEE ONE (à saisir manuellement).`);
+                    __PaieDataCache.invalidate('paie:registry');
+                    setLoading(true);
+                    setReloadRegistryTick(t => t + 1);
+                } catch (e) {
+                    console.error('handleSyncIdentiteBdp:', e);
+                    alert('Erreur synchronisation : ' + e.message);
+                } finally {
+                    setSyncingIdentite(false);
+                }
+            };
+
             const parseDateCell = (raw, fallback) => {
                 if (raw == null || raw === '') return fallback;
                 if (typeof raw === 'number') {
@@ -26726,6 +26750,12 @@ ${rejetHtml}
                                 <button onClick={() => baselineFileRef.current?.click()} style={{padding:'6px 12px', background:'var(--orange)', color:'white', border:'none', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer'}}>
                                     <i className="fa-solid fa-file-import" style={{marginRight:4}}></i> Importer baseline ancienneté
                                 </button>
+                                {(currentProfile === 'dg' || currentProfile === 'rh') && (
+                                    <button onClick={handleSyncIdentiteBdp} disabled={syncingIdentite}
+                                        style={{padding:'6px 12px', background:syncingIdentite ? '#ccc' : '#1565C0', color:'white', border:'none', borderRadius:8, fontSize:11, fontWeight:600, cursor:syncingIdentite ? 'wait' : 'pointer'}}>
+                                        {syncingIdentite ? '⏳ Synchro en cours…' : '🔄 Synchroniser prénoms (BEE ONE)'}
+                                    </button>
+                                )}
                             </div>
                         }
                     >
