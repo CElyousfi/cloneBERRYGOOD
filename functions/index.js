@@ -15336,6 +15336,7 @@ exports.caisseManagement = functions
 const { canManagePrimes, forbiddenReason } = require("./lib/primes/primesAccess");
 const { normalizeMatricule, buildImportPreview } = require("./lib/primes/primesImport");
 const { buildPrimeUpdate } = require("./lib/primes/primeHistory");
+const { buildIdentiteSyncPlan } = require("./lib/primes/identiteSync");
 
 exports.primesManagement = functions
   .region("europe-west1")
@@ -15436,6 +15437,44 @@ exports.primesManagement = functions
         if (nom) upd.nom = nom;
         await ref.update(upd);
         return res.json({ success: true, matricule, prenom, nom });
+      }
+
+      // ---------- sync-identite-bdp : backfill AUTO prenom/nom depuis BEE ONE ----------
+      // Complète update-identite : au lieu d'une saisie manuelle ligne par ligne,
+      // relit le référentiel Personnel BEE ONE (rhBdpService.getPersonnelRef,
+      // READ-ONLY) et comble automatiquement les prenom/nom manquants dans
+      // ouvriers_registry. Idempotent — ne réécrit JAMAIS un champ déjà non-vide,
+      // même si la valeur BEE ONE diffère (aucune écrasement possible).
+      if (action === "sync-identite-bdp" && req.method === "POST") {
+        const rhBdpService = require("./rhBdpService");
+        const bdpResult = await rhBdpService.getPersonnelRef();
+        if (!bdpResult.success) {
+          return res.status(502).json({ success: false, error: bdpResult.error || "Connexion BEE ONE échouée" });
+        }
+
+        const regSnap = await REGISTRY.get();
+        const registryDocs = regSnap.docs.map(d => ({ id: d.id, data: d.data() || {} }));
+        const plan = buildIdentiteSyncPlan(registryDocs, bdpResult.data || {});
+
+        let batch = db_firestore.batch();
+        let batchCount = 0;
+        for (const item of plan.toUpdate) {
+          batch.update(REGISTRY.doc(item.id), { ...item.update, updatedAt: now, updatedBy: actor });
+          batchCount++;
+          if (batchCount >= 400) {
+            await batch.commit();
+            batch = db_firestore.batch();
+            batchCount = 0;
+          }
+        }
+        if (batchCount > 0) await batch.commit();
+
+        return res.json({
+          success: true,
+          updated: plan.toUpdate.length,
+          notFoundInBdp: plan.notFoundInBdp,
+          totalScanned: plan.totalScanned,
+        });
       }
 
       // ---------- import-declares : batch "liste déclarés" ----------
