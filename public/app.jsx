@@ -12976,7 +12976,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             if (row.type === 'groupe') {
                                                                 return (
                                                                     <tr key={row.key}>
-                                                                        <td colSpan={parcelles.length + 2} style={{padding:'8px 14px',fontWeight:700,fontSize:12,background:'var(--berry)',color:'white',letterSpacing:'0.04em',textTransform:'uppercase',position:'sticky',left:0}}>
+                                                                        <td colSpan={parcelles.length + 2} style={{padding:'8px 14px',fontWeight:700,fontSize:12,background:color,color:'white',letterSpacing:'0.04em',textTransform:'uppercase',position:'sticky',left:0}}>
                                                                             {row.label}
                                                                             <span style={{fontWeight:400,fontSize:10,opacity:0.75,marginLeft:8}}>
                                                                                 {analytiqueView === 'jh'
@@ -12991,7 +12991,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             // ── Ligne famille (clic sur cellule → popup) ──
                                                             return (
                                                                 <tr key={row.key} style={{background:'#fff',borderBottom:'1px solid #f0e6ef'}}>
-                                                                    <td style={{padding:'9px 14px',fontWeight:600,color:'var(--berry)',position:'sticky',left:0,background:'#fff',borderRight:'2px solid var(--berry)',zIndex:1,borderLeft:'3px solid var(--berry)'}}>
+                                                                    <td style={{padding:'9px 14px',fontWeight:600,color,position:'sticky',left:0,background:'#fff',borderRight:`2px solid ${color}`,zIndex:1,borderLeft:`3px solid ${color}`}}>
                                                                         {row.label}
                                                                         <span style={{fontSize:10,fontWeight:400,color:'var(--gray-400)',marginLeft:6}}>{row.key}</span>
                                                                     </td>
@@ -13011,7 +13011,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                                             </td>
                                                                         );
                                                                     })}
-                                                                    <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color:'var(--berry)',background:'#fdf4f8',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef'}}>
+                                                                    <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color,background:'#fdf4f8',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef'}}>
                                                                         <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
                                                                         <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{_unit}</div>
                                                                     </td>
