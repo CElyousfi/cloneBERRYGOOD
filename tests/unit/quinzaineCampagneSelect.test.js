@@ -60,7 +60,12 @@ function optionValues(select) {
   return vals;
 }
 
-test('rend des optgroup par campagne, campagnes DESC, numéro DESC', () => {
+test('rend un seul optgroup, celui de la campagne courante (la plus récente)', () => {
+  // Depuis 2450a88 (fix(quinzaine): limiter le sélecteur à la campagne courante
+  // uniquement) : QCS_group().slice(0, 1) — les campagnes plus anciennes ne sont
+  // plus affichées du tout (décision produit, pas un bug). Voir QCS_group() dans
+  // QuinzaineCampagneSelect.jsx pour la logique de tri/groupement encore
+  // multi-campagne (utile si ce filtre est un jour assoupli).
   const el = QCS({
     periodes: ['Quinzaine 24', 'Quinzaine 01', 'Quinzaine 02'],
     periodeCampagne: {
@@ -72,14 +77,9 @@ test('rend des optgroup par campagne, campagnes DESC, numéro DESC', () => {
     onChange: () => {},
   });
   const groups = el.children.filter((c) => c.type === 'optgroup');
-  assert.strictEqual(groups.length, 2);
-  assert.strictEqual(groups[0].props.label, '2026-2027'); // campagne DESC
-  assert.strictEqual(groups[1].props.label, '2025-2026');
-  assert.deepStrictEqual(optionValues(el), [
-    'Quinzaine 02',
-    'Quinzaine 01',
-    'Quinzaine 24',
-  ]);
+  assert.strictEqual(groups.length, 1);
+  assert.strictEqual(groups[0].props.label, '2026-2027'); // campagne courante uniquement
+  assert.deepStrictEqual(optionValues(el), ['Quinzaine 02', 'Quinzaine 01']);
 });
 
 test('keys uniques campagne|periode (fin des collisions React)', () => {
@@ -93,7 +93,7 @@ test('keys uniques campagne|periode (fin des collisions React)', () => {
   assert.strictEqual(new Set(keys).size, keys.length);
 });
 
-test('FALLBACK : periodeCampagne absent + periodeDates fourni → dérive campagne client', () => {
+test('FALLBACK : periodeCampagne absent + periodeDates fourni → dérive campagne client, campagne courante uniquement', () => {
   const el = QCS({
     periodes: ['Quinzaine 24', 'Quinzaine 01'],
     periodeDates: {
@@ -103,9 +103,9 @@ test('FALLBACK : periodeCampagne absent + periodeDates fourni → dérive campag
     value: '',
   });
   const groups = el.children.filter((c) => c.type === 'optgroup');
-  assert.strictEqual(groups.length, 2);
+  assert.strictEqual(groups.length, 1);
   assert.strictEqual(groups[0].props.label, '2026-2027');
-  assert.deepStrictEqual(optionValues(el), ['Quinzaine 01', 'Quinzaine 24']);
+  assert.deepStrictEqual(optionValues(el), ['Quinzaine 01']);
 });
 
 test('FALLBACK LISTE PLATE : ni periodeCampagne ni periodeDates → tri numéro DESC, pas de crash', () => {
