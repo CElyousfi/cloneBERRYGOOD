@@ -597,6 +597,7 @@
 
         const NAV_ITEMS_MAGASINIER = [
             { id: 'mag_dashboard', label: 'Dashboard Stock', icon: 'fa-gauge-high' },
+            { id: 'mag_bdc_liste', label: 'Bons de Commande', icon: 'fa-file-contract' },
             { id: 'mag_bdc_reception', label: 'BDC à réceptionner', icon: 'fa-clipboard-check' },
             { id: 'mag_reception', label: 'Bons de Réception', icon: 'fa-truck-ramp-box' },
             { id: 'mag_transfert', label: 'Transferts', icon: 'fa-right-left' },
@@ -68910,6 +68911,7 @@ ${rejetHtml}
                                 {renderTab('qualite_marche_local', QualiteMarcheLocalTab, { data, userProfile: PROFILES.find(p => p.id === currentProfile) }, 'Marché Local')}
                                 {renderTab('mag_dashboard', MagDashboardStockTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Stock Dashboard')}
                                 {renderTab('mag_parc', MagParcTab, { data }, 'Parc')}
+                                {renderTab('mag_bdc_liste', window.MagBonsCommandeTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Commande')}
                                 {renderTab('mag_bdc_reception', MagBdcReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'BDC à réceptionner')}
                                 {renderTab('mag_reception', MagReceptionTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Bons de Réception')}
                                 {renderTab('mag_transfert', MagTransfertTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Transfert')}
