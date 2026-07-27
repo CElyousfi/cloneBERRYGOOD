@@ -12885,8 +12885,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             {(() => {
                                 const _CULTURES_DEF = [
                                     { culture: 'Framboise', color: '#8B2252', icon: 'fa-seedling' },
-                                    { culture: 'Myrtille',  color: '#1565c0', icon: 'fa-circle-dot' },
-                                    { culture: 'Avocatier', color: '#2e7d32', icon: 'fa-tree' },
+                                    { culture: 'Myrtille',  color: '#3498DB', icon: 'fa-circle-dot' },
+                                    { culture: 'Avocatier', color: '#2D8B4E', icon: 'fa-tree' },
                                 ];
                                 const _culturesWithData = _CULTURES_DEF.filter(({ culture }) => (_cultureGroups[culture] || []).length > 0);
                                 const _culturesToShow = analytiqueFullscreen

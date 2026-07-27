@@ -43,10 +43,6 @@
         "file": "public/lib/analytiqueUtils.js"
       },
       {
-        "commits": 4,
-        "file": "scripts/build-frontend.js"
-      },
-      {
         "commits": 3,
         "file": "scripts/generate-module-graph.js"
       },
@@ -61,10 +57,14 @@
       {
         "commits": 2,
         "file": "CLAUDE.md"
+      },
+      {
+        "commits": 2,
+        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:1ba40eec8fc229be",
+    "sourceFingerprint": "sha256:4ed0b8f98de08591",
     "stats": {
       "backendModules": 87,
       "cloudFunctions": 82,
