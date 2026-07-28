@@ -65,8 +65,16 @@ async function updateBdcVirementCore({ id, decision, by, via }) {
     });
     dispatchNotification({
       type: "bdc_virement_launched", profiles: ["finance", "dg", "achats"],
-      data: { numero: current.numero || id, bdc_id: id, message: `Virement lancé pour BDC ${current.numero || id}, en attente signature DG` },
+      data: {
+        numero: current.numero || id,
+        bdc_id: id,
+        fournisseur: (current.fournisseur && current.fournisseur.nom) || current.supplier_name || "Fournisseur",
+        montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
+        pdf_url: current.pdf_url || null,
+        message: `Virement lancé pour BDC ${current.numero || id}, en attente signature DG`,
+      },
       relatedDoc: `purchase_orders/${id}`,
+      ...(current.pdf_url ? { document: { link: current.pdf_url, filename: `BDC_${current.numero || id}.pdf` } } : {}),
     }).catch(err => console.error("WhatsApp dispatch error:", err));
     return { success: true };
   }
