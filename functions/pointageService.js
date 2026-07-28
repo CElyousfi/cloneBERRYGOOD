@@ -709,6 +709,28 @@ function resolveHolidayPeriode(halfToPeriode, dateStr) {
 }
 
 /**
+ * Dernier jour travaillé strictement AVANT ferieDate.
+ * @param {string[]} joursTravailles - dates 'YYYY-MM-DD' triées croissant.
+ * @param {string} ferieDate - date ISO du férié 'YYYY-MM-DD'.
+ * @returns {string|undefined}
+ */
+function findJourAvant(joursTravailles, ferieDate) {
+  let jourAvant;
+  for (const d of joursTravailles) { if (d < ferieDate) jourAvant = d; else break; }
+  return jourAvant;
+}
+
+/**
+ * Premier jour travaillé strictement APRÈS ferieDate.
+ * @param {string[]} joursTravailles - dates 'YYYY-MM-DD' triées croissant.
+ * @param {string} ferieDate - date ISO du férié 'YYYY-MM-DD'.
+ * @returns {string|undefined}
+ */
+function findJourApres(joursTravailles, ferieDate) {
+  return joursTravailles.find(d => d > ferieDate);
+}
+
+/**
  * Compute chargement/conditionnement worker-day details from raw pointage rows.
  * Returns pre-calculated data so frontend doesn't need to filter on Operation.
  * @param {Array} allRows
@@ -766,25 +788,58 @@ function computeChargCond(allRows, holidays) {
     }
   }
 
-  // For each jour férié, find its quinzaine and credit all active workers
+  // Éligibilité "présence réelle le jour J" (cf. docs/spec-jour-ferie-fix.md) :
+  // un ouvrier n'est crédité de la prime Jour Férié que s'il a travaillé le jour
+  // férié lui-même, OU qu'il a une présence encadrante (jour ouvré avant ET après
+  // le férié). Remplace l'ancien forfait "actif quelque part dans la quinzaine".
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  // Jours où au moins un ouvrier de la ferme a une ligne de pointage (proxy "jour ouvré",
+  // sans dépendre d'un calendrier de repos hebdomadaire fixe qui varie selon ferme/équipe).
+  const joursTravailles = [...new Set(allRows.map(r => r.DateStr).filter(Boolean))].sort();
+  // Présence par ouvrier, globale (toutes périodes confondues) : le jour avant/après
+  // un férié peut tomber dans une quinzaine différente de celle où le férié est crédité.
+  const workerDaySet = {}; // matricule -> Set(DateStr)
+  for (const r of allRows) {
+    const mat = (r.Personnel_Matricule || "").trim();
+    if (!mat || !r.DateStr) continue;
+    if (!workerDaySet[mat]) workerDaySet[mat] = new Set();
+    workerDaySet[mat].add(r.DateStr);
+  }
+
+  // For each jour férié, find its quinzaine and credit only workers with real presence
   const ferieWorkers = {}; // "periode|mat" -> { matricule, nom, periode, details: [] }
   for (const jf of JOURS_FERIES) {
     // Aïd = 2 jours fériés légaux, mais la prime ne compte QUE le 1er jour.
     // On ignore donc les entrées « (2e jour) » (et tout flag compteurPrime:false).
     if (/\(2e\s*jour\)/i.test(jf.label || '') || jf.compteurPrime === false) continue;
+    // Un férié futur (pas encore eu lieu) ne peut être crédité à personne — pas de
+    // présence à vérifier tant que la date n'est pas passée.
+    if (jf.date > today) continue;
     // Rattachement par quinzaine CALENDAIRE (1–15 / 16–fin) : le férié appartient à la
     // quinzaine qui le contient au calendrier. Si cette quinzaine n'a pas encore de
     // données (ex. férié futur), le férié n'est crédité à personne (continue).
     const holidayPeriode = resolveHolidayPeriode(halfToPeriode, jf.date);
     if (!holidayPeriode) continue; // Quinzaine du férié sans données chargées
 
-    // All workers active in this period are eligible for 1 jour sup
+    const jourAvant = findJourAvant(joursTravailles, jf.date);
+    const jourApres = findJourApres(joursTravailles, jf.date);
+    if (!jourAvant || !jourApres) {
+      console.warn(`[computeChargCond] Férié ${jf.date} en bordure du dataset chargé (jourAvant=${jourAvant}, jourApres=${jourApres}) — seul le critère "travaillé le jour férié" reste applicable.`);
+    }
+
     for (const [, wp] of Object.entries(workerPeriod)) {
       if (wp.periode !== holidayPeriode) continue;
+      const set = workerDaySet[wp.mat];
+      if (!set) continue;
+      const travaillePendantFerie = set.has(jf.date);
+      const presentEncadrant = !!(jourAvant && jourApres && set.has(jourAvant) && set.has(jourApres));
+      if (!travaillePendantFerie && !presentEncadrant) continue; // pas de présence réelle → non crédité
+
       const fKey = `${wp.periode}|${wp.mat}`;
       if (!ferieWorkers[fKey]) ferieWorkers[fKey] = { matricule: wp.mat, nom: wp.nom, periode: wp.periode, ferme: wp.ferme, details: [] };
       const avgCout = wp.coutCount > 0 ? wp.totalCout / wp.coutCount : 0;
-      ferieWorkers[fKey].details.push({ date: jf.date, label: jf.label, raison: 'Jour férié dans la quinzaine', cout: avgCout });
+      const raison = travaillePendantFerie ? 'Travaillé le jour férié' : 'Présent avant/après le jour férié';
+      ferieWorkers[fKey].details.push({ date: jf.date, label: jf.label, raison, cout: avgCout });
     }
   }
   const ferieList = Object.values(ferieWorkers).map(w => ({
@@ -1290,6 +1345,8 @@ exports.computeChargCond = computeChargCond;
 exports.halfKey = halfKey;
 exports.buildHalfToPeriode = buildHalfToPeriode;
 exports.resolveHolidayPeriode = resolveHolidayPeriode;
+exports.findJourAvant = findJourAvant;
+exports.findJourApres = findJourApres;
 exports.shouldCacheRecolteEquipes = shouldCacheRecolteEquipes;
 exports.computeRecolteEquipesPayload = computeRecolteEquipesPayload;
 
