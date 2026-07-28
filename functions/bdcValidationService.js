@@ -56,25 +56,33 @@ async function validateBdcCore({ id, decision, role, profileId, name, comment, f
         status: "en_attente_dg", validated_by_chef: visa, history, updated_at: Date.now(),
       });
       const useDoc = !!current.pdf_url;
-      dispatchNotification({
-        type: useDoc ? "bdc_chef_approved_doc" : "bdc_chef_approved",
-        profiles: ["dg", "achats"],
-        data: {
-          numero: current.numero || id,
-          bdc_id: id,
-          message: `BDC ${current.numero || id} validé par Chef, en attente DG`,
-        },
-        relatedDoc: `purchase_orders/${id}`,
-        ...(useDoc ? { document: { link: current.pdf_url, filename: `BDC_${current.numero || id}.pdf` } } : {}),
-      }).catch(err => console.error("WhatsApp dispatch error:", err));
+      try {
+        await dispatchNotification({
+          type: useDoc ? "bdc_chef_approved_doc" : "bdc_chef_approved",
+          profiles: ["dg", "achats"],
+          data: {
+            numero: current.numero || id,
+            bdc_id: id,
+            message: `BDC ${current.numero || id} validé par Chef, en attente DG`,
+          },
+          relatedDoc: `purchase_orders/${id}`,
+          ...(useDoc ? { document: { link: current.pdf_url, filename: `BDC_${current.numero || id}.pdf` } } : {}),
+        });
+      } catch (err) {
+        console.error("WhatsApp dispatch error:", err);
+      }
     } else {
       history.push({ action: "rejet_chef", by: visa, at: Date.now(), comment: comment || "" });
       await docRef.update({ status: "rejete", history, updated_at: Date.now() });
-      dispatchNotification({
-        type: "bdc_rejected", profiles: ["achats"],
-        data: { numero: current.numero || id, motif: comment || "Rejeté par Chef", message: `BDC ${current.numero || id} rejeté par Chef` },
-        relatedDoc: `purchase_orders/${id}`,
-      }).catch(err => console.error("WhatsApp dispatch error:", err));
+      try {
+        await dispatchNotification({
+          type: "bdc_rejected", profiles: ["achats"],
+          data: { numero: current.numero || id, motif: comment || "Rejeté par Chef", message: `BDC ${current.numero || id} rejeté par Chef` },
+          relatedDoc: `purchase_orders/${id}`,
+        });
+      } catch (err) {
+        console.error("WhatsApp dispatch error:", err);
+      }
     }
     return { success: true };
   }
@@ -95,24 +103,32 @@ async function validateBdcCore({ id, decision, role, profileId, name, comment, f
       }
       await docRef.update(update);
       const targetProfiles = isVirementMode ? ["achats", "finance"] : ["achats"];
-      dispatchNotification({
-        type: "bdc_dg_approved", profiles: targetProfiles,
-        data: {
-          numero: current.numero || id,
-          description: current.description || current.items?.[0]?.designation || "Aucune description",
-          montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
-          message: `BDC ${current.numero || id} approuvé par DG`,
-        },
-        relatedDoc: `purchase_orders/${id}`,
-      }).catch(err => console.error("WhatsApp dispatch error:", err));
+      try {
+        await dispatchNotification({
+          type: "bdc_dg_approved", profiles: targetProfiles,
+          data: {
+            numero: current.numero || id,
+            description: current.description || current.items?.[0]?.designation || "Aucune description",
+            montant: current.total_ttc ? `${current.total_ttc} MAD` : "Non précisé",
+            message: `BDC ${current.numero || id} approuvé par DG`,
+          },
+          relatedDoc: `purchase_orders/${id}`,
+        });
+      } catch (err) {
+        console.error("WhatsApp dispatch error:", err);
+      }
     } else {
       history.push({ action: "rejet_dg", by: visa, at: Date.now(), comment: comment || "" });
       await docRef.update({ status: "rejete", history, updated_at: Date.now() });
-      dispatchNotification({
-        type: "bdc_rejected", profiles: ["achats"],
-        data: { numero: current.numero || id, motif: comment || "Rejeté par DG", message: `BDC ${current.numero || id} rejeté par DG` },
-        relatedDoc: `purchase_orders/${id}`,
-      }).catch(err => console.error("WhatsApp dispatch error:", err));
+      try {
+        await dispatchNotification({
+          type: "bdc_rejected", profiles: ["achats"],
+          data: { numero: current.numero || id, motif: comment || "Rejeté par DG", message: `BDC ${current.numero || id} rejeté par DG` },
+          relatedDoc: `purchase_orders/${id}`,
+        });
+      } catch (err) {
+        console.error("WhatsApp dispatch error:", err);
+      }
     }
     return { success: true };
   }
