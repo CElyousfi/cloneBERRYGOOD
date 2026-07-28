@@ -48699,39 +48699,64 @@ ${rejetHtml}
             };
 
             // Génère le PDF du BDC et l'upload vers Storage pour qu'il soit joint à la notification WhatsApp.
-            // Retourne l'URL téléchargeable, ou null en cas d'échec (la soumission n'est pas bloquée).
-            const uploadBdcPdf = async (id) => {
+            // Accepte soit un id (recherche dans bdcList/bdcDetail, comportement historique) soit directement
+            // l'objet bdc — utile juste après création, quand bdcList/bdcDetail n'ont pas encore été rafraîchis.
+            // Retourne { pdf_url, error } — pdf_url est null en cas d'échec (la soumission n'est jamais bloquée),
+            // error contient un message si l'échec doit être signalé à l'utilisateur.
+            const uploadBdcPdf = async (idOrBdc) => {
+                const isBdcObject = idOrBdc && typeof idOrBdc === 'object';
+                const id = isBdcObject ? idOrBdc.id : idOrBdc;
+                const bdc = isBdcObject ? idOrBdc : (bdcList.find(b => b.id === id) || (bdcDetail && bdcDetail.bdc && bdcDetail.bdc.id === id ? bdcDetail.bdc : null));
+                if (!bdc) return { pdf_url: null, error: null };
+                if (typeof generatePdfBdc !== 'function') return { pdf_url: null, error: 'Génération PDF indisponible' };
                 try {
-                    const bdc = bdcList.find(b => b.id === id) || (bdcDetail && bdcDetail.bdc && bdcDetail.bdc.id === id ? bdcDetail.bdc : null);
-                    if (!bdc) return null;
-                    if (typeof generatePdfBdc !== 'function') return null;
                     const doc = generatePdfBdc(bdc);
                     const blob = doc.output('blob');
                     const ref = firebase.storage().ref().child(`bdc_pdfs/${id}.pdf`);
                     await ref.put(blob, { contentType: 'application/pdf' });
-                    return await ref.getDownloadURL();
+                    const pdf_url = await ref.getDownloadURL();
+                    return { pdf_url, error: null };
                 } catch (err) {
                     console.warn('PDF upload BDC échoué (non bloquant):', err && err.message);
-                    return null;
+                    return { pdf_url: null, error: (err && err.message) ? err.message : 'Echec upload PDF' };
                 }
+            };
+
+            // Reconstruit un objet bdc "complet" (avec montants calculés) à partir du form de création,
+            // pour permettre la génération du PDF avant que bdcList/bdcDetail ne soient rafraîchis.
+            const buildBdcForPdf = (id, numero) => {
+                const t = calcTotal();
+                const items = form.items.filter(i => i.article && i.quantite && i.prix_unitaire).map(it => {
+                    const mht = (parseFloat(it.quantite) || 0) * (parseFloat(it.prix_unitaire) || 0);
+                    const tva = mht * (it.taux_tva != null && it.taux_tva !== '' ? parseFloat(it.taux_tva) : 20) / 100;
+                    return { ...it, montant_ht: mht, montant_ttc: mht + tva };
+                });
+                return { ...form, id, numero, items, total_ht: t.ht, total_tva: t.tva, total_ttc: t.ttc, created_at: new Date().toISOString(), status: 'soumis' };
             };
 
             const handleSubmit = async (id) => {
                 if (!confirm('Soumettre ce BDC pour validation ?')) return;
-                const pdf_url = await uploadBdcPdf(id);
+                const { pdf_url, error: pdfError } = await uploadBdcPdf(id);
                 try {
                     const r = await fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdf_url, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) });
                     const json = await r.json();
-                    if (json.success) { loadBdc(); if (bdcDetail) openDetail(id); }
+                    if (json.success) {
+                        if (pdfError) alert('BDC soumis, mais le PDF n\'a pas pu être joint (' + pdfError + '). Le DG recevra une notification sans document — vous pourrez le renvoyer plus tard.');
+                        loadBdc(); if (bdcDetail) openDetail(id);
+                    }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 } catch (_) { alert('Erreur réseau'); }
             };
             const handleSubmitDirect = async (id) => {
-                const pdf_url = await uploadBdcPdf(id);
+                const bdcForPdf = (justCreated && justCreated.id === id) ? buildBdcForPdf(id, justCreated.numero) : id;
+                const { pdf_url, error: pdfError } = await uploadBdcPdf(bdcForPdf);
                 try {
                     const r = await fetch('/api/stock?action=submit-bdc', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, pdf_url, submitted_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }) });
                     const json = await r.json();
-                    if (json.success) { setShowForm(false); setJustCreated(null); loadBdc(); }
+                    if (json.success) {
+                        if (pdfError) alert('BDC soumis, mais le PDF n\'a pas pu être joint (' + pdfError + '). Le DG recevra une notification sans document — vous pourrez le renvoyer plus tard.');
+                        setShowForm(false); setJustCreated(null); loadBdc();
+                    }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 } catch (_) { alert('Erreur réseau'); }
             };
