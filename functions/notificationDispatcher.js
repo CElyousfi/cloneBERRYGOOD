@@ -35,6 +35,11 @@ const TEMPLATE_MAP = {
     template: "bdc_chef_approved",
     params: (d) => [d.numero || "—"],
   },
+  bdc_chef_approved_doc: {
+    template: "bdc_chef_approved_doc",
+    supportsDocument: true,
+    params: (d) => [d.numero || "—"],
+  },
   bdc_dg_approved: {
     template: "bdc_dg_approved",
     params: (d) => [d.numero || "—", d.description || "Aucune description", d.montant || "Non précisé"],
@@ -298,6 +303,25 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
           });
         } catch (err) {
           console.error(`BDC approval session setup failed for ${recipient.phone}:`, err.message);
+        }
+      }));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Chef-approved BDC: DG gets an approval session (OK/NON reply) to
+    // validate directly from WhatsApp, mirroring the chef's own flow.
+    // Achats stays informational only.
+    // ─────────────────────────────────────────────────────────────────────
+    if ((type === "bdc_chef_approved" || type === "bdc_chef_approved_doc") && data.bdc_id) {
+      const chefBdcBot = require("./chefBdcBot");
+      await Promise.allSettled(unique.map(async (recipient) => {
+        if (recipient.profileId !== "dg") return;
+        try {
+          await chefBdcBot.startBdcApprovalSession(recipient.phone, {
+            bdc_id: data.bdc_id, role: "dg", ferme: null,
+          });
+        } catch (err) {
+          console.error(`BDC approval session (DG) setup failed for ${recipient.phone}:`, err.message);
         }
       }));
     }

@@ -40,6 +40,12 @@ const TEMPLATES = [
     examples: ["BDC-2026-0042"],
   },
   {
+    name: "bdc_chef_approved_doc",
+    body: "Le BDC {{1}} a été approuvé par le Chef. En attente de votre validation DG.\nPDF en pièce jointe.\n\nRépondez *OK* pour valider, *NON* pour rejeter.",
+    examples: ["BDC-2026-0042"],
+    headerType: "DOCUMENT",
+  },
+  {
     name: "bdc_dg_approved",
     body: "Le BDC {{1}} ({{2}}, {{3}}) a été approuvé par le DG. Prêt pour envoi fournisseur.",
     examples: ["BDC-2026-0042", "Engrais NPK", "45000 MAD"],

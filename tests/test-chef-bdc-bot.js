@@ -90,6 +90,7 @@ preload(path.join(FN_DIR, "notificationDispatcher.js"), {
 
 // Now require chefBdcBot — its bdcValidationService will pull our stubbed dispatcher.
 const chefBdcBot = require(path.join(FN_DIR, "chefBdcBot"));
+const { validateBdcCore } = require(path.join(FN_DIR, "bdcValidationService"));
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 let pass = 0, fail = 0;
@@ -245,6 +246,26 @@ const user = { uid: "u1", profileId: "chef", displayName: "Hassan", ferme: "F1" 
   });
   assert(bdcs.get("bdc14").status === "valide_dg", "BDC unchanged when status mismatch");
   assert(calls.wa.some(c => c.kind === "text" && c.text.includes("statut")), "status warning sent");
+
+  console.log("\nScenario 15 — Chef approve with pdf_url dispatches bdc_chef_approved_doc");
+  reset();
+  setupBdc("bdc15");
+  bdcs.set("bdc15", { ...bdcs.get("bdc15"), pdf_url: "https://example.com/bdc15.pdf" });
+  await validateBdcCore({ id: "bdc15", decision: "approve", role: "chef", profileId: "chef", name: "Hassan" });
+  const dispatch15 = calls.dispatches.find(d => d.data?.bdc_id === "bdc15");
+  assert(!!dispatch15, "dispatch recorded for bdc15");
+  assert(dispatch15?.type === "bdc_chef_approved_doc", "type is bdc_chef_approved_doc when pdf_url present");
+  assert(dispatch15?.document?.link === "https://example.com/bdc15.pdf", "document.link matches pdf_url");
+  assert(dispatch15?.document?.filename?.includes("BDC-bdc15") || dispatch15?.document?.filename?.includes(bdcs.get("bdc15").numero), "document.filename contains BDC numero");
+
+  console.log("\nScenario 16 — Chef approve without pdf_url dispatches bdc_chef_approved");
+  reset();
+  setupBdc("bdc16");
+  await validateBdcCore({ id: "bdc16", decision: "approve", role: "chef", profileId: "chef", name: "Hassan" });
+  const dispatch16 = calls.dispatches.find(d => d.data?.bdc_id === "bdc16");
+  assert(!!dispatch16, "dispatch recorded for bdc16");
+  assert(dispatch16?.type === "bdc_chef_approved", "type is bdc_chef_approved when no pdf_url");
+  assert(!("document" in (dispatch16 || {})), "no document key in payload when no pdf_url");
 
   console.log(`\nResult: ${pass} passed, ${fail} failed\n`);
   process.exit(fail === 0 ? 0 : 1);

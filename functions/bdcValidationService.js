@@ -55,10 +55,17 @@ async function validateBdcCore({ id, decision, role, profileId, name, comment, f
       await docRef.update({
         status: "en_attente_dg", validated_by_chef: visa, history, updated_at: Date.now(),
       });
+      const useDoc = !!current.pdf_url;
       dispatchNotification({
-        type: "bdc_chef_approved", profiles: ["dg", "achats"],
-        data: { numero: current.numero || id, message: `BDC ${current.numero || id} validé par Chef, en attente DG` },
+        type: useDoc ? "bdc_chef_approved_doc" : "bdc_chef_approved",
+        profiles: ["dg", "achats"],
+        data: {
+          numero: current.numero || id,
+          bdc_id: id,
+          message: `BDC ${current.numero || id} validé par Chef, en attente DG`,
+        },
         relatedDoc: `purchase_orders/${id}`,
+        ...(useDoc ? { document: { link: current.pdf_url, filename: `BDC_${current.numero || id}.pdf` } } : {}),
       }).catch(err => console.error("WhatsApp dispatch error:", err));
     } else {
       history.push({ action: "rejet_chef", by: visa, at: Date.now(), comment: comment || "" });
