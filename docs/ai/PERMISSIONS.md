@@ -9,16 +9,31 @@
 
 ## Philosophie
 
-Pendant un ticket normal, Claude ne doit **pratiquement jamais** demander de
-permission. Les seules confirmations acceptables concernent les opérations
-**destructives**, **de production**, ou qui **réécrivent l'historique git**.
+**Révision 2026-07-28 — modèle "2 gates".** Décision explicite d'Omar, après
+mise en garde sur les risques (perte de données, action irréversible, ou
+instruction injectée dans une sortie de sous-agent — cf. incident constaté
+le jour même — exécutée sans confirmation) : au lieu de gater chaque commande
+individuellement risquée, on ne garde que **deux points d'arrêt** :
+
+1. **Merge / push vers `main`** — avant toute intégration dans la branche prod.
+2. **Déploiement** (`scripts/deploy.sh`, `npm run deploy`) — avant toute mise en
+   prod effective.
+
+Tout le reste (y compris `rm`, `mv`, `sed -i`, `npm install/uninstall/update`,
+`gcloud`, `firebase hosting:channel:*`, `git reset/rebase/clean`, suppression
+de branches, `git push` hors `main`) est en **allow** — autonomie complète.
+**Risque assumé** : ces commandes ne sont plus gatées, y compris si elles sont
+déclenchées par une instruction injectée dans le contenu retourné par un
+sous-agent ou un outil externe. La seule protection restante contre ce
+scénario est le `deny` (irréversible) et la vigilance du modèle lui-même —
+plus de garde-fou mécanique intermédiaire. Assumé en connaissance de cause.
 
 Trois niveaux (précédence : **deny > ask > allow**) :
 
 | Niveau | Contenu | Exemples |
 |---|---|---|
-| **allow** | Lecture, dev courant, QA locale | `git status`, `git commit`, `npm run qa`, `gh pr view` |
-| **ask** | Destructif, prod, dépendances, réécriture d'historique | `git push`, `git merge`, `rm`, `firebase hosting:channel:*`, `scripts/deploy.sh`, `git commit --amend` |
+| **allow** | Tout sauf les 2 gates + irréversible | `git status`, `git commit`, `rm`, `gcloud`, `npm install`, `firebase hosting:channel:*`, `git push` (hors main) |
+| **ask** | Les 2 gates uniquement | `git push`/`gh pr merge` vers `main`, `git merge`, `scripts/deploy.sh`, `npm run deploy` |
 | **deny** | Irréversible / interdit | `git push --force[-with-lease]`, `git reset --hard`, `sudo`, `firebase deploy` brut, lecture `.env`/secrets |
 
 Complément clé : **Bash est le dernier recours**. La plupart des prompts
@@ -47,41 +62,50 @@ des appels d'outils natifs (Read/Grep/Glob/Write), jamais gatés.
 | Git lecture | `git status/diff/log/show`, `git remote -v`, `git stash list` | Sans effet |
 | Git branch lecture | `--show-current`, `--list`, `--contains`, `--merged`, `-vv` | Variantes lecture uniquement — PAS `git branch:*` (couvrirait `-D`) |
 | Git fetch ciblé | `git fetch`, `git fetch BERRYGOOD:*`, `git fetch --prune BERRYGOOD:*` | Remote du projet uniquement — pas de fetch d'URL/remote arbitraire |
-| Git écriture locale | `git add:*`, `git commit:*` | Dev courant autonome (cf. garde-fous commit dans CLAUDE.md) ; le push reste en ask ; amend/fixup/squash sont en ask |
-| Git checkout | `git checkout:*` | Risque connu accepté par Omar (2026-07-28) : une session parallèle peut changer de branche sous les pieds d'une autre dans le working dir partagé (cf. incident 2026-07-12, [[session-parallele-vole-la-branche]]) — `git switch` reste en ask |
-| GitHub lecture | `gh pr view/list/diff/checks`, `gh run list/view` | Lecture seule |
-| npm scripts QA | `npm run qa/test:unit/build:frontend/typecheck`, `npm ls` | Scripts `package.json` non destructifs — PAS `npm run:*` (le `package.json` contient un script `deploy`). Pas de `lint` (script inexistant à ce jour — arrivera au Chantier D) |
-| Node ciblé | `node --version/--check/--test`, `node tests/smoke-test.js`, `node tests/smoke-sprint-1.js`, `node tests/test-workflows.js`, `node tests/test-chef-bdc-bot.js`, `node scripts/build-frontend.js`, `node scripts/permission-audit.js` (forme exacte, lecture seule) | Scripts QA nommément reconnus — PAS `node:*` ni `node scripts/*` (deploy/migration/seed restent gatés) |
+| Git écriture locale | `git add:*`, `git commit:*` (+ `--amend/--fixup/--squash`) | Dev courant autonome (cf. garde-fous commit dans CLAUDE.md) |
+| Git checkout/switch | `git checkout:*`, `git switch:*` | Risque connu accepté par Omar (2026-07-28) : une session parallèle peut changer de branche sous les pieds d'une autre dans le working dir partagé (cf. incident 2026-07-12, [[session-parallele-vole-la-branche]]) |
+| Git historique/working tree | `git reset:*`, `git rebase:*`, `git clean:*`, `git config:*`, `git stash push/pop/apply/drop/clear/branch:*` | Passé en allow le 2026-07-28 (modèle "2 gates", risque assumé — voir Philosophie) |
+| Git branches | `git branch -d/-D/-f/--delete:*` | Idem — suppression de branche locale, pas `main` |
+| Git push | `git push:*` (sauf vers `main`, cf. section ask) | Idem |
+| GitHub lecture | `gh pr view/list/diff/checks`, `gh run list/view/watch` | Lecture seule |
+| Fichiers | `rm:*`, `mv:*`, `sed -i:*` | Passé en allow le 2026-07-28 (modèle "2 gates") — le `deny` garde les cas `rm -rf` les plus destructeurs |
+| Dépendances | `npm install/uninstall/update:*` | Idem |
+| npm scripts | `npm run qa/test:unit/build:frontend/typecheck`, `npm ls` | Scripts `package.json` non destructifs — `npm run deploy` reste en ask (gate 2) |
+| Node ciblé | `node --version/--check/--test`, `node tests/smoke-test.js`, `node tests/smoke-sprint-1.js`, `node tests/test-workflows.js`, `node tests/test-chef-bdc-bot.js`, `node scripts/build-frontend.js`, `node scripts/permission-audit.js`, `node scripts/diag-readonly.js:*` | Scripts QA/diagnostic nommément reconnus — le diagnostic Firestore/Meta lecture seule passe par `diag-readonly.js` (masque les secrets), pas par des `node -e`/`python3 -c` one-off qui restent hors allowlist (exécution arbitraire) |
 | Python ciblé | `python3 -m json.tool` | Validation JSON pure — PAS `python3 -c` (exécution arbitraire) |
-| Firebase lecture | `firebase functions:log` | Lecture logs |
+| Firebase | `firebase functions:log`, `firebase projects:list:*`, `firebase hosting:channel:*` | Le preview channel est passé en allow le 2026-07-28 (pas de risque prod direct — un channel n'affecte pas `default`/live) ; `firebase deploy` brut reste en `deny` |
+| Cloud | `gcloud:*` | Passé en allow le 2026-07-28 (modèle "2 gates", risque assumé) |
 | Web | `WebSearch`, `WebFetch` domaines FarmRoad/WayBeyond | Doc fournisseur |
 
-**Preview staging (Chantier B) — volontairement absent.** Le brief demande un
-`allow` sur `firebase hosting:channel:deploy sb-* --project staging`. La
-syntaxe de permission Claude Code ne supporte que le préfixe exact ou un
-wildcard **final** (`Bash(git *)` matche tout ce qui commence par `git `) —
-elle ne peut **pas** exiger la présence d'un flag (`--project staging`) à un
-endroit arbitraire de la commande. Autoriser `firebase hosting:channel:deploy
-sb-*` sans pouvoir vérifier `--project staging` ferait courir un risque réel :
-une commande lancée sans ce flag cible l'alias `default` de `.firebaserc`,
-qui est **la prod** aujourd'hui. Tant que le Chantier B n'a pas livré un
-wrapper (`scripts/deploy-preview-staging.sh` ou équivalent, qui fixe le
-`--project` en dur), ce déploiement reste en `ask` via `firebase
-hosting:channel:*`. À corriger explicitement dans le Chantier B.
+**Preview staging (Chantier B) — note obsolète depuis le 2026-07-28.** Avant
+le modèle "2 gates", `firebase hosting:channel:*` était en `ask` précisément
+parce que la syntaxe de permission Claude Code ne supporte que le préfixe
+exact ou un wildcard **final**, donc impossible de vérifier qu'un
+`--project staging` explicite est bien présent (sans lui, une commande
+`hosting:channel:deploy` cible l'alias `default` de `.firebaserc`, qui est la
+prod). Ce risque n'a pas disparu — il est simplement **assumé** maintenant
+que `firebase hosting:channel:*` est en `allow` (décision Omar 2026-07-28,
+modèle "2 gates"). Le wrapper qui fixerait `--project` en dur reste une bonne
+idée pour le Chantier B, mais n'est plus un prérequis bloquant pour l'allow.
 
-## ask — confirmation Omar obligatoire
+## ask — confirmation Omar obligatoire (les 2 gates)
+
+Depuis le 2026-07-28, ce ne sont plus des catégories de risque mais
+**exactement deux moments** du cycle de vie du code :
 
 | Groupe | Règles | Raison |
 |---|---|---|
-| Publication | `git push:*`, `gh pr merge:*` | Sort du poste local |
-| Navigation branches | `git switch` | Une session parallèle peut voler la branche du working dir partagé (`git checkout` est passé en allow le 2026-07-28, risque accepté par Omar) |
-| Historique | `git reset`, `git commit --amend/--fixup/--squash`, `git rebase`, `git merge` | Réécriture / intégration d'historique |
-| Working tree | `git clean`, `git stash push/pop/apply/drop/clear/branch` | Peut perdre du travail non committé |
-| Branches | `git branch -d/-D/-f/--delete` | Suppression de branches |
-| Config | `git config` | Modifie le comportement git |
-| Fichiers | `rm`, `mv`, `sed -i` | Destructif / écriture in-place opaque |
-| Dépendances | `npm install/uninstall/update` | Modifie package-lock, surface d'attaque supply chain |
-| Production — déploiement supervisé | `firebase hosting:channel:*`, `gcloud`, `scripts/deploy.sh` (4 variantes), `npm run deploy` | Le déploiement prod (`scripts/deploy.sh`, avec ses 3 checks anti-divergence RULE 1/2/3) reste possible mais **jamais autonome** — confirmation Omar à chaque exécution. `firebase deploy` brut, lui, est en `deny` (voir plus bas) : impossible de bypasser le script. |
+| Gate 1 — Merge/push vers `main` | `git push BERRYGOOD main:*`, `git push origin main:*`, `git merge:*`, `gh pr merge:*` | `main` = prod (RÈGLE 1 CLAUDE.md) — dernier point d'arrêt avant que du code entre dans la branche qui sera déployée |
+| Gate 2 — Déploiement | `scripts/deploy.sh` (4 variantes), `npm run deploy` | Déploiement prod effectif (avec ses 3 checks anti-divergence RULE 1/2/3 dans le script). `firebase deploy` brut reste en `deny` (voir plus bas) : impossible de bypasser le script. |
+
+**Incertitude de matching signalée** : `git push:*` est en `allow` (branches
+non-`main`) alors que `git push BERRYGOOD main:*` / `git push origin main:*`
+sont en `ask` — la précédence exacte entre un `allow` large et un `ask` plus
+spécifique sur une commande qui matche les deux n'est pas documentée
+publiquement pour Claude Code. Le principe annoncé est **deny > ask > allow**,
+ce qui suggère que l'entrée `ask` l'emporte, mais **à vérifier en conditions
+réelles** (tenter un `git push BERRYGOOD main` doit produire un prompt) avant
+de s'y fier comme seule barrière.
 
 ## deny — bloqué, pas de confirmation possible
 
