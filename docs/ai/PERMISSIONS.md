@@ -48,6 +48,7 @@ des appels d'outils natifs (Read/Grep/Glob/Write), jamais gatés.
 | Git branch lecture | `--show-current`, `--list`, `--contains`, `--merged`, `-vv` | Variantes lecture uniquement — PAS `git branch:*` (couvrirait `-D`) |
 | Git fetch ciblé | `git fetch`, `git fetch BERRYGOOD:*`, `git fetch --prune BERRYGOOD:*` | Remote du projet uniquement — pas de fetch d'URL/remote arbitraire |
 | Git écriture locale | `git add:*`, `git commit:*` | Dev courant autonome (cf. garde-fous commit dans CLAUDE.md) ; le push reste en ask ; amend/fixup/squash sont en ask |
+| Git checkout | `git checkout:*` | Risque connu accepté par Omar (2026-07-28) : une session parallèle peut changer de branche sous les pieds d'une autre dans le working dir partagé (cf. incident 2026-07-12, [[session-parallele-vole-la-branche]]) — `git switch` reste en ask |
 | GitHub lecture | `gh pr view/list/diff/checks`, `gh run list/view` | Lecture seule |
 | npm scripts QA | `npm run qa/test:unit/build:frontend/typecheck`, `npm ls` | Scripts `package.json` non destructifs — PAS `npm run:*` (le `package.json` contient un script `deploy`). Pas de `lint` (script inexistant à ce jour — arrivera au Chantier D) |
 | Node ciblé | `node --version/--check/--test`, `node tests/smoke-test.js`, `node tests/smoke-sprint-1.js`, `node tests/test-workflows.js`, `node tests/test-chef-bdc-bot.js`, `node scripts/build-frontend.js`, `node scripts/permission-audit.js` (forme exacte, lecture seule) | Scripts QA nommément reconnus — PAS `node:*` ni `node scripts/*` (deploy/migration/seed restent gatés) |
@@ -73,7 +74,7 @@ hosting:channel:*`. À corriger explicitement dans le Chantier B.
 | Groupe | Règles | Raison |
 |---|---|---|
 | Publication | `git push:*`, `gh pr merge:*` | Sort du poste local |
-| Navigation branches | `git checkout`, `git switch` | Une session parallèle peut voler la branche du working dir partagé |
+| Navigation branches | `git switch` | Une session parallèle peut voler la branche du working dir partagé (`git checkout` est passé en allow le 2026-07-28, risque accepté par Omar) |
 | Historique | `git reset`, `git commit --amend/--fixup/--squash`, `git rebase`, `git merge` | Réécriture / intégration d'historique |
 | Working tree | `git clean`, `git stash push/pop/apply/drop/clear/branch` | Peut perdre du travail non committé |
 | Branches | `git branch -d/-D/-f/--delete` | Suppression de branches |
