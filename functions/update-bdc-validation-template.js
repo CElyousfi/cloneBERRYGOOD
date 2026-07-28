@@ -47,6 +47,13 @@ const TEMPLATES = [
     example: ['BDC-2026-0042', 'AGRIDATA', '45000 MAD', 'Engrais NPK ×100 kg, Topas ×20 L'],
     headerType: 'DOCUMENT',
   },
+  {
+    // Étape chef → DG (cf. functions/bdcValidationService.js), même consigne OK/NON.
+    name: 'bdc_chef_approved_doc',
+    body: 'Le BDC {{1}} a été approuvé par le Chef. En attente de votre validation DG.\nPDF en pièce jointe.\n\nRépondez *OK* pour valider, *NON* pour rejeter.',
+    example: ['BDC-2026-0042'],
+    headerType: 'DOCUMENT',
+  },
 ]
 
 const LANG = 'fr'
