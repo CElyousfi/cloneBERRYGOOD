@@ -358,8 +358,9 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
         try {
           await whatsapp.sendInteractiveButtons(
             recipient.phone,
-            `BDC #${data.numero || data.bdc_id} — virement à signer. Confirmez après signature :`,
-            [{ id: chefBdcBot.BTN.VIREMENT_SIGNED, title: "✍️ Virement signé" }]
+            `BDC #${data.numero || data.bdc_id} — ${data.fournisseur || "Fournisseur"} — ${data.montant || "Montant non précisé"} — virement à signer. Confirmez après signature :`,
+            [{ id: chefBdcBot.BTN.VIREMENT_SIGNED, title: "✍️ Virement signé" }],
+            document ? { type: "document", link: document.link, filename: document.filename } : undefined
           );
           await chefBdcBot.startVirementSigneSession(recipient.phone, { bdc_id: data.bdc_id });
         } catch (err) {

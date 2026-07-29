@@ -121,7 +121,7 @@ async function sendTemplateMessage(to, templateName, bodyParams = [], lang, toNa
  * Send interactive button message (max 3 buttons). Within 24h session only.
  * buttons = [{ id, title }] — title max 20 chars, id max 256 chars.
  */
-async function sendInteractiveButtons(to, bodyText, buttons) {
+async function sendInteractiveButtons(to, bodyText, buttons, header) {
   const config = await getWhatsAppConfig();
   if (!config || !config.enabled) return { success: false, error: "WhatsApp désactivé" };
   const phone = formatPhoneE164(to);
@@ -133,6 +133,9 @@ async function sendInteractiveButtons(to, bodyText, buttons) {
     type: "interactive",
     interactive: {
       type: "button",
+      ...(header && header.type === "document" && header.link
+        ? { header: { type: "document", document: { link: header.link, filename: header.filename } } }
+        : {}),
       body: { text: bodyText },
       action: {
         buttons: buttons.slice(0, 3).map(b => ({
