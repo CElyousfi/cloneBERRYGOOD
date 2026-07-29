@@ -231,9 +231,15 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
     const bodyParams = mapping.params(data);
     const useDocument = !!(mapping.supportsDocument && document && (document.mediaId || document.link));
 
+    // On virement launched, the DG gets a separate enriched interactive
+    // message below (fournisseur/montant/PJ) — skip the generic template for them.
+    const templateRecipients = type === "bdc_virement_launched"
+      ? unique.filter(r => r.profileId !== "dg")
+      : unique;
+
     // Send to all recipients in parallel
     const results = await Promise.allSettled(
-      unique.map(async (recipient) => {
+      templateRecipients.map(async (recipient) => {
         const result = useDocument
           ? await whatsapp.sendTemplateMessageWithDocument(
               recipient.phone,
