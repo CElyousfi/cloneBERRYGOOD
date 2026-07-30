@@ -35,6 +35,7 @@ const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
+const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -2453,6 +2454,100 @@ exports.farmroad = functions
       res.json(result);
     } catch (err) {
       console.error("Erreur FarmRoad:", err);
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// METEOBLUE — Cache serveur partagé (weather + spray)
+// Le frontend (public/app.jsx: fetchMeteoblueData / fetchSprayData) appelait
+// directement my.meteoblue.com avec une clé API en clair, avec pour seule
+// protection un cache mémoire local par onglet (15 min TTL) : chaque onglet
+// de chaque utilisateur déclenchait son propre appel Meteoblue. Ce cache
+// Firestore partagé (même TTL 15 min) garantit qu'un seul appel réel par
+// fenêtre de 15 min est fait par (lat, lon arrondis à 2 décimales, package),
+// quel que soit le nombre d'onglets/utilisateurs. Pas de bypass "jour passé"
+// façon farmroad_cache : ces packages sont toujours "maintenant → avant",
+// pas de notion de jour clos.
+// =============================================
+
+const METEOBLUE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
+
+function meteoblueHttpsGet(url) {
+  return new Promise((resolve) => {
+    const https = require("https");
+    https.get(url, (resp) => {
+      let data = "";
+      resp.on("data", (c) => { data += c; });
+      resp.on("end", () => {
+        if (resp.statusCode >= 200 && resp.statusCode < 300) {
+          try { resolve(JSON.parse(data)); } catch (_) { resolve(null); }
+        } else resolve(null);
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+/**
+ * Read-through Firestore cache for a Meteoblue package at a given
+ * (lat, lon, altitude). Returns { data, cached } — data has the exact same
+ * shape Meteoblue returns today (no transformation), consumed unchanged by
+ * transformMeteoblueData/transformSprayData on the frontend.
+ */
+async function getMeteoblueCached(lat, lon, altitude, pkg) {
+  const rLat = meteoblueProxy.roundCoord(lat);
+  const rLon = meteoblueProxy.roundCoord(lon);
+  const docId = rLat + "_" + rLon + "_" + pkg;
+  const cacheRef = db_firestore.collection("meteoblue_cache").doc(docId);
+  const cached = await cacheRef.get();
+  if (cached.exists) {
+    const cData = cached.data();
+    const age = Date.now() - (cData.fetched_at || 0);
+    if (age < METEOBLUE_CACHE_TTL_MS) {
+      return { data: cData.data, cached: true };
+    }
+  }
+
+  const deps = { fetchJson: meteoblueHttpsGet, apiKey: METEOBLUE_API_KEY };
+  const coords = { lat: rLat, lon: rLon, altitude };
+  const data = pkg === "spray"
+    ? await meteoblueProxy.fetchSpray(coords, deps)
+    : await meteoblueProxy.fetchWeather(coords, deps);
+
+  if (data) {
+    await cacheRef.set({
+      lat: rLat, lon: rLon, altitude, package: pkg, data, fetched_at: Date.now(),
+    }).catch((e) => console.error("Meteoblue cache write error:", e.message));
+  }
+  return { data, cached: false };
+}
+
+// =============================================
+// METEOBLUE — HTTP endpoint (lit/écrit le cache)
+// =============================================
+exports.meteoblue = functions
+  .region("europe-west1")
+  .runWith({ timeoutSeconds: 60, memory: "256MB" })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    try {
+      const lat = parseFloat(req.query.lat);
+      const lon = parseFloat(req.query.lon);
+      const altitude = req.query.altitude !== undefined ? parseFloat(req.query.altitude) : 0;
+      const pkg = req.query.package === "spray" ? "spray" : "weather";
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        return res.status(400).json({ success: false, error: "lat/lon requis (nombres)" });
+      }
+      const { data, cached } = await getMeteoblueCached(lat, lon, altitude, pkg);
+      if (!data) {
+        return res.status(502).json({ success: false, error: "Meteoblue indisponible" });
+      }
+      res.json({ success: true, data, cached });
+    } catch (err) {
+      console.error("Erreur Meteoblue:", err);
       res.status(500).json({ success: false, error: err.message });
     }
   });

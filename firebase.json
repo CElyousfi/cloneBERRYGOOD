@@ -29,6 +29,7 @@
       { "source": "/api/recommandation", "function": { "functionId": "recommandation", "region": "europe-west1" } },
       { "source": "/api/backfill-presence", "function": { "functionId": "backfillPresence", "region": "europe-west1" } },
       { "source": "/api/farmroad", "function": { "functionId": "farmroad", "region": "europe-west1" } },
+      { "source": "/api/meteoblue", "function": { "functionId": "meteoblue", "region": "europe-west1" } },
       { "source": "/api/ecarts", "function": { "functionId": "ecarts", "region": "europe-west1" } },
       { "source": "/api/email-analysis", "function": { "functionId": "emailAnalysis", "region": "europe-west1" } },
       { "source": "/api/pointage-rh", "function": { "functionId": "pointageV3", "region": "europe-west1" } },
