@@ -362,13 +362,20 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
       await Promise.allSettled(unique.map(async (recipient) => {
         if (recipient.profileId !== "dg") return;
         try {
-          await whatsapp.sendInteractiveButtons(
+          const interactiveResult = await whatsapp.sendInteractiveButtons(
             recipient.phone,
             `BDC #${data.numero || data.bdc_id} — ${data.fournisseur || "Fournisseur"} — ${data.montant || "Montant non précisé"} — virement à signer. Confirmez après signature :`,
             [{ id: chefBdcBot.BTN.VIREMENT_SIGNED, title: "✍️ Virement signé" }],
             document ? { type: "document", link: document.link, filename: document.filename } : undefined
           );
-          await chefBdcBot.startVirementSigneSession(recipient.phone, { bdc_id: data.bdc_id });
+          if (interactiveResult.success) {
+            await chefBdcBot.startVirementSigneSession(recipient.phone, { bdc_id: data.bdc_id });
+          } else {
+            // Message interactif hors fenêtre de session 24h Meta (échec silencieux) :
+            // filet de sécurité pour que le DG reçoive au moins le template générique.
+            console.warn(`Virement-signe interactive failed for ${recipient.phone} (${interactiveResult.error}) — fallback template`);
+            await whatsapp.sendTemplateMessage(recipient.phone, mapping.template, bodyParams, undefined, recipient.displayName);
+          }
         } catch (err) {
           console.error(`Virement-signe setup failed for ${recipient.phone}:`, err.message);
         }
