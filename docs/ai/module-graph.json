@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 70,
+        "commits": 69,
         "file": "public/app.jsx"
       },
       {
@@ -44,6 +44,10 @@
       },
       {
         "commits": 3,
+        "file": "functions/index.js"
+      },
+      {
+        "commits": 3,
         "file": "scripts/generate-module-graph.js"
       },
       {
@@ -57,14 +61,10 @@
       {
         "commits": 2,
         "file": "CLAUDE.md"
-      },
-      {
-        "commits": 2,
-        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:ded72b1891c7e600",
+    "sourceFingerprint": "sha256:a603760daa4f4c13",
     "stats": {
       "backendModules": 86,
       "cloudFunctions": 83,
