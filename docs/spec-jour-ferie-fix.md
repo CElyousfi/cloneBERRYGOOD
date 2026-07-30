@@ -1,6 +1,6 @@
 # Spec — Fix prime "Jour Férié" (crédit forfaitaire buggé)
 
-> Statut : **spec prêt, GATED — attend GO explicite d'Omar**
+> Statut : **implémenté et déployé en prod (functions, `main @ 0fbc3ee`, 2026-07-30) — validé par Omar**
 > Item backlog : bug prime Jour Férié (remonté hors triage bug_reports,
 > diagnostiqué en session read-only le 2026-07-28).
 > Ce fichier est autosuffisant : une session qui reçoit "GO spec-jour-ferie-fix"
