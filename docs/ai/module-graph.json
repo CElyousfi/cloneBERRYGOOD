@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 69,
+        "commits": 68,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:a603760daa4f4c13",
+    "sourceFingerprint": "sha256:f8031b75b1a9e42e",
     "stats": {
       "backendModules": 86,
       "cloudFunctions": 83,

@@ -1034,10 +1034,10 @@
 
         // ===================== METEOBLUE API CONFIG =====================
         // Les appels Meteoblue passent par /api/meteoblue (Cloud Function
-        // + cache Firestore partagé 15 min) au lieu de my.meteoblue.com
+        // + cache Firestore partagé 4h) au lieu de my.meteoblue.com
         // directement — évite l'exposition de la clé API côté client et
         // regroupe N onglets/utilisateurs sur un seul appel réel par
-        // fenêtre de 15 min (window.fetch injecte déjà le Bearer token
+        // fenêtre de 4h (window.fetch injecte déjà le Bearer token
         // Firebase sur toute URL /api/*, cf. patch plus haut).
         const meteoFermes = {
             F1: { nom: 'Framboise Larache (F1)', lat: 35.08, lon: -6.14, altitude: 49, region: 'Larache' },

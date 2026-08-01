@@ -2464,14 +2464,14 @@ exports.farmroad = functions
 // directement my.meteoblue.com avec une clé API en clair, avec pour seule
 // protection un cache mémoire local par onglet (15 min TTL) : chaque onglet
 // de chaque utilisateur déclenchait son propre appel Meteoblue. Ce cache
-// Firestore partagé (même TTL 15 min) garantit qu'un seul appel réel par
-// fenêtre de 15 min est fait par (lat, lon arrondis à 2 décimales, package),
+// Firestore partagé (TTL 4h) garantit qu'un seul appel réel par
+// fenêtre de 4h est fait par (lat, lon arrondis à 2 décimales, package),
 // quel que soit le nombre d'onglets/utilisateurs. Pas de bypass "jour passé"
 // façon farmroad_cache : ces packages sont toujours "maintenant → avant",
 // pas de notion de jour clos.
 // =============================================
 
-const METEOBLUE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
+const METEOBLUE_CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4h
 
 function meteoblueHttpsGet(url) {
   return new Promise((resolve) => {

@@ -3,7 +3,7 @@
  * meteoblueProxy.js — Pure orchestrator for Meteoblue "outdoor" packages
  * (weather + spray window), used behind a server-side Firestore cache
  * (see functions/index.js — exports.meteoblue) so N users/tabs share a
- * single real Meteoblue call per 15-min TTL window instead of one per tab.
+ * single real Meteoblue call per 4h TTL window instead of one per tab.
  *
  * DI pattern (cf. functions/lib/phenology/outdoorWeatherFallback.js):
  * no direct Firestore/network access here, deps.fetchJson injected by the
