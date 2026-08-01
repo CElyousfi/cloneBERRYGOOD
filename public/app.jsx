@@ -1033,7 +1033,12 @@
         }
 
         // ===================== METEOBLUE API CONFIG =====================
-        const METEOBLUE_API_KEY = 'sWtaJy9XrwE6TAcB';
+        // Les appels Meteoblue passent par /api/meteoblue (Cloud Function
+        // + cache Firestore partagé 4h) au lieu de my.meteoblue.com
+        // directement — évite l'exposition de la clé API côté client et
+        // regroupe N onglets/utilisateurs sur un seul appel réel par
+        // fenêtre de 4h (window.fetch injecte déjà le Bearer token
+        // Firebase sur toute URL /api/*, cf. patch plus haut).
         const meteoFermes = {
             F1: { nom: 'Framboise Larache (F1)', lat: 35.08, lon: -6.14, altitude: 49, region: 'Larache' },
             F2: { nom: 'Avocat F2', lat: 35.08, lon: -6.14, altitude: 49, region: 'Larache' },
@@ -1062,31 +1067,13 @@
             const cached = _meteoblueCache[cacheKey];
             if (cached && (Date.now() - cached.ts) < METEO_CACHE_TTL) return cached.data;
             return _dedupInflight(_meteoblueInflight, cacheKey, async function() {
-                const base = 'https://my.meteoblue.com/packages/basic-day_agro-day_basic-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
-                const agroHourly = 'https://my.meteoblue.com/packages/agro-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+                const url = '/api/meteoblue?lat=' + ferme.lat + '&lon=' + ferme.lon + '&altitude=' + ferme.altitude + '&package=weather';
                 try {
-                    const res = await fetch(base);
+                    const res = await fetch(url);
                     if (!res.ok) throw new Error('API error ' + res.status);
-                    const data = await res.json();
-                    // Best-effort: enrich data_1h with shortwave_radiation + evapotranspiration if the agro-1h
-                    // package is included in the subscription. Silently skip on failure — the rest of the
-                    // tab keeps working with daily ETo / no hourly radiation.
-                    try {
-                        const res2 = await fetch(agroHourly);
-                        if (res2.ok) {
-                            const extra = await res2.json();
-                            if (extra && extra.data_1h) {
-                                data.data_1h = Object.assign({}, data.data_1h || {}, {
-                                    shortwave_radiation: extra.data_1h.shortwave_radiation || extra.data_1h.shortwaveradiation,
-                                    evapotranspiration: extra.data_1h.evapotranspiration,
-                                });
-                            }
-                        } else {
-                            console.info('Meteoblue agro-1h not available (' + res2.status + ') — fallback sans radiation/ETo horaires.');
-                        }
-                    } catch(e2) {
-                        console.info('Meteoblue agro-1h fetch failed, fallback:', e2);
-                    }
+                    const payload = await res.json();
+                    if (!payload || !payload.success) throw new Error(payload && payload.error || 'meteoblue proxy error');
+                    const data = payload.data;
                     _meteoblueCache[cacheKey] = { data, ts: Date.now() };
                     return data;
                 } catch(e) {
@@ -1163,11 +1150,13 @@
             const cached = _meteoblueCache[cacheKey];
             if (cached && (Date.now() - cached.ts) < METEO_CACHE_TTL) return cached.data;
             return _dedupInflight(_meteoblueInflight, cacheKey, async function() {
-                const url = 'https://my.meteoblue.com/packages/agromodelspray-1h?apikey=' + METEOBLUE_API_KEY + '&lat=' + ferme.lat + '&lon=' + ferme.lon + '&asl=' + ferme.altitude + '&format=json';
+                const url = '/api/meteoblue?lat=' + ferme.lat + '&lon=' + ferme.lon + '&altitude=' + ferme.altitude + '&package=spray';
                 try {
                     const res = await fetch(url);
                     if (!res.ok) throw new Error('API error ' + res.status);
-                    const data = await res.json();
+                    const payload = await res.json();
+                    if (!payload || !payload.success) throw new Error(payload && payload.error || 'meteoblue proxy error');
+                    const data = payload.data;
                     _meteoblueCache[cacheKey] = { data, ts: Date.now() };
                     return data;
                 } catch(e) {
