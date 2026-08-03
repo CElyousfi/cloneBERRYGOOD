@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "195/335 fichiers classifiés",
+          "detail": "195/337 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "35/128 modules avec ≥1 test",
+          "detail": "35/130 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 67,
+        "commits": 65,
         "file": "public/app.jsx"
       },
       {
@@ -36,10 +36,6 @@
       },
       {
         "commits": 5,
-        "file": "public/components/ParcellesReferentielTab.jsx"
-      },
-      {
-        "commits": 5,
         "file": "public/lib/analytiqueUtils.js"
       },
       {
@@ -48,7 +44,15 @@
       },
       {
         "commits": 3,
+        "file": "public/components/ParcellesReferentielTab.jsx"
+      },
+      {
+        "commits": 3,
         "file": "scripts/generate-module-graph.js"
+      },
+      {
+        "commits": 3,
+        "file": "scripts/qa.sh"
       },
       {
         "commits": 3,
@@ -57,16 +61,12 @@
       {
         "commits": 3,
         "file": "tests/unit/generate-module-graph.test.js"
-      },
-      {
-        "commits": 2,
-        "file": "CLAUDE.md"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:6471e86cb209e01f",
+    "sourceFingerprint": "sha256:0a071bb91460b600",
     "stats": {
-      "backendModules": 86,
+      "backendModules": 88,
       "cloudFunctions": 83,
       "coverageScore": 27,
       "domains": 10,
@@ -75,7 +75,7 @@
       "libHelpers": 25,
       "monolithSymbols": 124,
       "tabFunctions": 124,
-      "unclassifiedFiles": 140,
+      "unclassifiedFiles": 142,
       "unitTestFiles": 22
     }
   },
@@ -1777,6 +1777,10 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/lib/.DS_Store": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/lib/auth": {
       "confidence": "medium",
       "domain": "admin"
@@ -1962,6 +1966,10 @@
       "domain": null
     },
     "functions/sqlSyncService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/test-whatsapp.js": {
       "confidence": "low",
       "domain": null
     },
@@ -3492,6 +3500,10 @@
     },
     {
       "confidence": "low",
+      "file": "functions/lib/.DS_Store"
+    },
+    {
+      "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
     },
     {
@@ -3577,6 +3589,10 @@
     {
       "confidence": "low",
       "file": "functions/sqlSyncService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/test-whatsapp.js"
     },
     {
       "confidence": "low",

@@ -6782,7 +6782,7 @@ exports.stockManagement = functions
         const fournisseurNom = _clean((current.fournisseur && current.fournisseur.nom) || "") || "—";
         dispatchNotification({
           type: useDocTemplate ? "bdc_submit_doc" : "bdc_submit",
-          profiles: skipChef ? ["dg"] : ["chef"],
+          profiles: skipChef ? ["dg"] : [bdcWorkflow.chefProfileForFerme(current.ferme)].filter(Boolean),
           ferme: skipChef ? null : current.ferme,
           data: {
             numero: current.numero || id,
@@ -6946,7 +6946,7 @@ exports.stockManagement = functions
         let ferme = null;
         const status = current.status;
         const isVirementMode = current.mode_paiement === "comptant_virement" || current.mode_paiement === "virement_bancaire";
-        if (status === "en_attente_chef") { profiles = ["chef"]; ferme = current.ferme; }
+        if (status === "en_attente_chef") { profiles = [bdcWorkflow.chefProfileForFerme(current.ferme)].filter(Boolean); ferme = current.ferme; }
         else if (status === "en_attente_dg") { profiles = ["dg"]; }
         else if (status === "valide_dg" && isVirementMode) { profiles = ["finance"]; }
         else if (status === "valide_dg" && !isVirementMode) { profiles = ["achats"]; }

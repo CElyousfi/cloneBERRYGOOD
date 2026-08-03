@@ -297,7 +297,7 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
         try {
           // Determine the role for validation based on which profile this recipient matches
           // (priority: chef > dg > skip)
-          const role = recipient.profileId === "chef" ? "chef"
+          const role = typeof recipient.profileId === "string" && recipient.profileId.indexOf("chef_") === 0 ? "chef"
                      : recipient.profileId === "dg" ? "dg"
                      : null;
           if (!role) return; // we only set up session for chef/dg
