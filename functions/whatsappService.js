@@ -438,7 +438,7 @@ async function sendTextMessage(to, text) {
 
 /**
  * Find all WhatsApp-enabled users for a given profile and optional farm.
- * @param {string} profileId - e.g. "chef", "dg", "achats", "finance"
+ * @param {string} profileId - e.g. "chef_f1", "dg", "achats", "finance"
  * @param {string} [ferme] - Optional farm filter (for chef profiles)
  * @returns {Array<{uid, displayName, phone}>}
  */
@@ -455,7 +455,7 @@ async function resolveRecipientsForProfile(profileId, ferme) {
     if (d.disabled) continue;
     if (!d.whatsappPhone) continue;
     // For chef profile, filter by farm if specified
-    if (ferme && profileId === "chef" && d.ferme && d.ferme !== ferme) continue;
+    if (ferme && typeof profileId === "string" && profileId.indexOf("chef_") === 0 && d.ferme && d.ferme !== ferme) continue;
     const phone = formatPhoneE164(d.whatsappPhone);
     if (phone) {
       recipients.push({
