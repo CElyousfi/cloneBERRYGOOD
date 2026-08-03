@@ -6,6 +6,8 @@ const {
   buildWeatherBasicUrl,
   buildWeatherAgroUrl,
   buildSprayUrl,
+  isValidWeatherPayload,
+  isValidSprayPayload,
   fetchWeather,
   fetchSpray,
 } = require('../meteoblueProxy');
@@ -30,11 +32,24 @@ function makeDeps(impl) {
 // via Object.assign, so each test needs its own fresh object.
 function makeBasicResponse() {
   return {
+    data_day: {
+      time: ['2026-07-30'],
+    },
     data_1h: {
       time: ['2026-07-30 00:00'],
       temperature: [22],
     },
   };
+}
+
+// "Hollow" HTTP 200 body, as Meteoblue can return when the account quota is
+// exceeded — no usable data_1h/data_day, but not a network/4xx failure.
+function makeHollowWeatherResponse() {
+  return { data_day: { time: [] }, data_1h: { time: [] } };
+}
+
+function makeHollowSprayResponse() {
+  return { data_1h: { spraywindow: [] } };
 }
 
 const AGRO_RESPONSE = {
@@ -141,6 +156,15 @@ test('fetchWeather: input validation', async () => {
   await assert.rejects(() => fetchWeather(LARACHE, { fetchJson: async () => null }), TypeError);
 });
 
+test('fetchWeather #6: basic fetch returns hollow HTTP 200 (quota exceeded) → returns null', async () => {
+  const { deps, counter } = makeDeps((url) => {
+    if (url.includes('basic-day_agro-day_basic-1h')) return makeHollowWeatherResponse();
+    return AGRO_RESPONSE;
+  });
+  const data = await fetchWeather(LARACHE, deps);
+  assert.equal(data, null, 'hollow payload must be treated as a miss, not cached');
+});
+
 test('fetchSpray #1: 200 OK → data returned as-is', async () => {
   const { deps, counter } = makeDeps(() => SPRAY_RESPONSE);
   const data = await fetchSpray(LARACHE, deps);
@@ -162,6 +186,55 @@ test('fetchSpray #3: fetch resolves null (non-2xx) → returns null', async () =
 
 test('fetchSpray: input validation', async () => {
   await assert.rejects(() => fetchSpray(LARACHE, {}), TypeError);
+});
+
+test('fetchSpray #4: hollow HTTP 200 (quota exceeded, empty spraywindow) → returns null', async () => {
+  const { deps } = makeDeps(() => makeHollowSprayResponse());
+  const data = await fetchSpray(LARACHE, deps);
+  assert.equal(data, null, 'hollow payload must be treated as a miss, not cached');
+});
+
+test('isValidWeatherPayload: valid basic response → true', () => {
+  assert.equal(isValidWeatherPayload(makeBasicResponse()), true);
+});
+
+test('isValidWeatherPayload: hollow (empty data_day.time and data_1h.time) → false', () => {
+  assert.equal(isValidWeatherPayload(makeHollowWeatherResponse()), false);
+});
+
+test('isValidWeatherPayload: missing data_day → false', () => {
+  assert.equal(isValidWeatherPayload({ data_1h: { time: ['2026-07-30 00:00'] } }), false);
+});
+
+test('isValidWeatherPayload: missing data_1h → false', () => {
+  assert.equal(isValidWeatherPayload({ data_day: { time: ['2026-07-30'] } }), false);
+});
+
+test('isValidWeatherPayload: data_day.time not an array → false', () => {
+  assert.equal(isValidWeatherPayload({ data_day: { time: 'nope' }, data_1h: { time: ['x'] } }), false);
+});
+
+test('isValidWeatherPayload: null/undefined/non-object → false', () => {
+  assert.equal(isValidWeatherPayload(null), false);
+  assert.equal(isValidWeatherPayload(undefined), false);
+  assert.equal(isValidWeatherPayload('string'), false);
+  assert.equal(isValidWeatherPayload(42), false);
+});
+
+test('isValidSprayPayload: valid spray response → true', () => {
+  assert.equal(isValidSprayPayload(SPRAY_RESPONSE), true);
+});
+
+test('isValidSprayPayload: hollow (empty spraywindow) → false', () => {
+  assert.equal(isValidSprayPayload(makeHollowSprayResponse()), false);
+});
+
+test('isValidSprayPayload: missing data_1h → false', () => {
+  assert.equal(isValidSprayPayload({}), false);
+});
+
+test('isValidSprayPayload: null → false', () => {
+  assert.equal(isValidSprayPayload(null), false);
 });
 
 test('roundCoord: collision — F1..F5/BAHIA/Avocatier all round to the same doc key', () => {

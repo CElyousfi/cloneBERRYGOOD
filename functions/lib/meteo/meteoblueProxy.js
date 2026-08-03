@@ -66,6 +66,38 @@ function buildSprayUrl({ lat, lon, altitude }, apiKey) {
 }
 
 /**
+ * Validates that a "basic-day_agro-day_basic-1h" Meteoblue response has
+ * usable daily + hourly series. Meteoblue can answer HTTP 200 with a
+ * "hollow" body (no data_1h/data_day usable) when the account quota is
+ * exceeded — this is not always a 4xx, so a truthy-check alone lets it
+ * through and poisons the shared Firestore cache for 4h.
+ *
+ * @param {object|null|undefined} data
+ * @returns {boolean}
+ */
+function isValidWeatherPayload(data) {
+  if (!data || typeof data !== "object") return false;
+  const day = data.data_day;
+  const hour = data.data_1h;
+  const dayOk = day && Array.isArray(day.time) && day.time.length > 0;
+  const hourOk = hour && Array.isArray(hour.time) && hour.time.length > 0;
+  return Boolean(dayOk && hourOk);
+}
+
+/**
+ * Validates that an "agromodelspray-1h" Meteoblue response has a usable
+ * spraywindow series (same "hollow HTTP 200" concern as isValidWeatherPayload).
+ *
+ * @param {object|null|undefined} data
+ * @returns {boolean}
+ */
+function isValidSprayPayload(data) {
+  if (!data || typeof data !== "object") return false;
+  const hour = data.data_1h;
+  return Boolean(hour && Array.isArray(hour.spraywindow) && hour.spraywindow.length > 0);
+}
+
+/**
  * Replicates the legacy frontend `fetchMeteoblueData` logic: fetch the
  * basic-day_agro-day_basic-1h package, then best-effort merge shortwave
  * radiation + evapotranspiration from agro-1h onto data_1h. A failure on
@@ -103,6 +135,10 @@ async function fetchWeather({ lat, lon, altitude }, deps) {
   } catch (err) {
     console.info("meteoblueProxy.fetchWeather: agro-1h fetch failed, fallback:", err && err.message);
   }
+  if (!isValidWeatherPayload(data)) {
+    console.warn("meteoblueProxy.fetchWeather: hollow payload (HTTP 200 without usable data_1h/data_day), treating as miss");
+    return null;
+  }
   return data;
 }
 
@@ -126,7 +162,13 @@ async function fetchSpray({ lat, lon, altitude }, deps) {
     console.warn("meteoblueProxy.fetchSpray: fetch threw", err.message);
     data = null;
   }
-  return data || null;
+  if (!isValidSprayPayload(data)) {
+    if (data) {
+      console.warn("meteoblueProxy.fetchSpray: hollow payload (HTTP 200 without usable spraywindow), treating as miss");
+    }
+    return null;
+  }
+  return data;
 }
 
 module.exports = {
@@ -134,6 +176,8 @@ module.exports = {
   buildWeatherBasicUrl,
   buildWeatherAgroUrl,
   buildSprayUrl,
+  isValidWeatherPayload,
+  isValidSprayPayload,
   fetchWeather,
   fetchSpray,
 };
