@@ -2503,9 +2503,16 @@ async function getMeteoblueCached(lat, lon, altitude, pkg) {
   if (cached.exists) {
     const cData = cached.data();
     const age = Date.now() - (cData.fetched_at || 0);
-    if (age < METEOBLUE_CACHE_TTL_MS) {
+    const isValid = pkg === "spray"
+      ? meteoblueProxy.isValidSprayPayload
+      : meteoblueProxy.isValidWeatherPayload;
+    if (age < METEOBLUE_CACHE_TTL_MS && isValid(cData.data)) {
       return { data: cData.data, cached: true };
     }
+    // TTL expiré OU payload creux (quota Meteoblue dépassé côté fournisseur) →
+    // on tombe dans le refetch ci-dessous. Ne PAS toucher Firestore ici (pas
+    // de delete) — le prochain succès écrasera naturellement le doc via
+    // cacheRef.set() plus bas.
   }
 
   const deps = { fetchJson: meteoblueHttpsGet, apiKey: METEOBLUE_API_KEY };

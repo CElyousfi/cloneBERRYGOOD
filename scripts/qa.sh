@@ -14,7 +14,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 echo "== QA 1/3 — Tests unitaires frontend (tests/unit) =="
 (cd "$ROOT" && npm run test:unit)
 
-echo "== QA 2/3 — Tests backend (functions/lib/*/__tests__) =="
+echo "== QA 2/3 — Tests backend (functions/{lib,middleware}/*/__tests__) =="
 (cd "$ROOT/functions" && npm run test:all)
 
 echo "== QA 3/3 — Build frontend (Babel + sentinelles) =="

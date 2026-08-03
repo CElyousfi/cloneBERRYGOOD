@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 68,
+        "commits": 67,
         "file": "public/app.jsx"
       },
       {
@@ -43,7 +43,7 @@
         "file": "public/lib/analytiqueUtils.js"
       },
       {
-        "commits": 3,
+        "commits": 4,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:f8031b75b1a9e42e",
+    "sourceFingerprint": "sha256:6471e86cb209e01f",
     "stats": {
       "backendModules": 86,
       "cloudFunctions": 83,
