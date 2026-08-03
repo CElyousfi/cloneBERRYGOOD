@@ -65,3 +65,17 @@ test('bypassReason distingue BdC mutualisé (Toutes) des fermes mono-sans-chef',
   assert.equal(W.bypassReason('toutes'), 'multi_ferme_dg_only');
   assert.equal(W.bypassReason('  TOUTES  '), 'multi_ferme_dg_only');
 });
+
+test('chefProfileForFerme resolves the correct profileId for F1 and F5', () => {
+  assert.equal(W.chefProfileForFerme('F1'), 'chef_f1');
+  assert.equal(W.chefProfileForFerme('F5'), 'chef_f5');
+});
+
+test('chefProfileForFerme returns null for farms without a chef de ferme', () => {
+  assert.equal(W.chefProfileForFerme('Avocatier'), null);
+});
+
+test('chefProfileForFerme fail-safe on invalid input', () => {
+  assert.equal(W.chefProfileForFerme(''), null);
+  assert.equal(W.chefProfileForFerme(null), null);
+});

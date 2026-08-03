@@ -40,6 +40,13 @@ const DIRECT_DG_FARMS_NORMALIZED = new Set(
   DIRECT_DG_FARMS.map(function (s) { return s.toUpperCase(); })
 );
 
+/**
+ * Mapping ferme → profileId du Chef de Ferme compétent pour la validation BdC.
+ * Seules F1 (Framboise) et F5 (Myrtille) ont un chef qui valide les BdC —
+ * les autres fermes sont dans DIRECT_DG_FARMS et ne passent jamais ici.
+ */
+const CHEF_PROFILE_BY_FERME = { F1: 'chef_f1', F5: 'chef_f5' };
+
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -81,6 +88,17 @@ function bypassReason(ferme) {
   return norm === 'TOUTES' ? 'multi_ferme_dg_only' : 'no_chef_de_ferme';
 }
 
+/**
+ * Résout le profileId du Chef de Ferme compétent pour une ferme donnée.
+ *
+ * @param {string} ferme
+ * @returns {string | null}
+ */
+function chefProfileForFerme(ferme) {
+  if (!ferme || typeof ferme !== 'string') return null;
+  return CHEF_PROFILE_BY_FERME[ferme.trim().toUpperCase()] || null;
+}
+
 // ============================================================================
 // UMD-style export (browser global + CommonJS for node:test / backend)
 // ============================================================================
@@ -90,6 +108,7 @@ const __bdcWorkflowApi = {
   requiresChefValidation,
   nextStatusOnSubmit,
   bypassReason,
+  chefProfileForFerme,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __bdcWorkflowApi;
