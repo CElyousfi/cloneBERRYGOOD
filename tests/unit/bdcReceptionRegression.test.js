@@ -158,11 +158,19 @@ test('list-bdc: sans filtre status, comportement inchangé (tous statuts, limit�
 /**
  * Miroir verbatim du filtre client de MagBdcReceptionTab.loadData
  * (public/app.jsx ~L50734) :
- *   (bdcJson.bdc || []).filter(b => ['valide_dg', 'envoye'].includes(b.status) && b.delivery_status !== 'complet')
+ *   (bdcJson.bdc || []).filter(b => ['valide_dg', 'envoye', 'virement_lance', 'virement_signe'].includes(b.status) && b.delivery_status !== 'complet')
+ *
+ * Périmètre étendu (2026-08-04, BDC-2026-0123) : un BDC en mode paiement
+ * virement transite par `virement_lance` puis `virement_signe` AVANT
+ * d'atteindre `envoye`. Ce sont des états intermédiaires normaux et
+ * fréquents du circuit — un BDC dans cet état doit rester réceptionnable
+ * (cf. functions/index.js action "request-bdc-change" ~L7014, qui utilise
+ * déjà cette liste à 4 statuts comme référence de "validé DG ou plus loin
+ * dans le circuit").
  */
 function filterBdcForReception(bdcList) {
   return (bdcList || []).filter(
-    (b) => ['valide_dg', 'envoye'].includes(b.status) && b.delivery_status !== 'complet'
+    (b) => ['valide_dg', 'envoye', 'virement_lance', 'virement_signe'].includes(b.status) && b.delivery_status !== 'complet'
   );
 }
 
@@ -177,6 +185,19 @@ test('MagBdcReceptionTab filter: exclut les BDC delivery_status="complet" même 
   assert.deepEqual(result.map((b) => b.id).sort(), ['ok', 'ok_partiel']);
 });
 
+test('MagBdcReceptionTab filter: BDC en circuit virement (virement_lance/virement_signe) restent réceptionnables', () => {
+  // Scénario réel signalé par Omar en QA : BDC-2026-0123, status
+  // "virement_signe", delivery_status "non_livre" — devait apparaître dans
+  // la liste "BDC à réceptionner" et n'y apparaissait pas (bug).
+  const bdcList = [
+    { id: 'BDC-2026-0123', status: 'virement_signe', delivery_status: 'non_livre' },
+    { id: 'virement_lance_ok', status: 'virement_lance', delivery_status: 'partiel' },
+    { id: 'virement_signe_complet', status: 'virement_signe', delivery_status: 'complet' },
+  ];
+  const result = filterBdcForReception(bdcList);
+  assert.deepEqual(result.map((b) => b.id).sort(), ['BDC-2026-0123', 'virement_lance_ok']);
+});
+
 test('MagBdcReceptionTab filter: liste vide -> résultat vide (pas de crash)', () => {
   assert.deepEqual(filterBdcForReception([]), []);
   assert.deepEqual(filterBdcForReception(undefined), []);
@@ -189,12 +210,12 @@ test('MagBdcReceptionTab filter: liste vide -> résultat vide (pas de crash)', (
 /**
  * Miroir verbatim de la garde d'entrée de create-bl (functions/index.js
  * ~L7307-7312) :
- *   if (!["valide_dg", "envoye"].includes(bdc.status)) -> 400
+ *   if (!["valide_dg", "envoye", "virement_lance", "virement_signe"].includes(bdc.status)) -> 400
  *   if (bdc.delivery_status === "complet") -> 400
  * Retourne null si la réception est autorisée, sinon {status, error}.
  */
 function guardCreateBl(bdc) {
-  if (!['valide_dg', 'envoye'].includes(bdc.status)) {
+  if (!['valide_dg', 'envoye', 'virement_lance', 'virement_signe'].includes(bdc.status)) {
     return { status: 400, error: 'Le BDC doit être validé ou envoyé pour recevoir un BL' };
   }
   if (bdc.delivery_status === 'complet') {
@@ -257,6 +278,23 @@ test('create-bl: autorise la réception si status valide et delivery_status != "
     assert.equal(calls.deliveryNote, 1);
     assert.equal(calls.stockMovement, 1);
     assert.equal(calls.updateBdc, 1);
+  }
+});
+
+test('create-bl: autorise la réception sur un BDC en circuit virement (virement_lance/virement_signe)', () => {
+  for (const status of ['virement_lance', 'virement_signe']) {
+    const bdc = { status, delivery_status: 'non_livre' };
+    const calls = { deliveryNote: 0, stockMovement: 0, updateBdc: 0 };
+    const spies = {
+      createDeliveryNote: () => calls.deliveryNote++,
+      createStockMovement: () => calls.stockMovement++,
+      updateBdcDeliveryStatus: () => calls.updateBdc++,
+    };
+
+    const result = simulateCreateBl(bdc, spies);
+
+    assert.equal(result.success, true, `status=${status} devrait être autorisé`);
+    assert.equal(calls.deliveryNote, 1);
   }
 });
 
