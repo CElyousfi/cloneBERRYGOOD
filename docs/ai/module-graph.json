@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "195/335 fichiers classifiés",
+          "detail": "195/337 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "35/128 modules avec ≥1 test",
+          "detail": "35/130 modules avec ≥1 test",
           "max": 30,
           "score": 8
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 65,
+        "commits": 64,
         "file": "public/app.jsx"
       },
       {
@@ -44,11 +44,11 @@
       },
       {
         "commits": 3,
-        "file": "functions/notificationDispatcher.js"
+        "file": "functions/lib/meteo/meteoblueProxy.js"
       },
       {
         "commits": 3,
-        "file": "public/components/ParcellesReferentielTab.jsx"
+        "file": "functions/notificationDispatcher.js"
       },
       {
         "commits": 3,
@@ -64,9 +64,9 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:172c4708bc8faefe",
+    "sourceFingerprint": "sha256:25c9b4d8db3e962b",
     "stats": {
-      "backendModules": 86,
+      "backendModules": 88,
       "cloudFunctions": 83,
       "coverageScore": 27,
       "domains": 10,
@@ -75,7 +75,7 @@
       "libHelpers": 25,
       "monolithSymbols": 124,
       "tabFunctions": 124,
-      "unclassifiedFiles": 140,
+      "unclassifiedFiles": 142,
       "unitTestFiles": 22
     }
   },
@@ -1777,6 +1777,10 @@
       "confidence": "low",
       "domain": null
     },
+    "functions/lib/.DS_Store": {
+      "confidence": "low",
+      "domain": null
+    },
     "functions/lib/auth": {
       "confidence": "medium",
       "domain": "admin"
@@ -1962,6 +1966,10 @@
       "domain": null
     },
     "functions/sqlSyncService.js": {
+      "confidence": "low",
+      "domain": null
+    },
+    "functions/test-whatsapp.js": {
       "confidence": "low",
       "domain": null
     },
@@ -2386,7 +2394,7 @@
     "AchatsBonApportTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52997
+      "line": 52998
     },
     "AchatsCatalogueTab": {
       "domain": "achats",
@@ -2411,7 +2419,7 @@
     "AchatsFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52018
+      "line": 52019
     },
     "AchatsFournisseursTab": {
       "domain": "achats",
@@ -2421,37 +2429,37 @@
     "AchatsPaiementsTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52213
+      "line": 52214
     },
     "AchatsRapprochementTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 55000
+      "line": 55001
     },
     "AchatsReceptionsValoriserTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 57401
+      "line": 57402
     },
     "AchatsScanBLTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52706
+      "line": 52707
     },
     "AchatsScanFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52396
+      "line": 52397
     },
     "AchatsVentePlastiqueTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 54749
+      "line": 54750
     },
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63710
+      "line": 63711
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
@@ -2521,12 +2529,12 @@
     "BudgetVsReelTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 58455
+      "line": 58456
     },
     "CaisseTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 59975
+      "line": 59976
     },
     "CampagneTab": {
       "domain": "referentiel",
@@ -2566,7 +2574,7 @@
     "ChefValidationBonsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 56288
+      "line": 56289
     },
     "ChefValidationsTab": {
       "domain": "pointage",
@@ -2581,7 +2589,7 @@
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 62976
+      "line": 62977
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -2591,27 +2599,27 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64066
+      "line": 64067
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65033
+      "line": 65034
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66271
+      "line": 66272
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65735
+      "line": 65736
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64583
+      "line": 64584
     },
     "DGValidationsTab": {
       "domain": "pointage",
@@ -2621,7 +2629,7 @@
     "DQRDailyTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 55865
+      "line": 55866
     },
     "DashboardAssocieTab": {
       "domain": null,
@@ -2641,7 +2649,7 @@
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66412
+      "line": 66413
     },
     "FinBDCTab": {
       "domain": "achats",
@@ -2676,7 +2684,7 @@
     "FinFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52307
+      "line": 52308
     },
     "FinLiquidationsTab": {
       "domain": null,
@@ -2691,7 +2699,7 @@
     "FinPaiementsTab": {
       "domain": "paie",
       "file": "public/app.jsx",
-      "line": 56476
+      "line": 56477
     },
     "FinPlantsTab": {
       "domain": null,
@@ -2751,17 +2759,17 @@
     "MagBCEngraisTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 56542
+      "line": 56543
     },
     "MagBCPhytoTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 56547
+      "line": 56548
     },
     "MagBCTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 56552
+      "line": 56553
     },
     "MagBdcReceptionTab": {
       "domain": "achats",
@@ -2776,17 +2784,17 @@
     "MagFicheStockTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 50995
+      "line": 50996
     },
     "MagInventaireTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51418
+      "line": 51419
     },
     "MagMouvementsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57955
+      "line": 57956
     },
     "MagParcTab": {
       "domain": null,
@@ -2801,17 +2809,17 @@
     "MagSortieTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57534
+      "line": 57535
     },
     "MagStockIntrantsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51318
+      "line": 51319
     },
     "MagTransfertTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 57048
+      "line": 57049
     },
     "MeteoTab": {
       "domain": "agro",
@@ -2856,7 +2864,7 @@
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66886
+      "line": 66887
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
@@ -2926,7 +2934,7 @@
     "QualiteValidationBonsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 56102
+      "line": 56103
     },
     "QuinzaineTab": {
       "domain": "paie",
@@ -2986,7 +2994,7 @@
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65413
+      "line": 65414
     },
     "SuiviTab": {
       "domain": null,
@@ -3492,6 +3500,10 @@
     },
     {
       "confidence": "low",
+      "file": "functions/lib/.DS_Store"
+    },
+    {
+      "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
     },
     {
@@ -3577,6 +3589,10 @@
     {
       "confidence": "low",
       "file": "functions/sqlSyncService.js"
+    },
+    {
+      "confidence": "low",
+      "file": "functions/test-whatsapp.js"
     },
     {
       "confidence": "low",
