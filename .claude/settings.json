@@ -34,7 +34,9 @@
       "Read(**/.env.*)"
     ],
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/Users/omarmaaouni/Desktop/DESKTOP (OLD)",
+      "/Users/omarmaaouni/worktrees"
     ]
   },
   "hooks": {
