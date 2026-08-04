@@ -165,6 +165,44 @@ test('fetchWeather #6: basic fetch returns hollow HTTP 200 (quota exceeded) → 
   assert.equal(data, null, 'hollow payload must be treated as a miss, not cached');
 });
 
+test('fetchWeather #7: agro OK but neither shortwave_radiation/shortwaveradiation nor evapotranspiration present → no undefined key introduced (regression: Firestore rejects undefined values)', async () => {
+  const { deps } = makeDeps((url) => {
+    if (url.includes('basic-day_agro-day_basic-1h')) return makeBasicResponse();
+    if (url.includes('agro-1h')) return { data_1h: { time: ['2026-07-30 00:00'] } };
+    return null;
+  });
+  const data = await fetchWeather(LARACHE, deps);
+  assert.equal(data.data_1h.temperature[0], 22, 'basic fields preserved');
+  assert.ok(!('shortwave_radiation' in data.data_1h), 'shortwave_radiation key must not be introduced when unresolved');
+  assert.ok(!('evapotranspiration' in data.data_1h), 'evapotranspiration key must not be introduced when unresolved');
+  Object.keys(data.data_1h).forEach((key) => {
+    assert.notEqual(data.data_1h[key], undefined, `data_1h.${key} must not be undefined (Firestore write would throw)`);
+  });
+  assert.equal(JSON.stringify(data).includes('undefined'), false);
+});
+
+test('fetchWeather #8: agro OK with shortwave_radiation present but evapotranspiration absent → only evapotranspiration omitted', async () => {
+  const { deps } = makeDeps((url) => {
+    if (url.includes('basic-day_agro-day_basic-1h')) return makeBasicResponse();
+    if (url.includes('agro-1h')) return { data_1h: { shortwave_radiation: [99] } };
+    return null;
+  });
+  const data = await fetchWeather(LARACHE, deps);
+  assert.deepEqual(data.data_1h.shortwave_radiation, [99], 'present field kept');
+  assert.ok(!('evapotranspiration' in data.data_1h), 'missing field omitted, not set to undefined');
+});
+
+test('fetchWeather #9: agro OK with evapotranspiration present but shortwave/shortwaveradiation absent → only shortwave_radiation omitted', async () => {
+  const { deps } = makeDeps((url) => {
+    if (url.includes('basic-day_agro-day_basic-1h')) return makeBasicResponse();
+    if (url.includes('agro-1h')) return { data_1h: { evapotranspiration: [0.6] } };
+    return null;
+  });
+  const data = await fetchWeather(LARACHE, deps);
+  assert.deepEqual(data.data_1h.evapotranspiration, [0.6], 'present field kept');
+  assert.ok(!('shortwave_radiation' in data.data_1h), 'missing field omitted, not set to undefined');
+});
+
 test('fetchSpray #1: 200 OK → data returned as-is', async () => {
   const { deps, counter } = makeDeps(() => SPRAY_RESPONSE);
   const data = await fetchSpray(LARACHE, deps);
