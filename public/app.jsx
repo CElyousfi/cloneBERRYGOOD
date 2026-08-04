@@ -4266,6 +4266,15 @@
             );
         }
 
+        // Ferme par défaut pour l'affichage du widget météo Dashboard, pour les profils
+        // sans `farm` propre (PROFILES) où farmFilter est toujours null (chef_f1, chef_f5, dg).
+        // N'affecte QUE MeteoAlertsDashboard, jamais farmFilter lui-même.
+        const METEO_DEFAULT_FARM_BY_PROFILE = {
+            chef_f1: 'F1',
+            chef_f5: 'F5',
+            dg: 'F1',
+        };
+
         function DashboardTab({ data, farmFilter, avoSubFilter, onNavigateMeteo, currentProfile, cultureFilter }) {
             const [apiData, setApiData] = useState(null);
             const [nouveauxData, setNouveauxData] = useState(null);
@@ -4396,14 +4405,19 @@
                 return { ...op, equipes: [...eqSet], parcRefs: [...refSet] };
             });
 
+            // Ferme utilisée UNIQUEMENT pour le widget météo : farmFilter/avoSubFilter
+            // si présents, sinon défaut par profil (chef_f1/chef_f5/dg). Ne touche pas à
+            // farmFilter lui-même, utilisé par les autres widgets du Dashboard.
+            const meteoFarmFilter = avoSubFilter || farmFilter || METEO_DEFAULT_FARM_BY_PROFILE[currentProfile];
+
             return (
                 <div className="fade-in">
                     {farmFilter && (
                         <FarmBanner farm={avoSubFilter || farmFilter} chefName={PROFILES.find(p => p.farm === farmFilter)?.fullName || 'Chef'} effectifData={eff[farmFilter]} />
                     )}
 
-                    {/* Alertes Météo Dashboard (Chef uniquement) */}
-                    {farmFilter && <MeteoAlertsDashboard farmFilter={avoSubFilter || farmFilter} onNavigateMeteo={onNavigateMeteo} />}
+                    {/* Alertes Météo Dashboard (Chef uniquement, + défaut pour chef_f1/chef_f5/dg sans farmFilter) */}
+                    {meteoFarmFilter && <MeteoAlertsDashboard farmFilter={meteoFarmFilter} onNavigateMeteo={onNavigateMeteo} />}
 
                     {/* Alertes Analyses Foliaires (Chef uniquement) */}
                     {farmFilter && <AnalysesFoliairesAlertDashboard ferme={avoSubFilter || farmFilter} onNavigate={onNavigateMeteo} />}
