@@ -127,10 +127,17 @@ async function fetchWeather({ lat, lon, altitude }, deps) {
   try {
     const extra = await deps.fetchJson(agroUrl);
     if (extra && extra.data_1h) {
-      data.data_1h = Object.assign({}, data.data_1h || {}, {
-        shortwave_radiation: extra.data_1h.shortwave_radiation || extra.data_1h.shortwaveradiation,
-        evapotranspiration: extra.data_1h.evapotranspiration,
-      });
+      const mergedData1h = Object.assign({}, data.data_1h || {});
+      const shortwaveRadiation = extra.data_1h.shortwave_radiation !== undefined
+        ? extra.data_1h.shortwave_radiation
+        : extra.data_1h.shortwaveradiation;
+      if (shortwaveRadiation !== undefined) {
+        mergedData1h.shortwave_radiation = shortwaveRadiation;
+      }
+      if (extra.data_1h.evapotranspiration !== undefined) {
+        mergedData1h.evapotranspiration = extra.data_1h.evapotranspiration;
+      }
+      data.data_1h = mergedData1h;
     }
   } catch (err) {
     console.info("meteoblueProxy.fetchWeather: agro-1h fetch failed, fallback:", err && err.message);
