@@ -7304,7 +7304,7 @@ exports.stockManagement = functions
         const bdcDoc = await db_firestore.collection("purchase_orders").doc(bdc_id).get();
         if (!bdcDoc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
         const bdc = bdcDoc.data();
-        if (!["valide_dg", "envoye"].includes(bdc.status)) {
+        if (!["valide_dg", "envoye", "virement_lance", "virement_signe"].includes(bdc.status)) {
           return res.status(400).json({ success: false, error: "Le BDC doit être validé ou envoyé pour recevoir un BL" });
         }
         if (bdc.delivery_status === "complet") {

@@ -36,11 +36,11 @@
       },
       {
         "commits": 5,
-        "file": "public/lib/analytiqueUtils.js"
+        "file": "functions/index.js"
       },
       {
-        "commits": 4,
-        "file": "functions/index.js"
+        "commits": 5,
+        "file": "public/lib/analytiqueUtils.js"
       },
       {
         "commits": 3,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:25c9b4d8db3e962b",
+    "sourceFingerprint": "sha256:62371445a631917f",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 83,

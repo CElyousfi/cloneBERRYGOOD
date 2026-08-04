@@ -50726,12 +50726,12 @@ ${rejetHtml}
             const loadData = () => {
                 setLoading(true);
                 Promise.all([
-                    fetch('/api/stock?action=list-bdc&status=valide_dg,envoye&limit=500').then(r => r.json()),
+                    fetch('/api/stock?action=list-bdc&status=valide_dg,envoye,virement_lance,virement_signe&limit=500').then(r => r.json()),
                     fetch('/api/stock?action=list-movements&type=reception&limit=100').then(r => r.json()),
                     cachedFetch('/api/stock?action=list-articles').then(json => json.success ? (json.articles || []) : []).catch(() => []),
                     cachedFetch('/api/stock?action=list-suppliers&status=valide').then(json => json.success ? (json.suppliers || []) : []).catch(() => []),
                 ]).then(([bdcJson, movJson, arts, supps]) => {
-                    if (bdcJson.success) setBdcList((bdcJson.bdc || []).filter(b => ['valide_dg', 'envoye'].includes(b.status) && b.delivery_status !== 'complet'));
+                    if (bdcJson.success) setBdcList((bdcJson.bdc || []).filter(b => ['valide_dg', 'envoye', 'virement_lance', 'virement_signe'].includes(b.status) && b.delivery_status !== 'complet'));
                     if (movJson.success) setReceptions(movJson.movements || []);
                     setArticles(arts.filter(a => a.active !== false));
                     setSuppliers(supps);
