@@ -1,85 +1,94 @@
 'use strict';
 
-/** Extrait le premier token effectif (ignore les VAR=val en tête). */
-function firstToken(cmd) {
-  const m = cmd.trimStart().match(/^(?:\S+=\S+\s+)*(\S+)/);
-  return m ? m[1] : '';
-}
-
-/** Tokenise en respectant les guillemets simples et doubles. */
-function tokenize(cmd) {
-  return (cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [])
-    .map(t => t.replace(/^["']|["']$/g, ''));
-}
-
 /**
- * Pour sed : vérifie qu'un flag -n/--quiet/--silent est présent comme token standalone
- * (évite le faux positif sed -i 's/-n/x/' file).
+ * bash-discipline-gate.js — PreToolUse hook (matcher: "Bash")  — v2
+ *
+ * CHANGEMENT DE PRINCIPE vs v1 :
+ *   v1 refusait des commandes SÛRES (grep/cat/ls/find/head/tail/wc/sed -n)
+ *       en renvoyant vers les outils natifs Grep/Glob — qui ne sont PAS
+ *       disponibles dans nos sessions. D'où la boucle deny -> impasse.
+ *       Et elle laissait passer les formes DANGEREUSES (sed -i, find -exec).
+ *
+ *   v2 ne se prononce que sur ce qui est réellement destructeur ou
+ *       exfiltrant. Tout le reste : aucune décision, le flux de permission
+ *       normal s'applique (et settings.json l'autorise sans prompt).
+ *
+ * Le hook est désormais l'UNIQUE couche de sécurité, puisque settings.json
+ * autorise Bash largement. Un deny de hook tient même en bypassPermissions
+ * et même en headless — c'est ce qui protège le runtime VPS.
+ *
+ * Sortie : exit 0 + JSON. `{}` = pas de décision.
  */
-function hasSedQuietFlag(command) {
-  return tokenize(command).slice(1).some(t =>
-    t === '-n' || /^-[a-z]*n[a-z]*$/.test(t) || t === '--quiet' || t === '--silent'
-  );
+
+/** Premier token effectif (ignore VAR=val et les enveloppes usuelles). */
+function firstToken(cmd) {
+  const WRAP = new Set(['sudo', 'env', 'time', 'timeout', 'nice', 'nohup', 'command', 'xargs']);
+  const toks = cmd.trimStart().split(/\s+/);
+  for (const t of toks) {
+    if (/^\S+=\S+$/.test(t)) continue;
+    if (WRAP.has(t)) continue;
+    return t.split('/').pop();
+  }
+  return '';
 }
 
 const RULES = [
   {
     id: 'cd-chain',
-    test: (cmd) => /\bcd\s+[^\n;&|]*&&/.test(cmd),
-    message: 'Utilise un chemin absolu ou `git -C "<path>" <cmd>` — pas de `cd … &&`'
+    test: (c) => /(^|[\s;&|(])cd\s+[^\n;&|]*&&/.test(c),
+    msg: 'Pas de `cd … &&` (CLAUDE.md) : ça déplace le cwd de la session. '
+       + 'Utilise `git -C "<path>" <cmd>`, `npm --prefix <path> …`, ou un chemin absolu.',
   },
   {
-    id: 'grep-bash',
-    test: (cmd, ft) => ft === 'grep' || ft === 'rg',
-    message: 'Utilise l\'outil natif Grep (non gatté, pas de prompt permission)'
+    id: 'force-push',
+    test: (c) => /\bgit\b[\s\S]*\bpush\b/.test(c)
+              && /(\s-f(\s|$)|--force(-with-lease)?\b)/.test(c),
+    msg: "Force-push interdit à l'agent (CLAUDE.md). Y compris --force-with-lease. À faire manuellement si nécessaire.",
   },
   {
-    id: 'cat-bash',
-    test: (cmd, ft) => ft === 'cat',
-    message: 'Utilise Read (lecture) ou Write/Edit (écriture)'
+    id: 'history-destroy',
+    test: (c) => /\bgit\s+(reset\s+--hard|clean\s+-[a-zA-Z]*f|filter-branch|reflog\s+expire)/.test(c),
+    msg: "Destruction d'historique interdite à l'agent. À faire manuellement si voulu.",
   },
   {
-    id: 'head-tail-bash',
-    test: (cmd, ft) => ft === 'head' || ft === 'tail',
-    message: 'Utilise Read avec les paramètres offset et limit'
+    id: 'firebase-direct',
+    test: (c) => /\bfirebase\s+deploy\b/.test(c),
+    msg: 'Passe par `scripts/deploy.sh` (gaté et journalisé), pas `firebase deploy` en direct.',
   },
   {
-    id: 'sed-n-bash',
-    test: (cmd, ft) => ft === 'sed' && hasSedQuietFlag(cmd),
-    message: 'Utilise Read avec les paramètres offset et limit'
+    id: 'secret-read',
+    test: (c) => /(^|[\s;&|])(source|\.)\s+\S*\.env(?!\.(example|sample|template|dist))\b/.test(c)
+              || /\b(cat|less|more|head|tail|xxd|base64|printenv)\b[^\n;&|]*\.env(?!\.(example|sample|template|dist))(\b|$)/.test(c),
+    msg: 'Lecture directe de .env interdite. Les scripts gatés chargent leurs secrets eux-mêmes.',
   },
   {
-    id: 'find-bash',
-    test: (cmd, ft) => ft === 'find',
-    message: 'Utilise l\'outil natif Glob (non gatté, pas de prompt permission)'
+    id: 'find-exec',
+    test: (c) => /\bfind\b/.test(c) && /\s-(exec|execdir|ok|okdir|delete|fprintf|fls|fprint)\b/.test(c),
+    msg: '`find -exec` / `-delete` interdit : exécution et écriture arbitraires.',
   },
   {
-    id: 'wc-bash',
-    test: (cmd, ft) => ft === 'wc',
-    message: 'Utilise Read ou Grep'
-  },
-  {
-    id: 'ls-bash',
-    test: (cmd, ft) => ft === 'ls',
-    message: 'Utilise l\'outil natif Glob (non gatté, pas de prompt permission)'
-  },
-  {
-    id: 'pipe-grep-rg',
-    test: (cmd) => /\|\s*(?:grep|rg)\b/.test(cmd),
-    message: 'Utilise Grep directement (pas de pipeline Bash)'
-  },
-  {
-    id: 'pipe-head-tail',
-    test: (cmd) => /\|\s*(?:head|tail)\b/.test(cmd),
-    message: 'Utilise Read avec les paramètres offset et limit'
+    id: 'rm-rf',
+    test: (c) => /\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r)\b/.test(c)
+              && !/\s\/tmp\//.test(c),
+    msg: '`rm -rf` interdit hors /tmp. Supprime ciblé, ou fais-le manuellement.',
   },
 ];
 
-/** Évalue la commande. Retourne { id, message } si DENY, null sinon. */
+/**
+ * Neutralise le contenu entre guillemets : une chaîne de recherche n'est pas
+ * une commande. Sans ça, `grep -rn "rm -rf" docs/` déclenche la règle rm-rf.
+ * La structure est préservée, seul le contenu cité est vidé.
+ */
+function stripQuoted(cmd) {
+  return cmd.replace(/"[^"]*"|'[^']*'/g, '""');
+}
+
+/** Retourne { id, msg } si DENY, null sinon. */
 function evaluate(command) {
-  const ft = firstToken(command);
-  for (const rule of RULES) {
-    if (rule.test(command, ft)) return { id: rule.id, message: rule.message };
+  const scan = stripQuoted(command);
+  const ft = firstToken(scan);
+  for (const r of RULES) {
+    if (r.test(scan, ft)) return { id: r.id, msg: r.msg };
   }
   return null;
 }
@@ -87,33 +96,29 @@ function evaluate(command) {
 function runHook() {
   process.stdin.setEncoding('utf8');
   let raw = '';
-  process.stdin.on('data', c => { raw += c; });
+  process.stdin.on('data', (c) => { raw += c; });
   process.stdin.on('end', () => {
+    let out = '{}';
     try {
       const data = JSON.parse(raw);
-      // Vérification défensive
-      if (data.tool_name !== 'Bash' || data.hook_event_name !== 'PreToolUse') {
-        process.stdout.write('{}');
-        process.exit(0);
+      if (data.tool_name === 'Bash' && data.hook_event_name === 'PreToolUse') {
+        const hit = evaluate((data.tool_input && data.tool_input.command) || '');
+        if (hit) {
+          out = JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: `[bash-gate/${hit.id}] ${hit.msg}`,
+            },
+          });
+        }
       }
-      const command = (data.tool_input && data.tool_input.command) || '';
-      const hit = evaluate(command);
-      if (hit) {
-        process.stdout.write(JSON.stringify({
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'deny',
-            permissionDecisionReason: `[bash-gate/${hit.id}] ${hit.message}`
-          }
-        }));
-        process.exit(0);
-      }
-    } catch (_) { /* fail-open */ }
-    process.stdout.write('{}');
+    } catch (_) { /* parse impossible -> pas de décision */ }
+    process.stdout.write(out);
     process.exit(0);
   });
 }
 
 if (require.main === module) runHook();
 
-module.exports = { evaluate, firstToken, tokenize, hasSedQuietFlag, runHook };
+module.exports = { evaluate, firstToken, stripQuoted, RULES };
