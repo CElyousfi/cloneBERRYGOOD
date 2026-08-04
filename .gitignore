@@ -94,3 +94,4 @@ node_modules
 
 # Playwright e2e screenshots (générés)
 tests/e2e-screenshots/
+.claude/settings.json.bak*
