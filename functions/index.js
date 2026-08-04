@@ -6624,11 +6624,13 @@ exports.stockManagement = functions
       if (action === "list-bdc") {
         const ferme = req.query.ferme;
         const status = req.query.status;
+        const statuses = status ? String(status).split(",").map((s) => s.trim()).filter(Boolean) : [];
         const limit = parseInt(req.query.limit || "200");
         let query = db_firestore.collection("purchase_orders");
-        const hasFilter = ferme || status;
+        const hasFilter = ferme || statuses.length > 0;
         if (ferme) query = query.where("ferme", "==", ferme);
-        if (status) query = query.where("status", "==", status);
+        if (statuses.length === 1) query = query.where("status", "==", statuses[0]);
+        else if (statuses.length > 1) query = query.where("status", "in", statuses);
         if (!hasFilter) query = query.orderBy("created_at", "desc");
         query = query.limit(limit);
         const snap = await query.get();
@@ -7304,6 +7306,9 @@ exports.stockManagement = functions
         const bdc = bdcDoc.data();
         if (!["valide_dg", "envoye"].includes(bdc.status)) {
           return res.status(400).json({ success: false, error: "Le BDC doit être validé ou envoyé pour recevoir un BL" });
+        }
+        if (bdc.delivery_status === "complet") {
+          return res.status(400).json({ success: false, error: "Ce BDC est déjà entièrement réceptionné." });
         }
 
         const numero = await getNextNumber("delivery_note", "BL");
