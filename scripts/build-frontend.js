@@ -89,6 +89,7 @@ const COMPONENT_SENTINELS = {
   "QuinzaineCampagneSelect.js": "window.QuinzaineCampagneSelect",
   "QuinzaineRecapCards.js": "window.QuinzaineRecapCards",
   "CampagneAnalytiqueTab.js": "window.CampagneAnalytiqueTab",
+  "MagStockFilesTab.js": "window.MagStockFilesTab",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {
   const jsxFiles = fs.readdirSync(COMPONENTS_DIR).filter((f) => f.endsWith(".jsx"));

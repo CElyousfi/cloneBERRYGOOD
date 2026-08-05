@@ -33,6 +33,9 @@ const consoAccessControl = require("./lib/valorisation/accessControl");
 const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
+const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
+const { createStockFileReminders } = require("./lib/stockFiles/reminders");
+const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
@@ -372,6 +375,30 @@ exports.checkPresenceSyncHealth = functions.region("europe-west1").pubsub
     }
     return null;
   });
+
+// Rappels 16h/17h/18h + escalade DG à 18h — soumission quotidienne des
+// fichiers stock (Berry Good / Bahia). Voir docs/spec-collecte-stock-magasinier.md §4.4
+// et functions/lib/stockFiles/reminders.js (logique pure + DI, testée en node:test).
+const stockFileReminders = createStockFileReminders({
+  db: db_firestore,
+  whatsapp: whatsappService,
+  serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp(),
+});
+
+exports.stockFileReminder16h = functions.region("europe-west1").pubsub
+  .schedule("0 16 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(() => stockFileReminders.sendReminder("16h"));
+
+exports.stockFileReminder17h = functions.region("europe-west1").pubsub
+  .schedule("0 17 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(() => stockFileReminders.sendReminder("17h"));
+
+exports.stockFileReminder18h = functions.region("europe-west1").pubsub
+  .schedule("0 18 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(() => stockFileReminders.sendReminder("18h", { escalateToDg: true }));
 
 // Manual trigger for prod sync — ?action=recolte&since=2025-07-01 for historical
 exports.syncProdTrigger = functions.region("europe-west1")
@@ -9634,6 +9661,96 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ 
         if (!scanPath) return res.json({ success: true, scan_url: null });
         const signedUrl = await scanAttachment.generateSignedUrl(bucket, scanPath);
         return res.json({ success: true, scan_url: signedUrl, scan_path: scanPath });
+      }
+
+      // ========== SOUMISSION FICHIERS STOCK (magasinier) ==========
+      // docs/spec-collecte-stock-magasinier.md §4.1. Écriture partagée par les
+      // 2 canaux (app + WhatsApp) via functions/lib/stockFiles/recordSubmission.js.
+      // Le fichier est uploadé CLIENT-DIRECT vers Storage (même modèle que
+      // upload-attachment) ; cette action ne fait que valider + enregistrer.
+
+      if (action === "stock-file-submit" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body — cf.
+        // commentaire fonctions/index.js:5121 et CLAUDE.md.
+        const callerRole = await resolveCallerRole(authUser);
+        if (callerRole !== "magasinier" && callerRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+
+        const { farm, storage_path, filename } = req.body || {};
+        if (!stockFilesRecord.isValidFarm(farm)) {
+          return res.status(400).json({ success: false, error: "farm invalide (attendu: berry_good|bahia)" });
+        }
+        if (!storage_path) {
+          return res.status(400).json({ success: false, error: "storage_path requis" });
+        }
+
+        // Confirme que l'objet existe réellement dans le bucket avant de l'enregistrer.
+        let exists = false;
+        try { [exists] = await bucket.file(storage_path).exists(); } catch (_) { exists = false; }
+        if (!exists) return res.status(400).json({ success: false, error: "Fichier introuvable dans le stockage (upload incomplet ?)" });
+
+        // ENFORCEMENT SERVEUR taille/MIME — même fonction que upload-attachment
+        // (pas de règle dupliquée entre les flux d'upload). Objet rejeté → suppression
+        // best-effort pour ne laisser aucun orphelin.
+        let objMeta = null;
+        try { [objMeta] = await bucket.file(storage_path).getMetadata(); } catch (_) { objMeta = null; }
+        if (!objMeta) return res.status(400).json({ success: false, error: "Métadonnées du fichier illisibles" });
+        const metaCheck = scanAttachment.validateAttachmentMetadata({ size: objMeta.size, contentType: objMeta.contentType }, STOCK_FILE_ALLOWED_MIME);
+        if (!metaCheck.valid) {
+          try { await bucket.file(storage_path).delete(); } catch (_) { /* best effort cleanup */ }
+          const error = /non autorisé/.test(metaCheck.error)
+            ? `${metaCheck.error} (formats acceptés : ${STOCK_FILE_ALLOWED_FORMATS_LABEL})`
+            : metaCheck.error;
+          return res.status(400).json({ success: false, error });
+        }
+
+        // Date TOUJOURS calculée côté serveur (Africa/Casablanca) — jamais
+        // l'horloge client (cf. spec §4.1 et CLAUDE.md).
+        const date = stockFilesRecord.todayInCasablanca();
+        const submittedBy = {
+          uid: authUser.uid || null,
+          name: (req.body.submitted_by && req.body.submitted_by.name) || authUser.name || authUser.email || null,
+          email: authUser.email || null,
+          source: "app",
+        };
+
+        const result = await stockFilesRecord.recordSubmission(
+          { db: db_firestore, serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp() },
+          { date, farm, storagePath: storage_path, filename, submittedBy }
+        );
+        if (!result.success) return res.status(400).json(result);
+        return res.json({ success: true, submitted_at: Date.now() });
+      }
+
+      if (action === "stock-file-history") {
+        const daysParam = parseInt(req.query.days || "30", 10);
+        const days = Math.min(Math.max(Number.isFinite(daysParam) ? daysParam : 30, 1), 90);
+        const today = stockFilesRecord.todayInCasablanca();
+
+        const dates = [];
+        for (let i = 0; i < days; i++) dates.push(stockFilesRecord.addDaysStr(today, -i));
+
+        const results = await Promise.all(dates.map(async (date) => {
+          const snap = await db_firestore.collection(stockFilesRecord.COLLECTION).doc(date).get();
+          const doc = snap.exists ? snap.data() : stockFilesRecord.emptySubmissionDoc(date);
+          const toMillis = (ts) => (ts && typeof ts.toMillis === "function") ? ts.toMillis() : (ts || null);
+          return {
+            date,
+            berry_good: {
+              submitted: !!(doc.berry_good && doc.berry_good.submitted),
+              submitted_at: toMillis(doc.berry_good && doc.berry_good.submitted_at),
+              submitted_by: (doc.berry_good && doc.berry_good.submitted_by) || null,
+            },
+            bahia: {
+              submitted: !!(doc.bahia && doc.bahia.submitted),
+              submitted_at: toMillis(doc.bahia && doc.bahia.submitted_at),
+              submitted_by: (doc.bahia && doc.bahia.submitted_by) || null,
+            },
+          };
+        }));
+        // Déjà du plus récent au plus ancien (dates construites par soustraction depuis today).
+        return res.json({ success: true, days: results });
       }
 
       // ========== SCAN HISTORY ==========

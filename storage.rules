@@ -22,6 +22,18 @@ service firebase.storage {
       allow create: if request.auth != null;
       allow update, delete: if false;
     }
+    // Fichiers stock quotidiens (magasinier) — dépôt CLIENT-DIRECT, même
+    // modèle que scans/** ci-dessus (create-only, taille/MIME enforcés côté
+    // Cloud Function stock-file-submit, pas fiable au niveau des rules en
+    // upload resumable). Inclut stock_files/_pending/** : chemin temporaire
+    // utilisé par le bot WhatsApp (magasinierBot.js) le temps de la
+    // confirmation de ferme par boutons interactifs, avant déplacement vers
+    // le chemin final stock_files/{date}/**.
+    match /stock_files/{path=**} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
     // PDF des bons de commande (générés à la soumission, joints à la notif
     // WhatsApp de validation). Lecture+écriture authentifiée.
     match /bdc_pdfs/{path=**} {
