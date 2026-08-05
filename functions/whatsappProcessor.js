@@ -141,6 +141,9 @@ async function processIncomingMessage(msg, value) {
     } else if (effectiveProfile === "dg") {
       const dgBot = require("./dgBot");
       await dgBot.handleDgMessage(from, { ...matchedUser, profileId: effectiveProfile }, msg);
+    } else if (effectiveProfile === "magasinier") {
+      const magasinierBot = require("./magasinierBot");
+      await magasinierBot.handleMessage(from, { ...matchedUser, profileId: effectiveProfile }, msg);
     }
   } catch (botErr) {
     console.error(`Bot routing error for ${from} (${effectiveProfile}):`, botErr);
