@@ -5,6 +5,19 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] ITEM (GATED, spec prêt) — Soumission quotidienne fichiers Stock (Berry Good + Bahia)
+Demandé par Omar (2026-08-05). Nouvel onglet "Soumission Fichier Stock" dans
+l'interface magasinier : 2 dropzones (Berry Good / Bahia), archivage
+date/heure de soumission, rappels WhatsApp 16h/17h/18h si fichier manquant,
+alerte d'escalade DG à 18h si toujours manquant, tableau historique
+✅/❌ par jour. Pas de traitement du contenu des fichiers (V1 = dépôt +
+suivi uniquement). Spec complet et autosuffisant :
+[docs/spec-collecte-stock-magasinier.md](spec-collecte-stock-magasinier.md).
+Gated : nouvelle fonctionnalité + nouveau cron + deploy prod. **EN ATTENTE
+DE GO OMAR** (« GO spec-collecte-stock-magasinier ») avant implémentation.
+
+---
+
 ## [ ] BUG (non-gated) — Jour férié rattaché à la mauvaise quinzaine (frontière 15/16)
 Signalé par le DG (2026-06-13). Prime Jour Férié : le 1er Moharram (2026-06-16)
 apparaît dans la **Quinzaine 23 (1–15 juin)** alors qu'il appartient à la Q24 (16–30).
