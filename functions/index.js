@@ -360,7 +360,7 @@ exports.checkPresenceSyncHealth = functions.region("europe-west1").pubsub
       if (!result.success) {
         const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
         const today = new Date().toISOString().slice(0, 10);
-        const msg = `Sync présence BDP en échec pour ${today} malgré les tentatives 10h-21h. Erreur: ${result.error}. Vérifier le serveur BEE ONE (105.145.33.128).`;
+        const msg = `Sync présence BDP en échec pour ${today} malgré les tentatives 9h-11h et 19h-21h. Erreur: ${result.error}. Vérifier le serveur BEE ONE (105.145.33.128).`;
         await Promise.all(
           (recipients || []).map((r) =>
             whatsappService.sendTemplateMessage(r.phone, "general_alert", [whatsappService.toSingleLine(msg)])

@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "195/337 fichiers classifiés",
+          "detail": "196/338 fichiers classifiés",
           "max": 40,
           "score": 23
         },
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 64,
+        "commits": 63,
         "file": "public/app.jsx"
       },
       {
@@ -35,7 +35,7 @@
         "file": "public/lib/emargementPdf.js"
       },
       {
-        "commits": 5,
+        "commits": 6,
         "file": "functions/index.js"
       },
       {
@@ -64,10 +64,10 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:62371445a631917f",
+    "sourceFingerprint": "sha256:3c7ac3e570e34883",
     "stats": {
       "backendModules": 88,
-      "cloudFunctions": 83,
+      "cloudFunctions": 84,
       "coverageScore": 27,
       "domains": 10,
       "extractedComponents": 17,
@@ -457,6 +457,7 @@
           "backfillPointageBdpLiveTrigger",
           "backfillPresence",
           "bdpIntrospect",
+          "checkPresenceSyncHealth",
           "pointageRH",
           "pointageRH2",
           "pointageV3",
@@ -1488,6 +1489,10 @@
     "functions/index.js#caisseManagement": {
       "confidence": "high",
       "domain": "caisse"
+    },
+    "functions/index.js#checkPresenceSyncHealth": {
+      "confidence": "high",
+      "domain": "pointage"
     },
     "functions/index.js#climatProduction": {
       "confidence": "high",
