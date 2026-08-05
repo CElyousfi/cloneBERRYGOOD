@@ -35,6 +35,7 @@ const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
+const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
@@ -9695,10 +9696,13 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ 
         let objMeta = null;
         try { [objMeta] = await bucket.file(storage_path).getMetadata(); } catch (_) { objMeta = null; }
         if (!objMeta) return res.status(400).json({ success: false, error: "Métadonnées du fichier illisibles" });
-        const metaCheck = scanAttachment.validateAttachmentMetadata({ size: objMeta.size, contentType: objMeta.contentType });
+        const metaCheck = scanAttachment.validateAttachmentMetadata({ size: objMeta.size, contentType: objMeta.contentType }, STOCK_FILE_ALLOWED_MIME);
         if (!metaCheck.valid) {
           try { await bucket.file(storage_path).delete(); } catch (_) { /* best effort cleanup */ }
-          return res.status(400).json({ success: false, error: metaCheck.error });
+          const error = /non autorisé/.test(metaCheck.error)
+            ? `${metaCheck.error} (formats acceptés : ${STOCK_FILE_ALLOWED_FORMATS_LABEL})`
+            : metaCheck.error;
+          return res.status(400).json({ success: false, error });
         }
 
         // Date TOUJOURS calculée côté serveur (Africa/Casablanca) — jamais

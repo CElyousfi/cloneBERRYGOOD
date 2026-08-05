@@ -44,14 +44,27 @@ const ALLOWED_ATTACHMENT_MIME = {
 };
 
 /**
+ * Human-readable label for the default allowlist, used in the rejection
+ * message. Callers passing a custom `allowedMime` (e.g. stock files, which
+ * also accept Excel/CSV) get a generic message instead — see
+ * `describeAllowedMimeError`.
+ */
+const DEFAULT_MIME_ERROR_SUFFIX = ' (PDF ou image uniquement)';
+
+/**
  * PURE validation of an uploaded object's metadata (size + contentType).
  * Called by the upload-attachment action AFTER reading the object metadata from
  * Storage, BEFORE writing any link on the target doc. A rejected object is then
  * deleted by the caller so no orphan object/link survives.
  * @param {{size?: number|string, contentType?: string}} meta
+ * @param {Record<string, true>} [allowedMime] - MIME allowlist to enforce.
+ *   Defaults to `ALLOWED_ATTACHMENT_MIME` (PDF/JPEG/PNG/WEBP/HEIC) — the
+ *   contract for every existing caller (BDC/factures/BL scans) is unchanged.
+ *   Pass a different allowlist (e.g. `stockFiles`' `STOCK_FILE_ALLOWED_MIME`)
+ *   to accept other formats without touching the shared default.
  * @returns {{ valid: boolean, error?: string }}
  */
-function validateAttachmentMetadata(meta) {
+function validateAttachmentMetadata(meta, allowedMime) {
   const m = meta || {};
   const size = typeof m.size === 'string' ? parseInt(m.size, 10) : m.size;
   if (typeof size !== 'number' || !isFinite(size) || size <= 0) {
@@ -60,9 +73,12 @@ function validateAttachmentMetadata(meta) {
   if (size >= MAX_ATTACHMENT_BYTES) {
     return { valid: false, error: 'Fichier refusé: taille supérieure à 25 Mo' };
   }
+  const allowlist = allowedMime || ALLOWED_ATTACHMENT_MIME;
+  const isDefaultAllowlist = allowlist === ALLOWED_ATTACHMENT_MIME;
   const contentType = typeof m.contentType === 'string' ? m.contentType.split(';')[0].trim().toLowerCase() : '';
-  if (!ALLOWED_ATTACHMENT_MIME[contentType]) {
-    return { valid: false, error: 'Fichier refusé: type de fichier non autorisé (PDF ou image uniquement)' };
+  if (!allowlist[contentType]) {
+    const suffix = isDefaultAllowlist ? DEFAULT_MIME_ERROR_SUFFIX : '';
+    return { valid: false, error: 'Fichier refusé: type de fichier non autorisé' + suffix };
   }
   return { valid: true };
 }

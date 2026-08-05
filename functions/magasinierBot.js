@@ -29,6 +29,7 @@ const wa = require("./whatsappService");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { detectFarmFromCaption } = require("./lib/stockFiles/farmDetection");
+const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -115,7 +116,7 @@ async function handleMessage(phone, user, msg) {
   }
   await wa.sendTextMessage(
     phone,
-    "📦 Envoyez le fichier stock du jour (PDF ou image), avec « BG » ou « Bahia » dans la légende si possible."
+    "📦 Envoyez le fichier stock du jour (" + STOCK_FILE_ALLOWED_FORMATS_LABEL + "), avec « BG » ou « Bahia » dans la légende si possible."
   );
 }
 
@@ -128,9 +129,9 @@ async function handleIncomingFile(phone, user, msg, mediaId) {
   }
 
   // Même règle taille/MIME que le canal app — pas de règle dupliquée.
-  const metaCheck = scanAttachment.validateAttachmentMetadata({ size: dl.buffer.length, contentType: dl.mimeType });
+  const metaCheck = scanAttachment.validateAttachmentMetadata({ size: dl.buffer.length, contentType: dl.mimeType }, STOCK_FILE_ALLOWED_MIME);
   if (!metaCheck.valid) {
-    await wa.sendTextMessage(phone, "❌ " + metaCheck.error + " Envoyez un PDF ou une image (JPG/PNG/WEBP/HEIC).");
+    await wa.sendTextMessage(phone, "❌ " + metaCheck.error + " Envoyez un fichier " + STOCK_FILE_ALLOWED_FORMATS_LABEL + ".");
     return;
   }
 

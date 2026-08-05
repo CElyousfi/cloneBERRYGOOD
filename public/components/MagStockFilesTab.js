@@ -29,7 +29,13 @@
   var useState = React.useState;
   var useEffect = React.useEffect;
   var useMemo = React.useMemo;
-  var MSF_ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic';
+
+  // MISE À JOUR 2026-08-05 (confirmé Omar) : les fichiers stock réels sont
+  // des classeurs Excel (.xlsx/.xls) ou CSV — priorité — PDF/image gardés en
+  // secours (photo d'un relevé papier). Cf. docs/spec-collecte-stock-magasinier.md
+  // §4.1/§5.2 et functions/lib/stockFiles/allowedMime.js (STOCK_FILE_ALLOWED_MIME).
+  var MSF_ACCEPT = '.xlsx,.xls,.csv,.pdf,.jpg,.jpeg,.png,.webp,.heic';
+  var MSF_FORMATS_LABEL = 'Excel (.xlsx/.xls), CSV, PDF ou image (JPG/PNG/WEBP/HEIC)';
   var MSF_C = {
     textPrimary: '#1c1c1a',
     textSecondary: '#5f5e5a',
@@ -54,8 +60,15 @@
     return filename.split('.').pop().toLowerCase().trim() || 'bin';
   }
   function msfMimeFromFile(file) {
-    if (file.type && file.type !== '') return file.type;
     var ext = msfExt(file.name);
+    // Le contentType navigateur pour .xlsx/.xls/.csv est peu fiable (souvent
+    // vide ou générique selon l'OS) — l'extension prime pour ces formats afin
+    // que le contentType envoyé au bucket corresponde bien à
+    // STOCK_FILE_ALLOWED_MIME côté serveur.
+    if (ext === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if (ext === 'xls') return 'application/vnd.ms-excel';
+    if (ext === 'csv') return 'text/csv';
+    if (file.type && file.type !== '') return file.type;
     if (ext === 'pdf') return 'application/pdf';
     if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
     if (ext === 'png') return 'image/png';
@@ -285,7 +298,7 @@
         fontSize: 11,
         color: MSF_C.textTertiary
       }
-    }, "PDF ou image (JPG/PNG/WEBP/HEIC), 25 Mo max"), /*#__PURE__*/React.createElement("input", {
+    }, MSF_FORMATS_LABEL, ", 25 Mo max"), /*#__PURE__*/React.createElement("input", {
       type: "file",
       accept: MSF_ACCEPT,
       onChange: handleInput,
