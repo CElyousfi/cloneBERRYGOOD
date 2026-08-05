@@ -338,15 +338,15 @@ exports.onProdRecolteWriteNotify = functions
     }
   });
 
-// Sync présence entrée — 10h
+// Sync présence entrée — retry toutes les 15min de 9h à 11h (résilience si BDP injoignable)
 exports.syncPresenceEntree = functions.region("europe-west1").pubsub
-  .schedule("0 10 * * *")
+  .schedule("*/15 9-11 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(() => prodSync.syncPresence("entree"));
 
-// Sync présence sortie — 20h
+// Sync présence sortie — retry toutes les 15min de 19h à 21h (résilience si BDP injoignable)
 exports.syncPresenceSortie = functions.region("europe-west1").pubsub
-  .schedule("0 20 * * *")
+  .schedule("*/15 19-21 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(() => prodSync.syncPresence("sortie"));
 
