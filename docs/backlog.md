@@ -6,15 +6,19 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 ---
 
 ## [ ] ITEM (GATED, spec prêt) — Soumission quotidienne fichiers Stock (Berry Good + Bahia)
-Demandé par Omar (2026-08-05). Nouvel onglet "Soumission Fichier Stock" dans
-l'interface magasinier : 2 dropzones (Berry Good / Bahia), archivage
-date/heure de soumission, rappels WhatsApp 16h/17h/18h si fichier manquant,
-alerte d'escalade DG à 18h si toujours manquant, tableau historique
-✅/❌ par jour. Pas de traitement du contenu des fichiers (V1 = dépôt +
-suivi uniquement). Spec complet et autosuffisant :
+Demandé par Omar (2026-08-05). **Deux canaux de soumission en parallèle** :
+(1) nouvel onglet "Soumission Fichier Stock" dans l'interface magasinier
+(2 dropzones Berry Good/Bahia), (2) envoi direct par WhatsApp au bot Smart
+Berry (nouveau handler `magasinierBot.js`, désambiguïsation ferme par
+légende ou boutons). Les 2 canaux écrivent dans le même modèle Firestore.
+Archivage date/heure de soumission, rappels WhatsApp 16h/17h/18h si fichier
+manquant, alerte d'escalade DG à 18h si toujours manquant, tableau
+historique ✅/❌ par jour. Pas de traitement du contenu des fichiers (V1 =
+dépôt + suivi uniquement). Spec complet et autosuffisant :
 [docs/spec-collecte-stock-magasinier.md](spec-collecte-stock-magasinier.md).
-Gated : nouvelle fonctionnalité + nouveau cron + deploy prod. **EN ATTENTE
-DE GO OMAR** (« GO spec-collecte-stock-magasinier ») avant implémentation.
+Gated : nouvelle fonctionnalité + nouveau bot WhatsApp + nouveau cron +
+deploy prod. **EN ATTENTE DE GO OMAR**
+(« GO spec-collecte-stock-magasinier ») avant implémentation.
 
 ---
 

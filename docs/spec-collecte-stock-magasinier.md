@@ -1,15 +1,16 @@
 # Spec — Soumission quotidienne des fichiers Stock (Berry Good + Bahia)
 
 Statut : **QUALIFICATION TERMINÉE — en attente de GO Omar**
-Demandé par Omar, 2026-08-05. Remplace l'idée initiale (collecte via WhatsApp
-entrant) : Omar a tranché pour une saisie via un nouvel onglet dans
-l'interface magasinier, avec notification WhatsApp sortante uniquement (pas
-de réception de fichiers WhatsApp).
+Demandé par Omar, 2026-08-05, complété le même jour : **deux canaux de
+soumission en parallèle** — onglet dans l'interface magasinier (dropzones)
+ET soumission entrante par WhatsApp au bot Smart Berry. Les deux canaux
+écrivent dans le même modèle de données et alimentent le même tableau de
+suivi.
 
 Gated : **OUI** — nouvelle fonctionnalité (nouvel onglet, nouvelle route
-backend, nouveau cron WhatsApp). Ce document est autosuffisant : à
-implémenter tel quel sur `GO spec-collecte-stock-magasinier`, sans
-re-analyse.
+backend, nouveau bot WhatsApp entrant, nouveau cron WhatsApp). Ce document
+est autosuffisant : à implémenter tel quel sur
+`GO spec-collecte-stock-magasinier`, sans re-analyse.
 
 ---
 
@@ -21,6 +22,10 @@ re-analyse.
 > fichier n'a pas été envoyé à 18h, avec des rappels à 16h, 17h et 18h. On
 > affiche un tableau quotidien (lignes = dates, colonnes = les 2 fichiers)
 > avec un check ✅ ou une croix ❌ selon la soumission.
+>
+> On donne aussi l'option de soumission par WhatsApp au bot Smart Berry —
+> le magasinier peut envoyer un fichier directement en message WhatsApp, en
+> plus (pas à la place) de l'onglet dans l'app.
 
 Pas de traitement du contenu des fichiers pour l'instant (pas de parsing,
 pas d'import stock) — uniquement dépôt + archivage + suivi. "On verra
@@ -47,7 +52,25 @@ Le rôle `magasinier` (`public/app.jsx:421`) est un profil **unique, global**
   si `recipients.length === 0`, pour ne pas répéter le piège "sonde qui
   n'alerte pas" déjà rencontré (cf. mémoire `pipeline-pointage-bdr-panne-silencieuse`).
   Si c'est le cas, Omar devra renseigner `whatsappPhone` + `whatsappEnabled`
-  sur le compte magasinier avant activation du cron.
+  sur le compte magasinier avant activation du cron **et** avant que le canal
+  WhatsApp entrant fonctionne (même prérequis pour les deux canaux — sans
+  compte `users` matché, `whatsappProcessor.js` ne route nulle part, cf.
+  `whatsappProcessor.js:85-93`).
+- **Désambiguïsation ferme côté WhatsApp** : un seul numéro magasinier envoie
+  les 2 fichiers dans la même conversation, donc le fichier seul ne dit pas
+  pour quelle ferme il est. Stratégie à 2 niveaux :
+  1. Si la légende (caption) du document contient un mot-clé sans ambiguïté
+     (`"BG"`, `"BERRY GOOD"`, `"BAHIA"`, insensible à la casse/accents) →
+     ferme déduite directement, pas de question.
+  2. Sinon → le bot répond avec des **boutons interactifs**
+     (`sendInteractiveButtons`, cf. `whatsappService.js:124-284`) "Berry
+     Good" / "Bahia" et attend la réponse avant d'enregistrer, exactement
+     comme le flux confirmation du registre visiteurs
+     (`securityBot.js:250-315`). État intermédiaire tenu dans
+     `whatsapp_sessions/{phone}` (même collection, même pattern que
+     `securityBot.js:8,30,37,46`) — évite de mélanger deux uploads si le
+     magasinier envoie les 2 fichiers coup sur coup avant de répondre au
+     premier bouton.
 
 ---
 
@@ -63,7 +86,7 @@ jour, id = date `YYYY-MM-DD` (Africa/Casablanca) — même pattern que
   berry_good: {
     submitted: false,
     submitted_at: null,        // serverTimestamp() une fois soumis
-    submitted_by: null,        // {uid, name, email}
+    submitted_by: null,        // {uid, name, email, source: "app"|"whatsapp"}
     file_path: null,           // chemin Storage
     file_name: null,           // nom original saisi par l'utilisateur
   },
@@ -113,11 +136,14 @@ actions stock) :
     (réutiliser tel quel — mêmes limites que les autres uploads) ; fichier
     rejeté → suppression best-effort de l'objet orphelin (même pattern que
     `functions/index.js:9594-9598`).
-- Effet : `db.collection("stock_file_submissions").doc(date).set({ [farm]: {
-  submitted: true, submitted_at: now, submitted_by: {uid, name, email},
-  file_path: storage_path, file_name }, updated_at: now }, { merge: true })`
-  (créer `created_at` seulement si le doc n'existait pas encore — lire avant
-  ou utiliser une transaction courte).
+- Effet : appelle la logique partagée `stockFiles.recordSubmission({ date,
+  farm, storagePath, filename, submittedBy })` (voir § 4.4 — même fonction
+  utilisée par le canal WhatsApp, pour ne jamais dupliquer l'écriture
+  Firestore entre les 2 canaux). Écrit `db.collection("stock_file_submissions").doc(date).set({ [farm]: {
+  submitted: true, submitted_at: now, submitted_by, file_path: storage_path,
+  file_name }, updated_at: now }, { merge: true })` (créer `created_at`
+  seulement si le doc n'existait pas encore — lire avant ou utiliser une
+  transaction courte).
 - Réponse : `{ success: true, submitted_at }`.
 
 **`GET /api/stock?action=stock-file-history&days=30`**
@@ -132,7 +158,19 @@ Pas besoin d'un `get-attachment-url` dédié dans ce spec (pas de lecture du
 fichier prévue pour l'instant — juste dépôt + suivi). À ajouter plus tard si
 besoin de consultation/téléchargement.
 
-### 4.2 Storage rules
+### 4.2 Logique d'écriture partagée (les 2 canaux convergent ici)
+
+Nouveau module `functions/lib/stockFiles/recordSubmission.js` (pure logic +
+DI, `node:test`) exportant `recordSubmission(db, { date, farm, storagePath,
+filename, submittedBy })` → fait exactement l'upsert Firestore décrit en
+§ 4.1. Utilisé par :
+- la route HTTP `stock-file-submit` (canal onglet app),
+- le handler WhatsApp `magasinierBot.js` (canal WhatsApp, § 4.4).
+
+Objectif : **une seule source de vérité pour l'écriture**, aucune divergence
+possible entre ce que voit le tableau historique selon le canal utilisé.
+
+### 4.3 Storage rules
 
 Vérifier/étendre `storage.rules` pour autoriser l'écriture directe client
 sur `stock_files/**` par un utilisateur authentifié avec `profileId ==
@@ -140,7 +178,7 @@ sur `stock_files/**` par un utilisateur authentifié avec `profileId ==
 ouverts pour le pattern "unified attachment" — le développeur doit localiser
 la règle existante et la dupliquer/étendre, pas la réécrire).
 
-### 4.3 Crons de rappel + alerte
+### 4.4 Crons de rappel + alerte
 
 Trois exports séparés (même style que le trio
 `syncPresenceEntree`/`syncPresenceSortie`/`checkPresenceSyncHealth`,
@@ -182,6 +220,58 @@ Logique `sendReminder(slot, { escalateToDg = false } = {})` :
 Utiliser `whatsappService.sendTemplateMessage(phone, "general_alert",
 [whatsappService.toSingleLine(msg)])` — jamais `sendTextMessage` (règle
 mémoire `whatsapp-proactif-doit-etre-template`).
+
+### 4.5 Canal WhatsApp entrant (nouveau bot `magasinier`)
+
+Nouveau handler `functions/magasinierBot.js`, sur le modèle de
+`securityBot.js` (télécharger → uploader Storage → confirmer par boutons →
+écrire Firestore) :
+
+1. **Routage** : ajouter le cas `profileId === "magasinier"` dans le
+   dispatch de `whatsappProcessor.js:126-144` (aujourd'hui seuls `dg` et
+   `securite` sont routés) → `magasinierBot.handleMessage(matchedUser, msg)`.
+2. **Réception d'un document** (`msg.type === "document"` ou `"image"`) :
+   - `whatsappService.downloadMedia(mediaId)` → `{buffer, mimeType, sha256}`
+     (`whatsappService.js:375-400`).
+   - Valider taille/MIME avec **la même fonction** que le canal app
+     (`scanAttachment.validateAttachmentMetadata`) — pas de règles
+     dupliquées entre canaux. Rejet → réponse WhatsApp expliquant le
+     problème (ex. "Format non supporté, envoyez un PDF/Excel/image.").
+   - Déterminer `date` = aujourd'hui Casablanca (serveur, pas l'horodatage
+     du message).
+   - Déterminer `farm` via la stratégie § 2 (caption ou boutons).
+     - Si boutons nécessaires : uploader le fichier vers un chemin
+       **temporaire** Storage (`stock_files/_pending/{phone}_{ts}.{ext}`),
+       stocker la référence dans `whatsapp_sessions/{phone}` (état
+       `awaiting_farm_choice`, `pending_path`, `pending_filename`), envoyer
+       `sendInteractiveButtons` avec les 2 choix.
+     - Si caption sans ambiguïté : uploader directement vers le chemin final
+       `stock_files/{date}/{farm}_{ts}.{ext}` et enregistrer tout de suite.
+3. **Réponse au bouton** (message interactif entrant, type `button_reply`) :
+   - Lire la session `whatsapp_sessions/{phone}`, si `state ===
+     "awaiting_farm_choice"` : déplacer/renommer l'objet Storage du chemin
+     temporaire vers le chemin final `stock_files/{date}/{farm}_{ts}.{ext}`
+     (`bucket.file(pendingPath).move(finalPath)`), appeler
+     `stockFiles.recordSubmission(db, { date, farm, storagePath: finalPath,
+     filename, submittedBy: {uid: matchedUser.uid, name: matchedUser.displayName,
+     source: "whatsapp"} })`, nettoyer la session, répondre par un message de
+     confirmation ("✅ Fichier {Berry Good|Bahia} reçu pour aujourd'hui.").
+   - Si aucune session en attente (bouton orphelin/rejoué) : répondre "Rien
+     à confirmer, envoyez d'abord un fichier."
+4. **Idempotence** : la dédup par `msg.id` déjà en place
+   (`whatsappProcessor.js:60-65, 99`) couvre les envois dupliqués côté Meta.
+   Une re-soumission volontaire (2e fichier le même jour pour la même
+   ferme) écrase simplement le doc (`merge: true`, § 4.2), comme pour le
+   canal app.
+5. **Erreurs** : tout échec (téléchargement média, upload Storage, écriture
+   Firestore) → réponse WhatsApp d'erreur générique au magasinier +
+   `console.error` détaillé côté serveur. Ne jamais laisser un fichier
+   "disparaître" sans réponse visible dans la conversation.
+
+Champ `submitted_by.source: "app" | "whatsapp"` ajouté au modèle § 3 (mineur,
+pas de champ obligatoire pour le canal app existant — `source: "app"` par
+défaut) pour que le tableau historique puisse, si besoin plus tard,
+distinguer l'origine d'une soumission.
 
 ---
 
@@ -233,6 +323,13 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
 - Storage rules : écriture restreinte au chemin `stock_files/{date}/**` pour
   un uid dont le profil Firestore est `magasinier` (ou `dg`), lecture selon
   besoin futur (pas de lecture prévue dans ce spec V1).
+- Canal WhatsApp : aucune auth Firebase (par nature) — la légitimité vient
+  du numéro expéditeur déjà résolu en `matchedUser` par
+  `whatsappProcessor.js:85-93` (lookup `users.whatsappPhone`). Un numéro non
+  matché à un compte `profileId: "magasinier"` n'atteint jamais
+  `magasinierBot.js` (le dispatch § 4.5 ne route que les profils connus) —
+  pas de vérification supplémentaire nécessaire au-delà de ce lookup déjà en
+  place pour tous les bots existants.
 
 ---
 
@@ -251,14 +348,24 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
 
 - `functions/index.js` — 2 nouvelles routes `/api/stock` (`stock-file-submit`,
   `stock-file-history`) + 3 nouveaux exports cron.
+- `functions/lib/stockFiles/recordSubmission.js` (nouveau, pure logic + DI,
+  tests `node:test`) — écriture partagée par les 2 canaux.
 - `functions/lib/stockFiles/reminders.js` (nouveau, pure logic + DI, tests
   `node:test` dans `functions/lib/stockFiles/__tests__/`).
-- `storage.rules` — règle d'écriture `stock_files/**`.
+- `functions/magasinierBot.js` (nouveau) — handler WhatsApp entrant, sur le
+  modèle de `securityBot.js`.
+- `functions/whatsappProcessor.js` — ajouter le routage `profileId ===
+  "magasinier"` dans le dispatch (`:126-144`).
+- `storage.rules` — règle d'écriture `stock_files/**` (y compris
+  `stock_files/_pending/**` pour le flux WhatsApp en attente de choix de
+  ferme).
 - `public/app.jsx` — entrée `NAV_ITEMS_MAGASINIER`, import + rendu du nouveau
   composant.
 - `public/components/MagStockFilesTab.jsx` (nouveau).
 - Tests : `tests/unit/` si logique front extraite en helper pur ; sinon
-  smoke Playwright manuel sur le preview.
+  smoke Playwright manuel sur le preview. Test manuel réel du bot WhatsApp
+  (envoi d'un fichier depuis le numéro magasinier) avant de considérer le
+  canal WhatsApp fonctionnel.
 
 ---
 
@@ -270,8 +377,15 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
    channel.
 4. QA visuelle (Playwright + captures) sur le preview : dropzones,
    soumission, tableau historique, déclenchement manuel d'un cron via
-   trigger de test si possible.
+   trigger de test si possible. **Plus un test manuel réel du canal
+   WhatsApp** (le backend étant déjà en prod à cette étape — cf. séquence
+   deploy CLAUDE.md § "Stratégie de deploy" : functions d'abord) : envoyer
+   un fichier test depuis le numéro magasinier, vérifier la question de
+   ferme (boutons), vérifier l'écriture dans `stock_file_submissions` et le
+   reflet dans le tableau du preview.
 5. Screenshots + checklist → validation visuelle Omar.
 6. Sur "OK deploy" : merge main + deploy prod (functions puis hosting).
 7. Laisser tourner les crons 1 jour réel avant de considérer l'item terminé
-   — vérifier réception effective des rappels WhatsApp par le magasinier.
+   — vérifier réception effective des rappels WhatsApp par le magasinier,
+   et confirmer qu'au moins une soumission par chaque canal (app + WhatsApp)
+   a été testée en conditions réelles.
