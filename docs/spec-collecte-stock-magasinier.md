@@ -133,9 +133,25 @@ actions stock) :
   - `farm` ∈ `["berry_good", "bahia"]` sinon 400.
   - Objet existe dans le bucket (`bucket.file(storage_path).exists()`) sinon 400.
   - Métadonnées (taille/MIME) via `scanAttachment.validateAttachmentMetadata`
-    (réutiliser tel quel — mêmes limites que les autres uploads) ; fichier
-    rejeté → suppression best-effort de l'objet orphelin (même pattern que
-    `functions/index.js:9594-9598`).
+    — **MISE À JOUR (2026-08-05, confirmé par Omar)** : les fichiers stock
+    réels sont des classeurs Excel (.xlsx/.xls) ou CSV, PAS
+    PDF/image. `ALLOWED_ATTACHMENT_MIME` (PDF/JPEG/PNG/WEBP/HEIC) ne doit
+    **PAS** être élargi globalement (il est partagé avec les scans
+    BDC/factures/BL, qui doivent rester PDF/image uniquement). Ajouter un
+    2e paramètre optionnel `allowedMime` à `validateAttachmentMetadata(meta,
+    allowedMime)` (défaut = `ALLOWED_ATTACHMENT_MIME`, rétrocompatible pour
+    tous les appelants existants) et définir dans
+    `functions/lib/stockFiles/` une constante dédiée `STOCK_FILE_ALLOWED_MIME`
+    couvrant : `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+    (xlsx), `application/vnd.ms-excel` (xls, et parfois csv sous Windows),
+    `text/csv`, `application/csv` — en gardant aussi PDF/JPEG/PNG/WEBP/HEIC
+    (un magasinier peut occasionnellement envoyer une photo du relevé
+    papier). Passer `STOCK_FILE_ALLOWED_MIME` explicitement à
+    `validateAttachmentMetadata` aux 2 points d'appel (`stock-file-submit`
+    ET `magasinierBot.js`). Fichier rejeté → suppression best-effort de
+    l'objet orphelin (même pattern que `functions/index.js:9594-9598`).
+  - Message d'erreur à adapter en conséquence (ne plus dire "PDF ou image
+    uniquement" — lister les formats réellement acceptés).
 - Effet : appelle la logique partagée `stockFiles.recordSubmission({ date,
   farm, storagePath, filename, submittedBy })` (voir § 4.4 — même fonction
   utilisée par le canal WhatsApp, pour ne jamais dupliquer l'écriture
@@ -294,9 +310,11 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
 
 1. **Deux dropzones** (une "Berry Good", une "Bahia") :
    - Drag & drop + fallback `<input type="file">`.
-   - Formats acceptés : à définir par le développeur selon
-     `scanAttachment` (probablement PDF/XLSX/CSV/images — vérifier
-     `validateAttachmentMetadata` pour la liste MIME déjà autorisée).
+   - Formats acceptés : XLSX/XLS/CSV en priorité (fichiers stock réels,
+     confirmé Omar 2026-08-05) + PDF/JPEG/PNG/WEBP/HEIC en secours (photo
+     du relevé papier) — cf. `STOCK_FILE_ALLOWED_MIME` § 4.1. `accept=
+     ".xlsx,.xls,.csv,.pdf,.jpg,.jpeg,.png,.webp,.heic"` sur l'`<input
+     type="file">`, message d'erreur si rejet aligné sur la liste réelle.
    - Flux : upload direct vers Storage (chemin `stock_files/{date}/{farm}_{ts}.{ext}`)
      → `POST /api/stock?action=stock-file-submit`.
    - État visuel après soumission du jour : dropzone remplacée par un
