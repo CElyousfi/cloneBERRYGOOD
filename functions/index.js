@@ -9753,6 +9753,34 @@ IMPORTANT: Retourne UNIQUEMENT le JSON, sans texte avant ou après. Si un champ 
         return res.json({ success: true, days: results });
       }
 
+      // AJOUTÉ le 2026-08-05 (spec §4.1) — consultation/téléchargement d'un
+      // fichier stock déjà soumis. Mêmes rôles que stock-file-history, résolus
+      // SERVEUR (resolveCallerRole) — jamais depuis le body/query client.
+      if (action === "stock-file-download-url") {
+        const callerRole = await resolveCallerRole(authUser);
+        if (callerRole !== "magasinier" && callerRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+
+        const date = req.query.date;
+        const farm = req.query.farm;
+        if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+          return res.status(400).json({ success: false, error: "date invalide (YYYY-MM-DD requis)" });
+        }
+        if (!stockFilesRecord.isValidFarm(farm)) {
+          return res.status(400).json({ success: false, error: "farm invalide (attendu: berry_good|bahia)" });
+        }
+
+        const snap = await db_firestore.collection(stockFilesRecord.COLLECTION).doc(date).get();
+        if (!snap.exists) return res.status(404).json({ success: false, error: "Aucune soumission pour cette date" });
+        const doc = snap.data();
+        const filePath = doc[farm] && doc[farm].file_path;
+        if (!filePath) return res.status(404).json({ success: false, error: "Aucun fichier soumis pour cette ferme ce jour-là" });
+
+        const downloadUrl = await scanAttachment.generateSignedUrl(bucket, filePath);
+        return res.json({ success: true, download_url: downloadUrl, file_name: (doc[farm] && doc[farm].file_name) || null });
+      }
+
       // ========== SCAN HISTORY ==========
 
       if (action === "list-scan-history") {
