@@ -338,17 +338,40 @@ exports.onProdRecolteWriteNotify = functions
     }
   });
 
-// Sync présence entrée — 10h
+// Sync présence entrée — retry toutes les 15min de 9h à 11h (résilience si BDP injoignable)
 exports.syncPresenceEntree = functions.region("europe-west1").pubsub
-  .schedule("0 10 * * *")
+  .schedule("*/15 9-11 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(() => prodSync.syncPresence("entree"));
 
-// Sync présence sortie — 20h
+// Sync présence sortie — retry toutes les 15min de 19h à 21h (résilience si BDP injoignable)
 exports.syncPresenceSortie = functions.region("europe-west1").pubsub
-  .schedule("0 20 * * *")
+  .schedule("*/15 19-21 * * *")
   .timeZone("Africa/Casablanca")
   .onRun(() => prodSync.syncPresence("sortie"));
+
+// Filet de sécurité + alerte — 21h15, après la fenêtre de retry sortie (19h-21h)
+exports.checkPresenceSyncHealth = functions.region("europe-west1").pubsub
+  .schedule("15 21 * * *")
+  .timeZone("Africa/Casablanca")
+  .onRun(async () => {
+    try {
+      const result = await prodSync.checkPresenceSyncHealth();
+      if (!result.success) {
+        const recipients = await whatsappService.resolveRecipientsForProfile("dg", null);
+        const today = new Date().toISOString().slice(0, 10);
+        const msg = `Sync présence BDP en échec pour ${today} malgré les tentatives 9h-11h et 19h-21h. Erreur: ${result.error}. Vérifier le serveur BEE ONE (105.145.33.128).`;
+        await Promise.all(
+          (recipients || []).map((r) =>
+            whatsappService.sendTemplateMessage(r.phone, "general_alert", [whatsappService.toSingleLine(msg)])
+          )
+        );
+      }
+    } catch (err) {
+      console.error("[checkPresenceSyncHealth] error:", err.message);
+    }
+    return null;
+  });
 
 // Manual trigger for prod sync — ?action=recolte&since=2025-07-01 for historical
 exports.syncProdTrigger = functions.region("europe-west1")

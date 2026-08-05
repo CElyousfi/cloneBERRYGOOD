@@ -310,4 +310,18 @@ async function syncPresenceRange(startDate, endDate) {
   }
 }
 
-module.exports = { syncTracabiliteRecolte, syncPresence, syncPresenceRange };
+/**
+ * Filet de sécurité fin de journée : si le sync sortie (19h-21h, retries) n'a jamais
+ * réussi, tente un dernier backfill via syncPresenceRange puis alerte Omar si ça échoue
+ * encore. Complète les retries périodiques de syncPresence — ne les remplace pas.
+ */
+async function checkPresenceSyncHealth() {
+  const today = new Date().toISOString().slice(0, 10);
+  const result = await syncPresenceRange(today, today);
+  if (!result.success) {
+    console.error(`[ProdSync] Presence health check failed for ${today}:`, result.error);
+  }
+  return result;
+}
+
+module.exports = { syncTracabiliteRecolte, syncPresence, syncPresenceRange, checkPresenceSyncHealth };
