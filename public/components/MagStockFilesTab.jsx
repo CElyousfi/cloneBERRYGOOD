@@ -133,7 +133,7 @@
     if (!window.firebase || typeof window.firebase.storage !== 'function') {
       return Promise.reject(new Error('SDK Firebase Storage non chargé — rechargez la page.'));
     }
-    var ext = msfExt(file.name || 'stock.' + msfExt(file.name));
+    var ext = msfExt(file.name) !== 'bin' ? msfExt(file.name) : 'pdf';
     var path = 'stock_files/' + dateStr + '/' + farm + '_' + Date.now() + '.' + ext;
     var ref = window.firebase.storage().ref().child(path);
     var contentType = msfMimeFromFile(file);

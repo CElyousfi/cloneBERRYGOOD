@@ -52,19 +52,19 @@
       },
       {
         "commits": 3,
+        "file": "scripts/build-frontend.js"
+      },
+      {
+        "commits": 3,
         "file": "scripts/generate-module-graph.js"
       },
       {
         "commits": 3,
         "file": "scripts/qa.sh"
-      },
-      {
-        "commits": 3,
-        "file": "tests/unit/analytiqueUtils.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:4aeefab8a020c2a8",
+    "sourceFingerprint": "sha256:893481d8b7db31b3",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 87,
