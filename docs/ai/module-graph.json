@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 61,
+        "commits": 59,
         "file": "public/app.jsx"
       },
       {
-        "commits": 7,
+        "commits": 8,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:e7cab9a319787ae9",
+    "sourceFingerprint": "sha256:1c60d204163a0022",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 87,
