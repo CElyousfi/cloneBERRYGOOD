@@ -17,6 +17,11 @@
  * Pas de traitement du contenu des fichiers (parsing/import) dans ce spec —
  * uniquement dépôt + archivage + suivi (spec §1/§7).
  *
+ * AJOUTÉ le 2026-08-05 (spec §4.1/§5.2) — cellule ✅ du tableau historique
+ * cliquable : génère une URL signée à la demande via
+ * GET /api/stock?action=stock-file-download-url puis window.open(). Aucun
+ * pré-fetch au chargement du tableau.
+ *
  * Props :
  *   - currentProfile : id du profil courant (string)
  *   - profileData    : objet profil (name, …)
@@ -243,6 +248,12 @@
     var fieldErrState = useState({}); // { berry_good: msg, bahia: msg }
     var fieldErr = fieldErrState[0]; var setFieldErr = fieldErrState[1];
 
+    // AJOUTÉ le 2026-08-05 (spec §5.2) — état de chargement de l'URL signée
+    // pour la cellule en cours de téléchargement. Clé = 'date|farm'. Aucune
+    // pré-génération : uniquement à la demande, au clic.
+    var downloadingState = useState(null);
+    var downloadingKey = downloadingState[0]; var setDownloadingKey = downloadingState[1];
+
     function loadHistory() {
       setLoading(true);
       return msfApiGet('stock-file-history', { days: 30 }).then(function (res) {
@@ -286,10 +297,46 @@
 
     var beforeDeadline = msfNowHourCasablanca() < 18;
 
-    function cellContent(dateStr, farmStatus, isToday) {
+    // AJOUTÉ le 2026-08-05 (spec §4.1/§5.2) — génère l'URL signée à la
+    // demande et ouvre le fichier dans un nouvel onglet. Pas de pré-fetch :
+    // appelé uniquement au clic sur une cellule soumise.
+    function handleDownload(dateStr, farm) {
+      var key = dateStr + '|' + farm;
+      if (downloadingKey === key) return;
+      setDownloadingKey(key);
+      msfApiGet('stock-file-download-url', { date: dateStr, farm: farm }).then(function (res) {
+        setDownloadingKey(null);
+        if (res && res.success && res.download_url) {
+          window.open(res.download_url, '_blank');
+        } else {
+          setErr((res && res.error) || 'Impossible de générer le lien de téléchargement.');
+        }
+      }).catch(function (e) {
+        setDownloadingKey(null);
+        setErr((e && e.message) || 'Erreur réseau lors du téléchargement.');
+      });
+    }
+
+    function cellContent(dateStr, farmStatus, isToday, farm) {
       var submitted = !!(farmStatus && farmStatus.submitted);
       if (submitted) {
-        return <span style={{ color: MSF_C.green }} title={farmStatus.submitted_at ? msfFmtTime(farmStatus.submitted_at) : ''}><i className="fa-solid fa-circle-check"></i></span>;
+        var key = dateStr + '|' + farm;
+        var isBusy = downloadingKey === key;
+        return (
+          <button
+            type="button"
+            onClick={function () { handleDownload(dateStr, farm); }}
+            disabled={isBusy}
+            title={(farmStatus.submitted_at ? msfFmtTime(farmStatus.submitted_at) + ' — ' : '') + 'Cliquez pour télécharger le fichier'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0,
+              color: MSF_C.green, cursor: isBusy ? 'wait' : 'pointer', font: 'inherit',
+            }}
+          >
+            <i className={isBusy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-circle-check'}></i>
+            <i className="fa-solid fa-download" style={{ fontSize: 11, color: MSF_C.textTertiary }}></i>
+          </button>
+        );
       }
       if (isToday && beforeDeadline) {
         return <span style={{ color: MSF_C.amber }} title="En attente (avant 18h)"><i className="fa-solid fa-hourglass-half"></i> en attente</span>;
@@ -342,8 +389,8 @@
                   return (
                     <tr key={row.date} style={{ borderBottom: '1px solid ' + MSF_C.border, background: isToday ? MSF_C.surface2 : 'transparent' }}>
                       <td style={{ padding: '9px 6px' }}>{msfFmtDate(row.date)}{isToday ? ' (aujourd\'hui)' : ''}</td>
-                      <td style={{ padding: '9px 6px' }}>{cellContent(row.date, row.berry_good, isToday)}</td>
-                      <td style={{ padding: '9px 6px' }}>{cellContent(row.date, row.bahia, isToday)}</td>
+                      <td style={{ padding: '9px 6px' }}>{cellContent(row.date, row.berry_good, isToday, 'berry_good')}</td>
+                      <td style={{ padding: '9px 6px' }}>{cellContent(row.date, row.bahia, isToday, 'bahia')}</td>
                     </tr>
                   );
                 })}
