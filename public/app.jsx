@@ -610,6 +610,7 @@
             { id: 'mag_mapping_conso', label: 'Mapping Parcelles Conso', icon: 'fa-link' },
             { id: 'mag_parcelles_params', label: 'Paramètres Parcelles', icon: 'fa-ruler-combined' },
             { id: 'mag_parc', label: 'Parc Automobile', icon: 'fa-car' },
+            { id: 'mag_stock_files', label: 'Soumission Fichier Stock', icon: 'fa-file-arrow-up' },
         ];
 
         const NAV_ITEMS_CAPORAL = [
@@ -68951,6 +68952,7 @@ ${rejetHtml}
                                 {renderTab('mag_mouvements', MagMouvementsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Mouvements')}
                                 {renderTab('mag_mapping_conso', window.MagMappingConsoTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Mapping Parcelles Conso')}
                                 {renderTab('mag_parcelles_params', window.ParcellesParamsTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile), authUser }, 'Paramètres Parcelles')}
+                                {renderTab('mag_stock_files', window.MagStockFilesTab, { currentProfile, profileData: PROFILES.find(p => p.id === currentProfile) }, 'Soumission Fichier Stock')}
                                 {renderTab('caporal_suivi', CaporalSuiviTab, { data, farmFilter, avoSubFilter, onNavigateMeteo: () => { setCurrentTab('chef_agronomie'); localStorage.setItem('lastTab', 'chef_agronomie'); } }, 'Suivi Caporal')}
                                 {renderTab('caporal_saisie', CaporalSaisieTab, { data, farmFilter, avoSubFilter }, 'Saisie Caporal')}
                                 {renderTab('caporal_tunnels', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Tunnels')}
