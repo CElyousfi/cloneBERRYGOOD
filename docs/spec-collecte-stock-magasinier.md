@@ -170,9 +170,21 @@ actions stock) :
   false` pour les deux fermes (ne pas exclure — nécessaire pour les croix ❌
   du tableau).
 
-Pas besoin d'un `get-attachment-url` dédié dans ce spec (pas de lecture du
-fichier prévue pour l'instant — juste dépôt + suivi). À ajouter plus tard si
-besoin de consultation/téléchargement.
+**`GET /api/stock?action=stock-file-download-url&date=YYYY-MM-DD&farm=berry_good|bahia`**
+— **AJOUTÉ le 2026-08-05** (V1 déployée en prod, Omar demande la consultation
+juste après le premier test réel — l'item §7 "hors scope V1" ci-dessous est
+donc partiellement levé, uniquement pour la consultation, pas pour le
+parsing/traitement du contenu).
+- Auth requise, mêmes rôles que `stock-file-history` (`magasinier` + `dg` a
+  minima).
+- Lit `stock_file_submissions/{date}`, résout `file_path` pour la `farm`
+  demandée. 404 si le doc ou le champ `file_path` n'existe pas (rien
+  soumis ce jour-là pour cette ferme).
+- Génère une URL signée V4 via `scanAttachment.generateSignedUrl(bucket,
+  file_path)` (même helper, même TTL 7 jours, que le pattern
+  `get-attachment-url` existant `functions/index.js:9622-9637` — pas de
+  logique dupliquée, réutiliser la fonction telle quelle).
+- Réponse : `{ success: true, download_url, file_name }`.
 
 ### 4.2 Logique d'écriture partagée (les 2 canaux convergent ici)
 
@@ -328,6 +340,16 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
    - Cellule = ✅ (vert) si `submitted`, ❌ (rouge) sinon — **sauf le jour
      courant avant 18h** : afficher "⏳ en attente" plutôt qu'une croix
      (une croix avant l'heure limite serait trompeuse).
+   - **AJOUTÉ le 2026-08-05** — cellule ✅ cliquable : au clic, appelle
+     `GET /api/stock?action=stock-file-download-url&date=…&farm=…`, puis
+     `window.open(download_url, '_blank')` (ou déclenche le téléchargement
+     selon le comportement navigateur habituel du repo pour les liens de
+     scan existants — s'aligner sur le pattern déjà utilisé côté
+     `get-attachment-url` front, s'il y en a un réutilisable). Pas de
+     pré-fetch de toutes les URL du tableau au chargement (coût inutile,
+     signature à la demande uniquement). Icône ou soulignement discret pour
+     indiquer que la coche est cliquable (ex. icône `fa-download` à côté du
+     ✅), état de chargement bref pendant la génération de l'URL signée.
 
 ---
 
@@ -357,8 +379,11 @@ routeur de tabs magasinier, même zone que `NAV_ITEMS_MAGASINIER` /
   `stockCaneva`, pas de rapprochement).
 - Historique multi-versions par jour (une re-soumission écrase la
   précédente).
-- Consultation/téléchargement du fichier déposé (pas de `get-attachment-url`
-  dans ce spec).
+- ~~Consultation/téléchargement du fichier déposé~~ — **AJOUTÉ le
+  2026-08-05** : la consultation EST maintenant dans le périmètre (§4.1
+  `stock-file-download-url`, §5.2 cellule cliquable). Reste hors scope :
+  aperçu inline du contenu (pas de rendu Excel/CSV dans l'app, juste
+  ouverture/téléchargement du fichier original).
 
 ---
 
