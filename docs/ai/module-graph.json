@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 59,
+        "commits": 58,
         "file": "public/app.jsx"
       },
       {
@@ -52,19 +52,19 @@
       },
       {
         "commits": 3,
+        "file": "public/components/MagStockFilesTab.js"
+      },
+      {
+        "commits": 3,
         "file": "scripts/build-frontend.js"
       },
       {
         "commits": 3,
         "file": "scripts/generate-module-graph.js"
-      },
-      {
-        "commits": 3,
-        "file": "scripts/qa.sh"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:1c60d204163a0022",
+    "sourceFingerprint": "sha256:e844a5714ef909cd",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 87,

@@ -431,14 +431,18 @@
         date: dateStr,
         farm: farm
       }).then(function (res) {
-        setDownloadingKey(null);
+        setDownloadingKey(function (cur) {
+          return cur === key ? null : cur;
+        });
         if (res && res.success && res.download_url) {
           window.open(res.download_url, '_blank');
         } else {
           setErr(res && res.error || 'Impossible de générer le lien de téléchargement.');
         }
       }).catch(function (e) {
-        setDownloadingKey(null);
+        setDownloadingKey(function (cur) {
+          return cur === key ? null : cur;
+        });
         setErr(e && e.message || 'Erreur réseau lors du téléchargement.');
       });
     }
