@@ -862,24 +862,41 @@ async function syncPointage(db) {
  * working — including periodes that exist only in the daily docs and are absent
  * from the quinzaine_archive (e.g. the in-progress quinzaine). Daily docs are
  * never deleted, only overwritten, so they are the durable source of truth.
+ *
+ * Scan bounded to a ~400-day sliding window (REBUILD_WINDOW_DAYS,
+ * lib/pointage/mirrorWindow.js): "Quinzaine N" labels are reset to 01 at
+ * every new campagne agricole, so an UNBOUNDED scan indexes two distinct
+ * campagnes sharing the same numéro under the same periodeMap key, and
+ * `buildPeriodeCampagne` then mis-attributes part of those dates to the
+ * wrong campagne (bug: quinzaines 15-24 shown under the wrong "2025-2026"
+ * label). The window is wide enough to cover a full campagne (~365 days,
+ * frontière 1er juillet) with margin, but short enough to avoid merging two
+ * campagnes that reuse the same quinzaine number.
+ *
+ * @param {{now?: Date|string, windowDays?: number}} [opts]  overrides for tests
  */
-async function rebuildPointageMetaFromMirror() {
+async function rebuildPointageMetaFromMirror(opts) {
   const { campagneOf } = require("./lib/mappingConso/campagneUtils");
   const { buildPeriodeCampagne, sortPeriodesByCampagne } = require("./lib/pointage/campagnePeriodes");
+  const { filterDateIdsWithinWindow, buildPeriodeMapFromDailyDocs, REBUILD_WINDOW_DAYS } = require("./lib/pointage/mirrorWindow");
+
+  const now = (opts && opts.now) || new Date();
+  const windowDays = (opts && opts.windowDays) || REBUILD_WINDOW_DAYS;
 
   const docRefs = await db_firestore.collection("sql_mirror_pointage").listDocuments();
-  const dateIds = docRefs
+  const allDateIds = docRefs
     .map(ref => ref.id)
-    .filter(id => /^\d{4}-\d{2}-\d{2}$/.test(id))
+    .filter(id => /^\d{4}-\d{2}-\d{2}$/.test(id));
+  const dateIds = filterDateIdsWithinWindow(allDateIds, now, windowDays)
     .sort()
     .reverse();
   if (dateIds.length === 0) {
-    console.warn("[Sync] rebuildPointageMetaFromMirror: no daily docs to rebuild from — leaving meta untouched.");
+    console.warn(`[Sync] rebuildPointageMetaFromMirror: no daily docs within the ${windowDays}-day window to rebuild from — leaving meta untouched.`);
     return;
   }
 
   // periode -> set of dates, read from each daily doc's rows (Periode_paie field)
-  const periodeDates = {};
+  const dailyDocs = [];
   for (let i = 0; i < dateIds.length; i += 10) {
     const batch = dateIds.slice(i, i + 10);
     const snaps = await Promise.all(
@@ -887,17 +904,10 @@ async function rebuildPointageMetaFromMirror() {
     );
     for (const snap of snaps) {
       if (!snap.exists) continue;
-      const docRows = snap.data().rows || [];
-      for (const r of docRows) {
-        const p = (r.Periode_paie || "").trim();
-        if (!p) continue;
-        if (!periodeDates[p]) periodeDates[p] = new Set();
-        periodeDates[p].add(r.DateStr || snap.id);
-      }
+      dailyDocs.push({ id: snap.id, rows: snap.data().rows || [] });
     }
   }
-  const periodeMap = {};
-  for (const p of Object.keys(periodeDates)) periodeMap[p] = [...periodeDates[p]].sort();
+  const periodeMap = buildPeriodeMapFromDailyDocs(dailyDocs);
 
   // periodeCampagne = { "Quinzaine N": "AAAA-BBBB" } — campagne dérivée de la date
   // la plus ancienne de chaque quinzaine. Source unique du tri campagne-aware.
