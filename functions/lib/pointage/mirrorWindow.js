@@ -20,9 +20,19 @@
  *
  * Pur : aucun accès Firestore / réseau — testable en node:test.
  * UMD-bricolé : module.exports (backend / node:test).
+ *
+ * FIX RACINE (2026-08) : la fenêtre de 400 jours seule est mathématiquement
+ * insuffisante — deux campagnes CONSÉCUTIVES ont forcément leurs quinzaines à
+ * moins de 400 jours d'écart (une campagne dure ~365 jours), donc la fenêtre
+ * ne peut jamais les séparer. `buildPeriodeMapFromDailyDocs` groupe désormais
+ * les dates par (label, CAMPAGNE) via `campagnePeriodes.buildDisambiguatedPeriodeMap`
+ * — élimine la fusion à la source, peu importe la fenêtre. La fenêtre de 400
+ * jours reste un filet utile pour purger les tout vieux daily docs (≥2 ans).
  */
 // @ts-check
 'use strict';
+
+const { buildDisambiguatedPeriodeMap } = require('./campagnePeriodes');
 
 /** Fenêtre par défaut, en jours (~1 campagne agricole + marge). */
 const REBUILD_WINDOW_DAYS = 400;
@@ -71,29 +81,29 @@ function filterDateIdsWithinWindow(dateIds, now, windowDays) {
 }
 
 /**
- * Reconstruit un periodeMap `{ "Quinzaine N": ["2026-03-15", ...] }` à partir
- * d'une liste de daily docs déjà filtrés (window appliquée en amont par
- * `filterDateIdsWithinWindow`). Extrait tel quel de la logique historique de
- * `rebuildPointageMetaFromMirror` pour rester testable indépendamment de
- * Firestore.
+ * Reconstruit `{ periodeMap, periodeCampagne }` à partir d'une liste de daily
+ * docs déjà filtrés (window appliquée en amont par `filterDateIdsWithinWindow`).
+ *
+ * Campagne-aware : chaque (label, date) est groupé par (label, campagneOf(date))
+ * AVANT toute fusion — deux campagnes qui réutilisent le même numéro de
+ * quinzaine ne fusionnent jamais sous la même clé de periodeMap, même sans
+ * fenêtre (cf. `campagnePeriodes.buildDisambiguatedPeriodeMap`).
  *
  * @param {Array<{id: string, rows?: Array<{Periode_paie?: string, DateStr?: string}>}>} dailyDocs
- * @returns {Object<string, string[]>}
+ * @param {(d:string)=>(string|null)} campagneOf
+ * @returns {{periodeMap: Object<string,string[]>, periodeCampagne: Object<string,string>}}
  */
-function buildPeriodeMapFromDailyDocs(dailyDocs) {
-  const periodeDates = {};
+function buildPeriodeMapFromDailyDocs(dailyDocs, campagneOf) {
+  const entries = [];
   for (const doc of dailyDocs || []) {
     const rows = (doc && doc.rows) || [];
     for (const r of rows) {
       const p = ((r && r.Periode_paie) || '').trim();
       if (!p) continue;
-      if (!periodeDates[p]) periodeDates[p] = new Set();
-      periodeDates[p].add((r && r.DateStr) || (doc && doc.id));
+      entries.push({ label: p, date: (r && r.DateStr) || (doc && doc.id) });
     }
   }
-  const periodeMap = {};
-  for (const p of Object.keys(periodeDates)) periodeMap[p] = [...periodeDates[p]].sort();
-  return periodeMap;
+  return buildDisambiguatedPeriodeMap(entries, campagneOf);
 }
 
 module.exports = {

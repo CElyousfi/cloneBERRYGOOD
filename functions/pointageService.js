@@ -49,8 +49,23 @@ const {
 // Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
 const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
-const { defaultPeriodeForCampagne, buildPeriodeCampagne } = require("./lib/pointage/campagnePeriodes");
+const {
+  defaultPeriodeForCampagne,
+  buildPeriodeCampagne,
+  splitCompositeLabel,
+  filterRowsByExactDates,
+} = require("./lib/pointage/campagnePeriodes");
 const { campagneCourante, campagneOf } = require("./lib/mappingConso/campagneUtils");
+
+// Un label de quinzaine désambiguïsé ("Quinzaine 15 (2024-2025)") n'existe QUE
+// dans periodeMap/periodeCampagne — `Periode_paie` en SQL/mirror/archive ne
+// contient JAMAIS le suffixe de campagne. Toute recherche par label dans ces
+// sources doit donc matcher sur le label BRUT (cf. docs/spec fix racine 2026-08,
+// "collision de labels Quinzaine N entre campagnes").
+function archiveDocRef(label) {
+  const { rawLabel } = splitCompositeLabel(label);
+  return db_firestore.collection("quinzaine_archive").doc(rawLabel);
+}
 
 // Défaut de période = 1re quinzaine de la CAMPAGNE COURANTE (au lieu du plus
 // grand numéro toutes campagnes confondues). Fallback gracieux si la campagne
@@ -2482,13 +2497,21 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
           if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
 
+          // Label composite ("Quinzaine N (AAAA-BBBB)") : `Periode_paie` en SQL/mirror
+          // ne contient jamais le suffixe — extraire le label brut pour matcher, puis
+          // filtrer les lignes obtenues par la liste de dates exacte de periodeMap
+          // (jamais faire confiance au matching par label seul entre deux campagnes).
+          const { rawLabel: selectedRawLabel, isComposite: selectedIsComposite } = splitCompositeLabel(selectedPeriode);
+          const selectedExactDates = meta?.periodeMap?.[selectedPeriode];
+
           // If selected period has mirror data, use Firestore; otherwise fallback to SQL
           let rows;
           if (mirrorPeriodes.includes(selectedPeriode) && meta?.periodeMap?.[selectedPeriode]) {
             rows = await getPointageRowsForPeriode(selectedPeriode);
+            if (selectedIsComposite) rows = filterRowsByExactDates(rows, selectedExactDates);
           } else {
             // Check Firestore archive first
-            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            const archiveDoc = await archiveDocRef(selectedPeriode).get();
             if (archiveDoc.exists && archiveDoc.data().summary) {
               const arch = archiveDoc.data().summary;
               // GATING PAIE (chef) : l'archive stocke des agrégats TOUTES fermes
@@ -2511,7 +2534,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             }
             // Fallback: fetch directly from SQL for older quinzaines
             const sqlDb = await getPool();
-            const sqlResult = await sqlDb.request().input('periode', selectedPeriode).query(`
+            const sqlResult = await sqlDb.request().input('periode', selectedRawLabel).query(`
               SELECT Personnel_Matricule, Personnel_Nom, Operation_Famille, Operation, Operation_Groupe,
                 Nombre_Jr, Nombre_Hr, Quantite_unite, Cout, Parcelle_Culturale, Ref_parcelle,
                 Variete, Culture, Periode_paie,
@@ -2546,6 +2569,10 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             // _fermeFilter null (RH/DG/Finance) → passthrough strict (inchangé).
             // _cultureFilter non null (chef_f5) → filtre culture additionnel après ferme.
             rows = filterMirrorRowsByCulture(filterMirrorRowsByFerme(rows, _fermeFilter), _cultureFilter);
+            // Garde-fou (no-op si periodeMap ne connaît pas ce label composite) : ne
+            // jamais faire confiance au seul matching SQL par label brut, ambigu entre
+            // deux campagnes qui réutilisent le même numéro de quinzaine.
+            if (selectedIsComposite) rows = filterRowsByExactDates(rows, selectedExactDates);
           }
           // Summary per ferme
           const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
@@ -2638,14 +2665,23 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           const periodeCampagne = (meta && meta.periodeCampagne) || {};
           const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
           if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, rows: [] };
+          // Label composite ("Quinzaine N (AAAA-BBBB)") : `Periode_paie` en SQL/mirror
+          // ne contient jamais le suffixe. Le fetcher mirror résout déjà par les dates
+          // exactes de periodeMap[selectedPeriode] (jamais par label), mais on filtre
+          // quand même explicitement par ces dates en garde-fou — ne jamais faire
+          // confiance au seul matching par label entre deux campagnes qui réutilisent
+          // le même numéro de quinzaine.
+          const { isComposite: selectedIsComposite } = splitCompositeLabel(selectedPeriode);
+          const selectedExactDates = meta?.periodeMap?.[selectedPeriode];
           // Surfaces BR_Parcelle en parallèle des rows (fallback {} si BDR down)
-          const [rawRows, supMap] = await Promise.all([
+          const [rawRowsRaw, supMap] = await Promise.all([
             getPointageRowsForPeriode(selectedPeriode),
             fetchBrParcelleSupMap(),
           ]);
+          const rawRows = selectedIsComposite ? filterRowsByExactDates(rawRowsRaw, selectedExactDates) : rawRowsRaw;
           if (rawRows.length === 0) {
             // Check Firestore archive
-            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            const archiveDoc = await archiveDocRef(selectedPeriode).get();
             if (archiveDoc.exists && archiveDoc.data().analytique) {
               // GATING PAIE (chef) : les rows archivées portent parcelle/refParcelle
               // → ferme dérivable. Sans filtrage, un chef verrait les parcelles/coûts
@@ -2670,7 +2706,9 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         const periodesRes = await db.request().query(`SELECT DISTINCT Periode_paie FROM BR_Pointage WHERE Periode_paie IS NOT NULL ORDER BY Periode_paie DESC`);
         const periodes = periodesRes.recordset.map(r => r.Periode_paie);
         const selectedPeriode = periodeParam || periodes[0];
-        const result = await db.request().query(`SELECT Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation_Groupe, Operation, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS JH, SUM(Cout) AS Cout FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation_Groupe, Operation ORDER BY Parcelle_Culturale, Operation_Famille`);
+        // Label composite jamais présent en SQL brut (Periode_paie) — matcher le label brut.
+        const { rawLabel: selectedRawLabelSql } = splitCompositeLabel(selectedPeriode);
+        const result = await db.request().query(`SELECT Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation_Groupe, Operation, COUNT(DISTINCT Personnel_Matricule) AS nbOuv, SUM(Nombre_Jr) AS JH, SUM(Cout) AS Cout FROM BR_Pointage WHERE Periode_paie = N'${(selectedRawLabelSql || '').replace(/'/g, "''")}' GROUP BY Parcelle_Culturale, Ref_parcelle, Operation_Famille, Operation_Groupe, Operation ORDER BY Parcelle_Culturale, Operation_Famille`);
         // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Les rows portent un champ
         // `ferme` dérivé → on cloisonne sur la ferme du chef (fail-closed), cohérence avec
         // le chemin mirror/archive. _fermeFilter null (RH/DG/Finance) → passthrough.
@@ -3083,9 +3121,14 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           if (!selectedPeriode) return { success: true, periode: null, equipes: [], nbJoursQuinzaine: 0 };
           quinzaineDates = (meta?.periodeMap?.[selectedPeriode] || []).sort();
           rawRows = await getPointageRowsForPeriode(selectedPeriode);
+          // Garde-fou label composite : ne jamais faire confiance au seul matching par
+          // label entre deux campagnes qui réutilisent le même numéro de quinzaine.
+          if (splitCompositeLabel(selectedPeriode).isComposite) {
+            rawRows = filterRowsByExactDates(rawRows, meta?.periodeMap?.[selectedPeriode]);
+          }
           // If mirror has no data, check archive
           if (rawRows.length === 0 && quinzaineDates.length === 0) {
-            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            const archiveDoc = await archiveDocRef(selectedPeriode).get();
             if (archiveDoc.exists && archiveDoc.data().reposData) {
               const rd = archiveDoc.data().reposData;
               quinzaineDates = rd.quinzaineDates;
@@ -3108,9 +3151,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           periodes = periodesRes.recordset.map(r => r.Periode_paie);
           selectedPeriode = periodeParamR || periodes[0];
           if (!selectedPeriode) return { success: true, periode: null, equipes: [], nbJoursQuinzaine: 0 };
-          const datesRes = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' ORDER BY jour`);
+          // Label composite jamais présent en SQL brut (Periode_paie) — matcher le label brut.
+          const { rawLabel: selectedRawLabelR } = splitCompositeLabel(selectedPeriode);
+          const datesRes = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedRawLabelR || '').replace(/'/g, "''")}' ORDER BY jour`);
           quinzaineDates = datesRes.recordset.map(r => new Date(r.jour).toISOString().slice(0, 10));
-          const workersRes = await db.request().query(`SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY Personnel_Matricule, CONVERT(date, Periode_Date) ORDER BY Personnel_Matricule`);
+          const workersRes = await db.request().query(`SELECT Personnel_Matricule, MIN(Personnel_Nom) AS Personnel_Nom, CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedRawLabelR || '').replace(/'/g, "''")}' GROUP BY Personnel_Matricule, CONVERT(date, Periode_Date) ORDER BY Personnel_Matricule`);
           // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Cette requête N'inclut
           // PAS de parcelle/refParcelle → la ferme n'est PAS dérivable pour ces lignes
           // repos nominatives. DÉCISION fail-closed (zéro fuite nominative), cohérente
@@ -3154,7 +3199,12 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           selectedPeriode = periodeParamA || periodes[0];
           if (!selectedPeriode) return { success: true, periode: null, alertes: [] };
           quinzaineDates = (meta?.periodeMap?.[selectedPeriode] || []).sort();
-          const rawRows = await getPointageRowsForPeriode(selectedPeriode);
+          let rawRows = await getPointageRowsForPeriode(selectedPeriode);
+          // Garde-fou label composite : ne jamais faire confiance au seul matching par
+          // label entre deux campagnes qui réutilisent le même numéro de quinzaine.
+          if (splitCompositeLabel(selectedPeriode).isComposite) {
+            rawRows = filterRowsByExactDates(rawRows, meta?.periodeMap?.[selectedPeriode]);
+          }
           if (rawRows.length > 0) {
             presenceMap = {};
             for (const r of rawRows) {
@@ -3164,7 +3214,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             }
           } else {
             // Check Firestore archive
-            const archiveDoc = await db_firestore.collection("quinzaine_archive").doc(selectedPeriode).get();
+            const archiveDoc = await archiveDocRef(selectedPeriode).get();
             if (archiveDoc.exists && archiveDoc.data().alertesData) {
               const ad = archiveDoc.data().alertesData;
               quinzaineDates = ad.quinzaineDates;
@@ -3191,9 +3241,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           periodes = periodesRes.recordset.map(r => r.Periode_paie);
           selectedPeriode = periodeParamA || periodes[0];
           if (!selectedPeriode) return { success: true, periode: null, alertes: [] };
-          const datesRes = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' ORDER BY jour`);
+          // Label composite jamais présent en SQL brut (Periode_paie) — matcher le label brut.
+          const { rawLabel: selectedRawLabelA } = splitCompositeLabel(selectedPeriode);
+          const datesRes = await db.request().query(`SELECT DISTINCT CONVERT(date, Periode_Date) AS jour FROM BR_Pointage WHERE Periode_paie = N'${(selectedRawLabelA || '').replace(/'/g, "''")}' ORDER BY jour`);
           quinzaineDates = datesRes.recordset.map(r => new Date(r.jour).toISOString().slice(0, 10)).sort();
-          const presenceRes = await db.request().query(`SELECT SUBSTRING(LTRIM(Personnel_Matricule), 1, 2) AS equipe_prefix, CONVERT(date, Periode_Date) AS jour, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE Periode_paie = N'${(selectedPeriode || '').replace(/'/g, "''")}' GROUP BY SUBSTRING(LTRIM(Personnel_Matricule), 1, 2), CONVERT(date, Periode_Date)`);
+          const presenceRes = await db.request().query(`SELECT SUBSTRING(LTRIM(Personnel_Matricule), 1, 2) AS equipe_prefix, CONVERT(date, Periode_Date) AS jour, COUNT(DISTINCT Personnel_Matricule) AS nbOuv FROM BR_Pointage WHERE Periode_paie = N'${(selectedRawLabelA || '').replace(/'/g, "''")}' GROUP BY SUBSTRING(LTRIM(Personnel_Matricule), 1, 2), CONVERT(date, Periode_Date)`);
           presenceMap = {};
           // GATING PAIE (chef) : fallback SQL (USE_MIRROR=false). Les alertes sont keyées
           // par préfixe d'équipe (2 premiers car. du matricule) ; AUCUN mapping
@@ -3252,7 +3304,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               return { periode, groups: Object.values(groups) };
             })),
             Promise.all(archivedPeriodesList.map(async (periode) => {
-              const doc = await db_firestore.collection("quinzaine_archive").doc(periode).get();
+              const doc = await archiveDocRef(periode).get();
               return { periode, data: doc.exists ? doc.data().analytique : null };
             })),
           ]);
@@ -3391,7 +3443,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
           // 2. Archive periodes — prorate per cycle
           const archiveDocs = await Promise.all(archivedPeriodesList.map(async (periode) => {
-            const doc = await db_firestore.collection("quinzaine_archive").doc(periode).get();
+            const doc = await archiveDocRef(periode).get();
             if (!doc.exists) return null;
             const d = doc.data();
             const analytique = d.analytique;
@@ -4097,6 +4149,39 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         } catch (syncErr) {
           console.error('[force-sync-periode] échec sync:', syncErr.message);
           return res.status(500).json({ success: false, error: 'Échec de la synchronisation : ' + syncErr.message });
+        }
+      }
+
+      // ---- POST rebuild-pointage-meta : régénère periodes/periodeMap/periodeCampagne ----
+      // Réservé DG. Appelle directement sqlSyncService.rebuildPointageMetaFromMirror()
+      // SANS passer par syncPointageFromProd (donc SANS dépendance au serveur BEE ONE
+      // BDP, injoignable depuis le 2026-07-09 — cf. mémoire projet). C'est le SEUL
+      // moyen de régénérer les données déjà stockées avec le fix de désambiguïsation
+      // de labels "Quinzaine N" entre campagnes (cf. campagnePeriodes.js) : le
+      // déclencheur normal (sync BR_Pointage) est bloqué par la panne du serveur.
+      if (action === 'rebuild-pointage-meta' && req.method === 'POST') {
+        const _rau = await verifyAuth(req);
+        const _rcp = await resolveCallerProfile(_rau);
+        const _rpid = _rcp && (_rcp.profileId || _rcp.role || '');
+        if (_rpid !== 'dg') {
+          return res.status(403).json({ success: false, error: 'Réservé DG uniquement' });
+        }
+
+        console.log('[rebuild-pointage-meta] DG ' + (_rcp.name || _rau.uid) + ' → rebuild manuel (mirror only, sans BDP)');
+        try {
+          const { rebuildPointageMetaFromMirror } = require('./sqlSyncService');
+          await rebuildPointageMetaFromMirror();
+          const metaAfter = await db_firestore.collection('sql_mirror_pointage_meta').doc('config').get();
+          const metaData = (metaAfter.exists && metaAfter.data()) || {};
+          return res.json({
+            success: true,
+            periodesCount: (metaData.periodes || []).length,
+            allPeriodesCount: (metaData.allPeriodes || []).length,
+            availableDatesCount: (metaData.availableDates || []).length,
+          });
+        } catch (rebuildErr) {
+          console.error('[rebuild-pointage-meta] échec:', rebuildErr.message);
+          return res.status(500).json({ success: false, error: 'Échec de la reconstruction : ' + rebuildErr.message });
         }
       }
 
