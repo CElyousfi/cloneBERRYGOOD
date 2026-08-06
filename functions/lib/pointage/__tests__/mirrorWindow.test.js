@@ -9,7 +9,6 @@ const {
   buildPeriodeMapFromDailyDocs,
 } = require('../mirrorWindow');
 const { campagneOf } = require('../../mappingConso/campagneUtils');
-const { buildPeriodeCampagne } = require('../campagnePeriodes');
 
 test('REBUILD_WINDOW_DAYS couvre une campagne complete (~365j) avec marge', () => {
   assert.ok(REBUILD_WINDOW_DAYS >= 365, 'la fenetre doit couvrir au moins une campagne complete');
@@ -33,20 +32,24 @@ test('filterDateIdsWithinWindow: liste vide -> liste vide', () => {
   assert.deepStrictEqual(filterDateIdsWithinWindow([], '2026-08-05', 400), []);
 });
 
-test('buildPeriodeMapFromDailyDocs: regroupe par Periode_paie, dates triees', () => {
+test('buildPeriodeMapFromDailyDocs: regroupe par Periode_paie, dates triees (cas nominal, 1 campagne)', () => {
   const docs = [
     { id: '2026-03-02', rows: [{ Periode_paie: 'Quinzaine 17', DateStr: '2026-03-02' }] },
     { id: '2026-03-01', rows: [{ Periode_paie: 'Quinzaine 17', DateStr: '2026-03-01' }] },
     { id: '2026-03-15', rows: [{ Periode_paie: 'Quinzaine 18', DateStr: '2026-03-15' }] },
   ];
-  const periodeMap = buildPeriodeMapFromDailyDocs(docs);
+  const { periodeMap, periodeCampagne } = buildPeriodeMapFromDailyDocs(docs, campagneOf);
   assert.deepStrictEqual(periodeMap['Quinzaine 17'], ['2026-03-01', '2026-03-02']);
   assert.deepStrictEqual(periodeMap['Quinzaine 18'], ['2026-03-15']);
+  // 1 seule campagne par label -> sortie identique au comportement pré-fix (pas de suffixe).
+  assert.strictEqual(periodeCampagne['Quinzaine 17'], '2025-2026');
+  assert.strictEqual(periodeCampagne['Quinzaine 18'], '2025-2026');
+  assert.strictEqual(Object.keys(periodeMap).length, 2, 'aucun label composite créé quand il n’y a pas de collision');
 });
 
 test('buildPeriodeMapFromDailyDocs: ligne sans Periode_paie ignoree', () => {
   const docs = [{ id: '2026-03-02', rows: [{ Periode_paie: '', DateStr: '2026-03-02' }] }];
-  const periodeMap = buildPeriodeMapFromDailyDocs(docs);
+  const { periodeMap } = buildPeriodeMapFromDailyDocs(docs, campagneOf);
   assert.deepStrictEqual(periodeMap, {});
 });
 
@@ -55,49 +58,42 @@ test('buildPeriodeMapFromDailyDocs: ligne sans Periode_paie ignoree', () => {
 // libellé de campagne "2025-2026" alors qu'une partie de ces dates appartient
 // en réalité à la campagne PRÉCÉDENTE ("2024-2025"), à cause d'un scan mirror
 // sans fenêtre qui fusionnait les deux campagnes sous la même clé de label.
+//
+// Fix racine (2026-08) : le grouping est désormais campagne-aware PAR
+// CONSTRUCTION (buildDisambiguatedPeriodeMap) — la fusion ne se produit plus
+// JAMAIS, même sans fenêtre de 400 jours (qui reste néanmoins en place comme
+// filet secondaire pour les tout vieux daily docs).
 // ---------------------------------------------------------------------------
-test('régression: deux campagnes partageant le même numéro de quinzaine ne fusionnent plus après la fenêtre', () => {
-  const now = '2026-08-05'; // ancrage "aujourd'hui" pour le test
-
+test('régression: deux campagnes partageant le même numéro de quinzaine ne fusionnent jamais, même sans fenêtre', () => {
   // Campagne 2024-2025 (juillet 2024 -> juin 2025) : "Quinzaine 15" ~ janvier 2025.
-  // Bien au-delà de la fenêtre de 400 jours avant `now` (2026-08-05 - 400j = 2025-07-01).
   const oldCampagneDocs = [
     { id: '2025-01-10', rows: [{ Periode_paie: 'Quinzaine 15', DateStr: '2025-01-10' }] },
     { id: '2025-01-11', rows: [{ Periode_paie: 'Quinzaine 15', DateStr: '2025-01-11' }] },
   ];
 
   // Campagne 2025-2026 (juillet 2025 -> juin 2026) : "Quinzaine 15" ~ janvier 2026.
-  // Dans la fenêtre de 400 jours avant `now`.
+  // Cas réel signalé par Omar : les deux campagnes sont à quelques mois d'écart,
+  // largement < 400 jours — la fenêtre seule ne peut jamais les séparer.
   const newCampagneDocs = [
     { id: '2026-01-10', rows: [{ Periode_paie: 'Quinzaine 15', DateStr: '2026-01-10' }] },
     { id: '2026-01-11', rows: [{ Periode_paie: 'Quinzaine 15', DateStr: '2026-01-11' }] },
   ];
 
   const allDocs = [...oldCampagneDocs, ...newCampagneDocs];
-  const allDateIds = allDocs.map((d) => d.id);
 
-  // AVANT le fix (scan sans fenêtre) : les deux campagnes fusionnent sous la
-  // même clé "Quinzaine 15" -> campagne dérivée de la date la PLUS ANCIENNE
-  // (2025-01-10) -> "2024-2025", alors que les dates de 2026 y sont incluses.
-  const unboundedPeriodeMap = buildPeriodeMapFromDailyDocs(allDocs);
-  assert.deepStrictEqual(unboundedPeriodeMap['Quinzaine 15'], [
-    '2025-01-10',
-    '2025-01-11',
-    '2026-01-10',
-    '2026-01-11',
-  ]);
-  const unboundedCampagne = buildPeriodeCampagne(unboundedPeriodeMap, campagneOf);
-  assert.strictEqual(unboundedCampagne['Quinzaine 15'], '2024-2025', 'confirme le bug: mal-attribution sans fenêtre');
+  // Scan SANS fenêtre (unbounded) : la fusion n'a plus lieu du tout, par construction.
+  const { periodeMap, periodeCampagne } = buildPeriodeMapFromDailyDocs(allDocs, campagneOf);
 
-  // APRÈS le fix : filtrer les dateIds par fenêtre glissante AVANT de construire
-  // le periodeMap élimine entièrement les dates de la campagne 2024-2025.
-  const windowedDateIds = filterDateIdsWithinWindow(allDateIds, now, 400);
-  const windowedDocs = allDocs.filter((d) => windowedDateIds.includes(d.id));
-  const windowedPeriodeMap = buildPeriodeMapFromDailyDocs(windowedDocs);
+  // La campagne la plus RÉCENTE garde le label tel quel.
+  assert.deepStrictEqual(periodeMap['Quinzaine 15'], ['2026-01-10', '2026-01-11']);
+  assert.strictEqual(periodeCampagne['Quinzaine 15'], '2025-2026');
 
-  assert.deepStrictEqual(windowedPeriodeMap['Quinzaine 15'], ['2026-01-10', '2026-01-11']);
-  const windowedCampagne = buildPeriodeCampagne(windowedPeriodeMap, campagneOf);
-  assert.strictEqual(windowedCampagne['Quinzaine 15'], '2025-2026', 'la quinzaine est désormais attribuée à la bonne campagne');
+  // L'ancienne campagne reçoit un label désambiguïsé, jamais mélangé avec la nouvelle.
+  assert.deepStrictEqual(periodeMap['Quinzaine 15 (2024-2025)'], ['2025-01-10', '2025-01-11']);
+  assert.strictEqual(periodeCampagne['Quinzaine 15 (2024-2025)'], '2024-2025');
+
+  // Aucune fuite croisée : les dates de chaque clé appartiennent à une seule campagne.
+  assert.strictEqual(new Set([...periodeMap['Quinzaine 15'], ...periodeMap['Quinzaine 15 (2024-2025)']]).size, 4);
 });
 
 test('régression: la campagne EN COURS reste entièrement visible (pas de coupe de quinzaines récentes)', () => {

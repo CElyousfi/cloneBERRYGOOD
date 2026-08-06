@@ -729,23 +729,15 @@ async function syncPointage(db) {
   const byDate = groupBy(rows, r => r.DateStr);
   const availableDates = Object.keys(byDate).sort().reverse();
 
-  // Build periodeMap: { "Quinzaine 17": ["2026-03-15", ...] }
-  const periodeMap = {};
-  for (const row of rows) {
-    if (!row.Periode_paie) continue;
-    if (!periodeMap[row.Periode_paie]) periodeMap[row.Periode_paie] = new Set();
-    periodeMap[row.Periode_paie].add(row.DateStr);
-  }
-  // Convert Sets to sorted arrays
-  for (const key of Object.keys(periodeMap)) {
-    periodeMap[key] = [...periodeMap[key]].sort();
-  }
-
-  // periodeCampagne + tri campagne-aware (cohérent avec rebuildPointageMetaFromMirror,
-  // qui écrase de toute façon ce meta juste après — on garde la même forme canonique).
+  // Build periodeMap: { "Quinzaine 17": ["2026-03-15", ...] }, campagne-aware ET
+  // désambiguïsé (deux campagnes qui réutilisent le même numéro de quinzaine ne
+  // fusionnent JAMAIS sous la même clé — l'occurrence la plus ancienne reçoit un
+  // suffixe " (AAAA-BBBB)"). Même fonction pure que `rebuildPointageMetaFromMirror`
+  // (qui écrase de toute façon ce meta juste après — on garde la même forme canonique).
   const { campagneOf: __campagneOf } = require("./lib/mappingConso/campagneUtils");
-  const { buildPeriodeCampagne: __buildPC, sortPeriodesByCampagne: __sortPC } = require("./lib/pointage/campagnePeriodes");
-  const periodeCampagne = __buildPC(periodeMap, __campagneOf);
+  const { buildDisambiguatedPeriodeMap: __buildDPM, sortPeriodesByCampagne: __sortPC } = require("./lib/pointage/campagnePeriodes");
+  const __periodeEntries = rows.filter(r => r.Periode_paie).map(r => ({ label: r.Periode_paie, date: r.DateStr }));
+  const { periodeMap, periodeCampagne } = __buildDPM(__periodeEntries, __campagneOf);
 
   // Write daily pointage docs (in batches of 500 max Firestore ops)
   // Phase 1: check which dates have manualOverride (patched from Excel)
@@ -863,21 +855,24 @@ async function syncPointage(db) {
  * from the quinzaine_archive (e.g. the in-progress quinzaine). Daily docs are
  * never deleted, only overwritten, so they are the durable source of truth.
  *
- * Scan bounded to a ~400-day sliding window (REBUILD_WINDOW_DAYS,
- * lib/pointage/mirrorWindow.js): "Quinzaine N" labels are reset to 01 at
- * every new campagne agricole, so an UNBOUNDED scan indexes two distinct
- * campagnes sharing the same numéro under the same periodeMap key, and
- * `buildPeriodeCampagne` then mis-attributes part of those dates to the
- * wrong campagne (bug: quinzaines 15-24 shown under the wrong "2025-2026"
- * label). The window is wide enough to cover a full campagne (~365 days,
- * frontière 1er juillet) with margin, but short enough to avoid merging two
- * campagnes that reuse the same quinzaine number.
+ * FIX RACINE (2026-08) : "Quinzaine N" labels are reset to 01 at every new
+ * campagne agricole. `buildPeriodeMapFromDailyDocs` groups (label, date) pairs
+ * by (label, campagneOf(date)) BEFORE merging (cf. campagnePeriodes.js) — two
+ * campagnes sharing the same numéro NEVER merge under the same periodeMap key,
+ * regardless of window size (the previous 400-day window alone was
+ * mathematically insufficient: two CONSECUTIVE campagnes always have their
+ * quinzaines less than 400 days apart). The oldest occurrence of a colliding
+ * label is disambiguated with a " (AAAA-BBBB)" suffix.
+ *
+ * Scan still bounded to a ~400-day sliding window (REBUILD_WINDOW_DAYS,
+ * lib/pointage/mirrorWindow.js) as a secondary safeguard — purges very old
+ * daily docs (≥2 years) from the rebuild, keeping it fast and bounded.
  *
  * @param {{now?: Date|string, windowDays?: number}} [opts]  overrides for tests
  */
 async function rebuildPointageMetaFromMirror(opts) {
   const { campagneOf } = require("./lib/mappingConso/campagneUtils");
-  const { buildPeriodeCampagne, sortPeriodesByCampagne } = require("./lib/pointage/campagnePeriodes");
+  const { sortPeriodesByCampagne } = require("./lib/pointage/campagnePeriodes");
   const { filterDateIdsWithinWindow, buildPeriodeMapFromDailyDocs, REBUILD_WINDOW_DAYS } = require("./lib/pointage/mirrorWindow");
 
   const now = (opts && opts.now) || new Date();
@@ -907,11 +902,10 @@ async function rebuildPointageMetaFromMirror(opts) {
       dailyDocs.push({ id: snap.id, rows: snap.data().rows || [] });
     }
   }
-  const periodeMap = buildPeriodeMapFromDailyDocs(dailyDocs);
-
-  // periodeCampagne = { "Quinzaine N": "AAAA-BBBB" } — campagne dérivée de la date
-  // la plus ancienne de chaque quinzaine. Source unique du tri campagne-aware.
-  const periodeCampagne = buildPeriodeCampagne(periodeMap, campagneOf);
+  // periodeMap/periodeCampagne : groupés par (label, campagne) AVANT fusion —
+  // jamais de fusion cross-campagne, même pour deux campagnes consécutives
+  // partageant le même numéro de quinzaine (cf. campagnePeriodes.js).
+  const { periodeMap, periodeCampagne } = buildPeriodeMapFromDailyDocs(dailyDocs, campagneOf);
 
   // Tri (campagne DESC, puis numéro DESC) : campagne la plus récente en tête, et
   // dans une campagne le plus grand numéro en tête. Corrige la collision de numéros
