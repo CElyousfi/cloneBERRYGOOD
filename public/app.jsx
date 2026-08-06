@@ -11866,6 +11866,31 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     : { parcelles: [], groupedRows: [] };
             };
 
+            // Sélecteur local Quinzaine (panneau Affectation Analytique) — restreint
+            // aux quinzaines de la campagne COURANTE (celle de selectedPeriode), pas
+            // à l'historique complet toutes campagnes confondues. Fix bug report Omar
+            // 2026-08-06 : le dropdown listait Quinzaine 01 à 24 mélangées (plusieurs
+            // campagnes) au lieu des seules quinzaines de la campagne active.
+            // Recalculé à chaque render (dépend de apiData/selectedPeriode) donc reste
+            // à jour si le sélecteur global de l'onglet change de campagne.
+            const _analytiqueLocalPeriodeCampagne = (apiData && apiData.periodeCampagne) || {};
+            const _analytiqueLocalCampagneCourante = (() => {
+                if (selectedPeriode && _analytiqueLocalPeriodeCampagne[selectedPeriode]) {
+                    return _analytiqueLocalPeriodeCampagne[selectedPeriode];
+                }
+                // Fallback : campagne la plus fréquente dans periodeCampagne, sinon
+                // celle du premier élément de apiData.periodes.
+                const counts = {};
+                Object.values(_analytiqueLocalPeriodeCampagne).forEach(c => { if (c) counts[c] = (counts[c] || 0) + 1; });
+                const mostFrequent = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+                if (mostFrequent) return mostFrequent;
+                const firstPeriode = ((apiData && apiData.periodes) || [])[0];
+                return firstPeriode ? (_analytiqueLocalPeriodeCampagne[firstPeriode] || '') : '';
+            })();
+            const _analytiqueLocalPeriodes = ((apiData && apiData.periodes) || []).filter(p => (
+                !_analytiqueLocalCampagneCourante || _analytiqueLocalPeriodeCampagne[p] === _analytiqueLocalCampagneCourante
+            ));
+
             return (
                 <div className="fade-in">
                     <div style={{marginBottom:12,display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
@@ -12971,7 +12996,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     </select>
                                 ) : (
                                     <window.QuinzaineCampagneSelect
-                                        periodes={apiData.periodes || []}
+                                        periodes={_analytiqueLocalPeriodes}
                                         periodeCampagne={apiData.periodeCampagne}
                                         value={analytiqueScopeValue || selectedPeriode}
                                         onChange={(v) => { setAnalytiqueScopeValue(v); loadAnalytiqueScopeQuinzaine(v); }}
