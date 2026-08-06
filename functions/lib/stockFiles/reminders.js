@@ -109,7 +109,14 @@ function createStockFileReminders(deps) {
           for (const farm of missing) {
             const text = buildReminderText(slot, FARM_LABELS[farm] || farm);
             await Promise.all(
-              recipients.map((r) => whatsapp.sendTemplateMessage(r.phone, 'general_alert', [whatsapp.toSingleLine(text)]))
+              recipients.map((r) =>
+                whatsapp.sendTemplateMessage(r.phone, 'general_alert', [whatsapp.toSingleLine(text)]).then((result) => {
+                  console.log(
+                    `[stockFileReminders] Rappel ${slot} envoyé — ferme=${farm} destinataire=${r.phone} date=${date} success=true`
+                  );
+                  return result;
+                })
+              )
             );
           }
         }
@@ -127,7 +134,14 @@ function createStockFileReminders(deps) {
           const missingLabels = missing.map((f) => FARM_LABELS[f] || f);
           const text = buildEscalationText(missingLabels);
           await Promise.all(
-            dgRecipients.map((r) => whatsapp.sendTemplateMessage(r.phone, 'general_alert', [whatsapp.toSingleLine(text)]))
+            dgRecipients.map((r) =>
+              whatsapp.sendTemplateMessage(r.phone, 'general_alert', [whatsapp.toSingleLine(text)]).then((result) => {
+                console.log(
+                  `[stockFileReminders] Escalade DG 18h envoyée — fermes_manquantes=${missingLabels.join(',')} destinataire=${r.phone} date=${date} success=true`
+                );
+                return result;
+              })
+            )
           );
           updates.missing_alert_sent_at = now;
           escalated = true;
