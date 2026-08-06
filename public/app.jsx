@@ -11042,6 +11042,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
             const [analytiqueCultureIdx, setAnalytiqueCultureIdx] = useState(0);
             const [analytiqueTotalMode, setAnalytiqueTotalMode] = useState(false);
+            // Sélecteur local (panneau Affectation Analytique uniquement) : permet de
+            // consulter une quinzaine différente de la quinzaine globale de l'onglet, ou
+            // d'agréger sur une campagne entière. analytiqueScopeData === null → aucun
+            // override, le panneau lit analytiqueData (comportement historique inchangé).
+            const [analytiqueScopeMode, setAnalytiqueScopeMode] = useState('quinzaine');
+            const [analytiqueScopeValue, setAnalytiqueScopeValue] = useState('');
+            const [analytiqueScopeData, setAnalytiqueScopeData] = useState(null);
+            const [analytiqueScopeLoading, setAnalytiqueScopeLoading] = useState(false);
             const [detailEquipeFilter, setDetailEquipeFilter] = useState('');
             const [detailSearch, setDetailSearch] = useState('');
             useEffect(() => {
@@ -11362,6 +11370,36 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             React.useEffect(() => { loadData(); }, []);
 
+            // Sélecteur local Affectation Analytique — mode Quinzaine : un seul fetch
+            // sur la quinzaine choisie, indépendant de selectedPeriode (global à l'onglet).
+            const loadAnalytiqueScopeQuinzaine = (label) => {
+                setAnalytiqueScopeLoading(true);
+                fetch(`/api/pointage-rh?action=quinzaine-analytique&periode=${encodeURIComponent(label)}`)
+                    .then(r => r.json())
+                    .then(d => { setAnalytiqueScopeData(d && d.success ? (d.rows || []) : []); })
+                    .catch(() => { setAnalytiqueScopeData([]); })
+                    .finally(() => setAnalytiqueScopeLoading(false));
+            };
+
+            // Sélecteur local Affectation Analytique — mode Campagne : fetch en parallèle
+            // de toutes les quinzaines de la campagne (déduites de apiData.periodeCampagne),
+            // puis concaténation des rows bruts. _buildAnalytiquePivot additionne déjà par
+            // parcelle+famille : la concaténation suffit à obtenir la somme sur la campagne.
+            const loadAnalytiqueScopeCampagne = (campagne) => {
+                const pc = (apiData && apiData.periodeCampagne) || {};
+                const labels = Object.keys(pc).filter(k => pc[k] === campagne);
+                setAnalytiqueScopeLoading(true);
+                Promise.all(labels.map(label =>
+                    fetch(`/api/pointage-rh?action=quinzaine-analytique&periode=${encodeURIComponent(label)}`)
+                        .then(r => r.json())
+                        .catch(() => ({ rows: [] }))
+                )).then(results => {
+                    const merged = [];
+                    results.forEach(r => { merged.push(...((r && r.rows) || [])); });
+                    setAnalytiqueScopeData(merged);
+                }).finally(() => setAnalytiqueScopeLoading(false));
+            };
+
             // Fetch Pointage Divers (Location & Engins) pour la quinzaine affichée.
             // useEffect séparé car loadData() n'est pas async — déclenché par selectedPeriode
             // qui change à chaque changement de quinzaine via handlePeriodeChange.
@@ -11403,7 +11441,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // eslint-disable-next-line react-hooks/exhaustive-deps
             }, [selectedPeriode, apiData && (apiData.periodes || [])[0]]);
 
-            const handlePeriodeChange = (p) => { setSelectedPeriode(p); setLoading(true); loadData(p); };
+            const handlePeriodeChange = (p) => {
+                setSelectedPeriode(p);
+                setLoading(true);
+                loadData(p);
+                // Reset de l'override local du panneau Affectation Analytique : un
+                // changement de quinzaine globale invalide toute sélection quinzaine/campagne
+                // locale précédente (évite d'afficher des données périmées).
+                setAnalytiqueScopeMode('quinzaine');
+                setAnalytiqueScopeValue('');
+                setAnalytiqueScopeData(null);
+            };
 
             // Ces deux useMemo DOIVENT être placés AVANT les early-returns (rules of hooks).
             // Les variables dérivées (transportRows, parJour, currentPeriode, classifyMO)
@@ -11794,8 +11842,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 if (ha === 0 && r.haRef > 0) ha = r.haRef;
                 return { ...info, ha };
             };
+            // Source résolue du panneau Affectation Analytique : override local
+            // (quinzaine différente ou campagne agrégée) si présent, sinon comportement
+            // historique (quinzaine du sélecteur global de l'onglet).
+            const _analytiqueSourceRows = analytiqueScopeData !== null ? analytiqueScopeData : analytiqueData;
             const _cultureGroups = { Myrtille: [], Framboise: [], Avocatier: [] };
-            analytiqueData.forEach(r => {
+            _analytiqueSourceRows.forEach(r => {
                 if (farmFilter && r.ferme !== farmFilter) return;
                 if (avoSubFilter && deriveSubFerme(r.refParcelle, r.parcelle) !== avoSubFilter) return;
                 const info = _getAnalytiqueRowInfo(r);
@@ -12831,7 +12883,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     )}
 
                     {/* Affectation Analytique */}
-                    {analytiqueData.length > 0 && (
+                    {_analytiqueSourceRows.length > 0 && (
                         <div style={analytiqueFullscreen ? {position:'fixed',inset:0,zIndex:9999,background:'#fff',overflowY:'auto',padding:24} : {}}>
                         <div style={analytiqueFullscreen ? {marginBottom:16,position:'relative'} : {marginBottom:16}}>
                             {analytiqueFullscreen && (
@@ -12884,6 +12936,57 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         <i className={`fa-solid ${analytiqueFullscreen ? 'fa-compress' : 'fa-expand'}`}></i>
                                     </button>
                                 </div>
+                            </div>
+
+                            {/* Sélecteur local Quinzaine/Campagne — scopé à ce panneau uniquement,
+                                visible en mode compact ET plein écran (même bloc JSX). Permet de
+                                consulter une autre quinzaine ou d'agréger sur une campagne entière
+                                sans dépendre du sélecteur global de l'onglet (caché en plein écran). */}
+                            <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:8,marginBottom:12}}>
+                                <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
+                                    {[['quinzaine', 'Quinzaine'], ['campagne', 'Campagne']].map(([v, label]) => (
+                                        <button key={v}
+                                            onClick={() => { setAnalytiqueScopeMode(v); setAnalytiqueScopeValue(''); setAnalytiqueScopeData(null); }}
+                                            style={{padding:'4px 12px',borderRadius:8,border:'none',
+                                                background: analytiqueScopeMode === v ? 'var(--berry)' : 'transparent',
+                                                color: analytiqueScopeMode === v ? '#fff' : 'var(--gray-500)',
+                                                fontSize:11,fontWeight:600,cursor:'pointer',transition:'all 0.15s'}}>
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                                {analytiqueScopeMode === 'campagne' ? (
+                                    <select
+                                        value={analytiqueScopeValue}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            setAnalytiqueScopeValue(v);
+                                            if (v) loadAnalytiqueScopeCampagne(v); else setAnalytiqueScopeData(null);
+                                        }}
+                                        style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
+                                        <option value="">Choisir une campagne…</option>
+                                        {[...new Set(Object.values(apiData.periodeCampagne || {}))].sort().reverse().map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <window.QuinzaineCampagneSelect
+                                        periodes={apiData.periodes || []}
+                                        periodeCampagne={apiData.periodeCampagne}
+                                        value={analytiqueScopeValue || selectedPeriode}
+                                        onChange={(v) => { setAnalytiqueScopeValue(v); loadAnalytiqueScopeQuinzaine(v); }}
+                                    />
+                                )}
+                                {analytiqueScopeLoading && (
+                                    <span style={{fontSize:11,color:'var(--gray-500)'}}>
+                                        <i className="fa-solid fa-spinner fa-spin" style={{marginRight:4}}></i>Chargement…
+                                    </span>
+                                )}
+                                <span style={{fontSize:11,color:'var(--gray-500)',fontStyle:'italic'}}>
+                                    {analytiqueScopeMode === 'campagne' && analytiqueScopeValue
+                                        ? `Campagne ${analytiqueScopeValue} · cumul de ${Object.keys(apiData.periodeCampagne || {}).filter(k => (apiData.periodeCampagne || {})[k] === analytiqueScopeValue).length} quinzaines`
+                                        : (analytiqueScopeValue || selectedPeriode || (apiData.periodes || [])[0] || '')}
+                                </span>
                             </div>
 
                             {(() => {
