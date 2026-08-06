@@ -8,6 +8,7 @@ const {
   finCampagne,
   campagneDeCharge,
   phaseDeCharge,
+  mostRecentCampagne,
 } = require('../../public/lib/campagneUtils.js');
 
 // ============================================================================
@@ -128,4 +129,44 @@ test('phaseDeCharge — date invalide → null', () => {
   assert.strictEqual(phaseDeCharge({ date: 'nope', bascule_date: '2027-01-01' }), null);
   assert.strictEqual(phaseDeCharge({}), null);
   assert.strictEqual(phaseDeCharge(null), null);
+});
+
+// ============================================================================
+// mostRecentCampagne — Bug report Omar 2026-08-06 (panneau Affectation
+// Analytique bloqué sur l'ancienne campagne 2025-2026 malgré un sélecteur
+// global correct sur 2026-2027)
+// ============================================================================
+test('mostRecentCampagne — choisit la campagne la plus RÉCENTE, pas la plus fréquente', () => {
+  // Reproduit EXACTEMENT le scénario du bug : campagne 2025-2026 complète (24
+  // quinzaines, donc 24 entrées) vs campagne 2026-2027 tout juste démarrée (3
+  // quinzaines, 3 entrées). Un fallback "campagne la plus fréquente" élirait à
+  // tort 2025-2026 (24 > 3). mostRecentCampagne doit renvoyer 2026-2027.
+  const periodeCampagne = {};
+  for (let i = 1; i <= 24; i++) {
+    periodeCampagne[`Quinzaine ${String(i).padStart(2, '0')}`] = '2025-2026';
+  }
+  periodeCampagne['Quinzaine 01 (2026-2027)'] = '2026-2027';
+  periodeCampagne['Quinzaine 02 (2026-2027)'] = '2026-2027';
+  periodeCampagne['Quinzaine 03 (2026-2027)'] = '2026-2027';
+  assert.strictEqual(mostRecentCampagne(periodeCampagne), '2026-2027');
+});
+
+test('mostRecentCampagne — une seule campagne → la renvoie', () => {
+  assert.strictEqual(mostRecentCampagne({ 'Quinzaine 01': '2026-2027' }), '2026-2027');
+});
+
+test('mostRecentCampagne — map vide/absente/valeurs falsy → chaîne vide, jamais de crash', () => {
+  assert.strictEqual(mostRecentCampagne({}), '');
+  assert.strictEqual(mostRecentCampagne(undefined), '');
+  assert.strictEqual(mostRecentCampagne(null), '');
+  assert.strictEqual(mostRecentCampagne({ a: '', b: null, c: undefined }), '');
+});
+
+test('mostRecentCampagne — 3 campagnes non triées en entrée → tri DESC correct', () => {
+  const periodeCampagne = {
+    a: '2023-2024',
+    b: '2025-2026',
+    c: '2024-2025',
+  };
+  assert.strictEqual(mostRecentCampagne(periodeCampagne), '2025-2026');
 });

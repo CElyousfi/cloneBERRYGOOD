@@ -11108,7 +11108,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     const d = await resp.json();
                     if (d.success) {
                         setSyncBeeOneResult({ ok: true, msg: 'Sync terminée — ' + d.totalRows + ' lignes (' + d.from + ' → ' + d.to + ')' });
-                        setApiData(null); // force re-fetch quinzaine
+                        // Bug fix (2026-08-06) : `setApiData(null)` seul ne déclenche AUCUN
+                        // refetch (le useEffect de montage `loadData()` ne dépend pas de
+                        // apiData) — la page restait bloquée sur "Erreur chargement" jusqu'à
+                        // un F5 manuel. On appelle loadData() directement, comme le fait
+                        // déjà handlePeriodeChange, SANS blanchir apiData au préalable (évite
+                        // le flash "Erreur chargement" pendant le refetch).
+                        setLoading(true);
+                        loadData(currentPeriode);
                     } else {
                         setSyncBeeOneResult({ ok: false, msg: d.error || 'Erreur sync' });
                     }
@@ -11878,12 +11885,20 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 if (selectedPeriode && _analytiqueLocalPeriodeCampagne[selectedPeriode]) {
                     return _analytiqueLocalPeriodeCampagne[selectedPeriode];
                 }
-                // Fallback : campagne la plus fréquente dans periodeCampagne, sinon
-                // celle du premier élément de apiData.periodes.
-                const counts = {};
-                Object.values(_analytiqueLocalPeriodeCampagne).forEach(c => { if (c) counts[c] = (counts[c] || 0) + 1; });
-                const mostFrequent = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
-                if (mostFrequent) return mostFrequent;
+                // Fallback : campagne la plus RÉCENTE — MÊME logique que
+                // window.QuinzaineCampagneSelect (QCS_group : campagne DESC,
+                // `.slice(0,1)`), factorisée dans CampagneUtils.mostRecentCampagne.
+                // PAS la plus fréquente : une campagne ancienne/complète (ex. 24
+                // quinzaines) a mécaniquement beaucoup plus d'entrées dans
+                // periodeCampagne qu'une campagne tout juste démarrée (ex. 3
+                // quinzaines) — "la plus fréquente" élirait à tort l'ancienne, faisant
+                // diverger ce sélecteur local du sélecteur global de l'onglet (bug
+                // report Omar 2026-08-06 : napperoir bloqué sur 2025-2026 au lieu de
+                // 2026-2027).
+                const mostRecent = window.CampagneUtils && window.CampagneUtils.mostRecentCampagne
+                    ? window.CampagneUtils.mostRecentCampagne(_analytiqueLocalPeriodeCampagne)
+                    : '';
+                if (mostRecent) return mostRecent;
                 const firstPeriode = ((apiData && apiData.periodes) || [])[0];
                 return firstPeriode ? (_analytiqueLocalPeriodeCampagne[firstPeriode] || '') : '';
             })();
