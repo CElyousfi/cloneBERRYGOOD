@@ -344,6 +344,25 @@ Chaque deploy suit cette séquence en 2 temps :
    → Playwright re-vérifie les écrans critiques sur la vraie URL prod.
    → Si crash détecté → alerte immédiate + rollback si nécessaire.
 
+6. NETTOYAGE POST-DEPLOY (immédiatement après, avant de passer à l'item
+   suivant — ne pas laisser traîner) :
+   → `git checkout main` + `git pull` : confirmer que main == remote.
+   → `git status` : le working tree doit être strictement propre. Si un
+     diff résiduel de cache-bust traîne sur `public/index.html`/`public/app.js`
+     (artefact non fonctionnel d'un `npm run qa`/build), le discard
+     (`git checkout -- <fichier>`) — ne jamais le committer.
+   → Supprimer la branche feature locale déjà mergée du chantier qui vient
+     d'être déployé (`git branch -d <branche>`) ; la branche remote est déjà
+     supprimée par `gh pr merge --delete-branch`.
+   → Si `git status` révèle un fichier modifié qui n'a AUCUN rapport avec le
+     chantier en cours (ex. `public/app.jsx` avec un diff qui ne correspond à
+     rien de ce qu'on vient de faire) : ne JAMAIS le stash/discard
+     silencieusement en supposant que c'est un résidu — c'est probablement le
+     WIP d'une session parallèle sur le même dossier partagé. Le signaler à
+     Omar explicitement et attendre confirmation avant tout `git stash` ou
+     `git checkout --` dessus (cf. pièges connus : session parallèle vole la
+     branche / absorbe le working tree).
+
 Règle : JAMAIS de deploy hosting en prod sans QA visuelle sur le
 preview d'abord (sauf hotfix critique avec accord Omar explicite).
 
