@@ -4139,12 +4139,24 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         console.log('[force-sync-periode] DG ' + (_fcp.name || _fau.uid) + ' → ' + syncFrom + ' → ' + syncTo + ' (live)');
         try {
           const result = await syncPointageFromProd(db_firestore, { from: syncFrom, to: syncTo, target: 'live' });
+          // syncPointageFromProd() n'a JAMAIS levé d'exception (catch interne, cf.
+          // pointageBdpSync.js) : elle renvoie {success:false, error} en cas d'échec.
+          // Avant ce fix, ce cas était ignoré et l'appelant recevait {success:true}
+          // avec des compteurs à 0 — le front affichait "Sync terminée — 0 lignes"
+          // comme un succès alors que le pull BDP avait réellement échoué.
+          if (!result || !result.success) {
+            const errMsg = (result && result.error) || 'Échec de synchronisation (raison inconnue)';
+            console.error('[force-sync-periode] échec sync:', errMsg);
+            return res.status(500).json({ success: false, error: errMsg });
+          }
           return res.json({
             success: true,
             from: syncFrom,
             to: syncTo,
             daysProcessed: result.jours || 0,
             totalRows: result.lignes || 0,
+            metaRebuilt: result.meta_rebuilt !== false,
+            metaRebuildError: result.metaRebuildError || null,
           });
         } catch (syncErr) {
           console.error('[force-sync-periode] échec sync:', syncErr.message);

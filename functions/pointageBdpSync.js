@@ -268,13 +268,30 @@ async function syncPointageFromProd(db, opts) {
     // 5) Mode LIVE uniquement : reconstruire le meta + workers depuis TOUS les
     //    daily docs du mirror (juin figé ∪ juillet ajouté = MERGE naturel, ne
     //    perd pas juin). En mode 'test' : NE PAS toucher au meta live.
+    //
+    // Isolé dans son PROPRE try/catch (garde-fou anti-corruption 2026-08) : les
+    // daily docs de la plage [from, to] sont déjà commit à ce stade (étape 4) —
+    // une exception dans rebuildPointageMetaFromMirror (ex. jeu de données réel
+    // plus large/complexe que les fixtures : labels en très grand nombre, dates
+    // nulles, campagnes limites) ne doit ni annuler le succès du pull SQL/BDP
+    // (les lignes sont bien synchronisées), ni empêcher un `return` propre côté
+    // HTTP. `rebuildPointageMetaFromMirror` construit tout en mémoire AVANT son
+    // unique `.set()` final (cf. sqlSyncService.js) : si elle lève, ce `.set()`
+    // n'a jamais eu lieu → le document `sql_mirror_pointage_meta/config` reste
+    // à sa dernière valeur VALIDE (jamais de write partiel/corrompu).
     let metaRebuilt = false;
+    let metaRebuildError = null;
     if (target === "live") {
-      const syncService = require("./sqlSyncService");
-      await syncService.rebuildPointageMetaFromMirror();
-      await syncService.rebuildPointageWorkersFromMirror();
-      metaRebuilt = true;
-      console.log("[BdpPointage] LIVE: meta + workers reconstruits depuis le mirror complet.");
+      try {
+        const syncService = require("./sqlSyncService");
+        await syncService.rebuildPointageMetaFromMirror();
+        await syncService.rebuildPointageWorkersFromMirror();
+        metaRebuilt = true;
+        console.log("[BdpPointage] LIVE: meta + workers reconstruits depuis le mirror complet.");
+      } catch (metaErr) {
+        metaRebuildError = metaErr.message;
+        console.error("[BdpPointage] LIVE: échec reconstruction meta/workers (daily docs déjà synchronisés, meta laissé INCHANGÉ) :", metaErr.message);
+      }
     }
 
     // Le _status technique reste TOUJOURS dans la collection témoin, jamais dans
@@ -284,12 +301,17 @@ async function syncPointageFromProd(db, opts) {
       target,
       from, to, jours, lignes, empty: false,
       meta_rebuilt: metaRebuilt,
+      meta_rebuild_error: metaRebuildError,
       diagnostic_grain: grainDiag,
     }, { merge: true });
 
     const durationMs = Date.now() - startTime;
     console.log(`[BdpPointage] ${mode} écrit dans ${collectionName}: ${jours} jours, ${lignes} lignes en ${durationMs}ms`);
-    return { success: true, target, from, to, jours, lignes, meta_rebuilt: metaRebuilt, diagnostic_grain: grainDiag, durationMs };
+    // success reste true : les données mirror de la plage ont bien été écrites.
+    // meta_rebuild_error signale au caller (force-sync-periode) que le menu
+    // Quinzaine peut ne pas encore refléter cette plage tant que le prochain
+    // sync (ou un retry manuel) ne refait pas aboutir la reconstruction du meta.
+    return { success: true, target, from, to, jours, lignes, meta_rebuilt: metaRebuilt, metaRebuildError, diagnostic_grain: grainDiag, durationMs };
   } catch (err) {
     console.error("[BdpPointage] Erreur pull:", err.message);
     return { success: false, error: err.message };

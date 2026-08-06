@@ -159,6 +159,29 @@ function phaseDeCharge(args) {
   return date < bascule ? 'primocane' : 'floricane';
 }
 
+/**
+ * Détermine la campagne la plus RÉCENTE (tri DESC lexicographique du libellé
+ * 'AAAA-BBBB' — valide car AAAA est zero-padded sur 4 chiffres) présente dans
+ * une map `{ label: campagne }`.
+ *
+ * Fix bug report Omar 2026-08-06 : un fallback naïf "campagne la plus
+ * FRÉQUENTE" élit à tort une ancienne campagne complète (ex. 24 quinzaines)
+ * au lieu de la campagne courante tout juste démarrée (ex. 3 quinzaines) —
+ * une campagne ancienne a mécaniquement plus d'entrées dans periodeCampagne.
+ * Cette fonction réplique la logique de tri de
+ * `window.QuinzaineCampagneSelect` (QCS_group : campagne DESC, `.slice(0,1)`)
+ * pour que tout fallback de campagne dans l'app reste cohérent avec le
+ * sélecteur partagé.
+ *
+ * @param {Object<string,string>} periodeCampagne  { label: campagne }
+ * @returns {string} campagne la plus récente, ou '' si aucune campagne connue
+ */
+function mostRecentCampagne(periodeCampagne) {
+  const campagnes = Object.values(periodeCampagne || {}).filter(Boolean);
+  if (campagnes.length === 0) return '';
+  return campagnes.slice().sort((a, b) => (b < a ? -1 : b > a ? 1 : 0))[0];
+}
+
 // ============================================================================
 // UMD-bricolé : un seul global exposé (window.CampagneUtils)
 // ============================================================================
@@ -170,6 +193,7 @@ const __cu_api = {
   finCampagne,
   campagneDeCharge,
   phaseDeCharge,
+  mostRecentCampagne,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __cu_api;
