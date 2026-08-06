@@ -11,8 +11,7 @@
       "WebSearch"
     ],
     "ask": [
-      "Bash(scripts/deploy.sh:*)",
-      "Bash(firebase hosting:channel:deploy:*)"
+      "Bash(scripts/deploy.sh:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
