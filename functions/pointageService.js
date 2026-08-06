@@ -49,7 +49,7 @@ const {
 // Corrige le comptage gonflé (somme des distincts par parcelle → ouvrier multi-parcelles compté N×).
 const { countDistinctByFermeType } = require("./lib/pointage/countDistinctByFermeType");
 const { dedupeWorkersByMatricule } = require("./lib/pointage/dedupeWorkersByMatricule");
-const { defaultPeriodeForCampagne } = require("./lib/pointage/campagnePeriodes");
+const { defaultPeriodeForCampagne, buildPeriodeCampagne } = require("./lib/pointage/campagnePeriodes");
 const { campagneCourante, campagneOf } = require("./lib/mappingConso/campagneUtils");
 
 // Défaut de période = 1re quinzaine de la CAMPAGNE COURANTE (au lieu du plus
@@ -1651,10 +1651,26 @@ async function warmAllPointageCaches() {
   } catch (e) { results.push(`recolte:${e.message}`); }
 
   // 4. Quinzaine (latest)
+  //
+  // BUG FIX (2026-08-06) : ce warmer écrit dans la MÊME clé Firestore
+  // (`pointage_quinzaine_latest`, via pointageCacheKey) que le handler live de
+  // l'action "quinzaine" (cf. ~ligne 2454 : cacheKey basé sur le même nom pour
+  // _fermeFilter/_cultureFilter null, i.e. profils DG/Finance/RH sans ?periode).
+  // Le handler live inclut `periodeCampagne` (+ `parCulture`) dans sa réponse
+  // depuis les commits 929c526/5b51ff0, mais CE warmer ne les calculait pas :
+  // toutes les 10 minutes (pubsub schedule), il écrasait le cache partagé avec
+  // un payload INCOMPLET, privant pendant tout son TTL (5 min) le frontend de
+  // periodeCampagne — casse silencieusement tout sélecteur "Campagne" qui en
+  // dépend (Affectation Analytique) sans qu'aucune erreur ne soit levée.
+  // Fix : aligner strictement la forme du payload sur le handler live.
   try {
     await withCache(pointageCacheKey("pointage_quinzaine_latest", null), 0, async () => {
       const selectedPeriode = periodes[0];
-      if (!selectedPeriode) return { success: true, periode: null, periodes, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
+      let periodeCampagne = (meta && meta.periodeCampagne) || {};
+      if (Object.keys(periodeCampagne).length === 0 && meta?.periodeMap) {
+        periodeCampagne = buildPeriodeCampagne(meta.periodeMap, campagneOf);
+      }
+      if (!selectedPeriode) return { success: true, periode: null, periodes, periodeCampagne, totalJournees: 0, totalCout: 0, parFerme: [], parJour: [] };
       const rows = await getPointageRowsForPeriode(selectedPeriode);
       const qFermes = { F1: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, F5: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, Avocatier: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 }, BAHIA: { journees: 0, cout: 0, recolte: 0, horsRecolte: 0, postesFixes: 0 } };
       for (const r of rows) { const ferme = deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale); const type = classifyType(r.Operation_Famille); if (qFermes[ferme]) { qFermes[ferme].journees += r.Nombre_Jr || 0; qFermes[ferme].cout += r.Cout || 0; qFermes[ferme][type] += r.Nombre_Jr || 0; } }
@@ -1669,7 +1685,8 @@ async function warmAllPointageCaches() {
       const perDay = Object.values(dayMap).map(d => ({ jour: d.jour, jourLabel: d.jourLabel, nbOuv: d.nbOuv.size, journees: d.journees, cout: d.cout, F1: d.F1.size, F5: d.F5.size, Avocatier: d.Avocatier.size, BAHIA: d.BAHIA.size })).sort((a, b) => a.jour.localeCompare(b.jour));
       const totalJournees = Object.values(qFermes).reduce((s, f) => s + f.journees, 0);
       const totalCout = Object.values(qFermes).reduce((s, f) => s + f.cout, 0);
-      return { success: true, periode: selectedPeriode, periodes, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay };
+      const parCulture = buildParCulture(rows);
+      return { success: true, periode: selectedPeriode, periodes, periodeCampagne, totalJournees: Math.round(totalJournees), totalCout: Math.round(totalCout), parFerme: Object.entries(qFermes).map(([f, d]) => ({ ferme: f, journees: Math.round(d.journees), cout: Math.round(d.cout), recolte: Math.round(d.recolte), horsRecolte: Math.round(d.horsRecolte), postesFixes: Math.round(d.postesFixes) })), parJour: perDay, parCulture };
     });
     results.push("quinzaine:ok");
   } catch (e) { results.push(`quinzaine:${e.message}`); }
@@ -2459,12 +2476,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           let periodeCampagne = (meta && meta.periodeCampagne) || {};
           // Dériver periodeCampagne depuis periodeMap si vide (nouvelle campagne ou sync incomplet)
           if (Object.keys(periodeCampagne).length === 0 && meta?.periodeMap) {
-            const { campagneOf: _campagneOf } = require('./lib/mappingConso/campagneUtils');
-            periodeCampagne = {};
-            for (const [periode, dates] of Object.entries(meta.periodeMap)) {
-              const sorted = (dates || []).filter(Boolean).sort();
-              if (sorted.length) periodeCampagne[periode] = _campagneOf(sorted[0]);
-            }
+            periodeCampagne = buildPeriodeCampagne(meta.periodeMap, campagneOf);
           }
           const mirrorPeriodes = meta?.periodes || [];
           const selectedPeriode = periodeParam || defaultPeriode(meta, periodes);
