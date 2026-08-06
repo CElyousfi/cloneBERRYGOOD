@@ -166,6 +166,7 @@ async function handleIncomingFile(phone, user, msg, mediaId) {
     }
     await resetSession(phone);
     await wa.sendTextMessage(phone, `✅ Fichier ${FARM_LABELS[farm]} reçu pour aujourd'hui.`);
+    console.log(`[magasinierBot] Confirmation soumission envoyée — phone=${phone} ferme=${farm} date=${date}`);
     return;
   }
 
@@ -237,6 +238,7 @@ async function handleFarmButtonReply(phone, user, buttonId) {
 
   await resetSession(phone);
   await wa.sendTextMessage(phone, `✅ Fichier ${FARM_LABELS[farm]} reçu pour aujourd'hui.`);
+  console.log(`[magasinierBot] Confirmation soumission envoyée — phone=${phone} ferme=${farm} date=${date}`);
 }
 
 module.exports = {
