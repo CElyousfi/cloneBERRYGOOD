@@ -49165,6 +49165,12 @@ ${rejetHtml}
                 if (bdc.code_analytique) { doc.text('Code analytique : ' + bdc.code_analytique, M, y); y += 5; }
                 if (bdc.date_livraison_prevue) { doc.text('Livraison pr\u00e9vue : ' + bdc.date_livraison_prevue, M, y); y += 5; }
                 y += 3;
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(139, 34, 82);
+                const contactReceptionMsg = "POUR LA R\u00c9CEPTION, PRI\u00c8RE DE CONTACTER M. HASSAN SAHRAOUI AVANT D'ORGANISER LA LIVRAISON AU 06-70-02-01-99";
+                const contactReceptionLines = doc.splitTextToSize(contactReceptionMsg, W - 2 * M);
+                doc.text(contactReceptionLines, M, y);
+                y += 4 * contactReceptionLines.length + 2;
+                doc.setFont('helvetica', 'normal'); doc.setTextColor(50);
                 const fournisseur = bdc.fournisseur || {};
                 const hasAddr = fournisseur.adresse || fournisseur.ville;
                 const supplierBoxH = hasAddr ? 28 : 20;
