@@ -220,6 +220,21 @@ Pattern d'action sur `/api/caisse?action=<name>` (POST/GET selon) :
 
 ## Workflow agent
 
+**Isolation sessions parallèles** : toute session travaillant en parallèle
+d'une autre DOIT opérer dans un worktree dédié. Jamais deux sessions dans le
+même dossier : les commits se mélangent sur la branche courante, et un
+ticket peut être mergé avec le travail d'un autre.
+
+Vérification obligatoire avant de créer une branche : lancer
+`git worktree list`. Si un autre worktree existe déjà sur ce dépôt,
+travailler dans un worktree dédié, sans exception :
+
+```
+git worktree add ../<slug-du-ticket> -b sb/<slug-du-ticket>
+```
+
+Supprimer le worktree après merge.
+
 1. **Avant de coder** :
    - Lire ce fichier
    - Lire le `Scope actif`
