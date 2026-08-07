@@ -236,6 +236,15 @@ Pattern d'action sur `/api/caisse?action=<name>` (POST/GET selon) :
    - `npm run typecheck` : informatif, NON bloquant (erreurs historiques dans les fichiers `@ts-check`, ≈271 au 2026-07-12) — la règle est de ne pas en introduire de NOUVELLES.
    - PR draft via `gh pr create --draft` avec body structuré (résumé, features, critères, limitations, commits)
 
+4. **Pilotage auto jusqu'au preview** :
+   - Sur un ticket de correction ou de fonctionnalité, l'agent va de bout en
+     bout sans demander de GO : branche → implémentation → tests → QA → push
+     → PR draft → `scripts/preview.sh`. Il présente l'URL de preview et
+     s'arrête là.
+   - Ne JAMAIS demander « veux-tu que je pousse / merge / déploie » avant le
+     preview. Le merge n'intervient qu'après validation visuelle explicite.
+   - Le seul point d'arrêt technique restant est `scripts/deploy.sh` (prod).
+
 ---
 
 ## Choses à NE PAS faire
