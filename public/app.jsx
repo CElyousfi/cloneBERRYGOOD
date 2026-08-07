@@ -48429,6 +48429,7 @@ ${rejetHtml}
             const [expanded, setExpanded] = React.useState({});
 
             const FARMS = ['F1', 'F5', 'Avocatier'];
+            const RELEVANT_BDC_STATUSES = ['en_attente_chef', 'en_attente_dg', 'valide_dg', 'envoye', 'virement_lance', 'virement_signe', 'rejete'];
             const STATUT_CFG = {
                 en_attente_chef:  { label: 'Attente Chef',  color: '#d97706', bg: '#fffbeb' },
                 en_attente_dg:    { label: 'Attente DG',    color: '#7c3aed', bg: '#f5f3ff' },
@@ -48515,7 +48516,7 @@ ${rejetHtml}
 
             const load = () => {
                 setLoading(true);
-                let url = '/api/stock?action=list-bdc&limit=500';
+                let url = '/api/stock?action=list-bdc&limit=500&status=' + RELEVANT_BDC_STATUSES.join(',');
                 if (filterFerme) url += '&ferme=' + filterFerme;
                 fetch(url).then(r => r.json()).then(j => { if (j.success) setBdcList(j.bdc || []); })
                     .catch(() => {}).finally(() => setLoading(false));
@@ -48523,7 +48524,7 @@ ${rejetHtml}
             React.useEffect(() => { load(); }, [filterFerme]);
 
             const filteredBdc = bdcList
-                .filter(b => ['en_attente_chef', 'en_attente_dg', 'valide_dg', 'envoye', 'virement_lance', 'virement_signe', 'rejete'].includes(b.status))
+                .filter(b => RELEVANT_BDC_STATUSES.includes(b.status))
                 .filter(b => !filterStatus || b.status === filterStatus);
 
             const counts = {
