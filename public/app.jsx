@@ -49027,7 +49027,7 @@ ${rejetHtml}
                     code_analytique: bdc.code_analytique || '',
                     mode_paiement: bdc.mode_paiement || 'comptant_virement',
                     items: (bdc.items || []).map(it => ({
-                        article: it.article || '', categorie: it.categorie || 'engrais',
+                        article: it.article || '', categorie: it.categorie || 'autre',
                         quantite: String(it.quantite || ''), unite: it.unite || 'kg',
                         prix_unitaire: String(it.prix_unitaire || ''),
                         taux_tva: it.taux_tva != null ? it.taux_tva : 20,
