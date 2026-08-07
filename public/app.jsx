@@ -4291,6 +4291,8 @@
             const [presenceData, setPresenceData] = useState({ rows: [], syncedAt: null });
             const [presenceQData, setPresenceQData] = useState(null);
             const [sansSortiePopup, setSansSortiePopup] = useState(null); // {date, jourLabel, equipeNom, workers}
+            const [backfilling, setBackfilling] = useState(false);
+            const [backfillMsg, setBackfillMsg] = useState('');
             // Ferme pour le filtre "sans entrée/sortie" : chef_f1/chef_f5 n'ont pas farm dans PROFILES
             const presenceFerme = farmFilter ||
                 (currentProfile === 'chef_f1' ? 'F1' :
@@ -4411,6 +4413,37 @@
             // farmFilter lui-même, utilisé par les autres widgets du Dashboard.
             const meteoFarmFilter = avoSubFilter || farmFilter || METEO_DEFAULT_FARM_BY_PROFILE[currentProfile];
 
+            // Backfill des heures d'entrée/sortie depuis BEE ONE Production pour la quinzaine
+            // en cours (rattrape les sorties saisies tardivement). Ne touche pas au pointage.
+            const handleBackfillPresence = async () => {
+                const dts = [...new Set((presenceQData.days || []).map(d => d.date))].sort();
+                if (dts.length === 0) { alert('Aucune date pour cette quinzaine.'); return; }
+                const startDate = dts[0], endDate = dts[dts.length - 1];
+                if (!confirm(`Mettre à jour les heures d'entrée/sortie depuis BEE ONE pour la quinzaine en cours (${startDate} → ${endDate}) ?\n\nLe pointage analytique n'est pas modifié.`)) return;
+                setBackfilling(true); setBackfillMsg('');
+                try {
+                    const token = (firebaseAuth && firebaseAuth.currentUser) ? await firebaseAuth.currentUser.getIdToken() : null;
+                    const resp = await fetch('/api/backfill-presence', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': 'Bearer ' + token } : {}) },
+                        body: JSON.stringify({ startDate, endDate }),
+                    });
+                    const json = await resp.json();
+                    if (json && json.success) {
+                        setBackfillMsg(`✓ ${json.daysWritten} jour(s) · ${json.totalRows} ouvriers · ${json.withSortie} avec sortie`);
+                        invalidateCache('presence-quinzaine');
+                        const fresh = await cachedFetch('/api/pointage-rh?action=presence-quinzaine');
+                        if (fresh && fresh.success) setPresenceQData(fresh);
+                    } else {
+                        setBackfillMsg('Erreur : ' + ((json && json.error) || 'inconnue'));
+                    }
+                } catch (e) {
+                    setBackfillMsg('Erreur : ' + e.message);
+                } finally {
+                    setBackfilling(false);
+                }
+            };
+
             return (
                 <div className="fade-in">
                     {farmFilter && (
@@ -4468,7 +4501,14 @@
                                     <i className="fa-solid fa-clock-rotate-left" style={{color:'#e74c3c',fontSize:14}}></i>
                                     <span style={{fontWeight:700,fontSize:13,color:'#e74c3c'}}>Équipes sans entrée/sortie</span>
                                     <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>Quinzaine en cours — {daysWithIssues.length} jour{daysWithIssues.length > 1 ? 's' : ''}</span>
+                                    <button onClick={handleBackfillPresence} disabled={backfilling}
+                                        title="Recharge les heures d'entrée/sortie depuis BEE ONE pour la quinzaine en cours. Ne modifie pas le pointage."
+                                        style={{padding:'4px 10px',background:backfilling?'var(--gray-200)':'#e74c3c',color:backfilling?'var(--gray-500)':'#fff',border:'none',borderRadius:8,fontSize:10,fontWeight:600,cursor:backfilling?'default':'pointer',display:'flex',alignItems:'center',gap:5}}>
+                                        <i className={`fa-solid ${backfilling?'fa-spinner fa-spin':'fa-rotate'}`}></i>
+                                        {backfilling ? 'Mise à jour…' : 'Mettre à jour les heures de sortie'}
+                                    </button>
                                 </div>
+                                {backfillMsg && <div style={{padding:'4px 16px',fontSize:10,color:'var(--gray-500)',background:'#fff',borderBottom:'1px solid var(--gray-100)'}}>{backfillMsg}</div>}
                                 <div style={{padding:'8px 12px',background:'#fff'}}>
                                     {daysWithIssues.map((d, di) => (
                                         <div key={di} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 4px',borderBottom: di < daysWithIssues.length - 1 ? '1px solid var(--gray-100)' : 'none',flexWrap:'wrap'}}>
@@ -4527,7 +4567,14 @@
                                     <span style={{fontWeight:700,fontSize:13,color:'#e74c3c'}}>Équipes sans entrée/sortie</span>
                                     <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:8,opacity:0.7}}>— Toutes fermes</span>
                                     <span style={{fontSize:11,color:'var(--gray-400)',marginLeft:'auto'}}>Quinzaine en cours — {daysWithIssues.length} jour{daysWithIssues.length > 1 ? 's' : ''}</span>
+                                    <button onClick={handleBackfillPresence} disabled={backfilling}
+                                        title="Recharge les heures d'entrée/sortie depuis BEE ONE pour la quinzaine en cours. Ne modifie pas le pointage."
+                                        style={{padding:'4px 10px',background:backfilling?'var(--gray-200)':'#e74c3c',color:backfilling?'var(--gray-500)':'#fff',border:'none',borderRadius:8,fontSize:10,fontWeight:600,cursor:backfilling?'default':'pointer',display:'flex',alignItems:'center',gap:5}}>
+                                        <i className={`fa-solid ${backfilling?'fa-spinner fa-spin':'fa-rotate'}`}></i>
+                                        {backfilling ? 'Mise à jour…' : 'Mettre à jour les heures de sortie'}
+                                    </button>
                                 </div>
+                                {backfillMsg && <div style={{padding:'4px 16px',fontSize:10,color:'var(--gray-500)',background:'#fff',borderBottom:'1px solid var(--gray-100)'}}>{backfillMsg}</div>}
                                 <div style={{padding:'8px 12px',background:'#fff'}}>
                                     {daysWithIssues.map((d, di) => (
                                         <div key={di} style={{display:'flex',alignItems:'center',gap:10,padding:'5px 4px',borderBottom: di < daysWithIssues.length - 1 ? '1px solid var(--gray-100)' : 'none',flexWrap:'wrap'}}>
