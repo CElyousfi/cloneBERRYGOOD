@@ -12986,7 +12986,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
                                     {[['quinzaine', 'Quinzaine'], ['campagne', 'Campagne']].map(([v, label]) => (
                                         <button key={v}
-                                            onClick={() => { setAnalytiqueScopeMode(v); setAnalytiqueScopeValue(''); setAnalytiqueScopeData(null); }}
+                                            onClick={() => {
+                                                setAnalytiqueScopeMode(v);
+                                                if (v === 'campagne') {
+                                                    setAnalytiqueScopeValue(_analytiqueLocalCampagneCourante || '');
+                                                    if (_analytiqueLocalCampagneCourante) loadAnalytiqueScopeCampagne(_analytiqueLocalCampagneCourante);
+                                                } else {
+                                                    setAnalytiqueScopeValue('');
+                                                    setAnalytiqueScopeData(null);
+                                                }
+                                            }}
                                             style={{padding:'4px 12px',borderRadius:8,border:'none',
                                                 background: analytiqueScopeMode === v ? 'var(--berry)' : 'transparent',
                                                 color: analytiqueScopeMode === v ? '#fff' : 'var(--gray-500)',
@@ -12996,19 +13005,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     ))}
                                 </div>
                                 {analytiqueScopeMode === 'campagne' ? (
-                                    <select
-                                        value={analytiqueScopeValue}
-                                        onChange={(e) => {
-                                            const v = e.target.value;
-                                            setAnalytiqueScopeValue(v);
-                                            if (v) loadAnalytiqueScopeCampagne(v); else setAnalytiqueScopeData(null);
-                                        }}
-                                        style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600}}>
-                                        <option value="">Choisir une campagne…</option>
-                                        {[...new Set(Object.values(apiData.periodeCampagne || {}))].sort().reverse().map(c => (
-                                            <option key={c} value={c}>{c}</option>
-                                        ))}
-                                    </select>
+                                    <span style={{padding:'4px 10px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:11,fontWeight:600,color:'var(--gray-700)'}}>
+                                        {_analytiqueLocalCampagneCourante || '—'}
+                                    </span>
                                 ) : (
                                     <window.QuinzaineCampagneSelect
                                         periodes={_analytiqueLocalPeriodes}
