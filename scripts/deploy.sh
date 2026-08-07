@@ -67,3 +67,12 @@ echo "[deploy] ✓ garde-fous OK : branche main · tree propre · main == $REMOT
 echo "[deploy] branche : $(git -C "$ROOT" rev-parse --abbrev-ref HEAD) @ $(git -C "$ROOT" rev-parse --short HEAD)"
 echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
 firebase deploy --only "$ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive "$@"
+
+# Gate G6 — vérification post-déploiement (avertissement uniquement tant que
+# DEPLOY_VERIFY_STRICT n'est pas activé). Ne bloque jamais deploy.sh par défaut.
+case "$ONLY" in
+  *functions*)
+    echo "[deploy] Gate G6 — vérification post-déploiement functions..."
+    node "$ROOT/scripts/verify-deploy.js" || true
+    ;;
+esac

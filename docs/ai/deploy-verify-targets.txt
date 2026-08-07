@@ -1,0 +1,6 @@
+# Gate G6 — fonctions représentatives vérifiées après chaque deploy functions.
+# Une fonction par ligne. Lignes vides et commentaires (#) ignorés.
+meteoblue
+caisseManagement
+health
+pointageV3
