@@ -247,6 +247,12 @@ Supprimer le worktree après merge.
    - Tests unitaires sur les helpers purs obligatoires (cf. `caisseUtils.test.js`)
 
 3. **Avant merge** :
+   - **Rebase obligatoire avant merge** : avant tout merge, vérifier
+     `git log HEAD..main --oneline`. Si main a avancé depuis la création de
+     la branche, rebaser sur main et relancer npm run qa avant de merger.
+     public/app.jsx étant un monolithe, deux branches frontend touchent
+     presque toujours le même fichier — merger sans rebase écrase
+     silencieusement le travail de l'autre.
    - **Gate unique : `npm run qa`** — enchaîne `test:unit` (frontend), `test:all` (tous les modules `functions/lib/*/__tests__`) et `build:frontend` (sentinelles). Doit être 100 % vert. L'étape build laisse un diff cache-bust `?v=…` sur `index.html` — normal.
    - `npm run typecheck` : informatif, NON bloquant (erreurs historiques dans les fichiers `@ts-check`, ≈271 au 2026-07-12) — la règle est de ne pas en introduire de NOUVELLES.
    - PR draft via `gh pr create --draft` avec body structuré (résumé, features, critères, limitations, commits)
