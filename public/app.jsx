@@ -48755,6 +48755,7 @@ ${rejetHtml}
             const [selectedBdc, setSelectedBdc] = useState(null);
             const [bdcDetail, setBdcDetail] = useState(null);
             const [filterStatus, setFilterStatus] = useState('');
+            const [searchQuery, setSearchQuery] = useState('');
             const FARMS = ['Toutes', 'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'Avocatier'];
             const TVA_RATES = [0, 7, 10, 14, 20];
             const emptyItem = { article: '', categorie: 'engrais', quantite: '', unite: 'kg', prix_unitaire: '', taux_tva: 20 };
@@ -49284,15 +49285,23 @@ ${rejetHtml}
             const totals = calcTotal();
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
+            const searchQ = searchQuery.trim().toLowerCase();
+            const filteredBdcList = !searchQ ? bdcList : bdcList.filter(b =>
+                (b.fournisseur?.nom || '').toLowerCase().includes(searchQ) ||
+                (b.items || []).some(it => (it.article || '').toLowerCase().includes(searchQ))
+            );
+
             return (
                 <div className="fade-in">
                     <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16,flexWrap:'wrap',gap:8}}>
-                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
                             {['', 'brouillon', 'en_attente_chef', 'en_attente_dg', 'valide_dg', 'envoye', 'rejete'].map(s => (
                                 <button key={s} className={`chip c-berry ${filterStatus === s ? 'active' : ''}`} onClick={() => setFilterStatus(s)}>
                                     {s ? statusLabels[s] || s : 'Tous'}
                                 </button>
                             ))}
+                            <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Rechercher par fournisseur ou article…"
+                                style={{padding:'8px 12px', borderRadius:8, border:'1px solid var(--gray-200)', fontSize:13, minWidth:240}} />
                         </div>
                         <button data-tour="btn-new-bdc" onClick={() => { setForm({ supplier_id: '', purchase_request_id: '', fournisseur: { nom: '', ice: '', adresse: '', ville: '', tel: '', email: '' }, ferme: 'F1', date_livraison_prevue: '', code_analytique: '', mode_paiement: 'comptant_virement', items: [{ ...emptyItem }] }); setShowForm(true); }}
                             style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
@@ -49303,7 +49312,7 @@ ${rejetHtml}
                     <div className="table-responsive"><table className="data-table">
                         <thead><tr><th>N°</th><th>Date</th><th>Fournisseur</th><th>Ferme</th><th>Articles</th><th>Total TTC</th><th>Statut</th><th>Livraison</th><th>Scan</th><th></th></tr></thead>
                         <tbody>
-                            {bdcList.map((b) => (
+                            {filteredBdcList.map((b) => (
                                 <tr key={b.id} onClick={() => openDetail(b.id)} style={{cursor:'pointer'}}>
                                     <td style={{fontWeight:700,color:'var(--berry)',fontSize:12}}>{b.numero}</td>
                                     <td style={{fontSize:12}}>{b.created_at ? new Date(b.created_at).toLocaleDateString('fr-FR') : '—'}</td>
@@ -49324,7 +49333,7 @@ ${rejetHtml}
                                     </td>
                                 </tr>
                             ))}
-                            {bdcList.length === 0 && <tr><td colSpan="10" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de commande{filterStatus ? ' avec ce statut' : ''}.</td></tr>}
+                            {filteredBdcList.length === 0 && <tr><td colSpan="10" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>{searchQ ? 'Aucun bon de commande ne correspond à la recherche.' : `Aucun bon de commande${filterStatus ? ' avec ce statut' : ''}.`}</td></tr>}
                         </tbody>
                     </table></div>
 
