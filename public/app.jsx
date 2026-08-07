@@ -49017,6 +49017,26 @@ ${rejetHtml}
                 });
                 setEditMode(bdc.id || selectedBdc);
             };
+            const startDuplicate = (bdc) => {
+                setForm({
+                    supplier_id: bdc.supplier_id || '',
+                    purchase_request_id: '', // pas de lien DA sur une duplication
+                    fournisseur: { ...bdc.fournisseur },
+                    ferme: bdc.ferme || 'F1',
+                    date_livraison_prevue: '', // à redéfinir, pas de sens de copier une date passée
+                    code_analytique: bdc.code_analytique || '',
+                    mode_paiement: bdc.mode_paiement || 'comptant_virement',
+                    items: (bdc.items || []).map(it => ({
+                        article: it.article || '', categorie: it.categorie || 'engrais',
+                        quantite: String(it.quantite || ''), unite: it.unite || 'kg',
+                        prix_unitaire: String(it.prix_unitaire || ''),
+                        taux_tva: it.taux_tva != null ? it.taux_tva : 20,
+                    })),
+                });
+                setSelectedBdc(null); setBdcDetail(null); setEditMode(null); // ferme le détail si ouvert
+                setJustCreated(null);
+                setShowForm(true);
+            };
             const editUpdateItem = (idx, field, value) => { const items = [...editForm.items]; items[idx] = { ...items[idx], [field]: value }; setEditForm({ ...editForm, items }); };
             const editSelectSupplier = (id) => { const s = suppliers.find(x => x.id === id); if (s) setEditForm(f => ({ ...f, supplier_id: id, fournisseur: { nom: s.nom, ice: s.ice || '', adresse: s.adresse || '', ville: s.ville || '', tel: s.tel || '', email: s.email || '' } })); };
             const editCalcTotal = () => { let ht = 0, tva = 0; (editForm?.items || []).forEach(it => { const mht = (parseFloat(it.quantite)||0) * (parseFloat(it.prix_unitaire)||0); ht += mht; tva += mht * (it.taux_tva != null && it.taux_tva !== '' ? parseFloat(it.taux_tva) : 20) / 100; }); return { ht: Math.round(ht*100)/100, tva: Math.round(tva*100)/100, ttc: Math.round((ht+tva)*100)/100 }; };
@@ -49299,6 +49319,7 @@ ${rejetHtml}
                                         {(b.status === 'brouillon' || b.status === 'rejete') && <button onClick={() => handleSubmit(b.id)} title={b.status === 'rejete' ? 'Resoumettre' : 'Soumettre'} style={{background:'none',border:'none',cursor:'pointer',color:'var(--blue)',fontSize:13}}><i className="fa-solid fa-paper-plane"></i></button>}
                                         {(b.status === 'brouillon' || currentProfile === 'achats' || currentProfile === 'admin') && <button onClick={() => handleDeleteBdc(b.id, b.status)} title={b.status === 'brouillon' ? 'Supprimer' : 'Supprimer (BDC validé)'} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button>}
                                         {currentProfile === 'achats' && ((isModeVirement(b.mode_paiement) && b.status === 'virement_signe') || (!isModeVirement(b.mode_paiement) && b.status === 'valide_dg')) && <button onClick={() => handleSend(b.id)} title="Envoyer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--green)',fontSize:13}}><i className="fa-solid fa-truck"></i></button>}
+                                        <button onClick={() => startDuplicate(b)} title="Dupliquer" style={{background:'none',border:'none',cursor:'pointer',color:'var(--berry)',fontSize:13}}><i className="fa-solid fa-copy"></i></button>
                                         </div>
                                     </td>
                                 </tr>
@@ -49443,6 +49464,7 @@ ${rejetHtml}
                                         {(bdcDetail.bdc.status === 'brouillon' || bdcDetail.bdc.status === 'rejete') && !editMode && (
                                             <button onClick={() => startEdit(bdcDetail.bdc)} style={{background:'var(--berry-pale)',border:'1.5px solid var(--berry)',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'var(--berry)',fontWeight:600}}><i className="fa-solid fa-pen" style={{marginRight:4}}></i>Modifier</button>
                                         )}
+                                        <button onClick={() => startDuplicate(bdcDetail.bdc)} style={{background:'none',border:'1px solid #ddd',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12}}><i className="fa-solid fa-copy" style={{marginRight:4}}></i>Dupliquer</button>
                                         {['en_attente_chef','en_attente_dg','envoye','virement_lance'].includes(bdcDetail.bdc.status) && currentProfile === 'achats' && (
                                             <button onClick={() => handleRemindBdc(bdcDetail.bdc.id, bdcDetail.bdc.status)} style={{background:'#f39c12',border:'none',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,color:'#fff',fontWeight:600}} title="Envoyer un rappel WhatsApp à la personne qui bloque le BDC">
                                                 <i className="fa-solid fa-bell" style={{marginRight:4}}></i>Relancer
