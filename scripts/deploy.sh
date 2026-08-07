@@ -74,5 +74,21 @@ case "$ONLY" in
   *functions*)
     echo "[deploy] Gate G6 — vérification post-déploiement functions..."
     node "$ROOT/scripts/verify-deploy.js" || true
+
+    echo "[deploy] Smoke test post-déploiement (tests/smoke-test.js)..."
+    SMOKE_ATTEMPTS=2
+    SMOKE_DELAY=15
+    smoke_ok=1
+    for attempt in $(seq 1 "$SMOKE_ATTEMPTS"); do
+      echo "[deploy] Smoke test — tentative $attempt/$SMOKE_ATTEMPTS (attente ${SMOKE_DELAY}s propagation)..."
+      sleep "$SMOKE_DELAY"
+      if BASE_URL="https://berrygood-farms-dashboard.web.app" node "$ROOT/tests/smoke-test.js"; then
+        smoke_ok=0
+        break
+      fi
+    done
+    if [ "$smoke_ok" -ne 0 ]; then
+      echo "⚠️  Smoke test post-déploiement KO après $SMOKE_ATTEMPTS tentative(s) — non bloquant, vérifier manuellement."
+    fi
     ;;
 esac
