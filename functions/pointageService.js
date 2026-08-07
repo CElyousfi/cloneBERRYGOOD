@@ -3921,7 +3921,8 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       if (action === "sb-referentiel-save" && req.method === "POST") {
         const _authUser = await verifyAuth(req);
         const callerProfile = await resolveCallerProfile(_authUser);
-        if (!callerProfile || !["dg", "rh"].includes(callerProfile.role)) {
+        const _pid = callerProfile && (callerProfile.profileId || callerProfile.role || '');
+        if (!['dg', 'rh', 'admin'].includes(_pid)) {
           return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
         }
         const { label_bee_one, nom_sb, ha } = req.body || {};
@@ -3935,7 +3936,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           label_bee_one: label_bee_one.trim(),
           nom_sb: (nom_sb || "").trim(),
           ha: haNum,
-          updated_by: { uid: callerProfile.uid, name: callerProfile.name || "", role: callerProfile.role },
+          updated_by: { uid: (_authUser && _authUser.uid) || null, profileId: _pid },
           updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
         return res.json({ success: true, key });
