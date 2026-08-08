@@ -7371,7 +7371,7 @@ exports.stockManagement = functions
         // Réutilisés plus bas pour la mise à jour finale de delivery_status (pas de duplication
         // du calcul ni de la requête Firestore).
         const existingBlSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", bdc_id).get();
-        const existingBls = existingBlSnap.docs.map((d) => d.data());
+        const existingBls = existingBlSnap.docs.map((d) => d.data()).filter((bl) => !bl.deleted);
         const received = bdcReceptionGuard.computeReceivedByArticle(existingBls);
         const ordered = bdcReceptionGuard.computeOrderedByArticle(bdc.items || []);
 
