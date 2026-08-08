@@ -50462,6 +50462,15 @@ ${rejetHtml}
             const [submitting, setSubmitting] = useState(false);
             const [articles, setArticles] = useState([]);
             const [suppliers, setSuppliers] = useState([]);
+            // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
+            const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
+            const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
+            const canMutate = (mov) => Guard ? Guard.canEditMovement(mov, requester) : false;
+            const isAdminDeleter = Guard ? Guard.isAdminDeleter(requester) : (currentProfile === 'achats' || currentProfile === 'dg');
+            const canAdminDelete = (mov) => Guard ? Guard.canAdminDeleteMovement(mov, requester) : false;
+            const [delMov, setDelMov] = useState(null);
+            const [delReason, setDelReason] = useState('');
+            const [delSaving, setDelSaving] = useState(false);
 
             const loadReceptions = () => {
                 setLoading(true);
@@ -50505,6 +50514,8 @@ ${rejetHtml}
                 if (!form.magasin) { alert('Magasin requis'); return; }
                 const validItems = form.items.filter(i => i.article && i.quantite);
                 if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
+                const negative = validItems.find(i => parseFloat(i.quantite) < 0);
+                if (negative) { alert('Quantité invalide pour ' + negative.article + ' (doit être ≥ 0)'); return; }
                 setSubmitting(true);
                 try {
                     const scanUrl = form.scan_file ? await uploadScan(form.scan_file) : null;
@@ -50534,6 +50545,38 @@ ${rejetHtml}
                 } finally {
                     setSubmitting(false);
                 }
+            };
+
+            const handleDelete = (mov) => {
+                if (!confirm('Supprimer le bon ' + mov.numero + ' ? Cette action est irréversible (le bon sera retiré des listes).')) return;
+                fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: mov.id }),
+                }).then(r => r.json()).then(json => {
+                    if (json.success) { alert('Bon supprimé.'); setDetailReception(null); loadReceptions(); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                }).catch(() => alert('Erreur réseau'));
+            };
+
+            const openDelete = (mov) => { setDelMov(mov); setDelReason(''); };
+            const closeDelete = () => { setDelMov(null); setDelReason(''); };
+            const submitAdminDelete = async () => {
+                const reason = (delReason || '').trim();
+                if (!reason) { alert('Le motif de suppression est obligatoire.'); return; }
+                setDelSaving(true);
+                try {
+                    const res = await fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: delMov.id, reason }) });
+                    const json = await res.json();
+                    if (json.success) {
+                        const msg = 'Bon ' + delMov.numero + ' supprimé' + (json.reversed ? ' (impact stock annulé)' : '') + '.';
+                        if (typeof window !== 'undefined' && typeof window.showToast === 'function') window.showToast(msg);
+                        else alert(msg);
+                        closeDelete();
+                        setDetailReception(null);
+                        loadReceptions();
+                    } else { alert('Erreur: ' + (json.error || 'Echec')); }
+                } catch (e) { alert('Erreur réseau'); }
+                finally { setDelSaving(false); }
             };
 
             const isImport = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
@@ -50776,7 +50819,7 @@ ${rejetHtml}
                                             <tr key={idx}>
                                                 <td><input list="articles-list-bon-entree" value={it.article} onChange={e => updateItem(idx, 'article', e.target.value)} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
                                                     <datalist id="articles-list-bon-entree">{articles.map(a => <option key={a.reference || a.nom} value={a.nom}>{a.nom}</option>)}</datalist></td>
-                                                <td><input type="number" value={it.quantite} onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                                <td><input type="number" value={it.quantite} min="0" onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
                                                 <td><select value={it.unite} onChange={e => updateItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{UNITES_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
                                                 <td><button onClick={() => removeItem(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button></td>
                                             </tr>
@@ -50828,7 +50871,14 @@ ${rejetHtml}
                                             <h3 style={{margin:0,color:'var(--berry)'}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8}}></i>Bon de Réception {r.numero || ''}</h3>
                                             <span className={'status-badge ' + statusClass(r.status, r)}>{statusLabel(r.status, r)}</span>
                                         </div>
-                                        <button onClick={() => setDetailReception(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                            {(canMutate(r) || (isAdminDeleter && canAdminDelete(r))) && (
+                                                <button onClick={() => canMutate(r) ? handleDelete(r) : openDelete(r)} style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:600}} title="Supprimer">
+                                                    <i className="fa-solid fa-trash" style={{marginRight:4}}></i>Supprimer
+                                                </button>
+                                            )}
+                                            <button onClick={() => setDetailReception(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                        </div>
                                     </div>
 
                                     <div style={{marginBottom:16}}>
@@ -50918,6 +50968,26 @@ ${rejetHtml}
                             </div>
                         );
                     })()}
+
+                    {delMov && (
+                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !delSaving) closeDelete(); }}>
+                            <div className="modal-content" style={{maxWidth:480}}>
+                                <h3 style={{marginTop:0,color:'var(--red)'}}><i className="fa-solid fa-trash" style={{marginRight:8}}></i>Supprimer le bon {delMov.numero}</h3>
+                                <div style={{background:'#fff3f3',borderRadius:8,padding:10,marginBottom:14,fontSize:12,color:'#a11'}}>
+                                    <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                    {Guard && Guard.isValidatedMovement(delMov)
+                                        ? 'Ce bon est validé : sa suppression annulera son impact sur les soldes de stock.'
+                                        : 'Le bon sera retiré des listes (soft-delete, traçabilité conservée).'}
+                                </div>
+                                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif de suppression <span style={{color:'var(--red)'}}>*</span></label>
+                                <textarea value={delReason} onChange={e => setDelReason(e.target.value)} placeholder="Obligatoire — ex. doublon, erreur de saisie…" rows={3} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13,resize:'vertical'}} />
+                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                                    <button onClick={closeDelete} disabled={delSaving} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
+                                    <button onClick={submitAdminDelete} disabled={delSaving || !delReason.trim()} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--red)',color:'#fff',cursor: delSaving || !delReason.trim() ? 'not-allowed' : 'pointer',opacity: delSaving || !delReason.trim() ? 0.6 : 1,fontWeight:600,fontSize:13}}>{delSaving ? 'Suppression…' : 'Confirmer la suppression'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }

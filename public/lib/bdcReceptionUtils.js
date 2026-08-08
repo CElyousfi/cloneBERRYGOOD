@@ -144,6 +144,7 @@ function clampReceivedQty(value, reliquat) {
   const rel = parseFloat(reliquat);
   const val = parseFloat(value);
   if (isNaN(rel) || isNaN(val)) return value;
+  if (val < 0) return '0';
   if (val > rel) return String(rel);
   return value;
 }

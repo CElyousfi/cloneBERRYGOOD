@@ -69,6 +69,12 @@ function validateReliquat(bdcItems, existingBls, incomingItems) {
   for (const it of incomingItems || []) {
     const article = it.article || '';
     const quantiteRecue = parseFloat(it.quantite_recue) || 0;
+    if (quantiteRecue < 0) {
+      return {
+        status: 400,
+        error: `Quantité reçue négative invalide pour ${article}`,
+      };
+    }
     if (quantiteRecue <= 0) continue;
     const dejaRecu = received[article] || 0;
     const commande = ordered[article] || 0;

@@ -403,6 +403,15 @@ test('create-bl: item à quantite_recue <= 0 est ignoré par la validation (pas 
   assert.equal(result, null);
 });
 
+test('create-bl: item à quantite_recue négative est rejeté explicitement (différent du cas 0/vide qui passe)', () => {
+  const bdcItems = [{ article: 'A', quantite: 10, unite: 'kg' }];
+  const existingBls = [];
+  const rejected = validateReliquat(bdcItems, existingBls, [{ article: 'A', quantite_recue: -5 }]);
+  assert.ok(rejected, 'devrait rejeter une quantité reçue négative');
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.error, /négative invalide pour A/);
+});
+
 // ============================================================================
 // Scénario 5 — deriveDeliveryStatus (ticket BDC-BR-delete-cascade)
 // ============================================================================

@@ -293,3 +293,8 @@ test('clampReceivedQty: reliquat indisponible (NaN) → ne clampe jamais', () =>
   assert.equal(clampReceivedQty('999', NaN), '999');
   assert.equal(clampReceivedQty('999', undefined), '999');
 });
+
+test('clampReceivedQty: valeur négative → clampée à 0', () => {
+  assert.equal(clampReceivedQty('-5', 5), '0');
+  assert.equal(clampReceivedQty(-1, 5), '0');
+});
