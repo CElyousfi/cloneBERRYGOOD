@@ -130,6 +130,42 @@
     var detailState = useState(null);
     var detail = detailState[0];
     var setDetail = detailState[1];
+
+    // Reçu/Reliquat par article pour le BDC ouvert dans la popup (lecture seule,
+    // aucun prix). Reset à chaque ouverture/fermeture — cf. openDetail/closeDetail.
+    var detailReceptionState = useState(null);
+    var detailReception = detailReceptionState[0];
+    var setDetailReception = detailReceptionState[1];
+    function openDetail(b) {
+      setDetail(b);
+      setDetailReception({
+        loading: true,
+        byArticle: {}
+      });
+      fetch('/api/stock?action=list-bl&bdc_id=' + b.id).then(function (r) {
+        return r.json();
+      }).then(function (json) {
+        var bls = json && json.success ? json.bls || [] : [];
+        var delivery = window.BdcReceptionUtils.computeDeliveryData(b.items, bls);
+        var byArticle = {};
+        delivery.forEach(function (d) {
+          byArticle[d.article] = d;
+        });
+        setDetailReception({
+          loading: false,
+          byArticle: byArticle
+        });
+      }).catch(function () {
+        setDetailReception({
+          loading: false,
+          byArticle: {}
+        });
+      });
+    }
+    function closeDetail() {
+      setDetail(null);
+      setDetailReception(null);
+    }
     useEffect(function () {
       setLoading(true);
       fetch('/api/stock?action=list-bdc').then(function (r) {
@@ -238,7 +274,7 @@
       return /*#__PURE__*/React.createElement("tr", {
         key: b.id,
         onClick: function () {
-          setDetail(b);
+          openDetail(b);
         },
         style: {
           cursor: 'pointer'
@@ -267,7 +303,7 @@
     }))))), detail ? /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay",
       onClick: function (e) {
-        if (e.target === e.currentTarget) setDetail(null);
+        if (e.target === e.currentTarget) closeDetail();
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-content",
@@ -309,7 +345,9 @@
       style: {
         fontSize: 12
       }
-    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "D\xE9signation"), /*#__PURE__*/React.createElement("th", null, "Quantit\xE9"), /*#__PURE__*/React.createElement("th", null, "Unit\xE9"))), /*#__PURE__*/React.createElement("tbody", null, (detail.items || []).map(function (it, idx) {
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "D\xE9signation"), /*#__PURE__*/React.createElement("th", null, "Quantit\xE9"), /*#__PURE__*/React.createElement("th", null, "Unit\xE9"), /*#__PURE__*/React.createElement("th", null, "Re\xE7u"), /*#__PURE__*/React.createElement("th", null, "Reliquat"))), /*#__PURE__*/React.createElement("tbody", null, (detail.items || []).map(function (it, idx) {
+      var d = detailReception && detailReception.byArticle ? detailReception.byArticle[it.article] : null;
+      var loadingReception = detailReception && detailReception.loading;
       return /*#__PURE__*/React.createElement("tr", {
         key: idx
       }, /*#__PURE__*/React.createElement("td", {
@@ -320,7 +358,17 @@
         style: {
           textAlign: 'center'
         }
-      }, it.quantite), /*#__PURE__*/React.createElement("td", null, it.unite || '—'));
+      }, it.quantite), /*#__PURE__*/React.createElement("td", null, it.unite || '—'), /*#__PURE__*/React.createElement("td", {
+        style: {
+          textAlign: 'center'
+        }
+      }, loadingReception ? '…' : d ? d.qLiv : 0), /*#__PURE__*/React.createElement("td", {
+        style: {
+          textAlign: 'center',
+          fontWeight: 700,
+          color: d && d.reste <= 0 ? 'var(--gray-400)' : 'var(--berry)'
+        }
+      }, loadingReception ? '…' : d ? d.reste : it.quantite));
     }))), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
@@ -329,7 +377,7 @@
       }
     }, /*#__PURE__*/React.createElement("button", {
       onClick: function () {
-        setDetail(null);
+        closeDetail();
       },
       style: {
         padding: '8px 16px',

@@ -95,6 +95,32 @@
     var detail = detailState[0];
     var setDetail = detailState[1];
 
+    // Reçu/Reliquat par article pour le BDC ouvert dans la popup (lecture seule,
+    // aucun prix). Reset à chaque ouverture/fermeture — cf. openDetail/closeDetail.
+    var detailReceptionState = useState(null);
+    var detailReception = detailReceptionState[0];
+    var setDetailReception = detailReceptionState[1];
+
+    function openDetail(b) {
+      setDetail(b);
+      setDetailReception({ loading: true, byArticle: {} });
+      fetch('/api/stock?action=list-bl&bdc_id=' + b.id)
+        .then(function (r) { return r.json(); })
+        .then(function (json) {
+          var bls = (json && json.success) ? (json.bls || []) : [];
+          var delivery = window.BdcReceptionUtils.computeDeliveryData(b.items, bls);
+          var byArticle = {};
+          delivery.forEach(function (d) { byArticle[d.article] = d; });
+          setDetailReception({ loading: false, byArticle: byArticle });
+        })
+        .catch(function () { setDetailReception({ loading: false, byArticle: {} }); });
+    }
+
+    function closeDetail() {
+      setDetail(null);
+      setDetailReception(null);
+    }
+
     useEffect(function () {
       setLoading(true);
       fetch('/api/stock?action=list-bdc')
@@ -173,7 +199,7 @@
                     var statusMeta = mbcStatusMeta(b.status);
                     var deliveryMeta = mbcDeliveryMeta(b.delivery_status);
                     return (
-                      <tr key={b.id} onClick={function () { setDetail(b); }} style={{ cursor: 'pointer' }}>
+                      <tr key={b.id} onClick={function () { openDetail(b); }} style={{ cursor: 'pointer' }}>
                         <td style={{ fontWeight: 700, color: 'var(--berry)', fontSize: 12 }}>{b.numero}</td>
                         <td>{mbcFmtDate(b.created_at)}</td>
                         <td style={{ fontWeight: 600 }}>{(b.fournisseur && b.fournisseur.nom) || '—'}</td>
@@ -191,7 +217,7 @@
         </div>
 
         {detail ? (
-          <div className="modal-overlay" onClick={function (e) { if (e.target === e.currentTarget) setDetail(null); }}>
+          <div className="modal-overlay" onClick={function (e) { if (e.target === e.currentTarget) closeDetail(); }}>
             <div className="modal-content" style={{ maxWidth: 640, maxHeight: '85vh', overflowY: 'auto' }}>
               <h3 style={{ marginTop: 0, color: 'var(--berry)' }}>
                 <i className="fa-solid fa-file-contract" style={{ marginRight: 8 }}></i>
@@ -210,15 +236,21 @@
                     <th>Désignation</th>
                     <th>Quantité</th>
                     <th>Unité</th>
+                    <th>Reçu</th>
+                    <th>Reliquat</th>
                   </tr>
                 </thead>
                 <tbody>
                   {(detail.items || []).map(function (it, idx) {
+                    var d = detailReception && detailReception.byArticle ? detailReception.byArticle[it.article] : null;
+                    var loadingReception = detailReception && detailReception.loading;
                     return (
                       <tr key={idx}>
                         <td style={{ fontWeight: 600 }}>{it.article}</td>
                         <td style={{ textAlign: 'center' }}>{it.quantite}</td>
                         <td>{it.unite || '—'}</td>
+                        <td style={{ textAlign: 'center' }}>{loadingReception ? '…' : (d ? d.qLiv : 0)}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 700, color: d && d.reste <= 0 ? 'var(--gray-400)' : 'var(--berry)' }}>{loadingReception ? '…' : (d ? d.reste : it.quantite)}</td>
                       </tr>
                     );
                   })}
@@ -226,7 +258,7 @@
               </table>
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                 <button
-                  onClick={function () { setDetail(null); }}
+                  onClick={function () { closeDetail(); }}
                   style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontSize: 13 }}
                 >
                   Fermer

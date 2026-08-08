@@ -14,6 +14,13 @@
  *      du filtre de statut.
  *   3. `create-bl` (functions/index.js ~L7298-7388) : refuse (400) une
  *      réception si `bdc.delivery_status === "complet"` (double réception).
+ *   4. `create-bl` (functions/index.js ~L7364-7388, ticket BDC-2026-0142) :
+ *      valide le reliquat PAR ARTICLE (reliquat = commandé − déjà_reçu, via
+ *      les BL existants) et refuse (400) tout item entrant dont
+ *      `quantite_recue` dépasse son reliquat (+ tolérance epsilon 0.01).
+ *      Avant ce fix, seul le statut global `delivery_status === 'complet'`
+ *      bloquait — un BDC `partiel` (2 BL déjà créés) pouvait encore être
+ *      sur-réceptionné sans limite.
  *
  * IMPORTANT — limite de couverture :
  * `functions/index.js` est un monolithe HTTP sans harnais de test
@@ -23,24 +30,33 @@
  * via node:test (cf. tests/test-workflows.js, qui cible un émulateur lancé
  * MANUELLEMENT hors du gate `npm run qa` — non utilisable ici).
  *
- * Les fonctions ci-dessous sont donc des MIROIRS fidèles (copie verbatim
- * de la logique de branchement, avec les mêmes lignes de code) des
- * extraits de functions/index.js et public/app.jsx concernés, exercés via
- * un faux client Firestore in-memory qui reproduit la sémantique
+ * Les scénarios 1-3 ci-dessous sont donc des MIROIRS fidèles (copie
+ * verbatim de la logique de branchement, avec les mêmes lignes de code)
+ * des extraits de functions/index.js et public/app.jsx concernés, exercés
+ * via un faux client Firestore in-memory qui reproduit la sémantique
  * where()/orderBy()/limit()/get() du SDK Admin. Objectif : verrouiller le
  * COMPORTEMENT (ordre filtre-puis-troncature, garde de double réception)
  * de façon exécutable, pas juste de la doc.
  *
- * Risque de drift documenté : si functions/index.js ou public/app.jsx sont
- * modifiés sur ces blocs sans mettre à jour ce fichier, les tests peuvent
- * rester verts alors que le code source a divergé. Recommandation pour un
- * futur ticket : extraire ces blocs en pure functions partagées dans
- * functions/lib/bdc/ (même pattern que functions/lib/bdc/workflow.js) pour
- * supprimer ce risque — hors scope de cet item (tests uniquement).
+ * Le scénario 4 (validation du reliquat par article) n'a PAS cette limite :
+ * la logique a été extraite dans functions/lib/bdc/receptionGuard.js (pure
+ * function, aucune dépendance Firestore/side-effect) et ce fichier importe
+ * le VRAI module — pas une copie. `create-bl` dans functions/index.js
+ * appelle directement `bdcReceptionGuard.validateReliquat(...)`, donc ces
+ * tests échouent réellement si le guard est supprimé/cassé côté serveur.
+ *
+ * Risque de drift documenté (scénarios 1-3 uniquement) : si
+ * functions/index.js ou public/app.jsx sont modifiés sur ces blocs sans
+ * mettre à jour ce fichier, les tests peuvent rester verts alors que le
+ * code source a divergé. Recommandation pour un futur ticket : extraire
+ * ces blocs en pure functions partagées dans functions/lib/bdc/ (même
+ * pattern que functions/lib/bdc/workflow.js et receptionGuard.js) pour
+ * supprimer ce risque — hors scope de cet item.
  */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { validateReliquat } = require('../../functions/lib/bdc/receptionGuard');
 
 // ============================================================================
 // Fake Firestore query builder — reproduit juste assez de la sémantique du
@@ -312,4 +328,77 @@ test('create-bl: rejette aussi un statut BDC non valide (garde existante, non-r�
   assert.equal(result.success, false);
   assert.equal(result.status, 400);
   assert.equal(calls.deliveryNote, 0);
+});
+
+// ============================================================================
+// Scénario 4 — validation du reliquat par article dans create-bl (BDC-2026-0142)
+// ============================================================================
+
+/**
+ * Exerce le VRAI module functions/lib/bdc/receptionGuard.js (import en
+ * tête de fichier), appelé directement par create-bl (functions/index.js) :
+ * calcule reçu/commandé par article à partir des BL existants + items du
+ * BDC, puis rejette (400) tout item entrant dont quantite_recue dépasse le
+ * reliquat (+ tolérance epsilon 0.01).
+ *
+ * Contexte réel (Omar, BDC-2026-0142) : article "TES" 100 ml commandés,
+ * BR-2026-0045 (25) + BR-2026-0046 (30) déjà reçus = reliquat 45. Rien
+ * n'empêchait avant le fix de saisir une 3e réception de n'importe quelle
+ * quantité (ex. 100) — double/triple comptage silencieux.
+ */
+
+test('create-bl: reproduit BDC-2026-0142 — 2 réceptions partielles (30+25) puis rejette une 3e réception excédant le reliquat (45)', () => {
+  const bdcItems = [{ article: 'TES', quantite: 100, unite: 'ml' }];
+  const existingBls = [
+    { items: [{ article: 'TES', quantite_recue: 30 }] },
+    { items: [{ article: 'TES', quantite_recue: 25 }] },
+  ];
+
+  // Reliquat restant = 100 - 55 = 45. Une tentative de 46 doit être rejetée.
+  const rejected = validateReliquat(bdcItems, existingBls, [{ article: 'TES', quantite_recue: 46 }]);
+  assert.ok(rejected, 'devrait rejeter une quantité > reliquat');
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.error, /reliquat pour TES \(reliquat: 45\)/);
+
+  // Exactement le reliquat (45) doit être autorisé.
+  const accepted = validateReliquat(bdcItems, existingBls, [{ article: 'TES', quantite_recue: 45 }]);
+  assert.equal(accepted, null);
+});
+
+test('create-bl: tolérance epsilon (0.01) — arrondi flottant accepté, dépassement net rejeté', () => {
+  const bdcItems = [{ article: 'Engrais', quantite: 10, unite: 'kg' }];
+  const existingBls = [{ items: [{ article: 'Engrais', quantite_recue: 5 }] }];
+
+  // Reliquat = 5. 5.005 (bruit flottant) doit passer grâce à l'epsilon.
+  const withinEpsilon = validateReliquat(bdcItems, existingBls, [{ article: 'Engrais', quantite_recue: 5.005 }]);
+  assert.equal(withinEpsilon, null);
+
+  // 5.5 dépasse nettement le reliquat → rejeté.
+  const overEpsilon = validateReliquat(bdcItems, existingBls, [{ article: 'Engrais', quantite_recue: 5.5 }]);
+  assert.ok(overEpsilon);
+  assert.equal(overEpsilon.status, 400);
+});
+
+test('create-bl: BDC multi-articles — un article soldé peut être rejeté pendant qu\'un autre reste réceptionnable', () => {
+  const bdcItems = [
+    { article: 'A', quantite: 10, unite: 'kg' },
+    { article: 'B', quantite: 20, unite: 'kg' },
+  ];
+  const existingBls = [{ items: [{ article: 'A', quantite_recue: 10 }, { article: 'B', quantite_recue: 5 }] }];
+
+  // A est déjà soldé (reliquat 0) → toute quantité > 0 rejetée.
+  const rejectedA = validateReliquat(bdcItems, existingBls, [{ article: 'A', quantite_recue: 1 }]);
+  assert.ok(rejectedA);
+  assert.match(rejectedA.error, /reliquat pour A \(reliquat: 0\)/);
+
+  // B a encore 15 de reliquat → autorisé.
+  const acceptedB = validateReliquat(bdcItems, existingBls, [{ article: 'B', quantite_recue: 15 }]);
+  assert.equal(acceptedB, null);
+});
+
+test('create-bl: item à quantite_recue <= 0 est ignoré par la validation (pas de faux rejet)', () => {
+  const bdcItems = [{ article: 'A', quantite: 10, unite: 'kg' }];
+  const existingBls = [];
+  const result = validateReliquat(bdcItems, existingBls, [{ article: 'A', quantite_recue: 0 }]);
+  assert.equal(result, null);
 });

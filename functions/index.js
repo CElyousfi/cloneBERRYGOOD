@@ -11,6 +11,7 @@ const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const bdcWorkflow = require("./lib/bdc/workflow");
+const bdcReceptionGuard = require("./lib/bdc/receptionGuard");
 const caisseImport = require("./lib/caisseImport");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
@@ -7361,6 +7362,20 @@ exports.stockManagement = functions
           return res.status(400).json({ success: false, error: "Ce BDC est déjà entièrement réceptionné." });
         }
 
+        // Reçu par article (BL existants) + commandé par article — calculés AVANT la création
+        // du BL pour pouvoir valider le reliquat par article via functions/lib/bdc/receptionGuard.js.
+        // Réutilisés plus bas pour la mise à jour finale de delivery_status (pas de duplication
+        // du calcul ni de la requête Firestore).
+        const existingBlSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", bdc_id).get();
+        const existingBls = existingBlSnap.docs.map((d) => d.data());
+        const received = bdcReceptionGuard.computeReceivedByArticle(existingBls);
+        const ordered = bdcReceptionGuard.computeOrderedByArticle(bdc.items || []);
+
+        const reliquatRejection = bdcReceptionGuard.validateReliquat(bdc.items || [], existingBls, items);
+        if (reliquatRejection) {
+          return res.status(reliquatRejection.status).json({ success: false, error: reliquatRejection.error });
+        }
+
         const numero = await getNextNumber("delivery_note", "BL");
         const blItems = items.map((it) => ({
           article: it.article || "",
@@ -7420,15 +7435,9 @@ exports.stockManagement = functions
           });
         }
 
-        // Update BDC delivery_status
-        const allBlSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", bdc_id).get();
-        const allBls = allBlSnap.docs.map((d) => d.data());
-        // Sum received per article
-        const received = {};
-        allBls.forEach((bl) => (bl.items || []).forEach((it) => { received[it.article] = (received[it.article] || 0) + (it.quantite_recue || 0); }));
-        // Check if fully delivered
-        const ordered = {};
-        (bdc.items || []).forEach((it) => { ordered[it.article] = (ordered[it.article] || 0) + (parseFloat(it.quantite) || 0); });
+        // Update BDC delivery_status — réutilise received/ordered calculés avant la création du
+        // BL, en y ajoutant les quantités du nouveau BL (pas de reduplication de la requête/calcul).
+        blItems.forEach((it) => { received[it.article] = (received[it.article] || 0) + (it.quantite_recue || 0); });
         const allDelivered = Object.keys(ordered).every((art) => (received[art] || 0) >= ordered[art]);
         const anyDelivered = Object.values(received).some((v) => v > 0);
         const deliveryStatus = allDelivered ? "complet" : anyDelivered ? "partiel" : "non_livre";
