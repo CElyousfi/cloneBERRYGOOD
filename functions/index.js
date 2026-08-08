@@ -7345,7 +7345,7 @@ exports.stockManagement = functions
         if (!hasFilter) query = query.orderBy("created_at", "desc");
         query = query.limit(limit);
         const snap = await query.get();
-        const bls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const bls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })).filter((bl) => !bl.deleted);
         if (hasFilter) bls.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         return res.json({ success: true, bls });
       }
@@ -7442,9 +7442,7 @@ exports.stockManagement = functions
         // Update BDC delivery_status — réutilise received/ordered calculés avant la création du
         // BL, en y ajoutant les quantités du nouveau BL (pas de reduplication de la requête/calcul).
         blItems.forEach((it) => { received[it.article] = (received[it.article] || 0) + (it.quantite_recue || 0); });
-        const allDelivered = Object.keys(ordered).every((art) => (received[art] || 0) >= ordered[art]);
-        const anyDelivered = Object.values(received).some((v) => v > 0);
-        const deliveryStatus = allDelivered ? "complet" : anyDelivered ? "partiel" : "non_livre";
+        const deliveryStatus = bdcReceptionGuard.deriveDeliveryStatus(ordered, received);
         await db_firestore.collection("purchase_orders").doc(bdc_id).update({ delivery_status: deliveryStatus, updated_at: Date.now() });
 
         return res.json({ success: true, id: docRef.id, numero, delivery_status: deliveryStatus });
@@ -10841,6 +10839,34 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
             reason: cleanReason || null,
           }]),
         });
+
+        // Cascade BR → BL → BDC : un BR (reception) supprimé doit aussi neutraliser
+        // le BL jumeau (créé ensemble par create-bl) et recalculer delivery_status
+        // du BDC parent (calculé uniquement à partir des delivery_notes non supprimés).
+        if (mov.type === "reception" && mov.bdc_id) {
+          if (mov.bl_id) {
+            const blRef = db_firestore.collection("delivery_notes").doc(mov.bl_id);
+            const blSnap = await blRef.get();
+            if (blSnap.exists && !blSnap.data().deleted) {
+              await blRef.update({
+                deleted: true,
+                deleted_by: { userId: requester.userId, profileId: requester.profileId },
+                deleted_at: Date.now(),
+              });
+            }
+          }
+          const bdcSnap = await db_firestore.collection("purchase_orders").doc(mov.bdc_id).get();
+          if (bdcSnap.exists) {
+            const bdc = bdcSnap.data();
+            const remainingBlSnap = await db_firestore.collection("delivery_notes").where("bdc_id", "==", mov.bdc_id).get();
+            const remainingBls = remainingBlSnap.docs.map((d) => d.data()).filter((bl) => !bl.deleted);
+            const received = bdcReceptionGuard.computeReceivedByArticle(remainingBls);
+            const ordered = bdcReceptionGuard.computeOrderedByArticle(bdc.items || []);
+            const deliveryStatus = bdcReceptionGuard.deriveDeliveryStatus(ordered, received);
+            await db_firestore.collection("purchase_orders").doc(mov.bdc_id).update({ delivery_status: deliveryStatus, updated_at: Date.now() });
+          }
+        }
+
         return res.json({ success: true, id, reversed: reverse });
       }
 
