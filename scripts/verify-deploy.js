@@ -2,9 +2,12 @@
 'use strict';
 
 // Gate G6 — vérifie que les Cloud Functions déployées correspondent au
-// commit qu'on croit avoir déployé (updateTime GCP > date du commit HEAD,
-// comparé en epoch UTC, jamais en chaîne). Mode avertissement par défaut :
-// exit 0 même en KO. DEPLOY_VERIFY_STRICT=1 → exit 1 en KO.
+// commit qu'on croit avoir déployé (updateTime GCP > date du dernier commit
+// touchant functions/, comparé en epoch UTC, jamais en chaîne). Firebase
+// skip le redeploy des functions quand functions/ n'a pas changé, donc la
+// référence ne peut pas être HEAD (faux KO sur tout ticket frontend-only).
+// Mode avertissement par défaut : exit 0 même en KO. DEPLOY_VERIFY_STRICT=1
+// → exit 1 en KO.
 //
 // ⚠️ Ne jamais appeler `gcloud functions describe` sans
 // --format=value(updateTime) : la sortie complète expose les env vars en
@@ -31,13 +34,14 @@ function readTargets() {
     .filter((line) => line && !line.startsWith('#'));
 }
 
-function getHeadCommit() {
-  const epoch = parseInt(
-    execFileSync('git', ['show', '-s', '--format=%ct', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim(),
-    10
-  );
-  const shortSha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
-  return { epoch, shortSha };
+function getReferenceCommit() {
+  const raw = execFileSync(
+    'git', ['log', '-1', '--format=%h %ct', '--', 'functions/'],
+    { cwd: ROOT, encoding: 'utf8' }
+  ).trim();
+  if (!raw) return null; // aucun commit ne touche functions/ (repo tout neuf ?)
+  const [shortSha, epochStr] = raw.split(' ');
+  return { shortSha, epoch: parseInt(epochStr, 10) };
 }
 
 function describeFunction(fn) {
@@ -71,7 +75,13 @@ function sleepSeconds(seconds) {
 
 function run() {
   const targets = readTargets();
-  const { epoch: commitEpoch, shortSha } = getHeadCommit();
+  const ref = getReferenceCommit();
+  if (!ref) {
+    console.log('Gate G6 — vérification post-déploiement');
+    console.log('⚠️  Aucun commit touchant functions/ trouvé — G6 non applicable.');
+    process.exit(0);
+  }
+  const { epoch: commitEpoch, shortSha } = ref;
   const commitIso = new Date(commitEpoch * 1000).toISOString();
 
   const results = {};
@@ -96,7 +106,7 @@ function run() {
   }
 
   console.log(`Gate G6 — vérification post-déploiement`);
-  console.log(`  Commit HEAD : ${shortSha} (${commitIso})`);
+  console.log(`  Commit référence (functions/) : ${shortSha} (${commitIso})`);
   console.log(`  Région/projet : ${REGION} / ${PROJECT}`);
   console.log('');
 
