@@ -34,6 +34,14 @@
  * @property {number} reste
  * @property {number} pct
  * @property {'livre'|'partiel'|'en_attente'} statut
+ *
+ * @typedef {Object} ListBlOkResult
+ * @property {true} ok
+ * @property {Bl[]} data
+ *
+ * @typedef {Object} ListBlErrorResult
+ * @property {false} ok
+ * @property {string} error
  */
 // @ts-check
 'use strict';
@@ -72,12 +80,35 @@ function computeDeliveryData(bdcItems, bls) {
   });
 }
 
+/**
+ * Décide, à partir de la réponse JSON brute de /api/stock?action=list-bl,
+ * si les BL reçus sont fiables (reliquat calculable) ou si l'appel a
+ * échoué — auquel cas il ne faut JAMAIS retomber sur une liste vide
+ * silencieuse (ça affiche à tort un reliquat = quantité commandée,
+ * cf. bug BDC-2026-0142 : Reçu=0/Reliquat=100% alors que le BDC était
+ * reçu à 95%). Utilisé par MagBdcReceptionTab et MagBonsCommandeTab
+ * pour partager la même décision au lieu du pattern dupliqué
+ * `json.success ? (json.bls || []) : []`.
+ *
+ * @param {any} json - réponse JSON de list-bl (peut être null/undefined
+ *   si le fetch a rejeté avant de parser une réponse).
+ * @returns {ListBlOkResult|ListBlErrorResult}
+ */
+function resolveDeliveryDataOrError(json) {
+  if (json && json.success) {
+    return { ok: true, data: json.bls || [] };
+  }
+  const error = (json && json.error) || 'Impossible de charger les réceptions déjà faites pour ce BDC — reliquat indisponible.';
+  return { ok: false, error };
+}
+
 // ============================================================================
 // UMD-style export (browser global + CommonJS for node:test)
 // ============================================================================
 
 const __api = {
   computeDeliveryData,
+  resolveDeliveryDataOrError,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;

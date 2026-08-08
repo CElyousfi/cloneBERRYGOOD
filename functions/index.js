@@ -7339,10 +7339,14 @@ exports.stockManagement = functions
       if (action === "list-bl") {
         const bdc_id = req.query.bdc_id;
         const limit = parseInt(req.query.limit || "200");
-        let query = db_firestore.collection("delivery_notes").orderBy("created_at", "desc").limit(limit);
+        const hasFilter = !!bdc_id;
+        let query = db_firestore.collection("delivery_notes");
         if (bdc_id) query = query.where("bdc_id", "==", bdc_id);
+        if (!hasFilter) query = query.orderBy("created_at", "desc");
+        query = query.limit(limit);
         const snap = await query.get();
         const bls = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        if (hasFilter) bls.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
         return res.json({ success: true, bls });
       }
 

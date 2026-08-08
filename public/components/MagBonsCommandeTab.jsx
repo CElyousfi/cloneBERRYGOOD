@@ -103,17 +103,24 @@
 
     function openDetail(b) {
       setDetail(b);
-      setDetailReception({ loading: true, byArticle: {} });
+      setDetailReception({ loading: true, byArticle: {}, error: null });
       fetch('/api/stock?action=list-bl&bdc_id=' + b.id)
         .then(function (r) { return r.json(); })
         .then(function (json) {
-          var bls = (json && json.success) ? (json.bls || []) : [];
-          var delivery = window.BdcReceptionUtils.computeDeliveryData(b.items, bls);
+          var resolved = window.BdcReceptionUtils.resolveDeliveryDataOrError(json);
+          if (!resolved.ok) {
+            // NE JAMAIS afficher Reçu=0/Reliquat=quantité commandée quand la donnée
+            // est en fait indisponible (bug BDC-2026-0142) — écran 100% lecture
+            // seule, donc on affiche l'erreur à la place des colonnes.
+            setDetailReception({ loading: false, byArticle: {}, error: resolved.error });
+            return;
+          }
+          var delivery = window.BdcReceptionUtils.computeDeliveryData(b.items, resolved.data);
           var byArticle = {};
           delivery.forEach(function (d) { byArticle[d.article] = d; });
-          setDetailReception({ loading: false, byArticle: byArticle });
+          setDetailReception({ loading: false, byArticle: byArticle, error: null });
         })
-        .catch(function () { setDetailReception({ loading: false, byArticle: {} }); });
+        .catch(function () { setDetailReception({ loading: false, byArticle: {}, error: 'Erreur réseau — reliquat indisponible.' }); });
     }
 
     function closeDetail() {
@@ -230,32 +237,39 @@
                 <span><strong>Statut :</strong> <MBC_Badge cls={mbcStatusMeta(detail.status).cls} label={mbcStatusMeta(detail.status).label} /></span>
               </div>
               <h4 style={{ marginBottom: 8 }}>Articles</h4>
-              <table className="data-table" style={{ fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th>Désignation</th>
-                    <th>Quantité</th>
-                    <th>Unité</th>
-                    <th>Reçu</th>
-                    <th>Reliquat</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(detail.items || []).map(function (it, idx) {
-                    var d = detailReception && detailReception.byArticle ? detailReception.byArticle[it.article] : null;
-                    var loadingReception = detailReception && detailReception.loading;
-                    return (
-                      <tr key={idx}>
-                        <td style={{ fontWeight: 600 }}>{it.article}</td>
-                        <td style={{ textAlign: 'center' }}>{it.quantite}</td>
-                        <td>{it.unite || '—'}</td>
-                        <td style={{ textAlign: 'center' }}>{loadingReception ? '…' : (d ? d.qLiv : 0)}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 700, color: d && d.reste <= 0 ? 'var(--gray-400)' : 'var(--berry)' }}>{loadingReception ? '…' : (d ? d.reste : it.quantite)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              {detailReception && detailReception.error ? (
+                <div style={{ background: '#fdecea', border: '1px solid var(--red)', color: 'var(--red)', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 13 }}>
+                  <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 6 }}></i>
+                  {detailReception.error}
+                </div>
+              ) : (
+                <table className="data-table" style={{ fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Désignation</th>
+                      <th>Quantité</th>
+                      <th>Unité</th>
+                      <th>Reçu</th>
+                      <th>Reliquat</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(detail.items || []).map(function (it, idx) {
+                      var d = detailReception && detailReception.byArticle ? detailReception.byArticle[it.article] : null;
+                      var loadingReception = detailReception && detailReception.loading;
+                      return (
+                        <tr key={idx}>
+                          <td style={{ fontWeight: 600 }}>{it.article}</td>
+                          <td style={{ textAlign: 'center' }}>{it.quantite}</td>
+                          <td>{it.unite || '—'}</td>
+                          <td style={{ textAlign: 'center' }}>{loadingReception ? '…' : (d ? d.qLiv : 0)}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 700, color: d && d.reste <= 0 ? 'var(--gray-400)' : 'var(--berry)' }}>{loadingReception ? '…' : (d ? d.reste : it.quantite)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                 <button
                   onClick={function () { closeDetail(); }}

@@ -23,16 +23,20 @@
     },
     "heatmap": [
       {
-        "commits": 54,
+        "commits": 56,
         "file": "public/app.jsx"
+      },
+      {
+        "commits": 8,
+        "file": "functions/index.js"
       },
       {
         "commits": 8,
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 7,
-        "file": "functions/index.js"
+        "commits": 5,
+        "file": "public/lib/emargementPdf.js"
       },
       {
         "commits": 4,
@@ -40,7 +44,7 @@
       },
       {
         "commits": 4,
-        "file": "public/lib/emargementPdf.js"
+        "file": "public/lib/analytiqueUtils.js"
       },
       {
         "commits": 3,
@@ -56,15 +60,11 @@
       },
       {
         "commits": 3,
-        "file": "public/lib/analytiqueUtils.js"
-      },
-      {
-        "commits": 3,
         "file": "scripts/build-frontend.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:34d6344fa6f355fb",
+    "sourceFingerprint": "sha256:e8cfd5bde0e1810c",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 87,
@@ -723,7 +723,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
           "file": "public/app.jsx",
           "note": "probabilistic",

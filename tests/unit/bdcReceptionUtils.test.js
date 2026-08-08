@@ -12,7 +12,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { computeDeliveryData } = require('../../public/lib/bdcReceptionUtils.js');
+const { computeDeliveryData, resolveDeliveryDataOrError } = require('../../public/lib/bdcReceptionUtils.js');
 
 test('computeDeliveryData: reproduit BDC-2026-0142 — 100 commandés, 30+25 reçus → reste 45, statut partiel', () => {
   const bdcItems = [{ article: 'TES', quantite: 100, unite: 'ml' }];
@@ -59,4 +59,40 @@ test('computeDeliveryData: bdcItems/bls vides ou undefined → pas de crash', ()
   assert.deepEqual(computeDeliveryData([{ article: 'A', quantite: 5 }], undefined), [
     { article: 'A', unite: 'kg', qCmd: 5, qLiv: 0, reste: 5, pct: 0, statut: 'en_attente' },
   ]);
+});
+
+// ============================================================================
+// resolveDeliveryDataOrError — décision reliquat fiable vs état d'erreur,
+// non-régression du bug BDC-2026-0142 (500 sur list-bl masqué en bls=[] →
+// Reçu=0/Reliquat=100% trompeur au lieu d'une erreur explicite).
+// ============================================================================
+
+test('resolveDeliveryDataOrError: réponse success → ok avec les bls', () => {
+  const json = { success: true, bls: [{ items: [{ article: 'A', quantite_recue: 5 }] }] };
+  const result = resolveDeliveryDataOrError(json);
+  assert.deepEqual(result, { ok: true, data: json.bls });
+});
+
+test('resolveDeliveryDataOrError: success true mais bls absent → ok avec liste vide (cas légitime, pas une erreur)', () => {
+  const result = resolveDeliveryDataOrError({ success: true });
+  assert.deepEqual(result, { ok: true, data: [] });
+});
+
+test('resolveDeliveryDataOrError: success:false (ex. 500 FAILED_PRECONDITION) → erreur explicite, jamais data vide silencieuse', () => {
+  const json = { success: false, error: 'The query requires an index...' };
+  const result = resolveDeliveryDataOrError(json);
+  assert.equal(result.ok, false);
+  assert.equal(result.error, 'The query requires an index...');
+  assert.equal('data' in result, false);
+});
+
+test('resolveDeliveryDataOrError: success:false sans message → message par défaut explicite', () => {
+  const result = resolveDeliveryDataOrError({ success: false });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /reliquat indisponible/i);
+});
+
+test('resolveDeliveryDataOrError: json null/undefined (fetch rejeté avant parsing) → erreur, pas de crash', () => {
+  assert.equal(resolveDeliveryDataOrError(null).ok, false);
+  assert.equal(resolveDeliveryDataOrError(undefined).ok, false);
 });

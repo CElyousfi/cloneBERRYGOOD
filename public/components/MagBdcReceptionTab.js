@@ -46,6 +46,7 @@
       magasin: 'F1',
       items: []
     });
+    const [blFormError, setBlFormError] = useState(null);
     const [freeForm, setFreeForm] = useState({
       date: '',
       ref_bl_fournisseur: '',
@@ -120,14 +121,27 @@
         magasin: bdc.ferme || 'F1',
         items: []
       });
+      setBlFormError(null);
       setBlScanFile(null);
       setBlScanPreview(null);
       setShowForm(true);
       // Reliquat par article : fetch les BL déjà créés pour ce BDC et calcule reçu/reliquat
       // via l'utilitaire partagé (même logique que AchatsBDCTab / MagBonsCommandeTab).
       fetch('/api/stock?action=list-bl&bdc_id=' + bdc.id).then(r => r.json()).then(json => {
-        const bls = json.success ? json.bls || [] : [];
-        const delivery = window.BdcReceptionUtils.computeDeliveryData(bdc.items, bls);
+        const resolved = window.BdcReceptionUtils.resolveDeliveryDataOrError(json);
+        if (!resolved.ok) {
+          // NE JAMAIS retomber sur reliquat = quantité commandée quand la donnée
+          // est en fait indisponible (bug BDC-2026-0142) : on bloque la saisie
+          // et on affiche l'erreur au magasinier, la garde serveur (create-bl)
+          // reste la protection qui fait foi contre la sur-réception.
+          setBlFormError(resolved.error);
+          setBlForm(prev => ({
+            ...prev,
+            items: []
+          }));
+          return;
+        }
+        const delivery = window.BdcReceptionUtils.computeDeliveryData(bdc.items, resolved.data);
         const deliveryByArticle = {};
         delivery.forEach(d => {
           deliveryByArticle[d.article] = d;
@@ -149,20 +163,11 @@
           items
         }));
       }).catch(() => {
-        // Filet réseau : à défaut de données BL, on retombe sur le comportement
-        // précédent (reliquat = quantité commandée) — la garde serveur reste active.
-        const items = (bdc.items || []).map(it => ({
-          article: it.article,
-          quantite_commandee: it.quantite,
-          quantite_deja_recue: 0,
-          reliquat: parseFloat(it.quantite) || 0,
-          quantite_recue: '',
-          unite: it.unite || 'kg',
-          note: ''
-        }));
+        // Filet réseau : ne pas prétendre à un reliquat fiable, bloquer la saisie.
+        setBlFormError('Impossible de charger les réceptions déjà faites pour ce BDC — reliquat indisponible. Réessaie ou contacte le support.');
         setBlForm(prev => ({
           ...prev,
-          items
+          items: []
         }));
       });
     };
@@ -178,6 +183,10 @@
       });
     };
     const handleCreateBl = async () => {
+      if (blFormError) {
+        alert('Réception impossible : ' + blFormError);
+        return;
+      }
       if (!blForm.items.some(i => parseFloat(i.quantite_recue) > 0)) {
         alert('Saisissez au moins une quantité reçue');
         return;
@@ -490,12 +499,29 @@
         marginBottom: 16,
         fontSize: 13
       }
-    }, /*#__PURE__*/React.createElement("strong", null, "Fournisseur:"), " ", selectedBdc.fournisseur?.nom, " \u2014 ", /*#__PURE__*/React.createElement("strong", null, "Ferme:"), " ", selectedBdc.ferme), /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("strong", null, "Fournisseur:"), " ", selectedBdc.fournisseur?.nom, " \u2014 ", /*#__PURE__*/React.createElement("strong", null, "Ferme:"), " ", selectedBdc.ferme), blFormError && /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: '#fdecea',
+        border: '1px solid var(--red)',
+        color: 'var(--red)',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 16,
+        fontSize: 13
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 6
+      }
+    }), blFormError), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'grid',
         gridTemplateColumns: '1fr 1fr 1fr',
         gap: 12,
-        marginBottom: 16
+        marginBottom: 16,
+        opacity: blFormError ? 0.5 : 1,
+        pointerEvents: blFormError ? 'none' : 'auto'
       }
     }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
       style: {
@@ -601,7 +627,7 @@
       }
     }, /*#__PURE__*/React.createElement("i", {
       className: "fa-solid fa-check"
-    }), " Fichier s\xE9lectionn\xE9"))), /*#__PURE__*/React.createElement("h4", {
+    }), " Fichier s\xE9lectionn\xE9"))), !blFormError && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("h4", {
       style: {
         marginBottom: 8
       }
@@ -669,7 +695,7 @@
           fontSize: 11
         }
       })));
-    }))), /*#__PURE__*/React.createElement("div", {
+    })))), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         gap: 8,
@@ -691,13 +717,14 @@
       }
     }, "Annuler"), /*#__PURE__*/React.createElement("button", {
       onClick: handleCreateBl,
+      disabled: !!blFormError,
       style: {
         padding: '8px 16px',
         borderRadius: 8,
         border: 'none',
-        background: 'var(--berry)',
+        background: blFormError ? 'var(--gray-400)' : 'var(--berry)',
         color: '#fff',
-        cursor: 'pointer',
+        cursor: blFormError ? 'not-allowed' : 'pointer',
         fontWeight: 600,
         fontSize: 13
       }

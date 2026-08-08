@@ -39,6 +39,7 @@
     const [showForm, setShowForm] = useState(false);
     const [showFreeForm, setShowFreeForm] = useState(false);
     const [blForm, setBlForm] = useState({ date_reception: '', numero_bl_fournisseur: '', magasin: 'F1', items: [] });
+    const [blFormError, setBlFormError] = useState(null);
     const [freeForm, setFreeForm] = useState({ date: '', ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null });
     const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
     const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
@@ -82,13 +83,23 @@
         if (bdc.delivery_status === 'complet') { alert('Ce BDC est déjà entièrement réceptionné.'); return; }
         setSelectedBdc(bdc);
         setBlForm({ date_reception: new Date().toISOString().split('T')[0], numero_bl_fournisseur: '', magasin: bdc.ferme || 'F1', items: [] });
+        setBlFormError(null);
         setBlScanFile(null); setBlScanPreview(null);
         setShowForm(true);
         // Reliquat par article : fetch les BL déjà créés pour ce BDC et calcule reçu/reliquat
         // via l'utilitaire partagé (même logique que AchatsBDCTab / MagBonsCommandeTab).
         fetch('/api/stock?action=list-bl&bdc_id=' + bdc.id).then(r => r.json()).then(json => {
-            const bls = json.success ? (json.bls || []) : [];
-            const delivery = window.BdcReceptionUtils.computeDeliveryData(bdc.items, bls);
+            const resolved = window.BdcReceptionUtils.resolveDeliveryDataOrError(json);
+            if (!resolved.ok) {
+                // NE JAMAIS retomber sur reliquat = quantité commandée quand la donnée
+                // est en fait indisponible (bug BDC-2026-0142) : on bloque la saisie
+                // et on affiche l'erreur au magasinier, la garde serveur (create-bl)
+                // reste la protection qui fait foi contre la sur-réception.
+                setBlFormError(resolved.error);
+                setBlForm(prev => ({ ...prev, items: [] }));
+                return;
+            }
+            const delivery = window.BdcReceptionUtils.computeDeliveryData(bdc.items, resolved.data);
             const deliveryByArticle = {};
             delivery.forEach(d => { deliveryByArticle[d.article] = d; });
             const items = (bdc.items || []).map(it => {
@@ -103,13 +114,9 @@
             });
             setBlForm(prev => ({ ...prev, items }));
         }).catch(() => {
-            // Filet réseau : à défaut de données BL, on retombe sur le comportement
-            // précédent (reliquat = quantité commandée) — la garde serveur reste active.
-            const items = (bdc.items || []).map(it => ({
-                article: it.article, quantite_commandee: it.quantite, quantite_deja_recue: 0,
-                reliquat: parseFloat(it.quantite) || 0, quantite_recue: '', unite: it.unite || 'kg', note: '',
-            }));
-            setBlForm(prev => ({ ...prev, items }));
+            // Filet réseau : ne pas prétendre à un reliquat fiable, bloquer la saisie.
+            setBlFormError('Impossible de charger les réceptions déjà faites pour ce BDC — reliquat indisponible. Réessaie ou contacte le support.');
+            setBlForm(prev => ({ ...prev, items: [] }));
         });
     };
 
@@ -119,6 +126,7 @@
     };
 
     const handleCreateBl = async () => {
+        if (blFormError) { alert('Réception impossible : ' + blFormError); return; }
         if (!blForm.items.some(i => parseFloat(i.quantite_recue) > 0)) { alert('Saisissez au moins une quantité reçue'); return; }
         const validItems = blForm.items.filter(i => parseFloat(i.quantite_recue) > 0);
         // Filet client : rejette si une quantité saisie dépasse son reliquat. La garde qui fait
@@ -239,7 +247,12 @@
                         <div style={{background:'#f8f8f8',borderRadius:8,padding:12,marginBottom:16,fontSize:13}}>
                             <strong>Fournisseur:</strong> {selectedBdc.fournisseur?.nom} — <strong>Ferme:</strong> {selectedBdc.ferme}
                         </div>
-                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16}}>
+                        {blFormError && (
+                            <div style={{background:'#fdecea',border:'1px solid var(--red)',color:'var(--red)',borderRadius:8,padding:12,marginBottom:16,fontSize:13}}>
+                                <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>{blFormError}
+                            </div>
+                        )}
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12,marginBottom:16, opacity: blFormError ? 0.5 : 1, pointerEvents: blFormError ? 'none' : 'auto'}}>
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date de réception</label>
                                 <input type="date" value={blForm.date_reception} onChange={e => setBlForm({...blForm, date_reception: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>N° BL Fournisseur</label>
@@ -254,34 +267,38 @@
                             <input type="file" accept="image/*,application/pdf" onChange={e => handleScanFile(e.target.files[0], setBlScanFile, setBlScanPreview)} style={{fontSize:12}} />
                             {blScanPreview && (typeof blScanPreview === 'string' && blScanPreview.startsWith('data:image') ? <img src={blScanPreview} alt="Scan" style={{maxHeight:80,marginTop:6,borderRadius:6}} /> : <span style={{fontSize:11,color:'var(--green)',marginLeft:8}}><i className="fa-solid fa-check"></i> Fichier sélectionné</span>)}
                         </div>
-                        <h4 style={{marginBottom:8}}>Articles à réceptionner</h4>
-                        <table className="data-table" style={{fontSize:12}}>
-                            <thead><tr><th>Article</th><th>Qté commandée</th><th>Déjà reçu</th><th>Reliquat</th><th>Qté reçue</th><th>Unité</th><th>Écart</th><th>Note</th></tr></thead>
-                            <tbody>
-                                {blForm.items.map((it, idx) => {
-                                    const ecart = (parseFloat(it.quantite_recue) || 0) - (parseFloat(it.quantite_commandee) || 0);
-                                    const reliquat = parseFloat(it.reliquat);
-                                    const noReliquat = !isNaN(reliquat) && reliquat <= 0;
-                                    return (
-                                        <tr key={idx}>
-                                            <td style={{fontWeight:600}}>{it.article}</td>
-                                            <td style={{textAlign:'center'}}>{it.quantite_commandee}</td>
-                                            <td style={{textAlign:'center',color:'var(--gray-400)'}}>{it.quantite_deja_recue ?? 0}</td>
-                                            <td style={{textAlign:'center',fontWeight:700,color: noReliquat ? 'var(--gray-400)' : 'var(--berry)'}}>{isNaN(reliquat) ? it.quantite_commandee : reliquat}</td>
-                                            <td><input type="number" value={it.quantite_recue} max={isNaN(reliquat) ? undefined : reliquat} disabled={noReliquat}
-                                                onChange={e => updateBlItem(idx, 'quantite_recue', e.target.value)}
-                                                style={{width:80,padding:'4px 8px',borderRadius:6,border: ecart < 0 ? '2px solid var(--red)' : ecart > 0 ? '2px solid var(--blue)' : '1px solid #ddd',fontSize:12,textAlign:'right',background: noReliquat ? '#f1f5f9' : '#fff',cursor: noReliquat ? 'not-allowed' : 'text'}} /></td>
-                                            <td>{it.unite}</td>
-                                            <td style={{textAlign:'center',fontWeight:600,color: ecart < 0 ? 'var(--red)' : ecart > 0 ? 'var(--blue)' : 'var(--green)'}}>{it.quantite_recue ? (ecart > 0 ? '+' : '') + ecart : '—'}</td>
-                                            <td><input value={it.note || ''} onChange={e => updateBlItem(idx, 'note', e.target.value)} placeholder="Note..." style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}} /></td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                        {!blFormError && (
+                            <React.Fragment>
+                                <h4 style={{marginBottom:8}}>Articles à réceptionner</h4>
+                                <table className="data-table" style={{fontSize:12}}>
+                                    <thead><tr><th>Article</th><th>Qté commandée</th><th>Déjà reçu</th><th>Reliquat</th><th>Qté reçue</th><th>Unité</th><th>Écart</th><th>Note</th></tr></thead>
+                                    <tbody>
+                                        {blForm.items.map((it, idx) => {
+                                            const ecart = (parseFloat(it.quantite_recue) || 0) - (parseFloat(it.quantite_commandee) || 0);
+                                            const reliquat = parseFloat(it.reliquat);
+                                            const noReliquat = !isNaN(reliquat) && reliquat <= 0;
+                                            return (
+                                                <tr key={idx}>
+                                                    <td style={{fontWeight:600}}>{it.article}</td>
+                                                    <td style={{textAlign:'center'}}>{it.quantite_commandee}</td>
+                                                    <td style={{textAlign:'center',color:'var(--gray-400)'}}>{it.quantite_deja_recue ?? 0}</td>
+                                                    <td style={{textAlign:'center',fontWeight:700,color: noReliquat ? 'var(--gray-400)' : 'var(--berry)'}}>{isNaN(reliquat) ? it.quantite_commandee : reliquat}</td>
+                                                    <td><input type="number" value={it.quantite_recue} max={isNaN(reliquat) ? undefined : reliquat} disabled={noReliquat}
+                                                        onChange={e => updateBlItem(idx, 'quantite_recue', e.target.value)}
+                                                        style={{width:80,padding:'4px 8px',borderRadius:6,border: ecart < 0 ? '2px solid var(--red)' : ecart > 0 ? '2px solid var(--blue)' : '1px solid #ddd',fontSize:12,textAlign:'right',background: noReliquat ? '#f1f5f9' : '#fff',cursor: noReliquat ? 'not-allowed' : 'text'}} /></td>
+                                                    <td>{it.unite}</td>
+                                                    <td style={{textAlign:'center',fontWeight:600,color: ecart < 0 ? 'var(--red)' : ecart > 0 ? 'var(--blue)' : 'var(--green)'}}>{it.quantite_recue ? (ecart > 0 ? '+' : '') + ecart : '—'}</td>
+                                                    <td><input value={it.note || ''} onChange={e => updateBlItem(idx, 'note', e.target.value)} placeholder="Note..." style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}} /></td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </React.Fragment>
+                        )}
                         <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
                             <button onClick={() => { setShowForm(false); setSelectedBdc(null); }} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
-                            <button onClick={handleCreateBl} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>Valider la réception</button>
+                            <button onClick={handleCreateBl} disabled={!!blFormError} style={{padding:'8px 16px',borderRadius:8,border:'none',background: blFormError ? 'var(--gray-400)' : 'var(--berry)',color:'#fff',cursor: blFormError ? 'not-allowed' : 'pointer',fontWeight:600,fontSize:13}}>Valider la réception</button>
                         </div>
                     </div>
                 </div>

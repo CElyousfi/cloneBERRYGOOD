@@ -140,25 +140,39 @@
       setDetail(b);
       setDetailReception({
         loading: true,
-        byArticle: {}
+        byArticle: {},
+        error: null
       });
       fetch('/api/stock?action=list-bl&bdc_id=' + b.id).then(function (r) {
         return r.json();
       }).then(function (json) {
-        var bls = json && json.success ? json.bls || [] : [];
-        var delivery = window.BdcReceptionUtils.computeDeliveryData(b.items, bls);
+        var resolved = window.BdcReceptionUtils.resolveDeliveryDataOrError(json);
+        if (!resolved.ok) {
+          // NE JAMAIS afficher Reçu=0/Reliquat=quantité commandée quand la donnée
+          // est en fait indisponible (bug BDC-2026-0142) — écran 100% lecture
+          // seule, donc on affiche l'erreur à la place des colonnes.
+          setDetailReception({
+            loading: false,
+            byArticle: {},
+            error: resolved.error
+          });
+          return;
+        }
+        var delivery = window.BdcReceptionUtils.computeDeliveryData(b.items, resolved.data);
         var byArticle = {};
         delivery.forEach(function (d) {
           byArticle[d.article] = d;
         });
         setDetailReception({
           loading: false,
-          byArticle: byArticle
+          byArticle: byArticle,
+          error: null
         });
       }).catch(function () {
         setDetailReception({
           loading: false,
-          byArticle: {}
+          byArticle: {},
+          error: 'Erreur réseau — reliquat indisponible.'
         });
       });
     }
@@ -340,7 +354,22 @@
       style: {
         marginBottom: 8
       }
-    }, "Articles"), /*#__PURE__*/React.createElement("table", {
+    }, "Articles"), detailReception && detailReception.error ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: '#fdecea',
+        border: '1px solid var(--red)',
+        color: 'var(--red)',
+        borderRadius: 8,
+        padding: 12,
+        marginBottom: 16,
+        fontSize: 13
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 6
+      }
+    }), detailReception.error) : /*#__PURE__*/React.createElement("table", {
       className: "data-table",
       style: {
         fontSize: 12
