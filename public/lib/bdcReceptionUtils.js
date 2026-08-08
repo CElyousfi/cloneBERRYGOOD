@@ -42,6 +42,31 @@
  * @typedef {Object} ListBlErrorResult
  * @property {false} ok
  * @property {string} error
+ *
+ * @typedef {Object} ReceptionMovementItem
+ * @property {string} [article_ref]
+ * @property {string} [article_nom]
+ * @property {number} [quantite]
+ * @property {string} [unite]
+ *
+ * @typedef {Object} ReceptionMovement
+ * @property {string} [id]
+ * @property {string} [numero]
+ * @property {string} [date]
+ * @property {number} [created_at]
+ * @property {string} [bdc_id]
+ * @property {ReceptionMovementItem[]} [items]
+ *
+ * @typedef {Object} ReceptionRowArticle
+ * @property {string} article
+ * @property {string} unite
+ * @property {number} quantite_recue
+ * @property {number} reliquat_apres
+ *
+ * @typedef {Object} ReceptionRow
+ * @property {string} [numero]
+ * @property {string} [date]
+ * @property {ReceptionRowArticle[]} articles
  */
 // @ts-check
 'use strict';
@@ -102,6 +127,93 @@ function resolveDeliveryDataOrError(json) {
   return { ok: false, error };
 }
 
+/**
+ * Filtre les mouvements de stock (`stock_movements`, réponse brute de
+ * `/api/stock?action=list-movements&type=reception`) pour ne garder que ceux
+ * rattachés à un BDC donné (`bdc_id`), triés par date décroissante (les
+ * réceptions les plus récentes en premier). Utilisé par la popup lecture
+ * seule MagBonsCommandeTab pour afficher les Bons de Réception (BR-XXXX)
+ * ayant produit le Reçu/Reliquat calculé par computeDeliveryData — un BR
+ * (stock_movements/reception) est un document distinct du BL
+ * (delivery_notes) mais les deux sont créés ensemble par create-bl et
+ * partagent le même bdc_id.
+ *
+ * `date` est une string 'YYYY-MM-DD' (tri lexical valide) ; `created_at` sert
+ * de départage si deux mouvements ont la même date.
+ *
+ * @param {ReceptionMovement[]} movements
+ * @param {string} bdcId
+ * @returns {ReceptionMovement[]}
+ */
+function filterReceptionsForBdc(movements, bdcId) {
+  return (movements || [])
+    .filter((m) => m && m.bdc_id === bdcId)
+    .slice()
+    .sort((a, b) => {
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) return dateA < dateB ? 1 : -1;
+      return (b.created_at || 0) - (a.created_at || 0);
+    });
+}
+
+/**
+ * Calcule, pour chaque Bon de Réception (BR) rattaché à un BDC, le reliquat
+ * restant PAR ARTICLE juste après cette réception — calcul cumulatif fait en
+ * ordre CHRONOLOGIQUE ASCENDANT (le plus ancien BR en premier, pour que
+ * l'accumulation soit correcte), puis restitué dans l'ordre d'AFFICHAGE
+ * voulu par la popup (le plus récent en premier — cohérent avec
+ * `filterReceptionsForBdc`).
+ *
+ * Un même BR peut réceptionner plusieurs articles à la fois : chaque ligne
+ * de résultat correspond à UN SEUL BR ("le BR en une ligne", demande Omar)
+ * et porte un tableau `articles` (un élément par article touché par ce BR),
+ * avec le reliquat cumulatif propre à cet article (trajectoire indépendante
+ * par article).
+ *
+ * Réutilise `filterReceptionsForBdc` en amont : cette fonction ne filtre ni
+ * ne déduplique par bdc_id — elle suppose que `receptions` est déjà la
+ * liste des mouvements du BDC concerné (peu importe l'ordre d'entrée, elle
+ * re-trie elle-même en interne).
+ *
+ * @param {BdcItem[]} bdcItems
+ * @param {ReceptionMovement[]} receptions
+ * @returns {ReceptionRow[]}
+ */
+function computeReceptionRowsWithReliquat(bdcItems, receptions) {
+  const qCmdByArticle = {};
+  (bdcItems || []).forEach((it) => {
+    qCmdByArticle[it.article] = parseFloat(it.quantite) || 0;
+  });
+
+  const chronological = (receptions || []).slice().sort((a, b) => {
+    const dateA = a.date || '';
+    const dateB = b.date || '';
+    if (dateA !== dateB) return dateA < dateB ? -1 : 1;
+    return (a.created_at || 0) - (b.created_at || 0);
+  });
+
+  const cumulByArticle = {};
+  const rowsChronological = chronological.map((mv) => {
+    const articles = (mv.items || []).map((it) => {
+      const key = it.article_ref || it.article_nom || '';
+      const qty = it.quantite || 0;
+      cumulByArticle[key] = (cumulByArticle[key] || 0) + qty;
+      const qCmd = qCmdByArticle[key] || 0;
+      const reliquatApres = Math.max(0, Math.round((qCmd - cumulByArticle[key]) * 100) / 100);
+      return {
+        article: it.article_nom || it.article_ref || '—',
+        unite: it.unite || '',
+        quantite_recue: qty,
+        reliquat_apres: reliquatApres,
+      };
+    });
+    return { numero: mv.numero, date: mv.date, articles };
+  });
+
+  return rowsChronological.slice().reverse();
+}
+
 // ============================================================================
 // UMD-style export (browser global + CommonJS for node:test)
 // ============================================================================
@@ -109,6 +221,8 @@ function resolveDeliveryDataOrError(json) {
 const __api = {
   computeDeliveryData,
   resolveDeliveryDataOrError,
+  filterReceptionsForBdc,
+  computeReceptionRowsWithReliquat,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;

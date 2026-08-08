@@ -136,11 +136,24 @@
     var detailReceptionState = useState(null);
     var detailReception = detailReceptionState[0];
     var setDetailReception = detailReceptionState[1];
+
+    // Bons de Réception (BR-XXXX, stock_movements type reception) rattachés au
+    // BDC ouvert dans la popup — document distinct des BL (delivery_notes) mais
+    // créé en même temps par create-bl, même bdc_id. Fetché en parallèle du
+    // reliquat (indépendant, ne bloque jamais l'affichage Reçu/Reliquat).
+    var detailReceptionsState = useState(null);
+    var detailReceptions = detailReceptionsState[0];
+    var setDetailReceptions = detailReceptionsState[1];
     function openDetail(b) {
       setDetail(b);
       setDetailReception({
         loading: true,
         byArticle: {},
+        error: null
+      });
+      setDetailReceptions({
+        loading: true,
+        list: [],
         error: null
       });
       fetch('/api/stock?action=list-bl&bdc_id=' + b.id).then(function (r) {
@@ -175,10 +188,35 @@
           error: 'Erreur réseau — reliquat indisponible.'
         });
       });
+      fetch('/api/stock?action=list-movements&type=reception&limit=200').then(function (r) {
+        return r.json();
+      }).then(function (json) {
+        if (!json || !json.success) {
+          setDetailReceptions({
+            loading: false,
+            list: [],
+            error: json && json.error || 'Impossible de charger les bons de réception.'
+          });
+          return;
+        }
+        var list = window.BdcReceptionUtils.filterReceptionsForBdc(json.movements, b.id);
+        setDetailReceptions({
+          loading: false,
+          list: list,
+          error: null
+        });
+      }).catch(function () {
+        setDetailReceptions({
+          loading: false,
+          list: [],
+          error: 'Erreur réseau — bons de réception indisponibles.'
+        });
+      });
     }
     function closeDetail() {
       setDetail(null);
       setDetailReception(null);
+      setDetailReceptions(null);
     }
     useEffect(function () {
       setLoading(true);
@@ -399,6 +437,79 @@
         }
       }, loadingReception ? '…' : d ? d.reste : it.quantite));
     }))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 16,
+        paddingTop: 12,
+        borderTop: '1px solid #e2e8f0'
+      }
+    }, /*#__PURE__*/React.createElement("h4", {
+      style: {
+        marginTop: 0,
+        marginBottom: 8
+      }
+    }, "Bons de R\xE9ception"), detailReceptions && detailReceptions.loading ? /*#__PURE__*/React.createElement("p", {
+      style: {
+        color: 'var(--gray-400)',
+        fontSize: 12
+      }
+    }, "Chargement\u2026") : detailReceptions && detailReceptions.error ? /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: '#fdecea',
+        border: '1px solid var(--red)',
+        color: 'var(--red)',
+        borderRadius: 8,
+        padding: 10,
+        fontSize: 12
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 6
+      }
+    }), detailReceptions.error) : detailReceptions && detailReceptions.list.length > 0 ? /*#__PURE__*/React.createElement("table", {
+      className: "data-table",
+      style: {
+        fontSize: 12
+      }
+    }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "N\xB0 BR"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "D\xE9signation"), /*#__PURE__*/React.createElement("th", null, "Qt\xE9 re\xE7ue"), /*#__PURE__*/React.createElement("th", null, "Reliquat"))), /*#__PURE__*/React.createElement("tbody", null, window.BdcReceptionUtils.computeReceptionRowsWithReliquat(detail.items, detailReceptions.list).map(function (row) {
+      return /*#__PURE__*/React.createElement("tr", {
+        key: row.numero
+      }, /*#__PURE__*/React.createElement("td", {
+        style: {
+          fontWeight: 700,
+          color: 'var(--berry)'
+        }
+      }, row.numero), /*#__PURE__*/React.createElement("td", null, mbcFmtDate(row.date)), /*#__PURE__*/React.createElement("td", null, row.articles.map(function (a, i) {
+        return /*#__PURE__*/React.createElement("div", {
+          key: i
+        }, a.article);
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          textAlign: 'center'
+        }
+      }, row.articles.map(function (a, i) {
+        return /*#__PURE__*/React.createElement("div", {
+          key: i
+        }, a.quantite_recue, " ", a.unite);
+      })), /*#__PURE__*/React.createElement("td", {
+        style: {
+          textAlign: 'center'
+        }
+      }, row.articles.map(function (a, i) {
+        return /*#__PURE__*/React.createElement("div", {
+          key: i,
+          style: {
+            fontWeight: 700,
+            color: a.reliquat_apres <= 0 ? 'var(--gray-400)' : 'var(--berry)'
+          }
+        }, a.reliquat_apres);
+      })));
+    }))) : /*#__PURE__*/React.createElement("p", {
+      style: {
+        color: 'var(--gray-400)',
+        fontSize: 12
+      }
+    }, "Aucune r\xE9ception enregistr\xE9e.")), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         justifyContent: 'flex-end',

@@ -23,20 +23,16 @@
     },
     "heatmap": [
       {
-        "commits": 56,
+        "commits": 55,
         "file": "public/app.jsx"
       },
       {
-        "commits": 8,
+        "commits": 9,
         "file": "functions/index.js"
       },
       {
         "commits": 8,
         "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 5,
-        "file": "public/lib/emargementPdf.js"
       },
       {
         "commits": 4,
@@ -45,6 +41,10 @@
       {
         "commits": 4,
         "file": "public/lib/analytiqueUtils.js"
+      },
+      {
+        "commits": 4,
+        "file": "public/lib/emargementPdf.js"
       },
       {
         "commits": 3,
@@ -56,15 +56,15 @@
       },
       {
         "commits": 3,
-        "file": "public/components/MagStockFilesTab.jsx"
+        "file": "public/components/MagBonsCommandeTab.js"
       },
       {
         "commits": 3,
-        "file": "scripts/build-frontend.js"
+        "file": "public/components/MagBonsCommandeTab.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:e8cfd5bde0e1810c",
+    "sourceFingerprint": "sha256:59ffbce58ecfeff8",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 87,
@@ -137,7 +137,15 @@
           "StationnaireImportScanTab"
         ]
       },
-      "gitCoupling": [],
+      "gitCoupling": [
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/MagBonsCommandeTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
       "label": "Achats & Fournisseurs",
       "tests": {
         "backend": [],

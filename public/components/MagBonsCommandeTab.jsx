@@ -101,9 +101,18 @@
     var detailReception = detailReceptionState[0];
     var setDetailReception = detailReceptionState[1];
 
+    // Bons de Réception (BR-XXXX, stock_movements type reception) rattachés au
+    // BDC ouvert dans la popup — document distinct des BL (delivery_notes) mais
+    // créé en même temps par create-bl, même bdc_id. Fetché en parallèle du
+    // reliquat (indépendant, ne bloque jamais l'affichage Reçu/Reliquat).
+    var detailReceptionsState = useState(null);
+    var detailReceptions = detailReceptionsState[0];
+    var setDetailReceptions = detailReceptionsState[1];
+
     function openDetail(b) {
       setDetail(b);
       setDetailReception({ loading: true, byArticle: {}, error: null });
+      setDetailReceptions({ loading: true, list: [], error: null });
       fetch('/api/stock?action=list-bl&bdc_id=' + b.id)
         .then(function (r) { return r.json(); })
         .then(function (json) {
@@ -121,11 +130,24 @@
           setDetailReception({ loading: false, byArticle: byArticle, error: null });
         })
         .catch(function () { setDetailReception({ loading: false, byArticle: {}, error: 'Erreur réseau — reliquat indisponible.' }); });
+
+      fetch('/api/stock?action=list-movements&type=reception&limit=200')
+        .then(function (r) { return r.json(); })
+        .then(function (json) {
+          if (!json || !json.success) {
+            setDetailReceptions({ loading: false, list: [], error: (json && json.error) || 'Impossible de charger les bons de réception.' });
+            return;
+          }
+          var list = window.BdcReceptionUtils.filterReceptionsForBdc(json.movements, b.id);
+          setDetailReceptions({ loading: false, list: list, error: null });
+        })
+        .catch(function () { setDetailReceptions({ loading: false, list: [], error: 'Erreur réseau — bons de réception indisponibles.' }); });
     }
 
     function closeDetail() {
       setDetail(null);
       setDetailReception(null);
+      setDetailReceptions(null);
     }
 
     useEffect(function () {
@@ -270,6 +292,58 @@
                   </tbody>
                 </table>
               )}
+
+              <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #e2e8f0' }}>
+                <h4 style={{ marginTop: 0, marginBottom: 8 }}>Bons de Réception</h4>
+                {detailReceptions && detailReceptions.loading ? (
+                  <p style={{ color: 'var(--gray-400)', fontSize: 12 }}>Chargement…</p>
+                ) : detailReceptions && detailReceptions.error ? (
+                  <div style={{ background: '#fdecea', border: '1px solid var(--red)', color: 'var(--red)', borderRadius: 8, padding: 10, fontSize: 12 }}>
+                    <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: 6 }}></i>
+                    {detailReceptions.error}
+                  </div>
+                ) : detailReceptions && detailReceptions.list.length > 0 ? (
+                  <table className="data-table" style={{ fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th>N° BR</th>
+                        <th>Date</th>
+                        <th>Désignation</th>
+                        <th>Qté reçue</th>
+                        <th>Reliquat</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {window.BdcReceptionUtils.computeReceptionRowsWithReliquat(detail.items, detailReceptions.list).map(function (row) {
+                        return (
+                          <tr key={row.numero}>
+                            <td style={{ fontWeight: 700, color: 'var(--berry)' }}>{row.numero}</td>
+                            <td>{mbcFmtDate(row.date)}</td>
+                            <td>
+                              {row.articles.map(function (a, i) {
+                                return <div key={i}>{a.article}</div>;
+                              })}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.articles.map(function (a, i) {
+                                return <div key={i}>{a.quantite_recue} {a.unite}</div>;
+                              })}
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              {row.articles.map(function (a, i) {
+                                return <div key={i} style={{ fontWeight: 700, color: a.reliquat_apres <= 0 ? 'var(--gray-400)' : 'var(--berry)' }}>{a.reliquat_apres}</div>;
+                              })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p style={{ color: 'var(--gray-400)', fontSize: 12 }}>Aucune réception enregistrée.</p>
+                )}
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
                 <button
                   onClick={function () { closeDetail(); }}
