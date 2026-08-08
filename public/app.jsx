@@ -50462,6 +50462,15 @@ ${rejetHtml}
             const [submitting, setSubmitting] = useState(false);
             const [articles, setArticles] = useState([]);
             const [suppliers, setSuppliers] = useState([]);
+            // Identité du demandeur pour le contrôle créateur (profileId = identité effective).
+            const requester = { profileId: currentProfile, userId: (profileData && profileData.userId) || '' };
+            const Guard = (typeof window !== 'undefined' && window.StockMovementGuard) || null;
+            const canMutate = (mov) => Guard ? Guard.canEditMovement(mov, requester) : false;
+            const isAdminDeleter = Guard ? Guard.isAdminDeleter(requester) : (currentProfile === 'achats' || currentProfile === 'dg');
+            const canAdminDelete = (mov) => Guard ? Guard.canAdminDeleteMovement(mov, requester) : false;
+            const [delMov, setDelMov] = useState(null);
+            const [delReason, setDelReason] = useState('');
+            const [delSaving, setDelSaving] = useState(false);
 
             const loadReceptions = () => {
                 setLoading(true);
@@ -50536,6 +50545,38 @@ ${rejetHtml}
                 } finally {
                     setSubmitting(false);
                 }
+            };
+
+            const handleDelete = (mov) => {
+                if (!confirm('Supprimer le bon ' + mov.numero + ' ? Cette action est irréversible (le bon sera retiré des listes).')) return;
+                fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: mov.id }),
+                }).then(r => r.json()).then(json => {
+                    if (json.success) { alert('Bon supprimé.'); setDetailReception(null); loadReceptions(); }
+                    else alert('Erreur: ' + (json.error || 'Echec'));
+                }).catch(() => alert('Erreur réseau'));
+            };
+
+            const openDelete = (mov) => { setDelMov(mov); setDelReason(''); };
+            const closeDelete = () => { setDelMov(null); setDelReason(''); };
+            const submitAdminDelete = async () => {
+                const reason = (delReason || '').trim();
+                if (!reason) { alert('Le motif de suppression est obligatoire.'); return; }
+                setDelSaving(true);
+                try {
+                    const res = await fetch('/api/stock?action=delete-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: delMov.id, reason }) });
+                    const json = await res.json();
+                    if (json.success) {
+                        const msg = 'Bon ' + delMov.numero + ' supprimé' + (json.reversed ? ' (impact stock annulé)' : '') + '.';
+                        if (typeof window !== 'undefined' && typeof window.showToast === 'function') window.showToast(msg);
+                        else alert(msg);
+                        closeDelete();
+                        setDetailReception(null);
+                        loadReceptions();
+                    } else { alert('Erreur: ' + (json.error || 'Echec')); }
+                } catch (e) { alert('Erreur réseau'); }
+                finally { setDelSaving(false); }
             };
 
             const isImport = (m) => (m.numero || '').startsWith('IMP-') || m.created_by?.userId === 'import_caneva';
@@ -50830,7 +50871,14 @@ ${rejetHtml}
                                             <h3 style={{margin:0,color:'var(--berry)'}}><i className="fa-solid fa-truck-ramp-box" style={{marginRight:8}}></i>Bon de Réception {r.numero || ''}</h3>
                                             <span className={'status-badge ' + statusClass(r.status, r)}>{statusLabel(r.status, r)}</span>
                                         </div>
-                                        <button onClick={() => setDetailReception(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                                            {(canMutate(r) || (isAdminDeleter && canAdminDelete(r))) && (
+                                                <button onClick={() => canMutate(r) ? handleDelete(r) : openDelete(r)} style={{background:'none',border:'1px solid var(--red)',color:'var(--red)',borderRadius:8,padding:'6px 12px',cursor:'pointer',fontSize:12,fontWeight:600}} title="Supprimer">
+                                                    <i className="fa-solid fa-trash" style={{marginRight:4}}></i>Supprimer
+                                                </button>
+                                            )}
+                                            <button onClick={() => setDetailReception(null)} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'var(--gray-400)',lineHeight:1}} title="Fermer">✕</button>
+                                        </div>
                                     </div>
 
                                     <div style={{marginBottom:16}}>
@@ -50920,6 +50968,26 @@ ${rejetHtml}
                             </div>
                         );
                     })()}
+
+                    {delMov && (
+                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget && !delSaving) closeDelete(); }}>
+                            <div className="modal-content" style={{maxWidth:480}}>
+                                <h3 style={{marginTop:0,color:'var(--red)'}}><i className="fa-solid fa-trash" style={{marginRight:8}}></i>Supprimer le bon {delMov.numero}</h3>
+                                <div style={{background:'#fff3f3',borderRadius:8,padding:10,marginBottom:14,fontSize:12,color:'#a11'}}>
+                                    <i className="fa-solid fa-triangle-exclamation" style={{marginRight:6}}></i>
+                                    {Guard && Guard.isValidatedMovement(delMov)
+                                        ? 'Ce bon est validé : sa suppression annulera son impact sur les soldes de stock.'
+                                        : 'Le bon sera retiré des listes (soft-delete, traçabilité conservée).'}
+                                </div>
+                                <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Motif de suppression <span style={{color:'var(--red)'}}>*</span></label>
+                                <textarea value={delReason} onChange={e => setDelReason(e.target.value)} placeholder="Obligatoire — ex. doublon, erreur de saisie…" rows={3} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13,resize:'vertical'}} />
+                                <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
+                                    <button onClick={closeDelete} disabled={delSaving} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
+                                    <button onClick={submitAdminDelete} disabled={delSaving || !delReason.trim()} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--red)',color:'#fff',cursor: delSaving || !delReason.trim() ? 'not-allowed' : 'pointer',opacity: delSaving || !delReason.trim() ? 0.6 : 1,fontWeight:600,fontSize:13}}>{delSaving ? 'Suppression…' : 'Confirmer la suppression'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
