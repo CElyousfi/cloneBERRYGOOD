@@ -106,6 +106,49 @@ function computeDeliveryData(bdcItems, bls) {
 }
 
 /**
+ * Calcule l'écart entre la quantité reçue saisie et le reliquat restant
+ * à recevoir sur cet article (PAS la quantité commandée totale — bug
+ * BDC-2026-0142 : recevoir exactement le reliquat doit afficher Écart=0,
+ * pas "quantité reçue - quantité commandée totale").
+ *
+ * Fallback sur quantiteCommandee UNIQUEMENT si reliquat est indisponible
+ * (NaN) — cas déjà normalement bloqué en amont par
+ * resolveDeliveryDataOrError/blFormError, gardé ici par robustesse
+ * défensive.
+ *
+ * @param {number|string} quantiteRecue
+ * @param {number|string} reliquat
+ * @param {number|string} [quantiteCommandee]
+ * @returns {number}
+ */
+function computeReceptionEcart(quantiteRecue, reliquat, quantiteCommandee) {
+  const recue = parseFloat(quantiteRecue) || 0;
+  const rel = parseFloat(reliquat);
+  const base = !isNaN(rel) ? rel : (parseFloat(quantiteCommandee) || 0);
+  return recue - base;
+}
+
+/**
+ * Clampe une saisie de "quantité reçue" au reliquat de la ligne, pour
+ * empêcher une sur-réception en temps réel (pas seulement au submit).
+ * Ne clampe QUE si reliquat ET la valeur saisie sont tous deux des
+ * nombres valides ET que la valeur dépasse strictement le reliquat.
+ * Laisse passer tel quel : chaîne vide, saisie en cours non numérique
+ * (isNaN), valeur <= reliquat, reliquat indisponible (NaN).
+ *
+ * @param {string} value - valeur brute du champ (peut être '', 'abc', ...)
+ * @param {number|string} reliquat
+ * @returns {string}
+ */
+function clampReceivedQty(value, reliquat) {
+  const rel = parseFloat(reliquat);
+  const val = parseFloat(value);
+  if (isNaN(rel) || isNaN(val)) return value;
+  if (val > rel) return String(rel);
+  return value;
+}
+
+/**
  * Décide, à partir de la réponse JSON brute de /api/stock?action=list-bl,
  * si les BL reçus sont fiables (reliquat calculable) ou si l'appel a
  * échoué — auquel cas il ne faut JAMAIS retomber sur une liste vide
@@ -223,6 +266,8 @@ const __api = {
   resolveDeliveryDataOrError,
   filterReceptionsForBdc,
   computeReceptionRowsWithReliquat,
+  computeReceptionEcart,
+  clampReceivedQty,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __api;

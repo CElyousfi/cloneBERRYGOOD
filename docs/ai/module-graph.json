@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 55,
+        "commits": 54,
         "file": "public/app.jsx"
       },
       {
@@ -37,10 +37,6 @@
       {
         "commits": 4,
         "file": "public/components/MagStockFilesTab.js"
-      },
-      {
-        "commits": 4,
-        "file": "public/lib/analytiqueUtils.js"
       },
       {
         "commits": 4,
@@ -61,10 +57,14 @@
       {
         "commits": 3,
         "file": "public/components/MagBonsCommandeTab.jsx"
+      },
+      {
+        "commits": 3,
+        "file": "public/components/MagStockFilesTab.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:59ffbce58ecfeff8",
+    "sourceFingerprint": "sha256:7ab60bd61ef94d6d",
     "stats": {
       "backendModules": 88,
       "cloudFunctions": 87,
@@ -142,6 +142,13 @@
           "coCommits": 3,
           "domain": null,
           "file": "public/components/MagBonsCommandeTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/bdcReceptionUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -731,7 +738,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 4,
+          "coCommits": 3,
           "domain": null,
           "file": "public/app.jsx",
           "note": "probabilistic",

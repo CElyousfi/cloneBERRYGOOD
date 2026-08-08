@@ -12,7 +12,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat } = require('../../public/lib/bdcReceptionUtils.js');
+const { computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty } = require('../../public/lib/bdcReceptionUtils.js');
 
 test('computeDeliveryData: reproduit BDC-2026-0142 — 100 commandés, 30+25 reçus → reste 45, statut partiel', () => {
   const bdcItems = [{ article: 'TES', quantite: 100, unite: 'ml' }];
@@ -236,4 +236,60 @@ test('computeReceptionRowsWithReliquat: aucun BR → tableau vide, pas de crash'
   assert.deepEqual(computeReceptionRowsWithReliquat(bdcItems, []), []);
   assert.deepEqual(computeReceptionRowsWithReliquat(bdcItems, undefined), []);
   assert.deepEqual(computeReceptionRowsWithReliquat(undefined, undefined), []);
+});
+
+// ============================================================================
+// computeReceptionEcart — non-régression du bug BDC-2026-0142 : l'écart doit
+// comparer la quantité reçue AU RELIQUAT, pas à la quantité commandée totale.
+// ============================================================================
+
+test('computeReceptionEcart: réception exacte du reliquat (100 cmd, 95 déjà reçus, reliquat=5, saisie=5) → écart 0, PAS -95', () => {
+  assert.equal(computeReceptionEcart(5, 5, 100), 0);
+});
+
+test('computeReceptionEcart: sur-réception au-delà du reliquat → écart positif basé sur le reliquat', () => {
+  assert.equal(computeReceptionEcart(7, 5, 100), 2);
+});
+
+test('computeReceptionEcart: sous-réception → écart négatif basé sur le reliquat', () => {
+  assert.equal(computeReceptionEcart(3, 5, 100), -2);
+});
+
+test('computeReceptionEcart: reliquat NaN (donnée indisponible) → fallback sur quantite_commandee', () => {
+  assert.equal(computeReceptionEcart(100, NaN, 100), 0);
+  assert.equal(computeReceptionEcart(90, undefined, 100), -10);
+});
+
+test('computeReceptionEcart: quantite_recue vide/non numérique → traité comme 0', () => {
+  assert.equal(computeReceptionEcart('', 5, 100), -5);
+  assert.equal(computeReceptionEcart('abc', 5, 100), -5);
+});
+
+// ============================================================================
+// clampReceivedQty — blocage temps réel de la sur-saisie (pas seulement au
+// submit) : une saisie clavier/collage supérieure au reliquat est clampée.
+// ============================================================================
+
+test('clampReceivedQty: valeur saisie dépasse le reliquat → clampée au reliquat', () => {
+  assert.equal(clampReceivedQty('12', 5), '5');
+  assert.equal(clampReceivedQty(100, 5), '5');
+});
+
+test('clampReceivedQty: valeur saisie <= reliquat → inchangée', () => {
+  assert.equal(clampReceivedQty('5', 5), '5');
+  assert.equal(clampReceivedQty('3', 5), '3');
+});
+
+test('clampReceivedQty: valeur vide (champ en cours de vidage) → inchangée, pas de crash', () => {
+  assert.equal(clampReceivedQty('', 5), '');
+});
+
+test('clampReceivedQty: saisie non numérique en cours de frappe → laissée telle quelle', () => {
+  assert.equal(clampReceivedQty('1.', 5), '1.');
+  assert.equal(clampReceivedQty('abc', 5), 'abc');
+});
+
+test('clampReceivedQty: reliquat indisponible (NaN) → ne clampe jamais', () => {
+  assert.equal(clampReceivedQty('999', NaN), '999');
+  assert.equal(clampReceivedQty('999', undefined), '999');
 });

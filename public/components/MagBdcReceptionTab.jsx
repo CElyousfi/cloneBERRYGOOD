@@ -121,7 +121,15 @@
     };
 
     const updateBlItem = (idx, field, value) => {
-        const items = [...blForm.items]; items[idx] = { ...items[idx], [field]: value };
+        const items = [...blForm.items];
+        // Clampe en temps réel la quantité reçue au reliquat de la ligne : on ne
+        // doit pas pouvoir dépasser le reliquat en saisie (bug BDC-2026-0142,
+        // max={reliquat} ne bloque que les flèches +/- du input number, pas le
+        // clavier/collage). Le filet handleCreateBl reste en place en complément.
+        const finalValue = field === 'quantite_recue'
+            ? window.BdcReceptionUtils.clampReceivedQty(value, items[idx].reliquat)
+            : value;
+        items[idx] = { ...items[idx], [field]: finalValue };
         setBlForm({ ...blForm, items });
     };
 
@@ -274,8 +282,8 @@
                                     <thead><tr><th>Article</th><th>Qté commandée</th><th>Déjà reçu</th><th>Reliquat</th><th>Qté reçue</th><th>Unité</th><th>Écart</th><th>Note</th></tr></thead>
                                     <tbody>
                                         {blForm.items.map((it, idx) => {
-                                            const ecart = (parseFloat(it.quantite_recue) || 0) - (parseFloat(it.quantite_commandee) || 0);
                                             const reliquat = parseFloat(it.reliquat);
+                                            const ecart = window.BdcReceptionUtils.computeReceptionEcart(it.quantite_recue, it.reliquat, it.quantite_commandee);
                                             const noReliquat = !isNaN(reliquat) && reliquat <= 0;
                                             return (
                                                 <tr key={idx}>

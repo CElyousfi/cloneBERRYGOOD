@@ -173,9 +173,14 @@
     };
     const updateBlItem = (idx, field, value) => {
       const items = [...blForm.items];
+      // Clampe en temps réel la quantité reçue au reliquat de la ligne : on ne
+      // doit pas pouvoir dépasser le reliquat en saisie (bug BDC-2026-0142,
+      // max={reliquat} ne bloque que les flèches +/- du input number, pas le
+      // clavier/collage). Le filet handleCreateBl reste en place en complément.
+      const finalValue = field === 'quantite_recue' ? window.BdcReceptionUtils.clampReceivedQty(value, items[idx].reliquat) : value;
       items[idx] = {
         ...items[idx],
-        [field]: value
+        [field]: finalValue
       };
       setBlForm({
         ...blForm,
@@ -637,8 +642,8 @@
         fontSize: 12
       }
     }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Article"), /*#__PURE__*/React.createElement("th", null, "Qt\xE9 command\xE9e"), /*#__PURE__*/React.createElement("th", null, "D\xE9j\xE0 re\xE7u"), /*#__PURE__*/React.createElement("th", null, "Reliquat"), /*#__PURE__*/React.createElement("th", null, "Qt\xE9 re\xE7ue"), /*#__PURE__*/React.createElement("th", null, "Unit\xE9"), /*#__PURE__*/React.createElement("th", null, "\xC9cart"), /*#__PURE__*/React.createElement("th", null, "Note"))), /*#__PURE__*/React.createElement("tbody", null, blForm.items.map((it, idx) => {
-      const ecart = (parseFloat(it.quantite_recue) || 0) - (parseFloat(it.quantite_commandee) || 0);
       const reliquat = parseFloat(it.reliquat);
+      const ecart = window.BdcReceptionUtils.computeReceptionEcart(it.quantite_recue, it.reliquat, it.quantite_commandee);
       const noReliquat = !isNaN(reliquat) && reliquat <= 0;
       return /*#__PURE__*/React.createElement("tr", {
         key: idx
