@@ -74,25 +74,30 @@ firebase --config "$ROOT/firebase.json" deploy --only "$ONLY" --project "$PROJEC
 
 # Gate G6 — vérification post-déploiement (avertissement uniquement tant que
 # DEPLOY_VERIFY_STRICT n'est pas activé). Ne bloque jamais deploy.sh par défaut.
+# Limité à functions : l'updateTime des Cloud Functions n'a pas de sens sur
+# un déploiement hosting seul.
 case "$ONLY" in
   *functions*)
     echo "[deploy] Gate G6 — vérification post-déploiement functions..."
     node "$ROOT/scripts/verify-deploy.js" || true
-
-    echo "[deploy] Smoke test post-déploiement (tests/smoke-test.js)..."
-    SMOKE_ATTEMPTS=2
-    SMOKE_DELAY=15
-    smoke_ok=1
-    for attempt in $(seq 1 "$SMOKE_ATTEMPTS"); do
-      echo "[deploy] Smoke test — tentative $attempt/$SMOKE_ATTEMPTS (attente ${SMOKE_DELAY}s propagation)..."
-      sleep "$SMOKE_DELAY"
-      if BASE_URL="https://berrygood-farms-dashboard.web.app" node "$ROOT/tests/smoke-test.js"; then
-        smoke_ok=0
-        break
-      fi
-    done
-    if [ "$smoke_ok" -ne 0 ]; then
-      echo "⚠️  Smoke test post-déploiement KO après $SMOKE_ATTEMPTS tentative(s) — non bloquant, vérifier manuellement."
-    fi
     ;;
 esac
+
+# Smoke test post-déploiement — tourne après TOUT déploiement (hosting et/ou
+# functions) : il vérifie le comportement de l'app en prod, pas les
+# functions isolément.
+echo "[deploy] Smoke test post-déploiement (tests/smoke-test.js)..."
+SMOKE_ATTEMPTS=2
+SMOKE_DELAY=15
+smoke_ok=1
+for attempt in $(seq 1 "$SMOKE_ATTEMPTS"); do
+  echo "[deploy] Smoke test — tentative $attempt/$SMOKE_ATTEMPTS (attente ${SMOKE_DELAY}s propagation)..."
+  sleep "$SMOKE_DELAY"
+  if BASE_URL="https://berrygood-farms-dashboard.web.app" node "$ROOT/tests/smoke-test.js"; then
+    smoke_ok=0
+    break
+  fi
+done
+if [ "$smoke_ok" -ne 0 ]; then
+  echo "⚠️  Smoke test post-déploiement KO après $SMOKE_ATTEMPTS tentative(s) — non bloquant, vérifier manuellement."
+fi
