@@ -83,4 +83,18 @@ function validateReliquat(bdcItems, existingBls, incomingItems) {
   return null;
 }
 
-module.exports = { validateReliquat, computeReceivedByArticle, computeOrderedByArticle, RELIQUAT_EPSILON };
+/**
+ * Derives the BdC-level `delivery_status` from per-article ordered/received
+ * quantities.
+ *
+ * @param {Record<string, number>} ordered - ordered quantity per article.
+ * @param {Record<string, number>} received - received quantity per article.
+ * @returns {"complet"|"partiel"|"non_livre"}
+ */
+function deriveDeliveryStatus(ordered, received) {
+  const allDelivered = Object.keys(ordered).every((art) => (received[art] || 0) >= ordered[art]);
+  const anyDelivered = Object.values(received).some((v) => v > 0);
+  return allDelivered ? "complet" : anyDelivered ? "partiel" : "non_livre";
+}
+
+module.exports = { validateReliquat, computeReceivedByArticle, computeOrderedByArticle, deriveDeliveryStatus, RELIQUAT_EPSILON };

@@ -56,7 +56,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateReliquat } = require('../../functions/lib/bdc/receptionGuard');
+const { validateReliquat, deriveDeliveryStatus } = require('../../functions/lib/bdc/receptionGuard');
 
 // ============================================================================
 // Fake Firestore query builder — reproduit juste assez de la sémantique du
@@ -401,4 +401,33 @@ test('create-bl: item à quantite_recue <= 0 est ignoré par la validation (pas 
   const existingBls = [];
   const result = validateReliquat(bdcItems, existingBls, [{ article: 'A', quantite_recue: 0 }]);
   assert.equal(result, null);
+});
+
+// ============================================================================
+// Scénario 5 — deriveDeliveryStatus (ticket BDC-BR-delete-cascade)
+// ============================================================================
+
+/**
+ * Exerce functions/lib/bdc/receptionGuard.js#deriveDeliveryStatus, la pure
+ * function extraite de create-bl (functions/index.js) et réutilisée par la
+ * cascade de suppression d'un BR (action "delete-movement") pour recalculer
+ * delivery_status du BDC parent après neutralisation du BL jumeau.
+ */
+
+test('deriveDeliveryStatus: aucun article reçu -> "non_livre"', () => {
+  const ordered = { A: 10, B: 20 };
+  const received = {};
+  assert.equal(deriveDeliveryStatus(ordered, received), 'non_livre');
+});
+
+test('deriveDeliveryStatus: un article reçu partiellement (sous la quantité commandée) -> "partiel"', () => {
+  const ordered = { A: 10, B: 20 };
+  const received = { A: 5 };
+  assert.equal(deriveDeliveryStatus(ordered, received), 'partiel');
+});
+
+test('deriveDeliveryStatus: tous les articles reçus intégralement -> "complet"', () => {
+  const ordered = { A: 10, B: 20 };
+  const received = { A: 10, B: 25 };
+  assert.equal(deriveDeliveryStatus(ordered, received), 'complet');
 });
