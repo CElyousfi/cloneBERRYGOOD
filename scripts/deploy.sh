@@ -66,7 +66,11 @@ echo "[deploy] ✓ garde-fous OK : branche main · tree propre · main == $REMOT
 
 echo "[deploy] branche : $(git -C "$ROOT" rev-parse --abbrev-ref HEAD) @ $(git -C "$ROOT" rev-parse --short HEAD)"
 echo "[deploy] cible : --only $ONLY  projet : $PROJECT  (via CI token)  args : ${*:-aucun}"
-firebase deploy --only "$ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive "$@"
+# --config scope explicitement la commande sur $ROOT (même raison que preview.sh) : sans ça,
+# firebase résout firebase.json/public/functions depuis le cwd du shell appelant, pas depuis
+# ce script — risque de déployer le contenu d'un autre dossier que le checkout main vérifié
+# ci-dessus par les garde-fous.
+firebase --config "$ROOT/firebase.json" deploy --only "$ONLY" --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive "$@"
 
 # Gate G6 — vérification post-déploiement (avertissement uniquement tant que
 # DEPLOY_VERIFY_STRICT n'est pas activé). Ne bloque jamais deploy.sh par défaut.

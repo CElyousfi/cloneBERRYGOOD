@@ -79,7 +79,11 @@ if [ -z "$CHANNEL" ]; then
 fi
 
 echo "[preview] déploiement hosting sur le canal '$CHANNEL' (expire 1d)..."
-DEPLOY_OUTPUT="$(firebase hosting:channel:deploy "$CHANNEL" --expires 1d --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive)"
+# --config scope explicitement la commande sur $ROOT, indépendamment du cwd de l'invocateur :
+# sans ça, firebase résout firebase.json/public/ depuis le cwd du shell appelant, pas depuis
+# ce script — un run depuis un autre dossier (ex. le repo principal en dehors du worktree)
+# déploierait le contenu de CE dossier-là, pas celui du worktree/branche qu'on croit tester.
+DEPLOY_OUTPUT="$(firebase --config "$ROOT/firebase.json" hosting:channel:deploy "$CHANNEL" --expires 1d --project "$PROJECT" --token "$FIREBASE_TOKEN" --non-interactive)"
 echo "$DEPLOY_OUTPUT" >&2
 
 PREVIEW_URL="$(echo "$DEPLOY_OUTPUT" | grep -Eo 'https://[a-zA-Z0-9.-]+\.web\.app[a-zA-Z0-9./_-]*' | tail -1)"
