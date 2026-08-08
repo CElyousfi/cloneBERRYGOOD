@@ -56,7 +56,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateReliquat, deriveDeliveryStatus } = require('../../functions/lib/bdc/receptionGuard');
+const { validateReliquat, deriveDeliveryStatus, computeReceivedByArticle } = require('../../functions/lib/bdc/receptionGuard');
 
 // ============================================================================
 // Fake Firestore query builder — reproduit juste assez de la sémantique du
@@ -430,4 +430,63 @@ test('deriveDeliveryStatus: tous les articles reçus intégralement -> "complet"
   const ordered = { A: 10, B: 20 };
   const received = { A: 10, B: 25 };
   assert.equal(deriveDeliveryStatus(ordered, received), 'complet');
+});
+
+// ============================================================================
+// Scénario 6 — create-bl ignore les BL soft-deleted dans le calcul du
+// reliquat (régression post-PR #216 : cascade suppression BR/BL)
+// ============================================================================
+
+/**
+ * Miroir verbatim de functions/index.js action "create-bl" (~L7373-7374) :
+ *   const existingBlSnap = await db_firestore.collection("delivery_notes")...get();
+ *   const existingBls = existingBlSnap.docs.map((d) => d.data()).filter((bl) => !bl.deleted);
+ *
+ * Contexte : PR #216 a introduit la cascade "delete-movement" qui neutralise
+ * (soft-delete: true) le BL jumeau d'un BR supprimé, et a corrigé le filtre
+ * côté "list-bl" — mais PAS côté "create-bl". Un BL `deleted: true` restait
+ * compté dans `received`, gonflant artificiellement le "reçu" et bloquant
+ * toute nouvelle réception ("Quantité reçue supérieure au reliquat") alors
+ * que le reliquat réel était la quantité commandée complète.
+ */
+
+test('create-bl: un BL deleted=true est exclu du calcul du reliquat (ne compte plus comme reçu)', () => {
+  const bdcItems = [{ article: 'TES', quantite: 100, unite: 'ml' }];
+  // Simule le doc Firestore brut tel que lu par existingBlSnap.docs.map((d) => d.data())
+  const rawExistingBls = [
+    { items: [{ article: 'TES', quantite_recue: 30 }], deleted: true },
+    { items: [{ article: 'TES', quantite_recue: 25 }] },
+  ];
+
+  // Sans le filtre (bug) : reçu = 30 + 25 = 55, reliquat = 45.
+  const receivedWithoutFilter = computeReceivedByArticle(rawExistingBls);
+  assert.equal(receivedWithoutFilter.TES, 55);
+
+  // Avec le filtre (fix, ligne réellement exécutée par create-bl) : le BL
+  // deleted est ignoré, reçu = 25 seulement, reliquat = 75.
+  const existingBls = rawExistingBls.filter((bl) => !bl.deleted);
+  const receivedWithFilter = computeReceivedByArticle(existingBls);
+  assert.equal(receivedWithFilter.TES, 25);
+
+  // Une réception de 75 (le vrai reliquat après exclusion du BL deleted)
+  // doit être autorisée — avant le fix elle aurait été rejetée (reliquat
+  // perçu = 45 < 75).
+  const accepted = validateReliquat(bdcItems, existingBls, [{ article: 'TES', quantite_recue: 75 }]);
+  assert.equal(accepted, null);
+
+  // Une réception de 76 dépasse le vrai reliquat -> rejetée.
+  const rejected = validateReliquat(bdcItems, existingBls, [{ article: 'TES', quantite_recue: 76 }]);
+  assert.ok(rejected);
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.error, /reliquat pour TES \(reliquat: 75\)/);
+});
+
+test('create-bl: liste de BL tous deleted -> reliquat = quantité commandée complète', () => {
+  const bdcItems = [{ article: 'A', quantite: 50, unite: 'kg' }];
+  const rawExistingBls = [{ items: [{ article: 'A', quantite_recue: 50 }], deleted: true }];
+  const existingBls = rawExistingBls.filter((bl) => !bl.deleted);
+
+  assert.deepEqual(computeReceivedByArticle(existingBls), {});
+  const accepted = validateReliquat(bdcItems, existingBls, [{ article: 'A', quantite_recue: 50 }]);
+  assert.equal(accepted, null, 'le BDC doit redevenir intégralement réceptionnable une fois le BL neutralisé');
 });
