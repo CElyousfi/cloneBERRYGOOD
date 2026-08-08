@@ -173,6 +173,8 @@
         if (!freeForm.magasin) { alert('Magasin requis'); return; }
         const validItems = freeForm.items.filter(i => i.article && i.quantite);
         if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
+        const negative = validItems.find(i => parseFloat(i.quantite) < 0);
+        if (negative) { alert('Quantité invalide pour ' + negative.article + ' (doit être ≥ 0)'); return; }
         let scanUrl = null;
         if (freeForm.scan_file) { scanUrl = await uploadScan(freeForm.scan_file); }
         fetch('/api/stock?action=create-movement', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -291,7 +293,7 @@
                                                     <td style={{textAlign:'center'}}>{it.quantite_commandee}</td>
                                                     <td style={{textAlign:'center',color:'var(--gray-400)'}}>{it.quantite_deja_recue ?? 0}</td>
                                                     <td style={{textAlign:'center',fontWeight:700,color: noReliquat ? 'var(--gray-400)' : 'var(--berry)'}}>{isNaN(reliquat) ? it.quantite_commandee : reliquat}</td>
-                                                    <td><input type="number" value={it.quantite_recue} max={isNaN(reliquat) ? undefined : reliquat} disabled={noReliquat}
+                                                    <td><input type="number" value={it.quantite_recue} min="0" max={isNaN(reliquat) ? undefined : reliquat} disabled={noReliquat}
                                                         onChange={e => updateBlItem(idx, 'quantite_recue', e.target.value)}
                                                         style={{width:80,padding:'4px 8px',borderRadius:6,border: ecart < 0 ? '2px solid var(--red)' : ecart > 0 ? '2px solid var(--blue)' : '1px solid #ddd',fontSize:12,textAlign:'right',background: noReliquat ? '#f1f5f9' : '#fff',cursor: noReliquat ? 'not-allowed' : 'text'}} /></td>
                                                     <td>{it.unite}</td>
@@ -358,7 +360,7 @@
                                     <tr key={idx}>
                                         <td><input list="articles-list-free" value={it.article} onChange={e => updateFreeItem(idx, 'article', e.target.value)} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
                                             <datalist id="articles-list-free">{articles.map(a => <option key={a.reference || a.nom} value={a.nom}>{a.nom}</option>)}</datalist></td>
-                                        <td><input type="number" value={it.quantite} onChange={e => updateFreeItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                        <td><input type="number" value={it.quantite} min="0" onChange={e => updateFreeItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
                                         <td><select value={it.unite} onChange={e => updateFreeItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{UNITES_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
                                         <td><button onClick={() => removeFreeItem(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button></td>
                                     </tr>

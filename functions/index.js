@@ -10468,6 +10468,13 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
           unite: it.unite || "kg",
         }));
 
+        if (type === "reception") {
+          const negativeItem = movItems.find((it) => it.quantite < 0);
+          if (negativeItem) {
+            return res.status(400).json({ success: false, error: `Quantité reçue négative invalide pour ${negativeItem.article_nom || negativeItem.article_ref}` });
+          }
+        }
+
         // --- Contrôle stock avant sortie/transfert ---
         // Bloque la création si le stock disponible au lieu de départ est
         // insuffisant. Réception/consommation hors périmètre (helper exempté).

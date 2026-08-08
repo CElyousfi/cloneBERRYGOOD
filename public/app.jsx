@@ -50505,6 +50505,8 @@ ${rejetHtml}
                 if (!form.magasin) { alert('Magasin requis'); return; }
                 const validItems = form.items.filter(i => i.article && i.quantite);
                 if (!validItems.length) { alert('Ajoutez au moins un article'); return; }
+                const negative = validItems.find(i => parseFloat(i.quantite) < 0);
+                if (negative) { alert('Quantité invalide pour ' + negative.article + ' (doit être ≥ 0)'); return; }
                 setSubmitting(true);
                 try {
                     const scanUrl = form.scan_file ? await uploadScan(form.scan_file) : null;
@@ -50776,7 +50778,7 @@ ${rejetHtml}
                                             <tr key={idx}>
                                                 <td><input list="articles-list-bon-entree" value={it.article} onChange={e => updateItem(idx, 'article', e.target.value)} placeholder="Article" style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} />
                                                     <datalist id="articles-list-bon-entree">{articles.map(a => <option key={a.reference || a.nom} value={a.nom}>{a.nom}</option>)}</datalist></td>
-                                                <td><input type="number" value={it.quantite} onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
+                                                <td><input type="number" value={it.quantite} min="0" onChange={e => updateItem(idx, 'quantite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}} /></td>
                                                 <td><select value={it.unite} onChange={e => updateItem(idx, 'unite', e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{UNITES_BR.map(u => <option key={u} value={u}>{u}</option>)}</select></td>
                                                 <td><button onClick={() => removeItem(idx)} style={{background:'none',border:'none',cursor:'pointer',color:'#e74c3c',fontSize:13}}><i className="fa-solid fa-trash"></i></button></td>
                                             </tr>

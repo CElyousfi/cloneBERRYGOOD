@@ -277,6 +277,11 @@
         alert('Ajoutez au moins un article');
         return;
       }
+      const negative = validItems.find(i => parseFloat(i.quantite) < 0);
+      if (negative) {
+        alert('Quantité invalide pour ' + negative.article + ' (doit être ≥ 0)');
+        return;
+      }
       let scanUrl = null;
       if (freeForm.scan_file) {
         scanUrl = await uploadScan(freeForm.scan_file);
@@ -669,6 +674,7 @@
       }, isNaN(reliquat) ? it.quantite_commandee : reliquat), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
         type: "number",
         value: it.quantite_recue,
+        min: "0",
         max: isNaN(reliquat) ? undefined : reliquat,
         disabled: noReliquat,
         onChange: e => updateBlItem(idx, 'quantite_recue', e.target.value),
@@ -1025,6 +1031,7 @@
     }, a.nom)))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
       type: "number",
       value: it.quantite,
+      min: "0",
       onChange: e => updateFreeItem(idx, 'quantite', e.target.value),
       style: {
         width: '100%',
