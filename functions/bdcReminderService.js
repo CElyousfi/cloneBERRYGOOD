@@ -17,6 +17,11 @@ const bdcReminder = require("./lib/bdc/reminder");
 /**
  * Send a reminder for a pending BDC.
  *
+ * Si aucun destinataire WhatsApp n'a été atteint (`whatsapp.sent === 0`), le
+ * rappel est REFUSÉ : ni `last_reminded_at`, ni `reminder_count`, ni `history`
+ * ne sont écrits — le cooldown 4 h n'est donc pas armé et l'utilisateur peut
+ * relancer immédiatement après avoir corrigé la ferme du BDC.
+ *
  * @param {object} payload
  * @param {string} payload.id     - BDC id
  * @param {object} [payload.by]   - Auteur du rappel ({uid, profileId, name, …})
@@ -53,7 +58,7 @@ async function remindBdcCore({ id, by, via }) {
   const lastUpdate = current.updated_at || current.created_at || now;
   const duration = bdcReminder.formatWaitingDuration(lastUpdate, now);
 
-  await dispatchNotification({
+  const dispatchResult = await dispatchNotification({
     type: "bdc_reminder",
     profiles, ferme,
     data: {
@@ -65,7 +70,34 @@ async function remindBdcCore({ id, by, via }) {
     relatedDoc: `purchase_orders/${id}`,
   });
 
-  // Track reminder
+  // ── Point de décision unique ───────────────────────────────────────────────
+  // On ne se fie QU'au compte WhatsApp : c'est le seul canal qui prouve qu'un
+  // humain a été atteint. L'alerte in-app est écrite même avec `profiles: []`
+  // (ferme sans chef) — la compter ici armerait le cooldown alors que personne
+  // n'a rien reçu. `sent === 0` couvre les trois cas : zéro destinataire, tous
+  // les envois en échec, et dispatcher muet.
+  if (!dispatchResult || !dispatchResult.whatsapp) {
+    // Fail-closed volontaire, mais le fallback est indiscernable d'un vrai zéro
+    // destinataire : l'utilisateur lira « vérifiez la ferme du BDC », diagnostic
+    // FAUX dans ce cas. On trace donc explicitement ce mode de panne (contrat de
+    // retour de dispatchNotification cassé / régressé) dans les logs CF.
+    console.error(
+      `remindBdcCore[${id}]: dispatchNotification n'a pas retourné de compte WhatsApp ` +
+      "(contrat {whatsapp:{sent,failed,recipients}} rompu) — rappel refusé par sécurité."
+    );
+  }
+  const whatsappResult = (dispatchResult && dispatchResult.whatsapp) || { sent: 0, recipients: 0 };
+  if (!whatsappResult.sent) {
+    return {
+      success: false,
+      statusCode: 400,
+      error: whatsappResult.recipients
+        ? "Rappel non envoyé : l'envoi a échoué, réessayez."
+        : "Rappel non envoyé : aucun destinataire — vérifiez la ferme du BDC.",
+    };
+  }
+
+  // Track reminder (uniquement si au moins un destinataire a été atteint)
   const history = current.history || [];
   history.push({
     action: "rappel",
