@@ -96,14 +96,24 @@ Depuis le 2026-07-28, ce ne sont plus des catégories de risque mais
 | Groupe | Règles | Raison |
 |---|---|---|
 | Gate 1 — Merge/push vers `main` | `git push BERRYGOOD main:*`, `git push origin main:*`, `git merge:*`, `gh pr merge:*` | `main` = prod (RÈGLE 1 CLAUDE.md) — dernier point d'arrêt avant que du code entre dans la branche qui sera déployée |
-| Gate 2 — Déploiement | `scripts/deploy.sh` (2 cibles : `functions`, `hosting`, chacune avec ou sans `--dry-run` ; la cible mixte `hosting,functions` est refusée par le script), `npm run deploy:functions`, `npm run deploy:hosting` | Déploiement prod effectif (avec ses 3 checks anti-divergence RULE 1/2/3 dans le script). `firebase deploy` brut reste en `deny` (voir plus bas) : impossible de bypasser le script. |
+| Gate 2 — Déploiement | `scripts/deploy.sh` (2 cibles : `functions`, `hosting`, chacune avec ou sans `--dry-run` ; la cible mixte `hosting,functions` est refusée par le script), `npm run deploy:*`, `gh workflow run:*` | Déploiement prod effectif (avec ses 3 checks anti-divergence RULE 1/2/3 dans le script). `firebase deploy` brut reste en `deny` (voir plus bas) : impossible de bypasser le script. Le déclenchement direct d'un workflow — `gh workflow run` comme `gh api …/actions/workflows/…/dispatches` — est refusé par le hook `scripts/bash-discipline-gate.js`, et pas seulement par la règle `ask` : le matching `ask` étant un préfixe, `GH_REPO=x gh workflow run` ou un double espace y échapperaient. L'entrée `gh workflow run:*` en `ask` reste comme documentation d'intention ; c'est le hook qui applique. La lecture (`gh run list/watch/view`) reste libre. |
 
 **Nuance depuis la bascule WIF (ticket `sb/deploy-wif-prod`)** : sur la cible
 `functions`, `scripts/deploy.sh` ne déploie plus rien lui-même — il déclenche
 un run GitHub Actions (`deploy-prod.yml`). Le prompt de la gate 2 autorise donc
-le *déclenchement*, pas le déploiement : la gate réelle est l'approbation par
-Omar de l'environment GitHub `production`, sans laquelle le run reste en pause
-et sans laquelle GCP ne délivre aucun jeton. Voir `docs/deploy-wif-prod.md`.
+le *déclenchement*, pas le déploiement — et ce déclenchement est **le dernier
+point d'arrêt** : le run démarre immédiatement, GitHub ne met rien en pause
+(les required reviewers d'environment exigent le plan Enterprise sur repo
+privé ; l'org est en Team). La gate réelle est **en amont** : branch protection
+sur `main` (PR obligatoire + status check `test` vert) pour qu'un commit entre
+dans `main`, et deployment branch policy sur l'environment `production` pour que
+seul `main` puisse déployer. Côté déclenchement, `npm run deploy:*` et
+`gh workflow run:*` ont été ajoutés à `ask`, mais l'application réelle vient du
+hook `scripts/bash-discipline-gate.js` : il refuse **tout** déclenchement direct
+de workflow (`gh workflow run` comme `gh api …/dispatches`), parce que le
+matching `ask` est un préfixe et laisserait passer `GH_REPO=x gh workflow run`.
+Le seul chemin restant est `scripts/deploy.sh`, lui-même en `ask`. Voir
+`docs/deploy-wif-prod.md` (section « Modèle de sécurité »).
 
 **Incertitude de matching signalée** : `git push:*` est en `allow` (branches
 non-`main`) alors que `git push BERRYGOOD main:*` / `git push origin main:*`

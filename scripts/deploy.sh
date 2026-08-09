@@ -3,8 +3,11 @@
 #
 # Deux chemins, volontairement différents :
 #   - functions → déclenche le workflow GitHub `deploy-prod.yml` (Workload Identity
-#     Federation, aucun credential local). Le run attend l'approbation d'Omar sur
-#     l'environment `production`. Runbook : docs/deploy-wif-prod.md
+#     Federation, aucun credential local). Le run démarre dès le déclenchement : il n'y a
+#     PAS d'approbation de run côté GitHub (les required reviewers d'environment sont
+#     réservés au plan Enterprise sur repo privé). Le point d'arrêt humain est en amont —
+#     le prompt de permission local sur ce script — et la protection de `main` (PR + CI
+#     verte) garantit ce qui peut être déployé. Runbook : docs/deploy-wif-prod.md
 #   - hosting   → deploy local via FIREBASE_TOKEN (transitoire, bascule WIF au backlog).
 #
 # Pré-requis :
@@ -43,14 +46,15 @@ fi
 
 # === Cible mixte 'hosting,functions' : REFUS EXPLICITE ===
 # Les deux chemins n'ont plus le même modèle d'exécution : hosting est synchrone et local,
-# functions est asynchrone (run CI mis en pause jusqu'à l'approbation d'Omar). Un deploy mixte
-# publierait le FRONTEND immédiatement, alors que le BACKEND resterait en attente d'approbation
-# — soit exactement l'inverse de l'ordre imposé par CLAUDE.md (functions d'abord, hosting
+# functions est asynchrone : le run vit hors de ce terminal (GitHub Actions), et le script
+# rend la main dès le déclenchement, sans savoir quand le backend sera live. Un deploy mixte
+# publierait donc le FRONTEND immédiatement, alors que le BACKEND serait encore en train de
+# se déployer — soit exactement l'inverse de l'ordre imposé par CLAUDE.md (functions d'abord, hosting
 # ensuite, pour que le nouveau frontend ne parle jamais à un ancien backend). Plutôt que de
 # masquer ce décalage, on refuse et on impose les deux commandes dans le bon ordre.
 if [ "$WANTS_FUNCTIONS" -eq 1 ] && [ "$WANTS_HOSTING" -eq 1 ]; then
   echo "🛑 ERREUR : cible mixte '$ONLY' refusée depuis la bascule du deploy functions vers le CI." >&2
-  echo "   functions = run GitHub asynchrone (attend l'approbation d'Omar) ;" >&2
+  echo "   functions = run GitHub asynchrone (le deploy se termine hors de ce terminal) ;" >&2
   echo "   hosting   = deploy local synchrone. Les mélanger publierait le frontend AVANT le backend." >&2
   echo "" >&2
   echo "   → Fais les deux séparément, dans cet ordre (CLAUDE.md : functions d'abord) :" >&2
@@ -138,8 +142,9 @@ if [ "$WANTS_FUNCTIONS" -eq 1 ]; then
 
   echo ""
   echo "[deploy] ✅ Run déclenché sur GitHub Actions."
-  echo "[deploy] ⏸️  Le run est EN PAUSE : Omar doit approuver l'environment « production »"
-  echo "         (notification GitHub, ou onglet Actions → le run → « Review deployments »)."
+  echo "[deploy] ▶️  Le run DÉMARRE immédiatement : il n'y a aucune approbation à donner"
+  echo "         côté GitHub. Le déclenchement que tu viens de confirmer était le point"
+  echo "         d'arrêt. Suis le run jusqu'au bout — rien ne t'attendra."
   echo ""
   echo "[deploy] Suivre le run :"
   echo "           gh run watch --repo omaaouni/BERRYGOOD"

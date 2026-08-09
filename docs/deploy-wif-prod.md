@@ -3,7 +3,10 @@
 > Runbook autosuffisant. Objectif : le deploy prod des Cloud Functions ne s'exécute plus que
 > dans GitHub Actions, authentifié par OIDC → Workload Identity Federation → impersonation du
 > service account `sb-deployer`. **Aucune clé de service account, aucun token, ni en local ni
-> sur le VPS.** La gate Omar devient l'approbation du run GitHub (environment `production`).
+> sur le VPS.** La gate Omar n'est PAS une approbation de run (indisponible, cf. §5.1) : c'est
+> la **branch protection sur `main`** (PR obligatoire + CI `test` verte) doublée de la
+> **deployment branch policy** qui n'autorise à déployer que depuis `main`. Détail complet et
+> limites assumées : §5.3 « Modèle de sécurité ».
 
 **Périmètre.** Functions prod uniquement. Le deploy **hosting** reste sur `FIREBASE_TOKEN`
 dans ce ticket — sa bascule est un follow-up noté au backlog. Le token ne peut donc pas encore
@@ -110,9 +113,11 @@ gcloud iam service-accounts add-iam-policy-binding \
 | `attribute-condition` du provider | GCP, niveau provider | le **repo** : seul `omaaouni/BERRYGOOD` peut échanger un jeton |
 | `principalSet` du binding | GCP, niveau SA | l'**environment** : seul un job déclarant `environment: production` peut impersonner `sb-deployer` |
 
-Conséquence directe : un job qui ne déclare pas `environment: production` — donc qui n'est pas
-passé par la revue d'Omar — n'obtient **aucun jeton**. La gate humaine n'est pas seulement une
-convention GitHub, elle est appliquée côté GCP.
+Conséquence directe : un job qui ne déclare pas `environment: production` n'obtient **aucun
+jeton**. Et comme l'environment `production` porte une deployment branch policy limitée à
+`main` (§5.1), un workflow lancé depuis une autre branche ne peut pas s'y rattacher, donc ne
+peut pas déployer. La restriction de branche n'est pas qu'une convention GitHub : côté GCP,
+elle conditionne l'émission même du jeton.
 
 ---
 
@@ -210,32 +215,74 @@ firebase functions:artifacts:setpolicy --project=$PROD_PROJECT
 
 ## 5. Configuration GitHub
 
-> ⚠️ **Prérequis de plan.** Les protection rules d'environment (dont les **required
-> reviewers**) ne sont disponibles, sur un repo **privé**, qu'avec GitHub **Pro / Team /
-> Enterprise**. En plan Free, l'API répond `422 ... billing plan supports the required
-> reviewers protection rule`. Sans cette règle, l'environment fonctionne quand même pour
-> l'authentification (la claim OIDC est émise, le binding GCP matche) mais **la gate humaine
-> n'existe pas** : le run se déploie sans attendre personne. Pire, si l'environment n'existe
-> pas du tout, GitHub le crée automatiquement **sans protection** au premier run — un
-> déploiement qui a l'air gaté et ne l'est pas. Vérifier explicitement :
-> `gh api repos/<owner>/<repo>/environments/production --jq '.protection_rules'` doit être
-> **non vide**.
+> ⛔ **FAIT ÉTABLI — les required reviewers sont HORS DE PORTÉE ici, ne pas réessayer.**
+> Sur un repo **privé**, la deployment protection rule « required reviewers » est réservée au
+> plan **Enterprise**. L'org est en plan **Team** : l'API répond, définitivement,
+> `422 ... billing plan supports the required reviewers protection rule`. **Il n'existe donc
+> aucune approbation de run, aucun écran de revue de déploiement, aucune pause.** Toute
+> documentation ou tout message qui en promet une envoie chercher une UI inexistante. La gate
+> humaine est ailleurs — cf. §5.3.
 
-> ⚠️ **Un transfert de repo ne transporte ni les variables (§5.2) ni l'environment (§5.1).**
-> Code, issues et PR suivent ; la config Actions non. À recréer intégralement, sous peine
-> d'échec à l'auth (variables vides) ou de perte silencieuse de la gate (environment sans
-> required reviewer). C'est l'autre moitié du piège du §2.2.
+> ✅ **Fait observé : un transfert de repo CONSERVE l'environment (§5.1) et les variables
+> (§5.2).** Après le transfert, l'environment `production` et les variables `WIF_PROVIDER` /
+> `WIF_SERVICE_ACCOUNT` étaient toujours présents et fonctionnels. (Ce document affirmait
+> l'inverse : c'était faux.) Ce qui casse au transfert, c'est l'`attribute-condition` du
+> provider GCP, qui contient le nom complet `<owner>/<repo>` — cf. §2.2. Vérifier quand même
+> après coup, ça ne coûte rien :
+> `gh api repos/<owner>/<repo>/environments/production` et
+> `gh api repos/<owner>/<repo>/actions/variables`.
 
-### 5.1 Environment `production` (= la gate Omar)
+### 5.1 Environment `production` (claim OIDC + politique de branche)
 
-Repo → **Settings → Environments → New environment** → nom exact : `production`.
+Repo → **Settings → Environments** → nom exact : `production`.
 
-- Cocher **Required reviewers** → ajouter **Omar**.
-- Le nom `production` doit être **exactement** celui-là : il est repris tel quel dans le
-  principalSet du §2.3 (`attribute.environment/production`).
+L'environment sert à deux choses, et **pas** à faire valider un run :
 
-Effet : tout run de `deploy-prod.yml` se met en pause avant le job `deploy` et attend
-l'approbation d'Omar.
+1. **Émettre la claim OIDC `environment`** exigée par le binding GCP du §2.3. Le nom
+   `production` doit être **exactement** celui-là : il est repris tel quel dans le
+   principalSet (`attribute.environment/production`).
+2. **Porter la deployment branch policy** : seul `main` est autorisé à déployer sur cet
+   environment.
+
+Effet réel d'un run : il **démarre immédiatement**, la claim `environment` est émise, GCP
+délivre le jeton — et si la ref n'est pas `main`, le rattachement à l'environment est refusé,
+donc pas de jeton, donc pas de deploy.
+
+#### Commandes réellement appliquées (pour rejeu / audit)
+
+Branch protection sur `main` — **PR obligatoire + status check `test` vert** :
+
+```bash
+gh api -X PUT repos/{owner}/{repo}/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": { "strict": true, "contexts": ["test"] },
+  "required_pull_request_reviews": { "required_approving_review_count": 0 },
+  "enforce_admins": false,
+  "restrictions": null
+}
+JSON
+```
+
+> Le contexte `test` n'a **pas été deviné** : il a été **découvert** sur un commit réel via
+> `gh api repos/{owner}/{repo}/commits/main/check-runs --jq '.check_runs[].name'`. Un nom de
+> contexte inventé serait accepté par l'API et bloquerait ensuite **tous** les merges (un
+> check jamais rapporté reste éternellement « en attente »).
+
+Deployment branch policy — seul `main` déploie :
+
+```bash
+gh api -X PUT repos/{owner}/{repo}/environments/production \
+  -F 'deployment_branch_policy[protected_branches]=false' \
+  -F 'deployment_branch_policy[custom_branch_policies]=true'
+
+gh api -X POST repos/{owner}/{repo}/environments/production/deployment-branch-policies \
+  -f name=main
+```
+
+> `protected_branches: false` + `custom_branch_policies: true` = liste blanche explicite de
+> noms de branches. C'est plus strict que `protected_branches: true`, qui autoriserait
+> **toute** branche protégée (aujourd'hui `main` seule, mais une protection ajoutée demain sur
+> une autre branche l'ouvrirait silencieusement au deploy).
 
 ### 5.2 Variables de repo
 
@@ -249,12 +296,50 @@ débogage des erreurs d'auth beaucoup plus pénible.
 | `WIF_PROVIDER` | `projects/$PROD_NUM/locations/global/workloadIdentityPools/$POOL/providers/$PROVIDER` |
 | `WIF_SERVICE_ACCOUNT` | `sb-deployer@berrygood-farms-dashboard.iam.gserviceaccount.com` |
 
+### 5.3 Modèle de sécurité — ce qui protège, et ce que ça ne protège pas
+
+**Ce qui protège**
+
+| Verrou | Effet concret |
+|---|---|
+| Branch protection sur `main` | Aucun commit n'entre dans `main` sans passer par une PR dont le status check `test` est vert (`strict: true` : la PR doit en plus être à jour avec `main`) |
+| Deployment branch policy `production` → `main` | Un run déclenché depuis une autre ref ne se rattache pas à l'environment → aucune claim → aucun jeton GCP → aucun deploy |
+| Prompt de permission local | `scripts/deploy.sh:*` et `npm run deploy:*` sont en `ask` dans `.claude/settings.json` : le déclenchement d'un deploy demande une confirmation humaine |
+| Hook `scripts/bash-discipline-gate.js` | Refuse **tout** déclenchement direct de workflow par l'agent — `gh workflow run` comme `gh api …/actions/workflows/…/dispatches`. Le seul chemin restant est `scripts/deploy.sh`, qui est gaté. ⚠️ C'est le hook, et non la règle `ask`, qui fait ce travail : le matching `ask` est un **préfixe**, donc `GH_REPO=x gh workflow run`, un double espace ou `gh workflow --repo X run` y échapperaient. Un deny de hook, lui, tient même en `bypassPermissions`. La **lecture** des runs (`gh run list/watch/view`) reste libre |
+| `dry_run: true` par défaut | Un dispatch sans input explicite **simule** et ne déploie rien |
+
+**Ce que ça ne protège PAS** — assumé, pas oublié (dépôt à un seul développeur) :
+
+- `dry_run: true` protège du **déclenchement accidentel**, pas d'un acteur délibéré : il suffit
+  de passer `-f dry_run=false`. Ce n'est pas une autorisation, c'est un cran de sûreté.
+- Avec `required_approving_review_count: 0`, la branch protection **n'empêche pas
+  l'auto-merge** de sa propre PR. Elle impose le *passage* par une PR et une CI verte, pas
+  qu'un tiers ait relu.
+- `enforce_admins: false` laisse un **admin contourner** la protection (push direct sur `main`,
+  merge malgré un check rouge).
+
+**Ce que le dispositif garantit réellement**, formulé sans complaisance : *le code déployé est
+forcément passé par une PR avec CI verte*. Pas : *un humain a validé ce déploiement-là*.
+
+> **Pourquoi `approvals: 0` et `enforce_admins: false`.** Ce sont des choix liés au fait
+> qu'Omar développe **seul** : GitHub interdit d'approuver sa propre PR (avec `approvals: 1`,
+> plus aucun merge ne serait possible), et `enforce_admins: true` ferait d'un tiers un point de
+> passage obligé pour tout hotfix. **À revoir dès qu'un second compte obtient l'accès write**
+> sur le repo : à ce moment-là, `approvals: 1` et `enforce_admins: true` deviennent tenables et
+> transforment la garantie « CI verte » en « quelqu'un d'autre a relu ».
+
 ---
 
 ## 6. Test de bout en bout, avec preuve
 
-À jouer dans cet ordre, du moins risqué au plus engageant. Chaque run doit être approuvé par
-Omar sur l'environment `production`.
+À jouer dans cet ordre, du moins risqué au plus engageant.
+
+> ⚠️ **Aucun de ces runs n'attend quoi que ce soit : ils démarrent et s'exécutent
+> immédiatement.** Il n'y a pas d'approbation à donner (§5.1). La seule protection contre un
+> déploiement involontaire, c'est **`dry_run=true`, la valeur par défaut** : un dispatch sans
+> input explicite simule. À l'inverse, `-f dry_run=false` déploie la prod, tout de suite, sans
+> confirmation ultérieure. Relire l'input avant de valider la commande — c'est le dernier
+> moment où on peut se raviser.
 
 ### Étape 1 — Dry-run complet
 
@@ -341,7 +426,7 @@ rien n'est déployé.
 
 ## 7. Étapes de retrait — OBLIGATOIRES après le premier deploy WIF réussi
 
-Rien n'est retiré tant que l'étape 6.4 n'est pas verte. Une fois qu'elle l'est, ces étapes ne
+Rien n'est retiré tant que l'**Étape 4 du §6** (deploy complet) n'est pas verte. Une fois qu'elle l'est, ces étapes ne
 sont **pas optionnelles**.
 
 1. **Vérifier qu'aucun repli `--token` ne subsiste sur le chemin functions** de
@@ -383,7 +468,8 @@ gcloud functions deploy <nouvelleFonction> \
   --update-env-vars KEY1=valeur1,KEY2=valeur2
 ```
 
-(ou via la console GCP). Vérifier ensuite avec le `jq ... | keys` du §6.3.
+(ou via la console GCP). Vérifier ensuite avec le `jq ... | keys` de l'**Étape 3 du §6**
+(preuve d'intégrité des variables).
 
 > Ce caveat deviendra **caduc** quand les ~14 variables restantes seront migrées vers Secret
 > Manager via `runWith({ secrets })`, sur le modèle de `ADMIN_SECRET` et

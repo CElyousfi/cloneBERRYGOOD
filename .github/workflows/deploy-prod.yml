@@ -17,11 +17,16 @@
 #
 # POURQUOI `environment: production`
 # ---------------------------------
-# C'est LA gate Omar : l'environment GitHub `production` a un required reviewer, donc le
-# job reste en pause tant qu'Omar n'a pas approuvé le run. C'est aussi le second verrou
-# côté GCP : le binding `roles/iam.workloadIdentityUser` est posé sur le principalSet
-# `attribute.environment/production`. Un job qui ne déclare pas cet environment n'obtient
-# tout simplement pas de jeton (le provider filtre le repo, le binding filtre l'environment).
+# Deux raisons, aucune n'étant une approbation humaine :
+#  (a) la claim OIDC `environment` : le binding `roles/iam.workloadIdentityUser` est posé sur
+#      le principalSet `attribute.environment/production`. Un job qui ne déclare pas cet
+#      environment n'obtient tout simplement pas de jeton (le provider filtre le repo, le
+#      binding filtre l'environment) ;
+#  (b) la deployment branch policy portée par l'environment : seul `main` peut déployer.
+# ⚠️ Ce workflow N'EST PAS mis en pause pour revue. Les « required reviewers » d'environment
+# sont une protection rule réservée au plan Enterprise sur repo privé ; l'org est en Team,
+# l'API refuse (422). La gate humaine est EN AMONT : branch protection sur `main` (PR
+# obligatoire + status check `test` vert) — seul du code passé par là peut être déployé.
 #
 # POURQUOI AUCUN FICHIER `.env` N'EST RECRÉÉ ICI
 # ----------------------------------------------
@@ -77,8 +82,6 @@ jobs:
     # bloqué (attente réseau, prompt jamais satisfait) tiendrait le runner 6 h (défaut
     # GitHub) et INTERDIRAIT tout autre deploy prod pendant ce temps. 45 min est large
     # pour ~55 functions gen1 (build + upload + rollout), sans être une éternité.
-    # ⚠️ Ce compteur inclut l'attente d'approbation ? Non : le temps passé en
-    # « Waiting for review » n'est pas décompté, seule l'exécution du job l'est.
     timeout-minutes: 45
     steps:
       # RÈGLE 1 de CLAUDE.md portée jusque dans le CI : main = prod, toujours.

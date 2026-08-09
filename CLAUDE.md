@@ -363,9 +363,10 @@ Chaque deploy suit cette séquence en 2 temps :
 1. DEPLOY FUNCTIONS d'abord (backend) :
    scripts/deploy.sh functions
    ⚠️ ASYNCHRONE depuis la bascule WIF : cette commande ne déploie rien
-   elle-même, elle DÉCLENCHE un run GitHub Actions qui reste EN PAUSE tant
-   qu'Omar n'a pas approuvé l'environment « production ».
-   → Quand le script rend la main, le nouveau backend n'est PAS live.
+   elle-même, elle DÉCLENCHE un run GitHub Actions qui démarre IMMÉDIATEMENT
+   (il n'y a pas d'approbation de run — cf. section « Deploy non-interactif »).
+   → Quand le script rend la main, le nouveau backend n'est PAS live : le run
+     tourne encore.
    → Attendre la FIN RÉELLE du run (`gh run watch --repo omaaouni/BERRYGOOD`)
      avant de passer à l'étape 2, avant `node scripts/verify-deploy.js` et
      avant tout smoke : lancés trop tôt, ils testent l'ANCIENNE version
@@ -428,16 +429,27 @@ scripts/deploy.sh hosting               # frontend → deploy local (token)
 ```
 
 ⚠️ La cible mixte `hosting,functions` est **refusée** : functions est asynchrone
-(attend l'approbation d'Omar), hosting est synchrone — les mélanger publierait le
-frontend AVANT le backend. Les deux commandes, dans cet ordre (functions d'abord).
+(le deploy se termine hors du terminal), hosting est synchrone — les mélanger
+publierait le frontend AVANT le backend. Les deux commandes, dans cet ordre
+(functions d'abord).
 
 **Functions (prod) = GitHub Actions + WIF, aucun credential local.**
 `scripts/deploy.sh functions` lance
 `gh workflow run deploy-prod.yml --ref main -f dry_run=false -f only=functions`.
 Le runner échange son jeton OIDC contre une impersonation du SA `sb-deployer` :
 ni token, ni clé de service account, ni en local ni sur le VPS.
-- **La gate = l'approbation de l'environment `production`** sur GitHub (required
-  reviewer : Omar). Tant qu'elle n'est pas donnée, le run reste en pause.
+- **La gate est EN AMONT, pas sur le run.** Les required reviewers d'environment
+  exigent Enterprise sur repo privé (l'org est en Team → HTTP 422) : **aucun run
+  ne se met en pause, aucun écran « Review deployments » n'existe**. Ce qui gate :
+  (a) branch protection sur `main` — PR obligatoire + CI `test` verte + `strict`,
+  (b) deployment branch policy — seul `main` peut déployer `production`,
+  (c) le prompt de permission local sur `scripts/deploy.sh` et `gh workflow run`,
+  (d) `dry_run: true` par défaut dans le workflow.
+  Garantie réelle : *le code déployé est passé par une PR avec CI verte*. PAS
+  *un humain a validé ce déploiement-là*. Limites assumées (dépôt solo) :
+  `approvals: 0` n'empêche pas l'auto-merge, `enforce_admins: false` laisse un
+  admin contourner, et `dry_run` protège de l'accident, pas d'un acte délibéré.
+  Détail et conditions de révision : docs/deploy-wif-prod.md §5.
 - Suivre : `gh run watch --repo omaaouni/BERRYGOOD`.
 - La gate G6 (`scripts/verify-deploy.js`) et le smoke test se lancent **après la fin
   réelle du run** — le script rappelle les commandes exactes. Les lancer avant donne
