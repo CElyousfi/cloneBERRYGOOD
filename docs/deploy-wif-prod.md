@@ -424,29 +424,53 @@ rien n'est déployé.
 
 ---
 
-## 7. Étapes de retrait — OBLIGATOIRES après le premier deploy WIF réussi
+## 7. Étapes de retrait
 
-Rien n'est retiré tant que l'**Étape 4 du §6** (deploy complet) n'est pas verte. Une fois qu'elle l'est, ces étapes ne
-sont **pas optionnelles**.
+1. ✅ **Fait** — aucun repli `--token` ne subsiste sur le chemin functions de
+   `scripts/deploy.sh` (à revérifier après toute modification du script).
+2. ✅ **Fait** — `CLAUDE.md` §« Deploy non-interactif » mise à jour.
 
-1. **Vérifier qu'aucun repli `--token` ne subsiste sur le chemin functions** de
-   `scripts/deploy.sh` (déjà fait par ce ticket — à revérifier après toute modification du
-   script).
+### 3. `functions/.env` — 🔴 **RÉSERVÉ À OMAR. UN AGENT NE L'EXÉCUTE JAMAIS.**
 
-2. **Supprimer `functions/.env` du poste local.** ⬅️ **Le point critique.**
-   Tant que ce fichier existe, un `firebase deploy --only functions` lancé localement le
-   rejouerait (`usedDotenv=true` → il redevient **autoritaire**) et **écraserait les variables
-   d'environnement de prod avec des valeurs périmées**. Le fichier dérive de la prod dès que le
-   CI est en service : il devient un piège, pas une sauvegarde.
-   → Omar : sauvegarde **hors du repo** (gestionnaire de mots de passe / coffre), **puis
-   suppression**.
+> **La condition bloquante est la SAUVEGARDE, pas la suppression.** Tant que la sauvegarde
+> hors du repo n'est pas faite et vérifiée, la suppression ne doit pas avoir lieu. Une version
+> antérieure de ce document présentait l'inverse — suppression « non optionnelle », sauvegarde
+> reléguée en note. Lu littéralement par un agent, ça détruisait des données.
 
-3. **`FIREBASE_TOKEN` reste dans `.env` racine** tant que le **hosting** n'est pas migré vers
-   WIF (follow-up au backlog). Le jour de cette bascule : retirer la ligne de `.env` **et
-   révoquer le token** (`firebase logout --token <token>`).
+**Pourquoi ce fichier ne se supprime pas à la légère.** Les ~25 variables (`SQL_*`, `IMAP_*`,
+`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FARMROAD_API_KEY`, `*_IMPORT_KEY`…) n'existent
+aujourd'hui qu'à **deux** endroits : ce fichier, et la configuration des functions déjà
+déployées. `gcloud functions describe` permet de les relire, mais si des functions sont
+supprimées et recréées, ou le projet reconstruit, **les valeurs sont perdues définitivement**.
+`functions/.env` est donc, en l'état, la seule copie complète — et le supprimer sans sauvegarde
+échangerait un risque réversible (écrasement : on redéploie) contre un risque irréversible.
 
-4. `CLAUDE.md` §« Token CI (deploy non-interactif) » — **déjà mis à jour par ce ticket**, elle
-   imposait exactement l'inverse de la nouvelle règle.
+**Le risque d'écrasement, lui, est réel mais aujourd'hui atténué.** Un `firebase deploy --only
+functions` lancé localement rejouerait ce fichier (`usedDotenv=true` → il redevient
+autoritaire) et écraserait les variables de prod avec des valeurs périmées. Mais y arriver
+suppose désormais de contourner **deux** garde-fous : `scripts/deploy.sh functions` n'a plus de
+chemin local (il délègue au CI, qui n'a pas de `.env`), et `firebase deploy` en direct est en
+`deny` dans `.claude/settings.json` **et** refusé par la règle `firebase-direct` du hook
+`scripts/bash-discipline-gate.js`. Ce n'est donc plus une urgence — c'est une dette à solder
+proprement.
+
+**Procédure, quand Omar la mène :**
+1. Sauvegarder `functions/.env` **hors du repo** — gestionnaire de mots de passe ou coffre
+   chiffré, jamais un dossier local en clair.
+2. **Vérifier la sauvegarde** (rouvrir l'entrée, confirmer que les ~25 clés y sont).
+3. Seulement alors, supprimer le fichier du poste.
+
+**La voie propre reste la migration Secret Manager.** Elle rend le retrait légitime sans
+dépendre d'une sauvegarde manuelle : les functions référencent un secret par son nom,
+`describe` n'affiche que la référence, la valeur ne transite jamais, et la source de vérité
+devient GCP. Modèle déjà en place pour `ADMIN_SECRET` et `ANTHROPIC_API_KEY_TRIAGE`. Ticket
+dédié au backlog. ⚠️ `METEOBLUE_API_KEY` est **en dur dans le code** (`functions/index.js`) :
+elle exige un changement de code, pas une simple bascule.
+
+### 4. `FIREBASE_TOKEN` (racine) — reste en place
+
+Tant que le **hosting** n'est pas migré vers WIF (follow-up au backlog). Le jour de cette
+bascule : retirer la ligne de `.env` **et révoquer le token** (`firebase logout --token <token>`).
 
 ---
 
