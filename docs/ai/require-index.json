@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:4e5a5d3f24f4edb3",
+    "sourceFingerprint": "sha256:3d7dd550e8ceda58",
     "stats": {
-      "targetFiles": 182,
-      "targetFilesWithDirectTests": 112,
-      "targetFilesWithTransitiveTests": 128,
-      "testFilesScanned": 139
+      "targetFiles": 183,
+      "targetFilesWithDirectTests": 113,
+      "targetFilesWithTransitiveTests": 130,
+      "testFilesScanned": 140
     }
   },
   "index": {
@@ -33,6 +33,14 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "functions/lib/bdc/bdcDigest.js": {
+      "directTests": [
+        "tests/unit/bdcDigest.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcDigest.test.js"
+      ]
+    },
     "functions/lib/bdc/mirrorSync.js": {
       "directTests": [
         "tests/unit/bdcMirrorSync.test.js"
@@ -51,7 +59,9 @@
     },
     "functions/lib/bdc/workflow.js": {
       "directTests": [],
-      "transitiveTests": []
+      "transitiveTests": [
+        "tests/unit/bdcDigest.test.js"
+      ]
     },
     "functions/lib/budgetBgf.js": {
       "directTests": [

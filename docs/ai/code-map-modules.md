@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:c16a8ebd14e4e6ea -->
-# Code Map — Modules lib (141)
+<!-- sourceFingerprint: sha256:430e9924b38f13f3 -->
+# Code Map — Modules lib (142)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -9,6 +9,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/auth/paieAccess.js | — | canAccessDivers, resolvePointageRHAccess |
 | functions/lib/auth/registryAccess.js | — | CHEF_FIELDS, FULL_FIELDS, normalizeMatriculeNum, normalizeAllowedSet, projectChefFields, projectRegistryFull, projectRegistryForChef |
 | functions/lib/auth/resolveRole.js | — | resolveCallerRole, resolveCallerProfile |
+| functions/lib/bdc/bdcDigest.js | — | PENDING_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload |
 | functions/lib/bdc/mirrorSync.js | — | PLACEHOLDER_PRICE, num, toIsoDate, isPlaceholderPrice, mapLine, buildMirrorDocs, buildReport |
 | functions/lib/bdc/receptionGuard.js | — | validateReliquat, computeReceivedByArticle, computeOrderedByArticle, deriveDeliveryStatus, RELIQUAT_EPSILON |
 | functions/lib/bdc/workflow.js | — | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
