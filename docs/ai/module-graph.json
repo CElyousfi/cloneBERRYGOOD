@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "203/343 fichiers classifiés",
+          "detail": "204/344 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,16 +14,16 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "37/133 modules avec ≥1 test",
+          "detail": "38/134 modules avec ≥1 test",
           "max": 30,
-          "score": 8
+          "score": 9
         }
       },
-      "total": 59
+      "total": 60
     },
     "heatmap": [
       {
-        "commits": 53,
+        "commits": 50,
         "file": "public/app.jsx"
       },
       {
@@ -64,9 +64,9 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8fefe0ffd60baff5",
+    "sourceFingerprint": "sha256:ddd8082c2405839b",
     "stats": {
-      "backendModules": 88,
+      "backendModules": 89,
       "cloudFunctions": 87,
       "coverageScore": 28,
       "domains": 10,
@@ -89,12 +89,13 @@
         "routes": [],
         "services": [
           "functions/bdcMirrorService.js",
+          "functions/bdcReminderService.js",
           "functions/bdcVirementService.js",
           "functions/chefBdcBot.js"
         ]
       },
       "confidence": "medium",
-      "coverageScore": 36,
+      "coverageScore": 40,
       "firestore": {
         "collections": [
           "scan_corrections",
@@ -176,7 +177,9 @@
       ],
       "label": "Achats & Fournisseurs",
       "tests": {
-        "backend": [],
+        "backend": [
+          "tests/unit/bdcReminderService.test.js"
+        ],
         "unit": [
           "tests/unit/bdcReceptionUtils.test.js",
           "tests/unit/bdcWorkflow.test.js",
@@ -757,15 +760,7 @@
           "FinCodesAnalytiquesTab"
         ]
       },
-      "gitCoupling": [
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/app.jsx",
-          "note": "probabilistic",
-          "windowDays": 90
-        }
-      ],
+      "gitCoupling": [],
       "label": "Référentiel & Analytique",
       "tests": {
         "backend": [],
@@ -1387,6 +1382,10 @@
       "domain": "admin"
     },
     "functions/bdcMirrorService.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
+    "functions/bdcReminderService.js": {
       "confidence": "medium",
       "domain": "achats"
     },
