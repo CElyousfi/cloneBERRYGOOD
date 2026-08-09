@@ -307,10 +307,25 @@ test('remindBdcCore — après un refus : reminder_count inchangé et relance im
   assert.equal(store.updates[0].history.length, 1, 'une seule entrée history : le refus n\'en a pas écrit');
 });
 
-test('remindBdcCore — dispatcher muet (retour undefined) → refus prudent', async () => {
+test('remindBdcCore — dispatcher muet (retour undefined) → refus prudent + console.error explicite', async () => {
+  // Le fallback fail-closed est indiscernable d'un vrai zéro destinataire côté
+  // utilisateur : le mode de panne doit au moins être visible dans les logs CF.
   seed({ status: 'en_attente_dg', numero: 'BDC-2026-025', updated_at: Date.now() - 2 * DAY });
   dispatchResult = undefined; // ancien contrat : dispatchNotification ne retournait rien
-  const r = await remindBdcCore({ id: 'BDC25' });
+
+  const logged = [];
+  const originalError = console.error;
+  console.error = (msg) => logged.push(String(msg));
+  let r;
+  try {
+    r = await remindBdcCore({ id: 'BDC25' });
+  } finally {
+    console.error = originalError;
+  }
+
   assert.equal(r.success, false);
   assert.equal(store.updates.length, 0);
+  assert.equal(logged.length, 1, 'le contrat rompu est tracé');
+  assert.match(logged[0], /BDC25/);
+  assert.match(logged[0], /dispatchNotification/);
 });

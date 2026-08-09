@@ -76,6 +76,16 @@ async function remindBdcCore({ id, by, via }) {
   // (ferme sans chef) — la compter ici armerait le cooldown alors que personne
   // n'a rien reçu. `sent === 0` couvre les trois cas : zéro destinataire, tous
   // les envois en échec, et dispatcher muet.
+  if (!dispatchResult || !dispatchResult.whatsapp) {
+    // Fail-closed volontaire, mais le fallback est indiscernable d'un vrai zéro
+    // destinataire : l'utilisateur lira « vérifiez la ferme du BDC », diagnostic
+    // FAUX dans ce cas. On trace donc explicitement ce mode de panne (contrat de
+    // retour de dispatchNotification cassé / régressé) dans les logs CF.
+    console.error(
+      `remindBdcCore[${id}]: dispatchNotification n'a pas retourné de compte WhatsApp ` +
+      "(contrat {whatsapp:{sent,failed,recipients}} rompu) — rappel refusé par sécurité."
+    );
+  }
   const whatsappResult = (dispatchResult && dispatchResult.whatsapp) || { sent: 0, recipients: 0 };
   if (!whatsappResult.sent) {
     return {

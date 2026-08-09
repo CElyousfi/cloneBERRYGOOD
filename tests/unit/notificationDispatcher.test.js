@@ -19,12 +19,22 @@ const path = require('node:path');
 
 const FN_DIR = path.join(__dirname, '..', '..', 'functions');
 
-// ── Faux Firestore : collection `alerts` seulement (add) ─────────────────────
+// ── Faux Firestore ───────────────────────────────────────────────────────────
+// Deux collections acceptées : `alerts` (in-app) et `whatsapp_logs` (annotation
+// du log quand `relatedDoc` est fourni). NE PAS assert sur le nom ici : cet
+// accès a lieu DANS le try de sendWhatsAppToProfiles, donc un throw serait avalé
+// par le catch global et se manifesterait par un `sent: 0` inexplicable.
 const alerts = [];
 const fakeDb = {
   collection(name) {
-    assert.equal(name, 'alerts', 'seule la collection alerts est écrite ici');
-    return { add: async (doc) => { alerts.push(doc); return { id: `alert${alerts.length}` }; } };
+    if (name === 'alerts') {
+      return { add: async (doc) => { alerts.push(doc); return { id: `alert${alerts.length}` }; } };
+    }
+    if (name === 'whatsapp_logs') {
+      // Log introuvable → le code saute l'update, sans lever.
+      return { where: () => ({ limit: () => ({ get: async () => ({ empty: true, docs: [] }) }) }) };
+    }
+    throw new Error(`collection inattendue dans ce test : ${name}`);
   },
 };
 
@@ -116,6 +126,18 @@ test('dispatchNotification — tous les envois échouent → sent = 0 mais recip
   });
   const r = await dispatch();
   assert.deepEqual(r.whatsapp, { sent: 0, failed: 1, recipients: 1 });
+});
+
+test('dispatchNotification — avec relatedDoc : le log whatsapp_logs est annoté sans casser le compte', async () => {
+  reset({ recipients: [{ phone: '212600000001', profileId: 'chef_f1' }], sendResults: [true] });
+  const r = await dispatchNotification({
+    type: 'bdc_reminder',
+    profiles: ['chef_f1'],
+    ferme: 'F1',
+    data: { numero: 'BDC-1', montant: '100 MAD', duration: '2 jours', message: 'Rappel BDC-1' },
+    relatedDoc: 'purchase_orders/BDC1',
+  });
+  assert.deepEqual(r.whatsapp, { sent: 1, failed: 0, recipients: 1 });
 });
 
 test('dispatchNotification — doublons de téléphone dédoublonnés avant envoi', async () => {

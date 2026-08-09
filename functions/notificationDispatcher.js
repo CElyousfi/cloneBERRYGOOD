@@ -253,6 +253,13 @@ async function createInAppAlert(type, profiles, message, severity, whatsappDispa
  *
  * @returns {Promise<WhatsAppDispatchResult>} Toujours un objet, jamais undefined :
  *   `sent` compte les destinataires humains réellement atteints.
+ *
+ * ⚠️ Piège sémantique sur `sent`, type par type : pour `bdc_virement_launched`,
+ * le DG est volontairement EXCLU de `templateRecipients` (il reçoit un message
+ * interactif à la place du template générique). `sent` peut donc valoir 0 avec
+ * `recipients: 1` alors que le DG a bien été touché. Ne pas conclure à un échec
+ * d'envoi sur ce type. Les autres types (dont `bdc_reminder`) n'empruntent pas
+ * ce chemin : `sent` y reflète bien les humains atteints.
  */
 async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc, type, document) {
   try {
