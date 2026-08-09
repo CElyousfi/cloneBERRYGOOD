@@ -56,6 +56,27 @@ const RULES = [
     msg: 'Passe par `scripts/deploy.sh` (gaté et journalisé), pas `firebase deploy` en direct.',
   },
   {
+    // `gh workflow run` est en `ask` dans settings.json, mais l'API REST fait la même
+    // chose sans matcher ce préfixe : `gh api -X POST .../actions/workflows/X/dispatches`.
+    // Sans cette règle, la route `gh api` contournerait purement et simplement le prompt.
+    // Testé sur la commande BRUTE (3e argument) : l'URL est souvent entre guillemets, et
+    // stripQuoted() la viderait avant que la regex puisse la voir.
+    id: 'workflow-dispatch',
+    test: (c, ft, raw) =>
+      // (a) la route API : gh api -X POST .../actions/workflows/X/dispatches
+      (/\bgh\b[\s\S]*\bapi\b/.test(raw) && /actions\/workflows\/[^\s'"]+\/dispatches/.test(raw))
+      // (b) la commande directe. `Bash(gh workflow run:*)` est en `ask`, mais le matching
+      //     est un PRÉFIXE : `GH_REPO=o/r gh workflow run`, un double espace, ou
+      //     `gh workflow --repo X run` y échappent. Ici on ne se fie pas à la forme.
+      //     L'ordre `workflow` PUIS `run` est significatif : il distingue le sous-commande
+      //     `gh workflow … run` (déclenchement) de `gh run list --workflow X` (lecture).
+      //     Les lookarounds sur `-` évitent de matcher le FLAG `--workflow`.
+      || /\bgh\b[\s\S]*?(?<![-\w])workflow(?![-\w])[\s\S]*?(?<![-\w])run(?![-\w])/.test(raw),
+    msg: 'Déclenchement direct de workflow interdit à l\'agent. Le deploy prod passe par '
+       + '`scripts/deploy.sh functions` (gaté, journalisé, et qui vérifie branche/tree/remote '
+       + 'avant de déclencher quoi que ce soit).',
+  },
+  {
     id: 'secret-read',
     test: (c) => /(^|[\s;&|])(source|\.)\s+\S*\.env(?!\.(example|sample|template|dist))\b/.test(c)
               || /\b(cat|less|more|head|tail|xxd|base64|printenv)\b[^\n;&|]*\.env(?!\.(example|sample|template|dist))(\b|$)/.test(c),
@@ -88,7 +109,9 @@ function evaluate(command) {
   const scan = stripQuoted(command);
   const ft = firstToken(scan);
   for (const r of RULES) {
-    if (r.test(scan, ft)) return { id: r.id, msg: r.msg };
+    // 3e argument = commande BRUTE, pour les règles qui doivent voir le contenu cité
+    // (une URL entre guillemets est vidée par stripQuoted).
+    if (r.test(scan, ft, command)) return { id: r.id, msg: r.msg };
   }
   return null;
 }

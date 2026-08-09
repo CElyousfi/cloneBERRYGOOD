@@ -11,7 +11,9 @@
       "WebSearch"
     ],
     "ask": [
-      "Bash(scripts/deploy.sh:*)"
+      "Bash(scripts/deploy.sh:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(gh workflow run:*)"
     ],
     "deny": [
       "Bash(git push --force:*)",
