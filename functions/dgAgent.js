@@ -71,9 +71,21 @@ const TOOLS = [
       required: ["start", "end"],
     },
   },
+  {
+    name: "get_bdc_en_attente_validation",
+    description: "Liste les bons de commande (BdC achats) qui attendent encore une validation : brouillons non soumis, en attente du Chef de Ferme, en attente du DG. Pour chaque BdC renvoie le numéro, le fournisseur, la ferme, le montant TTC, QUI bloque la validation (Achats, Chef F1, Chef F5 ou DG) et depuis combien de jours il attend. Renvoie aussi le nombre total de BdC bloqués, le montant TTC total et la répartition par bloqueur. À utiliser dès qu'on demande ce qui n'est pas validé / en attente / bloqué côté achats ou BdC.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ferme: { type: "string", description: "Filtre sur une ferme (ex: F1, F5, Avocatier, BAHIA). Optionnel — défaut: toutes les fermes." },
+        limit: { type: "number", description: "Nombre maximum de BdC détaillés à renvoyer, les plus anciens d'abord. Optionnel — défaut: 15." },
+      },
+    },
+  },
 ];
 
 const { getTeamNameMap } = require("./equipesConfig");
+const { PENDING_STATUSES, summarizePendingValidation, buildDigestPayload } = require("./lib/bdc/bdcDigest");
 const getTeamMap = () => getTeamNameMap(db);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -238,12 +250,39 @@ async function tool_get_rendement_equipes_periode({ start, end }) {
   return { start, end, nbJours: dates.length, equipes };
 }
 
+// Plafond de lecture. 500 rend la troncature quasi impossible en pratique et
+// couvre le sous-comptage du filtre `ferme`, appliqué après le plafond.
+const BDC_QUERY_LIMIT = 500;
+
+/**
+ * BdC en attente de validation. Ce handler ne fait que la lecture Firestore ;
+ * toute la mise en forme (bornage, reste, troncature) est dans le module pur
+ * testé functions/lib/bdc/bdcDigest.js.
+ */
+async function tool_get_bdc_en_attente_validation({ ferme, limit }) {
+  const snap = await db.collection("purchase_orders")
+    .where("status", "in", PENDING_STATUSES)
+    .limit(BDC_QUERY_LIMIT)
+    .get();
+
+  let docs = snap.docs.map(d => d.data() || {});
+  const fermeFilter = (ferme || "").trim();
+  if (fermeFilter) {
+    const norm = fermeFilter.toUpperCase();
+    docs = docs.filter(d => String(d.ferme || "").trim().toUpperCase() === norm);
+  }
+
+  const summary = summarizePendingValidation(docs, { today: Date.now() });
+  return buildDigestPayload(summary, limit, { ferme: fermeFilter, tronque: snap.size >= BDC_QUERY_LIMIT });
+}
+
 const TOOL_HANDLERS = {
   get_recolte_du_jour: tool_get_recolte_du_jour,
   get_recolte_periode: tool_get_recolte_periode,
   get_forecast_prix: tool_get_forecast_prix,
   get_rendement_equipes_jour: tool_get_rendement_equipes_jour,
   get_rendement_equipes_periode: tool_get_rendement_equipes_periode,
+  get_bdc_en_attente_validation: tool_get_bdc_en_attente_validation,
 };
 
 async function executeTool(name, input) {
@@ -270,11 +309,24 @@ async function buildSystemPrompt() {
   } catch { /* ignore */ }
   return `Tu es l'assistant DG de Berry Good Farms sur WhatsApp.
 Aujourd'hui: ${today}.${syncInfo}
-Tu as accès aux données récolte via les tools fournis.
+Tu as accès aux données récolte et achats (bons de commande) via les tools fournis.
 - Utilise un tool dès qu'on te demande des chiffres réels. N'invente jamais.
-- Réponds en français concis (max 5 lignes), formaté pour WhatsApp (emojis OK, *gras* avec asterisques).
+- Réponds en français concis (max 5 lignes), formaté pour WhatsApp (emojis OK, *gras* avec asterisques). Exception: quand tu listes des BdC, tu peux aller jusqu'à ~10 lignes — ne tronque pas la liste arbitrairement, mentionne plutôt le champ "reste" s'il est présent.
 - Si pas de données pour une date, dis-le clairement.
-- Pour une période ("semaine", "mois"), calcule toi-même les bornes start/end ISO.`;
+- Pour une période ("semaine", "mois"), calcule toi-même les bornes start/end ISO.
+
+Lexique des statuts BdC (achats):
+- brouillon = saisi mais pas encore soumis, la balle est chez les Achats
+- en_attente_chef = soumis, attend la validation du Chef de Ferme (Chef F1 pour F1, Chef F5 pour F5)
+- en_attente_dg = attend la validation du DG
+- valide_dg = validé par le DG (ce n'est plus en attente de validation)
+- bloqueur "aucun_valideur" = aucun chef de ferme n'est compétent pour cette ferme (souvent une ferme mal saisie) : personne ne peut valider, il faut corriger le BdC. Ne l'attribue jamais au DG.
+- BdC sans date exploitable: "ageJours" vaut null → dis "date inconnue", n'affiche pas "0 j".
+- Si le champ "lectureTronquee" est présent, les totaux sont PARTIELS (plafond de lecture atteint): précise-le au lieu de les présenter comme exacts.
+
+Format de liste BdC pour WhatsApp — un BdC par ligne, du plus ancien au plus récent:
+*BDC-2026-0142* — Fournisseur — 12 400 MAD — Chef F1 — 6 j
+Termine par une ligne de synthèse (total de BdC bloqués + montant total + qui bloque le plus).`;
 }
 
 /**
