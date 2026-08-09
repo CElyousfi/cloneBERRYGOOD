@@ -16,8 +16,8 @@ le jour même — exécutée sans confirmation) : au lieu de gater chaque comman
 individuellement risquée, on ne garde que **deux points d'arrêt** :
 
 1. **Merge / push vers `main`** — avant toute intégration dans la branche prod.
-2. **Déploiement** (`scripts/deploy.sh`, `npm run deploy`) — avant toute mise en
-   prod effective.
+2. **Déploiement** (`scripts/deploy.sh`, `npm run deploy:functions` /
+   `npm run deploy:hosting`) — avant toute mise en prod effective.
 
 Tout le reste (y compris `rm`, `mv`, `sed -i`, `npm install/uninstall/update`,
 `gcloud`, `firebase hosting:channel:*`, `git reset/rebase/clean`, suppression
@@ -33,7 +33,7 @@ Trois niveaux (précédence : **deny > ask > allow**) :
 | Niveau | Contenu | Exemples |
 |---|---|---|
 | **allow** | Tout sauf les 2 gates + irréversible | `git status`, `git commit`, `rm`, `gcloud`, `npm install`, `firebase hosting:channel:*`, `git push` (hors main) |
-| **ask** | Les 2 gates uniquement | `git push`/`gh pr merge` vers `main`, `git merge`, `scripts/deploy.sh`, `npm run deploy` |
+| **ask** | Les 2 gates uniquement | `git push`/`gh pr merge` vers `main`, `git merge`, `scripts/deploy.sh`, `npm run deploy:functions`/`deploy:hosting` |
 | **deny** | Irréversible / interdit | `git push --force[-with-lease]`, `git reset --hard`, `sudo`, `firebase deploy` brut, lecture `.env`/secrets |
 
 Complément clé : **Bash est le dernier recours**. La plupart des prompts
@@ -70,7 +70,7 @@ des appels d'outils natifs (Read/Grep/Glob/Write), jamais gatés.
 | GitHub lecture | `gh pr view/list/diff/checks`, `gh run list/view/watch` | Lecture seule |
 | Fichiers | `rm:*`, `mv:*`, `sed -i:*` | Passé en allow le 2026-07-28 (modèle "2 gates") — le `deny` garde les cas `rm -rf` les plus destructeurs |
 | Dépendances | `npm install/uninstall/update:*` | Idem |
-| npm scripts | `npm run qa/test:unit/build:frontend/typecheck`, `npm ls` | Scripts `package.json` non destructifs — `npm run deploy` reste en ask (gate 2) |
+| npm scripts | `npm run qa/test:unit/build:frontend/typecheck`, `npm ls` | Scripts `package.json` non destructifs — `npm run deploy:functions` / `npm run deploy:hosting` restent en ask (gate 2) |
 | Node ciblé | `node --version/--check/--test`, `node tests/smoke-test.js`, `node tests/smoke-sprint-1.js`, `node tests/test-workflows.js`, `node tests/test-chef-bdc-bot.js`, `node scripts/build-frontend.js`, `node scripts/permission-audit.js`, `node scripts/diag-readonly.js:*` | Scripts QA/diagnostic nommément reconnus — le diagnostic Firestore/Meta lecture seule passe par `diag-readonly.js` (masque les secrets), pas par des `node -e`/`python3 -c` one-off qui restent hors allowlist (exécution arbitraire) |
 | Python ciblé | `python3 -m json.tool` | Validation JSON pure — PAS `python3 -c` (exécution arbitraire) |
 | Firebase | `firebase functions:log`, `firebase projects:list:*`, `firebase hosting:channel:*` | Le preview channel est passé en allow le 2026-07-28 (pas de risque prod direct — un channel n'affecte pas `default`/live) ; `firebase deploy` brut reste en `deny` |
@@ -96,7 +96,14 @@ Depuis le 2026-07-28, ce ne sont plus des catégories de risque mais
 | Groupe | Règles | Raison |
 |---|---|---|
 | Gate 1 — Merge/push vers `main` | `git push BERRYGOOD main:*`, `git push origin main:*`, `git merge:*`, `gh pr merge:*` | `main` = prod (RÈGLE 1 CLAUDE.md) — dernier point d'arrêt avant que du code entre dans la branche qui sera déployée |
-| Gate 2 — Déploiement | `scripts/deploy.sh` (4 variantes), `npm run deploy` | Déploiement prod effectif (avec ses 3 checks anti-divergence RULE 1/2/3 dans le script). `firebase deploy` brut reste en `deny` (voir plus bas) : impossible de bypasser le script. |
+| Gate 2 — Déploiement | `scripts/deploy.sh` (2 cibles : `functions`, `hosting`, chacune avec ou sans `--dry-run` ; la cible mixte `hosting,functions` est refusée par le script), `npm run deploy:functions`, `npm run deploy:hosting` | Déploiement prod effectif (avec ses 3 checks anti-divergence RULE 1/2/3 dans le script). `firebase deploy` brut reste en `deny` (voir plus bas) : impossible de bypasser le script. |
+
+**Nuance depuis la bascule WIF (ticket `sb/deploy-wif-prod`)** : sur la cible
+`functions`, `scripts/deploy.sh` ne déploie plus rien lui-même — il déclenche
+un run GitHub Actions (`deploy-prod.yml`). Le prompt de la gate 2 autorise donc
+le *déclenchement*, pas le déploiement : la gate réelle est l'approbation par
+Omar de l'environment GitHub `production`, sans laquelle le run reste en pause
+et sans laquelle GCP ne délivre aucun jeton. Voir `docs/deploy-wif-prod.md`.
 
 **Incertitude de matching signalée** : `git push:*` est en `allow` (branches
 non-`main`) alors que `git push BERRYGOOD main:*` / `git push origin main:*`
