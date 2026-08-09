@@ -13,7 +13,8 @@
     "test": "node tests/test-workflows.js",
     "smoke": "BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js",
     "smoke:sprint-1": "node tests/smoke-sprint-1.js",
-    "deploy": "bash scripts/deploy.sh"
+    "deploy:functions": "bash scripts/deploy.sh functions",
+    "deploy:hosting": "bash scripts/deploy.sh hosting"
   },
   "keywords": [],
   "author": "",

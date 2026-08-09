@@ -1,0 +1,196 @@
+# Deploy PROD des Cloud Functions — authentification Workload Identity Federation (OIDC).
+#
+# POURQUOI CE WORKFLOW
+# --------------------
+# Le deploy prod passait par un FIREBASE_TOKEN (`firebase login:ci`) stocké en local dans
+# .env : il expire régulièrement, casse les deploys en cours, et Google le déprécie.
+# Ici, aucun credential n'existe nulle part : le runner échange son jeton OIDC GitHub
+# contre une impersonation du service account `sb-deployer` (Workload Identity Federation).
+# Runbook complet (commandes gcloud, rôles IAM, retrait des credentials) :
+#   docs/deploy-wif-prod.md
+#
+# POURQUOI `workflow_dispatch` UNIQUEMENT
+# --------------------------------------
+# Aucun trigger `push`/`pull_request` : un merge sur main ne doit JAMAIS déployer la prod
+# tout seul. Le deploy reste une décision explicite (déclenchée à la main, ou par
+# `scripts/deploy.sh functions` qui appelle `gh workflow run`).
+#
+# POURQUOI `environment: production`
+# ---------------------------------
+# C'est LA gate Omar : l'environment GitHub `production` a un required reviewer, donc le
+# job reste en pause tant qu'Omar n'a pas approuvé le run. C'est aussi le second verrou
+# côté GCP : le binding `roles/iam.workloadIdentityUser` est posé sur le principalSet
+# `attribute.environment/production`. Un job qui ne déclare pas cet environment n'obtient
+# tout simplement pas de jeton (le provider filtre le repo, le binding filtre l'environment).
+#
+# POURQUOI AUCUN FICHIER `.env` N'EST RECRÉÉ ICI
+# ----------------------------------------------
+# Les ~14 variables d'environnement des functions gen1 (IMAP_*, SQL_*, API keys…) NE sont
+# PAS embarquées dans GitHub. firebase-tools lit `functions/.env` s'il existe ; sur le
+# runner il est absent → `hasUserEnvs()` renvoie false → `prepare.js` passe
+# `usedDotenv=false` à `inferDetailsFromExisting()`, qui RÉINJECTE les variables DÉJÀ
+# DÉPLOYÉES sur chaque function. Rien n'est écrasé, et aucun secret n'entre dans GitHub.
+# ⚠️ Corollaire documenté dans le runbook : une function CRÉÉE après la bascule n'a pas de
+# version déployée à recopier → elle naît SANS variables d'environnement.
+#
+# POURQUOI PAS DE `--force`
+# -------------------------
+# `--force` fait passer silencieusement la SUPPRESSION de functions (prompts.js). En CI
+# c'est inacceptable : sans `--force`, un deploy qui supprimerait une function échoue
+# franchement — c'est le comportement voulu. Les deux prompts que `--force` aurait
+# neutralisés sont traités en amont par les prérequis one-shot (activation des API +
+# `firebase functions:artifacts:setpolicy`), cf. docs/deploy-wif-prod.md.
+name: Deploy prod (functions)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Simulation sans déployer (--dry-run). Défaut true : un vrai deploy se demande explicitement.'
+        type: boolean
+        required: false
+        default: true
+      only:
+        description: "Cible firebase, ex. `functions` ou `functions:maFonction` (deploy d'une seule function)."
+        type: string
+        required: false
+        default: functions
+
+# id-token: write est indispensable pour que le runner puisse demander son jeton OIDC.
+# contents: read suffit — ce workflow ne pousse rien dans le repo.
+permissions:
+  id-token: write
+  contents: read
+
+# Jamais deux deploys prod en parallèle. cancel-in-progress: false — on n'interrompt
+# JAMAIS un deploy en cours (une annulation en plein `firebase deploy` laisserait la prod
+# dans un état partiellement déployé).
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    # Filet de sécurité pour `concurrency: deploy-prod` : sans timeout explicite, un job
+    # bloqué (attente réseau, prompt jamais satisfait) tiendrait le runner 6 h (défaut
+    # GitHub) et INTERDIRAIT tout autre deploy prod pendant ce temps. 45 min est large
+    # pour ~55 functions gen1 (build + upload + rollout), sans être une éternité.
+    # ⚠️ Ce compteur inclut l'attente d'approbation ? Non : le temps passé en
+    # « Waiting for review » n'est pas décompté, seule l'exécution du job l'est.
+    timeout-minutes: 45
+    steps:
+      # RÈGLE 1 de CLAUDE.md portée jusque dans le CI : main = prod, toujours.
+      # Première étape volontairement : on refuse avant même de checkout ou de s'authentifier.
+      - name: Garde-fou — deploy uniquement depuis main (CLAUDE.md RÈGLE 1)
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ "$REF" != "refs/heads/main" ]; then
+            echo "🛑 ERREUR (CLAUDE.md RÈGLE 1) : deploy prod autorisé UNIQUEMENT depuis 'main'." >&2
+            echo "   main = prod, toujours. Aucun deploy depuis une feature branch ou un worktree." >&2
+            echo "   Ref reçue : $REF" >&2
+            exit 1
+          fi
+          echo "✓ ref = refs/heads/main"
+
+      # Défense en profondeur : `only` est une chaîne libre, rien n'empêche un dispatch
+      # `-f only=hosting` (ou `-f only=firestore:rules`) qui déploierait, avec les droits
+      # de sb-deployer, une cible que ce workflow n'a jamais eu vocation à couvrir.
+      # Ce workflow est le chemin FUNCTIONS ; le hosting reste sur le chemin local
+      # (FIREBASE_TOKEN) tant que sa bascule WIF n'est pas faite. Intention explicite.
+      - name: Garde-fou — cible restreinte aux functions
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          set -euo pipefail
+          case "$ONLY" in
+            functions|functions:*) ;;
+            *)
+              echo "🛑 ERREUR : cible '$ONLY' refusée. Ce workflow ne déploie QUE les functions." >&2
+              echo "   Attendu : 'functions' ou 'functions:<nomDeLaFonction>'." >&2
+              echo "   Le deploy hosting passe encore par 'scripts/deploy.sh hosting' (local)." >&2
+              exit 1
+              ;;
+          esac
+          echo "✓ cible = $ONLY"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      # Échange OIDC → impersonation de sb-deployer. Pose l'ADC (GOOGLE_APPLICATION_CREDENTIALS)
+      # que firebase-tools et gcloud consomment ensuite. Aucune clé de service account.
+      # WIF_PROVIDER / WIF_SERVICE_ACCOUNT sont des VARIABLES de repo (pas des secrets) :
+      # ce sont des identifiants d'infra, pas des credentials.
+      - name: Authentification GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Install dependencies (functions)
+        run: npm ci
+        working-directory: functions
+
+      # Les arguments sont construits dans le shell plutôt que dupliqués en deux steps :
+      # une seule commande de deploy = une seule chose à auditer.
+      # Ni --token (l'auth vient de l'ADC posée ci-dessus), ni --force (cf. en-tête).
+      - name: Deploy firebase
+        env:
+          ONLY: ${{ inputs.only }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          ARGS=(deploy --only "$ONLY" --project berrygood-farms-dashboard --non-interactive)
+          if [ "$DRY_RUN" = 'true' ]; then
+            echo "ℹ️  Mode SIMULATION (--dry-run) : rien ne sera déployé."
+            ARGS+=(--dry-run)
+          else
+            echo "🚀 Deploy RÉEL sur berrygood-farms-dashboard (cible : $ONLY)"
+          fi
+          npx --yes firebase-tools@15 "${ARGS[@]}"
+
+      # gcloud est requis par l'étape de preuve ci-dessous. setup-gcloud récupère
+      # automatiquement les credentials posées par google-github-actions/auth.
+      - name: Setup gcloud (pour l'étape de preuve)
+        if: ${{ !inputs.dry_run }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Preuve d'intégrité : les variables d'environnement des functions témoins ont bien
+      # survécu au deploy (mécanisme inferDetailsFromExisting décrit en en-tête).
+      #
+      # ⚠️ ON NE DUMPE QUE LES CLÉS, JAMAIS LES VALEURS. scripts/verify-deploy.js:12-14
+      # documente le piège : un `gcloud functions describe` sans --format restreint recrache
+      # `environmentVariables` en clair (API keys, mots de passe DB) — et les logs GitHub
+      # Actions sont lisibles par tout collaborateur du repo. Le `jq ... | keys` fait que les
+      # valeurs ne transitent qu'en mémoire et ne sont jamais imprimées.
+      #
+      # Le double fallback jq n'est pas cosmétique : les functions sont gen1, donc les env
+      # vars sont à la racine (`.environmentVariables`), mais un `gcloud` récent peut
+      # résoudre la function via l'API v2, qui les place sous `.serviceConfig`. Sans le
+      # second terme, la preuve afficherait « <aucune> » — un FAUX NÉGATIF sur l'étape qui
+      # sert précisément de preuve.
+      #
+      # Functions témoins choisies dans docs/ai/deploy-verify-targets.txt (gate G6).
+      # continue-on-error : c'est une PREUVE, pas une gate — un échec ici (rôle de lecture
+      # manquant, function non déployée) ne doit pas faire échouer un deploy réussi.
+      - name: Preuve — clés des variables d'environnement (jamais les valeurs)
+        if: ${{ !inputs.dry_run }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          for fn in health caisseManagement meteoblue; do
+            keys="$(gcloud functions describe "$fn" \
+              --region europe-west1 \
+              --project berrygood-farms-dashboard \
+              --format=json \
+              | jq -r '(.environmentVariables // .serviceConfig.environmentVariables // {}) | keys | sort | join(",")')"
+            echo "$fn : ${keys:-<aucune>}"
+          done
