@@ -7,6 +7,7 @@
     "build:frontend": "node scripts/build-frontend.js",
     "test:unit": "node --test 'tests/unit/**/*.test.js'",
     "qa": "bash scripts/qa.sh",
+    "code-index": "node scripts/generate-code-index.js",
     "typecheck": "tsc -p jsconfig.json",
     "coverage": "c8 --reporter=text --reporter=html npm run test:unit",
     "test": "node tests/test-workflows.js",

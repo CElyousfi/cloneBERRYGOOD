@@ -1,0 +1,1405 @@
+{
+  "_meta": {
+    "schemaVersion": 1,
+    "generatorVersion": "1.0.0",
+    "sourceFingerprint": "sha256:4e5a5d3f24f4edb3",
+    "stats": {
+      "targetFiles": 182,
+      "targetFilesWithDirectTests": 112,
+      "targetFilesWithTransitiveTests": 128,
+      "testFilesScanned": 139
+    }
+  },
+  "index": {
+    "functions/lib/auth/paieAccess.js": {
+      "directTests": [
+        "tests/unit/paieAccess.test.js",
+        "tests/unit/registryAccess.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/paieAccess.test.js",
+        "tests/unit/registryAccess.test.js"
+      ]
+    },
+    "functions/lib/auth/registryAccess.js": {
+      "directTests": [
+        "tests/unit/registryAccess.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/registryAccess.test.js"
+      ]
+    },
+    "functions/lib/auth/resolveRole.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/bdc/mirrorSync.js": {
+      "directTests": [
+        "tests/unit/bdcMirrorSync.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcMirrorSync.test.js"
+      ]
+    },
+    "functions/lib/bdc/receptionGuard.js": {
+      "directTests": [
+        "tests/unit/bdcReceptionRegression.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcReceptionRegression.test.js"
+      ]
+    },
+    "functions/lib/bdc/workflow.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/budgetBgf.js": {
+      "directTests": [
+        "tests/unit/productionEstimation.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/productionEstimation.test.js"
+      ]
+    },
+    "functions/lib/bugReports/bugStatus.js": {
+      "directTests": [
+        "tests/unit/bugStatus.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bugStatus.test.js"
+      ]
+    },
+    "functions/lib/bugReports/validateBugReport.js": {
+      "directTests": [
+        "tests/unit/validateBugReport.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/validateBugReport.test.js"
+      ]
+    },
+    "functions/lib/caisseImport/detectCols.js": {
+      "directTests": [
+        "tests/unit/caisseImport.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/caisseImport.test.js"
+      ]
+    },
+    "functions/lib/caisseImport/excelToISO.js": {
+      "directTests": [
+        "tests/unit/caisseImport.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/caisseImport.test.js"
+      ]
+    },
+    "functions/lib/caisseImport/index.js": {
+      "directTests": [
+        "tests/unit/caisseImport.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/caisseImport.test.js"
+      ]
+    },
+    "functions/lib/caisseImport/parsers.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "tests/unit/caisseImport.test.js"
+      ]
+    },
+    "functions/lib/fonctions/fonctionsHistory.js": {
+      "directTests": [
+        "tests/unit/fonctionsHistory.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/fonctionsHistory.test.js"
+      ]
+    },
+    "functions/lib/fonctions/fonctionsValidate.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/forecastConfirmation.js": {
+      "directTests": [
+        "tests/unit/forecastConfirmation.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/forecastConfirmation.test.js"
+      ]
+    },
+    "functions/lib/heuresSup/heuresSup.js": {
+      "directTests": [
+        "functions/lib/heuresSup/__tests__/heuresSup.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/heuresSup/__tests__/heuresSup.test.js"
+      ]
+    },
+    "functions/lib/irrigation/crossDayTrends.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/dailySummary.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/dailySummary.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/dataAccess.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/dataAccess.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dataAccess.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/diagnose.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/enrich.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/featureRow.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/index.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/nextPulse.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/normalize.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js",
+        "functions/lib/irrigation/__tests__/normalize.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/normalize.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/parcelleMeta.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/recommendations.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/radiationStrategy.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/recommendations.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/recommendations.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/recommendations.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/thresholds.js": {
+      "directTests": [
+        "functions/lib/irrigation/__tests__/recommendations.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/recommendations.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/types.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/irrigation/utils.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/dailySummary.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/enrich.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/normalize.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/irrigation/weatherAdjustments.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/irrigation/__tests__/crossDayTrends.test.js",
+        "functions/lib/irrigation/__tests__/drainTrend.test.js",
+        "functions/lib/irrigation/__tests__/driscollRules.test.js",
+        "functions/lib/irrigation/__tests__/nextPulse.test.js",
+        "functions/lib/irrigation/__tests__/radiationStrategy.test.js",
+        "functions/lib/irrigation/__tests__/scenarios.test.js",
+        "functions/lib/irrigation/__tests__/weatherAdjustments.test.js"
+      ]
+    },
+    "functions/lib/joursFeries/joursFeries.js": {
+      "directTests": [
+        "functions/lib/joursFeries/__tests__/joursFeries.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/joursFeries/__tests__/joursFeries.test.js"
+      ]
+    },
+    "functions/lib/mappingConso/campagneUtils.js": {
+      "directTests": [
+        "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
+        "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/campagneUtilsBackend.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js",
+        "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
+        "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/campagneUtilsBackend.test.js"
+      ]
+    },
+    "functions/lib/mappingConso/familles.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/mappingConso/resolver.js": {
+      "directTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js"
+      ]
+    },
+    "functions/lib/mappingConso/seed.js": {
+      "directTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js"
+      ]
+    },
+    "functions/lib/marcheLocalCaisse/applyEncaissements.js": {
+      "directTests": [
+        "tests/unit/applyEncaissements.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/applyEncaissements.test.js"
+      ]
+    },
+    "functions/lib/marcheLocalCaisse/encaissements.js": {
+      "directTests": [
+        "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js"
+      ]
+    },
+    "functions/lib/marcheLocalCaisse/index.js": {
+      "directTests": [
+        "functions/lib/marcheLocalCaisse/__tests__/marcheLocalCaisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js",
+        "functions/lib/marcheLocalCaisse/__tests__/marcheLocalCaisse.test.js"
+      ]
+    },
+    "functions/lib/marcheLocalCaisse/modeleVierge.js": {
+      "directTests": [
+        "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js"
+      ]
+    },
+    "functions/lib/meteo/meteoblueProxy.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/meteoblueProxy.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoblueProxy.test.js"
+      ]
+    },
+    "functions/lib/netafim/auth.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/auth.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/auth.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/client.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/client.test.js",
+        "functions/lib/netafim/__tests__/pagination.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/client.test.js",
+        "functions/lib/netafim/__tests__/endpoints.test.js",
+        "functions/lib/netafim/__tests__/pagination.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/config.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/dataAccess.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/dataAccess.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/dataAccess.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/endpoints.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/endpoints.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/endpoints.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/index.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/mapper.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/mapper.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/mapper.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/pagination.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/pagination.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/pagination.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/parcelles.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/parcelles.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/parcelles.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/rateLimiter.js": {
+      "directTests": [
+        "functions/lib/netafim/__tests__/rateLimiter.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/netafim/__tests__/rateLimiter.test.js",
+        "functions/lib/netafim/__tests__/syncBahia.test.js"
+      ]
+    },
+    "functions/lib/netafim/types.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/phenology/dailyPhenologyJob.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js"
+      ]
+    },
+    "functions/lib/phenology/farmroadStationResolver.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/farmroadStationResolver.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/farmroadStationResolver.test.js"
+      ]
+    },
+    "functions/lib/phenology/gddCalculator.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/gddCalculator.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js",
+        "functions/lib/phenology/__tests__/gddCalculator.test.js",
+        "functions/lib/phenology/__tests__/index.test.js"
+      ]
+    },
+    "functions/lib/phenology/index.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/index.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/index.test.js"
+      ]
+    },
+    "functions/lib/phenology/irrigationRecipe.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/irrigationRecipe.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js",
+        "functions/lib/phenology/__tests__/index.test.js",
+        "functions/lib/phenology/__tests__/irrigationRecipe.test.js"
+      ]
+    },
+    "functions/lib/phenology/outdoorWeatherFallback.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/outdoorWeatherFallback.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/outdoorWeatherFallback.test.js"
+      ]
+    },
+    "functions/lib/phenology/phenologyDailyWriter.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/phenologyDailyWriter.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/phenologyDailyWriter.test.js"
+      ]
+    },
+    "functions/lib/phenology/radiationFetcher.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/radiationFetcher.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/radiationFetcher.test.js"
+      ]
+    },
+    "functions/lib/phenology/radsumCalculator.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/radsumCalculator.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js",
+        "functions/lib/phenology/__tests__/index.test.js",
+        "functions/lib/phenology/__tests__/radsumCalculator.test.js"
+      ]
+    },
+    "functions/lib/phenology/referenceLoader.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/referenceLoader.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/referenceLoader.test.js"
+      ]
+    },
+    "functions/lib/phenology/stageResolver.js": {
+      "directTests": [
+        "functions/lib/phenology/__tests__/stageResolver.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/phenology/__tests__/cronExports.test.js",
+        "functions/lib/phenology/__tests__/dailyPhenologyJob.test.js",
+        "functions/lib/phenology/__tests__/index.test.js",
+        "functions/lib/phenology/__tests__/stageResolver.test.js"
+      ]
+    },
+    "functions/lib/phenology/types.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/phone/formatPhoneE164.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "tests/unit/sentinelRecipients.test.js"
+      ]
+    },
+    "functions/lib/pointage/campagnePeriodes.js": {
+      "directTests": [
+        "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
+        "tests/unit/campagnePeriodes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
+        "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/campagnePeriodes.test.js"
+      ]
+    },
+    "functions/lib/pointage/countDistinctByFermeType.js": {
+      "directTests": [
+        "tests/unit/countDistinctByFermeType.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/countDistinctByFermeType.test.js"
+      ]
+    },
+    "functions/lib/pointage/dedupeWorkersByMatricule.js": {
+      "directTests": [
+        "functions/lib/pointage/__tests__/dedupeWorkersByMatricule.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/pointage/__tests__/dedupeWorkersByMatricule.test.js"
+      ]
+    },
+    "functions/lib/pointage/mirrorWindow.js": {
+      "directTests": [
+        "functions/lib/pointage/__tests__/mirrorWindow.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/pointage/__tests__/mirrorWindow.test.js"
+      ]
+    },
+    "functions/lib/pointage/parcellesParams.js": {
+      "directTests": [
+        "tests/unit/parcellesParams.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/parcellesParams.test.js"
+      ]
+    },
+    "functions/lib/pointage/pullHealth.js": {
+      "directTests": [
+        "tests/unit/pullHealth.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/pullHealth.test.js"
+      ]
+    },
+    "functions/lib/pointage/refParcelleFerme.js": {
+      "directTests": [
+        "tests/unit/refParcelleFerme.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/refParcelleFerme.test.js",
+        "tests/unit/referentielSync.test.js"
+      ]
+    },
+    "functions/lib/pointage/referentielSync.js": {
+      "directTests": [
+        "tests/unit/referentielSync.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/referentielSync.test.js"
+      ]
+    },
+    "functions/lib/pointage/slidingWindow.js": {
+      "directTests": [
+        "tests/unit/pointageSlidingWindow.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/pointageSlidingWindow.test.js"
+      ]
+    },
+    "functions/lib/pointageBdp/comparePointage.js": {
+      "directTests": [
+        "tests/unit/pointageBdpCompare.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/pointageBdpCompare.test.js"
+      ]
+    },
+    "functions/lib/pointageBdp/mapBdpRow.js": {
+      "directTests": [
+        "tests/unit/pointageBdpMap.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/pointageBdpMap.test.js"
+      ]
+    },
+    "functions/lib/pointageValidation/stateMachine.js": {
+      "directTests": [
+        "tests/unit/pointageValidationStateMachine.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/pointageValidationStateMachine.test.js",
+        "tests/unit/validationAccess.test.js"
+      ]
+    },
+    "functions/lib/primes/identiteSync.js": {
+      "directTests": [
+        "tests/unit/identiteSync.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/identiteSync.test.js"
+      ]
+    },
+    "functions/lib/primes/primeHistory.js": {
+      "directTests": [
+        "tests/unit/primeHistory.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/primeHistory.test.js"
+      ]
+    },
+    "functions/lib/primes/primesAccess.js": {
+      "directTests": [
+        "tests/unit/primesAccess.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/primesAccess.test.js"
+      ]
+    },
+    "functions/lib/primes/primesImport.js": {
+      "directTests": [
+        "tests/unit/primesImport.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/identiteSync.test.js",
+        "tests/unit/primesImport.test.js"
+      ]
+    },
+    "functions/lib/probeStaleness/probeStaleness.js": {
+      "directTests": [
+        "tests/unit/probeStaleness.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/probeStaleness.test.js"
+      ]
+    },
+    "functions/lib/productionEstimation.js": {
+      "directTests": [
+        "tests/unit/productionEstimation.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/productionEstimation.test.js"
+      ]
+    },
+    "functions/lib/productivity/constants.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/productivity/__tests__/ranker.test.js"
+      ]
+    },
+    "functions/lib/productivity/index.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/productivity/pdfParser.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/productivity/ranker.js": {
+      "directTests": [
+        "functions/lib/productivity/__tests__/ranker.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/productivity/__tests__/ranker.test.js"
+      ]
+    },
+    "functions/lib/productivity/refetchPipeline.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/sentinel/sentinelRecipients.js": {
+      "directTests": [
+        "tests/unit/sentinelRecipients.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/sentinelRecipients.test.js"
+      ]
+    },
+    "functions/lib/stock/articleHistoryIndex.js": {
+      "directTests": [
+        "tests/unit/articleHistoryIndex.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleHistoryIndex.test.js"
+      ]
+    },
+    "functions/lib/stock/locationsConfig.js": {
+      "directTests": [
+        "tests/unit/locationsConfig.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/locationsConfig.test.js"
+      ]
+    },
+    "functions/lib/stock/movementGuard.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "tests/unit/movementImpact.test.js"
+      ]
+    },
+    "functions/lib/stock/movementImpact.js": {
+      "directTests": [
+        "tests/unit/movementImpact.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/movementImpact.test.js"
+      ]
+    },
+    "functions/lib/stock/pmpDetail.js": {
+      "directTests": [
+        "tests/unit/pmpDetail.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/pmpDetail.test.js"
+      ]
+    },
+    "functions/lib/stock/scanAttachment.js": {
+      "directTests": [
+        "functions/lib/stockFiles/__tests__/allowedMime.test.js",
+        "tests/unit/validateAttachmentMetadata.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockFiles/__tests__/allowedMime.test.js",
+        "tests/unit/validateAttachmentMetadata.test.js"
+      ]
+    },
+    "functions/lib/stock/scanAttachmentUtils.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/stockFiles/__tests__/allowedMime.test.js",
+        "tests/unit/validateAttachmentMetadata.test.js"
+      ]
+    },
+    "functions/lib/stock/stockGuard.js": {
+      "directTests": [
+        "tests/unit/stockGuard.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/stockGuard.test.js"
+      ]
+    },
+    "functions/lib/stock/valuationPMP.js": {
+      "directTests": [
+        "tests/unit/valuationPMP.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/valuationPMP.test.js"
+      ]
+    },
+    "functions/lib/stockCaneva/guard.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+      ]
+    },
+    "functions/lib/stockCaneva/index.js": {
+      "directTests": [
+        "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+      ]
+    },
+    "functions/lib/stockCaneva/mappings.js": {
+      "directTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js",
+        "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/mappingConso/__tests__/resolver.test.js",
+        "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+      ]
+    },
+    "functions/lib/stockCaneva/parseWorkbook.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
+      ]
+    },
+    "functions/lib/stockFiles/allowedMime.js": {
+      "directTests": [
+        "functions/lib/stockFiles/__tests__/allowedMime.test.js",
+        "tests/unit/validateAttachmentMetadata.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockFiles/__tests__/allowedMime.test.js",
+        "tests/unit/validateAttachmentMetadata.test.js"
+      ]
+    },
+    "functions/lib/stockFiles/farmDetection.js": {
+      "directTests": [
+        "functions/lib/stockFiles/__tests__/farmDetection.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockFiles/__tests__/farmDetection.test.js"
+      ]
+    },
+    "functions/lib/stockFiles/recordSubmission.js": {
+      "directTests": [
+        "functions/lib/stockFiles/__tests__/recordSubmission.test.js",
+        "functions/lib/stockFiles/__tests__/reminders.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockFiles/__tests__/recordSubmission.test.js",
+        "functions/lib/stockFiles/__tests__/reminders.test.js"
+      ]
+    },
+    "functions/lib/stockFiles/reminders.js": {
+      "directTests": [
+        "functions/lib/stockFiles/__tests__/reminders.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockFiles/__tests__/reminders.test.js"
+      ]
+    },
+    "functions/lib/stockMerge/articleMerge.js": {
+      "directTests": [
+        "tests/unit/articleMerge.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleMerge.test.js"
+      ]
+    },
+    "functions/lib/suppliers/supplierValidation.js": {
+      "directTests": [
+        "tests/unit/supplierValidation.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/supplierValidation.test.js"
+      ]
+    },
+    "functions/lib/triage/bugTriage.js": {
+      "directTests": [
+        "tests/unit/bugResolvedNotify.test.js",
+        "tests/unit/bugTriage.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bugResolvedNotify.test.js",
+        "tests/unit/bugTriage.test.js"
+      ]
+    },
+    "functions/lib/validation/validationAccess.js": {
+      "directTests": [
+        "tests/unit/validationAccess.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/validationAccess.test.js"
+      ]
+    },
+    "functions/lib/valorisation/accessControl.js": {
+      "directTests": [
+        "tests/unit/consoAccessControl.test.js",
+        "tests/unit/paieAccess.test.js",
+        "tests/unit/registryAccess.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/consoAccessControl.test.js",
+        "tests/unit/paieAccess.test.js",
+        "tests/unit/registryAccess.test.js"
+      ]
+    },
+    "functions/lib/valorisation/consoValorisation.js": {
+      "directTests": [
+        "tests/unit/consoValorisation.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/consoValorisation.test.js"
+      ]
+    },
+    "functions/lib/valorisation/fermeParcelle.js": {
+      "directTests": [
+        "tests/unit/fermeParcelle.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/fermeParcelle.test.js"
+      ]
+    },
+    "functions/middleware/cache.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/middleware/cors.js": {
+      "directTests": [
+        "functions/middleware/__tests__/cors.test.js"
+      ],
+      "transitiveTests": [
+        "functions/middleware/__tests__/cors.test.js"
+      ]
+    },
+    "functions/middleware/requireAuth.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BugReportButton.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BugReportButton.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BugReportsAdmin.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/BugReportsAdmin.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CampagneAnalytiqueTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CampagneAnalytiqueTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ConsoValoriseeTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ConsoValoriseeTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/FactureDetailPopup.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/FactureDetailPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/InventaireMouvementsPopup.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/InventaireMouvementsPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBdcReceptionTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBdcReceptionTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBonsCommandeTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBonsCommandeTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagMappingConsoTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagMappingConsoTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagStockFilesTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagStockFilesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ParcellesParamsTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ParcellesParamsTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ParcellesReferentielTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ParcellesReferentielTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PmpDetailPopup.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PmpDetailPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PointageValidationPanel.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PointageValidationPanel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PointageValidationView.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PointageValidationView.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PrimesFixesTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PrimesFixesTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/QuinzaineCampagneSelect.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/QuinzaineCampagneSelect.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/QuinzaineRecapCards.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/QuinzaineRecapCards.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ScanAttachmentButton.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ScanAttachmentButton.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/lib/analytiqueUtils.js": {
+      "directTests": [
+        "tests/unit/analytiqueUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/analytiqueUtils.test.js"
+      ]
+    },
+    "public/lib/authResilience.js": {
+      "directTests": [
+        "tests/unit/authResilience.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/authResilience.test.js"
+      ]
+    },
+    "public/lib/bdcReceptionUtils.js": {
+      "directTests": [
+        "tests/unit/bdcReceptionUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcReceptionUtils.test.js"
+      ]
+    },
+    "public/lib/bdcWorkflow.js": {
+      "directTests": [
+        "tests/unit/bdcWorkflow.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcWorkflow.test.js"
+      ]
+    },
+    "public/lib/caisseUtils.js": {
+      "directTests": [
+        "tests/unit/avances.test.js",
+        "tests/unit/caisseUtils.test.js",
+        "tests/unit/compteClientMarcheLocal.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/avances.test.js",
+        "tests/unit/caisseUtils.test.js",
+        "tests/unit/compteClientMarcheLocal.test.js"
+      ]
+    },
+    "public/lib/campagneUtils.js": {
+      "directTests": [
+        "tests/unit/campagnePeriodes.test.js",
+        "tests/unit/campagneUtils.test.js",
+        "tests/unit/campagneUtilsBackend.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagnePeriodes.test.js",
+        "tests/unit/campagneUtils.test.js",
+        "tests/unit/campagneUtilsBackend.test.js"
+      ]
+    },
+    "public/lib/emargementExcel.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/lib/emargementPdf.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/lib/encaissementsCanevas.js": {
+      "directTests": [
+        "tests/unit/encaissementsCanevas.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/encaissementsCanevas.test.js"
+      ]
+    },
+    "public/lib/factureExportUtils.js": {
+      "directTests": [
+        "tests/unit/factureExportUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/factureExportUtils.test.js"
+      ]
+    },
+    "public/lib/growthUtils.js": {
+      "directTests": [
+        "tests/unit/growthUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/growthUtils.test.js"
+      ]
+    },
+    "public/lib/inflightDedup.js": {
+      "directTests": [
+        "tests/unit/inflightDedup.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/inflightDedup.test.js"
+      ]
+    },
+    "public/lib/inventaireUtils.js": {
+      "directTests": [
+        "tests/unit/inventaireUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/inventaireUtils.test.js"
+      ]
+    },
+    "public/lib/local-test-bypass.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/lib/meteoCalc.js": {
+      "directTests": [
+        "tests/unit/meteoCalc.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/meteoCalc.test.js"
+      ]
+    },
+    "public/lib/paieDataCache.js": {
+      "directTests": [
+        "tests/unit/paieDataCache.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/paieDataCache.test.js"
+      ]
+    },
+    "public/lib/paieUtils.js": {
+      "directTests": [
+        "tests/unit/paieUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/paieUtils.test.js"
+      ]
+    },
+    "public/lib/primesImportParse.js": {
+      "directTests": [
+        "tests/unit/primesImportParse.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/primesImportParse.test.js"
+      ]
+    },
+    "public/lib/primesV2.js": {
+      "directTests": [
+        "tests/unit/primesV2.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/primesV2.test.js"
+      ]
+    },
+    "public/lib/quinzaineUtils.js": {
+      "directTests": [
+        "tests/unit/quinzaineUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/quinzaineUtils.test.js"
+      ]
+    },
+    "public/lib/recolteKpiUtils.js": {
+      "directTests": [
+        "tests/unit/recolteKpiUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/recolteKpiUtils.test.js"
+      ]
+    },
+    "public/lib/scanAttachmentUtils.js": {
+      "directTests": [
+        "tests/unit/scanAttachmentUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/scanAttachmentUtils.test.js"
+      ]
+    },
+    "public/lib/scanClientUpload.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/lib/scanHistoryDisplay.js": {
+      "directTests": [
+        "tests/unit/scanHistoryDisplay.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/scanHistoryDisplay.test.js"
+      ]
+    },
+    "public/lib/stockMovementGuard.js": {
+      "directTests": [
+        "tests/unit/stockMovementGuard.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/stockMovementGuard.test.js"
+      ]
+    },
+    "public/lib/useStockLocations.js": {
+      "directTests": [
+        "tests/unit/useStockLocations.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/useStockLocations.test.js"
+      ]
+    }
+  }
+}
