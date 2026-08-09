@@ -241,6 +241,7 @@ Supprimer le worktree après merge.
    - Lire le `Scope actif`
    - Vérifier la branche : pas de commit direct sur `main`, toujours feature branch
    - Annoncer un plan en début de session (mode "plan" si tâche non triviale)
+   - **Tout plan se termine par « Fini quand : <une phrase vérifiable> ».** Si ça ne tient pas en une phrase, proposer le découpage.
 
 2. **Pendant** :
    - Commits atomiques 1 feature = 1 commit minimum
