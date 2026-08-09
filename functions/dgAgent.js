@@ -85,7 +85,7 @@ const TOOLS = [
 ];
 
 const { getTeamNameMap } = require("./equipesConfig");
-const { PENDING_STATUSES, summarizePendingValidation } = require("./lib/bdc/bdcDigest");
+const { PENDING_STATUSES, summarizePendingValidation, buildDigestPayload } = require("./lib/bdc/bdcDigest");
 const getTeamMap = () => getTeamNameMap(db);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -250,14 +250,14 @@ async function tool_get_rendement_equipes_periode({ start, end }) {
   return { start, end, nbJours: dates.length, equipes };
 }
 
-const BDC_QUERY_LIMIT = 200;
-const BDC_DEFAULT_ITEMS = 15;
+// Plafond de lecture. 500 rend la troncature quasi impossible en pratique et
+// couvre le sous-comptage du filtre `ferme`, appliqué après le plafond.
+const BDC_QUERY_LIMIT = 500;
 
 /**
- * BdC en attente de validation. Les totaux (total, totalTtc, byBlocker) sont
- * calculés sur TOUT le jeu de données lu ; seule la liste `items` est bornée
- * à `limit` (le modèle répond en quelques lignes, inutile de lui envoyer 200
- * BdC). `reste` indique combien de BdC ne sont pas détaillés.
+ * BdC en attente de validation. Ce handler ne fait que la lecture Firestore ;
+ * toute la mise en forme (bornage, reste, troncature) est dans le module pur
+ * testé functions/lib/bdc/bdcDigest.js.
  */
 async function tool_get_bdc_en_attente_validation({ ferme, limit }) {
   const snap = await db.collection("purchase_orders")
@@ -273,20 +273,7 @@ async function tool_get_bdc_en_attente_validation({ ferme, limit }) {
   }
 
   const summary = summarizePendingValidation(docs, { today: Date.now() });
-  const max = Math.max(1, parseInt(limit) || BDC_DEFAULT_ITEMS);
-  const items = summary.items.slice(0, max);
-
-  const result = {
-    ferme: fermeFilter || "toutes",
-    total: summary.total,
-    totalTtc: summary.totalTtc,
-    byBlocker: summary.byBlocker,
-    items,
-  };
-  if (summary.total > items.length) result.reste = summary.total - items.length;
-  // Garde-fou d'honnêteté : au-delà du plafond de lecture, les totaux sont partiels.
-  if (snap.size >= BDC_QUERY_LIMIT) result.lectureTronquee = true;
-  return result;
+  return buildDigestPayload(summary, limit, { ferme: fermeFilter, tronque: snap.size >= BDC_QUERY_LIMIT });
 }
 
 const TOOL_HANDLERS = {
@@ -333,6 +320,9 @@ Lexique des statuts BdC (achats):
 - en_attente_chef = soumis, attend la validation du Chef de Ferme (Chef F1 pour F1, Chef F5 pour F5)
 - en_attente_dg = attend la validation du DG
 - valide_dg = validé par le DG (ce n'est plus en attente de validation)
+- bloqueur "aucun_valideur" = aucun chef de ferme n'est compétent pour cette ferme (souvent une ferme mal saisie) : personne ne peut valider, il faut corriger le BdC. Ne l'attribue jamais au DG.
+- BdC sans date exploitable: "ageJours" vaut null → dis "date inconnue", n'affiche pas "0 j".
+- Si le champ "lectureTronquee" est présent, les totaux sont PARTIELS (plafond de lecture atteint): précise-le au lieu de les présenter comme exacts.
 
 Format de liste BdC pour WhatsApp — un BdC par ligne, du plus ancien au plus récent:
 *BDC-2026-0142* — Fournisseur — 12 400 MAD — Chef F1 — 6 j

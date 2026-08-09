@@ -16,11 +16,15 @@
  *     (remind-bdc refuse le rappel dans ce statut : il n'y a rien à relancer
  *     chez un valideur, la balle est dans le camp du saisisseur).
  *
- * Hypothèse documentée : quand `chefProfileForFerme()` ne renvoie rien pour un
- * BdC en `en_attente_chef` (ferme direct-DG soumise avec un statut incohérent,
- * ou ferme inconnue), on retombe explicitement sur le DG plutôt que de
- * renvoyer `undefined` — le DG est le valideur par défaut de ces fermes
- * (cf. DIRECT_DG_FARMS dans workflow.js).
+ * Cas « aucun valideur » : quand `chefProfileForFerme()` ne renvoie rien pour
+ * un BdC en `en_attente_chef` (ferme direct-DG soumise avec un statut
+ * incohérent, ou ferme inconnue — `requiresChefValidation()` est fail-safe
+ * `true`, donc une simple typo de ferme y mène), on N'IMPUTE PAS ces BdC au
+ * DG : il ne peut techniquement pas les débloquer (bdcValidationService.js
+ * refuse une validation DG sur un BdC `en_attente_chef`), et les compter dans
+ * son bucket fausserait `byBlocker` en nombre ET en montant. Ils reçoivent un
+ * rôle distinct `aucun_valideur`, cohérent avec `remind-bdc` qui produit
+ * `profiles = []` dans ce cas.
  */
 // @ts-check
 'use strict';
@@ -54,6 +58,7 @@ const ROLE_LABELS = {
   chef_f1: 'Chef F1',
   chef_f5: 'Chef F5',
   dg: 'DG',
+  aucun_valideur: 'Bloqué — aucun chef de ferme',
 };
 
 /**
@@ -111,8 +116,9 @@ function blockedBy(bdc) {
   if (status === 'en_attente_chef') {
     const chef = bdcWorkflow.chefProfileForFerme(ferme || '');
     if (chef) return { role: chef, label: ROLE_LABELS[chef] || chef, ferme };
-    // Fallback explicite : aucun chef compétent pour cette ferme → DG.
-    return { role: 'dg', label: `DG (aucun chef pour ${ferme || 'ferme inconnue'})`, ferme };
+    // Aucun chef compétent : rôle distinct, surtout PAS le DG (il ne peut pas
+    // valider un BdC en_attente_chef → l'imputer au DG fausse byBlocker).
+    return { role: 'aucun_valideur', label: `Bloqué — aucun chef pour ${ferme || 'ferme inconnue'}`, ferme };
   }
   return { role: 'inconnu', label: `Inconnu (statut "${status || 'absent'}")`, ferme };
 }
@@ -122,25 +128,34 @@ function blockedBy(bdc) {
  *
  * @param {BdcDoc} bdc
  * @param {number} todayMs - horodatage de référence (epoch ms).
- * @returns {number} nombre de jours, jamais négatif.
+ * @returns {number|null} nombre de jours (jamais négatif : une date future est
+ *   clampée à 0), ou `null` si le BdC n'a AUCUNE date exploitable — afficher
+ *   « 0 j » sur un BdC potentiellement ancien serait trompeur.
  */
 function ageJoursOf(bdc, todayMs) {
   const ts = toNumber((bdc && bdc.updated_at) || (bdc && bdc.created_at));
-  if (!ts) return 0;
+  if (!ts) return null;
   return Math.max(0, Math.floor((todayMs - ts) / MS_PER_DAY));
 }
 
 /**
  * Convertit le paramètre `today` (Date | epoch ms | ISO string) en epoch ms.
+ * Échec BRUYANT si la valeur est absente ou invalide : le module existe pour
+ * être déterministe, un fallback silencieux mettrait tous les `ageJours` à 0
+ * sans que personne ne le voie.
  *
  * @param {Date|number|string} today
  * @returns {number}
+ * @throws {Error} si `today` est absent ou non parsable.
  */
 function toTodayMs(today) {
-  if (today instanceof Date) return today.getTime();
+  if (today instanceof Date && isFinite(today.getTime())) return today.getTime();
   if (typeof today === 'number' && isFinite(today)) return today;
-  const parsed = Date.parse(String(today));
-  return isFinite(parsed) ? parsed : 0;
+  if (typeof today === 'string') {
+    const parsed = Date.parse(today);
+    if (isFinite(parsed)) return parsed;
+  }
+  throw new Error('bdcDigest: option "today" requise (Date, epoch ms ou string ISO valide)');
 }
 
 /**
@@ -154,8 +169,9 @@ function toTodayMs(today) {
  *   total: number,
  *   totalTtc: number,
  *   byBlocker: Array<{role: string, label: string, count: number, totalTtc: number}>,
- *   items: Array<{numero: string, fournisseur: string, ferme: string|null, totalTtc: number, status: string, blockedBy: Blocker, ageJours: number}>
+ *   items: Array<{numero: string, fournisseur: string, ferme: string|null, totalTtc: number, status: string, blockedBy: Blocker, ageJours: number|null}>
  * }}
+ * @throws {Error} si `options.today` est absent ou invalide.
  */
 function summarizePendingValidation(bdcs, options) {
   const todayMs = toTodayMs((options || /** @type {any} */ ({})).today);
@@ -174,7 +190,14 @@ function summarizePendingValidation(bdcs, options) {
     };
   });
 
-  items.sort((a, b) => (b.ageJours - a.ageJours) || a.numero.localeCompare(b.numero));
+  // Tri : le plus vieux d'abord ; les BdC sans date exploitable (ageJours null)
+  // partent en fin de liste plutôt que de squatter la tête du classement.
+  items.sort((a, b) => {
+    if (a.ageJours === null && b.ageJours === null) return a.numero.localeCompare(b.numero);
+    if (a.ageJours === null) return 1;
+    if (b.ageJours === null) return -1;
+    return (b.ageJours - a.ageJours) || a.numero.localeCompare(b.numero);
+  });
 
   /** @type {Record<string, {role: string, label: string, count: number, totalTtc: number}>} */
   const blockers = {};
@@ -196,4 +219,38 @@ function summarizePendingValidation(bdcs, options) {
   return { total: items.length, totalTtc: round2(totalTtc), byBlocker, items };
 }
 
-module.exports = { PENDING_STATUSES, ROLE_LABELS, blockedBy, summarizePendingValidation }
+/** Nombre de BdC détaillés renvoyés au modèle par défaut. */
+const DEFAULT_ITEMS_LIMIT = 15;
+
+/**
+ * Met en forme le résumé pour l'appelant (tool LLM) : borne la liste `items`
+ * à `limit` tout en conservant les totaux calculés sur TOUT le jeu de données
+ * (total, totalTtc, byBlocker) — sinon les chiffres annoncés seraient faux.
+ *
+ * @param {ReturnType<typeof summarizePendingValidation>} summary
+ * @param {number|string|undefined} limit - défaut 15, minimum 1.
+ * @param {{ ferme?: string, tronque?: boolean }} [options] - `ferme` = filtre
+ *   appliqué en amont (informatif), `tronque` = la lecture source a atteint son
+ *   plafond, donc les totaux sont partiels.
+ * @returns {{ferme: string, total: number, totalTtc: number, byBlocker: Array<object>, items: Array<object>, reste?: number, lectureTronquee?: true}}
+ */
+function buildDigestPayload(summary, limit, options) {
+  const opts = options || {};
+  const parsed = parseInt(String(limit), 10);
+  const max = isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_ITEMS_LIMIT;
+  const items = summary.items.slice(0, max);
+
+  /** @type {any} */
+  const payload = {
+    ferme: (opts.ferme && String(opts.ferme).trim()) || 'toutes',
+    total: summary.total,
+    totalTtc: summary.totalTtc,
+    byBlocker: summary.byBlocker,
+    items,
+  };
+  if (summary.total > items.length) payload.reste = summary.total - items.length;
+  if (opts.tronque) payload.lectureTronquee = true;
+  return payload;
+}
+
+module.exports = { PENDING_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload }
