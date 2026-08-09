@@ -83,6 +83,17 @@ obtenir de jeton, quelle que soit la suite de la configuration.
 Le mapping `attribute.environment` est **indispensable** au binding du §2.3 — sans lui, le
 principalSet ci-dessous ne matcherait jamais.
 
+> ⚠️ **`assertion.repository` porte le nom COMPLET `<owner>/<repo>`.** Tout changement de
+> propriétaire (transfert vers une organisation) ou de nom du repo casse la condition, et
+> l'authentification échoue **avant même** le deploy — avec un message d'auth peu parlant.
+> Mettre à jour le provider sans le recréer :
+>
+> ```bash
+> gcloud iam workload-identity-pools providers update-oidc $PROVIDER \
+>   --location=global --workload-identity-pool=$POOL --project=$PROD_PROJECT \
+>   --attribute-condition="assertion.repository=='<nouveau_owner>/<nouveau_repo>'"
+> ```
+
 ### 2.3 Impersonation, restreinte à l'environment `production`
 
 ```bash
@@ -198,6 +209,22 @@ firebase functions:artifacts:setpolicy --project=$PROD_PROJECT
 ---
 
 ## 5. Configuration GitHub
+
+> ⚠️ **Prérequis de plan.** Les protection rules d'environment (dont les **required
+> reviewers**) ne sont disponibles, sur un repo **privé**, qu'avec GitHub **Pro / Team /
+> Enterprise**. En plan Free, l'API répond `422 ... billing plan supports the required
+> reviewers protection rule`. Sans cette règle, l'environment fonctionne quand même pour
+> l'authentification (la claim OIDC est émise, le binding GCP matche) mais **la gate humaine
+> n'existe pas** : le run se déploie sans attendre personne. Pire, si l'environment n'existe
+> pas du tout, GitHub le crée automatiquement **sans protection** au premier run — un
+> déploiement qui a l'air gaté et ne l'est pas. Vérifier explicitement :
+> `gh api repos/<owner>/<repo>/environments/production --jq '.protection_rules'` doit être
+> **non vide**.
+
+> ⚠️ **Un transfert de repo ne transporte ni les variables (§5.2) ni l'environment (§5.1).**
+> Code, issues et PR suivent ; la config Actions non. À recréer intégralement, sous peine
+> d'échec à l'auth (variables vides) ou de perte silencieuse de la gate (environment sans
+> required reviewer). C'est l'autre moitié du piège du §2.2.
 
 ### 5.1 Environment `production` (= la gate Omar)
 
