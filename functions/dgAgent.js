@@ -557,4 +557,6 @@ async function ask({ userText, history = [] }) {
 
 // TOOL_HANDLERS est exposé pour permettre de rejouer un tool avec Firestore
 // stubbé (smoke de parité avec l'onglet magasin) sans passer par l'API Claude.
-module.exports = { ask, TOOL_HANDLERS };
+// Gelé : c'est une référence vivante, un consommateur ne doit pas pouvoir
+// remplacer un handler du registre utilisé par la boucle agentic.
+module.exports = { ask, TOOL_HANDLERS: Object.freeze(TOOL_HANDLERS) };

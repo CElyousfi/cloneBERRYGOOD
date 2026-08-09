@@ -391,7 +391,11 @@ function summarizePendingReception(bdcs, blsByBdcId, options) {
     const ordered = computeOrderedByArticle(bdc.items || []);
     const received = computeReceivedByArticle(bls);
     const deliveryStatus = deriveDeliveryStatus(ordered, received);
-    // Soldé (ou BdC sans aucune ligne : rien à réceptionner) → hors périmètre.
+    // Soldé → hors périmètre. Ce filtre avale AUSSI le cas « BdC sans aucune
+    // ligne d'article » : `deriveDeliveryStatus({}, {})` vaut 'complet' par
+    // vacuité (`every` sur un objet vide est true). Ce n'est pas un bug —
+    // un BdC sans article n'a rien à réceptionner — et le cas est de toute
+    // façon inatteignable depuis l'app (`create-bdc` rejette items vide).
     if (deliveryStatus === 'complet') continue;
 
     let totalCmd = 0;
@@ -417,6 +421,12 @@ function summarizePendingReception(bdcs, blsByBdcId, options) {
       ferme: (typeof bdc.ferme === 'string' && bdc.ferme.trim()) ? bdc.ferme.trim() : null,
       totalTtc: round2(toNumber(bdc.total_ttc)),
       deliveryStatus,
+      // Piège de fuseau (même nature qu'au lot 1) : `Date.parse("YYYY-MM-DD")`
+      // rend minuit UTC et `toISOString()` reformate en UTC, alors que
+      // `today` vient de `Date.now()`. Conséquence : la bascule « 0 j » →
+      // « 1 j de retard » se produit à 01 h 00 heure marocaine (UTC+1) et non
+      // à minuit local. Purement cosmétique sur un retard compté en jours —
+      // ne pas « corriger » à moitié en mélangeant local et UTC.
       dateLivraisonPrevue: dueMs === null
         ? null
         : (typeof bdc.date_livraison_prevue === 'string'
