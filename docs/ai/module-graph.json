@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 50,
+        "commits": 48,
         "file": "public/app.jsx"
       },
       {
@@ -31,7 +31,7 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 8,
+        "commits": 7,
         "file": "functions/pointageService.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:ddd8082c2405839b",
+    "sourceFingerprint": "sha256:cc2d9d347f37f18f",
     "stats": {
       "backendModules": 89,
       "cloudFunctions": 87,
