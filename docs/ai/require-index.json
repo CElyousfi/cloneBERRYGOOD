@@ -2,7 +2,7 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:42771f05e408aeea",
+    "sourceFingerprint": "sha256:48ec011b22a660e1",
     "stats": {
       "targetFiles": 184,
       "targetFilesWithDirectTests": 114,
@@ -54,6 +54,7 @@
         "tests/unit/bdcReceptionRegression.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/bdcDigest.test.js",
         "tests/unit/bdcReceptionRegression.test.js"
       ]
     },
