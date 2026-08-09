@@ -51,6 +51,8 @@ fi
 
 git -C "$ROOT" worktree add "$WT_PATH" -b "sb/$SLUG" "$REMOTE/main"
 
+printf 'start=%s\nbranch=sb/%s\n' "$(date +%s)" "$SLUG" > "$WT_PATH/.ticket-meta"
+
 if [ -f "$ROOT/.env" ]; then
   ln -s "$ROOT/.env" "$WT_PATH/.env"
 else
