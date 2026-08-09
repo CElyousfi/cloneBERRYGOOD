@@ -9,6 +9,7 @@ const { withCache } = require("./middleware/cache");
 const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
+const { remindBdcCore } = require("./bdcReminderService");
 const { updateBdcVirementCore, recordVirementAvis } = require("./bdcVirementService");
 const bdcWorkflow = require("./lib/bdc/workflow");
 const bdcReceptionGuard = require("./lib/bdc/receptionGuard");
@@ -6988,70 +6989,12 @@ exports.stockManagement = functions
       }
 
       if (action === "remind-bdc" && req.method === "POST") {
-        const { id } = req.body;
-        if (!id) return res.status(400).json({ success: false, error: "ID requis" });
-        const doc = await db_firestore.collection("purchase_orders").doc(id).get();
-        if (!doc.exists) return res.status(404).json({ success: false, error: "BDC non trouvé" });
-        const current = doc.data();
-
-        // Determine target profiles based on current status
-        let profiles = [];
-        let ferme = null;
-        const status = current.status;
-        const isVirementMode = current.mode_paiement === "comptant_virement" || current.mode_paiement === "virement_bancaire";
-        if (status === "en_attente_chef") { profiles = [bdcWorkflow.chefProfileForFerme(current.ferme)].filter(Boolean); ferme = current.ferme; }
-        else if (status === "en_attente_dg") { profiles = ["dg"]; }
-        else if (status === "valide_dg" && isVirementMode) { profiles = ["finance"]; }
-        else if (status === "valide_dg" && !isVirementMode) { profiles = ["achats"]; }
-        else if (status === "virement_lance") { profiles = ["dg"]; }
-        else if (status === "virement_signe") { profiles = ["achats"]; }
-        else {
-          return res.status(400).json({ success: false, error: `Aucun rappel possible dans le statut "${status}"` });
+        const { id, by } = req.body;
+        const result = await remindBdcCore({ id, by, via: "dashboard" });
+        if (!result.success) {
+          return res.status(result.statusCode || 400).json({ success: false, error: result.error });
         }
-
-        // Cooldown: prevent reminders more often than every 4h
-        const lastReminded = current.last_reminded_at || 0;
-        const cooldownMs = 4 * 60 * 60 * 1000; // 4h
-        if (Date.now() - lastReminded < cooldownMs) {
-          const hoursLeft = Math.ceil((cooldownMs - (Date.now() - lastReminded)) / (60 * 60 * 1000));
-          return res.status(400).json({ success: false, error: `Rappel déjà envoyé récemment. Patientez encore ${hoursLeft}h avant un nouveau rappel.` });
-        }
-
-        // Calculate duration
-        const lastUpdate = current.updated_at || current.created_at || Date.now();
-        const ageMs = Date.now() - lastUpdate;
-        const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-        const ageHours = Math.floor(ageMs / (60 * 60 * 1000));
-        const duration = ageDays > 0 ? `${ageDays} jour${ageDays > 1 ? "s" : ""}` : `${Math.max(1, ageHours)} heure${ageHours > 1 ? "s" : ""}`;
-
-        const { dispatchNotification } = require("./notificationDispatcher");
-        await dispatchNotification({
-          type: "bdc_reminder",
-          profiles, ferme,
-          data: {
-            numero: current.numero || id,
-            montant: current.total_ttc ? `${current.total_ttc} MAD` : "—",
-            duration,
-            message: `Rappel: BDC ${current.numero || id} en attente depuis ${duration}`,
-          },
-          relatedDoc: `purchase_orders/${id}`,
-        });
-
-        // Track reminder
-        const history = current.history || [];
-        history.push({
-          action: "rappel",
-          by: req.body.by || {},
-          at: Date.now(),
-          comment: `Rappel envoyé à ${profiles.join(", ")} (en attente depuis ${duration})`,
-        });
-        await db_firestore.collection("purchase_orders").doc(id).update({
-          last_reminded_at: Date.now(),
-          reminder_count: (current.reminder_count || 0) + 1,
-          history,
-        });
-
-        return res.json({ success: true, profiles, duration });
+        return res.json({ success: true, profiles: result.profiles, duration: result.duration });
       }
 
       // ---- BDC Change Requests (modification/annulation) ----

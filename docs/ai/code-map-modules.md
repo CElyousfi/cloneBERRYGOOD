@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:430e9924b38f13f3 -->
-# Code Map — Modules lib (142)
+<!-- sourceFingerprint: sha256:e8fa7ea857197b6c -->
+# Code Map — Modules lib (143)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -12,6 +12,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/bdc/bdcDigest.js | — | PENDING_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload |
 | functions/lib/bdc/mirrorSync.js | — | PLACEHOLDER_PRICE, num, toIsoDate, isPlaceholderPrice, mapLine, buildMirrorDocs, buildReport |
 | functions/lib/bdc/receptionGuard.js | — | validateReliquat, computeReceivedByArticle, computeOrderedByArticle, deriveDeliveryStatus, RELIQUAT_EPSILON |
+| functions/lib/bdc/reminder.js | — | REMINDER_COOLDOWN_MS, resolveReminderTargets, reminderCooldown, formatWaitingDuration |
 | functions/lib/bdc/workflow.js | — | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
 | functions/lib/budgetBgf.js | — | BUDGET_BGF |
 | functions/lib/bugReports/bugStatus.js | — | BUG_STATUSES, FILTERABLE_STATUSES, ADMIN_PROFILES, isValidStatus, isFilterableStatus, isAdminProfile, validateStatusUpdate, sortReportsByCreatedDesc |

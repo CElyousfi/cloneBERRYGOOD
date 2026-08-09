@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:3d7dd550e8ceda58",
+    "sourceFingerprint": "sha256:42771f05e408aeea",
     "stats": {
-      "targetFiles": 183,
-      "targetFilesWithDirectTests": 113,
-      "targetFilesWithTransitiveTests": 130,
-      "testFilesScanned": 140
+      "targetFiles": 184,
+      "targetFilesWithDirectTests": 114,
+      "targetFilesWithTransitiveTests": 131,
+      "testFilesScanned": 142
     }
   },
   "index": {
@@ -57,10 +57,19 @@
         "tests/unit/bdcReceptionRegression.test.js"
       ]
     },
+    "functions/lib/bdc/reminder.js": {
+      "directTests": [
+        "tests/unit/bdcReminder.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcReminder.test.js"
+      ]
+    },
     "functions/lib/bdc/workflow.js": {
       "directTests": [],
       "transitiveTests": [
-        "tests/unit/bdcDigest.test.js"
+        "tests/unit/bdcDigest.test.js",
+        "tests/unit/bdcReminder.test.js"
       ]
     },
     "functions/lib/budgetBgf.js": {
