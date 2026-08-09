@@ -230,8 +230,12 @@ Vérification obligatoire avant de créer une branche : lancer
 travailler dans un worktree dédié, sans exception :
 
 ```
-git worktree add ../<slug-du-ticket> -b sb/<slug-du-ticket>
+scripts/new-ticket.sh <slug-du-ticket>
 ```
+
+**Toujours `scripts/new-ticket.sh <nom>`, jamais `git worktree add` brut** — le
+script fait le `npm install` racine + `functions/` et le lien `.env`. Sans lui,
+la suite de tests part rouge sur des « Cannot find module ».
 
 Supprimer le worktree après merge.
 
@@ -258,6 +262,7 @@ Supprimer le worktree après merge.
      silencieusement le travail de l'autre.
    - **Gate unique : `npm run qa`** — enchaîne `test:unit` (frontend), `test:all` (tous les modules `functions/lib/*/__tests__`) et `build:frontend` (sentinelles). Doit être 100 % vert. L'étape build laisse un diff cache-bust `?v=…` sur `index.html` — normal.
    - `npm run typecheck` : informatif, NON bloquant (erreurs historiques dans les fichiers `@ts-check`, ≈271 au 2026-07-12) — la règle est de ne pas en introduire de NOUVELLES.
+   - **Definition of done** : si le ticket touche `functions/` ou `public/app.jsx`, lancer `npm run code-index` puis committer les `docs/ai/*` régénérés — sinon `npm run qa` échoue sur la gate d'obsolescence. Ces fichiers générés ne comptent pas dans la limite de fichiers du périmètre.
    - PR draft via `gh pr create --draft` avec body structuré (résumé, features, critères, limitations, commits)
 
 4. **Pilotage auto jusqu'au preview** :
