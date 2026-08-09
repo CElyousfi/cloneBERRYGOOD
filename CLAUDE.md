@@ -237,6 +237,7 @@ Supprimer le worktree après merge.
 
 1. **Avant de coder** :
    - Lire ce fichier
+   - Lire docs/ai/code-map-actions.md (backend) ou docs/ai/code-map-components.md (frontend) avant toute recherche dans app.jsx ou functions/index.js
    - Lire le `Scope actif`
    - Vérifier la branche : pas de commit direct sur `main`, toujours feature branch
    - Annoncer un plan en début de session (mode "plan" si tâche non triviale)
