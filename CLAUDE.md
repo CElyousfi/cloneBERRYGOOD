@@ -362,7 +362,19 @@ Chaque deploy suit cette séquence en 2 temps :
 
 1. DEPLOY FUNCTIONS d'abord (backend) :
    scripts/deploy.sh functions
-   → Le nouveau backend est live, l'ancien frontend fonctionne toujours.
+   ⚠️ ASYNCHRONE depuis la bascule WIF : cette commande ne déploie rien
+   elle-même, elle DÉCLENCHE un run GitHub Actions qui démarre IMMÉDIATEMENT
+   (il n'y a pas d'approbation de run — cf. section « Deploy non-interactif »).
+   → Quand le script rend la main, le nouveau backend n'est PAS live : le run
+     tourne encore.
+   → Attendre la FIN RÉELLE du run (`gh run watch --repo omaaouni/BERRYGOOD`)
+     avant de passer à l'étape 2, avant `node scripts/verify-deploy.js` et
+     avant tout smoke : lancés trop tôt, ils testent l'ANCIENNE version
+     déployée et donnent un faux vert.
+   → Une fois le run terminé : le nouveau backend est live, l'ancien frontend
+     fonctionne toujours.
+   Détail (gate, inputs, WIF) : section « Deploy non-interactif » ci-dessous
+   et docs/deploy-wif-prod.md.
 
 2. DEPLOY HOSTING sur un PREVIEW (pas en prod) :
    firebase hosting:channel:deploy qa-test --expires 1d
@@ -404,29 +416,59 @@ Chaque deploy suit cette séquence en 2 temps :
 Règle : JAMAIS de deploy hosting en prod sans QA visuelle sur le
 preview d'abord (sauf hotfix critique avec accord Omar explicite).
 
-### Token CI (deploy non-interactif) — OBLIGATOIRE
+### Deploy non-interactif — OBLIGATOIRE
 
-Le token de **session interactif** (`firebase login`) **expire régulièrement** et
-casse les deploys en plein milieu. Donc : **TOUS les deploys passent par
-`scripts/deploy.sh`**, qui utilise un **token CI explicite** :
+**TOUS les deploys passent par `scripts/deploy.sh`**, jamais par un `firebase deploy`
+à la main. Depuis la bascule Workload Identity Federation, le script a **deux
+chemins distincts** — runbook complet : [docs/deploy-wif-prod.md](docs/deploy-wif-prod.md).
 
 ```
-scripts/deploy.sh hosting,functions   # deploy ciblé (défaut)
-scripts/deploy.sh functions           # backend seul
-scripts/deploy.sh hosting             # frontend seul
+scripts/deploy.sh functions             # backend  → déclenche le CI (WIF)
+scripts/deploy.sh functions --dry-run   # simulation CI
+scripts/deploy.sh hosting               # frontend → deploy local (token)
 ```
 
-En interne le script lance :
-`firebase deploy --only <cible> --project berrygood-farms-dashboard --token "$FIREBASE_TOKEN" --non-interactive`
+⚠️ La cible mixte `hosting,functions` est **refusée** : functions est asynchrone
+(le deploy se termine hors du terminal), hosting est synchrone — les mélanger
+publierait le frontend AVANT le backend. Les deux commandes, dans cet ordre
+(functions d'abord).
 
+**Functions (prod) = GitHub Actions + WIF, aucun credential local.**
+`scripts/deploy.sh functions` lance
+`gh workflow run deploy-prod.yml --ref main -f dry_run=false -f only=functions`.
+Le runner échange son jeton OIDC contre une impersonation du SA `sb-deployer` :
+ni token, ni clé de service account, ni en local ni sur le VPS.
+- **La gate est EN AMONT, pas sur le run.** Les required reviewers d'environment
+  exigent Enterprise sur repo privé (l'org est en Team → HTTP 422) : **aucun run
+  ne se met en pause, aucun écran « Review deployments » n'existe**. Ce qui gate :
+  (a) branch protection sur `main` — PR obligatoire + CI `test` verte + `strict`,
+  (b) deployment branch policy — seul `main` peut déployer `production`,
+  (c) le prompt de permission local sur `scripts/deploy.sh` et `gh workflow run`,
+  (d) `dry_run: true` par défaut dans le workflow.
+  Garantie réelle : *le code déployé est passé par une PR avec CI verte*. PAS
+  *un humain a validé ce déploiement-là*. Limites assumées (dépôt solo) :
+  `approvals: 0` n'empêche pas l'auto-merge, `enforce_admins: false` laisse un
+  admin contourner, et `dry_run` protège de l'accident, pas d'un acte délibéré.
+  Détail et conditions de révision : docs/deploy-wif-prod.md §5.
+- Suivre : `gh run watch --repo omaaouni/BERRYGOOD`.
+- La gate G6 (`scripts/verify-deploy.js`) et le smoke test se lancent **après la fin
+  réelle du run** — le script rappelle les commandes exactes. Les lancer avant donne
+  un faux vert (l'ancienne version est encore déployée).
+- **Ni `--token`, ni `--force`** dans le workflow (`--force` fait passer
+  silencieusement la suppression de functions).
+- Aucun secret n'entre dans GitHub : sans `functions/.env` sur le runner,
+  firebase-tools réinjecte les variables d'environnement **déjà déployées**.
+  ⚠️ Corollaire : une function **créée** après la bascule naît **sans env vars** et
+  échoue au runtime, pas au deploy — cf. docs/deploy-wif-prod.md §8.
+
+**Hosting (prod) = encore `FIREBASE_TOKEN`, transitoire.**
+`firebase --config … deploy --only hosting --token "$FIREBASE_TOKEN" --non-interactive`
 - `FIREBASE_TOKEN` est chargé depuis `.env` (gitignored). **Ne jamais le committer.**
 - Génération du token (une fois, par Omar — flux navigateur interactif que
   l'agent ne peut pas faire) : `firebase login:ci` → copier le token →
   l'ajouter dans `.env` sous `FIREBASE_TOKEN=...`.
-- **Ne plus jamais** déployer via `firebase deploy` sans `--token` (login session).
-- Caveat : Google déprécie progressivement les tokens `login:ci` au profit d'un
-  service account (`GOOGLE_APPLICATION_CREDENTIALS`). Tant que `login:ci`
-  fonctionne on le garde ; migrer vers un service account si le token cesse d'être accepté.
+- Google déprécie ce mécanisme : la bascule du hosting vers WIF est au backlog.
+  Le jour de cette bascule → retirer la ligne de `.env` **et** révoquer le token.
 
 ## Autorisation de deploy par validation visuelle
 

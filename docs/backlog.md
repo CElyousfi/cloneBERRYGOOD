@@ -5,6 +5,39 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] ITEM — Migrer les ~14 env vars restantes vers Secret Manager (`runWith({secrets})`)
+Ajouté 2026-08-09, suite au ticket `sb/deploy-wif-prod`. **Due depuis l'incident du 07/08.**
+Les functions gen1 lisent encore ~14 variables via `functions/.env` :
+`IMAP_*`, `SQL_*`, `ANTHROPIC_API_KEY`, `FARMROAD_API_KEY`, `*_IMPORT_KEY`,
+`OPENAI_API_KEY`, `NETAFIM_ADMIN_SECRET`. Les migrer vers Secret Manager et les déclarer
+dans le code via `runWith({ secrets: [...] })`, sur le modèle **déjà en place** de
+`ADMIN_SECRET` et `ANTHROPIC_API_KEY_TRIAGE`.
+Bénéfice direct : un secret déclaré dans le code est reconstruit à chaque deploy, sans
+dépendre de l'état déjà déployé. Ça rend **caduc le caveat « nouvelle function sans env
+vars »** de [docs/deploy-wif-prod.md](deploy-wif-prod.md) §8 — aujourd'hui, toute function
+créée après la bascule WIF naît sans variables d'environnement, se déploie sans erreur et
+échoue au runtime.
+Prévoir : `roles/secretmanager.secretAccessor` sur le SA runtime, et vérifier que
+`sb-deployer` garde bien `roles/secretmanager.viewer` (lecture de version au deploy).
+Gated : oui (touche la config de prod + migration de secrets ; deploy functions gated).
+
+---
+
+## [ ] ITEM — Basculer le deploy **hosting** vers WIF (follow-up `sb/deploy-wif-prod`)
+Ajouté 2026-08-09. Le ticket `sb/deploy-wif-prod` a migré le deploy **functions** vers
+GitHub Actions + Workload Identity Federation ; le **hosting** reste sur `FIREBASE_TOKEN`
+dans `.env` racine. Tant que ce follow-up n'est pas fait, le token ne peut pas être retiré.
+À faire : étendre `deploy-prod.yml` (ou un workflow jumeau) à la cible `hosting`, ajouter
+le rôle `roles/firebasehosting.admin` à `sb-deployer`, basculer le chemin hosting de
+`scripts/deploy.sh` sur `gh workflow run`, puis **retirer `FIREBASE_TOKEN` de `.env` et
+révoquer le token** (`firebase logout --token <token>`). Mettre à jour `CLAUDE.md`
+§« Deploy non-interactif » et [docs/deploy-wif-prod.md](deploy-wif-prod.md) §7.
+Point à trancher : le deploy hosting est aujourd'hui synchrone (smoke test enchaîné) —
+en CI il devient asynchrone, il faut décider où tourne le smoke post-deploy.
+Gated : oui (touche l'IAM prod + la chaîne de deploy).
+
+---
+
 ## [x] ITEM — Soumission quotidienne fichiers Stock (Berry Good + Bahia)
 Demandé par Omar (2026-08-05). **Deux canaux de soumission en parallèle** :
 (1) onglet "Soumission Fichier Stock" dans l'interface magasinier (2

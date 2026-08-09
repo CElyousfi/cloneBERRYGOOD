@@ -172,3 +172,52 @@ test('E2E — garde défensif sur tool_name / hook_event_name', () => {
     tool_name: 'Bash', hook_event_name: 'PostToolUse', tool_input: { command: 'rm -rf /' },
   })), {});
 });
+
+// --- workflow-dispatch -------------------------------------------------------
+// Le déclenchement d'un workflow est refusé par le HOOK, pas seulement par le `ask`
+// de settings.json : le matching `Bash(gh workflow run:*)` est un PRÉFIXE, et
+// `GH_REPO=x gh workflow run`, un double espace ou `gh workflow --repo X run` y
+// échappent. Le deploy prod passe par scripts/deploy.sh (gaté et journalisé).
+// L'ordre `workflow` PUIS `run` distingue le déclenchement de la LECTURE
+// (`gh run list --workflow X`), qui doit rester libre.
+
+test('workflow-dispatch — route API .../dispatches → deny', () => {
+  const hit = evaluate('gh api -X POST repos/o/r/actions/workflows/deploy-prod.yml/dispatches -f ref=main');
+  assert.strictEqual(hit && hit.id, 'workflow-dispatch');
+});
+
+test('workflow-dispatch — URL entre guillemets → deny (testé sur la commande brute)', () => {
+  const hit = evaluate('gh api "repos/o/r/actions/workflows/deploy-prod.yml/dispatches" -f ref=main');
+  assert.strictEqual(hit && hit.id, 'workflow-dispatch');
+});
+
+test('workflow-dispatch — commande directe et ses contournements de préfixe → deny', () => {
+  for (const cmd of [
+    'gh workflow run deploy-prod.yml --ref main',
+    'GH_REPO=o/r gh workflow run deploy-prod.yml',
+    'gh  workflow  run deploy-prod.yml',
+    'gh workflow --repo o/r run deploy-prod.yml',
+  ]) {
+    const hit = evaluate(cmd);
+    assert.strictEqual(hit && hit.id, 'workflow-dispatch', `attendu deny pour: ${cmd}`);
+  }
+});
+
+test('workflow-dispatch — la LECTURE des runs reste libre (pas de faux positif)', () => {
+  for (const cmd of [
+    'gh run list --workflow deploy-prod.yml',
+    'gh run watch --repo o/r',
+    'gh run view 123 --log',
+    'gh workflow list',
+    'gh api repos/o/r/environments/production',
+    'gh pr create --draft',
+    'gh pr merge 222 --squash',
+  ]) {
+    assert.strictEqual(evaluate(cmd), null, `attendu pass pour: ${cmd}`);
+  }
+});
+
+test('workflow-dispatch — scripts/deploy.sh reste le chemin autorisé', () => {
+  assert.strictEqual(evaluate('scripts/deploy.sh functions'), null);
+  assert.strictEqual(evaluate('scripts/deploy.sh functions --dry-run'), null);
+});
