@@ -110,7 +110,29 @@ const TEMPLATE_MAP = {
 };
 
 /**
+ * @typedef {object} WhatsAppDispatchResult
+ * @property {number} sent       - Destinataires WhatsApp RÉELLEMENT atteints (humains).
+ * @property {number} failed     - Envois tentés puis échoués.
+ * @property {number} recipients - Destinataires résolus (après dédoublonnage téléphone).
+ */
+
+/**
+ * @typedef {object} DispatchResult
+ * @property {WhatsAppDispatchResult} whatsapp - Compte DÉCISIONNEL : seul indicateur
+ *   fiable qu'un humain a été prévenu.
+ * @property {{attempted:boolean, created:boolean}} in_app - INFORMATIF uniquement.
+ */
+
+/**
  * Dispatch a notification to one or more profiles.
+ *
+ * ⚠️ Sémantique du retour — à lire avant de brancher une décision dessus :
+ * un appelant qui doit savoir « est-ce que quelqu'un a été prévenu ? » DOIT
+ * regarder `result.whatsapp.sent`, et RIEN d'autre. Le bloc `in_app` est
+ * purement informatif : une alerte in-app est écrite dans la collection
+ * `alerts` même avec `profiles: []`, donc son succès d'écriture ne prouve
+ * l'atteinte d'AUCUN humain. Agréger les deux compteurs ferait passer pour
+ * « notifié » un dispatch qui n'a touché personne.
  *
  * @param {object} opts
  * @param {string} opts.type - Notification type (key in TEMPLATE_MAP)
@@ -120,26 +142,37 @@ const TEMPLATE_MAP = {
  * @param {string} [opts.data.message] - Human-readable message for in-app alert
  * @param {string[]} [opts.channels] - Channels to use (default: ["in_app", "whatsapp"])
  * @param {string} [opts.relatedDoc] - Related Firestore document path for logging
+ * @returns {Promise<DispatchResult>}
  */
 async function dispatchNotification({ type, profiles, ferme, data, channels, relatedDoc, document }) {
   const activeChannels = channels || ["in_app", "whatsapp"];
 
-  const promises = [];
   const willSendWhatsApp = activeChannels.includes("whatsapp") && !!TEMPLATE_MAP[type];
 
   // In-app alert (marked so onAlertCreated trigger doesn't re-send WhatsApp)
-  if (activeChannels.includes("in_app") && data.message) {
-    promises.push(createInAppAlert(type, profiles, data.message, data.severity, willSendWhatsApp));
-  }
+  const inAppPromise = activeChannels.includes("in_app") && data.message
+    ? createInAppAlert(type, profiles, data.message, data.severity, willSendWhatsApp)
+    : null;
 
   // WhatsApp
-  if (willSendWhatsApp) {
-    const mapping = TEMPLATE_MAP[type];
-    promises.push(sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc, type, document));
-  }
+  const whatsappPromise = willSendWhatsApp
+    ? sendWhatsAppToProfiles(profiles, ferme, TEMPLATE_MAP[type], data, relatedDoc, type, document)
+    : null;
 
   // Execute all channels in parallel, catch errors silently
-  await Promise.allSettled(promises);
+  const [inAppOutcome, whatsappOutcome] = await Promise.allSettled([inAppPromise, whatsappPromise]);
+
+  const whatsappResult = whatsappOutcome.status === "fulfilled" && whatsappOutcome.value
+    ? whatsappOutcome.value
+    : { sent: 0, failed: 0, recipients: 0 };
+
+  return {
+    whatsapp: whatsappResult,
+    in_app: {
+      attempted: !!inAppPromise,
+      created: inAppOutcome.status === "fulfilled" && inAppOutcome.value === true,
+    },
+  };
 }
 
 /**
@@ -190,6 +223,12 @@ function buildBdcWhatsAppSummary(bdc) {
  * Create an in-app alert in the `alerts` collection.
  * Marks the alert with `whatsapp_dispatched: true` if the dispatcher is also
  * sending WhatsApp itself, so the onAlertCreated trigger doesn't re-send.
+ *
+ * ⚠️ Le booléen retourné dit seulement que l'écriture Firestore a réussi — PAS
+ * qu'un humain a été notifié (l'alerte est écrite même avec `profiles: []`).
+ * Ne jamais s'en servir pour décider qu'une notification est partie.
+ *
+ * @returns {Promise<boolean>} true si le document `alerts` a été écrit.
  */
 async function createInAppAlert(type, profiles, message, severity, whatsappDispatched) {
   try {
@@ -202,13 +241,18 @@ async function createInAppAlert(type, profiles, message, severity, whatsappDispa
       read: {},
       whatsapp_dispatched: !!whatsappDispatched,
     });
+    return true;
   } catch (err) {
     console.error("Failed to create in-app alert:", err.message);
+    return false;
   }
 }
 
 /**
  * Send WhatsApp template messages to all users matching the given profiles.
+ *
+ * @returns {Promise<WhatsAppDispatchResult>} Toujours un objet, jamais undefined :
+ *   `sent` compte les destinataires humains réellement atteints.
  */
 async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc, type, document) {
   try {
@@ -226,7 +270,8 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
       return true;
     });
 
-    if (unique.length === 0) return;
+    // Sortie 1/3 : aucun destinataire résolu → personne n'a été prévenu.
+    if (unique.length === 0) return { sent: 0, failed: 0, recipients: 0 };
 
     const bodyParams = mapping.params(data);
     const useDocument = !!(mapping.supportsDocument && document && (document.mediaId || document.link));
@@ -415,8 +460,13 @@ async function sendWhatsAppToProfiles(profiles, ferme, mapping, data, relatedDoc
         }
       }));
     }
+
+    // Sortie 2/3 : chemin nominal.
+    return { sent, failed, recipients: unique.length };
   } catch (err) {
     console.error("WhatsApp dispatch error:", err.message);
+    // Sortie 3/3 : erreur globale → on ne peut garantir aucun envoi.
+    return { sent: 0, failed: 0, recipients: 0 };
   }
 }
 
