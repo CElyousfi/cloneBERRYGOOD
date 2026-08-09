@@ -179,6 +179,9 @@ for i in "${!PATHS[@]}"; do
 
   # Toutes les conditions sont réunies → suppression (ou simulation)
   if [ "$MODE" = "apply" ]; then
+    # Dernier instant où le worktree existe encore. `|| true` obligatoire : un
+    # échec de mesure ne doit JAMAIS empêcher un nettoyage.
+    "$ROOT/scripts/ticket-time.sh" "$wt_path" || true
     if git worktree remove "$wt_path" 2>/tmp/wtgc-err-$$.txt; then
       echo "[SUPPRIMÉ] $wt_path ($branch)"
       REMOVED_COUNT=$((REMOVED_COUNT + 1))

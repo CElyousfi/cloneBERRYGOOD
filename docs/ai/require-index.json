@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:832dd2e1fb893292",
+    "sourceFingerprint": "sha256:42771f05e408aeea",
     "stats": {
-      "targetFiles": 183,
-      "targetFilesWithDirectTests": 113,
-      "targetFilesWithTransitiveTests": 130,
-      "testFilesScanned": 141
+      "targetFiles": 184,
+      "targetFilesWithDirectTests": 114,
+      "targetFilesWithTransitiveTests": 131,
+      "testFilesScanned": 142
     }
   },
   "index": {
@@ -32,6 +32,14 @@
     "functions/lib/auth/resolveRole.js": {
       "directTests": [],
       "transitiveTests": []
+    },
+    "functions/lib/bdc/bdcDigest.js": {
+      "directTests": [
+        "tests/unit/bdcDigest.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bdcDigest.test.js"
+      ]
     },
     "functions/lib/bdc/mirrorSync.js": {
       "directTests": [
@@ -60,6 +68,7 @@
     "functions/lib/bdc/workflow.js": {
       "directTests": [],
       "transitiveTests": [
+        "tests/unit/bdcDigest.test.js",
         "tests/unit/bdcReminder.test.js"
       ]
     },

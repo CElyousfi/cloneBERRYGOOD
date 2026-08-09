@@ -92,6 +92,9 @@ node_modules
 .DS_Store
 *.bak
 
+# Métadonnées locales de worktree de ticket (jamais versionnées)
+.ticket-meta
+
 # Playwright e2e screenshots (générés)
 tests/e2e-screenshots/
 .claude/settings.json.bak*
