@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:3ebcf4369acf7b07 -->
+<!-- sourceFingerprint: sha256:854495784a343c03 -->
 # Code Map — Modules lib (144)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -9,7 +9,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/auth/paieAccess.js | — | canAccessDivers, resolvePointageRHAccess |
 | functions/lib/auth/registryAccess.js | — | CHEF_FIELDS, FULL_FIELDS, normalizeMatriculeNum, normalizeAllowedSet, projectChefFields, projectRegistryFull, projectRegistryForChef |
 | functions/lib/auth/resolveRole.js | — | resolveCallerRole, resolveCallerProfile |
-| functions/lib/bdc/bdcDigest.js | — | PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload |
+| functions/lib/bdc/bdcDigest.js | — | PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, MISE_EN_SERVICE_MS, MISE_EN_SERVICE_LABEL, isDepuisMiseEnService, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload |
 | functions/lib/bdc/blBatch.js | — | IN_MAX_VALUES, chunkIds, groupBlsByBdcId |
 | functions/lib/bdc/mirrorSync.js | — | PLACEHOLDER_PRICE, num, toIsoDate, isPlaceholderPrice, mapLine, buildMirrorDocs, buildReport |
 | functions/lib/bdc/receptionGuard.js | — | validateReliquat, computeReceivedByArticle, computeOrderedByArticle, deriveDeliveryStatus, RELIQUAT_EPSILON |
