@@ -175,15 +175,42 @@ function todayStr() {
  * @param {Array<{date: string}>} dates - dates disponibles, triées décroissant.
  * @returns {{date: string|null, relaxed: boolean, reason: string}}
  */
+/**
+ * Le jour ÉVALUÉ est-il un jour ouvré ?
+ *
+ * `WORKDAY` (module) qualifie le jour d'EXÉCUTION — il reste juste pour la
+ * fraîcheur de la synchro. Mais depuis qu'on teste la dernière journée
+ * terminée, les deux divergent : un déploiement le LUNDI évalue le DIMANCHE.
+ * Utiliser `WORKDAY` là appliquerait les seuils du jour ouvré à un jour chômé,
+ * et recréerait chaque lundi le rouge structurel que ce ticket supprime.
+ *
+ * `T12:00:00` comme `daysSince()` : immunise contre les décalages de fuseau.
+ */
+function isTestedDayWorkday(testDate) {
+  return new Date(testDate + "T12:00:00").getDay() !== 0;
+}
+
 function pickStableDate(dates) {
   const forced = process.env.SMOKE_TEST_DATE;
   const today = todayStr();
   if (forced) {
     return { date: forced, relaxed: forced === today, reason: "SMOKE_TEST_DATE" };
   }
-  const completed = (dates || []).find(d => d && d.date && d.date !== today);
-  if (completed) {
-    return { date: completed.date, relaxed: false, reason: "dernière journée terminée" };
+  // `< today` et non `!== today` : une date FUTURE (dérive d'horloge côté
+  // source, doc mal daté à l'import) serait sinon retenue comme « terminée »
+  // et testée quasi vide. Comparaison lexicographique valide sur du YYYY-MM-DD.
+  const terminees = (dates || []).filter(d => d && d.date && d.date < today);
+
+  // On préfère une journée OUVRÉE. Sinon, un déploiement le lundi évaluerait le
+  // dimanche : seuils de charge relâchés et suite 4 sautée, donc un smoke faible
+  // un jour sur six — le travers même que ce ticket corrige. Tester le samedi
+  // à la place garde toutes les assertions vivantes.
+  const ouvree = terminees.find(d => isTestedDayWorkday(d.date));
+  if (ouvree) {
+    return { date: ouvree.date, relaxed: false, reason: "dernière journée ouvrée terminée" };
+  }
+  if (terminees.length) {
+    return { date: terminees[0].date, relaxed: false, reason: "dernière journée terminée (non ouvrée)" };
   }
   // Aucune journée terminée disponible (premier jour de données, ou historique
   // vide) : on retombe sur ce qu'on a, et là seulement on relâche.
@@ -311,6 +338,12 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   // contrôles de complétude restent de vraies assertions.
   const dayInProgress = picked.relaxed;
   const checkDay = dayInProgress ? warn : assert;
+  // Le jour ÉVALUÉ, pas le jour d'exécution : un déploiement le lundi teste le
+  // dimanche, et les seuils du jour ouvré n'ont alors rien à y faire.
+  const testedIsWorkday = isTestedDayWorkday(testDate);
+  if (!testedIsWorkday) {
+    console.log(`  ⏭️  ${testDate} est un dimanche — seuils de charge relâchés`);
+  }
   if (dayInProgress) {
     console.log(`  ⏳ Journée non terminée (${picked.reason}) — contrôles de complétude relâchés en avertissement`);
   }
@@ -334,7 +367,7 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   // être à 0 ouvrier un jour donné (jour de repos propre à cette ferme) — on
   // exige qu'au moins 2 fermes connues soient actives, pas toutes ; les fermes
   // à 0 sont signalées en avertissement, pas en échec.
-  if (WORKDAY) {
+  if (testedIsWorkday) {
     const minOuv = 10;
     const knownEntries = pointageJour.filter(f => KNOWN_FERMES.includes(f.ferme));
     const activeFermes = knownEntries.filter(f => (f.total || 0) >= minOuv);
@@ -417,7 +450,7 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 
     // Both F1 and F5 in cueillette
     const cueilFermes = [...new Set(cueillette.map(c => c.ferme))];
-    const checkFerme = WORKDAY ? assert : warn;
+    const checkFerme = testedIsWorkday ? assert : warn;
     checkFerme("F1 présente dans cueillette", cueilFermes.includes("F1"), `fermes: [${cueilFermes.join(", ")}]`);
     checkFerme("F5 présente dans cueillette", cueilFermes.includes("F5"), `fermes: [${cueilFermes.join(", ")}]`);
 
@@ -445,8 +478,9 @@ async function suiteWorkerReasonableness(dates) {
     return;
   }
 
-  if (!WORKDAY) {
-    console.log("  ⏭️  Dimanche — suite relâchée");
+  // Sur le jour ÉVALUÉ, pas le jour d'exécution (cf. isTestedDayWorkday).
+  if (!isTestedDayWorkday(testDate)) {
+    console.log(`  ⏭️  ${testDate} est un dimanche — suite relâchée`);
     return;
   }
   console.log(`  📅 Date évaluée : ${testDate} (${picked.reason})`);
@@ -573,4 +607,4 @@ async function main() {
 // être importé pour tester ses helpers purs sans taper l'API de prod.
 if (require.main === module) main();
 
-module.exports = { todayStr, pickStableDate, isWorkday, daysSince };
+module.exports = { todayStr, pickStableDate, isWorkday, isTestedDayWorkday, daysSince };
