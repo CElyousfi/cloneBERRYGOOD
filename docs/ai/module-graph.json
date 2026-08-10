@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 29,
+        "commits": 27,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:b658f200d4b019a9",
+    "sourceFingerprint": "sha256:b8cb2bada95bd937",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
@@ -769,6 +769,7 @@
       "label": "Référentiel & Analytique",
       "tests": {
         "backend": [
+          "functions/lib/parcelleGroupes/__tests__/seedHa.test.js",
           "functions/lib/parcelleGroupes/__tests__/split.test.js",
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
         ],
