@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:238a33ab7c7249c2",
+    "sourceFingerprint": "sha256:999eec33661b3cc0",
     "stats": {
-      "targetFiles": 191,
-      "targetFilesWithDirectTests": 119,
-      "targetFilesWithTransitiveTests": 136,
-      "testFilesScanned": 155
+      "targetFiles": 194,
+      "targetFilesWithDirectTests": 120,
+      "targetFilesWithTransitiveTests": 137,
+      "testFilesScanned": 156
     }
   },
   "index": {
@@ -1151,6 +1151,14 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "public/components/MagBCTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBCTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/components/MagBdcReceptionTab.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1317,6 +1325,14 @@
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js"
+      ]
+    },
+    "public/lib/cultureUtils.js": {
+      "directTests": [
+        "tests/unit/cultureUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/cultureUtils.test.js"
       ]
     },
     "public/lib/emargementExcel.js": {
