@@ -282,12 +282,26 @@
    * périmètre affiché : le parent l'applique une fois et sert la même liste au
    * tableau ET au panneau Groupes (dont l'initialisation des Ha porte sur « le
    * tableau du haut »). Filtrer à deux endroits les ferait diverger.
+   *
+   * Cherche AUSSI sur le nom Smart Berry (`sbMap[label].nom_sb`) : c'est le nom
+   * réellement affiché quand il existe, donc celui que l'utilisateur tape. Le
+   * libellé BEE ONE reste cherché en plus (les deux fonctionnent).
+   *
+   * Helper PUR : `sbMap` est injecté, jamais lu depuis `window.SB_PARCELLE_REF`.
+   *
+   * @param {Array<Object>} rows lignes parcelles (campagne sélectionnée).
+   * @param {string} search saisie de la barre de recherche.
+   * @param {Object<string, {nom_sb?:string}>} [sbMap] référentiel SB indexé par
+   *   libellé BEE ONE en MAJUSCULES trimé (même clé que PGP_displayName).
+   * @returns {Array<Object>}
    */
-  function PRT_filterRows(rows, search) {
+  function PRT_filterRows(rows, search, sbMap) {
     if (!search) return rows || [];
-    var q = search.toUpperCase();
+    var q = String(search).toUpperCase();
     return (rows || []).filter(function (r) {
-      return (r.label || '').toUpperCase().indexOf(q) !== -1 || (r.culture || '').toUpperCase().indexOf(q) !== -1 || (r.ferme || '').toUpperCase().indexOf(q) !== -1 || (r.variete || '').toUpperCase().indexOf(q) !== -1;
+      var sbEntry = sbMap && sbMap[(r.label || '').toUpperCase().trim()];
+      var nomSb = sbEntry && sbEntry.nom_sb != null ? String(sbEntry.nom_sb).trim() : '';
+      return (r.label || '').toUpperCase().indexOf(q) !== -1 || nomSb !== '' && nomSb.toUpperCase().indexOf(q) !== -1 || (r.culture || '').toUpperCase().indexOf(q) !== -1 || (r.ferme || '').toUpperCase().indexOf(q) !== -1 || (r.variete || '').toUpperCase().indexOf(q) !== -1;
     });
   }
   function PRT_Table(props) {
@@ -874,8 +888,8 @@
     // Calculé UNE fois ici, servi au tableau ET au panneau Groupes : « les 2
     // tableaux doivent être identiques » (règle produit).
     var visibleRows = useMemo(function () {
-      return PRT_filterRows(currentRows, search);
-    }, [currentRows, search]);
+      return PRT_filterRows(currentRows, search, sbMap);
+    }, [currentRows, search, sbMap]);
     return React.createElement('div', {
       style: {
         padding: '20px 24px',
@@ -1133,4 +1147,7 @@
     }), 'Ha saisis ici → propagés immédiatement à l\'Affectation Analytique (sans rechargement). ', canEdit ? 'Badge "SB" = surface personnalisée.' : 'Saisie réservée aux profils RH/DG.'))));
   }
   window.ParcellesReferentielTab = ParcellesReferentielTab;
+  // Helper pur exposé pour les tests unitaires (pas de nouveau nom global :
+  // accroché au composant déjà exposé, cf. collisions UMD de public/lib).
+  ParcellesReferentielTab.filterRows = PRT_filterRows;
 })();
