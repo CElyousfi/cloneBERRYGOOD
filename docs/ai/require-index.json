@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:2301e253c65283fa",
+    "sourceFingerprint": "sha256:238a33ab7c7249c2",
     "stats": {
-      "targetFiles": 190,
-      "targetFilesWithDirectTests": 118,
-      "targetFilesWithTransitiveTests": 135,
-      "testFilesScanned": 151
+      "targetFiles": 191,
+      "targetFilesWithDirectTests": 119,
+      "targetFilesWithTransitiveTests": 136,
+      "testFilesScanned": 152
     }
   },
   "index": {
@@ -565,6 +565,14 @@
     "functions/lib/netafim/types.js": {
       "directTests": [],
       "transitiveTests": []
+    },
+    "functions/lib/parcelleGroupes/seedHa.js": {
+      "directTests": [
+        "functions/lib/parcelleGroupes/__tests__/seedHa.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/parcelleGroupes/__tests__/seedHa.test.js"
+      ]
     },
     "functions/lib/parcelleGroupes/split.js": {
       "directTests": [
