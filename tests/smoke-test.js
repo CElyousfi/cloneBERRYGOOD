@@ -172,9 +172,9 @@ function todayStr() {
  * chemin de code, même mapping ferme/parcelle — mais des données stables, donc
  * des assertions qui restent vivantes.
  *
- * @param {Array<{date: string}>} dates - dates disponibles, triées décroissant.
- * @returns {{date: string|null, relaxed: boolean, reason: string}}
+ * (Signature détaillée sur `pickStableDate` plus bas.)
  */
+
 /**
  * Le jour ÉVALUÉ est-il un jour ouvré ?
  *
@@ -190,9 +190,20 @@ function isTestedDayWorkday(testDate) {
   return new Date(testDate + "T12:00:00").getDay() !== 0;
 }
 
-function pickStableDate(dates) {
+/**
+ * @param {Array<{date: string}>} dates - dates disponibles, triées décroissant.
+ * @param {string} [today] - date du jour `YYYY-MM-DD`. INJECTABLE : par défaut
+ *   `todayStr()`, mais les tests la passent pour être déterministes.
+ *
+ *   Sans ce paramètre, un test qui fige `TODAY` à l'import comparait sa valeur à
+ *   un `todayStr()` recalculé à l'appel : au passage de minuit entre les deux, la
+ *   date figée devenait une « journée terminée » et un test échouait — une fois,
+ *   jamais reproductible ensuite. Un flake nocturne qui érode la confiance dans
+ *   la suite bien plus qu'il ne coûte à corriger.
+ * @returns {{date: string|null, relaxed: boolean, reason: string}}
+ */
+function pickStableDate(dates, today = todayStr()) {
   const forced = process.env.SMOKE_TEST_DATE;
-  const today = todayStr();
   if (forced) {
     return { date: forced, relaxed: forced === today, reason: "SMOKE_TEST_DATE" };
   }
