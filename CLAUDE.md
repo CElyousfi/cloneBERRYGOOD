@@ -234,8 +234,13 @@ scripts/new-ticket.sh <slug-du-ticket>
 ```
 
 **Toujours `scripts/new-ticket.sh <nom>`, jamais `git worktree add` brut** — le
-script fait le `npm install` racine + `functions/` et le lien `.env`. Sans lui,
-la suite de tests part rouge sur des « Cannot find module ».
+script fait le `npm install` racine + `functions/`, le lien `.env`, et écrit le
+`.ticket-meta` nécessaire à la mesure de durée du ticket. Sans lui, la suite de
+tests part rouge sur des « Cannot find module » et le ticket n'est pas mesurable.
+Le script crée toujours le worktree en sibling du repo principal
+(`<parent-du-repo>/<slug>`, branche `sb/<slug>`) : c'est le seul emplacement
+valide. Tout worktree ailleurs (ex. `~/worktrees/`) vient d'un `git worktree add`
+manuel et rend le parc ininventoriable.
 
 Supprimer le worktree après merge.
 
