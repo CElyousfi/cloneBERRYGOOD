@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:dd39d3c1a353b9f7 -->
-# Code Map — Composants frontend (288)
+<!-- sourceFingerprint: sha256:dd04f4a5152b575f -->
+# Code Map — Composants frontend (289)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -189,16 +189,16 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MeteoPrevisionExterieure | public/app.jsx:28652 | — |
 | MeteoTab | public/app.jsx:28982 | station_meteo |
 | MMC_Kpi | public/components/MagMappingConsoTab.jsx:126 | — |
-| MOReferentielView | public/components/ParcellesReferentielTab.jsx:322 | — |
+| MOReferentielView | public/components/ParcellesReferentielTab.jsx:330 | — |
 | MSF_Dropzone | public/components/MagStockFilesTab.jsx:164 | — |
 | NewVersionToast | public/app.jsx:67893 | — |
 | NotificationPopup | public/app.jsx:68365 | — |
 | PaieTab | public/app.jsx:26482 | paie |
 | Panel | public/app.jsx:2988 | — |
 | ParametresTab | public/app.jsx:27628 | parametres |
-| ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:397 | — |
+| ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:416 | — |
 | ParcellesParamsTab | public/components/ParcellesParamsTab.jsx:115 | mag_parcelles_params |
-| ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:464 | parcelles_referentiel |
+| ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:472 | parcelles_referentiel |
 | PDP_fmtNum | public/components/PmpDetailPopup.jsx:46 | — |
 | PDP_SourceBadge | public/components/PmpDetailPopup.jsx:52 | — |
 | PDP_Td | public/components/PmpDetailPopup.jsx:67 | — |
@@ -214,9 +214,9 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PFT_parse | public/components/PrimesFixesTab.jsx:117 | — |
 | PFT_today | public/components/PrimesFixesTab.jsx:133 | — |
 | PGP_fmtHaFallback | public/components/ParcellesGroupesPanel.jsx:42 | — |
-| PGP_GroupeForm | public/components/ParcellesGroupesPanel.jsx:240 | — |
+| PGP_GroupeForm | public/components/ParcellesGroupesPanel.jsx:259 | — |
 | PGP_haSb | public/components/ParcellesGroupesPanel.jsx:49 | — |
-| PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:76 | — |
+| PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:81 | — |
 | PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:55 | — |
 | PlanificationTab | public/app.jsx:29433 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
@@ -238,10 +238,11 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ProductivityTreatmentsTable | public/app.jsx:67197 | — |
 | ProductivityTrendSvg | public/app.jsx:67527 | — |
 | ProfileLoadErrorScreen | public/app.jsx:67870 | — |
-| PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:264 | — |
+| PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:272 | — |
 | PRT_CultureBadge | public/components/ParcellesReferentielTab.jsx:67 | — |
 | PRT_EditRow | public/components/ParcellesReferentielTab.jsx:75 | — |
-| PRT_Table | public/components/ParcellesReferentielTab.jsx:162 | — |
+| PRT_filterRows | public/components/ParcellesReferentielTab.jsx:168 | — |
+| PRT_Table | public/components/ParcellesReferentielTab.jsx:179 | — |
 | QCS_group | public/components/QuinzaineCampagneSelect.jsx:85 | — |
 | QCS_num | public/components/QuinzaineCampagneSelect.jsx:52 | — |
 | QCS_resolveCampagnes | public/components/QuinzaineCampagneSelect.jsx:62 | — |
