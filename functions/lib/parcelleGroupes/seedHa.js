@@ -18,6 +18,12 @@
  * argument (DI), comme functions/lib/irrigation/.
  *
  * Invariants (testés dans __tests__/seedHa.test.js) :
+ *  - PÉRIMÈTRE = LE TABLEAU AFFICHÉ : le plan porte exactement sur les labels
+ *    fournis (les parcelles de la campagne sélectionnée à l'écran), jamais sur
+ *    une découverte serveur toutes campagnes confondues — sinon la simulation
+ *    annonce des parcelles qu'Omar ne voit pas dans le tableau.
+ *  - SURFACES RÉSOLUES SERVEUR : le client n'envoie que des labels ; aucune
+ *    valeur de `ha` d'origine cliente n'est jamais retenue.
  *  - IDEMPOTENCE : une parcelle qui a déjà `ha > 0` côté SB n'est JAMAIS
  *    touchée (`skipped` raison `deja_sb`) → rejouer l'action ne réécrit rien.
  *  - Pas d'invention de surface : sans surface BEE ONE connue (> 0), on ne
@@ -77,11 +83,50 @@ function indexByNormLabel(map) {
 }
 
 /**
- * @typedef {Object} SeedRow
- * @property {string} label libellé BEE ONE (Parcelle_Culturale).
- * @property {number} [sup] surface BEE ONE portée par la ligne (fallback si la
- *   parcelle est absente de `supMap`).
+ * Nombre maximum de labels acceptés en une passe (garde-fou d'entrée : le
+ * référentiel réel compte quelques dizaines de parcelles par campagne).
  */
+const MAX_LABELS = 500
+
+/**
+ * @typedef {Object} SanitizedLabels
+ * @property {boolean} ok
+ * @property {string} [error] message d'erreur si `ok` est faux.
+ * @property {Array<string>} labels labels trimés, dédupliqués (vide si !ok).
+ */
+
+/**
+ * Valide et normalise la liste de labels fournie par le CLIENT (les parcelles
+ * du tableau affiché). Le client n'envoie QUE des labels : aucune surface, donc
+ * aucune valeur de `ha` d'origine cliente ne peut atteindre Firestore.
+ *
+ * @param {*} input valeur brute du body (attendu : tableau de strings).
+ * @returns {SanitizedLabels}
+ */
+function sanitizeLabels(input) {
+  if (!Array.isArray(input) || input.length === 0) {
+    return { ok: false, error: 'labels requis (liste des parcelles affichées)', labels: [] }
+  }
+  if (input.length > MAX_LABELS) {
+    return { ok: false, error: 'Trop de parcelles (max ' + MAX_LABELS + ')', labels: [] }
+  }
+  const out = []
+  const seen = {}
+  for (const raw of input) {
+    if (typeof raw !== 'string') {
+      return { ok: false, error: 'labels doit être une liste de chaînes', labels: [] }
+    }
+    const trimmed = raw.trim()
+    const key = normLabel(trimmed)
+    if (!key || seen[key]) continue
+    seen[key] = true
+    out.push(trimmed)
+  }
+  if (out.length === 0) {
+    return { ok: false, error: 'Aucun label exploitable', labels: [] }
+  }
+  return { ok: true, labels: out }
+}
 
 /**
  * @typedef {Object} SeedCreate
@@ -100,12 +145,25 @@ function indexByNormLabel(map) {
  * Calcule le plan de seed : quelles parcelles recevront un Ha, lesquelles sont
  * ignorées et pourquoi. Ne fait AUCUNE écriture.
  *
- * Les lignes sans label exploitable sont ignorées silencieusement (ce ne sont
- * pas des parcelles). Les doublons de label (une parcelle présente dans les
- * deux campagnes) sont dédupliqués : la première occurrence gagne.
+ * PÉRIMÈTRE = `labels`, c'est-à-dire EXACTEMENT les parcelles du tableau
+ * affiché à l'écran (campagne sélectionnée). Aucune découverte de parcelles
+ * n'est faite ici : rien ne peut entrer dans le plan qui ne soit pas dans
+ * `labels` (invariant verrouillé par un test).
+ *
+ * COHÉRENCE AVEC L'AFFICHAGE : la colonne Ha du tableau affiche
+ * `sb.ha > 0 ? sb.ha : r.sup`, où `r.sup` provient de la MÊME carte de surfaces
+ * BR_Parcelle que `supMap` (action parcelles-campagne-list → `fetchBrParcelleSupMap`).
+ * Comme le plan écarte par construction les parcelles ayant déjà `sb.ha > 0`, la
+ * valeur proposée vaut donc exactement le `r.sup` affiché. Il n'existe
+ * volontairement AUCUN repli sur une surface transmise par le client : une
+ * parcelle absente de `supMap` est exclue (`sans_surface_source`) plutôt que
+ * seedée avec une valeur qui ne serait pas celle validée à l'écran.
+ *
+ * Les labels vides sont ignorés silencieusement ; les doublons sont
+ * dédupliqués (la première occurrence gagne).
  *
  * @param {Object} input
- * @param {Array<SeedRow>} [input.rows] parcelles candidates (toutes campagnes).
+ * @param {Array<string>} [input.labels] labels des parcelles AFFICHÉES.
  * @param {Object<string, {ha?:number|string}>} [input.sbMap] référentiel SB
  *   existant, indexé par label (normalisé ou non).
  * @param {Object<string, number|string>} [input.supMap] surfaces BEE ONE
@@ -113,7 +171,7 @@ function indexByNormLabel(map) {
  * @returns {{toCreate: Array<SeedCreate>, skipped: Array<SeedSkipped>}}
  */
 function computeSeedPlan(input) {
-  const rows = (input && input.rows) || []
+  const labels = (input && input.labels) || []
   const sbByKey = indexByNormLabel(input && input.sbMap)
   const supByKey = indexByNormLabel(input && input.supMap)
 
@@ -124,8 +182,8 @@ function computeSeedPlan(input) {
   /** @type {Object<string, boolean>} */
   const seen = {}
 
-  for (const row of rows) {
-    const rawLabel = row && row.label != null ? String(row.label).trim() : ''
+  for (const raw of labels) {
+    const rawLabel = raw == null ? '' : String(raw).trim()
     const key = normLabel(rawLabel)
     if (!key || seen[key]) continue
     seen[key] = true
@@ -136,9 +194,8 @@ function computeSeedPlan(input) {
       continue
     }
 
-    // Surface BEE ONE : la map BR_Parcelle prime (source authoritative,
-    // résiliente), la valeur portée par la ligne sert de repli.
-    const ha = toPositiveNumber(supByKey[key]) || toPositiveNumber(row && row.sup)
+    // Surface BEE ONE résolue par le SERVEUR uniquement (BR_Parcelle).
+    const ha = toPositiveNumber(supByKey[key])
     if (!(ha > 0)) {
       skipped.push({ label: rawLabel, raison: RAISON_SANS_SURFACE })
       continue
@@ -151,9 +208,11 @@ function computeSeedPlan(input) {
 }
 
 module.exports = {
+  MAX_LABELS,
   RAISON_DEJA_SB,
   RAISON_SANS_SURFACE,
   SOURCE_BEE_ONE,
   normLabel,
+  sanitizeLabels,
   computeSeedPlan,
 }
