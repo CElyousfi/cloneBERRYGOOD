@@ -89,6 +89,8 @@ const { resolvePointageRHAccess } = require("./lib/auth/paieAccess");
 // Groupes de parcelles (raccourci de saisie BC, éclatement au prorata des Ha).
 const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
+// Initialisation des Ha manquants du référentiel SB depuis les surfaces BEE ONE.
+const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -3948,6 +3950,110 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
         return res.json({ success: true, key });
+      }
+
+      // Initialisation des Ha MANQUANTS du référentiel depuis BEE ONE (DG/RH/admin).
+      //
+      // Pourquoi : le prorata des groupes de parcelles lit UNIQUEMENT
+      // sb_parcelle_referentiel.ha ; une parcelle sans Ha SB est inéligible aux
+      // groupes alors que le tableau affiche une surface… qui vient de BEE ONE.
+      // On initialise donc une fois le référentiel avec la surface BEE ONE ; le
+      // prorata continue ensuite de lire uniquement Smart Berry (règle produit
+      // inchangée) et chaque Ha reste corrigeable via « Éditer ».
+      //
+      // Sûreté : dry_run VRAI PAR DÉFAUT (champ absent → simulation), plan
+      // calculé par une fonction pure IDEMPOTENTE (lib/parcelleGroupes/seedHa) :
+      // une parcelle avec ha > 0 n'est jamais réécrite, une parcelle sans
+      // surface source n'est jamais inventée, nom_sb n'est jamais touché.
+      if (action === "sb-referentiel-seed-ha" && req.method === "POST") {
+        const _authUserS = await verifyAuth(req);
+        const callerProfileS = await resolveCallerProfile(_authUserS);
+        const _pidS = callerProfileS && (callerProfileS.profileId || callerProfileS.role || '');
+        if (!['dg', 'rh', 'admin'].includes(_pidS)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
+        }
+        // dry_run par défaut : seul un `dry_run: false` EXPLICITE écrit.
+        const dryRunS = (req.body || {}).dry_run !== false;
+
+        // Parcelles des DEUX campagnes — même découpage que parcelles-campagne-list.
+        const todayS = new Date().toISOString().slice(0, 10);
+        const CUT_S = "2026-07-01";
+        const PREV_START_S = "2025-07-01";
+        const PREV_END_S = "2026-06-30";
+        let seedRows = [];
+        if (!USE_MIRROR) {
+          const dbS = await getPool();
+          const [rSeedA, rSeedB] = await Promise.all([
+            dbS.request().query(`
+              SELECT DISTINCT Parcelle_Culturale
+              FROM BR_Pointage
+              WHERE CONVERT(date, Periode_Date) >= '${CUT_S}'
+                AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`),
+            dbS.request().query(`
+              SELECT DISTINCT Parcelle_Culturale
+              FROM BR_Pointage
+              WHERE CONVERT(date, Periode_Date) >= '${PREV_START_S}'
+                AND CONVERT(date, Periode_Date) <= '${PREV_END_S}'
+                AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`),
+          ]);
+          seedRows = rSeedA.recordset.concat(rSeedB.recordset)
+            .map((r) => ({ label: (r.Parcelle_Culturale || "").trim() }));
+        } else {
+          const [rawSeedA, rawSeedB] = await Promise.all([
+            getPointageRowsForDateRange(CUT_S, todayS),
+            getPointageRowsForDateRange(PREV_START_S, PREV_END_S),
+          ]);
+          seedRows = rawSeedA.concat(rawSeedB)
+            .map((r) => ({ label: (r.Parcelle_Culturale || "").trim() }));
+        }
+
+        // Surfaces BEE ONE : fetchBrParcelleSupMap est résilient (last-known-good
+        // depuis sql_mirror_pointage_meta/br_parcelle_sup si le serveur BDR est
+        // down) → une indisponibilité ne fait pas « disparaître » les surfaces,
+        // au pire le plan est vide et on n'écrit rien.
+        const [supMapS, sbSnapS] = await Promise.all([
+          fetchBrParcelleSupMap(),
+          db_firestore.collection("sb_parcelle_referentiel").get(),
+        ]);
+        const sbMapS = {};
+        sbSnapS.forEach((doc) => {
+          const d = doc.data() || {};
+          const lbl = (d.label_bee_one || doc.id || "").toUpperCase().trim();
+          if (lbl) sbMapS[lbl] = d;
+        });
+
+        const planS = parcelleGroupSeedHa.computeSeedPlan({
+          rows: seedRows, sbMap: sbMapS, supMap: supMapS,
+        });
+
+        if (!dryRunS && planS.toCreate.length > 0) {
+          const FieldValueS = require("firebase-admin").firestore.FieldValue;
+          const CHUNK_S = 400; // limite Firestore 500/batch, marge de 100
+          for (let i = 0; i < planS.toCreate.length; i += CHUNK_S) {
+            const batchS = db_firestore.batch();
+            planS.toCreate.slice(i, i + CHUNK_S).forEach((c) => {
+              const refS = db_firestore.collection("sb_parcelle_referentiel")
+                .doc(parcelleGroupSeedHa.normLabel(c.label));
+              // merge:true + aucun champ nom_sb → un nom SB déjà saisi survit.
+              batchS.set(refS, {
+                label_bee_one: c.label,
+                ha: c.ha,
+                seeded_from: c.source,
+                updated_by: { uid: (_authUserS && _authUserS.uid) || null, profileId: _pidS },
+                updated_at: FieldValueS.serverTimestamp(),
+              }, { merge: true });
+            });
+            await batchS.commit();
+          }
+        }
+
+        return res.json({
+          success: true,
+          dry_run: dryRunS,
+          total_parcelles: planS.toCreate.length + planS.skipped.length,
+          a_creer: planS.toCreate.map((c) => ({ label: c.label, ha: c.ha })),
+          ignorees: planS.skipped,
+        });
       }
 
       // ===== GROUPES DE PARCELLES (raccourci de saisie du Bon de Consommation) =====
