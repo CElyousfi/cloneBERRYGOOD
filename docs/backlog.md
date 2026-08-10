@@ -5,6 +5,44 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] ITEM — Plafond de lecture du tool `get_bdc_non_receptionnes` (+ question métier)
+Ajouté 2026-08-10, suite au ticket `sb/bdc-bl-batch` (qui n'a traité que les N+1).
+
+**Constat mesuré en prod le 2026-08-10** (scripts one-off, lecture seule) :
+307 BDC réceptionnables sur un plafond de lecture de 500, soit **61 % du plafond consommé**.
+Répartition de `delivery_status` : **281 `non_livre` · 2 `partiel` · 24 `complet`** — soit un
+**taux de solde de 8 %**.
+
+**Correctif envisagé, NON retenu en l'état** : requêter
+`where('delivery_status','in',['non_livre','partiel'])` et filtrer `RECEIVABLE_STATUSES` en
+mémoire, plutôt que l'inverse. Sa prémisse est que cet ensemble « se draine » (un BDC soldé en
+sort définitivement), contrairement aux statuts d'achat qui sont absorbants.
+⚠️ **Cette prémisse n'est PAS établie** : un taux de solde de 8 % est tout aussi compatible
+avec un stock qui s'accumule. Prérequis avant d'implémenter : **connaître la distribution d'âge
+des 281 `non_livre`**. S'ils sont majoritairement anciens, l'ensemble ne se draine pas et le
+correctif ne repousse le plafond que d'un cran.
+
+Sûreté de la requête, elle, **vérifiée** : sur les 307, **0** BDC sans champ `delivery_status`
+et **0** valeur inattendue ; les deux chemins de création posent le champ
+(`functions/index.js:6740` create-bdc, `:7259` conversion DA→BDC) et les deux chemins de
+mutation le maintiennent (`:7389`, `:10816`). Le piège Firestore « un document sans le champ
+interrogé n'est jamais retourné » ne s'applique donc pas ici — mais il reste vrai pour le
+soft-delete des BL (`deleted` absent tant que non supprimé) : ce filtre doit rester en mémoire.
+
+**Question métier, pour Omar** : que sont ces **281 BDC validés sans aucune réception saisie** ?
+Commandes réellement en attente, ou réceptions jamais enregistrées dans l'outil ? Et le bot
+doit-il les remonter au DG comme tels ? La réponse conditionne le correctif technique — si ces
+BDC sont du bruit historique, le vrai sujet est de les solder, pas d'agrandir la fenêtre.
+
+**Aussi dans ce lot** : avec `enRetardSeulement: true`, `total` et `totalTtc` ne portent que sur
+les BDC en retard, alors que la description du tool parle du total en attente de réception. Le
+flag est bien dans le payload mais le prompt système ne dit pas au modèle comment le lire —
+une ligne suffit.
+
+Gated : non pour la partie technique ; la question métier appartient à Omar.
+
+---
+
 ## [ ] ITEM — Migrer les ~14 env vars restantes vers Secret Manager (`runWith({secrets})`)
 Ajouté 2026-08-09, suite au ticket `sb/deploy-wif-prod`. **Due depuis l'incident du 07/08.**
 Les functions gen1 lisent encore ~14 variables via `functions/.env` :

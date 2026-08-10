@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:48ec011b22a660e1",
+    "sourceFingerprint": "sha256:472cf17959e16fea",
     "stats": {
-      "targetFiles": 184,
-      "targetFilesWithDirectTests": 114,
-      "targetFilesWithTransitiveTests": 131,
-      "testFilesScanned": 143
+      "targetFiles": 185,
+      "targetFilesWithDirectTests": 115,
+      "targetFilesWithTransitiveTests": 132,
+      "testFilesScanned": 144
     }
   },
   "index": {
@@ -39,6 +39,14 @@
       ],
       "transitiveTests": [
         "tests/unit/bdcDigest.test.js"
+      ]
+    },
+    "functions/lib/bdc/blBatch.js": {
+      "directTests": [
+        "tests/unit/blBatch.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/blBatch.test.js"
       ]
     },
     "functions/lib/bdc/mirrorSync.js": {
