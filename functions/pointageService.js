@@ -3935,20 +3935,29 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         if (!['dg', 'rh', 'admin'].includes(_pid)) {
           return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
         }
-        const { label_bee_one, nom_sb, ha } = req.body || {};
+        const { label_bee_one, nom_sb, ha, culture_sb } = req.body || {};
         if (!label_bee_one || typeof label_bee_one !== "string") {
           return res.status(400).json({ success: false, error: "label_bee_one requis" });
         }
+        const CULTURES_SB_VALIDES = ["Myrtille", "Framboise", "Avocatier"];
+        if (culture_sb !== undefined && !CULTURES_SB_VALIDES.includes(culture_sb)) {
+          return res.status(400).json({ success: false, error: "culture_sb invalide" });
+        }
         const key = label_bee_one.trim().toUpperCase();
         const haNum = parseFloat(ha) || 0;
-        const docRef = db_firestore.collection("sb_parcelle_referentiel").doc(key);
-        await docRef.set({
+        const docPayload = {
           label_bee_one: label_bee_one.trim(),
           nom_sb: (nom_sb || "").trim(),
           ha: haNum,
           updated_by: { uid: (_authUser && _authUser.uid) || null, profileId: _pid },
           updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        };
+        // Optionnel : n'écrit `culture_sb` que si fourni et valide — jamais
+        // `undefined` vers Firestore (erreur), et ne pas écraser une valeur
+        // existante lors d'un save qui ne concerne que le nom/Ha.
+        if (culture_sb !== undefined) docPayload.culture_sb = culture_sb;
+        const docRef = db_firestore.collection("sb_parcelle_referentiel").doc(key);
+        await docRef.set(docPayload, { merge: true });
         return res.json({ success: true, key });
       }
 

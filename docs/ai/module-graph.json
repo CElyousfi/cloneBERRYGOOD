@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 26,
+        "commits": 25,
         "file": "public/app.jsx"
       },
       {
@@ -33,6 +33,10 @@
       {
         "commits": 6,
         "file": "functions/dgAgent.js"
+      },
+      {
+        "commits": 6,
+        "file": "public/components/ParcellesReferentielTab.jsx"
       },
       {
         "commits": 5,
@@ -48,23 +52,19 @@
       },
       {
         "commits": 4,
+        "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 4,
         "file": "public/components/MagStockFilesTab.js"
       },
       {
         "commits": 4,
         "file": "public/lib/bdcReceptionUtils.js"
-      },
-      {
-        "commits": 4,
-        "file": "scripts/build-frontend.js"
-      },
-      {
-        "commits": 4,
-        "file": "tests/unit/bdcDigest.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:d1f14f707c07a824",
+    "sourceFingerprint": "sha256:0e6f64b3f54804e7",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
@@ -765,7 +765,15 @@
           "FinCodesAnalytiquesTab"
         ]
       },
-      "gitCoupling": [],
+      "gitCoupling": [
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/ParcellesReferentielTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
       "label": "Référentiel & Analytique",
       "tests": {
         "backend": [

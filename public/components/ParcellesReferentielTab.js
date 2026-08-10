@@ -85,17 +85,77 @@
       }
     }, culture);
   }
+
+  /**
+   * Valeur initiale du champ Ha de la ligne d'édition. PURE (testée
+   * directement, sans monter de composant — pas de RTL disponible ici).
+   *
+   * Si le référentiel SB a déjà une valeur (même 0), on la garde ; sinon on
+   * pré-remplit avec la surface BEE ONE réelle (r.sup), pas seulement le
+   * placeholder — sans quoi un save qui ne touche QUE le nom (Ha jamais
+   * édité) échoue silencieusement la validation « Ha invalide » (le champ
+   * est visuellement vide, l'utilisateur ne le remplit pas, et le texte
+   * d'erreur, minuscule, passe inaperçu — donne l'impression que "rien ne se
+   * passe").
+   *
+   * @param {{ha?: (number|string|null)}|null} sbEntry
+   * @param {{sup?: (number|string|null)}} row
+   * @returns {string}
+   */
+  function PRT_initialHaVal(sbEntry, row) {
+    if (sbEntry && sbEntry.ha != null && sbEntry.ha !== '') return String(sbEntry.ha);
+    var fallback = parseFloat((row && row.sup) != null ? row.sup : NaN);
+    return isNaN(fallback) ? '' : String(fallback);
+  }
+
+  /**
+   * Construit le body JSON envoyé à `sb-referentiel-save`. PURE.
+   *
+   * `culture_sb` ne doit être inclus QUE si l'utilisateur a effectivement
+   * modifié le dropdown Culture (`cultureTouched`) — sinon un save qui ne
+   * concerne que le nom ou le Ha écrase silencieusement le référentiel avec
+   * la valeur affichée (toujours définie via normCulture/sbEntry), ce qui :
+   * (1) déclenche à tort le badge "SB" (isCustom), et (2) fige la culture au
+   * lieu de la laisser suivre les données BEE ONE.
+   *
+   * @param {{label: string, nomVal: string, haNum: number, cultureVal: string, cultureTouched: boolean}} args
+   * @returns {{label_bee_one: string, nom_sb: string, ha: number, culture_sb?: string}}
+   */
+  function PRT_buildSavePayload(args) {
+    var payload = {
+      label_bee_one: args.label,
+      nom_sb: String(args.nomVal || '').trim(),
+      ha: args.haNum
+    };
+    if (args.cultureTouched) payload.culture_sb = args.cultureVal;
+    return payload;
+  }
   function PRT_EditRow(props) {
     var r = props.row;
     var sbEntry = props.sbEntry;
     var onSaved = props.onSaved;
     var onCancel = props.onCancel;
-    var _ha = useState(sbEntry ? String(sbEntry.ha || '') : '');
+    var _ha = useState(function () {
+      return PRT_initialHaVal(sbEntry, r);
+    });
     var haVal = _ha[0];
     var setHaVal = _ha[1];
     var _nom = useState(sbEntry ? sbEntry.nom_sb || '' : '');
     var nomVal = _nom[0];
     var setNomVal = _nom[1];
+    var _culture = useState(sbEntry && sbEntry.culture_sb || normCulture(r.culture, r.label));
+    var cultureVal = _culture[0];
+    var setCultureVal = _culture[1];
+    // cultureTouched : true UNIQUEMENT si l'utilisateur a manipulé le select
+    // Culture. `cultureVal` est toujours initialisé à une valeur valide (soit
+    // le référentiel SB existant, soit une valeur déduite via normCulture),
+    // donc on ne peut PAS se fier à "cultureVal est défini" pour savoir si
+    // l'utilisateur a voulu la modifier — un save qui ne touche que le nom ou
+    // le Ha enverrait sinon toujours culture_sb, écrasant silencieusement le
+    // comportement "non personnalisé" (isCustom + gel de la culture calculée).
+    var _cultureTouched = useState(false);
+    var cultureTouched = _cultureTouched[0];
+    var setCultureTouched = _cultureTouched[1];
     var _saving = useState(false);
     var saving = _saving[0];
     var setSaving = _saving[1];
@@ -103,41 +163,49 @@
     var err = _err[0];
     var setErr = _err[1];
     function handleSave() {
-      var haNum = parseFloat(haVal.replace(',', '.'));
+      var haNum = parseFloat(String(haVal).replace(',', '.'));
       if (isNaN(haNum) || haNum < 0) {
         setErr('Ha invalide');
         return;
       }
       setSaving(true);
       setErr(null);
+      var payload = PRT_buildSavePayload({
+        label: r.label,
+        nomVal: nomVal,
+        haNum: haNum,
+        cultureVal: cultureVal,
+        cultureTouched: cultureTouched
+      });
       fetch('/api/pointage-rh?action=sb-referentiel-save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          label_bee_one: r.label,
-          nom_sb: nomVal.trim(),
-          ha: haNum
-        })
+        body: JSON.stringify(payload)
       }).then(function (res) {
+        if (!res.ok) throw new Error('Erreur serveur (' + res.status + ')');
         return res.json();
       }).then(function (d) {
         if (!d.success) throw new Error(d.error || 'Erreur');
-        // Mettre à jour le cache global SB_PARCELLE_REF
-        if (window.SB_PARCELLE_REF) {
-          var key = (r.label || '').toUpperCase().trim();
-          window.SB_PARCELLE_REF[key] = {
-            label_bee_one: r.label,
-            nom_sb: nomVal.trim(),
-            ha: haNum
-          };
-        }
-        onSaved({
+        var saved = {
           label_bee_one: r.label,
           nom_sb: nomVal.trim(),
           ha: haNum
-        });
+        };
+        if (cultureTouched) {
+          saved.culture_sb = cultureVal;
+        } else if (sbEntry && sbEntry.culture_sb) {
+          // Préserver la valeur existante dans le cache optimiste local —
+          // ne pas la perdre visuellement avant le prochain fetch complet.
+          saved.culture_sb = sbEntry.culture_sb;
+        }
+        // Mettre à jour le cache global SB_PARCELLE_REF
+        if (window.SB_PARCELLE_REF) {
+          var key = (r.label || '').toUpperCase().trim();
+          window.SB_PARCELLE_REF[key] = saved;
+        }
+        onSaved(saved);
       }).catch(function (e) {
         setErr(e.message);
         setSaving(false);
@@ -183,9 +251,23 @@
       style: {
         padding: '8px 10px'
       }
-    }, React.createElement(PRT_CultureBadge, {
-      culture: normCulture(r.culture, r.label)
-    })), React.createElement('td', {
+    }, React.createElement('select', {
+      value: cultureVal,
+      onChange: function (e) {
+        setCultureVal(e.target.value);
+        setCultureTouched(true);
+      },
+      style: {
+        ...inputStyle,
+        width: 'auto'
+      }
+    }, React.createElement('option', {
+      value: 'Myrtille'
+    }, 'Myrtille'), React.createElement('option', {
+      value: 'Framboise'
+    }, 'Framboise'), React.createElement('option', {
+      value: 'Avocatier'
+    }, 'Avocatier'))), React.createElement('td', {
       style: {
         padding: '8px 10px',
         fontSize: 12,
@@ -375,12 +457,12 @@
         width: 110
       }
     }, ''))), React.createElement('tbody', null, filtered.map(function (r, i) {
-      var culture = normCulture(r.culture, r.label);
       var sbKey = (r.label || '').toUpperCase().trim();
       var sbEntry = sbMap && sbMap[sbKey];
+      var culture = sbEntry && sbEntry.culture_sb ? sbEntry.culture_sb : normCulture(r.culture, r.label);
       var haDisplay = sbEntry && sbEntry.ha > 0 ? sbEntry.ha : r.sup;
       var nomDisplay = sbEntry && sbEntry.nom_sb ? sbEntry.nom_sb : r.label;
-      var isCustom = sbEntry && (sbEntry.ha > 0 || sbEntry.nom_sb);
+      var isCustom = sbEntry && (sbEntry.ha > 0 || sbEntry.nom_sb || sbEntry.culture_sb);
       if (editLabel === r.label) {
         return React.createElement(PRT_EditRow, {
           key: r.label,
@@ -1150,4 +1232,6 @@
   // Helper pur exposé pour les tests unitaires (pas de nouveau nom global :
   // accroché au composant déjà exposé, cf. collisions UMD de public/lib).
   ParcellesReferentielTab.filterRows = PRT_filterRows;
+  ParcellesReferentielTab.initialHaVal = PRT_initialHaVal;
+  ParcellesReferentielTab.buildSavePayload = PRT_buildSavePayload;
 })();
