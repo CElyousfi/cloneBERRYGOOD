@@ -173,6 +173,21 @@ test('arbitrage: sans forecast vivant, le « oui » confirme bien la relance', (
   assert.equal(relanceOutcomeForMessage(pendingA, forecastPerime, 'oui', T0 + 1000), 'confirm');
 });
 
+// Verrouille la CONSTANTE de TTL, pas seulement la logique. Les cas 0 min et
+// 20 min donnent le même verdict avec le TTL forecast (15 min) qu'avec celui de
+// la relance (5 min) : un mutant échangeant les deux survivait aux 28 tests.
+// Il est pourtant nuisible en vrai — un forecast de 6 min plus un « oui »
+// enverrait un rappel indu ET perdrait le slide. 6 min est le seul âge qui
+// sépare les deux constantes.
+test('arbitrage: le TTL du forecast est bien le sien (15 min), pas celui de la relance', () => {
+  const forecastDe6Min = { at: T0 - 6 * 60 * 1000 };
+  assert.equal(
+    relanceOutcomeForMessage(pendingA, forecastDe6Min, 'oui', T0),
+    'cancel',
+    'à 6 min le forecast est encore vivant : il capte le « oui », la relance est annulée'
+  );
+});
+
 test('arbitrage: un message quelconque avec forecast vivant reste une annulation', () => {
   // parseForecastConfirmation → "unknown" : le forecast ne capte pas, la relance
   // est quand même consommée (défaut = non-envoi).
