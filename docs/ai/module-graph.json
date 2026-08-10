@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 27,
+        "commits": 26,
         "file": "public/app.jsx"
       },
       {
@@ -33,6 +33,10 @@
       {
         "commits": 6,
         "file": "functions/dgAgent.js"
+      },
+      {
+        "commits": 6,
+        "file": "scripts/build-frontend.js"
       },
       {
         "commits": 5,
@@ -51,10 +55,6 @@
         "file": "public/components/ParcellesReferentielTab.jsx"
       },
       {
-        "commits": 5,
-        "file": "scripts/build-frontend.js"
-      },
-      {
         "commits": 4,
         "file": "functions/pointageService.js"
       },
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:e1b7dc67ed999b73",
+    "sourceFingerprint": "sha256:9fe14b27583cd8ab",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
