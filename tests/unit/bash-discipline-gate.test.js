@@ -221,3 +221,32 @@ test('workflow-dispatch — scripts/deploy.sh reste le chemin autorisé', () => 
   assert.strictEqual(evaluate('scripts/deploy.sh functions'), null);
   assert.strictEqual(evaluate('scripts/deploy.sh functions --dry-run'), null);
 });
+
+// Régression 2026-08-10 : la v1 de la règle testait la commande BRUTE et refusait
+// un `gh pr create` dont le CORPS du message contenait les deux mots-clés — ils
+// venaient du texte, pas de la commande. Une règle qui bloque des commandes saines
+// finit contournée sans qu'on le voie. La v2 teste le scan (contenu cité vidé) et
+// borne la distance entre les mots.
+// Les mots sont assemblés par concaténation pour que ce fichier de test ne
+// déclenche pas lui-même la règle quand il apparaît dans une ligne de commande.
+
+test('workflow-dispatch — un `gh pr create` dont le TEXTE contient les mots passe', () => {
+  const W = 'work' + 'flow';
+  const R = 'r' + 'un';
+  const cmd = 'gh pr create --title t --body "passe par le ' + W + ', puis npm ' + R + ' qa"';
+  assert.strictEqual(evaluate(cmd), null, 'faux positif sur : ' + cmd);
+});
+
+test('workflow-dispatch — deux mots éloignés dans un texte ne déclenchent pas', () => {
+  const W = 'work' + 'flow';
+  const R = 'r' + 'un';
+  const loin = 'gh pr comment 12 --body "' + W + ' ' + 'x'.repeat(120) + ' ' + R + '"';
+  assert.strictEqual(evaluate(loin), null);
+});
+
+test('workflow-dispatch — le vrai déclenchement reste bloqué malgré la correction', () => {
+  const W = 'work' + 'flow';
+  const R = 'r' + 'un';
+  const hit = evaluate('gh ' + W + ' ' + R + ' deploy-prod.yml --ref main');
+  assert.strictEqual(hit && hit.id, 'workflow-dispatch');
+});

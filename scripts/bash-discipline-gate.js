@@ -68,10 +68,22 @@ const RULES = [
       // (b) la commande directe. `Bash(gh workflow run:*)` est en `ask`, mais le matching
       //     est un PRÉFIXE : `GH_REPO=o/r gh workflow run`, un double espace, ou
       //     `gh workflow --repo X run` y échappent. Ici on ne se fie pas à la forme.
-      //     L'ordre `workflow` PUIS `run` est significatif : il distingue le sous-commande
+      //
+      //     Testé sur `scan` (contenu cité VIDÉ), pas sur `raw` : une v1 testait la
+      //     commande brute et bloquait `gh pr create --body "… passé par le workflow …
+      //     npm run qa …"` — les mots venaient du CORPS du message, pas de la commande.
+      //     Une règle qui refuse des commandes saines finit contournée sans qu'on le voie.
+      //     Rien n'est affaibli : un vrai `gh workflow run` n'a pas de guillemets entre
+      //     `gh` et `run`.
+      //
+      //     Deux bornes en plus : pas de saut de ligne ni de séparateur de commande
+      //     (`;` `|` `&`) entre les mots, et 60 caractères max — un déclenchement réel les
+      //     a côte à côte, un faux positif les a loin l'un de l'autre.
+      //
+      //     L'ordre `workflow` PUIS `run` est significatif : il distingue la sous-commande
       //     `gh workflow … run` (déclenchement) de `gh run list --workflow X` (lecture).
       //     Les lookarounds sur `-` évitent de matcher le FLAG `--workflow`.
-      || /\bgh\b[\s\S]*?(?<![-\w])workflow(?![-\w])[\s\S]*?(?<![-\w])run(?![-\w])/.test(raw),
+      || /\bgh\b[^\n;|&]{0,60}?(?<![-\w])workflow(?![-\w])[^\n;|&]{0,60}?(?<![-\w])run(?![-\w])/.test(c),
     msg: 'Déclenchement direct de workflow interdit à l\'agent. Le deploy prod passe par '
        + '`scripts/deploy.sh functions` (gaté, journalisé, et qui vérifie branche/tree/remote '
        + 'avant de déclencher quoi que ce soit).',
