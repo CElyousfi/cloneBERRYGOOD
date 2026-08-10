@@ -1,3 +1,13 @@
 branche;start;end;duree_minutes
 sb/deploy-wif-prod;2026-08-09T12:39:38Z;2026-08-09T13:01:41Z;22
 sb/runbook-env-blocage;2026-08-09T22:43:56Z;2026-08-09T22:50:44Z;6
+sb/backlog-bdc-imports;2026-08-10T09:15:56Z;2026-08-10T09:33:46Z;17
+sb/backlog-chunkids-dedup;2026-08-10T07:39:11Z;2026-08-10T07:40:22Z;1
+sb/backlog-dimanche-travaille;2026-08-10T10:33:48Z;2026-08-10T10:35:27Z;1
+sb/bdc-bl-batch;2026-08-10T07:17:52Z;2026-08-10T07:32:13Z;14
+sb/bdc-filtre-mise-en-service;2026-08-10T10:41:06Z;2026-08-10T11:00:03Z;18
+sb/claude-md-check-prs;2026-08-10T06:48:33Z;2026-08-10T06:49:57Z;1
+sb/dg-bot-bdc-reception;2026-08-09T18:09:10Z;2026-08-09T18:42:12Z;33
+sb/dg-bot-bdc-relance;2026-08-10T11:50:35Z;2026-08-10T12:43:01Z;52
+sb/fix-flake-smoke-date;2026-08-10T13:41:12Z;2026-08-10T13:44:47Z;3
+sb/hook-faux-positif;2026-08-10T09:37:28Z;2026-08-10T09:41:28Z;4
