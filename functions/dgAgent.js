@@ -116,6 +116,7 @@ const {
   summarizePendingReception,
   detailArticles,
   buildReceptionPayload,
+  isDepuisMiseEnService,
 } = require("./lib/bdc/bdcDigest");
 const { IN_MAX_VALUES, chunkIds, groupBlsByBdcId } = require("./lib/bdc/blBatch");
 const getTeamMap = () => getTeamNameMap(db);
@@ -367,6 +368,14 @@ async function tool_get_bdc_non_receptionnes({ ferme, enRetardSeulement, limit }
   // mais l'onglet magasin les masque déjà de la même façon).
   docs = docs.filter(d => d.delivery_status !== "complet");
 
+  // Bornage à la mise en service réelle de l'app (MISE_EN_SERVICE_MS). EN
+  // MÉMOIRE et ICI, avant le chargement des BL : filtrer après ferait lire les
+  // BL de ~270 BdC pour les jeter ensuite. Le compte des écartés est transmis
+  // au payload — rien ne disparaît sans trace.
+  const avantFiltreMiseEnService = docs.length;
+  docs = docs.filter(isDepuisMiseEnService);
+  const ecartesAvantMiseEnService = avantFiltreMiseEnService - docs.length;
+
   const blsByBdcId = await loadBlsByBdcIds(docs.map(d => d.id));
   const summary = summarizePendingReception(docs, blsByBdcId, {
     today: Date.now(),
@@ -376,6 +385,7 @@ async function tool_get_bdc_non_receptionnes({ ferme, enRetardSeulement, limit }
     ferme: fermeFilter,
     tronque: snap.size >= BDC_QUERY_LIMIT,
     enRetardSeulement: enRetardSeulement === true,
+    ecartesAvantMiseEnService,
   });
 }
 
@@ -472,6 +482,7 @@ Réception (livraison physique au magasin):
 - Reliquat = quantité commandée − quantité déjà reçue, article par article. Tant qu'un article a du reliquat, le BdC n'est pas soldé.
 - deliveryStatus: non_livre = aucun BL, partiel = au moins un BL mais du reliquat restant. Les BdC complets ne sont jamais listés.
 - "retardJours" null = pas de date de livraison prévue → dis "échéance non renseignée", n'invente pas de retard. 0 = pas encore échu.
+- La liste réception ne couvre que les BdC créés depuis la mise en service de l'app (01/07/2026) : avant, les réceptions n'étaient pas saisies. "ecartesAvantMiseEnService" = combien de BdC antérieurs ont été écartés — ne le mentionne que si on te le demande ou si on s'étonne d'un BdC manquant.
 
 Format de liste réception pour WhatsApp — un BdC par ligne, le plus en retard d'abord:
 *BDC-2026-0142* — Fournisseur — 40 % reçu — 6 j de retard

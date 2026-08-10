@@ -52,6 +52,48 @@ const RECEIVABLE_STATUSES = ['valide_dg', 'envoye', 'virement_lance', 'virement_
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
+ * Date de MISE EN SERVICE RÉELLE de l'application achats (01/07/2026, minuit
+ * UTC — même convention de parsing que `date_livraison_prevue` ailleurs dans ce
+ * module).
+ *
+ * Avant cette date, l'app n'était pas utilisée au quotidien : les BdC existent
+ * (import historique au préfixe `BC-`, premières saisies d'avril-mai) mais les
+ * RÉCEPTIONS n'ont jamais été saisies. Ces BdC apparaissent donc éternellement
+ * « 0 % reçu, 130 j de retard » alors que la marchandise est livrée depuis des
+ * mois. Les lister pousse le DG à relancer des fournisseurs pour du bruit.
+ *
+ * Sert UNIQUEMENT à borner le digest « non réceptionnés » du bot DG. Aucune
+ * écriture, aucun filtre Firestore : les documents restent intégralement
+ * lisibles ailleurs (rapprochement des factures via `Num_BC`, `get_bdc_detail`).
+ */
+const MISE_EN_SERVICE_MS = Date.parse('2026-07-01T00:00:00.000Z');
+
+/**
+ * Le BdC est-il à retenir au titre de la mise en service ?
+ *
+ * Prédicat écrit EN POSITIF à dessein : on n'écarte que ce qu'on SAIT être
+ * antérieur au seuil. Toute date inexploitable (`created_at` absent, `null`,
+ * `0`, `NaN`, ou d'un autre type que `number`) → le BdC est CONSERVÉ. Un BdC
+ * en trop se voit et se corrige ; un BdC rendu invisible ne se voit pas.
+ *
+ * `created_at` est le seul champ utilisable ici : `updated_at` est réécrit à
+ * chaque création/suppression de BL (un vieux BdC touché récemment passerait le
+ * filtre) et `date_livraison_prevue` est une échéance, pas une date de création
+ * (et peut valoir "").
+ *
+ * Borne INCLUSIVE : un BdC créé exactement à la milliseconde du seuil est
+ * conservé.
+ *
+ * @param {BdcDoc} bdc
+ * @returns {boolean} true = à garder dans le digest.
+ */
+function isDepuisMiseEnService(bdc) {
+  const ts = bdc && bdc.created_at;
+  if (typeof ts !== 'number' || !isFinite(ts) || ts <= 0) return true;
+  return ts >= MISE_EN_SERVICE_MS;
+}
+
+/**
  * @typedef {{
  *   numero?: string,
  *   status?: string,
@@ -476,7 +518,7 @@ function summarizePendingReception(bdcs, blsByBdcId, options) {
  *
  * @param {ReturnType<typeof summarizePendingReception>} summary
  * @param {number|string|undefined} limit
- * @param {{ ferme?: string, tronque?: boolean, enRetardSeulement?: boolean }} [options]
+ * @param {{ ferme?: string, tronque?: boolean, enRetardSeulement?: boolean, ecartesAvantMiseEnService?: number }} [options]
  * @returns {object}
  */
 function buildReceptionPayload(summary, limit, options) {
@@ -487,7 +529,11 @@ function buildReceptionPayload(summary, limit, options) {
   payload.enRetard = summary.enRetard;
   payload.byDeliveryStatus = summary.byDeliveryStatus;
   if (opts.enRetardSeulement) payload.enRetardSeulement = true;
+  // Rien ne disparaît sans trace : le nombre de BdC antérieurs à la mise en
+  // service est TOUJOURS exposé (y compris à 0), pour que le modèle puisse le
+  // citer si on le lui demande.
+  payload.ecartesAvantMiseEnService = toNumber(opts.ecartesAvantMiseEnService);
   return payload;
 }
 
-module.exports = { PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload }
+module.exports = { PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, MISE_EN_SERVICE_MS, isDepuisMiseEnService, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload }

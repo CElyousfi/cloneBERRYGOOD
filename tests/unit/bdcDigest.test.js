@@ -21,6 +21,8 @@ const {
   summarizePendingReception,
   detailArticles,
   buildReceptionPayload,
+  MISE_EN_SERVICE_MS,
+  isDepuisMiseEnService,
 } = require('../../functions/lib/bdc/bdcDigest.js');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -618,5 +620,90 @@ test('buildReceptionPayload: résumé vide → payload cohérent, pas de reste n
   const payload = buildReceptionPayload(receptionSummaryOf(0), 15);
   assert.deepEqual(payload, {
     ferme: 'toutes', total: 0, totalTtc: 0, enRetard: 0, byDeliveryStatus: [], items: [],
+    ecartesAvantMiseEnService: 0,
   });
+});
+
+test('buildReceptionPayload: le compte d\'écartés est TOUJOURS exposé (rien ne disparaît sans trace)', () => {
+  const avec = buildReceptionPayload(receptionSummaryOf(3), 15, { ecartesAvantMiseEnService: 270 });
+  assert.equal(avec.ecartesAvantMiseEnService, 270);
+
+  // Absent côté appelant → 0 explicite, jamais undefined : le modèle doit
+  // pouvoir répondre "aucun BdC écarté" et pas rester muet.
+  const sans = buildReceptionPayload(receptionSummaryOf(3), 15);
+  assert.equal(sans.ecartesAvantMiseEnService, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Bornage à la mise en service de l'app — isDepuisMiseEnService
+//
+// Avant le 01/07/2026 l'app n'était pas utilisée : les réceptions n'ont jamais
+// été saisies, donc ces BdC restent éternellement "0 % reçu, 130 j de retard"
+// alors que la marchandise est livrée. Le prédicat est écrit EN POSITIF : on
+// n'écarte que ce qu'on SAIT antérieur au seuil.
+// ---------------------------------------------------------------------------
+
+test('MISE_EN_SERVICE_MS: seuil = 01/07/2026, mise en service réelle de l\'app', () => {
+  assert.equal(MISE_EN_SERVICE_MS, Date.parse('2026-07-01T00:00:00.000Z'));
+  assert.equal(new Date(MISE_EN_SERVICE_MS).toISOString(), '2026-07-01T00:00:00.000Z');
+});
+
+test('isDepuisMiseEnService: created_at antérieur au seuil → ÉCARTÉ', () => {
+  // Cas terrain : BDC-2026-0009, commandé début mai, 0 % reçu, 136 j de retard.
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: Date.parse('2026-05-02T09:00:00.000Z') })), false);
+  // Import historique BC-000001 (created_at = date d'origine de la commande).
+  assert.equal(isDepuisMiseEnService(rbdc({ numero: 'BC-000001', created_at: Date.parse('2025-07-23T00:00:00.000Z') })), false);
+  // Une milliseconde avant le seuil suffit à écarter.
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: MISE_EN_SERVICE_MS - 1 })), false);
+});
+
+test('isDepuisMiseEnService: created_at postérieur au seuil → CONSERVÉ', () => {
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: MISE_EN_SERVICE_MS + 1 })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: TODAY })), true);
+});
+
+test('isDepuisMiseEnService: created_at EXACTEMENT au seuil → conservé (borne inclusive)', () => {
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: MISE_EN_SERVICE_MS })), true);
+});
+
+test('isDepuisMiseEnService: created_at absent → CONSERVÉ, jamais écarté en silence', () => {
+  const sansChamp = rbdc();
+  delete sansChamp.created_at;
+  assert.equal(isDepuisMiseEnService(sansChamp), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: undefined })), true);
+});
+
+test('isDepuisMiseEnService: date inexploitable (null, 0, string, NaN) → CONSERVÉ', () => {
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: null })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: 0 })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: -1 })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: '2026-05-02' })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: String(MISE_EN_SERVICE_MS - 1) })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: NaN })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: Infinity })), true);
+  assert.equal(isDepuisMiseEnService(rbdc({ created_at: {} })), true);
+});
+
+test('isDepuisMiseEnService: doc absent / vide → conservé sans crash', () => {
+  assert.equal(isDepuisMiseEnService(/** @type {any} */ (null)), true);
+  assert.equal(isDepuisMiseEnService(/** @type {any} */ ({})), true);
+});
+
+test('isDepuisMiseEnService: jeu mixte — compte exact d\'écartés et de conservés', () => {
+  const docs = [
+    rbdc({ numero: 'BC-000001', created_at: Date.parse('2025-07-23T00:00:00.000Z') }), // écarté
+    rbdc({ numero: 'BDC-2026-0009', created_at: Date.parse('2026-05-02T09:00:00.000Z') }), // écarté
+    rbdc({ numero: 'BDC-2026-0034', created_at: MISE_EN_SERVICE_MS - 1 }), // écarté
+    rbdc({ numero: 'BDC-2026-0100', created_at: MISE_EN_SERVICE_MS }), // conservé (borne)
+    rbdc({ numero: 'BDC-2026-0142', created_at: TODAY - DAY }), // conservé
+    rbdc({ numero: 'BDC-SANS-DATE', created_at: undefined }), // conservé (inexploitable)
+    rbdc({ numero: 'BDC-DATE-NULLE', created_at: null }), // conservé (inexploitable)
+  ];
+
+  const gardes = docs.filter(isDepuisMiseEnService);
+  assert.equal(gardes.length, 4);
+  assert.deepEqual(gardes.map((d) => d.numero), [
+    'BDC-2026-0100', 'BDC-2026-0142', 'BDC-SANS-DATE', 'BDC-DATE-NULLE',
+  ]);
+  assert.equal(docs.length - gardes.length, 3, 'nombre d\'écartés exposé au payload');
 });
