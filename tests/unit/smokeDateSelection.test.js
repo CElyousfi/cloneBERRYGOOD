@@ -24,38 +24,41 @@ const { todayStr, pickStableDate, isTestedDayWorkday } = require('../smoke-test.
 // héritent et échouent (vérifié : SMOKE_TEST_DATE=… → 5 échecs sur 8).
 delete process.env.SMOKE_TEST_DATE;
 
-/** Date du jour telle que le module la calcule (locale), pour bâtir les cas. */
-const TODAY = todayStr();
-const veille = (() => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const p = v => String(v).padStart(2, '0');
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-})();
+// Dates FIXES, et `today` INJECTÉ dans pickStableDate. Une version antérieure
+// figeait `TODAY = todayStr()` à l'import et laissait pickStableDate le
+// recalculer à l'appel : au passage de minuit entre les deux, la date figée
+// devenait une « journée terminée » et un test échouait, une seule fois, jamais
+// reproductible. Un flake nocturne coûte plus cher qu'il n'y paraît — il apprend
+// à ignorer un rouge.
+//
+// 2026-08-10 est un lundi, 08-09 un dimanche, 08-08 un samedi (ouvré au Maroc).
+const TODAY = '2026-08-10';
+const veille = '2026-08-09';
+const samedi = '2026-08-08';
 
 test('todayStr: format YYYY-MM-DD, mois et jour sur 2 chiffres', () => {
-  assert.match(TODAY, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(todayStr(), /^\d{4}-\d{2}-\d{2}$/);
 });
 
-// Ces assertions portent sur des PROPRIÉTÉS et non sur une date précise : la
-// veille est un dimanche un lundi sur sept, et la sélection préfère alors une
-// journée ouvrée. Figer la date rendrait le test faux un jour par semaine.
+// Assertions sur des PROPRIÉTÉS plutôt que sur une date précise : ce qui est
+// verrouillé ici, c'est « jamais la journée en cours, jamais relâché », pas le
+// choix exact — celui-ci est couvert par les tests dédiés plus bas.
 test('pickStableDate: ignore la journée en cours et prend une journée terminée', () => {
-  const r = pickStableDate([{ date: TODAY }, { date: veille }, { date: '2026-01-01' }]);
+  const r = pickStableDate([{ date: TODAY }, { date: veille }, { date: '2026-01-01' }], TODAY);
   assert.notEqual(r.date, TODAY, 'la journée en cours ne doit jamais être choisie');
   assert.ok(r.date < TODAY, 'la date retenue doit être antérieure à aujourd\'hui');
   assert.equal(r.relaxed, false, 'une journée terminée ne doit PAS être relâchée');
 });
 
 test('pickStableDate: sans journée en cours, retient une journée ouvrée terminée', () => {
-  const r = pickStableDate([{ date: veille }, { date: '2026-01-01' }]);
+  const r = pickStableDate([{ date: veille }, { date: '2026-01-01' }], TODAY);
   assert.ok(r.date < TODAY);
   assert.equal(isTestedDayWorkday(r.date), true, 'une journée ouvrée est préférée');
   assert.equal(r.relaxed, false);
 });
 
 test('pickStableDate: SEULEMENT la journée en cours → repli relâché', () => {
-  const r = pickStableDate([{ date: TODAY }]);
+  const r = pickStableDate([{ date: TODAY }], TODAY);
   assert.equal(r.date, TODAY);
   assert.equal(r.relaxed, true, 'faute de journée terminée, on relâche');
   assert.match(r.reason, /aucune journée terminée/i);
@@ -63,13 +66,13 @@ test('pickStableDate: SEULEMENT la journée en cours → repli relâché', () =>
 
 test('pickStableDate: liste vide ou absente → pas de date, suite ignorée en aval', () => {
   for (const entree of [[], null, undefined]) {
-    const r = pickStableDate(entree);
+    const r = pickStableDate(entree, TODAY);
     assert.equal(r.date, null, `attendu null pour ${JSON.stringify(entree)}`);
   }
 });
 
 test('pickStableDate: entrées malformées ignorées sans planter', () => {
-  const r = pickStableDate([null, {}, { date: '' }, { date: veille }, { date: '2026-01-01' }]);
+  const r = pickStableDate([null, {}, { date: '' }, { date: veille }, { date: '2026-01-01' }], TODAY);
   assert.ok(r.date && r.date < TODAY, 'une date exploitable doit être retenue');
   assert.equal(r.relaxed, false);
 });
@@ -78,17 +81,17 @@ test('pickStableDate: entrées malformées ignorées sans planter', () => {
 // charge relâchés et suite 4 sautée, donc un smoke faible un jour sur six.
 test('pickStableDate: saute le dimanche pour garder une journée ouvrée', () => {
   const r = pickStableDate([
-    { date: '2026-08-10' }, // lundi (en cours si on est ce jour-là)
-    { date: '2026-08-09' }, // dimanche
-    { date: '2026-08-08' }, // samedi, ouvré au Maroc
-  ]);
-  assert.notEqual(r.date, '2026-08-09', 'le dimanche ne doit pas être choisi');
+    { date: TODAY },   // lundi, journée en cours
+    { date: veille },  // dimanche
+    { date: samedi },  // samedi, ouvré au Maroc
+  ], TODAY);
+  assert.equal(r.date, samedi, 'on saute le dimanche pour tester le samedi');
   assert.equal(r.relaxed, false);
   assert.equal(isTestedDayWorkday(r.date), true, 'la date retenue doit être ouvrée');
 });
 
 test('pickStableDate: aucune journée ouvrée terminée → retombe sur la plus récente', () => {
-  const r = pickStableDate([{ date: '2026-08-09' }]); // dimanche seul
+  const r = pickStableDate([{ date: '2026-08-09' }], TODAY); // dimanche seul
   assert.equal(r.date, '2026-08-09');
   assert.equal(r.relaxed, false, 'journée terminée : pas de relâchement au titre de la complétude');
   assert.match(r.reason, /non ouvrée/i);
@@ -96,7 +99,7 @@ test('pickStableDate: aucune journée ouvrée terminée → retombe sur la plus 
 
 test('pickStableDate: une date FUTURE n\'est pas prise pour une journée terminée', () => {
   const futur = '2099-01-01';
-  const r = pickStableDate([{ date: futur }, { date: TODAY }, { date: veille }]);
+  const r = pickStableDate([{ date: futur }, { date: TODAY }, { date: veille }], TODAY);
   assert.equal(r.date, veille, 'une date future serait testée quasi vide → faux rouge');
 });
 
@@ -113,7 +116,7 @@ test('SMOKE_TEST_DATE: une date passée force le mode strict (diagnostic)', () =
   const avant = process.env.SMOKE_TEST_DATE;
   process.env.SMOKE_TEST_DATE = '2026-07-15';
   try {
-    const r = pickStableDate([{ date: TODAY }, { date: veille }]);
+    const r = pickStableDate([{ date: TODAY }, { date: veille }], TODAY);
     assert.equal(r.date, '2026-07-15');
     assert.equal(r.relaxed, false, 'une date passée forcée reste testée strictement');
   } finally {
@@ -126,7 +129,7 @@ test('SMOKE_TEST_DATE: viser aujourd\'hui explicitement relâche', () => {
   const avant = process.env.SMOKE_TEST_DATE;
   process.env.SMOKE_TEST_DATE = TODAY;
   try {
-    const r = pickStableDate([{ date: TODAY }, { date: veille }]);
+    const r = pickStableDate([{ date: TODAY }, { date: veille }], TODAY);
     assert.equal(r.date, TODAY);
     assert.equal(r.relaxed, true);
   } finally {
