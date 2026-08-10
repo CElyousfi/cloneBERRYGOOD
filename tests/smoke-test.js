@@ -142,6 +142,35 @@ function isWorkday() {
   return now.getDay() !== 0; // 0 = Sunday
 }
 
+/** Date du jour au format YYYY-MM-DD, en heure LOCALE (Africa/Casablanca). */
+function todayStr() {
+  const n = new Date();
+  const p = (v) => String(v).padStart(2, "0");
+  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+}
+
+/**
+ * La date évaluée est-elle la journée EN COURS de saisie ?
+ *
+ * Le smoke évalue toujours « la date la plus récente ». Dès que la synchro
+ * SQL→Firestore du matin fait apparaître le jour courant (≈09h05 UTC), cette
+ * date bascule d'une journée COMPLÈTE (~115 lignes de pointage) vers une
+ * journée EN COURS (~25 lignes à 10h). Tous les contrôles qui présupposent une
+ * journée finie deviennent alors rouges — chaque matin, pour une raison qui
+ * n'est pas la panne visée.
+ *
+ * Le vrai risque n'est pas le faux positif : c'est qu'un smoke rouge tous les
+ * matins finit ignoré, et qu'une vraie panne passe avec lui. On relâche donc
+ * ces contrôles en avertissement, exactement comme le dimanche.
+ *
+ * Incident du 2026-08-10 : 17 ✅ / 1 ❌ à 09h20 contre 22 ✅ / 0 ❌ à 07h10, sans
+ * aucune perte de données — le document du jour avait simplement été CRÉÉ entre
+ * les deux (createTime 09:05:26), les jours précédents gardant leurs volumes.
+ */
+function isDayInProgress(testDate) {
+  return testDate === todayStr();
+}
+
 function daysSince(dateStr) {
   const d = new Date(dateStr + "T12:00:00");
   const now = new Date();
@@ -252,12 +281,20 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   const summary = summaryRes.json;
   const recolte = recolteRes.json;
 
+  // Journée en cours de saisie → les contrôles qui présupposent une journée
+  // COMPLÈTE passent en avertissement (cf. isDayInProgress).
+  const dayInProgress = isDayInProgress(testDate);
+  const checkDay = dayInProgress ? warn : assert;
+  if (dayInProgress) {
+    console.log(`  ⏳ ${testDate} est la journée EN COURS — contrôles de complétude relâchés en avertissement`);
+  }
+
   // --- Farm Coverage ---
   const pointageJour = summary.pointageJour || [];
   const fermes = pointageJour.map(f => f.ferme);
 
-  assert("F1 présente dans pointage", fermes.includes("F1"), `fermes: [${fermes.join(", ")}]`);
-  assert("F5 présente dans pointage", fermes.includes("F5"), `fermes: [${fermes.join(", ")}]`);
+  checkDay("F1 présente dans pointage", fermes.includes("F1"), `fermes: [${fermes.join(", ")}]`);
+  checkDay("F5 présente dans pointage", fermes.includes("F5"), `fermes: [${fermes.join(", ")}]`);
 
   // No "Autre" dominance
   const autreEntry = pointageJour.find(f => f.ferme === "Autre");
@@ -275,8 +312,9 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
     const minOuv = 10;
     const knownEntries = pointageJour.filter(f => KNOWN_FERMES.includes(f.ferme));
     const activeFermes = knownEntries.filter(f => (f.total || 0) >= minOuv);
-    assert(`Au moins 2 fermes >= ${minOuv} ouvriers`, activeFermes.length >= 2,
-      `actives: [${activeFermes.map(f => f.ferme).join(", ")}] / connues: [${knownEntries.map(f => f.ferme).join(", ")}]`);
+    checkDay(`Au moins 2 fermes >= ${minOuv} ouvriers`, activeFermes.length >= 2,
+      `actives: [${activeFermes.map(f => f.ferme).join(", ")}] / connues: [${knownEntries.map(f => f.ferme).join(", ")}]`
+      + (dayInProgress ? " — journée en cours, pointage encore partiel" : ""));
     knownEntries.forEach(f => {
       warn(`${f.ferme}: >= ${minOuv} ouvriers`, (f.total || 0) >= minOuv,
         `${f.ferme} a ${f.total || 0} ouvriers`);
@@ -298,8 +336,15 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 
   // Une période sans récolte est normale (pas de cueillette en cours) —
   // ce n'est plus une assertion, juste une info.
-  warn("Workers (pointage) non vide", workers.length > 0, `${workers.length} workers`);
-  warn("Cueillette non vide", cueillette.length > 0, `${cueillette.length} entrées`);
+  //
+  // ⚠️ Le libellé est EXPLICITE à dessein : un « 0 entrées » nu a déjà coûté un
+  // cycle de diagnostic complet (2026-08-10) avant qu'Omar confirme qu'il n'y
+  // avait tout simplement pas de cueillette en cours. Un avertissement dont la
+  // cause normale n'est pas écrite se fait réinvestiguer.
+  warn("Workers (pointage) non vide", workers.length > 0,
+    `${workers.length} workers` + (dayInProgress ? " — journée en cours" : ""));
+  warn("Cueillette non vide", cueillette.length > 0,
+    `${cueillette.length} entrées — NORMAL hors saison de cueillette, ne pas investiguer sans autre signal`);
 
   // Ce qui serait vraiment anormal : un count de cueillette qui ne correspond
   // pas à un tonnage (ou l'inverse) — incohérence interne de l'endpoint, pas
@@ -309,9 +354,12 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 
   if (workers.length > 0 && totalKgCueillette > 0) {
     // kg per worker per day
+    // Relâché sur la journée en cours : la cueillette se saisit au fil de la
+    // journée, le ratio est mécaniquement bas tant qu'elle n'est pas finie.
     const kgParOuv = totalKgCueillette / workers.length;
-    assert("Kg/ouvrier/jour entre 5 et 150", kgParOuv >= 5 && kgParOuv <= 150,
-      `${Math.round(kgParOuv * 10) / 10} kg/ouv`);
+    checkDay("Kg/ouvrier/jour entre 5 et 150", kgParOuv >= 5 && kgParOuv <= 150,
+      `${Math.round(kgParOuv * 10) / 10} kg/ouv`
+      + (dayInProgress ? " — journée en cours, cueillette partielle" : ""));
 
     // Ratio cueillette vs pointage (1.5x factor makes exact match impossible)
     const totalKgPointage = workers.reduce((s, w) => s + (w.quantite || 0), 0);
@@ -377,12 +425,22 @@ async function suiteWorkerReasonableness(dates) {
   // Sample first 20 workers for spot checks
   const sample = workers.slice(0, 20);
 
-  // Hours range (4-12)
+  // Hours range (4-12) — relâché sur la journée EN COURS : un ouvrier pointé à
+  // l'entrée mais pas encore à la sortie a mécaniquement moins de 4 h. Ce
+  // contrôle échouerait donc tous les matins sans qu'aucune panne n'existe.
+  // Les contrôles d'INTÉGRITÉ qui suivent (alignement parcelle↔ferme,
+  // matricules divergents) ne dépendent PAS de la complétude de la journée et
+  // restent des assertions.
+  const dayInProgress = isDayInProgress(testDate);
+  if (dayInProgress) {
+    console.log(`  ⏳ ${testDate} est la journée EN COURS — contrôle des heures relâché`);
+  }
   const withHours = sample.filter(w => w.heures > 0);
   if (withHours.length > 0) {
     const badHours = withHours.filter(w => w.heures < 4 || w.heures > 12);
-    assert("Heures/ouvrier entre 4 et 12", badHours.length === 0,
-      badHours.length > 0 ? `${badHours[0].nom}: ${badHours[0].heures}h` : "");
+    (dayInProgress ? warn : assert)("Heures/ouvrier entre 4 et 12", badHours.length === 0,
+      (badHours.length > 0 ? `${badHours[0].nom}: ${badHours[0].heures}h` : "")
+      + (dayInProgress ? " — journée en cours, pointages de sortie manquants" : ""));
   }
 
   // Cost range (50-500 DH)
