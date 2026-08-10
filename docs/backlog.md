@@ -5,6 +5,79 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] DÉCISION OMAR — le dimanche est travaillé, et il ne porte aucune majoration
+Ajouté 2026-08-10. **Constat seulement — aucun correctif engagé.** Balayage demandé par Omar
+après la découverte, sur le ticket `sb/smoke-jour-en-cours`, que le code postule
+`getDay() !== 0` = jour ouvré.
+
+### Constat 1 — le dimanche est le jour le plus chargé de la semaine
+
+Mesuré en lecture seule sur `sql_mirror_pointage`, agrégé par matricule :
+
+| date | jour | ouvriers | Hr médiane |
+|---|---|---|---|
+| 2026-08-03 | lundi | 95 | 8 |
+| 2026-08-05 | mercredi | 117 | 8 |
+| 2026-08-07 | vendredi | 117 | 8 |
+| 2026-08-08 | samedi | 113 | 8 |
+| **2026-08-09** | **dimanche** | **119** | **8** |
+
+L'hypothèse « dimanche = chômé » est donc fausse en l'état.
+
+### Constat 2 — le plus important : aucune majoration n'est déclarée, aucun jour
+
+Somme des colonnes d'heures supplémentaires sur `sql_mirror_pointage` :
+
+| date | jour | Hr total | HS_25 | HS_50 | HS_100 | HS_NM |
+|---|---|---|---|---|---|---|
+| 2026-08-02 | dimanche | 680 | 0 | 0 | 0 | 0 |
+| 2026-08-09 | dimanche | **952** | **0** | **0** | **0** | 0 |
+| 2026-07-26 | dimanche | 784 | 0 | 0 | 0 | 0 |
+| (tous les autres jours) | — | — | 0 | 0 | 0 | 0 |
+
+**~950 heures travaillées le dimanche, zéro heure majorée.**
+
+### Où le risque se situe réellement
+
+Contrairement à ce qu'on pouvait craindre, l'hypothèse `getDay()` de Smart Berry **ne fuit pas
+dans la paie**. Le balayage de `getDay`, `dimanche`, `férié`, `majoration`, `HS_*` montre que :
+
+- `public/lib/paieUtils.js:232` **ne décide rien** : il applique les coefficients ×1,25 / ×1,5 / ×2
+  aux valeurs `hs25/hs50/hs100` **reçues de la source** (`BR_Pointage`, colonnes `HS_*`) ;
+- `paieUtils.js:394` calcule les fériés comme `smagBase × jF`, où `jF` est un **nombre de jours
+  transmis**, pas dérivé d'un calendrier ;
+- les seules occurrences de `getDay()` dans `functions/` servent à des numéros de semaine et à
+  des projections de récolte — aucune n'entre dans un calcul de rémunération.
+
+La décision « ce dimanche est-il majoré ? » est donc prise **en amont, dans BEE ONE**, et Smart
+Berry la reprend telle quelle. L'exposition n'est pas une hypothèse fausse dans notre code :
+c'est l'**absence de tout contrôle** sur une décision amont. Si BEE ONE ne déclare pas la
+majoration, Smart Berry paie au taux de base sans que rien ne le signale.
+
+### La question, qui appartient à Omar
+
+Deux lectures possibles du constat 2, et Smart Berry ne peut pas les distinguer :
+
+1. **Le dimanche n'est pas majoré chez BerryGood** — arrangement contractuel, ouvriers
+   saisonniers, repos compensateur pris un autre jour. Alors tout est normal, et il faut
+   simplement le documenter pour ne pas réinvestiguer.
+2. **La majoration existe mais n'est pas déclarée** dans `BR_Pointage`. Alors l'écart est
+   financier, récurrent (~950 h/semaine) et invisible.
+
+Je ne me prononce pas : ça relève du droit du travail marocain et des contrats, pas du code.
+
+### Si la réponse est (2)
+
+Pistes, à n'engager qu'après tranchage : un contrôle de vraisemblance (« des heures un dimanche
+sans aucune HS ») dans le smoke ou dans une sonde ; et lever le « à confirmer Omar » resté en
+suspens sur les coefficients de majoration (`public/lib/paieUtils.js:169`).
+
+**Hors périmètre de ce constat** : le relâchement dominical du smoke
+(`tests/smoke-test.js`, `isWorkday`) est cosmétique — il n'affaiblit que des contrôles, il n'en
+fausse aucun. À revoir avec la réponse à la question ci-dessus.
+
+---
+
 ## [ ] DÉCISION OMAR — les 219 BDC importés doivent-ils apparaître dans « à réceptionner » ?
 Ajouté 2026-08-10. **Décision métier — aucun développement tant qu'Omar n'a pas tranché la voie.**
 
