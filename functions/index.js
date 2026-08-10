@@ -33,6 +33,7 @@ const pmpDetailLib = require("./lib/stock/pmpDetail");
 const consoValorisationLib = require("./lib/valorisation/consoValorisation");
 const consoAccessControl = require("./lib/valorisation/accessControl");
 const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
+const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
@@ -7589,10 +7590,57 @@ exports.stockManagement = functions
         for (const it of items) {
           if (!it.parcelle) return res.status(400).json({ success: false, error: "Parcelle requise pour chaque article" });
         }
+
+        // --- GROUPES DE PARCELLES : éclatement au prorata des Ha ---
+        // Un item saisi sur un « groupe » (parcelle combinée) est remplacé par N
+        // lignes de parcelles RÉELLES, quantités au prorata du `ha` de
+        // sb_parcelle_referentiel (Σ des parts == quantité saisie, exactement).
+        // Le libellé de groupe n'est JAMAIS persisté comme parcelle : toute la
+        // jointure aval (analytique, coût/Ha, Mapping Conso) se fait par égalité
+        // de chaîne sur le libellé de parcelle réel.
+        let bcSourceItems = items;
+        if (items.some((it) => it && it.groupe_id)) {
+          const [grpSnapBc, refSnapBc] = await Promise.all([
+            db_firestore.collection("sb_parcelle_groupes").get(),
+            db_firestore.collection("sb_parcelle_referentiel").get(),
+          ]);
+          const haByLabelBc = {};
+          refSnapBc.forEach((doc) => {
+            const d = doc.data() || {};
+            const lbl = (d.label_bee_one || doc.id || "").toUpperCase().trim();
+            if (lbl) haByLabelBc[lbl] = parseFloat(d.ha) || 0;
+          });
+          const groupesById = {};
+          grpSnapBc.forEach((doc) => {
+            const d = doc.data() || {};
+            if (d.actif === false) return; // soft delete : groupe inutilisable en saisie
+            groupesById[doc.id] = {
+              id: doc.id,
+              label: d.label || doc.id,
+              // Ha relus À CHAQUE SAISIE (jamais figés dans le groupe) : une
+              // correction de Ha dans le Référentiel se propage immédiatement.
+              membres: (d.membres || []).map((lbl) => ({
+                label: lbl,
+                ha: haByLabelBc[(lbl || "").toUpperCase().trim()] || 0,
+              })),
+            };
+          });
+          try {
+            bcSourceItems = parcelleGroupSplit.expandItems(items, groupesById);
+          } catch (e) {
+            return res.status(400).json({ success: false, error: e.message });
+          }
+        }
+
         const numero = await getNextNumber("consumption_voucher", "BC");
-        const bcItems = items.map((it) => ({
+        const bcItems = bcSourceItems.map((it) => ({
           article: it.article || "", quantite: parseFloat(it.quantite) || 0, unite: it.unite || "kg",
           parcelle: it.parcelle || "", culture: it.culture || "", ferme: it.ferme || "",
+          // parcelle_ref : clé stable BEE ONE envoyée par le front, jusqu'ici
+          // droppée par ce mapping. groupe_id/groupe_label : traçabilité de la
+          // saisie combinée (vides pour une saisie parcelle simple).
+          parcelle_ref: it.parcelle_ref || "",
+          groupe_id: it.groupe_id || "", groupe_label: it.groupe_label || "",
         }));
         const allParcelles = [...new Set(bcItems.map(i => i.parcelle).filter(Boolean))];
         const allFermes = [...new Set(bcItems.map(i => i.ferme).filter(Boolean))];
@@ -10404,6 +10452,13 @@ Réponds en français, de manière concise et actionnable. Utilise des émojis p
         const numType = "stock_" + type;
         const numero = await getNextNumber(numType, prefixMap[type]);
 
+        // ⚠️ GARDE-FOU : ce mapping ne conserve QUE article/quantité/unité. Toute
+        // `parcelle` (ou `groupe_id`) envoyée par item est IGNORÉE ici, sans
+        // erreur. La SEULE voie d'entrée d'une parcelle dans les données de
+        // stock est `create-bc` (qui éclate les groupes au prorata des Ha).
+        // Une évolution Réception/Sortie qui enverrait une parcelle par item se
+        // croirait fonctionnelle en silence : la propager explicitement ici
+        // AVANT de s'appuyer dessus en aval.
         const movItems = items.map((it) => ({
           article_ref: it.article_ref || it.article || "",
           article_nom: it.article_nom || it.article || "",

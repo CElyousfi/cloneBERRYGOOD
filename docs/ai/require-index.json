@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:472cf17959e16fea",
+    "sourceFingerprint": "sha256:2301e253c65283fa",
     "stats": {
-      "targetFiles": 185,
-      "targetFilesWithDirectTests": 115,
-      "targetFilesWithTransitiveTests": 132,
-      "testFilesScanned": 148
+      "targetFiles": 190,
+      "targetFilesWithDirectTests": 118,
+      "targetFilesWithTransitiveTests": 135,
+      "testFilesScanned": 151
     }
   },
   "index": {
@@ -565,6 +565,24 @@
     "functions/lib/netafim/types.js": {
       "directTests": [],
       "transitiveTests": []
+    },
+    "functions/lib/parcelleGroupes/split.js": {
+      "directTests": [
+        "functions/lib/parcelleGroupes/__tests__/split.test.js",
+        "tests/unit/parcelleGroupUtils.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/parcelleGroupes/__tests__/split.test.js",
+        "tests/unit/parcelleGroupUtils.test.js"
+      ]
+    },
+    "functions/lib/parcelleGroupes/validate.js": {
+      "directTests": [
+        "functions/lib/parcelleGroupes/__tests__/validate.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/parcelleGroupes/__tests__/validate.test.js"
+      ]
     },
     "functions/lib/phenology/dailyPhenologyJob.js": {
       "directTests": [
@@ -1157,6 +1175,14 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "public/components/ParcellesGroupesPanel.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/ParcellesGroupesPanel.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/components/ParcellesParamsTab.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1359,6 +1385,14 @@
       ],
       "transitiveTests": [
         "tests/unit/paieUtils.test.js"
+      ]
+    },
+    "public/lib/parcelleGroupUtils.js": {
+      "directTests": [
+        "tests/unit/parcelleGroupUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/parcelleGroupUtils.test.js"
       ]
     },
     "public/lib/primesImportParse.js": {

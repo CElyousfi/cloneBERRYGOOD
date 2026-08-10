@@ -320,5 +320,14 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
+    // Groupes de parcelles (raccourci de saisie du Bon de Consommation) —
+    // lecture toute auth (le magasinier doit voir les groupes dans le popup BC),
+    // écriture via Cloud Function uniquement (pointageRH ?action=sb-groupe-save,
+    // gate DG/RH/admin).
+    match /sb_parcelle_groupes/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
   }
 }
