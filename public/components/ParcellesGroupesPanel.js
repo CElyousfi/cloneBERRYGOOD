@@ -71,9 +71,14 @@
    * simulation (dry_run: true) → récap → confirmation (dry_run: false).
    *
    * PÉRIMÈTRE = LE TABLEAU DU HAUT : on envoie au serveur les labels des
-   * parcelles AFFICHÉES (campagne sélectionnée). Changer de campagne change
-   * donc le périmètre, et une simulation déjà calculée est invalidée.
+   * parcelles AFFICHÉES (campagne sélectionnée ET filtre de recherche appliqué
+   * — le parent ne sert qu'une seule liste aux deux). Changer de campagne ou de
+   * recherche change donc le périmètre et invalide une simulation en cours.
    * On n'envoie QUE des labels : le Ha est résolu côté serveur.
+   *
+   * Les labels sont FIGÉS à la simulation (`plan.labels`) : c'est ce périmètre-là
+   * qui est confirmé, jamais la prop du moment. Si le tableau a bougé entre la
+   * simulation et le clic de confirmation, on n'écrit rien.
    *
    * Le backend est idempotent : une parcelle qui a déjà un Ha SB n'est jamais
    * réécrite, un nom SB déjà saisi n'est jamais touché.
@@ -105,7 +110,7 @@
       setDone(null);
       setErr(null);
     }, [labelsKey]);
-    function callSeed(dryRun) {
+    function callSeed(dryRun, sentLabels) {
       setBusy(true);
       setErr(null);
       return fetch('/api/pointage-rh?action=sb-referentiel-seed-ha', {
@@ -115,7 +120,7 @@
         },
         body: JSON.stringify({
           dry_run: dryRun,
-          labels: labels
+          labels: sentLabels
         })
       }).then(function (r) {
         return r.json();
@@ -130,12 +135,27 @@
       });
     }
     function handleSimuler() {
-      callSeed(true).then(function (d) {
-        if (d) setPlan(d);
+      // Périmètre FIGÉ au moment de la simulation : c'est lui, et pas la prop
+      // du moment, qui sera confirmé.
+      var frozen = labels.slice();
+      callSeed(true, frozen).then(function (d) {
+        if (d) setPlan({
+          data: d,
+          labels: frozen
+        });
       });
     }
     function handleConfirmer() {
-      callSeed(false).then(function (d) {
+      if (!plan) return;
+      // Garde-fou : si le tableau a bougé entre la simulation et le clic
+      // (bascule de campagne, recherche, rechargement), on n'écrit RIEN — on
+      // invalide la simulation et on demande de la relancer.
+      if (plan.labels.join('|') !== labelsKey) {
+        setPlan(null);
+        setErr('Le tableau a changé depuis la simulation — relancez-la avant de confirmer.');
+        return;
+      }
+      callSeed(false, plan.labels).then(function (d) {
         if (!d) return;
         setDone((d.a_creer || []).length);
         setPlan(null);
@@ -206,8 +226,8 @@
         }
       }, err));
     }
-    var aCreer = plan.a_creer || [];
-    var ignorees = plan.ignorees || [];
+    var aCreer = plan.data.a_creer || [];
+    var ignorees = plan.data.ignorees || [];
     return React.createElement('div', {
       style: boxStyle
     }, React.createElement('div', {
@@ -223,7 +243,7 @@
         color: C.textSec,
         marginBottom: 8
       }
-    }, aCreer.length + ' parcelle(s) sur les ' + (plan.total_parcelles || 0) + ' du tableau ci-dessus recevront leur surface BEE ONE comme Ha Smart Berry. ' + ignorees.length + ' ignorée(s).'), aCreer.length > 0 && React.createElement('div', {
+    }, aCreer.length + ' parcelle(s) sur les ' + (plan.data.total_parcelles || 0) + ' du tableau ci-dessus recevront leur surface BEE ONE comme Ha Smart Berry. ' + ignorees.length + ' ignorée(s).'), aCreer.length > 0 && React.createElement('div', {
       style: {
         maxHeight: 220,
         overflowY: 'auto',
