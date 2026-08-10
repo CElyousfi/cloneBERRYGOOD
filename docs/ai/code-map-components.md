@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:9bc75af9ec7dbb9e -->
+<!-- sourceFingerprint: sha256:2b846ed51146b24f -->
 # Code Map — Composants frontend (291)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -189,7 +189,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MeteoPrevisionExterieure | public/app.jsx:28652 | — |
 | MeteoTab | public/app.jsx:28982 | station_meteo |
 | MMC_Kpi | public/components/MagMappingConsoTab.jsx:126 | — |
-| MOReferentielView | public/components/ParcellesReferentielTab.jsx:330 | — |
+| MOReferentielView | public/components/ParcellesReferentielTab.jsx:345 | — |
 | MSF_Dropzone | public/components/MagStockFilesTab.jsx:164 | — |
 | NewVersionToast | public/app.jsx:67893 | — |
 | NotificationPopup | public/app.jsx:68365 | — |
@@ -198,7 +198,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ParametresTab | public/app.jsx:27628 | parametres |
 | ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:470 | — |
 | ParcellesParamsTab | public/components/ParcellesParamsTab.jsx:115 | mag_parcelles_params |
-| ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:472 | parcelles_referentiel |
+| ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:487 | parcelles_referentiel |
 | PDP_fmtNum | public/components/PmpDetailPopup.jsx:46 | — |
 | PDP_SourceBadge | public/components/PmpDetailPopup.jsx:52 | — |
 | PDP_Td | public/components/PmpDetailPopup.jsx:67 | — |
@@ -240,11 +240,11 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ProductivityTreatmentsTable | public/app.jsx:67197 | — |
 | ProductivityTrendSvg | public/app.jsx:67527 | — |
 | ProfileLoadErrorScreen | public/app.jsx:67870 | — |
-| PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:272 | — |
+| PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:287 | — |
 | PRT_CultureBadge | public/components/ParcellesReferentielTab.jsx:67 | — |
 | PRT_EditRow | public/components/ParcellesReferentielTab.jsx:75 | — |
-| PRT_filterRows | public/components/ParcellesReferentielTab.jsx:168 | — |
-| PRT_Table | public/components/ParcellesReferentielTab.jsx:179 | — |
+| PRT_filterRows | public/components/ParcellesReferentielTab.jsx:180 | — |
+| PRT_Table | public/components/ParcellesReferentielTab.jsx:194 | — |
 | QCS_group | public/components/QuinzaineCampagneSelect.jsx:85 | — |
 | QCS_num | public/components/QuinzaineCampagneSelect.jsx:52 | — |
 | QCS_resolveCampagnes | public/components/QuinzaineCampagneSelect.jsx:62 | — |
