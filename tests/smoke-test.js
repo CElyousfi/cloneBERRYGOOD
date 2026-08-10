@@ -142,6 +142,84 @@ function isWorkday() {
   return now.getDay() !== 0; // 0 = Sunday
 }
 
+/** Date du jour au format YYYY-MM-DD, en heure LOCALE (Africa/Casablanca). */
+function todayStr() {
+  const n = new Date();
+  const p = (v) => String(v).padStart(2, "0");
+  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`;
+}
+
+/**
+ * Choisit la date sur laquelle porteront les contrôles de COMPLÉTUDE.
+ *
+ * Le problème : le smoke évaluait « la date la plus récente ». Dès que la
+ * synchro SQL→Firestore du matin fait apparaître le jour courant (≈09h05 UTC),
+ * cette date bascule d'une journée COMPLÈTE (~115 lignes de pointage) vers une
+ * journée EN COURS (~25 lignes à 10h) — et tous les contrôles qui présupposent
+ * une journée finie deviennent rouges, pour une raison qui n'est pas la panne
+ * visée. Incident du 2026-08-10 : 17 ✅/1 ❌ à 09h20 contre 22 ✅/0 ❌ à 07h10,
+ * SANS perte de données (le doc du jour avait été CRÉÉ entre les deux).
+ *
+ * La solution n'est PAS de dégrader ces contrôles en avertissement : ce smoke
+ * ne tourne qu'après un déploiement (scripts/deploy.sh) ou à la main — il n'a
+ * aucun déclencheur planifié. Les déploiements ayant lieu en journée, la
+ * quasi-totalité des exécutions réelles tomberait dans la fenêtre relâchée, et
+ * les contrôles seraient morts en pratique : une régression de mapping
+ * introduite par un déploiement de 14h sortirait en ⚠️ et le déploiement serait
+ * déclaré vert.
+ *
+ * On les ancre donc sur la dernière journée TERMINÉE. Même endpoint, même
+ * chemin de code, même mapping ferme/parcelle — mais des données stables, donc
+ * des assertions qui restent vivantes.
+ *
+ * @param {Array<{date: string}>} dates - dates disponibles, triées décroissant.
+ * @returns {{date: string|null, relaxed: boolean, reason: string}}
+ */
+/**
+ * Le jour ÉVALUÉ est-il un jour ouvré ?
+ *
+ * `WORKDAY` (module) qualifie le jour d'EXÉCUTION — il reste juste pour la
+ * fraîcheur de la synchro. Mais depuis qu'on teste la dernière journée
+ * terminée, les deux divergent : un déploiement le LUNDI évalue le DIMANCHE.
+ * Utiliser `WORKDAY` là appliquerait les seuils du jour ouvré à un jour chômé,
+ * et recréerait chaque lundi le rouge structurel que ce ticket supprime.
+ *
+ * `T12:00:00` comme `daysSince()` : immunise contre les décalages de fuseau.
+ */
+function isTestedDayWorkday(testDate) {
+  return new Date(testDate + "T12:00:00").getDay() !== 0;
+}
+
+function pickStableDate(dates) {
+  const forced = process.env.SMOKE_TEST_DATE;
+  const today = todayStr();
+  if (forced) {
+    return { date: forced, relaxed: forced === today, reason: "SMOKE_TEST_DATE" };
+  }
+  // `< today` et non `!== today` : une date FUTURE (dérive d'horloge côté
+  // source, doc mal daté à l'import) serait sinon retenue comme « terminée »
+  // et testée quasi vide. Comparaison lexicographique valide sur du YYYY-MM-DD.
+  const terminees = (dates || []).filter(d => d && d.date && d.date < today);
+
+  // On préfère une journée OUVRÉE. Sinon, un déploiement le lundi évaluerait le
+  // dimanche : seuils de charge relâchés et suite 4 sautée, donc un smoke faible
+  // un jour sur six — le travers même que ce ticket corrige. Tester le samedi
+  // à la place garde toutes les assertions vivantes.
+  const ouvree = terminees.find(d => isTestedDayWorkday(d.date));
+  if (ouvree) {
+    return { date: ouvree.date, relaxed: false, reason: "dernière journée ouvrée terminée" };
+  }
+  if (terminees.length) {
+    return { date: terminees[0].date, relaxed: false, reason: "dernière journée terminée (non ouvrée)" };
+  }
+  // Aucune journée terminée disponible (premier jour de données, ou historique
+  // vide) : on retombe sur ce qu'on a, et là seulement on relâche.
+  const fallback = (dates || [])[0];
+  return fallback && fallback.date
+    ? { date: fallback.date, relaxed: true, reason: "aucune journée terminée disponible" }
+    : { date: null, relaxed: true, reason: "aucune date" };
+}
+
 function daysSince(dateStr) {
   const d = new Date(dateStr + "T12:00:00");
   const now = new Date();
@@ -236,12 +314,15 @@ async function suiteSyncFreshness(healthResult, datesResult) {
 async function suiteCrossSource(summaryResult, recolteResult, dates) {
   console.log("\n═══ Suite 3: Cohérence Inter-Sources ═══");
 
-  // Use most recent date for detailed checks (override diagnostic via SMOKE_TEST_DATE)
-  const testDate = process.env.SMOKE_TEST_DATE || dates?.[0]?.date;
+  // Dernière journée TERMINÉE (cf. pickStableDate) — pas dates[0], qui devient
+  // la journée en cours dès la synchro du matin.
+  const picked = pickStableDate(dates);
+  const testDate = picked.date;
   if (!testDate) {
     console.log("  ⏭️  Pas de date disponible — suite ignorée");
     return;
   }
+  console.log(`  📅 Date évaluée : ${testDate} (${picked.reason})`);
 
   // Fetch fresh data for the most recent date if not already for that date
   const [summaryRes, recolteRes] = await Promise.all([
@@ -252,12 +333,27 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   const summary = summaryRes.json;
   const recolte = recolteRes.json;
 
+  // `relaxed` n'est vrai que dans le cas de repli (aucune journée terminée
+  // disponible). En régime normal on teste une journée complète, donc les
+  // contrôles de complétude restent de vraies assertions.
+  const dayInProgress = picked.relaxed;
+  const checkDay = dayInProgress ? warn : assert;
+  // Le jour ÉVALUÉ, pas le jour d'exécution : un déploiement le lundi teste le
+  // dimanche, et les seuils du jour ouvré n'ont alors rien à y faire.
+  const testedIsWorkday = isTestedDayWorkday(testDate);
+  if (!testedIsWorkday) {
+    console.log(`  ⏭️  ${testDate} est un dimanche — seuils de charge relâchés`);
+  }
+  if (dayInProgress) {
+    console.log(`  ⏳ Journée non terminée (${picked.reason}) — contrôles de complétude relâchés en avertissement`);
+  }
+
   // --- Farm Coverage ---
   const pointageJour = summary.pointageJour || [];
   const fermes = pointageJour.map(f => f.ferme);
 
-  assert("F1 présente dans pointage", fermes.includes("F1"), `fermes: [${fermes.join(", ")}]`);
-  assert("F5 présente dans pointage", fermes.includes("F5"), `fermes: [${fermes.join(", ")}]`);
+  checkDay("F1 présente dans pointage", fermes.includes("F1"), `fermes: [${fermes.join(", ")}]`);
+  checkDay("F5 présente dans pointage", fermes.includes("F5"), `fermes: [${fermes.join(", ")}]`);
 
   // No "Autre" dominance
   const autreEntry = pointageJour.find(f => f.ferme === "Autre");
@@ -271,12 +367,13 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   // être à 0 ouvrier un jour donné (jour de repos propre à cette ferme) — on
   // exige qu'au moins 2 fermes connues soient actives, pas toutes ; les fermes
   // à 0 sont signalées en avertissement, pas en échec.
-  if (WORKDAY) {
+  if (testedIsWorkday) {
     const minOuv = 10;
     const knownEntries = pointageJour.filter(f => KNOWN_FERMES.includes(f.ferme));
     const activeFermes = knownEntries.filter(f => (f.total || 0) >= minOuv);
-    assert(`Au moins 2 fermes >= ${minOuv} ouvriers`, activeFermes.length >= 2,
-      `actives: [${activeFermes.map(f => f.ferme).join(", ")}] / connues: [${knownEntries.map(f => f.ferme).join(", ")}]`);
+    checkDay(`Au moins 2 fermes >= ${minOuv} ouvriers`, activeFermes.length >= 2,
+      `actives: [${activeFermes.map(f => f.ferme).join(", ")}] / connues: [${knownEntries.map(f => f.ferme).join(", ")}]`
+      + (dayInProgress ? " — journée en cours, pointage encore partiel" : ""));
     knownEntries.forEach(f => {
       warn(`${f.ferme}: >= ${minOuv} ouvriers`, (f.total || 0) >= minOuv,
         `${f.ferme} a ${f.total || 0} ouvriers`);
@@ -298,8 +395,24 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 
   // Une période sans récolte est normale (pas de cueillette en cours) —
   // ce n'est plus une assertion, juste une info.
-  warn("Workers (pointage) non vide", workers.length > 0, `${workers.length} workers`);
-  warn("Cueillette non vide", cueillette.length > 0, `${cueillette.length} entrées`);
+  //
+  // ⚠️ Le libellé énonce le FAIT et les DEUX hypothèses — il n'en désigne aucune
+  // comme normale. Un « 0 entrées » nu a coûté un cycle de diagnostic complet
+  // (2026-08-10) ; mais écrire « NORMAL hors saison, ne pas investiguer »
+  // serait pire : le script ne sait pas si on est en saison, et en pleine
+  // cueillette un endpoint muet produirait exactement le même message, en
+  // disant à l'opérateur de ne pas chercher.
+  const kgPointes = workers.reduce((s, w) => s + (w.quantite || 0), 0);
+  warn("Workers (pointage) non vide", workers.length > 0,
+    `${workers.length} workers` + (dayInProgress ? " — journée en cours" : ""));
+  warn("Cueillette non vide", cueillette.length > 0,
+    `${cueillette.length} entrée(s) — attendu hors saison de cueillette ; `
+    + `en saison, ouvrir /api/pointage-rh?action=recolte&date=${testDate}`);
+
+  // Le discriminant qui distingue « pas de saison » d'un endpoint muet : des kg
+  // pointés sans aucune ligne de cueillette n'est jamais normal.
+  assert("Pas de kg pointés sans cueillette", !(cueillette.length === 0 && kgPointes > 0),
+    `${Math.round(kgPointes)} kg pointés mais 0 entrée cueillette`);
 
   // Ce qui serait vraiment anormal : un count de cueillette qui ne correspond
   // pas à un tonnage (ou l'inverse) — incohérence interne de l'endpoint, pas
@@ -309,9 +422,12 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 
   if (workers.length > 0 && totalKgCueillette > 0) {
     // kg per worker per day
+    // Relâché sur la journée en cours : la cueillette se saisit au fil de la
+    // journée, le ratio est mécaniquement bas tant qu'elle n'est pas finie.
     const kgParOuv = totalKgCueillette / workers.length;
-    assert("Kg/ouvrier/jour entre 5 et 150", kgParOuv >= 5 && kgParOuv <= 150,
-      `${Math.round(kgParOuv * 10) / 10} kg/ouv`);
+    checkDay("Kg/ouvrier/jour entre 5 et 150", kgParOuv >= 5 && kgParOuv <= 150,
+      `${Math.round(kgParOuv * 10) / 10} kg/ouv`
+      + (dayInProgress ? " — journée en cours, cueillette partielle" : ""));
 
     // Ratio cueillette vs pointage (1.5x factor makes exact match impossible)
     const totalKgPointage = workers.reduce((s, w) => s + (w.quantite || 0), 0);
@@ -334,7 +450,7 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 
     // Both F1 and F5 in cueillette
     const cueilFermes = [...new Set(cueillette.map(c => c.ferme))];
-    const checkFerme = WORKDAY ? assert : warn;
+    const checkFerme = testedIsWorkday ? assert : warn;
     checkFerme("F1 présente dans cueillette", cueilFermes.includes("F1"), `fermes: [${cueilFermes.join(", ")}]`);
     checkFerme("F5 présente dans cueillette", cueilFermes.includes("F5"), `fermes: [${cueilFermes.join(", ")}]`);
 
@@ -355,16 +471,19 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 async function suiteWorkerReasonableness(dates) {
   console.log("\n═══ Suite 4: Vraisemblance Ouvriers ═══");
 
-  const testDate = process.env.SMOKE_TEST_DATE || dates?.[0]?.date;
+  const picked = pickStableDate(dates);
+  const testDate = picked.date;
   if (!testDate) {
     console.log("  ⏭️  Pas de date — suite ignorée");
     return;
   }
 
-  if (!WORKDAY) {
-    console.log("  ⏭️  Dimanche — suite relâchée");
+  // Sur le jour ÉVALUÉ, pas le jour d'exécution (cf. isTestedDayWorkday).
+  if (!isTestedDayWorkday(testDate)) {
+    console.log(`  ⏭️  ${testDate} est un dimanche — suite relâchée`);
     return;
   }
+  console.log(`  📅 Date évaluée : ${testDate} (${picked.reason})`);
 
   const res = await api(`/api/pointage-rh?action=recolte&date=${testDate}`);
   const workers = res.json.workers || [];
@@ -377,12 +496,23 @@ async function suiteWorkerReasonableness(dates) {
   // Sample first 20 workers for spot checks
   const sample = workers.slice(0, 20);
 
-  // Hours range (4-12)
+  // Hours range (4-12) — dépend de la complétude : un ouvrier pointé à l'entrée
+  // mais pas encore à la sortie a mécaniquement moins de 4 h. En régime normal
+  // on évalue une journée terminée, donc ça reste une assertion ; `relaxed`
+  // n'est vrai que dans le cas de repli (aucune journée terminée disponible).
+  // Les contrôles d'INTÉGRITÉ qui suivent (alignement parcelle↔ferme,
+  // matricules divergents) ne dépendent PAS de la complétude et restent des
+  // assertions dans tous les cas.
+  const checkDay = picked.relaxed ? warn : assert;
+  if (picked.relaxed) {
+    console.log(`  ⏳ Journée non terminée (${picked.reason}) — contrôle des heures relâché`);
+  }
   const withHours = sample.filter(w => w.heures > 0);
   if (withHours.length > 0) {
     const badHours = withHours.filter(w => w.heures < 4 || w.heures > 12);
-    assert("Heures/ouvrier entre 4 et 12", badHours.length === 0,
-      badHours.length > 0 ? `${badHours[0].nom}: ${badHours[0].heures}h` : "");
+    checkDay("Heures/ouvrier entre 4 et 12", badHours.length === 0,
+      (badHours.length > 0 ? `${badHours[0].nom}: ${badHours[0].heures}h` : "")
+      + (picked.relaxed ? " — journée non terminée, pointages de sortie manquants" : ""));
   }
 
   // Cost range (50-500 DH)
@@ -473,4 +603,8 @@ async function main() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main();
+// `require.main === module` : le smoke reste un script exécutable, mais peut
+// être importé pour tester ses helpers purs sans taper l'API de prod.
+if (require.main === module) main();
+
+module.exports = { todayStr, pickStableDate, isWorkday, isTestedDayWorkday, daysSince };
