@@ -150,25 +150,47 @@ function todayStr() {
 }
 
 /**
- * La date évaluée est-elle la journée EN COURS de saisie ?
+ * Choisit la date sur laquelle porteront les contrôles de COMPLÉTUDE.
  *
- * Le smoke évalue toujours « la date la plus récente ». Dès que la synchro
- * SQL→Firestore du matin fait apparaître le jour courant (≈09h05 UTC), cette
- * date bascule d'une journée COMPLÈTE (~115 lignes de pointage) vers une
- * journée EN COURS (~25 lignes à 10h). Tous les contrôles qui présupposent une
- * journée finie deviennent alors rouges — chaque matin, pour une raison qui
- * n'est pas la panne visée.
+ * Le problème : le smoke évaluait « la date la plus récente ». Dès que la
+ * synchro SQL→Firestore du matin fait apparaître le jour courant (≈09h05 UTC),
+ * cette date bascule d'une journée COMPLÈTE (~115 lignes de pointage) vers une
+ * journée EN COURS (~25 lignes à 10h) — et tous les contrôles qui présupposent
+ * une journée finie deviennent rouges, pour une raison qui n'est pas la panne
+ * visée. Incident du 2026-08-10 : 17 ✅/1 ❌ à 09h20 contre 22 ✅/0 ❌ à 07h10,
+ * SANS perte de données (le doc du jour avait été CRÉÉ entre les deux).
  *
- * Le vrai risque n'est pas le faux positif : c'est qu'un smoke rouge tous les
- * matins finit ignoré, et qu'une vraie panne passe avec lui. On relâche donc
- * ces contrôles en avertissement, exactement comme le dimanche.
+ * La solution n'est PAS de dégrader ces contrôles en avertissement : ce smoke
+ * ne tourne qu'après un déploiement (scripts/deploy.sh) ou à la main — il n'a
+ * aucun déclencheur planifié. Les déploiements ayant lieu en journée, la
+ * quasi-totalité des exécutions réelles tomberait dans la fenêtre relâchée, et
+ * les contrôles seraient morts en pratique : une régression de mapping
+ * introduite par un déploiement de 14h sortirait en ⚠️ et le déploiement serait
+ * déclaré vert.
  *
- * Incident du 2026-08-10 : 17 ✅ / 1 ❌ à 09h20 contre 22 ✅ / 0 ❌ à 07h10, sans
- * aucune perte de données — le document du jour avait simplement été CRÉÉ entre
- * les deux (createTime 09:05:26), les jours précédents gardant leurs volumes.
+ * On les ancre donc sur la dernière journée TERMINÉE. Même endpoint, même
+ * chemin de code, même mapping ferme/parcelle — mais des données stables, donc
+ * des assertions qui restent vivantes.
+ *
+ * @param {Array<{date: string}>} dates - dates disponibles, triées décroissant.
+ * @returns {{date: string|null, relaxed: boolean, reason: string}}
  */
-function isDayInProgress(testDate) {
-  return testDate === todayStr();
+function pickStableDate(dates) {
+  const forced = process.env.SMOKE_TEST_DATE;
+  const today = todayStr();
+  if (forced) {
+    return { date: forced, relaxed: forced === today, reason: "SMOKE_TEST_DATE" };
+  }
+  const completed = (dates || []).find(d => d && d.date && d.date !== today);
+  if (completed) {
+    return { date: completed.date, relaxed: false, reason: "dernière journée terminée" };
+  }
+  // Aucune journée terminée disponible (premier jour de données, ou historique
+  // vide) : on retombe sur ce qu'on a, et là seulement on relâche.
+  const fallback = (dates || [])[0];
+  return fallback && fallback.date
+    ? { date: fallback.date, relaxed: true, reason: "aucune journée terminée disponible" }
+    : { date: null, relaxed: true, reason: "aucune date" };
 }
 
 function daysSince(dateStr) {
@@ -265,12 +287,15 @@ async function suiteSyncFreshness(healthResult, datesResult) {
 async function suiteCrossSource(summaryResult, recolteResult, dates) {
   console.log("\n═══ Suite 3: Cohérence Inter-Sources ═══");
 
-  // Use most recent date for detailed checks (override diagnostic via SMOKE_TEST_DATE)
-  const testDate = process.env.SMOKE_TEST_DATE || dates?.[0]?.date;
+  // Dernière journée TERMINÉE (cf. pickStableDate) — pas dates[0], qui devient
+  // la journée en cours dès la synchro du matin.
+  const picked = pickStableDate(dates);
+  const testDate = picked.date;
   if (!testDate) {
     console.log("  ⏭️  Pas de date disponible — suite ignorée");
     return;
   }
+  console.log(`  📅 Date évaluée : ${testDate} (${picked.reason})`);
 
   // Fetch fresh data for the most recent date if not already for that date
   const [summaryRes, recolteRes] = await Promise.all([
@@ -281,12 +306,13 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   const summary = summaryRes.json;
   const recolte = recolteRes.json;
 
-  // Journée en cours de saisie → les contrôles qui présupposent une journée
-  // COMPLÈTE passent en avertissement (cf. isDayInProgress).
-  const dayInProgress = isDayInProgress(testDate);
+  // `relaxed` n'est vrai que dans le cas de repli (aucune journée terminée
+  // disponible). En régime normal on teste une journée complète, donc les
+  // contrôles de complétude restent de vraies assertions.
+  const dayInProgress = picked.relaxed;
   const checkDay = dayInProgress ? warn : assert;
   if (dayInProgress) {
-    console.log(`  ⏳ ${testDate} est la journée EN COURS — contrôles de complétude relâchés en avertissement`);
+    console.log(`  ⏳ Journée non terminée (${picked.reason}) — contrôles de complétude relâchés en avertissement`);
   }
 
   // --- Farm Coverage ---
@@ -337,14 +363,23 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
   // Une période sans récolte est normale (pas de cueillette en cours) —
   // ce n'est plus une assertion, juste une info.
   //
-  // ⚠️ Le libellé est EXPLICITE à dessein : un « 0 entrées » nu a déjà coûté un
-  // cycle de diagnostic complet (2026-08-10) avant qu'Omar confirme qu'il n'y
-  // avait tout simplement pas de cueillette en cours. Un avertissement dont la
-  // cause normale n'est pas écrite se fait réinvestiguer.
+  // ⚠️ Le libellé énonce le FAIT et les DEUX hypothèses — il n'en désigne aucune
+  // comme normale. Un « 0 entrées » nu a coûté un cycle de diagnostic complet
+  // (2026-08-10) ; mais écrire « NORMAL hors saison, ne pas investiguer »
+  // serait pire : le script ne sait pas si on est en saison, et en pleine
+  // cueillette un endpoint muet produirait exactement le même message, en
+  // disant à l'opérateur de ne pas chercher.
+  const kgPointes = workers.reduce((s, w) => s + (w.quantite || 0), 0);
   warn("Workers (pointage) non vide", workers.length > 0,
     `${workers.length} workers` + (dayInProgress ? " — journée en cours" : ""));
   warn("Cueillette non vide", cueillette.length > 0,
-    `${cueillette.length} entrées — NORMAL hors saison de cueillette, ne pas investiguer sans autre signal`);
+    `${cueillette.length} entrée(s) — attendu hors saison de cueillette ; `
+    + `en saison, ouvrir /api/pointage-rh?action=recolte&date=${testDate}`);
+
+  // Le discriminant qui distingue « pas de saison » d'un endpoint muet : des kg
+  // pointés sans aucune ligne de cueillette n'est jamais normal.
+  assert("Pas de kg pointés sans cueillette", !(cueillette.length === 0 && kgPointes > 0),
+    `${Math.round(kgPointes)} kg pointés mais 0 entrée cueillette`);
 
   // Ce qui serait vraiment anormal : un count de cueillette qui ne correspond
   // pas à un tonnage (ou l'inverse) — incohérence interne de l'endpoint, pas
@@ -403,7 +438,8 @@ async function suiteCrossSource(summaryResult, recolteResult, dates) {
 async function suiteWorkerReasonableness(dates) {
   console.log("\n═══ Suite 4: Vraisemblance Ouvriers ═══");
 
-  const testDate = process.env.SMOKE_TEST_DATE || dates?.[0]?.date;
+  const picked = pickStableDate(dates);
+  const testDate = picked.date;
   if (!testDate) {
     console.log("  ⏭️  Pas de date — suite ignorée");
     return;
@@ -413,6 +449,7 @@ async function suiteWorkerReasonableness(dates) {
     console.log("  ⏭️  Dimanche — suite relâchée");
     return;
   }
+  console.log(`  📅 Date évaluée : ${testDate} (${picked.reason})`);
 
   const res = await api(`/api/pointage-rh?action=recolte&date=${testDate}`);
   const workers = res.json.workers || [];
@@ -425,22 +462,23 @@ async function suiteWorkerReasonableness(dates) {
   // Sample first 20 workers for spot checks
   const sample = workers.slice(0, 20);
 
-  // Hours range (4-12) — relâché sur la journée EN COURS : un ouvrier pointé à
-  // l'entrée mais pas encore à la sortie a mécaniquement moins de 4 h. Ce
-  // contrôle échouerait donc tous les matins sans qu'aucune panne n'existe.
+  // Hours range (4-12) — dépend de la complétude : un ouvrier pointé à l'entrée
+  // mais pas encore à la sortie a mécaniquement moins de 4 h. En régime normal
+  // on évalue une journée terminée, donc ça reste une assertion ; `relaxed`
+  // n'est vrai que dans le cas de repli (aucune journée terminée disponible).
   // Les contrôles d'INTÉGRITÉ qui suivent (alignement parcelle↔ferme,
-  // matricules divergents) ne dépendent PAS de la complétude de la journée et
-  // restent des assertions.
-  const dayInProgress = isDayInProgress(testDate);
-  if (dayInProgress) {
-    console.log(`  ⏳ ${testDate} est la journée EN COURS — contrôle des heures relâché`);
+  // matricules divergents) ne dépendent PAS de la complétude et restent des
+  // assertions dans tous les cas.
+  const checkDay = picked.relaxed ? warn : assert;
+  if (picked.relaxed) {
+    console.log(`  ⏳ Journée non terminée (${picked.reason}) — contrôle des heures relâché`);
   }
   const withHours = sample.filter(w => w.heures > 0);
   if (withHours.length > 0) {
     const badHours = withHours.filter(w => w.heures < 4 || w.heures > 12);
-    (dayInProgress ? warn : assert)("Heures/ouvrier entre 4 et 12", badHours.length === 0,
+    checkDay("Heures/ouvrier entre 4 et 12", badHours.length === 0,
       (badHours.length > 0 ? `${badHours[0].nom}: ${badHours[0].heures}h` : "")
-      + (dayInProgress ? " — journée en cours, pointages de sortie manquants" : ""));
+      + (picked.relaxed ? " — journée non terminée, pointages de sortie manquants" : ""));
   }
 
   // Cost range (50-500 DH)
@@ -531,4 +569,8 @@ async function main() {
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main();
+// `require.main === module` : le smoke reste un script exécutable, mais peut
+// être importé pour tester ses helpers purs sans taper l'API de prod.
+if (require.main === module) main();
+
+module.exports = { todayStr, pickStableDate, isWorkday, daysSince };
