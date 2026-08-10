@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "204/344 fichiers classifiés",
+          "detail": "207/347 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "38/134 modules avec ≥1 test",
+          "detail": "41/137 modules avec ≥1 test",
           "max": 30,
           "score": 9
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 48,
+        "commits": 29,
         "file": "public/app.jsx"
       },
       {
@@ -31,8 +31,16 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 7,
-        "file": "functions/pointageService.js"
+        "commits": 6,
+        "file": "functions/dgAgent.js"
+      },
+      {
+        "commits": 5,
+        "file": "functions/lib/bdc/bdcDigest.js"
+      },
+      {
+        "commits": 5,
+        "file": "functions/notificationDispatcher.js"
       },
       {
         "commits": 4,
@@ -44,39 +52,31 @@
       },
       {
         "commits": 4,
-        "file": "public/lib/emargementPdf.js"
+        "file": "scripts/build-frontend.js"
+      },
+      {
+        "commits": 4,
+        "file": "tests/unit/bdcDigest.test.js"
       },
       {
         "commits": 4,
         "file": "tests/unit/bdcReceptionRegression.test.js"
-      },
-      {
-        "commits": 4,
-        "file": "tests/unit/bdcReceptionUtils.test.js"
-      },
-      {
-        "commits": 3,
-        "file": "functions/lib/meteo/meteoblueProxy.js"
-      },
-      {
-        "commits": 3,
-        "file": "functions/notificationDispatcher.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:cc2d9d347f37f18f",
+    "sourceFingerprint": "sha256:b658f200d4b019a9",
     "stats": {
-      "backendModules": 89,
+      "backendModules": 90,
       "cloudFunctions": 87,
-      "coverageScore": 28,
+      "coverageScore": 30,
       "domains": 10,
-      "extractedComponents": 19,
-      "firestoreCollections": 56,
-      "libHelpers": 26,
+      "extractedComponents": 20,
+      "firestoreCollections": 57,
+      "libHelpers": 27,
       "monolithSymbols": 123,
       "tabFunctions": 123,
       "unclassifiedFiles": 140,
-      "unitTestFiles": 23
+      "unitTestFiles": 24
     }
   },
   "domains": {
@@ -720,7 +720,9 @@
         "cloudFunctions": [
           "parcelles"
         ],
-        "modules": [],
+        "modules": [
+          "parcelleGroupes"
+        ],
         "routes": [
           {
             "functionId": "parcelles",
@@ -733,7 +735,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 29,
+      "coverageScore": 40,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -741,18 +743,21 @@
           "parcelle_ferme_referentiel",
           "parcelle_ferme_referentiel_meta",
           "parcelles_consommation",
-          "parcelles_culturales_charge"
+          "parcelles_culturales_charge",
+          "sb_parcelle_groupes"
         ]
       },
       "frontend": {
         "components": [
           "public/components/CampagneAnalytiqueTab.jsx",
+          "public/components/ParcellesGroupesPanel.jsx",
           "public/components/ParcellesParamsTab.jsx",
           "public/components/ParcellesReferentielTab.jsx"
         ],
         "libs": [
           "public/lib/analytiqueUtils.js",
-          "public/lib/campagneUtils.js"
+          "public/lib/campagneUtils.js",
+          "public/lib/parcelleGroupUtils.js"
         ],
         "tabs": [
           "AgroParcellesTab",
@@ -763,10 +768,14 @@
       "gitCoupling": [],
       "label": "Référentiel & Analytique",
       "tests": {
-        "backend": [],
+        "backend": [
+          "functions/lib/parcelleGroupes/__tests__/split.test.js",
+          "functions/lib/parcelleGroupes/__tests__/validate.test.js"
+        ],
         "unit": [
           "tests/unit/analytiqueUtils.test.js",
-          "tests/unit/campagneUtils.test.js"
+          "tests/unit/campagneUtils.test.js",
+          "tests/unit/parcelleGroupUtils.test.js"
         ]
       }
     },
@@ -1897,6 +1906,10 @@
       "confidence": "high",
       "domain": "agro"
     },
+    "functions/lib/parcelleGroupes": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
     "functions/lib/phenology": {
       "confidence": "high",
       "domain": "agro"
@@ -2089,6 +2102,10 @@
       "confidence": "medium",
       "domain": "stock"
     },
+    "public/components/ParcellesGroupesPanel.jsx": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
     "public/components/ParcellesParamsTab.jsx": {
       "confidence": "high",
       "domain": "referentiel"
@@ -2192,6 +2209,10 @@
     "public/lib/paieUtils.js": {
       "confidence": "medium",
       "domain": "paie"
+    },
+    "public/lib/parcelleGroupUtils.js": {
+      "confidence": "high",
+      "domain": "referentiel"
     },
     "public/lib/primesImportParse.js": {
       "confidence": "high",
@@ -2367,6 +2388,10 @@
       "accessLevel": "CF-only",
       "domain": null
     },
+    "sb_parcelle_groupes": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
+    },
     "scan_corrections": {
       "accessLevel": "CF-only",
       "domain": "achats"
@@ -2515,7 +2540,7 @@
     "AchatsReceptionsValoriserTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 57402
+      "line": 57452
     },
     "AchatsScanBLTab": {
       "domain": "achats",
@@ -2535,7 +2560,7 @@
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63711
+      "line": 63761
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
@@ -2605,12 +2630,12 @@
     "BudgetVsReelTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 58456
+      "line": 58506
     },
     "CaisseTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 59976
+      "line": 60026
     },
     "CampagneTab": {
       "domain": "referentiel",
@@ -2665,7 +2690,7 @@
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 62977
+      "line": 63027
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -2675,27 +2700,27 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64067
+      "line": 64117
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65034
+      "line": 65084
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66272
+      "line": 66322
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65736
+      "line": 65786
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64584
+      "line": 64634
     },
     "DGValidationsTab": {
       "domain": "pointage",
@@ -2725,7 +2750,7 @@
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66413
+      "line": 66463
     },
     "FinBDCTab": {
       "domain": "achats",
@@ -2865,7 +2890,7 @@
     "MagMouvementsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57956
+      "line": 58006
     },
     "MagParcTab": {
       "domain": null,
@@ -2880,7 +2905,7 @@
     "MagSortieTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57535
+      "line": 57585
     },
     "MagStockIntrantsTab": {
       "domain": "stock",
@@ -2890,7 +2915,7 @@
     "MagTransfertTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 57049
+      "line": 57099
     },
     "MeteoTab": {
       "domain": "agro",
@@ -2935,7 +2960,7 @@
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66887
+      "line": 66937
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
@@ -3065,7 +3090,7 @@
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65414
+      "line": 65464
     },
     "SuiviTab": {
       "domain": null,

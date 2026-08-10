@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:854495784a343c03 -->
-# Code Map — Modules lib (144)
+<!-- sourceFingerprint: sha256:0348c4db407b7192 -->
+# Code Map — Modules lib (147)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -63,6 +63,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/netafim/parcelles.js | — | COLLECTION, buildParcelleUpserts, persistParcelles |
 | functions/lib/netafim/rateLimiter.js | — | todayKey, tryConsume |
 | functions/lib/netafim/types.js | — | — voir fichier — |
+| functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |
+| functions/lib/parcelleGroupes/validate.js | — | slugGroupeLabel, validateGroupeSave |
 | functions/lib/phenology/dailyPhenologyJob.js | — | runDailyPhenologyJob, buildHttpHandler, CRON_CONFIG, HTTP_CONFIG, __internals |
 | functions/lib/phenology/farmroadStationResolver.js | — | resolveStation |
 | functions/lib/phenology/gddCalculator.js | — | calculateDailyGdd |
@@ -141,6 +143,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/meteoCalc.js | MeteoCalc | saturationVaporPressure, vpdAt, computeHourlyVPD, computeCumRadiation, peakIndex |
 | public/lib/paieDataCache.js | PaieDataCache | DEFAULT_TTL_MS, pointageKey, peek, set, getOrLoad, invalidate |
 | public/lib/paieUtils.js | PaieUtils | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
+| public/lib/parcelleGroupUtils.js | ParcelleGroupUtils | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, formatApercu |
 | public/lib/primesImportParse.js | PrimesImportParse | rows, headerIndex, normHeader, MATRICULE_ALIASES, PRIME_ALIASES, findHeaderRow, extractPrimesRows |
 | public/lib/primesV2.js | PrimesV2 | norm, matches, searchWorkers, buildHistoryView |
 | public/lib/quinzaineUtils.js | QuinzaineUtils | getEqPrefix, computeTransportQuinzaine |
