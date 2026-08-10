@@ -1075,7 +1075,10 @@
       sbMap: sbMap,
       canEdit: canEdit,
       C: PRT_C,
-      fmtHa: fmtHa
+      fmtHa: fmtHa,
+      // Après l'initialisation des Ha manquants depuis BEE ONE : vider
+      // les caches et recharger parcelles + référentiel SB.
+      onSeeded: handleRefresh
     }), React.createElement('div', {
       style: {
         marginTop: 12,
