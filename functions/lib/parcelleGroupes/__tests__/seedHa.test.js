@@ -189,6 +189,41 @@ test('computeSeedPlan — aucune surface transmise par le client n’est retenue
   assert.deepStrictEqual(plan.toCreate, [])
 })
 
+test('computeSeedPlan — labels piégés (__proto__, constructor) : rien créé, prototype intact', () => {
+  // normLabel uppercase les clés, ce qui met les lookups hors de portée des
+  // propriétés héritées d'Object.prototype. Ce test VERROUILLE l'invariant :
+  // un futur refactor de normLabel qui perdrait le toUpperCase ferait passer
+  // `supByKey['constructor']` pour une surface valide.
+  const plan = computeSeedPlan({
+    labels: ['__proto__', 'constructor', 'toString', 'hasOwnProperty'],
+    sbMap: {},
+    supMap: {},
+  })
+  assert.deepStrictEqual(plan.toCreate, [], 'aucune surface héritée du prototype ne fait foi')
+  assert.strictEqual(plan.skipped.length, 4)
+  plan.skipped.forEach((s) => assert.strictEqual(s.raison, RAISON_SANS_SURFACE))
+
+  // Aucune pollution de prototype par les maps d'entrée non plus.
+  computeSeedPlan({
+    labels: ['F1'],
+    sbMap: JSON.parse('{"__proto__": {"pollue": true}}'),
+    supMap: JSON.parse('{"__proto__": {"pollue": true}}'),
+  })
+  assert.strictEqual({}.pollue, undefined, 'Object.prototype pollué')
+  assert.strictEqual(sanitizeLabels(['__proto__']).ok, true, '__proto__ reste un label comme un autre')
+})
+
+test('computeSeedPlan — supMap indexée dans une autre casse est bien résolue', () => {
+  const plan = computeSeedPlan({
+    labels: ['F5- Cascade -S13'],
+    sbMap: {},
+    supMap: { '  f5- cascade -s13  ': 2.75 },
+  })
+  assert.deepStrictEqual(plan.toCreate, [
+    { label: 'F5- Cascade -S13', ha: 2.75, source: SOURCE_BEE_ONE },
+  ])
+})
+
 test('computeSeedPlan — casse et espaces : matching et déduplication', () => {
   const plan = computeSeedPlan({
     labels: ['  f5- cascade -s13  ', 'F5- CASCADE -S13', ' f5 -breeze- s14 ', '   '],
