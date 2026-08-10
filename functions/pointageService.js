@@ -86,6 +86,9 @@ const { verifyAuth } = require("./middleware/requireAuth");
 const { resolveCallerProfile } = require("./lib/auth/resolveRole");
 const consoAccessControl = require("./lib/valorisation/accessControl");
 const { resolvePointageRHAccess } = require("./lib/auth/paieAccess");
+// Groupes de parcelles (raccourci de saisie BC, éclatement au prorata des Ha).
+const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
+const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -1966,7 +1969,12 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // PAS un listing paie nominatif ; déjà cloisonnés côté client par ?ferme=.
       // On les exclut du gating paie pour ne pas casser l'écran caporal.
       // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
-      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true };
+      // 'sb-groupes-list' = référentiel des GROUPES de parcelles (labels + Ha),
+      // non nominatif, nécessaire au MAGASINIER pour le popup Bon de
+      // Consommation (le gating paie refuserait ce profil). L'authentification
+      // reste exigée : /api/pointage-rh (pointageV3) passe requireAuth en amont,
+      // et l'action revérifie le token. L'ÉCRITURE reste gatée DG/RH/admin.
+      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true, "sb-groupes-list": true };
       let _fermeFilter = null; // null = accès global (all) ou action exemptée
       let _cultureFilter = null; // null = pas de filtre culture additionnel
       if (!GATING_EXEMPT_ACTIONS[action]) {
@@ -3940,6 +3948,130 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
         }, { merge: true });
         return res.json({ success: true, key });
+      }
+
+      // ===== GROUPES DE PARCELLES (raccourci de saisie du Bon de Consommation) =====
+      // Un groupe = N parcelles réelles traitées en une seule application. À la
+      // saisie d'un BC, create-bc éclate la ligne en N lignes de parcelles
+      // RÉELLES, quantités au prorata des Ha (functions/lib/parcelleGroupes).
+      // Le groupe n'est JAMAIS persisté comme une parcelle.
+      //
+      // Base du prorata = uniquement le `ha` de sb_parcelle_referentiel (pas de
+      // fallback surface BEE ONE) → une parcelle sans Ha SB > 0 ne peut pas
+      // entrer dans un groupe. Les Ha ne sont pas figés dans le groupe : ils
+      // sont relus à chaque lecture/saisie (une correction se propage).
+
+      // Liste des groupes ACTIFS + Ha/pct résolus (lecture : tout profil
+      // authentifié — le magasinier en a besoin ; cf. GATING_EXEMPT_ACTIONS).
+      if (action === "sb-groupes-list") {
+        const _gu = await verifyAuth(req);
+        if (!_gu) return res.status(401).json({ success: false, error: "Non authentifié" });
+        const [grpSnap, refSnap] = await Promise.all([
+          db_firestore.collection("sb_parcelle_groupes").get(),
+          db_firestore.collection("sb_parcelle_referentiel").get(),
+        ]);
+        const haByLabel = {};
+        refSnap.forEach((doc) => {
+          const d = doc.data() || {};
+          const lbl = (d.label_bee_one || doc.id || "").toUpperCase().trim();
+          if (lbl) haByLabel[lbl] = parseFloat(d.ha) || 0;
+        });
+        const groupes = [];
+        grpSnap.forEach((doc) => {
+          const d = doc.data() || {};
+          if (d.actif === false) return;
+          const membres = (d.membres || []).map((lbl) => ({
+            label: lbl,
+            ha: haByLabel[(lbl || "").toUpperCase().trim()] || 0,
+          }));
+          let parts = [];
+          let totalHa = 0;
+          try {
+            parts = parcelleGroupSplit.computeParts(membres);
+            totalHa = parcelleGroupSplit.totalHa(membres);
+          } catch (e) {
+            // Ha manquant sur un membre (Ha effacé après création du groupe) :
+            // on renvoie quand même le groupe, marqué invalide → le front le
+            // grise et le backend refusera l'éclatement avec un message clair.
+            parts = [];
+            totalHa = 0;
+          }
+          groupes.push({
+            id: doc.id,
+            label: d.label || doc.id,
+            membres,
+            parts,
+            total_ha: Math.round(totalHa * 100) / 100,
+            valide: parts.length > 0,
+            actif: true,
+          });
+        });
+        groupes.sort((a, b) => (a.label || "").localeCompare(b.label || ""));
+        return res.json({ success: true, groupes });
+      }
+
+      // Création / édition d'un groupe (DG/RH/admin — même gate que sb-referentiel-save)
+      if (action === "sb-groupe-save" && req.method === "POST") {
+        const _authUserG = await verifyAuth(req);
+        const callerProfileG = await resolveCallerProfile(_authUserG);
+        const _pidG = callerProfileG && (callerProfileG.profileId || callerProfileG.role || '');
+        if (!['dg', 'rh', 'admin'].includes(_pidG)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
+        }
+        const body = req.body || {};
+        // Ha : chaque membre DOIT exister dans sb_parcelle_referentiel avec ha > 0.
+        const [refSnapG, grpSnapG] = await Promise.all([
+          db_firestore.collection("sb_parcelle_referentiel").get(),
+          db_firestore.collection("sb_parcelle_groupes").get(),
+        ]);
+        const haByLabelG = {};
+        refSnapG.forEach((doc) => {
+          const d = doc.data() || {};
+          const lbl = (d.label_bee_one || doc.id || "").toUpperCase().trim();
+          if (lbl) haByLabelG[lbl] = parseFloat(d.ha) || 0;
+        });
+        const groupesExistants = grpSnapG.docs.map((doc) => ({ id: doc.id, ...(doc.data() || {}) }));
+        // Validation PURE (unicité du nom, ≥ 2 membres, Ha > 0, appartenance
+        // exclusive) — testée dans lib/parcelleGroupes/__tests__/validate.test.js.
+        const verdict = parcelleGroupValidate.validateGroupeSave({
+          id: body.id,
+          label: body.label,
+          membres: body.membres,
+          haByLabel: haByLabelG,
+          groupes: groupesExistants,
+        });
+        if (!verdict.ok) {
+          return res.status(400).json({ success: false, error: verdict.error });
+        }
+        await db_firestore.collection("sb_parcelle_groupes").doc(verdict.docId).set({
+          label: verdict.label,
+          membres: verdict.membres,
+          actif: true,
+          updated_by: { uid: (_authUserG && _authUserG.uid) || null, profileId: _pidG },
+          updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return res.json({ success: true, id: verdict.docId, label: verdict.label, membres: verdict.membres });
+      }
+
+      // Suppression d'un groupe = SOFT DELETE (les BC passés référencent l'id).
+      if (action === "sb-groupe-delete" && req.method === "POST") {
+        const _authUserD = await verifyAuth(req);
+        const callerProfileD = await resolveCallerProfile(_authUserD);
+        const _pidD = callerProfileD && (callerProfileD.profileId || callerProfileD.role || '');
+        if (!['dg', 'rh', 'admin'].includes(_pidD)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
+        }
+        const idD = typeof (req.body || {}).id === "string" ? req.body.id.trim() : "";
+        if (!idD) return res.status(400).json({ success: false, error: "id du groupe requis" });
+        const docRefD = db_firestore.collection("sb_parcelle_groupes").doc(idD);
+        const snapD = await docRefD.get();
+        if (!snapD.exists) return res.status(404).json({ success: false, error: "Groupe introuvable" });
+        await docRefD.set({
+          actif: false,
+          updated_by: { uid: (_authUserD && _authUserD.uid) || null, profileId: _pidD },
+          updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return res.json({ success: true, id: idD });
       }
 
       // la campagne sélectionnée (référentiel parcelle_ferme_referentiel encore vide,
