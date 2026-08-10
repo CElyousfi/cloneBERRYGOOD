@@ -56,6 +56,20 @@
     return (labels || []).join(' + ');
   }
 
+  /**
+   * Identité du formulaire de groupe, utilisée comme `key` React : elle DOIT
+   * changer dès que la cible du formulaire change, sinon React réutilise
+   * l'instance et son état `selected` (initialisé au seul montage).
+   *
+   * @param {*} formState null (fermé) | 'new' (création) | le groupe édité.
+   * @returns {string}
+   */
+  function PGP_formKey(formState) {
+    if (!formState) return 'none';
+    if (formState === 'new') return 'new';
+    return 'edit-' + (formState.id || formState.label || '');
+  }
+
   var PGP_SEED_RAISONS = {
     deja_sb: 'Ha Smart Berry déjà saisi',
     sans_surface_source: 'aucune surface BEE ONE connue',
@@ -507,7 +521,14 @@
         onDone: function () { if (onSeeded) onSeeded(); reload(); },
       }),
 
+      // `key` OBLIGATOIRE : l'état `selected` du formulaire n'est initialisé
+      // qu'au MONTAGE (useState depuis editing.membres). Sans key, cliquer
+      // « Éditer » sur un groupe B pendant l'édition d'un groupe A réutilisait
+      // l'instance → les membres de A étaient sauvés dans le groupe B
+      // (corruption de données). La key change à chaque cible (A → B,
+      // édition → nouveau, nouveau → édition) et force le remontage.
       formState && React.createElement(PGP_GroupeForm, {
+        key: PGP_formKey(formState),
         rows: rows, sbMap: sbMap, groupes: groupes,
         editing: formState === 'new' ? null : formState,
         C: C, fmtHa: fmtHa,
