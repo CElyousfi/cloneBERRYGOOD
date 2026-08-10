@@ -1065,7 +1065,18 @@
       sbMap: sbMap,
       canEdit: canEdit,
       onRowSaved: handleRowSaved
-    })), React.createElement('div', {
+    })),
+    // Groupes de parcelles (raccourci de saisie du Bon de Consommation).
+    // Composant séparé (public/components/ParcellesGroupesPanel.jsx) ; on
+    // lui passe les lignes + la sbMap DÉJÀ chargées (pas de second fetch)
+    // ainsi que la palette et le formatteur Ha de cet écran.
+    window.ParcellesGroupesPanel && React.createElement(window.ParcellesGroupesPanel, {
+      rows: currentRows,
+      sbMap: sbMap,
+      canEdit: canEdit,
+      C: PRT_C,
+      fmtHa: fmtHa
+    }), React.createElement('div', {
       style: {
         marginTop: 12,
         fontSize: 11,
