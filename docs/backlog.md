@@ -5,6 +5,27 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] ITEM — `chunkIds` ne déduplique pas les ids (à attacher au lot 4)
+Ajouté 2026-08-10, réserve QA du ticket `sb/bdc-bl-batch` (PR #228).
+
+`chunkIds(ids, 30)` dans [functions/lib/bdc/blBatch.js](../functions/lib/bdc/blBatch.js) découpe
+la liste telle quelle. Si un même id apparaissait **deux fois**, ses BL seraient lus deux fois
+et poussés deux fois dans le tableau du BDC → **double comptage du reçu** → reliquat à zéro →
+le BDC **disparaît** de la liste « à réceptionner ». Panne silencieuse typique : pas d'erreur,
+juste un BDC que le DG ne voit plus.
+
+**Inatteignable aujourd'hui** : les deux seuls appelants passent des ids de documents Firestore,
+uniques par construction — `docs.map(d => d.id)` sur un snapshot, et `[bdcId]` pour le détail.
+C'est une porte ouverte pour un futur appelant, pas un bug actif.
+
+**Correctif** : `Array.from(new Set(ids))` en tête de `chunkIds`, plus un test avec doublons.
+Une ligne.
+
+**À attacher au lot 4**, qui touchera `dgAgent.js` — inutile d'ouvrir un ticket dédié pour ça,
+et un passage groupé évite un aller-retour de QA sur le même fichier.
+
+---
+
 ## [ ] ITEM — Plafond de lecture du tool `get_bdc_non_receptionnes` (+ question métier)
 Ajouté 2026-08-10, suite au ticket `sb/bdc-bl-batch` (qui n'a traité que les N+1).
 
