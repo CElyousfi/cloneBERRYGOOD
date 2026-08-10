@@ -159,8 +159,27 @@
     );
   }
 
+  /**
+   * Filtre les parcelles sur la barre de recherche. SOURCE DE VÉRITÉ UNIQUE du
+   * périmètre affiché : le parent l'applique une fois et sert la même liste au
+   * tableau ET au panneau Groupes (dont l'initialisation des Ha porte sur « le
+   * tableau du haut »). Filtrer à deux endroits les ferait diverger.
+   */
+  function PRT_filterRows(rows, search) {
+    if (!search) return rows || [];
+    var q = search.toUpperCase();
+    return (rows || []).filter(function (r) {
+      return (r.label || '').toUpperCase().indexOf(q) !== -1
+        || (r.culture || '').toUpperCase().indexOf(q) !== -1
+        || (r.ferme || '').toUpperCase().indexOf(q) !== -1
+        || (r.variete || '').toUpperCase().indexOf(q) !== -1;
+    });
+  }
+
   function PRT_Table(props) {
-    var rows = props.rows;
+    // `rows` est DÉJÀ filtré par le parent (cf. PRT_filterRows) ; `search` ne
+    // sert plus qu'au libellé de l'état vide.
+    var filtered = props.rows || [];
     var search = props.search;
     var sbMap = props.sbMap;
     var canEdit = props.canEdit;
@@ -168,17 +187,6 @@
 
     var _editLabel = useState(null);
     var editLabel = _editLabel[0]; var setEditLabel = _editLabel[1];
-
-    var filtered = useMemo(function () {
-      if (!search) return rows;
-      var q = search.toUpperCase();
-      return rows.filter(function (r) {
-        return (r.label || '').toUpperCase().indexOf(q) !== -1
-          || (r.culture || '').toUpperCase().indexOf(q) !== -1
-          || (r.ferme || '').toUpperCase().indexOf(q) !== -1
-          || (r.variete || '').toUpperCase().indexOf(q) !== -1;
-      });
-    }, [rows, search]);
 
     if (filtered.length === 0) {
       return React.createElement('div', {
@@ -486,6 +494,12 @@
     var _sbMap = useState(_prtSbCache || window.SB_PARCELLE_REF || {});
     var sbMap = _sbMap[0]; var setSbMap = _sbMap[1];
 
+    // Rechargement SILENCIEUX : on repasse par le même fetch, mais sans lever
+    // `loading` — donc sans démonter le sous-arbre (cf. `!loading && …` plus
+    // bas). Utilisé après l'initialisation des Ha, pour que le message de
+    // confirmation du panneau Groupes survive au rechargement des données.
+    var silentRefreshRef = React.useRef(false);
+
     useEffect(function () {
       // Cache chaud et pas de refresh forcé : utiliser directement
       if (_prtDataCache !== null && refreshKey === 0) {
@@ -494,7 +508,7 @@
         setLoading(false);
         return;
       }
-      setLoading(true);
+      if (!silentRefreshRef.current) setLoading(true);
       setError(null);
       Promise.all([
         fetch('/api/pointage-rh?action=parcelles-campagne-list').then(function (r) { return r.json(); }),
@@ -517,14 +531,21 @@
           setSbMap(map);
         })
         .catch(function (e) { setError(e.message); })
-        .finally(function () { setLoading(false); });
+        .finally(function () {
+          setLoading(false);
+          silentRefreshRef.current = false;
+        });
     }, [refreshKey]);
 
-    function handleRefresh() {
+    /**
+     * @param {boolean} [silent] true = recharger sans spinner ni démontage.
+     */
+    function handleRefresh(silent) {
       // Vider les trois caches et déclencher un re-fetch
       _prtDataCache = null;
       _prtSbCache = null;
       _moRefCache = null;
+      silentRefreshRef.current = silent === true;
       setRefreshKey(function (k) { return k + 1; });
     }
 
@@ -542,6 +563,12 @@
     var rows2627 = (data && data.campagne_courante)  || [];
     var rowsPrev = (data && data.campagne_precedente) || [];
     var currentRows = selectedCamp === '2026/2027' ? rows2627 : rowsPrev;
+    // Périmètre RÉELLEMENT affiché (campagne sélectionnée + recherche).
+    // Calculé UNE fois ici, servi au tableau ET au panneau Groupes : « les 2
+    // tableaux doivent être identiques » (règle produit).
+    var visibleRows = useMemo(function () {
+      return PRT_filterRows(currentRows, search);
+    }, [currentRows, search]);
 
     return React.createElement('div', { style: { padding: '20px 24px', maxWidth: 1200 } },
 
@@ -624,7 +651,10 @@
             ),
 
             React.createElement('button', {
-              onClick: handleRefresh,
+              // Rafraîchissement MANUEL : spinner assumé (≠ refresh silencieux
+              // post-seed). L'argument est explicite car onClick passerait
+              // sinon l'événement, qui est truthy.
+              onClick: function () { handleRefresh(false); },
               title: 'Rafraîchir les données',
               style: {
                 padding: '6px 10px', borderRadius: 8,
@@ -665,7 +695,7 @@
             style: { background: PRT_C.surface, border: '1px solid ' + PRT_C.border, borderRadius: 12, overflow: 'hidden' },
           },
             React.createElement(PRT_Table, {
-              rows: currentRows, search: search,
+              rows: visibleRows, search: search,
               sbMap: sbMap, canEdit: canEdit,
               onRowSaved: handleRowSaved,
             })
@@ -675,15 +705,21 @@
           // Composant séparé (public/components/ParcellesGroupesPanel.jsx) ; on
           // lui passe les lignes + la sbMap DÉJÀ chargées (pas de second fetch)
           // ainsi que la palette et le formatteur Ha de cet écran.
+          // `visibleRows` (et non `currentRows`) : le panneau doit voir
+          // EXACTEMENT le tableau ci-dessus, recherche comprise — sinon son
+          // récap d'initialisation annonce des parcelles qui ne sont pas à
+          // l'écran.
           window.ParcellesGroupesPanel && React.createElement(window.ParcellesGroupesPanel, {
-            rows: currentRows,
+            rows: visibleRows,
             sbMap: sbMap,
             canEdit: canEdit,
             C: PRT_C,
             fmtHa: fmtHa,
             // Après l'initialisation des Ha manquants depuis BEE ONE : vider
-            // les caches et recharger parcelles + référentiel SB.
-            onSeeded: handleRefresh,
+            // les caches et recharger parcelles + référentiel SB, SANS spinner
+            // (sinon le sous-arbre est démonté et le message de confirmation
+            // du panneau disparaît avant d'avoir été lu).
+            onSeeded: function () { handleRefresh(true); },
           }),
 
           React.createElement('div', {
