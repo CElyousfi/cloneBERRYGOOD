@@ -117,6 +117,7 @@ const {
   detailArticles,
   buildReceptionPayload,
 } = require("./lib/bdc/bdcDigest");
+const { IN_MAX_VALUES, chunkIds, groupBlsByBdcId } = require("./lib/bdc/blBatch");
 const getTeamMap = () => getTeamNameMap(db);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -307,29 +308,38 @@ async function tool_get_bdc_en_attente_validation({ ferme, limit }) {
   return buildDigestPayload(summary, limit, { ferme: fermeFilter, tronque: snap.size >= BDC_QUERY_LIMIT });
 }
 
-// Nombre de BdC dont on charge les BL en parallèle. Évite d'ouvrir une rafale
-// de centaines de requêtes Firestore d'un coup, sans borner le jeu agrégé.
-const BL_FETCH_CONCURRENCY = 25;
-
 /**
- * BL vivants d'un BdC. Le filtre `!bl.deleted` est le même que celui de
+ * Table { bdcId: BL[] } pour une liste d'ids de BdC, chargée PAR LOTS :
+ * un `where('bdc_id', 'in', <=30 ids)` au lieu d'une requête par BdC (283
+ * requêtes / ~3,9 s mesurées en prod sur 283 BdC ouverts → 10 requêtes /
+ * ~1,3 s, mêmes BL lus).
+ *
+ * Les lots sont enchaînés SÉQUENTIELLEMENT : au plafond BDC_QUERY_LIMIT (500)
+ * ça fait 17 requêtes, c'est le régime mesuré, et ça évite de réintroduire une
+ * borne de concurrence pour rien.
+ *
+ * Le filtre `!bl.deleted` reste EN MÉMOIRE (dans groupBlsByBdcId), comme
  * l'action `list-bl` (functions/index.js) : un BL soft-deleted ne compte NULLE
- * PART dans le reliquat, sinon il masquerait un BdC non réceptionné.
+ * PART dans le reliquat, sinon il masquerait un BdC non réceptionné. Il ne peut
+ * pas devenir un `where('deleted', '==', false)` — voir functions/lib/bdc/blBatch.js.
+ *
+ * @param {Array<string>} bdcIds
+ * @returns {Promise<Record<string, Array<object>>>}
  */
-async function loadLiveBls(bdcId) {
-  const snap = await db.collection("delivery_notes").where("bdc_id", "==", bdcId).get();
-  return snap.docs.map(d => d.data() || {}).filter(bl => !bl.deleted);
+async function loadBlsByBdcIds(bdcIds) {
+  const bls = [];
+  // Liste vide → aucun lot, donc aucune requête (`in` avec [] lève côté Firestore).
+  for (const chunk of chunkIds(bdcIds, IN_MAX_VALUES)) {
+    const snap = await db.collection("delivery_notes").where("bdc_id", "in", chunk).get();
+    for (const d of snap.docs) bls.push(d.data() || {});
+  }
+  return groupBlsByBdcId(bdcIds, bls);
 }
 
-/** Table { bdcId: BL[] } pour une liste de BdC, par vagues de concurrence bornée. */
-async function loadBlsByBdcId(docs) {
-  const table = {};
-  for (let i = 0; i < docs.length; i += BL_FETCH_CONCURRENCY) {
-    const chunk = docs.slice(i, i + BL_FETCH_CONCURRENCY);
-    const bls = await Promise.all(chunk.map(d => loadLiveBls(d.id)));
-    chunk.forEach((d, k) => { table[d.id] = bls[k]; });
-  }
-  return table;
+/** BL vivants d'un seul BdC — même chemin de lecture/filtrage que la liste. */
+async function loadLiveBls(bdcId) {
+  const table = await loadBlsByBdcIds([bdcId]);
+  return table[bdcId];
 }
 
 /**
@@ -357,7 +367,7 @@ async function tool_get_bdc_non_receptionnes({ ferme, enRetardSeulement, limit }
   // mais l'onglet magasin les masque déjà de la même façon).
   docs = docs.filter(d => d.delivery_status !== "complet");
 
-  const blsByBdcId = await loadBlsByBdcId(docs);
+  const blsByBdcId = await loadBlsByBdcIds(docs.map(d => d.id));
   const summary = summarizePendingReception(docs, blsByBdcId, {
     today: Date.now(),
     enRetardSeulement: enRetardSeulement === true,
