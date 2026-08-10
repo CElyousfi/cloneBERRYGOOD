@@ -105,6 +105,17 @@ const TOOLS = [
       required: ["numero"],
     },
   },
+  {
+    name: "relancer_bdc",
+    description: "Prépare une RELANCE (rappel WhatsApp) sur UN bon de commande identifié par son numéro (ex: BDC-2026-0142), afin de réveiller celui qui bloque : chef de ferme, DG, finance ou achats selon le statut. Ce tool N'ENVOIE RIEN : il vérifie que le BdC est relançable (statut, cooldown de 4 h) et renvoie soit un refus motivé, soit une demande de confirmation à poser au DG. L'envoi n'a lieu qu'après un « oui » explicite du DG au message suivant. Ne jamais l'utiliser pour valider un BdC : la validation reste dans l'application.",
+    input_schema: {
+      type: "object",
+      properties: {
+        numero: { type: "string", description: "Numéro du BdC à relancer, ex: BDC-2026-0142." },
+      },
+      required: ["numero"],
+    },
+  },
 ];
 
 const { getTeamNameMap } = require("./equipesConfig");
@@ -120,6 +131,10 @@ const {
   MISE_EN_SERVICE_LABEL,
 } = require("./lib/bdc/bdcDigest");
 const { IN_MAX_VALUES, chunkIds, groupBlsByBdcId } = require("./lib/bdc/blBatch");
+// Lecture seule des décisions pures du rappel BDC : même ciblage et même
+// cooldown 4 h que l'action HTTP `remind-bdc`, appliqués ICI en PRÉ-CONTRÔLE
+// pour ne jamais faire confirmer une relance qui serait refusée à l'envoi.
+const { resolveReminderTargets, reminderCooldown } = require("./lib/bdc/reminder");
 const getTeamMap = () => getTeamNameMap(db);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -424,6 +439,107 @@ async function tool_get_bdc_detail({ numero }) {
   return Object.assign({ status: bdc.status || "", nbBl: bls.length, articles: detailArticles(bdc, bls) }, entete);
 }
 
+/**
+ * Auteur tracé dans l'entrée `history` du BDC. Même forme que ce qu'envoient
+ * les autres appelants de remindBdcCore : le dashboard poste
+ * `{profileId, name}` (public/app.jsx, action remind-bdc) et chefBdcBot poste
+ * `{profileId, name: displayName || uid}`. On y ajoute uid/email quand ils sont
+ * connus — le service ne fait que recopier l'objet dans history.
+ * @param {{uid?:string, profileId?:string, displayName?:string, name?:string, email?:string}|null|undefined} user
+ */
+function buildReminderBy(user) {
+  if (!user) return {};
+  const by = {};
+  if (user.uid) by.uid = user.uid;
+  if (user.profileId) by.profileId = user.profileId;
+  const name = user.displayName || user.name || user.uid;
+  if (name) by.name = name;
+  if (user.email) by.email = user.email;
+  return by;
+}
+
+/**
+ * Relance d'un BdC — PRÉPARATION SEULEMENT.
+ *
+ * Ce handler n'envoie JAMAIS : il résout le numéro, pré-contrôle (statut
+ * relançable + cooldown 4 h) et, si tout est bon, DÉPOSE son intention dans le
+ * contexte d'invocation (`ctx.relanceIntent`). C'est dgBot.js qui, après un
+ * « oui » explicite du DG au message suivant, appelle remindBdcCore.
+ * Un refus est renvoyé immédiatement au modèle et AUCUNE intention n'est posée.
+ */
+async function tool_relancer_bdc({ numero }, ctx) {
+  const num = (numero || "").trim();
+  if (!num) return { error: "numero requis (ex: BDC-2026-0142)" };
+
+  const snap = await db.collection("purchase_orders").where("numero", "==", num).limit(1).get();
+  if (snap.empty) return { numero: num, error: "Aucun BdC avec ce numéro." };
+
+  const doc = snap.docs[0];
+  const bdc = doc.data() || {};
+
+  const targets = resolveReminderTargets(bdc);
+  if (!targets) {
+    return {
+      numero: num,
+      relancable: false,
+      statut: bdc.status || "",
+      error: `Aucun rappel possible dans le statut "${bdc.status}".`,
+    };
+  }
+  if (!targets.profiles.length) {
+    return {
+      numero: num,
+      relancable: false,
+      statut: bdc.status || "",
+      error: "Aucun destinataire pour ce BdC — vérifiez la ferme du BdC.",
+    };
+  }
+
+  const cooldown = reminderCooldown(bdc.last_reminded_at, Date.now());
+  if (cooldown.blocked) {
+    return {
+      numero: num,
+      relancable: false,
+      statut: bdc.status || "",
+      error: `Rappel déjà envoyé récemment. Patientez encore ${cooldown.hoursLeft}h avant un nouveau rappel.`,
+    };
+  }
+
+  // Pas de ctx (appel hors boucle agentic, ex. smoke) : on ne peut pas armer la
+  // confirmation, donc on ne prétend pas qu'une relance est en cours.
+  if (!ctx) return { numero: num, error: "Contexte d'invocation indisponible — relance impossible." };
+
+  // Deux appels `relancer_bdc` dans le MÊME tour : une seule intention peut
+  // vivre (un « oui » ne doit jamais être ambigu quant à son objet). Celle qu'on
+  // écrase est mémorisée pour être ANNONCÉE au DG par dgBot — jamais perdue en
+  // silence. Réarmer le même BdC est idempotent : rien à annoncer.
+  const previous = ctx.relanceIntent;
+  if (previous && previous.id !== doc.id) {
+    ctx.relanceDiscarded = ctx.relanceDiscarded || [];
+    ctx.relanceDiscarded.push(previous.numero || previous.id);
+  }
+
+  ctx.relanceIntent = {
+    id: doc.id,
+    numero: bdc.numero || num,
+    fournisseur: (bdc.fournisseur && bdc.fournisseur.nom) || bdc.fournisseur || "—",
+    ferme: bdc.ferme || null,
+    profiles: targets.profiles,
+    by: buildReminderBy(ctx.user),
+  };
+
+  return {
+    numero: bdc.numero || num,
+    relancable: true,
+    statut: bdc.status || "",
+    fournisseur: ctx.relanceIntent.fournisseur,
+    ferme: ctx.relanceIntent.ferme,
+    destinataires: targets.profiles,
+    confirmationRequise: true,
+    message: "Rien n'a été envoyé. Demande une confirmation explicite (« oui ») avant l'envoi.",
+  };
+}
+
 const TOOL_HANDLERS = {
   get_recolte_du_jour: tool_get_recolte_du_jour,
   get_recolte_periode: tool_get_recolte_periode,
@@ -433,13 +549,20 @@ const TOOL_HANDLERS = {
   get_bdc_en_attente_validation: tool_get_bdc_en_attente_validation,
   get_bdc_non_receptionnes: tool_get_bdc_non_receptionnes,
   get_bdc_detail: tool_get_bdc_detail,
+  relancer_bdc: tool_relancer_bdc,
 };
 
-async function executeTool(name, input) {
+/**
+ * @param {string} name
+ * @param {object} input
+ * @param {object} [ctx] — contexte d'invocation du tour (identité + intention
+ *   déposée par un handler). Les handlers historiques ignorent ce 2e argument.
+ */
+async function executeTool(name, input, ctx) {
   const handler = TOOL_HANDLERS[name];
   if (!handler) return { error: `Tool inconnu: ${name}` };
   try {
-    return await handler(input || {});
+    return await handler(input || {}, ctx);
   } catch (err) {
     console.error(`Tool ${name} failed:`, err);
     return { error: err.message };
@@ -485,6 +608,9 @@ Réception (livraison physique au magasin):
 - "retardJours" null = pas de date de livraison prévue → dis "échéance non renseignée", n'invente pas de retard. 0 = pas encore échu.
 - La liste réception ne couvre que les BdC créés depuis la mise en service de l'app (${MISE_EN_SERVICE_LABEL}) : avant, les réceptions n'étaient pas saisies. "ecartesAvantMiseEnService" = combien de BdC antérieurs ont été écartés — ne le mentionne que si on te le demande ou si on s'étonne d'un BdC manquant.
 
+Relance d'un BdC:
+- "relancer_bdc" n'envoie rien : il prépare. Quand il renvoie "confirmationRequise", demande au DG un *oui* explicite en rappelant le numéro et les destinataires, et n'annonce jamais le rappel comme parti. S'il renvoie une erreur, dis-la telle quelle et n'insiste pas. Tu ne peux ni valider ni modifier un BdC depuis WhatsApp.
+
 Format de liste réception pour WhatsApp — un BdC par ligne, le plus en retard d'abord:
 *BDC-2026-0142* — Fournisseur — 40 % reçu — 6 j de retard
 Termine par une ligne de synthèse (nombre de BdC non réceptionnés + combien en retard + montant total).`;
@@ -495,9 +621,10 @@ Termine par une ligne de synthèse (nombre de BdC non réceptionnés + combien e
  * @param {object} args
  * @param {string} args.userText — the user's free-text input
  * @param {Array<{role,content}>} [args.history] — prior conversation turns (text-only)
- * @returns {Promise<{ success: true, reply: string, history: Array } | { success: false, error: string }>}
+ * @param {object} [args.user] — utilisateur WhatsApp identifié (uid, profileId, displayName…)
+ * @returns {Promise<{ success: true, reply: string, history: Array, relanceIntent: object|null, relanceDiscarded: string[] } | { success: false, error: string }>}
  */
-async function ask({ userText, history = [] }) {
+async function ask({ userText, history = [], user = null }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return { success: false, error: "ANTHROPIC_API_KEY manquante" };
   if (!userText?.trim()) return { success: false, error: "Message vide" };
@@ -512,6 +639,11 @@ async function ask({ userText, history = [] }) {
     if (h.role && h.content) messages.push({ role: h.role, content: h.content });
   }
   messages.push({ role: "user", content: userText });
+
+  // Contexte d'invocation du tour : porte l'identité de l'appelant et recueille
+  // l'intention qu'un handler dépose (relance). Il ne SORT rien tout seul —
+  // c'est dgBot qui décide quoi en faire.
+  const ctx = { user, relanceIntent: null, relanceDiscarded: [] };
 
   let finalText = null;
   let lastError = null;
@@ -553,7 +685,7 @@ async function ask({ userText, history = [] }) {
     const toolResults = [];
     for (const block of response.content) {
       if (block.type !== "tool_use") continue;
-      const result = await executeTool(block.name, block.input);
+      const result = await executeTool(block.name, block.input, ctx);
       toolResults.push({
         type: "tool_result",
         tool_use_id: block.id,
@@ -574,7 +706,13 @@ async function ask({ userText, history = [] }) {
     { role: "assistant", content: finalText },
   ].slice(-MAX_HISTORY);
 
-  return { success: true, reply: finalText, history: newHistory };
+  return {
+    success: true,
+    reply: finalText,
+    history: newHistory,
+    relanceIntent: ctx.relanceIntent,
+    relanceDiscarded: ctx.relanceDiscarded,
+  };
 }
 
 // TOOL_HANDLERS est exposé pour permettre de rejouer un tool avec Firestore
