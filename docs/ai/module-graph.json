@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "41/137 modules avec ≥1 test",
+          "detail": "42/137 modules avec ≥1 test",
           "max": 30,
           "score": 9
         }
@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 27,
+        "commits": 26,
         "file": "public/app.jsx"
       },
       {
@@ -48,6 +48,10 @@
       },
       {
         "commits": 4,
+        "file": "public/components/ParcellesGroupesPanel.jsx"
+      },
+      {
+        "commits": 4,
         "file": "public/lib/bdcReceptionUtils.js"
       },
       {
@@ -57,18 +61,14 @@
       {
         "commits": 4,
         "file": "tests/unit/bdcDigest.test.js"
-      },
-      {
-        "commits": 4,
-        "file": "tests/unit/bdcReceptionRegression.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:b8cb2bada95bd937",
+    "sourceFingerprint": "sha256:ffed8f802cb4d816",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
-      "coverageScore": 30,
+      "coverageScore": 31,
       "domains": 10,
       "extractedComponents": 20,
       "firestoreCollections": 57,
@@ -76,7 +76,7 @@
       "monolithSymbols": 123,
       "tabFunctions": 123,
       "unclassifiedFiles": 140,
-      "unitTestFiles": 24
+      "unitTestFiles": 25
     }
   },
   "domains": {
@@ -735,7 +735,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 40,
+      "coverageScore": 50,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -774,6 +774,7 @@
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
         ],
         "unit": [
+          "tests/unit/ParcellesGroupesPanel.test.js",
           "tests/unit/analytiqueUtils.test.js",
           "tests/unit/campagneUtils.test.js",
           "tests/unit/parcelleGroupUtils.test.js"

@@ -19,7 +19,8 @@
  * Édition : DG/RH (prop `canEdit` héritée du parent). Lecture : tous.
  * API : /api/pointage-rh?action=sb-groupes-list | sb-groupe-save | sb-groupe-delete
  *       | sb-referentiel-seed-ha (initialisation des Ha manquants depuis BEE ONE,
- *         en deux temps : dry_run:true → récap → dry_run:false)
+ *         en deux temps : dry_run:true → récap → dry_run:false ; body `labels` =
+ *         les parcelles du tableau affiché, le serveur résout les surfaces)
  *
  * Le parent (ParcellesReferentielTab) fournit rows/sbMap DÉJÀ chargées ainsi
  * que sa palette et ses formatteurs (pas de second fetch du référentiel).
@@ -60,6 +61,20 @@
   function PGP_suggestLabel(labels) {
     return (labels || []).join(' + ');
   }
+
+  /**
+   * Identité du formulaire de groupe, utilisée comme `key` React : elle DOIT
+   * changer dès que la cible du formulaire change, sinon React réutilise
+   * l'instance et son état `selected` (initialisé au seul montage).
+   *
+   * @param {*} formState null (fermé) | 'new' (création) | le groupe édité.
+   * @returns {string}
+   */
+  function PGP_formKey(formState) {
+    if (!formState) return 'none';
+    if (formState === 'new') return 'new';
+    return 'edit-' + (formState.id || formState.label || '');
+  }
   var PGP_SEED_RAISONS = {
     deja_sb: 'Ha Smart Berry déjà saisi',
     sans_surface_source: 'aucune surface BEE ONE connue'
@@ -68,12 +83,24 @@
   /**
    * Initialisation des Ha manquants depuis BEE ONE — en DEUX temps :
    * simulation (dry_run: true) → récap → confirmation (dry_run: false).
+   *
+   * PÉRIMÈTRE = LE TABLEAU DU HAUT : on envoie au serveur les labels des
+   * parcelles AFFICHÉES (campagne sélectionnée ET filtre de recherche appliqué
+   * — le parent ne sert qu'une seule liste aux deux). Changer de campagne ou de
+   * recherche change donc le périmètre et invalide une simulation en cours.
+   * On n'envoie QUE des labels : le Ha est résolu côté serveur.
+   *
+   * Les labels sont FIGÉS à la simulation (`plan.labels`) : c'est ce périmètre-là
+   * qui est confirmé, jamais la prop du moment. Si le tableau a bougé entre la
+   * simulation et le clic de confirmation, on n'écrit rien.
+   *
    * Le backend est idempotent : une parcelle qui a déjà un Ha SB n'est jamais
    * réécrite, un nom SB déjà saisi n'est jamais touché.
    */
   function PGP_SeedHaBox(props) {
     var C = props.C;
     var fmtHa = props.fmtHa;
+    var labels = props.labels || [];
     var nbSansHa = props.nbSansHa;
     var onDone = props.onDone;
     var _plan = useState(null); // null = pas encore simulé
@@ -88,7 +115,16 @@
     var _done = useState(null); // nb de parcelles réellement écrites
     var done = _done[0];
     var setDone = _done[1];
-    function callSeed(dryRun) {
+
+    // Bascule de campagne (ou rechargement des lignes) → la simulation affichée
+    // ne correspond plus au tableau : on repart de l'amorce.
+    var labelsKey = labels.join('|');
+    useEffect(function () {
+      setPlan(null);
+      setDone(null);
+      setErr(null);
+    }, [labelsKey]);
+    function callSeed(dryRun, sentLabels) {
       setBusy(true);
       setErr(null);
       return fetch('/api/pointage-rh?action=sb-referentiel-seed-ha', {
@@ -97,7 +133,8 @@
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          dry_run: dryRun
+          dry_run: dryRun,
+          labels: sentLabels
         })
       }).then(function (r) {
         return r.json();
@@ -112,12 +149,27 @@
       });
     }
     function handleSimuler() {
-      callSeed(true).then(function (d) {
-        if (d) setPlan(d);
+      // Périmètre FIGÉ au moment de la simulation : c'est lui, et pas la prop
+      // du moment, qui sera confirmé.
+      var frozen = labels.slice();
+      callSeed(true, frozen).then(function (d) {
+        if (d) setPlan({
+          data: d,
+          labels: frozen
+        });
       });
     }
     function handleConfirmer() {
-      callSeed(false).then(function (d) {
+      if (!plan) return;
+      // Garde-fou : si le tableau a bougé entre la simulation et le clic
+      // (bascule de campagne, recherche, rechargement), on n'écrit RIEN — on
+      // invalide la simulation et on demande de la relancer.
+      if (plan.labels.join('|') !== labelsKey) {
+        setPlan(null);
+        setErr('Le tableau a changé depuis la simulation — relancez-la avant de confirmer.');
+        return;
+      }
+      callSeed(false, plan.labels).then(function (d) {
         if (!d) return;
         setDone((d.a_creer || []).length);
         setPlan(null);
@@ -131,6 +183,11 @@
       padding: '12px 14px',
       marginBottom: 12
     };
+
+    // Plus aucune parcelle affichée sans Ha (et rien à confirmer) : l'amorce
+    // n'a plus lieu d'être. On garde en revanche la boîte montée juste après
+    // une initialisation réussie, pour afficher la confirmation.
+    if (nbSansHa <= 0 && done == null && !plan) return null;
     if (done != null) {
       return React.createElement('div', {
         style: Object.assign({}, boxStyle, {
@@ -183,8 +240,8 @@
         }
       }, err));
     }
-    var aCreer = plan.a_creer || [];
-    var ignorees = plan.ignorees || [];
+    var aCreer = plan.data.a_creer || [];
+    var ignorees = plan.data.ignorees || [];
     return React.createElement('div', {
       style: boxStyle
     }, React.createElement('div', {
@@ -200,7 +257,7 @@
         color: C.textSec,
         marginBottom: 8
       }
-    }, aCreer.length + ' parcelle(s) sur ' + (plan.total_parcelles || 0) + ' recevront leur surface BEE ONE comme Ha Smart Berry. ' + ignorees.length + ' ignorée(s).'), aCreer.length > 0 && React.createElement('div', {
+    }, aCreer.length + ' parcelle(s) sur les ' + (plan.data.total_parcelles || 0) + ' du tableau ci-dessus recevront leur surface BEE ONE comme Ha Smart Berry. ' + ignorees.length + ' ignorée(s).'), aCreer.length > 0 && React.createElement('div', {
       style: {
         maxHeight: 220,
         overflowY: 'auto',
@@ -551,9 +608,16 @@
     var fmtHa = props.fmtHa || PGP_fmtHaFallback;
     var onSeeded = props.onSeeded; // demande au parent de recharger rows/sbMap
 
-    // Parcelles AFFICHÉES inéligibles aux groupes faute de Ha SB. Sert
-    // uniquement à décider d'afficher l'amorce ; la liste exacte des parcelles
-    // écrites (les deux campagnes) vient du dry-run côté serveur.
+    // Périmètre du seed = LE TABLEAU DU HAUT : les parcelles de la campagne
+    // affichée, ni plus ni moins. `rows` change quand Omar bascule de campagne,
+    // donc le périmètre suit l'affichage.
+    var seedLabels = rows.map(function (r) {
+      return r.label;
+    }).filter(function (l) {
+      return !!(l && String(l).trim());
+    });
+    // Parcelles affichées inéligibles aux groupes faute de Ha SB (décide de
+    // l'affichage de l'amorce).
     var nbSansHa = rows.filter(function (r) {
       return PGP_haSb(sbMap, r.label) <= 0;
     }).length;
@@ -678,17 +742,28 @@
         marginRight: 8
       }
     }), err),
-    // Amorce : tant qu'il reste des parcelles sans Ha SB, on propose de les
-    // initialiser avec la surface BEE ONE (simulation puis confirmation).
-    canEdit && nbSansHa > 0 && !formState && React.createElement(PGP_SeedHaBox, {
+    // Amorce : tant qu'il reste des parcelles AFFICHÉES sans Ha SB, on propose
+    // de les initialiser avec leur surface BEE ONE (simulation puis
+    // confirmation). La boîte se masque elle-même quand il n'y a plus rien à
+    // faire, mais reste montée le temps d'afficher la confirmation.
+    canEdit && !formState && React.createElement(PGP_SeedHaBox, {
       C: C,
       fmtHa: fmtHa,
       nbSansHa: nbSansHa,
+      labels: seedLabels,
       onDone: function () {
         if (onSeeded) onSeeded();
         reload();
       }
-    }), formState && React.createElement(PGP_GroupeForm, {
+    }),
+    // `key` OBLIGATOIRE : l'état `selected` du formulaire n'est initialisé
+    // qu'au MONTAGE (useState depuis editing.membres). Sans key, cliquer
+    // « Éditer » sur un groupe B pendant l'édition d'un groupe A réutilisait
+    // l'instance → les membres de A étaient sauvés dans le groupe B
+    // (corruption de données). La key change à chaque cible (A → B,
+    // édition → nouveau, nouveau → édition) et force le remontage.
+    formState && React.createElement(PGP_GroupeForm, {
+      key: PGP_formKey(formState),
       rows: rows,
       sbMap: sbMap,
       groupes: groupes,

@@ -3961,6 +3961,14 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // prorata continue ensuite de lire uniquement Smart Berry (règle produit
       // inchangée) et chaque Ha reste corrigeable via « Éditer ».
       //
+      // PÉRIMÈTRE : les parcelles AFFICHÉES à l'écran (campagne sélectionnée),
+      // dont le client envoie les LABELS dans `labels`. Le serveur ne découvre
+      // plus les parcelles lui-même : sinon la simulation annonce des parcelles
+      // absentes du tableau (l'écran affiche une campagne, la découverte en
+      // couvrait deux). Le client n'envoie QUE des labels : la surface reste
+      // résolue serveur via fetchBrParcelleSupMap() — un `ha` client ne doit
+      // jamais atteindre Firestore.
+      //
       // Sûreté : dry_run VRAI PAR DÉFAUT (champ absent → simulation), plan
       // calculé par une fonction pure IDEMPOTENTE (lib/parcelleGroupes/seedHa) :
       // une parcelle avec ha > 0 n'est jamais réécrite, une parcelle sans
@@ -3975,36 +3983,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         // dry_run par défaut : seul un `dry_run: false` EXPLICITE écrit.
         const dryRunS = (req.body || {}).dry_run !== false;
 
-        // Parcelles des DEUX campagnes — même découpage que parcelles-campagne-list.
-        const todayS = new Date().toISOString().slice(0, 10);
-        const CUT_S = "2026-07-01";
-        const PREV_START_S = "2025-07-01";
-        const PREV_END_S = "2026-06-30";
-        let seedRows = [];
-        if (!USE_MIRROR) {
-          const dbS = await getPool();
-          const [rSeedA, rSeedB] = await Promise.all([
-            dbS.request().query(`
-              SELECT DISTINCT Parcelle_Culturale
-              FROM BR_Pointage
-              WHERE CONVERT(date, Periode_Date) >= '${CUT_S}'
-                AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`),
-            dbS.request().query(`
-              SELECT DISTINCT Parcelle_Culturale
-              FROM BR_Pointage
-              WHERE CONVERT(date, Periode_Date) >= '${PREV_START_S}'
-                AND CONVERT(date, Periode_Date) <= '${PREV_END_S}'
-                AND Parcelle_Culturale IS NOT NULL AND Parcelle_Culturale != ''`),
-          ]);
-          seedRows = rSeedA.recordset.concat(rSeedB.recordset)
-            .map((r) => ({ label: (r.Parcelle_Culturale || "").trim() }));
-        } else {
-          const [rawSeedA, rawSeedB] = await Promise.all([
-            getPointageRowsForDateRange(CUT_S, todayS),
-            getPointageRowsForDateRange(PREV_START_S, PREV_END_S),
-          ]);
-          seedRows = rawSeedA.concat(rawSeedB)
-            .map((r) => ({ label: (r.Parcelle_Culturale || "").trim() }));
+        // Périmètre : labels des parcelles affichées (validation pure et testée
+        // — liste de chaînes non vide, bornée, trimée, dédupliquée).
+        const labelsS = parcelleGroupSeedHa.sanitizeLabels((req.body || {}).labels);
+        if (!labelsS.ok) {
+          return res.status(400).json({ success: false, error: labelsS.error });
         }
 
         // Surfaces BEE ONE : fetchBrParcelleSupMap est résilient (last-known-good
@@ -4023,7 +4006,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         });
 
         const planS = parcelleGroupSeedHa.computeSeedPlan({
-          rows: seedRows, sbMap: sbMapS, supMap: supMapS,
+          labels: labelsS.labels, sbMap: sbMapS, supMap: supMapS,
         });
 
         if (!dryRunS && planS.toCreate.length > 0) {
