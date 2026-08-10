@@ -5,6 +5,47 @@ Coche [x] quand APPROUVÉ. Repriorisé par Omar le 2026-06-08.
 
 ---
 
+## [ ] DÉCISION OMAR — les 219 BDC importés doivent-ils apparaître dans « à réceptionner » ?
+Ajouté 2026-08-10. **Décision métier — aucun développement tant qu'Omar n'a pas tranché la voie.**
+
+### Constat (mesuré en prod le 2026-08-10, lecture seule)
+
+**308 BDC réceptionnables**, dont **219 au préfixe `BC-`** identifiés comme des **imports**, pas
+des commandes saisies dans l'application :
+
+- **une seule entrée d'`history`** chacun, contre 4 à 9 pour un BDC passé par le workflow
+  (création → soumission → validation chef → validation DG) ;
+- **aucun depuis le 01/07/2026**, date de mise en service réelle ;
+- âge médian des `non_livre` : **186 jours** ; le plus ancien, `BC-000001`, date du **23/07/2025**.
+
+Une fois l'import écarté, il reste **63 BDC sans réception saisie, dont 19 depuis le 01/07** —
+ordre de grandeur normal pour six semaines d'achats. **Le problème n'est donc pas opérationnel,
+il est documentaire.**
+
+### Les deux voies, avec leur compromis
+
+**a) `delivery_status = 'complet'`** — simple, les exclut du tool **et** de l'onglet magasin d'un
+seul geste. Mais écrit en base qu'ils **ont été reçus**, ce qui n'est pas établi. Toute logique
+future qui fait confiance à ce champ hérite de l'approximation — et il est déjà utilisé comme
+pré-filtre par le bot et par `MagBdcReceptionTab`.
+
+**b) Statut d'archive hors `RECEIVABLE_STATUSES`** — dit ce que ces BDC sont réellement, et les
+exclut de **toutes** les requêtes, pas seulement de celle-ci. Mais rayon d'impact plus large :
+onglet magasin, garde `create-bl` (`functions/index.js:7305`), et tout écran filtrant sur
+`status` — à recenser avant.
+
+Dans les deux cas : **219 écritures en production** → dry-run obligatoire, comptes rendus avant
+exécution, validation explicite d'Omar. Gated.
+
+### Conséquence sur le backlog
+
+Cette décision rend **probablement caduc** l'item « Plafond de lecture du tool
+`get_bdc_non_receptionnes` » ci-dessous : sortir les 219 de l'ensemble ferait passer les BDC
+réceptionnables de **308 à 89**. Le plafond de 500 et le volume de lectures se règlent alors
+**sans une ligne de code**. Traiter cette décision AVANT le correctif technique.
+
+---
+
 ## [ ] ITEM — `chunkIds` ne déduplique pas les ids (à attacher au lot 4)
 Ajouté 2026-08-10, réserve QA du ticket `sb/bdc-bl-batch` (PR #228).
 
