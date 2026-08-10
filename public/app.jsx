@@ -56566,11 +56566,14 @@ ${rejetHtml}
             const canCreateArticle = currentProfile === 'achats' || currentProfile === 'dg';
             const [parcelles, setParcelles] = useState([]);
             const [refParcelles, setRefParcelles] = useState({ courante: [], precedente: [] });
+            // Groupes de parcelles = raccourci de saisie (parcelle combinée). Le
+            // backend éclate la ligne en N parcelles RÉELLES au prorata des Ha.
+            const [parcelleGroupes, setParcelleGroupes] = useState([]);
             const FARMS = ['F1', 'F5'];
             // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
             const MAGASINS = useStockLocations().magasins;
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
-            const emptyItem = { article: '', quantite: '', unite: 'kg', parcelle: '', parcelle_ref: '', culture: '', ferme: '' };
+            const emptyItem = { article: '', quantite: '', unite: 'kg', parcelle: '', parcelle_ref: '', culture: '', ferme: '', groupe_id: '' };
             const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] });
             const [scanFileBC, setScanFileBC] = useState(null);
             const [scanPreviewBC, setScanPreviewBC] = useState(null);
@@ -56619,6 +56622,15 @@ ${rejetHtml}
                     .then(j => { if (j.success) setRefParcelles({ courante: j.campagne_courante || [], precedente: j.campagne_precedente || [] }); })
                     .catch(() => {});
             }, []);
+            useEffect(() => {
+                // Groupes de parcelles (lecture ouverte à tout profil authentifié).
+                // `valide: false` = un membre n'a plus de Ha SB → groupe non
+                // proposé à la saisie (le backend le refuserait de toute façon).
+                fetch('/api/pointage-rh?action=sb-groupes-list')
+                    .then(r => r.json())
+                    .then(j => { if (j.success) setParcelleGroupes((j.groupes || []).filter(g => g.valide)); })
+                    .catch(() => {});
+            }, []);
 
             const catalogUnit = (article) => { const a = catalogueArticles.find(x => (x.nom||'').toLowerCase() === (article||'').toLowerCase()); return a && a.unite ? (a.unite || '').toLowerCase() : null; };
             const suggestRef = (nom) => 'ART-' + (nom || '').toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
@@ -56662,14 +56674,36 @@ ${rejetHtml}
             ];
             if (!bcCampagnesDispo.length) bcCampagnesDispo.push(bcCampagneToday);
             const refForCampagne = bcCampagne === bcCampagneToday ? refParcelles.courante : refParcelles.precedente;
+            // Culture/ferme d'un libellé de parcelle, quelle que soit la source du select.
+            const metaForParcelle = (label) => {
+                const ref = refForCampagne.find(p => p.label === label);
+                if (ref) return { culture: ref.culture || '', ferme: ref.ferme || '' };
+                const parc = parcelles.find(p => p.Parcelle_Physique === label);
+                return { culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
+            };
+            // Valeur unique parmi les membres d'un groupe, sinon '' (groupe à cheval
+            // sur deux cultures/fermes → on ne devine pas).
+            const uniqueMemberMeta = (groupe, field) => {
+                const vals = [...new Set((groupe.membres || []).map(m => metaForParcelle(m.label)[field]).filter(Boolean))];
+                return vals.length === 1 ? vals[0] : '';
+            };
             const selectParcelleForItem = (idx, val) => {
                 const items = [...form.items];
+                if ((val || '').startsWith('GRP::')) {
+                    // Parcelle combinée : on ne pose que le libellé du groupe +
+                    // groupe_id. L'éclatement en parcelles réelles est fait par le
+                    // backend (create-bc), au prorata des Ha du référentiel SB.
+                    const g = parcelleGroupes.find(x => x.id === val.slice(5));
+                    items[idx] = { ...items[idx], parcelle: g ? g.label : '', parcelle_ref: '', groupe_id: g ? g.id : '', culture: g ? uniqueMemberMeta(g, 'culture') : '', ferme: g ? uniqueMemberMeta(g, 'ferme') : '' };
+                    setForm({ ...form, items });
+                    return;
+                }
                 const ref = refForCampagne.find(p => p.label === val);
                 if (ref) {
-                    items[idx] = { ...items[idx], parcelle: val, parcelle_ref: ref.ref || '', culture: ref.culture || '', ferme: ref.ferme || '' };
+                    items[idx] = { ...items[idx], parcelle: val, parcelle_ref: ref.ref || '', culture: ref.culture || '', ferme: ref.ferme || '', groupe_id: '' };
                 } else {
                     const parc = parcelles.find(p => p.Parcelle_Physique === val);
-                    items[idx] = { ...items[idx], parcelle: val, parcelle_ref: '', culture: parc?.Culture || '', ferme: parc?.Ferme || '' };
+                    items[idx] = { ...items[idx], parcelle: val, parcelle_ref: '', culture: parc?.Culture || '', ferme: parc?.Ferme || '', groupe_id: '' };
                 }
                 setForm({ ...form, items });
             };
@@ -56701,7 +56735,7 @@ ${rejetHtml}
                 let scanUrl = null;
                 if (scanFileBC) { scanUrl = await uploadScanBC(scanFileBC); }
                 fetch('/api/stock?action=create-bc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: type || 'engrais', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, parcelle_ref: i.parcelle_ref || '', culture: i.culture, ferme: i.ferme })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
+                    body: JSON.stringify({ type: type || 'engrais', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, parcelle_ref: i.parcelle_ref || '', culture: i.culture, ferme: i.ferme, groupe_id: i.groupe_id || '' })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
                 }).then(r => r.json()).then(json => {
                     if (json.success) { alert('Bon de consommation ' + json.numero + ' cree'); setShowForm(false); loadBcs(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
@@ -56887,8 +56921,13 @@ ${rejetHtml}
                                                 ); })()}
                                             </td>
                                             <td>
-                                                <select value={it.parcelle} onChange={e => selectParcelleForItem(idx, e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}}>
+                                                <select value={it.groupe_id ? ('GRP::' + it.groupe_id) : it.parcelle} onChange={e => selectParcelleForItem(idx, e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}}>
                                                     <option value="">-- Parcelle --</option>
+                                                    {parcelleGroupes.length > 0 && (
+                                                        <optgroup label="Groupes">
+                                                            {parcelleGroupes.map(g => <option key={'grp-' + g.id} value={'GRP::' + g.id}>{g.label} ({(g.membres || []).length} parcelles)</option>)}
+                                                        </optgroup>
+                                                    )}
                                                     {useConsoSelector ? (
                                                         <React.Fragment>
                                                             <optgroup label="Mes parcelles">
@@ -56900,6 +56939,17 @@ ${rejetHtml}
                                                     )}
                                                 </select>
                                                 {it.ferme && <div style={{fontSize:10,color:'#888',marginTop:2}}>{it.ferme} — {it.culture}</div>}
+                                                {it.groupe_id && (() => {
+                                                    // Aperçu LECTURE SEULE du split (le calcul qui fait foi est
+                                                    // refait côté backend à la création du bon).
+                                                    const g = parcelleGroupes.find(x => x.id === it.groupe_id);
+                                                    if (!g || !window.ParcelleGroupUtils) return null;
+                                                    const apercu = window.ParcelleGroupUtils.formatApercu(it.quantite, g.membres || [], it.unite);
+                                                    return <div style={{fontSize:10,color:'var(--green)',marginTop:2,fontWeight:600}}>
+                                                        <i className="fa-solid fa-object-group" style={{marginRight:4}}></i>
+                                                        {apercu || 'Saisir une quantité pour voir la répartition'}
+                                                    </div>;
+                                                })()}
                                             </td>
                                             <td><input type="number" value={it.quantite} onChange={e => updateItem(idx,'quantite',e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border: insuffisant ? '2px solid #e74c3c' : '1px solid #ddd',fontSize:12}} /></td>
                                             <td><select value={it.unite} onChange={e => updateItem(idx,'unite',e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:12}}>{[...new Set(['kg', 'L', 'unité', 'carton', 'sac', 'bidon', ...(it.unite ? [it.unite] : [])])].map(u => <option key={u} value={u}>{u}</option>)}</select></td>
