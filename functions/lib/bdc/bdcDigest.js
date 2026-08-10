@@ -1,6 +1,7 @@
 /**
- * bdcDigest.js — Helpers purs pour le digest « BdC en attente de validation »
- * consommé par le bot WhatsApp assistant DG (functions/dgAgent.js).
+ * bdcDigest.js — Helpers purs pour les digests BdC (« en attente de
+ * validation » et « non réceptionnés ») consommés par le bot WhatsApp
+ * assistant DG (functions/dgAgent.js).
  *
  * Module backend uniquement, SANS accès Firestore : les documents
  * `purchase_orders` et la date du jour sont injectés en paramètre. C'est ce
@@ -30,9 +31,23 @@
 'use strict';
 
 const bdcWorkflow = require('./workflow.js');
+const {
+  computeReceivedByArticle,
+  computeOrderedByArticle,
+  deriveDeliveryStatus,
+  RELIQUAT_EPSILON,
+} = require('./receptionGuard.js');
 
 /** Statuts d'un BdC qui attend encore une validation. */
 const PENDING_STATUSES = ['brouillon', 'en_attente_chef', 'en_attente_dg'];
+
+/**
+ * Statuts d'un BdC qui peut être réceptionné (un BL peut y être rattaché).
+ * MÊMES valeurs que la garde de l'action `create-bl` (functions/index.js) et
+ * que le chargement de l'onglet magasin (public/components/MagBdcReceptionTab.jsx)
+ * — les trois doivent lister exactement les mêmes BdC.
+ */
+const RECEIVABLE_STATUSES = ['valide_dg', 'envoye', 'virement_lance', 'virement_signe'];
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -253,4 +268,226 @@ function buildDigestPayload(summary, limit, options) {
   return payload;
 }
 
-module.exports = { PENDING_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload }
+// ============================================================================
+// Réception — « quels BdC ne sont pas encore réceptionnés ? »
+//
+// Le reliquat n'est PAS relu sur le document : `delivery_status` est un champ
+// matérialisé qui peut diverger de la réalité des BL (BL supprimé après coup,
+// écriture partielle, import). On le RECALCULE systématiquement à partir des
+// BL, via les helpers de receptionGuard.js — la même logique que la garde
+// serveur `create-bl`, donc jamais deux vérités sur le reliquat.
+//
+// Les BL soft-deleted (`bl.deleted`) sont écartés ici EN PLUS du filtre côté
+// lecture Firestore : un BL supprimé encore compté gonflerait le reçu et
+// masquerait un BdC réellement non réceptionné.
+// ============================================================================
+
+/**
+ * @typedef {{ article?: string, quantite?: number|string, unite?: string }} BdcItemDoc
+ * @typedef {{ deleted?: boolean, items?: Array<{article?: string, quantite_recue?: number}> }} BlDoc
+ * @typedef {BdcDoc & { id?: string, items?: BdcItemDoc[], date_livraison_prevue?: string|number|null }} BdcReceptionDoc
+ */
+
+/**
+ * Écarte les BL soft-deleted. Point de passage UNIQUE : toute lecture de BL
+ * dans ce module passe par ici.
+ *
+ * @param {BlDoc[]|undefined|null} bls
+ * @returns {BlDoc[]}
+ */
+function liveBls(bls) {
+  return (bls || []).filter((bl) => bl && !bl.deleted);
+}
+
+/**
+ * Retrouve les BL d'un BdC dans la table injectée par l'appelant.
+ * Clé attendue = l'id Firestore du document ; le numéro est accepté en repli
+ * (utile en test et si l'appelant n'a pas propagé l'id).
+ *
+ * @param {BdcReceptionDoc} bdc
+ * @param {Record<string, BlDoc[]>|undefined|null} blsByBdcId
+ * @returns {BlDoc[]} BL vivants uniquement.
+ */
+function blsOf(bdc, blsByBdcId) {
+  const table = blsByBdcId || {};
+  const byId = bdc && bdc.id ? table[bdc.id] : null;
+  const byNumero = !byId && bdc && bdc.numero ? table[String(bdc.numero)] : null;
+  return liveBls(byId || byNumero);
+}
+
+/**
+ * Convertit une date d'échéance (`date_livraison_prevue`, stockée en string
+ * "YYYY-MM-DD" ou en epoch ms) en epoch ms.
+ *
+ * @param {string|number|null|undefined} value
+ * @returns {number|null} null si absente ou non parsable.
+ */
+function dueDateMs(value) {
+  if (typeof value === 'number' && isFinite(value) && value > 0) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value.trim());
+    if (isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+/**
+ * Détail article par article d'un BdC : commandé, livré, reliquat.
+ *
+ * Un article livré mais ABSENT du BdC est tout de même listé (`qCmd` 0) —
+ * c'est une incohérence de données qu'il vaut mieux montrer que masquer.
+ *
+ * @param {BdcReceptionDoc} bdc
+ * @param {BlDoc[]} bls - BL du BdC (les soft-deleted sont écartés ici).
+ * @returns {Array<{article: string, unite: string, qCmd: number, qLiv: number, reliquat: number}>}
+ */
+function detailArticles(bdc, bls) {
+  const items = (bdc && bdc.items) || [];
+  const ordered = computeOrderedByArticle(items);
+  const received = computeReceivedByArticle(liveBls(bls));
+
+  /** @type {Record<string, string>} */
+  const unites = {};
+  items.forEach((it) => {
+    const art = it && it.article;
+    if (art && !unites[art] && it.unite) unites[art] = String(it.unite);
+  });
+
+  const articles = Object.keys(ordered);
+  Object.keys(received).forEach((art) => { if (articles.indexOf(art) === -1) articles.push(art); });
+
+  return articles.map((article) => {
+    const qCmd = round2(ordered[article] || 0);
+    const qLiv = round2(received[article] || 0);
+    return { article, unite: unites[article] || '—', qCmd, qLiv, reliquat: round2(Math.max(0, qCmd - qLiv)) };
+  });
+}
+
+/**
+ * Agrège les BdC réceptionnables qui ne sont PAS encore soldés.
+ *
+ * @param {BdcReceptionDoc[]} bdcs - documents `purchase_orders` déjà filtrés
+ *   sur RECEIVABLE_STATUSES par l'appelant (re-filtrés ici par sécurité).
+ * @param {Record<string, BlDoc[]>} blsByBdcId - BL par id de BdC (lus ailleurs).
+ * @param {{ today: Date|number|string, enRetardSeulement?: boolean }} options
+ * @returns {{
+ *   total: number,
+ *   totalTtc: number,
+ *   enRetard: number,
+ *   byDeliveryStatus: Array<{status: string, count: number, totalTtc: number}>,
+ *   items: Array<{numero: string, fournisseur: string, ferme: string|null, totalTtc: number, deliveryStatus: string, dateLivraisonPrevue: string|null, retardJours: number|null, pctRecu: number, nbArticlesIncomplets: number}>
+ * }}
+ * @throws {Error} si `options.today` est absent ou invalide.
+ */
+function summarizePendingReception(bdcs, blsByBdcId, options) {
+  const opts = options || /** @type {any} */ ({});
+  const todayMs = toTodayMs(opts.today);
+
+  const receivable = (bdcs || []).filter((b) => b && RECEIVABLE_STATUSES.indexOf(b.status || '') !== -1);
+
+  const items = [];
+  for (const bdc of receivable) {
+    const bls = blsOf(bdc, blsByBdcId);
+    const ordered = computeOrderedByArticle(bdc.items || []);
+    const received = computeReceivedByArticle(bls);
+    const deliveryStatus = deriveDeliveryStatus(ordered, received);
+    // Soldé → hors périmètre. Ce filtre avale AUSSI le cas « BdC sans aucune
+    // ligne d'article » : `deriveDeliveryStatus({}, {})` vaut 'complet' par
+    // vacuité (`every` sur un objet vide est true). Ce n'est pas un bug —
+    // un BdC sans article n'a rien à réceptionner — et le cas est de toute
+    // façon inatteignable depuis l'app (`create-bdc` rejette items vide).
+    if (deliveryStatus === 'complet') continue;
+
+    let totalCmd = 0;
+    let totalRecu = 0;
+    let nbArticlesIncomplets = 0;
+    for (const article of Object.keys(ordered)) {
+      const cmd = ordered[article] || 0;
+      const recu = received[article] || 0;
+      totalCmd += cmd;
+      // Reçu plafonné au commandé par article : une sur-réception sur un
+      // article ne doit pas compenser un manque sur un autre dans le %.
+      totalRecu += Math.min(recu, cmd);
+      if (cmd - recu > RELIQUAT_EPSILON) nbArticlesIncomplets += 1;
+    }
+    const pctRecu = totalCmd > 0 ? Math.round((totalRecu / totalCmd) * 1000) / 10 : 0;
+
+    const dueMs = dueDateMs(bdc.date_livraison_prevue);
+    const retardJours = dueMs === null ? null : Math.max(0, Math.floor((todayMs - dueMs) / MS_PER_DAY));
+
+    items.push({
+      numero: (bdc.numero && String(bdc.numero)) || '—',
+      fournisseur: fournisseurNom(bdc),
+      ferme: (typeof bdc.ferme === 'string' && bdc.ferme.trim()) ? bdc.ferme.trim() : null,
+      totalTtc: round2(toNumber(bdc.total_ttc)),
+      deliveryStatus,
+      // Piège de fuseau (même nature qu'au lot 1) : `Date.parse("YYYY-MM-DD")`
+      // rend minuit UTC et `toISOString()` reformate en UTC, alors que
+      // `today` vient de `Date.now()`. Conséquence : la bascule « 0 j » →
+      // « 1 j de retard » se produit à 01 h 00 heure marocaine (UTC+1) et non
+      // à minuit local. Purement cosmétique sur un retard compté en jours —
+      // ne pas « corriger » à moitié en mélangeant local et UTC.
+      dateLivraisonPrevue: dueMs === null
+        ? null
+        : (typeof bdc.date_livraison_prevue === 'string'
+          ? bdc.date_livraison_prevue.trim()
+          : new Date(dueMs).toISOString().slice(0, 10)),
+      retardJours,
+      pctRecu,
+      nbArticlesIncomplets,
+    });
+  }
+
+  const kept = opts.enRetardSeulement
+    ? items.filter((it) => it.retardJours !== null && it.retardJours > 0)
+    : items;
+
+  // Tri : le plus en retard d'abord, puis le moins servi ; échéance inconnue
+  // en fin de liste (comme `ageJours: null` côté validation).
+  kept.sort((a, b) => {
+    if (a.retardJours === null && b.retardJours === null) return (a.pctRecu - b.pctRecu) || a.numero.localeCompare(b.numero);
+    if (a.retardJours === null) return 1;
+    if (b.retardJours === null) return -1;
+    return (b.retardJours - a.retardJours) || (a.pctRecu - b.pctRecu) || a.numero.localeCompare(b.numero);
+  });
+
+  /** @type {Record<string, {status: string, count: number, totalTtc: number}>} */
+  const buckets = {};
+  let totalTtc = 0;
+  let enRetard = 0;
+  for (const it of kept) {
+    totalTtc += it.totalTtc;
+    if (it.retardJours !== null && it.retardJours > 0) enRetard += 1;
+    if (!buckets[it.deliveryStatus]) buckets[it.deliveryStatus] = { status: it.deliveryStatus, count: 0, totalTtc: 0 };
+    buckets[it.deliveryStatus].count += 1;
+    buckets[it.deliveryStatus].totalTtc = round2(buckets[it.deliveryStatus].totalTtc + it.totalTtc);
+  }
+  const byDeliveryStatus = Object.keys(buckets)
+    .map((k) => buckets[k])
+    .sort((a, b) => (b.count - a.count) || a.status.localeCompare(b.status));
+
+  return { total: kept.length, totalTtc: round2(totalTtc), enRetard, byDeliveryStatus, items: kept };
+}
+
+/**
+ * Met en forme le résumé réception pour le tool LLM. Réutilise le bornage de
+ * `buildDigestPayload` (limite + `reste` + `lectureTronquee`) et y ajoute les
+ * agrégats propres à la réception, calculés sur TOUT le jeu de données.
+ *
+ * @param {ReturnType<typeof summarizePendingReception>} summary
+ * @param {number|string|undefined} limit
+ * @param {{ ferme?: string, tronque?: boolean, enRetardSeulement?: boolean }} [options]
+ * @returns {object}
+ */
+function buildReceptionPayload(summary, limit, options) {
+  const opts = options || {};
+  const payload = buildDigestPayload(/** @type {any} */ (summary), limit, opts);
+  // `byBlocker` est un agrégat du digest validation : sans objet ici.
+  delete payload.byBlocker;
+  payload.enRetard = summary.enRetard;
+  payload.byDeliveryStatus = summary.byDeliveryStatus;
+  if (opts.enRetardSeulement) payload.enRetardSeulement = true;
+  return payload;
+}
+
+module.exports = { PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload }

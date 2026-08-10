@@ -82,10 +82,41 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: "get_bdc_non_receptionnes",
+    description: "Liste les bons de commande (BdC achats) validés/envoyés qui n'ont PAS encore été entièrement réceptionnés au magasin : rien de livré (non_livre) ou livré partiellement (partiel). L'état est recalculé à partir des bons de livraison (BL) réellement enregistrés, pas du statut du BdC. Pour chaque BdC renvoie le numéro, le fournisseur, la ferme, le montant TTC, l'état de livraison, la date de livraison prévue, le retard en jours, le pourcentage déjà reçu et le nombre d'articles encore incomplets (reliquat). Renvoie aussi le nombre total de BdC en attente de réception, le montant TTC total, le nombre en retard et la répartition par état. À utiliser dès qu'on demande ce qui n'est pas réceptionné / pas livré / en attente de livraison / en retard de livraison côté magasin ou achats.",
+    input_schema: {
+      type: "object",
+      properties: {
+        ferme: { type: "string", description: "Filtre sur une ferme (ex: F1, F5, Avocatier, BAHIA). Optionnel — défaut: toutes les fermes." },
+        enRetardSeulement: { type: "boolean", description: "true = ne garder que les BdC dont la date de livraison prévue est dépassée. Optionnel — défaut: false." },
+        limit: { type: "number", description: "Nombre maximum de BdC détaillés à renvoyer, les plus en retard d'abord. Optionnel — défaut: 15." },
+      },
+    },
+  },
+  {
+    name: "get_bdc_detail",
+    description: "Détail article par article d'UN bon de commande identifié par son numéro (ex: BDC-2026-0142) : pour chaque article la quantité commandée, la quantité déjà livrée via les BL, et le reliquat restant à recevoir. Renvoie aussi l'entête du BdC (fournisseur, ferme, montant TTC, statut, état de livraison recalculé, date de livraison prévue, retard). À utiliser quand on demande le détail / les articles / le reliquat d'un BdC précis.",
+    input_schema: {
+      type: "object",
+      properties: {
+        numero: { type: "string", description: "Numéro du BdC, ex: BDC-2026-0142." },
+      },
+      required: ["numero"],
+    },
+  },
 ];
 
 const { getTeamNameMap } = require("./equipesConfig");
-const { PENDING_STATUSES, summarizePendingValidation, buildDigestPayload } = require("./lib/bdc/bdcDigest");
+const {
+  PENDING_STATUSES,
+  RECEIVABLE_STATUSES,
+  summarizePendingValidation,
+  buildDigestPayload,
+  summarizePendingReception,
+  detailArticles,
+  buildReceptionPayload,
+} = require("./lib/bdc/bdcDigest");
 const getTeamMap = () => getTeamNameMap(db);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -276,6 +307,102 @@ async function tool_get_bdc_en_attente_validation({ ferme, limit }) {
   return buildDigestPayload(summary, limit, { ferme: fermeFilter, tronque: snap.size >= BDC_QUERY_LIMIT });
 }
 
+// Nombre de BdC dont on charge les BL en parallèle. Évite d'ouvrir une rafale
+// de centaines de requêtes Firestore d'un coup, sans borner le jeu agrégé.
+const BL_FETCH_CONCURRENCY = 25;
+
+/**
+ * BL vivants d'un BdC. Le filtre `!bl.deleted` est le même que celui de
+ * l'action `list-bl` (functions/index.js) : un BL soft-deleted ne compte NULLE
+ * PART dans le reliquat, sinon il masquerait un BdC non réceptionné.
+ */
+async function loadLiveBls(bdcId) {
+  const snap = await db.collection("delivery_notes").where("bdc_id", "==", bdcId).get();
+  return snap.docs.map(d => d.data() || {}).filter(bl => !bl.deleted);
+}
+
+/** Table { bdcId: BL[] } pour une liste de BdC, par vagues de concurrence bornée. */
+async function loadBlsByBdcId(docs) {
+  const table = {};
+  for (let i = 0; i < docs.length; i += BL_FETCH_CONCURRENCY) {
+    const chunk = docs.slice(i, i + BL_FETCH_CONCURRENCY);
+    const bls = await Promise.all(chunk.map(d => loadLiveBls(d.id)));
+    chunk.forEach((d, k) => { table[d.id] = bls[k]; });
+  }
+  return table;
+}
+
+/**
+ * BdC pas encore entièrement réceptionnés. Même périmètre que l'onglet
+ * magasin « Réception » (public/components/MagBdcReceptionTab.jsx) : statuts
+ * RECEIVABLE_STATUSES, BdC soldés exclus. Différence assumée : l'état de
+ * livraison est RECALCULÉ à partir des BL vivants au lieu d'être lu sur le
+ * champ matérialisé `delivery_status`.
+ */
+async function tool_get_bdc_non_receptionnes({ ferme, enRetardSeulement, limit }) {
+  const snap = await db.collection("purchase_orders")
+    .where("status", "in", RECEIVABLE_STATUSES)
+    .limit(BDC_QUERY_LIMIT)
+    .get();
+
+  let docs = snap.docs.map(d => Object.assign({ id: d.id }, d.data() || {}));
+  const fermeFilter = (ferme || "").trim();
+  if (fermeFilter) {
+    const norm = fermeFilter.toUpperCase();
+    docs = docs.filter(d => String(d.ferme || "").trim().toUpperCase() === norm);
+  }
+  // Les BdC déjà marqués soldés sont écartés AVANT de charger leurs BL : ça
+  // évite N lectures inutiles. Pour tous les autres, c'est le recalcul sur les
+  // BL qui fait foi (un `delivery_status` "complet" erroné resterait invisible,
+  // mais l'onglet magasin les masque déjà de la même façon).
+  docs = docs.filter(d => d.delivery_status !== "complet");
+
+  const blsByBdcId = await loadBlsByBdcId(docs);
+  const summary = summarizePendingReception(docs, blsByBdcId, {
+    today: Date.now(),
+    enRetardSeulement: enRetardSeulement === true,
+  });
+  return buildReceptionPayload(summary, limit, {
+    ferme: fermeFilter,
+    tronque: snap.size >= BDC_QUERY_LIMIT,
+    enRetardSeulement: enRetardSeulement === true,
+  });
+}
+
+/** Détail article par article d'un BdC désigné par son numéro. */
+async function tool_get_bdc_detail({ numero }) {
+  const num = (numero || "").trim();
+  if (!num) return { error: "numero requis (ex: BDC-2026-0142)" };
+
+  const snap = await db.collection("purchase_orders").where("numero", "==", num).limit(1).get();
+  if (snap.empty) return { numero: num, error: "Aucun BdC avec ce numéro." };
+
+  const doc = snap.docs[0];
+  const bdc = Object.assign({ id: doc.id }, doc.data() || {});
+  const bls = await loadLiveBls(doc.id);
+
+  // Réutilise le module pur pour l'entête (état recalculé, retard, % reçu).
+  // Résumé vide = BdC soldé ou statut non réceptionnable : on le dit au lieu
+  // de renvoyer une entête muette.
+  const resume = summarizePendingReception([bdc], { [bdc.id]: bls }, { today: Date.now() });
+  const receptionnable = RECEIVABLE_STATUSES.includes(bdc.status);
+  const entete = resume.items[0] || {
+    numero: bdc.numero || num,
+    fournisseur: (bdc.fournisseur && bdc.fournisseur.nom) || bdc.fournisseur || "—",
+    ferme: bdc.ferme || null,
+    totalTtc: parseFloat(bdc.total_ttc) || 0,
+    // Statut hors périmètre réception (brouillon, en attente de validation…) :
+    // ne pas prétendre à un "complet" qui n'a pas de sens.
+    deliveryStatus: receptionnable ? "complet" : "non_receptionnable",
+    dateLivraisonPrevue: bdc.date_livraison_prevue || null,
+    retardJours: null,
+    pctRecu: receptionnable ? 100 : null,
+    nbArticlesIncomplets: 0,
+  };
+
+  return Object.assign({ status: bdc.status || "", nbBl: bls.length, articles: detailArticles(bdc, bls) }, entete);
+}
+
 const TOOL_HANDLERS = {
   get_recolte_du_jour: tool_get_recolte_du_jour,
   get_recolte_periode: tool_get_recolte_periode,
@@ -283,6 +410,8 @@ const TOOL_HANDLERS = {
   get_rendement_equipes_jour: tool_get_rendement_equipes_jour,
   get_rendement_equipes_periode: tool_get_rendement_equipes_periode,
   get_bdc_en_attente_validation: tool_get_bdc_en_attente_validation,
+  get_bdc_non_receptionnes: tool_get_bdc_non_receptionnes,
+  get_bdc_detail: tool_get_bdc_detail,
 };
 
 async function executeTool(name, input) {
@@ -326,7 +455,17 @@ Lexique des statuts BdC (achats):
 
 Format de liste BdC pour WhatsApp — un BdC par ligne, du plus ancien au plus récent:
 *BDC-2026-0142* — Fournisseur — 12 400 MAD — Chef F1 — 6 j
-Termine par une ligne de synthèse (total de BdC bloqués + montant total + qui bloque le plus).`;
+Termine par une ligne de synthèse (total de BdC bloqués + montant total + qui bloque le plus).
+
+Réception (livraison physique au magasin):
+- Un BdC validé n'est pas pour autant reçu : "réceptionné" se juge sur les bons de livraison (BL) enregistrés, JAMAIS sur le statut du BdC.
+- Reliquat = quantité commandée − quantité déjà reçue, article par article. Tant qu'un article a du reliquat, le BdC n'est pas soldé.
+- deliveryStatus: non_livre = aucun BL, partiel = au moins un BL mais du reliquat restant. Les BdC complets ne sont jamais listés.
+- "retardJours" null = pas de date de livraison prévue → dis "échéance non renseignée", n'invente pas de retard. 0 = pas encore échu.
+
+Format de liste réception pour WhatsApp — un BdC par ligne, le plus en retard d'abord:
+*BDC-2026-0142* — Fournisseur — 40 % reçu — 6 j de retard
+Termine par une ligne de synthèse (nombre de BdC non réceptionnés + combien en retard + montant total).`;
 }
 
 /**
@@ -416,4 +555,8 @@ async function ask({ userText, history = [] }) {
   return { success: true, reply: finalText, history: newHistory };
 }
 
-module.exports = { ask };
+// TOOL_HANDLERS est exposé pour permettre de rejouer un tool avec Firestore
+// stubbé (smoke de parité avec l'onglet magasin) sans passer par l'API Claude.
+// Gelé : c'est une référence vivante, un consommateur ne doit pas pouvoir
+// remplacer un handler du registre utilisé par la boucle agentic.
+module.exports = { ask, TOOL_HANDLERS: Object.freeze(TOOL_HANDLERS) };

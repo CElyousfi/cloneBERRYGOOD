@@ -12,7 +12,16 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { PENDING_STATUSES, blockedBy, summarizePendingValidation, buildDigestPayload } = require('../../functions/lib/bdc/bdcDigest.js');
+const {
+  PENDING_STATUSES,
+  RECEIVABLE_STATUSES,
+  blockedBy,
+  summarizePendingValidation,
+  buildDigestPayload,
+  summarizePendingReception,
+  detailArticles,
+  buildReceptionPayload,
+} = require('../../functions/lib/bdc/bdcDigest.js');
 
 const DAY = 24 * 60 * 60 * 1000;
 const TODAY = Date.parse('2026-08-09T12:00:00.000Z');
@@ -309,4 +318,305 @@ test('buildDigestPayload: lectureTronquee posé seulement si la lecture source a
 test('buildDigestPayload: résumé vide → payload cohérent, pas de reste', () => {
   const payload = buildDigestPayload(summarizePendingValidation([], { today: TODAY }), 15);
   assert.deepEqual(payload, { ferme: 'toutes', total: 0, totalTtc: 0, byBlocker: [], items: [] });
+});
+
+// ============================================================================
+// Réception — summarizePendingReception / detailArticles / buildReceptionPayload
+//
+// Référence fonctionnelle : l'onglet magasin (public/components/MagBdcReceptionTab.jsx)
+// charge les BdC en statut valide_dg,envoye,virement_lance,virement_signe et
+// exclut ceux entièrement livrés. Le module doit renvoyer les MÊMES BdC, à
+// ceci près que le "entièrement livré" est RECALCULÉ à partir des BL vivants.
+// ============================================================================
+
+/**
+ * @param {object} [over]
+ * @returns {object} un doc purchase_orders réceptionnable minimal.
+ */
+function rbdc(over) {
+  return Object.assign({
+    id: 'BDC1',
+    numero: 'BDC-2026-0100',
+    status: 'valide_dg',
+    ferme: 'F1',
+    fournisseur: { nom: 'SOMAGRI' },
+    total_ttc: 5000,
+    date_livraison_prevue: '2026-08-01', // 8 j avant TODAY
+    items: [{ article: 'Engrais', quantite: 100, unite: 'kg' }],
+  }, over);
+}
+
+test('RECEIVABLE_STATUSES: mêmes statuts que la garde create-bl et l\'onglet magasin', () => {
+  assert.deepEqual(RECEIVABLE_STATUSES, ['valide_dg', 'envoye', 'virement_lance', 'virement_signe']);
+});
+
+test('summarizePendingReception: BdC sans aucun BL → non_livre, 0 % reçu, retard calculé', () => {
+  const result = summarizePendingReception([rbdc()], {}, { today: TODAY });
+  assert.equal(result.total, 1);
+  assert.deepEqual(result.items[0], {
+    numero: 'BDC-2026-0100',
+    fournisseur: 'SOMAGRI',
+    ferme: 'F1',
+    totalTtc: 5000,
+    deliveryStatus: 'non_livre',
+    dateLivraisonPrevue: '2026-08-01',
+    retardJours: 8,
+    pctRecu: 0,
+    nbArticlesIncomplets: 1,
+  });
+  assert.equal(result.enRetard, 1);
+  assert.deepEqual(result.byDeliveryStatus, [{ status: 'non_livre', count: 1, totalTtc: 5000 }]);
+});
+
+test('summarizePendingReception: BL partiel → partiel + pctRecu + reliquat sur 1 article', () => {
+  const bls = { BDC1: [{ items: [{ article: 'Engrais', quantite_recue: 40 }] }] };
+  const result = summarizePendingReception([rbdc()], bls, { today: TODAY });
+  assert.equal(result.items[0].deliveryStatus, 'partiel');
+  assert.equal(result.items[0].pctRecu, 40);
+  assert.equal(result.items[0].nbArticlesIncomplets, 1);
+});
+
+test('summarizePendingReception: BL soft-deleted JAMAIS compté (sinon le BdC disparaît à tort)', () => {
+  const bls = {
+    BDC1: [
+      { deleted: true, items: [{ article: 'Engrais', quantite_recue: 100 }] },
+      { items: [{ article: 'Engrais', quantite_recue: 25 }] },
+    ],
+  };
+  const result = summarizePendingReception([rbdc()], bls, { today: TODAY });
+  assert.equal(result.total, 1, 'le BdC reste dans la liste : le BL supprimé ne solde rien');
+  assert.equal(result.items[0].deliveryStatus, 'partiel');
+  assert.equal(result.items[0].pctRecu, 25);
+
+  // Cas extrême : le SEUL BL est supprimé → retour à non_livre.
+  const seulSupprime = summarizePendingReception(
+    [rbdc()],
+    { BDC1: [{ deleted: true, items: [{ article: 'Engrais', quantite_recue: 100 }] }] },
+    { today: TODAY }
+  );
+  assert.equal(seulSupprime.items[0].deliveryStatus, 'non_livre');
+  assert.equal(seulSupprime.items[0].pctRecu, 0);
+});
+
+test('summarizePendingReception: BdC entièrement livré → EXCLU du résultat', () => {
+  const bls = { BDC1: [{ items: [{ article: 'Engrais', quantite_recue: 100 }] }] };
+  const result = summarizePendingReception([rbdc()], bls, { today: TODAY });
+  assert.deepEqual(result, { total: 0, totalTtc: 0, enRetard: 0, byDeliveryStatus: [], items: [] });
+});
+
+test('summarizePendingReception: deliveryStatus RECALCULÉ, le champ stocké est ignoré', () => {
+  // Champ matérialisé "complet" alors qu'aucun BL vivant n'existe → le BdC doit
+  // rester listé (c'est exactement la divergence qu'on veut détecter).
+  const menteur = summarizePendingReception([rbdc({ delivery_status: 'complet' })], {}, { today: TODAY });
+  assert.equal(menteur.total, 1);
+  assert.equal(menteur.items[0].deliveryStatus, 'non_livre');
+
+  // Inverse : champ stocké "non_livre" mais BL couvrant tout → exclu.
+  const solde = summarizePendingReception(
+    [rbdc({ delivery_status: 'non_livre' })],
+    { BDC1: [{ items: [{ article: 'Engrais', quantite_recue: 100 }] }] },
+    { today: TODAY }
+  );
+  assert.equal(solde.total, 0);
+});
+
+test('summarizePendingReception: ignore les BdC hors statuts réceptionnables', () => {
+  const result = summarizePendingReception([
+    rbdc({ id: 'A', numero: 'BDC-A', status: 'en_attente_dg' }),
+    rbdc({ id: 'B', numero: 'BDC-B', status: 'envoye' }),
+    rbdc({ id: 'C', numero: 'BDC-C', status: 'annule' }),
+    rbdc({ id: 'D', numero: 'BDC-D', status: 'virement_signe' }),
+  ], {}, { today: TODAY });
+  assert.deepEqual(result.items.map((i) => i.numero).sort(), ['BDC-B', 'BDC-D']);
+});
+
+test('summarizePendingReception: date_livraison_prevue absente ou vide → retardJours null', () => {
+  const sansDate = summarizePendingReception([rbdc({ date_livraison_prevue: '' })], {}, { today: TODAY });
+  assert.equal(sansDate.items[0].retardJours, null);
+  assert.equal(sansDate.items[0].dateLivraisonPrevue, null);
+  assert.equal(sansDate.enRetard, 0);
+
+  const absente = summarizePendingReception([rbdc({ date_livraison_prevue: undefined })], {}, { today: TODAY });
+  assert.equal(absente.items[0].retardJours, null);
+});
+
+test('summarizePendingReception: échéance future → retardJours clampé à 0, jamais négatif', () => {
+  const result = summarizePendingReception([rbdc({ date_livraison_prevue: '2026-09-15' })], {}, { today: TODAY });
+  assert.equal(result.items[0].retardJours, 0);
+  assert.equal(result.enRetard, 0, 'un BdC pas encore échu n\'est pas "en retard"');
+});
+
+test('summarizePendingReception: pctRecu pondéré par les quantités (articles hétérogènes)', () => {
+  const bdcMulti = rbdc({
+    items: [
+      { article: 'Engrais', quantite: 900, unite: 'kg' },
+      { article: 'Gants', quantite: 100, unite: 'unité' },
+    ],
+  });
+  // 900 commandés dont 450 reçus + 100 commandés dont 100 reçus = 550/1000.
+  const bls = { BDC1: [{ items: [{ article: 'Engrais', quantite_recue: 450 }, { article: 'Gants', quantite_recue: 100 }] }] };
+  const result = summarizePendingReception([bdcMulti], bls, { today: TODAY });
+  assert.equal(result.items[0].pctRecu, 55);
+  assert.equal(result.items[0].nbArticlesIncomplets, 1, 'seul Engrais est incomplet');
+});
+
+test('summarizePendingReception: sur-réception d\'un article ne masque pas le manque d\'un autre', () => {
+  const bdcMulti = rbdc({
+    items: [
+      { article: 'Engrais', quantite: 100, unite: 'kg' },
+      { article: 'Gants', quantite: 100, unite: 'unité' },
+    ],
+  });
+  const bls = { BDC1: [{ items: [{ article: 'Engrais', quantite_recue: 200 }] }] };
+  const result = summarizePendingReception([bdcMulti], bls, { today: TODAY });
+  assert.equal(result.items[0].pctRecu, 50, 'reçu plafonné au commandé par article');
+  assert.equal(result.items[0].nbArticlesIncomplets, 1);
+});
+
+test('summarizePendingReception: BL cumulés sur plusieurs livraisons partielles', () => {
+  const bls = {
+    BDC1: [
+      { items: [{ article: 'Engrais', quantite_recue: 30 }] },
+      { items: [{ article: 'Engrais', quantite_recue: 20 }] },
+    ],
+  };
+  const result = summarizePendingReception([rbdc()], bls, { today: TODAY });
+  assert.equal(result.items[0].pctRecu, 50);
+});
+
+test('summarizePendingReception: tri — le plus en retard d\'abord, échéance inconnue en fin', () => {
+  const result = summarizePendingReception([
+    rbdc({ id: 'A', numero: 'BDC-A', date_livraison_prevue: '2026-08-05' }),
+    rbdc({ id: 'B', numero: 'BDC-B', date_livraison_prevue: '' }),
+    rbdc({ id: 'C', numero: 'BDC-C', date_livraison_prevue: '2026-07-01' }),
+  ], {}, { today: TODAY });
+  assert.deepEqual(result.items.map((i) => i.numero), ['BDC-C', 'BDC-A', 'BDC-B']);
+});
+
+test('summarizePendingReception: enRetardSeulement filtre items ET totaux', () => {
+  const result = summarizePendingReception([
+    rbdc({ id: 'A', numero: 'BDC-A', date_livraison_prevue: '2026-07-01', total_ttc: 1000 }),
+    rbdc({ id: 'B', numero: 'BDC-B', date_livraison_prevue: '2026-09-01', total_ttc: 700 }),
+    rbdc({ id: 'C', numero: 'BDC-C', date_livraison_prevue: '', total_ttc: 300 }),
+  ], {}, { today: TODAY, enRetardSeulement: true });
+  assert.deepEqual(result.items.map((i) => i.numero), ['BDC-A']);
+  assert.equal(result.total, 1);
+  assert.equal(result.totalTtc, 1000);
+  assert.equal(result.enRetard, 1);
+});
+
+test('summarizePendingReception: liste vide / BL absents → totaux à zéro, pas de crash', () => {
+  assert.deepEqual(summarizePendingReception([], {}, { today: TODAY }), {
+    total: 0, totalTtc: 0, enRetard: 0, byDeliveryStatus: [], items: [],
+  });
+  assert.deepEqual(summarizePendingReception(undefined, undefined, { today: TODAY }).items, []);
+  assert.equal(summarizePendingReception([rbdc()], undefined, { today: TODAY }).total, 1);
+});
+
+test('summarizePendingReception: today absent ou invalide → throw bruyant', () => {
+  const docs = [rbdc()];
+  assert.throws(() => summarizePendingReception(docs, {}, {}), /today/i);
+  assert.throws(() => summarizePendingReception(docs, {}, undefined), /today/i);
+  assert.throws(() => summarizePendingReception(docs, {}, { today: 'pas-une-date' }), /today/i);
+  assert.throws(() => summarizePendingReception(docs, {}, { today: NaN }), /today/i);
+});
+
+test('summarizePendingReception: BL retrouvés par numéro si l\'id n\'est pas propagé', () => {
+  const sansId = rbdc({ id: undefined });
+  const result = summarizePendingReception([sansId], { 'BDC-2026-0100': [{ items: [{ article: 'Engrais', quantite_recue: 60 }] }] }, { today: TODAY });
+  assert.equal(result.items[0].pctRecu, 60);
+});
+
+// ---------------------------------------------------------------------------
+// detailArticles
+// ---------------------------------------------------------------------------
+
+test('detailArticles: commandé / livré / reliquat par article, unité conservée', () => {
+  const bdcMulti = rbdc({
+    items: [
+      { article: 'Engrais', quantite: 100, unite: 'kg' },
+      { article: 'Gants', quantite: 50, unite: 'unité' },
+    ],
+  });
+  const lignes = detailArticles(bdcMulti, [{ items: [{ article: 'Engrais', quantite_recue: 30 }] }]);
+  assert.deepEqual(lignes, [
+    { article: 'Engrais', unite: 'kg', qCmd: 100, qLiv: 30, reliquat: 70 },
+    { article: 'Gants', unite: 'unité', qCmd: 50, qLiv: 0, reliquat: 50 },
+  ]);
+});
+
+test('detailArticles: BL soft-deleted ignoré', () => {
+  const lignes = detailArticles(rbdc(), [
+    { deleted: true, items: [{ article: 'Engrais', quantite_recue: 100 }] },
+    { items: [{ article: 'Engrais', quantite_recue: 10 }] },
+  ]);
+  assert.deepEqual(lignes, [{ article: 'Engrais', unite: 'kg', qCmd: 100, qLiv: 10, reliquat: 90 }]);
+});
+
+test('detailArticles: reliquat jamais négatif en cas de sur-réception', () => {
+  const lignes = detailArticles(rbdc(), [{ items: [{ article: 'Engrais', quantite_recue: 130 }] }]);
+  assert.deepEqual(lignes, [{ article: 'Engrais', unite: 'kg', qCmd: 100, qLiv: 130, reliquat: 0 }]);
+});
+
+test('detailArticles: article livré absent du BdC → listé avec qCmd 0 (incohérence visible)', () => {
+  const lignes = detailArticles(rbdc(), [{ items: [{ article: 'Intrus', quantite_recue: 5 }] }]);
+  assert.deepEqual(lignes, [
+    { article: 'Engrais', unite: 'kg', qCmd: 100, qLiv: 0, reliquat: 100 },
+    { article: 'Intrus', unite: '—', qCmd: 0, qLiv: 5, reliquat: 0 },
+  ]);
+});
+
+test('detailArticles: BdC sans items ou sans BL → pas de crash', () => {
+  assert.deepEqual(detailArticles({}, []), []);
+  assert.deepEqual(detailArticles(rbdc(), undefined), [
+    { article: 'Engrais', unite: 'kg', qCmd: 100, qLiv: 0, reliquat: 100 },
+  ]);
+});
+
+// ---------------------------------------------------------------------------
+// buildReceptionPayload
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {number} n
+ * @returns {object} un résumé réception de n BdC non livrés à 100 MAD pièce.
+ */
+function receptionSummaryOf(n) {
+  const docs = [];
+  for (let i = 0; i < n; i++) {
+    docs.push(rbdc({
+      id: `ID-${i}`,
+      numero: `BDC-${String(i).padStart(3, '0')}`,
+      total_ttc: 100,
+      date_livraison_prevue: '2026-08-01',
+    }));
+  }
+  return summarizePendingReception(docs, {}, { today: TODAY });
+}
+
+test('buildReceptionPayload: borne les items mais garde les agrégats sur TOUT le jeu', () => {
+  const payload = buildReceptionPayload(receptionSummaryOf(40), undefined);
+  assert.equal(payload.items.length, 15);
+  assert.equal(payload.total, 40);
+  assert.equal(payload.totalTtc, 4000);
+  assert.equal(payload.enRetard, 40);
+  assert.deepEqual(payload.byDeliveryStatus, [{ status: 'non_livre', count: 40, totalTtc: 4000 }]);
+  assert.equal(payload.reste, 25);
+  assert.equal('byBlocker' in payload, false, 'agrégat du digest validation, hors sujet ici');
+});
+
+test('buildReceptionPayload: limit explicite, ferme informative, drapeaux de contexte', () => {
+  const payload = buildReceptionPayload(receptionSummaryOf(5), 2, { ferme: 'F5', tronque: true, enRetardSeulement: true });
+  assert.equal(payload.items.length, 2);
+  assert.equal(payload.reste, 3);
+  assert.equal(payload.ferme, 'F5');
+  assert.equal(payload.lectureTronquee, true);
+  assert.equal(payload.enRetardSeulement, true);
+});
+
+test('buildReceptionPayload: résumé vide → payload cohérent, pas de reste ni de drapeau', () => {
+  const payload = buildReceptionPayload(receptionSummaryOf(0), 15);
+  assert.deepEqual(payload, {
+    ferme: 'toutes', total: 0, totalTtc: 0, enRetard: 0, byDeliveryStatus: [], items: [],
+  });
 });
