@@ -10,6 +10,9 @@
  * Conversation history persists in `whatsapp_sessions/{phone}.data.history` (30 min TTL).
  * A pending forecast (awaiting OUI/NON confirmation) persists in
  * `whatsapp_sessions/{phone}.data.pendingForecast`.
+ * A pending BdC reminder (awaiting an explicit "oui") persists in
+ * `whatsapp_sessions/{phone}.data.pendingRelance` — l'agent PRÉPARE la relance,
+ * seul dgBot l'ENVOIE (remindBdcCore), après confirmation.
  * The webhook still handles `!profile <id>` as a global command (see whatsappProcessor.js).
  */
 
@@ -18,38 +21,46 @@ const wa = require("./whatsappService");
 const dgAgent = require("./dgAgent");
 const forecastService = require("./forecastService");
 const { parseForecastConfirmation } = require("./lib/forecastConfirmation");
+const { remindBdcCore } = require("./bdcReminderService");
 
 const SESSION_TTL_MS = 30 * 60 * 1000;
 const MAX_HISTORY = 12;
 // A pending forecast older than this is considered stale and ignored.
 const PENDING_FORECAST_TTL_MS = 15 * 60 * 1000;
+// Une intention de relance non confirmée expire au bout de 5 minutes.
+const PENDING_RELANCE_TTL_MS = 5 * 60 * 1000;
 
 const FRUIT_EMOJI = { RASP: "🍓", BLUE: "🫐" };
 const FRUIT_NAME = { RASP: "Framboise", BLUE: "Myrtille" };
 
 /**
- * Load the DG session: conversation history + any pending forecast.
- * @returns {Promise<{history: Array, pendingForecast: object|null}>}
+ * Load the DG session: conversation history + any pending forecast / relance.
+ * @returns {Promise<{history: Array, pendingForecast: object|null, pendingRelance: object|null}>}
  */
 async function loadSession(phone) {
+  const empty = { history: [], pendingForecast: null, pendingRelance: null };
   const snap = await db.collection("whatsapp_sessions").doc(phone).get();
-  if (!snap.exists) return { history: [], pendingForecast: null };
+  if (!snap.exists) return empty;
   const s = snap.data();
-  if (s.expiresAt && s.expiresAt < Date.now()) return { history: [], pendingForecast: null };
+  if (s.expiresAt && s.expiresAt < Date.now()) return empty;
   return {
     history: Array.isArray(s.data?.history) ? s.data.history : [],
     pendingForecast: s.data?.pendingForecast || null,
+    pendingRelance: s.data?.pendingRelance || null,
   };
 }
 
 /**
  * Persist the DG session. The doc is fully overwritten (no merge) — dgBot is the
- * sole writer of a `dg` phone's session doc, so omitting pendingForecast clears it.
+ * sole writer of a `dg` phone's session doc, so omitting pendingForecast ou
+ * pendingRelance les EFFACE. Tout appelant doit donc passer les DEUX champs,
+ * même quand il n'en modifie qu'un.
  */
-async function saveSession(phone, { history, pendingForecast }) {
+async function saveSession(phone, { history, pendingForecast, pendingRelance }) {
   const now = Date.now();
   const data = { history: (history || []).slice(-MAX_HISTORY) };
   if (pendingForecast) data.pendingForecast = pendingForecast;
+  if (pendingRelance) data.pendingRelance = pendingRelance;
   await db.collection("whatsapp_sessions").doc(phone).set({
     phone,
     profileId: "dg",
@@ -57,6 +68,75 @@ async function saveSession(phone, { history, pendingForecast }) {
     updatedAt: now,
     expiresAt: now + SESSION_TTL_MS,
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Relance BdC — décisions PURES (aucun I/O, temps injecté)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Ensemble FERMÉ des réponses qui confirment un envoi. Tout le reste annule :
+ * le défaut penche toujours vers le NON-ENVOI.
+ * @type {Set<string>}
+ */
+const RELANCE_CONFIRM_REPLIES = new Set(["oui", "ok", "confirme", "vas y", "go"]);
+
+/**
+ * Normalise une réponse utilisateur : minuscules, accents retirés, ponctuation
+ * et espaces superflus ignorés, puis comparaison au vocabulaire fermé.
+ * La confirmation porte sur le message ENTIER — « oui mais attends » n'est pas
+ * une confirmation.
+ * @param {string} text
+ * @returns {'confirme'|'autre'}
+ */
+function normalizeRelanceReply(text) {
+  const norm = String(text || "")
+    .toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return RELANCE_CONFIRM_REPLIES.has(norm) ? "confirme" : "autre";
+}
+
+/**
+ * Machine à états de l'intention de relance, évaluée au message SUIVANT quel
+ * qu'il soit. L'intention est TOUJOURS consommée dès qu'elle existe : c'est ce
+ * qui empêche un « oui » tardif, répondant à autre chose, de déclencher un envoi.
+ *
+ * @param {{numero?:string, id?:string, at?:number}|null|undefined} pending
+ * @param {string} userText — message reçu ("" pour un message non textuel)
+ * @param {number} now — timestamp ms injecté
+ * @returns {{outcome: 'none'|'confirm'|'cancel'|'expired'}}
+ */
+function resolvePendingRelance(pending, userText, now) {
+  if (!pending) return { outcome: "none" };
+  // Pas d'horodatage exploitable → traité comme expiré (fail-closed).
+  if (!pending.at || now - pending.at > PENDING_RELANCE_TTL_MS) return { outcome: "expired" };
+  return { outcome: normalizeRelanceReply(userText) === "confirme" ? "confirm" : "cancel" };
+}
+
+/**
+ * Message d'annulation à afficher au DG. Une annulation n'est JAMAIS silencieuse
+ * — sauf quand la nouvelle demande porte sur le MÊME BdC : on redemande alors
+ * simplement confirmation (idempotent), annoncer une annulation serait faux.
+ *
+ * @param {'none'|'confirm'|'cancel'|'expired'} outcome
+ * @param {{numero?:string, id?:string}|null|undefined} pending
+ * @param {{numero?:string}|null|undefined} newIntent — intention posée par le même tour
+ * @returns {string|null}
+ */
+function buildRelanceNotice(outcome, pending, newIntent) {
+  if (!pending) return null;
+  if (outcome !== "cancel" && outcome !== "expired") return null;
+  const numero = pending.numero || pending.id || "ce BdC";
+  if (newIntent && newIntent.numero === numero) return null;
+  if (newIntent) {
+    return `🚫 La demande de relance sur *${numero}* est annulée (rien envoyé) ; je te demande confirmation pour *${newIntent.numero}*.`;
+  }
+  if (outcome === "expired") {
+    return `⏳ La demande de relance sur *${numero}* a expiré (5 min sans confirmation) — aucun rappel n'a été envoyé.`;
+  }
+  return `🚫 La demande de relance sur *${numero}* est annulée faute de confirmation — aucun rappel n'a été envoyé.`;
 }
 
 // Map a forecastService error code to a WhatsApp-friendly French message.
@@ -124,6 +204,10 @@ async function handleForecastImage(phone, user, msg) {
   await saveSession(phone, {
     history: session.history,
     pendingForecast: { fruitCode, year, weeks, sourceImageUrl, at: Date.now() },
+    // Déjà consommée en amont de handleDgMessage pour un message non textuel :
+    // on relit la session ici, donc ce champ vaut null — on le propage quand
+    // même, saveSession étant seul rédacteur du document.
+    pendingRelance: session.pendingRelance,
   });
 
   await wa.sendTextMessage(phone, buildForecastSummary(fruitCode, year, weeks));
@@ -138,7 +222,7 @@ async function handleForecastConfirmation(phone, user, userText, session) {
 
   // Stale pending → drop it silently and let the message flow to the agent.
   if (pf.at && Date.now() - pf.at > PENDING_FORECAST_TTL_MS) {
-    await saveSession(phone, { history: session.history, pendingForecast: null });
+    await saveSession(phone, { history: session.history, pendingForecast: null, pendingRelance: session.pendingRelance });
     session.pendingForecast = null;
     return false;
   }
@@ -147,7 +231,7 @@ async function handleForecastConfirmation(phone, user, userText, session) {
   if (intent === "unknown") return false; // not a yes/no → let the agent answer
 
   if (intent === "cancel") {
-    await saveSession(phone, { history: session.history, pendingForecast: null });
+    await saveSession(phone, { history: session.history, pendingForecast: null, pendingRelance: session.pendingRelance });
     session.pendingForecast = null;
     await wa.sendTextMessage(phone, "🗑️ Import du forecast annulé. Rien n'a été enregistré.");
     return true;
@@ -158,7 +242,7 @@ async function handleForecastConfirmation(phone, user, userText, session) {
     updatedBy: "whatsapp:" + ((user && user.name) || phone),
     sourceImageUrl: pf.sourceImageUrl,
   });
-  await saveSession(phone, { history: session.history, pendingForecast: null });
+  await saveSession(phone, { history: session.history, pendingForecast: null, pendingRelance: session.pendingRelance });
   session.pendingForecast = null;
 
   if (!save.success) {
@@ -170,6 +254,49 @@ async function handleForecastConfirmation(phone, user, userText, session) {
     `✅ Forecast ${FRUIT_NAME[pf.fruitCode]} ${pf.year} enregistré (${pf.weeks.length} semaine(s)).`
   );
   return true;
+}
+
+/**
+ * Consomme une intention de relance sur un message NON textuel (image, document,
+ * bouton). Aucun de ces messages ne peut valoir confirmation : l'intention est
+ * annulée, et l'annulation est annoncée.
+ */
+async function consumeRelanceOnNonText(phone) {
+  const session = await loadSession(phone);
+  if (!session.pendingRelance) return;
+  const { outcome } = resolvePendingRelance(session.pendingRelance, "", Date.now());
+  await saveSession(phone, {
+    history: session.history,
+    pendingForecast: session.pendingForecast,
+    pendingRelance: null,
+  });
+  const notice = buildRelanceNotice(outcome, session.pendingRelance, null);
+  if (notice) await wa.sendTextMessage(phone, notice);
+}
+
+/**
+ * Envoie le rappel confirmé. SEUL point d'appel de remindBdcCore côté bot :
+ * l'agent prépare, dgBot envoie — jamais l'inverse.
+ */
+async function sendConfirmedRelance(phone, session, pending) {
+  await saveSession(phone, {
+    history: session.history,
+    pendingForecast: session.pendingForecast,
+    pendingRelance: null,
+  });
+  const result = await remindBdcCore({ id: pending.id, by: pending.by || {}, via: "whatsapp" });
+  if (!result.success) {
+    await wa.sendTextMessage(
+      phone,
+      `❌ Rappel *${pending.numero}* non envoyé : ${result.error || "erreur inconnue"}`
+    );
+    return;
+  }
+  await wa.sendTextMessage(
+    phone,
+    `✅ Rappel *${pending.numero}* envoyé à ${(result.profiles || []).join(", ")}` +
+    (result.duration ? ` (en attente depuis ${result.duration})` : "") + "."
+  );
 }
 
 async function handleDgMessage(phone, user, msg) {
@@ -193,6 +320,13 @@ async function handleDgMessage(phone, user, msg) {
     }
     await wa.sendTextMessage(phone, `🎙️ « ${transcript.text} »`);
     msg = { ...msg, type: "text", text: { body: transcript.text } };
+  }
+
+  // ── Message non textuel : une relance en attente est consommée quand même.
+  // « Consommée au message suivant, quel qu'il soit » — un slide ou un document
+  // envoyé après la demande annule la relance, et on le DIT.
+  if (msg.type !== "text") {
+    await consumeRelanceOnNonText(phone);
   }
 
   // ── Image → Driscoll's forecast slide upload
@@ -224,13 +358,47 @@ async function handleDgMessage(phone, user, msg) {
 
   if (await handleForecastConfirmation(phone, user, userText, session)) return;
 
-  const result = await dgAgent.ask({ userText, history: session.history });
-  if (!result.success) {
-    await wa.sendTextMessage(phone, "❌ " + (result.error || "Erreur agent"));
+  // ── Relance en attente : consommée par CE message, quel qu'il soit.
+  const pendingRelance = session.pendingRelance;
+  const { outcome } = resolvePendingRelance(pendingRelance, userText, Date.now());
+  session.pendingRelance = null;
+  if (outcome === "confirm") {
+    await sendConfirmedRelance(phone, session, pendingRelance);
     return;
   }
-  await wa.sendTextMessage(phone, result.reply);
-  await saveSession(phone, { history: result.history, pendingForecast: session.pendingForecast });
+  // outcome "cancel"/"expired" : on répond quand même à la question du DG, et on
+  // annonce l'annulation une fois qu'on sait si le tour repose une demande.
+
+  const result = await dgAgent.ask({ userText, history: session.history, user });
+  if (!result.success) {
+    const notice = buildRelanceNotice(outcome, pendingRelance, null);
+    await saveSession(phone, {
+      history: session.history,
+      pendingForecast: session.pendingForecast,
+      pendingRelance: null,
+    });
+    await wa.sendTextMessage(phone, "❌ " + (result.error || "Erreur agent") + (notice ? "\n\n" + notice : ""));
+    return;
+  }
+
+  // Nouvelle intention posée par l'agent → horodatée ICI (le compte à rebours
+  // part au moment où la confirmation est demandée au DG).
+  const newIntent = result.relanceIntent ? { ...result.relanceIntent, at: Date.now() } : null;
+  const notice = buildRelanceNotice(outcome, pendingRelance, newIntent);
+
+  await wa.sendTextMessage(phone, result.reply + (notice ? "\n\n" + notice : ""));
+  await saveSession(phone, {
+    history: result.history,
+    pendingForecast: session.pendingForecast,
+    pendingRelance: newIntent,
+  });
 }
 
-module.exports = { handleDgMessage };
+module.exports = {
+  handleDgMessage,
+  // Exposés pour les tests unitaires (fonctions pures, sans I/O).
+  normalizeRelanceReply,
+  resolvePendingRelance,
+  buildRelanceNotice,
+  PENDING_RELANCE_TTL_MS,
+};
