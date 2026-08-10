@@ -76,6 +76,9 @@
             // défensif si le lib n'est pas encore chargé (renvoie '' comme l'ancien helper).
             const bcCampagneOf = (dateStr) => (window.CampagneUtils ? (window.CampagneUtils.campagneOf(dateStr) || '') : (() => { const m = (dateStr || '').match(/^(\d{4})-(\d{2})/); if (!m) return ''; const y = +m[1], mo = +m[2]; const start = mo >= 7 ? y : y - 1; return start + '-' + (start + 1); })());
             const [bcCampagne, setBcCampagne] = useState(() => bcCampagneOf(new Date().toISOString().slice(0, 10)));
+            // Culture : filtre GLOBAL au bon (pas une donnée du bon). '' = toutes.
+            // Jamais envoyé au backend — même convention que bcCampagne.
+            const [bcCulture, setBcCulture] = useState('');
 
             const [query, setQuery] = useState('');
             const [filterSource, setFilterSource] = useState('');
@@ -181,6 +184,53 @@
                 const vals = [...new Set((groupe.membres || []).map(m => metaForParcelle(m.label)[field]).filter(Boolean))];
                 return vals.length === 1 ? vals[0] : '';
             };
+            // --- Filtre Culture (global au bon) -------------------------------
+            // Référentiel Smart Berry lu AU RENDU : sbLoad() est asynchrone au boot
+            // d'app.jsx, un useState initial figerait un objet vide.
+            const sbMap = window.SB_PARCELLE_REF || {};
+            // Défensif : lib absente → on ne filtre rien (comportement actuel).
+            const cultureOk = (parcelle, filtre) => {
+                const CU = window.CultureUtils;
+                if (!CU || !filtre) return true;
+                return CU.matchesCulture(parcelle, filtre, sbMap);
+            };
+            // Un membre de groupe n'a qu'un `label` : on lui rattache la culture
+            // connue du référentiel de saisie avant de résoudre.
+            const groupeOk = (groupe, filtre) => {
+                if (!filtre || !window.CultureUtils) return true;
+                // Groupe à cheval sur deux cultures : proposé si AU MOINS un membre
+                // matche (même prudence que uniqueMemberMeta : on ne devine pas).
+                return (groupe.membres || []).some(m => cultureOk({ label: m.label, culture: metaForParcelle(m.label).culture }, filtre));
+            };
+            const refForCampagneCulture = refForCampagne.filter(p => cultureOk(p, bcCulture));
+            const filteredParcellesCulture = filteredParcelles.filter(p => cultureOk(p, bcCulture));
+            const parcelleGroupesCulture = parcelleGroupes.filter(g => groupeOk(g, bcCulture));
+            const aucuneParcellePourCulture = !!bcCulture
+                && parcelleGroupesCulture.length === 0
+                && (useConsoSelector ? refForCampagneCulture.length : filteredParcellesCulture.length) === 0;
+            // Changement de culture : les lignes dont la destination sort de la
+            // liste filtrée perdent leur parcelle (article/qté/unité intacts).
+            const changeBcCulture = (val) => {
+                setBcCulture(val);
+                // '' = plus de filtre (rien ne devient invalide) ; lib absente = pas de filtre du tout.
+                if (!val || !window.CultureUtils) return;
+                const items = form.items.map(it => {
+                    if (!it.parcelle && !it.groupe_id) return it;
+                    let keep;
+                    if (it.groupe_id) {
+                        const g = parcelleGroupes.find(x => x.id === it.groupe_id);
+                        keep = !!g && groupeOk(g, val);
+                    } else {
+                        const src = useConsoSelector
+                            ? refForCampagne.find(p => p.label === it.parcelle)
+                            : filteredParcelles.find(p => p.Parcelle_Physique === it.parcelle);
+                        keep = !!src && cultureOk(src, val);
+                    }
+                    return keep ? it : { ...it, parcelle: '', parcelle_ref: '', culture: '', ferme: '', groupe_id: '' };
+                });
+                setForm({ ...form, items });
+            };
+
             const selectParcelleForItem = (idx, val) => {
                 const items = [...form.items];
                 if ((val || '').startsWith('GRP::')) {
@@ -327,7 +377,7 @@
                                 <option value="saisie">Saisie</option>
                                 <option value="import">Import</option>
                             </select>
-                            {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setShowForm(true); }}
+                            {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setBcCulture(''); setShowForm(true); }}
                                 style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon
                             </button>}
@@ -394,6 +444,12 @@
                                                 {bcCampagnesDispo.map(c => <option key={'camp-' + c} value={c}>{c}</option>)}
                                             </select></div>
                                     )}
+                                    <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Culture</label>
+                                        <select value={bcCulture} onChange={e => changeBcCulture(e.target.value)} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
+                                            <option value="">Toutes les cultures</option>
+                                            {((window.CultureUtils && window.CultureUtils.CULTURES) || []).map(c => <option key={'cult-' + c} value={c}>{c}</option>)}
+                                        </select>
+                                        {aucuneParcellePourCulture && <div style={{fontSize:10,color:'#888',marginTop:4}}>Aucune parcelle pour cette culture</div>}</div>
                                 </div>
                                 <div style={{marginBottom:16}}>
                                     <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Scanner le bon de consommation</label>
@@ -417,19 +473,19 @@
                                             <td>
                                                 <select value={it.groupe_id ? ('GRP::' + it.groupe_id) : it.parcelle} onChange={e => selectParcelleForItem(idx, e.target.value)} style={{width:'100%',padding:'4px 8px',borderRadius:6,border:'1px solid #ddd',fontSize:11}}>
                                                     <option value="">-- Parcelle --</option>
-                                                    {parcelleGroupes.length > 0 && (
+                                                    {parcelleGroupesCulture.length > 0 && (
                                                         <optgroup label="Groupes">
-                                                            {parcelleGroupes.map(g => <option key={'grp-' + g.id} value={'GRP::' + g.id}>{g.label} ({(g.membres || []).length} parcelles)</option>)}
+                                                            {parcelleGroupesCulture.map(g => <option key={'grp-' + g.id} value={'GRP::' + g.id}>{g.label} ({(g.membres || []).length} parcelles)</option>)}
                                                         </optgroup>
                                                     )}
                                                     {useConsoSelector ? (
                                                         <React.Fragment>
                                                             <optgroup label="Mes parcelles">
-                                                                {refForCampagne.map(p => <option key={'ref-' + p.label} value={p.label}>{p.label}</option>)}
+                                                                {refForCampagneCulture.map(p => <option key={'ref-' + p.label} value={p.label}>{p.label}</option>)}
                                                             </optgroup>
                                                         </React.Fragment>
                                                     ) : (
-                                                        filteredParcelles.map(p => <option key={p.Parcelle_Physique} value={p.Parcelle_Physique}>{p.Parcelle_Physique} — {p.Culture || '?'}</option>)
+                                                        filteredParcellesCulture.map(p => <option key={p.Parcelle_Physique} value={p.Parcelle_Physique}>{p.Parcelle_Physique} — {p.Culture || '?'}</option>)
                                                     )}
                                                 </select>
                                                 {it.ferme && <div style={{fontSize:10,color:'#888',marginTop:2}}>{it.ferme} — {it.culture}</div>}

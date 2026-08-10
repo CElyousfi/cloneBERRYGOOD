@@ -68,6 +68,17 @@ if (!fs.readFileSync(ANALYTIQUE_UTILS, "utf8").includes("buildAnalytiquePivot"))
   process.exit(2);
 }
 
+// 2ter-ter. Sibling lib check — cultureUtils.js (résolution de la culture d'une parcelle).
+const CULTURE_UTILS = path.join(ROOT, "public/lib/cultureUtils.js");
+if (!fs.existsSync(CULTURE_UTILS)) {
+  console.error("[build-frontend] missing public/lib/cultureUtils.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(CULTURE_UTILS, "utf8").includes("resolveCulture")) {
+  console.error("[build-frontend] sentinel missing in public/lib/cultureUtils.js: resolveCulture");
+  process.exit(2);
+}
+
 // 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
 // puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
 // <script> séparés et partagent le scope global (IIFE → un seul global unique).
