@@ -240,6 +240,10 @@ la suite de tests part rouge sur des « Cannot find module ».
 Supprimer le worktree après merge.
 
 1. **Avant de coder** :
+   - **Vérifier les PR ouvertes (`gh pr list`) AVANT de planifier un ticket** — le lot peut
+     déjà être fait par une autre session. Vérifier aussi `git worktree list` : un worktree au
+     nom du ticket qui existe déjà signale du travail en cours ou terminé ailleurs. Si le lot
+     existe : ne rien réécrire, reprendre la PR (rebase → QA → merge).
    - Lire ce fichier
    - Lire docs/ai/code-map-actions.md (backend) ou docs/ai/code-map-components.md (frontend) avant toute recherche dans app.jsx ou functions/index.js
    - Lire le `Scope actif`
