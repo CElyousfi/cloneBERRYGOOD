@@ -18,6 +18,8 @@
  *
  * Édition : DG/RH (prop `canEdit` héritée du parent). Lecture : tous.
  * API : /api/pointage-rh?action=sb-groupes-list | sb-groupe-save | sb-groupe-delete
+ *       | sb-referentiel-seed-ha (initialisation des Ha manquants depuis BEE ONE,
+ *         en deux temps : dry_run:true → récap → dry_run:false)
  *
  * Le parent (ParcellesReferentielTab) fournit rows/sbMap DÉJÀ chargées ainsi
  * que sa palette et ses formatteurs (pas de second fetch du référentiel).
@@ -57,6 +59,242 @@
   /** Nom pré-rempli du groupe à partir des labels cochés. */
   function PGP_suggestLabel(labels) {
     return (labels || []).join(' + ');
+  }
+  var PGP_SEED_RAISONS = {
+    deja_sb: 'Ha Smart Berry déjà saisi',
+    sans_surface_source: 'aucune surface BEE ONE connue'
+  };
+
+  /**
+   * Initialisation des Ha manquants depuis BEE ONE — en DEUX temps :
+   * simulation (dry_run: true) → récap → confirmation (dry_run: false).
+   * Le backend est idempotent : une parcelle qui a déjà un Ha SB n'est jamais
+   * réécrite, un nom SB déjà saisi n'est jamais touché.
+   */
+  function PGP_SeedHaBox(props) {
+    var C = props.C;
+    var fmtHa = props.fmtHa;
+    var nbSansHa = props.nbSansHa;
+    var onDone = props.onDone;
+    var _plan = useState(null); // null = pas encore simulé
+    var plan = _plan[0];
+    var setPlan = _plan[1];
+    var _busy = useState(false);
+    var busy = _busy[0];
+    var setBusy = _busy[1];
+    var _err = useState(null);
+    var err = _err[0];
+    var setErr = _err[1];
+    var _done = useState(null); // nb de parcelles réellement écrites
+    var done = _done[0];
+    var setDone = _done[1];
+    function callSeed(dryRun) {
+      setBusy(true);
+      setErr(null);
+      return fetch('/api/pointage-rh?action=sb-referentiel-seed-ha', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dry_run: dryRun
+        })
+      }).then(function (r) {
+        return r.json();
+      }).then(function (d) {
+        if (!d.success) throw new Error(d.error || 'Erreur');
+        return d;
+      }).catch(function (e) {
+        setErr(e.message);
+        return null;
+      }).finally(function () {
+        setBusy(false);
+      });
+    }
+    function handleSimuler() {
+      callSeed(true).then(function (d) {
+        if (d) setPlan(d);
+      });
+    }
+    function handleConfirmer() {
+      callSeed(false).then(function (d) {
+        if (!d) return;
+        setDone((d.a_creer || []).length);
+        setPlan(null);
+        if (onDone) onDone();
+      });
+    }
+    var boxStyle = {
+      background: '#fffbf0',
+      border: '1px solid ' + C.border,
+      borderRadius: 10,
+      padding: '12px 14px',
+      marginBottom: 12
+    };
+    if (done != null) {
+      return React.createElement('div', {
+        style: Object.assign({}, boxStyle, {
+          background: '#f0fdf4',
+          borderColor: '#bbf7d0'
+        })
+      }, React.createElement('i', {
+        className: 'fa-solid fa-circle-check',
+        style: {
+          marginRight: 8,
+          color: C.green
+        }
+      }), React.createElement('span', {
+        style: {
+          fontSize: 12,
+          color: C.text
+        }
+      }, done + ' parcelle(s) initialisée(s) avec la surface BEE ONE. Les Ha restent modifiables via « Éditer ».'));
+    }
+    if (!plan) {
+      return React.createElement('div', {
+        style: {
+          marginBottom: 12
+        }
+      }, React.createElement('button', {
+        onClick: handleSimuler,
+        disabled: busy,
+        title: nbSansHa + ' parcelle(s) affichée(s) sans Ha Smart Berry : inéligibles aux groupes.',
+        style: {
+          padding: '6px 14px',
+          borderRadius: 8,
+          border: '1px solid ' + C.border,
+          background: C.surface,
+          color: C.text,
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: busy ? 'wait' : 'pointer'
+        }
+      }, React.createElement('i', {
+        className: 'fa-solid fa-wand-magic-sparkles',
+        style: {
+          marginRight: 6,
+          color: C.amber
+        }
+      }), busy ? 'Simulation…' : 'Initialiser les Ha manquants depuis BEE ONE'), err && React.createElement('div', {
+        style: {
+          fontSize: 11,
+          color: '#991b1b',
+          marginTop: 6
+        }
+      }, err));
+    }
+    var aCreer = plan.a_creer || [];
+    var ignorees = plan.ignorees || [];
+    return React.createElement('div', {
+      style: boxStyle
+    }, React.createElement('div', {
+      style: {
+        fontSize: 12,
+        fontWeight: 700,
+        color: C.text,
+        marginBottom: 6
+      }
+    }, 'Simulation — aucune donnée écrite pour l\'instant'), React.createElement('div', {
+      style: {
+        fontSize: 12,
+        color: C.textSec,
+        marginBottom: 8
+      }
+    }, aCreer.length + ' parcelle(s) sur ' + (plan.total_parcelles || 0) + ' recevront leur surface BEE ONE comme Ha Smart Berry. ' + ignorees.length + ' ignorée(s).'), aCreer.length > 0 && React.createElement('div', {
+      style: {
+        maxHeight: 220,
+        overflowY: 'auto',
+        border: '1px solid ' + C.border,
+        borderRadius: 8,
+        background: C.surface,
+        marginBottom: 8
+      }
+    }, aCreer.map(function (p, i) {
+      return React.createElement('div', {
+        key: (p.label || '') + i,
+        style: {
+          display: 'flex',
+          gap: 12,
+          fontSize: 12,
+          padding: '4px 10px',
+          borderBottom: '1px solid ' + C.border,
+          color: C.text
+        }
+      }, React.createElement('span', {
+        style: {
+          flex: 1
+        }
+      }, p.label), React.createElement('span', {
+        style: {
+          fontFamily: 'monospace'
+        }
+      }, fmtHa(p.ha)));
+    })), ignorees.length > 0 && React.createElement('details', {
+      style: {
+        marginBottom: 8
+      }
+    }, React.createElement('summary', {
+      style: {
+        fontSize: 11,
+        color: C.textTer,
+        cursor: 'pointer'
+      }
+    }, ignorees.length + ' parcelle(s) ignorée(s)'), React.createElement('div', {
+      style: {
+        paddingTop: 4
+      }
+    }, ignorees.map(function (p, i) {
+      return React.createElement('div', {
+        key: (p.label || '') + i,
+        style: {
+          fontSize: 11,
+          color: C.textTer,
+          padding: '1px 0'
+        }
+      }, p.label + ' — ' + (PGP_SEED_RAISONS[p.raison] || p.raison));
+    }))), err && React.createElement('div', {
+      style: {
+        fontSize: 11,
+        color: '#991b1b',
+        background: '#fef2f2',
+        border: '1px solid #fecaca',
+        borderRadius: 6,
+        padding: '6px 10px',
+        marginBottom: 8
+      }
+    }, err), React.createElement('div', {
+      style: {
+        display: 'flex',
+        gap: 8
+      }
+    }, React.createElement('button', {
+      onClick: handleConfirmer,
+      disabled: busy || aCreer.length === 0,
+      style: {
+        padding: '5px 14px',
+        borderRadius: 6,
+        border: 'none',
+        background: busy || aCreer.length === 0 ? C.surface3 : C.green,
+        color: busy || aCreer.length === 0 ? C.textTer : '#fff',
+        fontSize: 11,
+        fontWeight: 700,
+        cursor: busy || aCreer.length === 0 ? 'not-allowed' : 'pointer'
+      }
+    }, busy ? '…' : 'Confirmer l\'initialisation'), React.createElement('button', {
+      onClick: function () {
+        setPlan(null);
+        setErr(null);
+      },
+      style: {
+        padding: '5px 12px',
+        borderRadius: 6,
+        border: '1px solid ' + C.border,
+        background: C.surface,
+        color: C.textSec,
+        fontSize: 11,
+        cursor: 'pointer'
+      }
+    }, 'Annuler')));
   }
   function PGP_GroupeForm(props) {
     var rows = props.rows || [];
@@ -311,6 +549,14 @@
     var canEdit = !!props.canEdit;
     var C = props.C || PGP_FALLBACK_C;
     var fmtHa = props.fmtHa || PGP_fmtHaFallback;
+    var onSeeded = props.onSeeded; // demande au parent de recharger rows/sbMap
+
+    // Parcelles AFFICHÉES inéligibles aux groupes faute de Ha SB. Sert
+    // uniquement à décider d'afficher l'amorce ; la liste exacte des parcelles
+    // écrites (les deux campagnes) vient du dry-run côté serveur.
+    var nbSansHa = rows.filter(function (r) {
+      return PGP_haSb(sbMap, r.label) <= 0;
+    }).length;
     var _groupes = useState([]);
     var groupes = _groupes[0];
     var setGroupes = _groupes[1];
@@ -431,7 +677,18 @@
       style: {
         marginRight: 8
       }
-    }), err), formState && React.createElement(PGP_GroupeForm, {
+    }), err),
+    // Amorce : tant qu'il reste des parcelles sans Ha SB, on propose de les
+    // initialiser avec la surface BEE ONE (simulation puis confirmation).
+    canEdit && nbSansHa > 0 && !formState && React.createElement(PGP_SeedHaBox, {
+      C: C,
+      fmtHa: fmtHa,
+      nbSansHa: nbSansHa,
+      onDone: function () {
+        if (onSeeded) onSeeded();
+        reload();
+      }
+    }), formState && React.createElement(PGP_GroupeForm, {
       rows: rows,
       sbMap: sbMap,
       groupes: groupes,

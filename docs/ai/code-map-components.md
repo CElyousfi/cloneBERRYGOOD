@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:af67376326d81cfc -->
-# Code Map — Composants frontend (287)
+<!-- sourceFingerprint: sha256:c47da0c023759a3e -->
+# Code Map — Composants frontend (288)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -196,7 +196,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PaieTab | public/app.jsx:26482 | paie |
 | Panel | public/app.jsx:2988 | — |
 | ParametresTab | public/app.jsx:27628 | parametres |
-| ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:213 | — |
+| ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:375 | — |
 | ParcellesParamsTab | public/components/ParcellesParamsTab.jsx:115 | mag_parcelles_params |
 | ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:464 | parcelles_referentiel |
 | PDP_fmtNum | public/components/PmpDetailPopup.jsx:46 | — |
@@ -213,10 +213,11 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PFT_numKey | public/components/PrimesFixesTab.jsx:35 | — |
 | PFT_parse | public/components/PrimesFixesTab.jsx:117 | — |
 | PFT_today | public/components/PrimesFixesTab.jsx:133 | — |
-| PGP_fmtHaFallback | public/components/ParcellesGroupesPanel.jsx:39 | — |
-| PGP_GroupeForm | public/components/ParcellesGroupesPanel.jsx:56 | — |
-| PGP_haSb | public/components/ParcellesGroupesPanel.jsx:46 | — |
-| PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:52 | — |
+| PGP_fmtHaFallback | public/components/ParcellesGroupesPanel.jsx:41 | — |
+| PGP_GroupeForm | public/components/ParcellesGroupesPanel.jsx:218 | — |
+| PGP_haSb | public/components/ParcellesGroupesPanel.jsx:48 | — |
+| PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:69 | — |
+| PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:54 | — |
 | PlanificationTab | public/app.jsx:29433 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
 | PointageDiversTab | public/app.jsx:25161 | pointage_divers |

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:0348c4db407b7192 -->
-# Code Map — Modules lib (147)
+<!-- sourceFingerprint: sha256:057787849136b8fb -->
+# Code Map — Modules lib (148)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -63,6 +63,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/netafim/parcelles.js | — | COLLECTION, buildParcelleUpserts, persistParcelles |
 | functions/lib/netafim/rateLimiter.js | — | todayKey, tryConsume |
 | functions/lib/netafim/types.js | — | — voir fichier — |
+| functions/lib/parcelleGroupes/seedHa.js | — | RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, computeSeedPlan |
 | functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |
 | functions/lib/parcelleGroupes/validate.js | — | slugGroupeLabel, validateGroupeSave |
 | functions/lib/phenology/dailyPhenologyJob.js | — | runDailyPhenologyJob, buildHttpHandler, CRON_CONFIG, HTTP_CONFIG, __internals |
