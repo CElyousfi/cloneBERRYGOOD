@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:bcb8b4a408cc2907 -->
-# Code Map — Composants frontend (290)
+<!-- sourceFingerprint: sha256:9bc75af9ec7dbb9e -->
+# Code Map — Composants frontend (291)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -196,7 +196,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PaieTab | public/app.jsx:26482 | paie |
 | Panel | public/app.jsx:2988 | — |
 | ParametresTab | public/app.jsx:27628 | parametres |
-| ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:430 | — |
+| ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:470 | — |
 | ParcellesParamsTab | public/components/ParcellesParamsTab.jsx:115 | mag_parcelles_params |
 | ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:472 | parcelles_referentiel |
 | PDP_fmtNum | public/components/PmpDetailPopup.jsx:46 | — |
@@ -213,12 +213,13 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PFT_numKey | public/components/PrimesFixesTab.jsx:35 | — |
 | PFT_parse | public/components/PrimesFixesTab.jsx:117 | — |
 | PFT_today | public/components/PrimesFixesTab.jsx:133 | — |
+| PGP_displayName | public/components/ParcellesGroupesPanel.jsx:75 | — |
 | PGP_fmtHaFallback | public/components/ParcellesGroupesPanel.jsx:42 | — |
-| PGP_formKey | public/components/ParcellesGroupesPanel.jsx:67 | — |
-| PGP_GroupeForm | public/components/ParcellesGroupesPanel.jsx:273 | — |
+| PGP_formKey | public/components/ParcellesGroupesPanel.jsx:102 | — |
+| PGP_GroupeForm | public/components/ParcellesGroupesPanel.jsx:309 | — |
 | PGP_haSb | public/components/ParcellesGroupesPanel.jsx:49 | — |
-| PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:95 | — |
-| PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:55 | — |
+| PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:130 | — |
+| PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:90 | — |
 | PlanificationTab | public/app.jsx:29433 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
 | PointageDiversTab | public/app.jsx:25161 | pointage_divers |

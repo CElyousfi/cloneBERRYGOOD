@@ -57,9 +57,46 @@
     return e && parseFloat(e.ha) > 0 ? parseFloat(e.ha) : 0;
   }
 
-  /** Nom pré-rempli du groupe à partir des labels cochés. */
-  function PGP_suggestLabel(labels) {
-    return (labels || []).join(' + ');
+  /**
+   * Nom AFFICHÉ d'une parcelle : nom Smart Berry s'il est saisi, sinon libellé
+   * BEE ONE. Même règle que la colonne « Parcelle » du tableau au-dessus
+   * (`nomDisplay` dans ParcellesReferentielTab) — les deux tableaux doivent
+   * montrer le même nom pour la même parcelle.
+   *
+   * ⚠️ AFFICHAGE UNIQUEMENT. L'identité technique reste le libellé BEE ONE :
+   * c'est lui qui part au serveur (`membres`, `labels` du seed), qui indexe
+   * `selected` / `ownerByLabel` / `pctByLabel` / la résolution du Ha, et qui est
+   * stocké dans `sb_parcelle_groupes.membres` puis rejoint par create-bc. Ne
+   * JAMAIS envoyer un `nom_sb` au serveur : le prorata et l'éclatement des BC
+   * joignent sur le libellé BEE ONE.
+   *
+   * SEUL endroit qui décide du nom affiché dans ce panneau — la duplication de
+   * cette règle est précisément ce qui avait fait diverger les deux tableaux.
+   *
+   * @param {Object<string, {nom_sb?:string}>} sbMap référentiel SB indexé par
+   *   libellé BEE ONE en MAJUSCULES.
+   * @param {string} label libellé BEE ONE.
+   * @returns {string}
+   */
+  function PGP_displayName(sbMap, label) {
+    var raw = label == null ? '' : String(label);
+    var e = sbMap && sbMap[raw.toUpperCase().trim()];
+    var nom = e && e.nom_sb != null ? String(e.nom_sb).trim() : '';
+    return nom || raw;
+  }
+
+  /**
+   * Nom pré-rempli du groupe à partir des parcelles cochées — construit sur les
+   * noms AFFICHÉS (c'est ce qu'Omar lit à l'écran), pas sur les libellés BEE ONE.
+   *
+   * @param {Array<string>} labels libellés BEE ONE cochés.
+   * @param {Object<string, {nom_sb?:string}>} [sbMap]
+   * @returns {string}
+   */
+  function PGP_suggestLabel(labels, sbMap) {
+    return (labels || []).map(function (l) {
+      return PGP_displayName(sbMap, l);
+    }).join(' + ');
   }
 
   /**
@@ -101,6 +138,7 @@
     var C = props.C;
     var fmtHa = props.fmtHa;
     var labels = props.labels || [];
+    var sbMap = props.sbMap || {}; // affichage du nom SB uniquement
     var nbSansHa = props.nbSansHa;
     var onDone = props.onDone;
     var _plan = useState(null); // null = pas encore simulé
@@ -281,7 +319,7 @@
         style: {
           flex: 1
         }
-      }, p.label), React.createElement('span', {
+      }, PGP_displayName(sbMap, p.label)), React.createElement('span', {
         style: {
           fontFamily: 'monospace'
         }
@@ -308,7 +346,7 @@
           color: C.textTer,
           padding: '1px 0'
         }
-      }, p.label + ' — ' + (PGP_SEED_RAISONS[p.raison] || p.raison));
+      }, PGP_displayName(sbMap, p.label) + ' — ' + (PGP_SEED_RAISONS[p.raison] || p.raison));
     }))), err && React.createElement('div', {
       style: {
         fontSize: 11,
@@ -394,7 +432,9 @@
         return l !== label;
       });
       setSelected(next);
-      if (!labelTouched) setLabelVal(PGP_suggestLabel(next));
+      // `next` = libellés BEE ONE (identité) ; le nom proposé est construit sur
+      // les noms Smart Berry affichés.
+      if (!labelTouched) setLabelVal(PGP_suggestLabel(next, sbMap));
     }
     var membresSel = selected.map(function (l) {
       return {
@@ -529,11 +569,14 @@
         onChange: function () {
           if (!disabled) toggle(r.label);
         }
-      }), React.createElement('span', {
+      }),
+      // Affichage = nom SB ; la coche, le Ha et l'envoi restent indexés
+      // sur r.label (libellé BEE ONE).
+      React.createElement('span', {
         style: {
           flex: 1
         }
-      }, r.label), React.createElement('span', {
+      }, PGP_displayName(sbMap, r.label)), React.createElement('span', {
         style: {
           fontFamily: 'monospace',
           fontSize: 11
@@ -751,6 +794,7 @@
       fmtHa: fmtHa,
       nbSansHa: nbSansHa,
       labels: seedLabels,
+      sbMap: sbMap,
       onDone: function () {
         if (onSeeded) onSeeded();
         reload();
@@ -895,11 +939,14 @@
             color: C.textSec,
             padding: '2px 0'
           }
-        }, React.createElement('span', {
+        },
+        // Affichage = nom SB ; `partByLabel` reste indexé sur le
+        // libellé BEE ONE renvoyé par le serveur.
+        React.createElement('span', {
           style: {
             flex: 1
           }
-        }, m.label), React.createElement('span', {
+        }, PGP_displayName(sbMap, m.label)), React.createElement('span', {
           style: {
             fontFamily: 'monospace',
             minWidth: 70,

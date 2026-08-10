@@ -43,12 +43,12 @@
         "file": "functions/notificationDispatcher.js"
       },
       {
-        "commits": 4,
-        "file": "public/components/MagStockFilesTab.js"
+        "commits": 5,
+        "file": "public/components/ParcellesGroupesPanel.jsx"
       },
       {
         "commits": 4,
-        "file": "public/components/ParcellesGroupesPanel.jsx"
+        "file": "public/components/MagStockFilesTab.js"
       },
       {
         "commits": 4,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:ffed8f802cb4d816",
+    "sourceFingerprint": "sha256:e7423eded5f6b0cc",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
