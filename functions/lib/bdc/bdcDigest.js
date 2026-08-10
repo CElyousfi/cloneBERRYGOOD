@@ -52,9 +52,14 @@ const RECEIVABLE_STATUSES = ['valide_dg', 'envoye', 'virement_lance', 'virement_
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Date de MISE EN SERVICE RÉELLE de l'application achats (01/07/2026, minuit
- * UTC — même convention de parsing que `date_livraison_prevue` ailleurs dans ce
- * module).
+ * Date de MISE EN SERVICE RÉELLE de l'application achats : 01/07/2026 à minuit
+ * **heure marocaine** (UTC+1), soit `2026-06-30T23:00:00Z`.
+ *
+ * Le décalage est délibéré. Écrire `2026-07-01T00:00:00Z` — plus lisible, et
+ * cohérent avec le parsing UTC de `date_livraison_prevue` plus bas — placerait
+ * en réalité le seuil à 01h00 locale : un BdC créé entre minuit et 1h du matin
+ * le 1er juillet serait écarté à tort. Probabilité infime, mais l'erreur irait
+ * dans le sens de l'INVISIBILITÉ, et c'est le seul sens qu'on refuse ici.
  *
  * Avant cette date, l'app n'était pas utilisée au quotidien : les BdC existent
  * (import historique au préfixe `BC-`, premières saisies d'avril-mai) mais les
@@ -66,7 +71,10 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
  * écriture, aucun filtre Firestore : les documents restent intégralement
  * lisibles ailleurs (rapprochement des factures via `Num_BC`, `get_bdc_detail`).
  */
-const MISE_EN_SERVICE_MS = Date.parse('2026-07-01T00:00:00.000Z');
+const MISE_EN_SERVICE_MS = Date.parse('2026-06-30T23:00:00.000Z');
+
+/** Libellé humain du seuil, pour le prompt système — évite de dupliquer la date. */
+const MISE_EN_SERVICE_LABEL = '01/07/2026';
 
 /**
  * Le BdC est-il à retenir au titre de la mise en service ?
@@ -536,4 +544,4 @@ function buildReceptionPayload(summary, limit, options) {
   return payload;
 }
 
-module.exports = { PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, MISE_EN_SERVICE_MS, isDepuisMiseEnService, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload }
+module.exports = { PENDING_STATUSES, RECEIVABLE_STATUSES, ROLE_LABELS, DEFAULT_ITEMS_LIMIT, MISE_EN_SERVICE_MS, MISE_EN_SERVICE_LABEL, isDepuisMiseEnService, blockedBy, summarizePendingValidation, buildDigestPayload, summarizePendingReception, detailArticles, buildReceptionPayload }

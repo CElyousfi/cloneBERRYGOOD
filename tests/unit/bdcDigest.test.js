@@ -643,9 +643,12 @@ test('buildReceptionPayload: le compte d\'écartés est TOUJOURS exposé (rien n
 // n'écarte que ce qu'on SAIT antérieur au seuil.
 // ---------------------------------------------------------------------------
 
-test('MISE_EN_SERVICE_MS: seuil = 01/07/2026, mise en service réelle de l\'app', () => {
-  assert.equal(MISE_EN_SERVICE_MS, Date.parse('2026-07-01T00:00:00.000Z'));
-  assert.equal(new Date(MISE_EN_SERVICE_MS).toISOString(), '2026-07-01T00:00:00.000Z');
+test('MISE_EN_SERVICE_MS: seuil = 01/07/2026 à minuit HEURE MAROCAINE (UTC+1)', () => {
+  // Volontairement 23h00 UTC la veille : le Maroc est à UTC+1, et un seuil posé
+  // à 00h00 UTC tomberait à 01h00 locale — un BdC créé dans cette heure-là
+  // serait écarté à tort, donc rendu INVISIBLE. Seul sens d'erreur refusé ici.
+  assert.equal(MISE_EN_SERVICE_MS, Date.parse('2026-06-30T23:00:00.000Z'));
+  assert.equal(new Date(MISE_EN_SERVICE_MS).toISOString(), '2026-06-30T23:00:00.000Z');
 });
 
 test('isDepuisMiseEnService: created_at antérieur au seuil → ÉCARTÉ', () => {
@@ -664,6 +667,28 @@ test('isDepuisMiseEnService: created_at postérieur au seuil → CONSERVÉ', () 
 
 test('isDepuisMiseEnService: created_at EXACTEMENT au seuil → conservé (borne inclusive)', () => {
   assert.equal(isDepuisMiseEnService(rbdc({ created_at: MISE_EN_SERVICE_MS })), true);
+});
+
+// Verrouille le CHOIX DU CHAMP, pas seulement la comparaison. Sans ce test, un
+// refactor basculant sur `updated_at` passerait les 65 autres au vert — et des
+// BdC de mai touchés par un BL récent réapparaîtraient dans le bruit, puisque
+// `updated_at` est réécrit à chaque création/suppression de BL
+// (functions/index.js:7389, :10816). Mutant identifié en relecture QA.
+test('isDepuisMiseEnService: se fonde sur created_at, JAMAIS sur updated_at', () => {
+  const vieuxBdcTouchéRécemment = rbdc({
+    numero: 'BDC-2026-0009',
+    created_at: Date.parse('2026-05-02T09:00:00.000Z'), // avant la mise en service
+    updated_at: TODAY,                                   // BL créé ou supprimé hier
+  });
+  assert.equal(isDepuisMiseEnService(vieuxBdcTouchéRécemment), false,
+    'un BdC de mai reste écarté même si updated_at est récent');
+
+  const recentJamaisTouché = rbdc({
+    created_at: MISE_EN_SERVICE_MS + 1,
+    updated_at: Date.parse('2026-05-02T09:00:00.000Z'), // incohérent à dessein
+  });
+  assert.equal(isDepuisMiseEnService(recentJamaisTouché), true,
+    'un BdC récent reste conservé même si updated_at est ancien');
 });
 
 test('isDepuisMiseEnService: created_at absent → CONSERVÉ, jamais écarté en silence', () => {

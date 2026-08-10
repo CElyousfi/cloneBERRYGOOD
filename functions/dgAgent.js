@@ -117,6 +117,7 @@ const {
   detailArticles,
   buildReceptionPayload,
   isDepuisMiseEnService,
+  MISE_EN_SERVICE_LABEL,
 } = require("./lib/bdc/bdcDigest");
 const { IN_MAX_VALUES, chunkIds, groupBlsByBdcId } = require("./lib/bdc/blBatch");
 const getTeamMap = () => getTeamNameMap(db);
@@ -482,7 +483,7 @@ Réception (livraison physique au magasin):
 - Reliquat = quantité commandée − quantité déjà reçue, article par article. Tant qu'un article a du reliquat, le BdC n'est pas soldé.
 - deliveryStatus: non_livre = aucun BL, partiel = au moins un BL mais du reliquat restant. Les BdC complets ne sont jamais listés.
 - "retardJours" null = pas de date de livraison prévue → dis "échéance non renseignée", n'invente pas de retard. 0 = pas encore échu.
-- La liste réception ne couvre que les BdC créés depuis la mise en service de l'app (01/07/2026) : avant, les réceptions n'étaient pas saisies. "ecartesAvantMiseEnService" = combien de BdC antérieurs ont été écartés — ne le mentionne que si on te le demande ou si on s'étonne d'un BdC manquant.
+- La liste réception ne couvre que les BdC créés depuis la mise en service de l'app (${MISE_EN_SERVICE_LABEL}) : avant, les réceptions n'étaient pas saisies. "ecartesAvantMiseEnService" = combien de BdC antérieurs ont été écartés — ne le mentionne que si on te le demande ou si on s'étonne d'un BdC manquant.
 
 Format de liste réception pour WhatsApp — un BdC par ligne, le plus en retard d'abord:
 *BDC-2026-0142* — Fournisseur — 40 % reçu — 6 j de retard
