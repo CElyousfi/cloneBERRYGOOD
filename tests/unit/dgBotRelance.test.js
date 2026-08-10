@@ -32,7 +32,9 @@ stub('./bdcReminderService', { remindBdcCore: async () => ({ success: false, err
 const {
   normalizeRelanceReply,
   resolvePendingRelance,
+  relanceOutcomeForMessage,
   buildRelanceNotice,
+  buildDiscardedIntentsNotice,
   PENDING_RELANCE_TTL_MS,
 } = require(path.join(FN_DIR, 'dgBot.js'));
 
@@ -146,4 +148,55 @@ test('notice: seconde demande sur le MÊME BdC → simple re-confirmation, pas d
 test('notice: rien à annoncer sans intention, ni sur confirmation', () => {
   assert.equal(buildRelanceNotice('none', null, null), null);
   assert.equal(buildRelanceNotice('confirm', pendingA, null), null);
+});
+
+test('notice: idempotence reconnue par l\'id même quand le numéro manque', () => {
+  // Sans `numero`, le libellé retombe sur l'id : comparer le libellé seul
+  // annoncerait un faux remplacement là où c'est le MÊME BdC.
+  const sansNumero = { id: 'abc', at: T0 };
+  assert.equal(buildRelanceNotice('cancel', sansNumero, { id: 'abc', numero: 'BDC-2026-0142' }), null);
+  assert.ok(buildRelanceNotice('cancel', sansNumero, { id: 'zzz', numero: 'BDC-2026-0199' }));
+});
+
+// ── relanceOutcomeForMessage : arbitrage avec la confirmation forecast ───────
+
+test('arbitrage: un « oui » capté par le forecast n\'envoie JAMAIS la relance', () => {
+  const forecastVivant = { at: T0 };
+  assert.equal(relanceOutcomeForMessage(pendingA, forecastVivant, 'OUI', T0 + 1000), 'cancel');
+  assert.equal(relanceOutcomeForMessage(pendingA, forecastVivant, 'non', T0 + 1000), 'cancel');
+});
+
+test('arbitrage: sans forecast vivant, le « oui » confirme bien la relance', () => {
+  assert.equal(relanceOutcomeForMessage(pendingA, null, 'oui', T0 + 1000), 'confirm');
+  // Forecast périmé (TTL 15 min) → il ne captera pas le message.
+  const forecastPerime = { at: T0 - 20 * 60 * 1000 };
+  assert.equal(relanceOutcomeForMessage(pendingA, forecastPerime, 'oui', T0 + 1000), 'confirm');
+});
+
+test('arbitrage: un message quelconque avec forecast vivant reste une annulation', () => {
+  // parseForecastConfirmation → "unknown" : le forecast ne capte pas, la relance
+  // est quand même consommée (défaut = non-envoi).
+  assert.equal(relanceOutcomeForMessage(pendingA, { at: T0 }, 'et la récolte ?', T0 + 1000), 'cancel');
+});
+
+test('arbitrage: expiration l\'emporte, quel que soit le forecast', () => {
+  assert.equal(
+    relanceOutcomeForMessage(pendingA, { at: T0 }, 'oui', T0 + PENDING_RELANCE_TTL_MS + 1),
+    'expired'
+  );
+});
+
+// ── buildDiscardedIntentsNotice : intentions écrasées dans le même tour ──────
+
+test('intentions écrasées dans le même tour : annoncées, jamais silencieuses', () => {
+  const notice = buildDiscardedIntentsNotice(['BDC-2026-0142'], { numero: 'BDC-2026-0199' });
+  assert.match(notice, /BDC-2026-0142/);
+  assert.match(notice, /BDC-2026-0199/);
+  assert.match(notice, /rien envoyé/i);
+});
+
+test('aucune intention écrasée → aucune notice', () => {
+  assert.equal(buildDiscardedIntentsNotice([], { numero: 'BDC-2026-0199' }), null);
+  assert.equal(buildDiscardedIntentsNotice(null, null), null);
+  assert.equal(buildDiscardedIntentsNotice(undefined, null), null);
 });

@@ -509,6 +509,16 @@ async function tool_relancer_bdc({ numero }, ctx) {
   // confirmation, donc on ne prétend pas qu'une relance est en cours.
   if (!ctx) return { numero: num, error: "Contexte d'invocation indisponible — relance impossible." };
 
+  // Deux appels `relancer_bdc` dans le MÊME tour : une seule intention peut
+  // vivre (un « oui » ne doit jamais être ambigu quant à son objet). Celle qu'on
+  // écrase est mémorisée pour être ANNONCÉE au DG par dgBot — jamais perdue en
+  // silence. Réarmer le même BdC est idempotent : rien à annoncer.
+  const previous = ctx.relanceIntent;
+  if (previous && previous.id !== doc.id) {
+    ctx.relanceDiscarded = ctx.relanceDiscarded || [];
+    ctx.relanceDiscarded.push(previous.numero || previous.id);
+  }
+
   ctx.relanceIntent = {
     id: doc.id,
     numero: bdc.numero || num,
@@ -612,7 +622,7 @@ Termine par une ligne de synthèse (nombre de BdC non réceptionnés + combien e
  * @param {string} args.userText — the user's free-text input
  * @param {Array<{role,content}>} [args.history] — prior conversation turns (text-only)
  * @param {object} [args.user] — utilisateur WhatsApp identifié (uid, profileId, displayName…)
- * @returns {Promise<{ success: true, reply: string, history: Array, relanceIntent: object|null } | { success: false, error: string }>}
+ * @returns {Promise<{ success: true, reply: string, history: Array, relanceIntent: object|null, relanceDiscarded: string[] } | { success: false, error: string }>}
  */
 async function ask({ userText, history = [], user = null }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -633,7 +643,7 @@ async function ask({ userText, history = [], user = null }) {
   // Contexte d'invocation du tour : porte l'identité de l'appelant et recueille
   // l'intention qu'un handler dépose (relance). Il ne SORT rien tout seul —
   // c'est dgBot qui décide quoi en faire.
-  const ctx = { user, relanceIntent: null };
+  const ctx = { user, relanceIntent: null, relanceDiscarded: [] };
 
   let finalText = null;
   let lastError = null;
@@ -696,7 +706,13 @@ async function ask({ userText, history = [], user = null }) {
     { role: "assistant", content: finalText },
   ].slice(-MAX_HISTORY);
 
-  return { success: true, reply: finalText, history: newHistory, relanceIntent: ctx.relanceIntent };
+  return {
+    success: true,
+    reply: finalText,
+    history: newHistory,
+    relanceIntent: ctx.relanceIntent,
+    relanceDiscarded: ctx.relanceDiscarded,
+  };
 }
 
 // TOOL_HANDLERS est exposé pour permettre de rejouer un tool avec Firestore

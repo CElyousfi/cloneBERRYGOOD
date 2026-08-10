@@ -119,6 +119,28 @@ test('BdC relançable → intention déposée dans ctx, RIEN envoyé', async () 
   });
 });
 
+test('deux relances dans le MÊME tour : une seule armée, l\'écrasée est tracée', async () => {
+  const ctx = { user: null, relanceIntent: null, relanceDiscarded: [] };
+
+  store.docs = [{ id: 'bdc-id-1', data: { numero: 'BDC-2026-0142', status: 'en_attente_dg', last_reminded_at: 0 } }];
+  await relancer({ numero: 'BDC-2026-0142' }, ctx);
+
+  store.docs = [{ id: 'bdc-id-2', data: { numero: 'BDC-2026-0199', status: 'en_attente_dg', last_reminded_at: 0 } }];
+  await relancer({ numero: 'BDC-2026-0199' }, ctx);
+
+  assert.equal(ctx.relanceIntent.numero, 'BDC-2026-0199', 'seule la dernière est armée');
+  assert.deepEqual(ctx.relanceDiscarded, ['BDC-2026-0142'], 'l\'écrasée est annoncée, pas perdue');
+});
+
+test('réarmer le MÊME BdC dans un tour est idempotent (rien à annoncer)', async () => {
+  const ctx = { user: null, relanceIntent: null, relanceDiscarded: [] };
+  seed({ status: 'en_attente_dg', last_reminded_at: 0 });
+  await relancer({ numero: 'BDC-2026-0142' }, ctx);
+  await relancer({ numero: 'BDC-2026-0142' }, ctx);
+  assert.equal(ctx.relanceIntent.numero, 'BDC-2026-0142');
+  assert.deepEqual(ctx.relanceDiscarded, []);
+});
+
 test('sans contexte d\'invocation → pas de relance armée', async () => {
   seed({ status: 'en_attente_dg', last_reminded_at: 0 });
   const out = await relancer({ numero: 'BDC-2026-0142' }, undefined);
