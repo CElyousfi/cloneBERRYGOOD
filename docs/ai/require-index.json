@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:d0428d8ac1cea1c9",
+    "sourceFingerprint": "sha256:061d2496c55bd7d7",
     "stats": {
-      "targetFiles": 196,
-      "targetFilesWithDirectTests": 120,
-      "targetFilesWithTransitiveTests": 137,
-      "testFilesScanned": 157
+      "targetFiles": 197,
+      "targetFilesWithDirectTests": 121,
+      "targetFilesWithTransitiveTests": 138,
+      "testFilesScanned": 158
     }
   },
   "index": {
@@ -1321,6 +1321,14 @@
         "tests/unit/avances.test.js",
         "tests/unit/caisseUtils.test.js",
         "tests/unit/compteClientMarcheLocal.test.js"
+      ]
+    },
+    "public/lib/campagneExportUtils.js": {
+      "directTests": [
+        "tests/unit/campagneExportUtils.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneExportUtils.test.js"
       ]
     },
     "public/lib/campagneUtils.js": {

@@ -17,7 +17,7 @@ test('CULTURES — les 3 cultures reconnues', () => {
 });
 
 // ============================================================================
-// normCulture — heuristique historique (copie conforme ParcellesReferentielTab)
+// normCulture — heuristique de repli (consommée par ParcellesReferentielTab)
 // ============================================================================
 test('normCulture — regex culture puis repli libellé, défaut Framboise', () => {
   assert.strictEqual(normCulture('Myrtille', null), 'Myrtille');
@@ -31,6 +31,40 @@ test('normCulture — regex culture puis repli libellé, défaut Framboise', () 
 test('normCulture — valeurs non-string tolérées, aucun throw', () => {
   assert.strictEqual(normCulture(42, null), 'Framboise');
   assert.strictEqual(normCulture(undefined, 12345), 'Framboise');
+});
+
+test('normCulture — variétés d\'avocatier reconnues sur le seul libellé', () => {
+  // Bug prod : « F2 ZUTANO » (variété d'avocatier) sortait en Framboise par défaut
+  // et polluait l'export Framboise de l'écran Campagne.
+  assert.strictEqual(normCulture('', 'F2 ZUTANO'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 FUERTE'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 HASS'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 LAMB HASS'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 ETTINGER'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 PINKERTON'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 REED'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 MEXICOLA'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 NABAL'), 'Avocatier');
+  // Historique conservé
+  assert.strictEqual(normCulture('', 'BAHIA HAAS'), 'Avocatier');
+  assert.strictEqual(normCulture('', 'F2 BACON'), 'Avocatier');
+});
+
+test('normCulture — variétés avocatier en MOT ENTIER : pas de faux positif', () => {
+  // Les nouveaux termes sont bornés par \b : une séquence incluse dans un mot
+  // plus long ne doit pas basculer la parcelle en Avocatier.
+  assert.strictEqual(normCulture('', 'S4 BREEDER F1'), 'Framboise');
+  assert.strictEqual(normCulture('', 'S4 REEDITION F1'), 'Framboise');
+});
+
+test('normCulture — non-régression Framboise / Myrtille', () => {
+  assert.strictEqual(normCulture('', 'S02 KWANZA F1'), 'Framboise');
+  assert.strictEqual(normCulture('', 'S5 MARAVILLA MD F1'), 'Framboise');
+  assert.strictEqual(normCulture('', 'S10 YAZMIN CUT BACK F5'), 'Framboise');
+  assert.strictEqual(normCulture('', 'S8 CORINA F5'), 'Myrtille');
+  assert.strictEqual(normCulture('', 'S9 CASCADE F5'), 'Myrtille');
+  assert.strictEqual(normCulture('', 'S7 BREEZE F5'), 'Myrtille');
+  assert.strictEqual(normCulture('Myrtille', 'S7 ZUTANO'), 'Myrtille'); // Myrtille testée en premier
 });
 
 // ============================================================================

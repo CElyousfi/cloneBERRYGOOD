@@ -557,6 +557,8 @@
             const ref = window.SB_PARCELLE_REF && window.SB_PARCELLE_REF[(labelBeeOne || '').toUpperCase().trim()];
             return (ref && ref.nom_sb) ? ref.nom_sb : (labelBeeOne || '—');
         }
+        // Consommé par public/components/CampagneAnalytiqueTab.jsx (hors scope d'app.jsx).
+        window.sbParcelleNom = sbParcelleNom;
 
         const NAV_ITEMS_RH = [
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
