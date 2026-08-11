@@ -4063,7 +4063,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // refusée.
 
       // Lecture des budgets d'une campagne (défaut : campagne courante).
-      if (action === "campagne-budget-list") {
+      if (action === "campagne-budget-list" && req.method === "GET") {
         const campagneB = campagneBudget.normCampagne(req.query.campagne || campagneCourante());
         if (!campagneB) {
           return res.status(400).json({ success: false, error: "Campagne invalide" });
@@ -4077,6 +4077,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           // Chef : cloisonnement ferme. deriveFerme retourne 'Autre' si la
           // parcelle n'est pas rattachable → exclue (fail-closed).
           if (_fermeFilter && deriveFerme(null, label, campagneB) !== _fermeFilter) return;
+          // Chef Myrtille (chef_f5) : filtre culture additionnel, via le MÊME
+          // helper que les lignes miroir (cf. _keepCulture) — un budget porte
+          // le seul label, `filterMirrorRowsByCulture` sait le résoudre.
+          if (_cultureFilter
+            && filterMirrorRowsByCulture([{ Parcelle_Culturale: label }], _cultureFilter).length === 0) return;
           budgets.push({
             id: doc.id,
             campagne: d.campagne || campagneB,
@@ -4129,24 +4134,32 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         const docRefB = db_firestore.collection("sb_campagne_budget_jh").doc(verdictB.docId);
         // Transaction : le merge lit l'existant (les familles absentes du body
         // sont conservées) — sans transaction, deux saves concurrents sur deux
-        // familles différentes en perdraient une.
-        const mergedB = await db_firestore.runTransaction(async (tx) => {
-          const snap = await tx.get(docRefB);
-          const prev = snap.exists ? (snap.data() || {}).budgets : null;
-          const next = campagneBudget.mergeBudgets(prev, verdictB.budgets);
-          tx.set(docRefB, {
+        // familles différentes en perdraient une. L'écriture elle-même est dans
+        // lib/campagneBudget (writeBudgetInTransaction) : elle utilise
+        // `mergeFields` et NON `{merge:true}`, sans quoi une famille retirée
+        // survivrait en base (masque de champs construit sur les feuilles).
+        const writeB = await db_firestore.runTransaction((tx) =>
+          campagneBudget.writeBudgetInTransaction(tx, docRefB, {
             campagne: verdictB.campagne,
-            label_bee_one: verdictB.label,
-            budgets: next,
-            updated_by: { uid: (_authUserB && _authUserB.uid) || null, profileId: _pidB },
-            updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
-          }, { merge: true });
-          return next;
-        });
+            label: verdictB.label,
+            budgets: verdictB.budgets,
+            famillesConnues: famillesConnuesB,
+            uid: (_authUserB && _authUserB.uid) || null,
+            profileId: _pidB,
+            serverTimestamp: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+          })
+        );
+
+        // RELECTURE après commit : on renvoie l'état RÉELLEMENT persisté, jamais
+        // le calculé. Un succès affiché par le client doit être prouvé — c'est
+        // exactement ce qui masquait la survie des familles supprimées.
+        const afterB = await docRefB.get();
+        const persistedB = (afterB.exists && (afterB.data() || {}).budgets) || {};
 
         return res.json({
           success: true, id: verdictB.docId, campagne: verdictB.campagne,
-          label_bee_one: verdictB.label, budgets: mergedB,
+          label_bee_one: verdictB.label, budgets: persistedB,
+          familles_purgees: writeB.purgees,
         });
       }
 

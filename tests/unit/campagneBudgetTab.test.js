@@ -44,23 +44,34 @@ function createElement(type, props, ...children) {
  *   L'ORDRE DES APPELS : [rows, familles, budgetsByLabel, campagne, selected,
  *   values, loading, err, saving, msg, tick]. `undefined` = garder l'initial.
  */
-function load(stateOverrides) {
+function load(stateOverrides, spy) {
   const sandbox = { window: {}, fetch: function () { return new Promise(function () {}); } };
   let call = 0;
   sandbox.window.React = {
     createElement,
     Fragment: 'Fragment',
     useState: function (initial) {
-      const override = (stateOverrides || [])[call++];
-      return [override === undefined ? initial : override, function () {}];
+      const index = call++;
+      const override = (stateOverrides || [])[index];
+      return [override === undefined ? initial : override, function (v) {
+        if (spy) spy.sets.push({ index: index, value: v });
+      }];
     },
-    useEffect: function () {},
+    useEffect: function (fn, deps) {
+      if (spy) spy.effects.push({ fn: fn, deps: deps });
+    },
     useMemo: function (fn) { return fn(); },
   };
   vm.createContext(sandbox);
   vm.runInContext(SRC, sandbox);
   return sandbox.window.CampagneBudgetTab;
 }
+
+/** Index des useState de CampagneBudgetTab, dans l'ordre des appels. */
+const S = {
+  rows: 0, familles: 1, budgetsByLabel: 2, campagne: 3, selected: 4,
+  values: 5, loading: 6, err: 7, saving: 8, msg: 9, tick: 10,
+};
 
 /** Aplatit l'arbre rendu en liste de nœuds. */
 function walk(node, out) {
@@ -172,6 +183,27 @@ test('rendu — DG voit le bouton Enregistrer et un champ par famille', () => {
   assert.strictEqual(
     walk(tree).filter(function (n) { return n.type === 'input'; }).length,
     FAMILLES.length
+  );
+});
+
+test('rendu — le message de succès n\'est effacé QUE par un changement de parcelle', () => {
+  // Régression : l'effet qui remet msg à null dépendait aussi de
+  // `budgetsByLabel`, que le save met à jour → « Budget enregistré » était
+  // effacé dans le même rendu (React 18 batche) et n'était JAMAIS visible.
+  const spy = { effects: [], sets: [] };
+  const Comp = load(STATE, spy);
+  Comp({ userRole: 'dg' });
+
+  const msgEffects = spy.effects.filter(function (e) {
+    spy.sets.length = 0;
+    try { e.fn(); } catch (err) { /* effets async (fetch stubé) ignorés */ }
+    return spy.sets.some(function (s) { return s.index === S.msg && s.value === null; });
+  });
+  assert.strictEqual(msgEffects.length, 1, 'un seul effet doit effacer le message');
+  assert.deepStrictEqual(
+    plain(msgEffects[0].deps),
+    [STATE[S.selected]],
+    'l\'effet ne doit dépendre QUE de la parcelle sélectionnée'
   );
 });
 

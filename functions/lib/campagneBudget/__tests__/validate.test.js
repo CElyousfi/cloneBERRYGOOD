@@ -12,6 +12,8 @@ const {
   parseBudgetValue,
   validateBudgetSave,
   mergeBudgets,
+  purgeFamillesInconnues,
+  writeBudgetInTransaction,
 } = require('../validate')
 
 const FAMILLES = ['Ferti-irrigation', 'Entretien structure', 'Taille', 'Tuteurage & palissage']
@@ -77,6 +79,19 @@ test('parseBudgetValue — rejette négatif, non numérique, hors limite, boolé
   assert.strictEqual(parseBudgetValue(MAX_JH_PAR_HA + 1).ok, false)
   assert.strictEqual(parseBudgetValue(true).ok, false)
   assert.strictEqual(parseBudgetValue(Infinity).ok, false)
+})
+
+test('parseBudgetValue — parsing STRICT : pas de queue non numérique (action POST-able)', () => {
+  // parseFloat('3abc') vaut 3 : refusé ici, sinon un POST manuel écrit 3.
+  assert.strictEqual(parseBudgetValue('3abc').ok, false)
+  assert.strictEqual(parseBudgetValue('3 4').ok, false)
+  assert.strictEqual(parseBudgetValue('1e3').ok, false)
+  assert.strictEqual(parseBudgetValue('0x10').ok, false)
+  assert.strictEqual(parseBudgetValue({}).ok, false)
+  assert.strictEqual(parseBudgetValue([2]).ok, false)
+  // …mais les formes légitimes passent toujours.
+  assert.deepStrictEqual(parseBudgetValue(' 2.50 '), { ok: true, value: 2.5 })
+  assert.deepStrictEqual(parseBudgetValue('.5'), { ok: true, value: 0.5 })
 })
 
 // --------------------------------------------------------- validateBudgetSave
@@ -166,4 +181,117 @@ test('mergeBudgets — ne mute aucun argument et ignore l\'existant corrompu', (
 test('mergeBudgets — existant absent ou non-objet', () => {
   assert.deepStrictEqual(mergeBudgets(undefined, { 'Taille': 3 }), { 'Taille': 3 })
   assert.deepStrictEqual(mergeBudgets(/** @type {*} */ ([1, 2]), { 'Taille': 3 }), { 'Taille': 3 })
+})
+
+// --------------------------------------------------- purgeFamillesInconnues
+
+test('purgeFamillesInconnues — retire les familles hors référentiel courant', () => {
+  const r = purgeFamillesInconnues({ 'Taille': 1, 'Ancienne famille': 4 }, FAMILLES)
+  assert.deepStrictEqual(r.budgets, { 'Taille': 1 })
+  assert.deepStrictEqual(r.purgees, ['Ancienne famille'])
+})
+
+test('purgeFamillesInconnues — référentiel vide/absent = AUCUNE purge (fail-safe)', () => {
+  const b = { 'Taille': 1, 'X': 2 }
+  assert.deepStrictEqual(purgeFamillesInconnues(b, []).budgets, b)
+  assert.deepStrictEqual(purgeFamillesInconnues(b, null).budgets, b)
+  assert.deepStrictEqual(purgeFamillesInconnues(b, undefined).purgees, [])
+})
+
+// ------------------------------------------------- writeBudgetInTransaction
+//
+// L'émulateur Firestore n'est pas disponible ici (Java absent) : on injecte une
+// fausse transaction qui CAPTURE (data, options) du `set`. C'est le chemin qui
+// portait le bug — un `{merge:true}` construit son masque sur les FEUILLES,
+// donc une famille retirée de la map survivait en base.
+
+function fakeTx(existingData) {
+  const calls = []
+  return {
+    calls,
+    tx: {
+      get: async () => ({
+        exists: existingData !== null && existingData !== undefined,
+        data: () => existingData,
+      }),
+      set: (ref, data, options) => calls.push({ ref, data, options }),
+    },
+  }
+}
+
+const WRITE_ARGS = {
+  campagne: '2026-2027',
+  label: 'F5- CASCADE -S13',
+  budgets: {},
+  famillesConnues: FAMILLES,
+  uid: 'uid-1',
+  profileId: 'dg',
+  serverTimestamp: '__TS__',
+}
+
+test('writeBudgetInTransaction — supprimer UNE famille l\'efface réellement en base', async () => {
+  const f = fakeTx({ budgets: { 'Taille': 1, 'Ferti-irrigation': 2 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 0 } }))
+
+  assert.strictEqual(f.calls.length, 1)
+  const call = f.calls[0]
+  // La map écrite ne contient PLUS Taille…
+  assert.deepStrictEqual(call.data.budgets, { 'Ferti-irrigation': 2 })
+  // …et surtout le masque de champs porte `budgets` ENTIER : sans ça, la
+  // valeur 1 de Taille resterait en base (bug corrigé).
+  assert.notStrictEqual(call.options && call.options.merge, true)
+  assert.ok(Array.isArray(call.options.mergeFields))
+  assert.ok(call.options.mergeFields.includes('budgets'))
+  assert.deepStrictEqual(out.budgets, { 'Ferti-irrigation': 2 })
+})
+
+test('writeBudgetInTransaction — les familles absentes du body sont conservées', async () => {
+  const f = fakeTx({ budgets: { 'Taille': 1, 'Ferti-irrigation': 2 } })
+  await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 5 } }))
+  assert.deepStrictEqual(f.calls[0].data.budgets, { 'Taille': 5, 'Ferti-irrigation': 2 })
+})
+
+test('writeBudgetInTransaction — document absent = création complète', async () => {
+  const f = fakeTx(null)
+  await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 3 } }))
+  const data = f.calls[0].data
+  assert.deepStrictEqual(data.budgets, { 'Taille': 3 })
+  assert.strictEqual(data.campagne, '2026-2027')
+  assert.strictEqual(data.label_bee_one, 'F5- CASCADE -S13')
+  assert.deepStrictEqual(data.updated_by, { uid: 'uid-1', profileId: 'dg' })
+  assert.strictEqual(data.updated_at, '__TS__')
+  // Tous les champs écrits sont dans le masque (aucune écriture silencieuse).
+  for (const k of Object.keys(data)) {
+    assert.ok(f.calls[0].options.mergeFields.includes(k), 'champ hors masque : ' + k)
+  }
+})
+
+test('writeBudgetInTransaction — tout effacer écrit une map vide', async () => {
+  const f = fakeTx({ budgets: { 'Taille': 1 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 0 } }))
+  assert.deepStrictEqual(f.calls[0].data.budgets, {})
+  assert.deepStrictEqual(out.budgets, {})
+})
+
+test('writeBudgetInTransaction — purge les familles hors référentiel et les signale', async () => {
+  const f = fakeTx({ budgets: { 'Taille': 1, 'Famille supprimée': 9 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 2 } }))
+  assert.deepStrictEqual(f.calls[0].data.budgets, { 'Taille': 2 })
+  assert.deepStrictEqual(out.purgees, ['Famille supprimée'])
+})
+
+test('writeBudgetInTransaction — supporte un snapshot dont `exists` est une fonction', async () => {
+  const calls = []
+  const tx = {
+    get: async () => ({ exists: () => true, data: () => ({ budgets: { 'Taille': 4 } }) }),
+    set: (ref, data, options) => calls.push({ data, options }),
+  }
+  await writeBudgetInTransaction(tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Ferti-irrigation': 1 } }))
+  assert.deepStrictEqual(calls[0].data.budgets, { 'Taille': 4, 'Ferti-irrigation': 1 })
 })

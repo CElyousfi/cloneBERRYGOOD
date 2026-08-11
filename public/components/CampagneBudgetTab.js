@@ -294,9 +294,17 @@
       };
     }, [tick]);
 
-    // Changement de parcelle → recharger les champs depuis les budgets connus.
+    // Le message (succès/erreur) n'est effacé QUE par un changement de parcelle.
+    // Effet séparé À DESSEIN : la synchro des champs ci-dessous dépend aussi de
+    // `budgetsByLabel`, que le save met à jour — regrouper les deux effaçait
+    // « Budget enregistré » dans le même rendu (React 18 batche les setState),
+    // l'utilisateur ne voyait jamais un succès, seulement les erreurs.
     useEffect(function () {
       setMsg(null);
+    }, [selected]);
+
+    // Changement de parcelle (ou de budgets connus) → recharger les champs.
+    useEffect(function () {
       if (!selected) {
         setValues({});
         return;

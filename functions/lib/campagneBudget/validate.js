@@ -38,6 +38,9 @@
 /** Libellé de campagne 'AAAA-BBBB'. */
 const __cb_CAMPAGNE_RE = /^(\d{4})-(\d{4})$/
 
+/** Nombre décimal strict (pas de '3abc', pas de '1e3', pas d'espaces internes). */
+const __cb_NUMERIC_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
+
 /** Garde-fou : au-delà, c'est une faute de frappe, pas un budget. */
 const MAX_JH_PAR_HA = 1000
 
@@ -106,7 +109,18 @@ function budgetDocId(campagne, label) {
 function parseBudgetValue(raw) {
   if (raw === null || raw === undefined || raw === '') return { ok: true, value: 0 }
   if (typeof raw === 'boolean') return { ok: false, error: 'Valeur de budget invalide' }
-  const num = typeof raw === 'number' ? raw : parseFloat(String(raw).trim().replace(',', '.'))
+  let num
+  if (typeof raw === 'number') {
+    num = raw
+  } else if (typeof raw === 'string') {
+    // parseFloat('3abc') vaut 3 : trop permissif pour une action POST-able à la
+    // main. On exige un nombre décimal ENTIER de bout en bout.
+    const s = raw.trim().replace(',', '.')
+    if (!__cb_NUMERIC_RE.test(s)) return { ok: false, error: 'Valeur de budget invalide' }
+    num = parseFloat(s)
+  } else {
+    return { ok: false, error: 'Valeur de budget invalide' }
+  }
   if (typeof num !== 'number' || !isFinite(num)) return { ok: false, error: 'Valeur de budget invalide' }
   if (num < 0) return { ok: false, error: 'Le budget JH/Ha ne peut pas être négatif' }
   if (num > MAX_JH_PAR_HA) {
@@ -242,6 +256,95 @@ function mergeBudgets(existing, incoming) {
   return out
 }
 
+/**
+ * Retire d'une map de budgets les familles absentes du référentiel courant.
+ *
+ * DÉCISION (documentée) : purge À L'ÉCRITURE. Une famille supprimée/renommée
+ * dans `referentiel_taches` n'est plus affichée par l'écran de saisie, donc
+ * plus jamais effaçable par l'utilisateur, tout en continuant d'être réécrite
+ * à chaque save et de peser dans les futurs calculs de consommation (LOT 2).
+ * On préfère la nettoyer au prochain enregistrement de la parcelle plutôt que
+ * de laisser un budget fantôme. La purge ne se déclenche QUE lors d'un save
+ * explicite sur cette parcelle (jamais en masse, jamais en lecture), et le
+ * référentiel des familles est déjà exigé non vide en amont
+ * (`validateBudgetSave`) — donc jamais de purge totale sur un référentiel
+ * momentanément indisponible.
+ *
+ * @param {Object<string, number>} budgets
+ * @param {Array<string>|null|undefined} famillesConnues liste vide/absente =
+ *   aucune purge (fail-safe : on ne supprime rien sans référentiel).
+ * @returns {{budgets: Object<string, number>, purgees: Array<string>}}
+ */
+function purgeFamillesInconnues(budgets, famillesConnues) {
+  const src = budgets && typeof budgets === 'object' ? budgets : {}
+  const familles = Array.isArray(famillesConnues) ? famillesConnues : []
+  if (familles.length === 0) return { budgets: Object.assign({}, src), purgees: [] }
+  /** @type {Object<string, boolean>} */
+  const known = {}
+  for (const f of familles) {
+    const k = String(f == null ? '' : f).trim().toUpperCase()
+    if (k) known[k] = true
+  }
+  /** @type {Object<string, number>} */
+  const out = {}
+  const purgees = []
+  for (const k of Object.keys(src)) {
+    if (known[String(k).trim().toUpperCase()]) out[k] = src[k]
+    else purgees.push(k)
+  }
+  return { budgets: out, purgees }
+}
+
+/**
+ * Écrit un budget dans une transaction Firestore. `tx` et `docRef` sont
+ * injectés (DI) → testable sans émulateur (indisponible ici : Java absent).
+ *
+ * POURQUOI PAS `set(…, { merge: true })` : le masque de champs d'un
+ * `set(merge:true)` est construit à partir des FEUILLES de l'objet
+ * (@google-cloud/firestore `DocumentMask.fromObject` → `extractFieldPaths`
+ * récurse dans les maps). Le masque contient donc `budgets.<famille encore
+ * présente>` mais PAS les familles retirées : leur ancienne valeur SURVIT en
+ * base. Bug d'autant plus traître que le cas « tout effacer » fonctionne (map
+ * vide → le chemin `budgets` entier est poussé).
+ * SOLUTION RETENUE : `mergeFields` avec `budgets` listé explicitement → le
+ * masque contient le chemin `budgets`, la map est remplacée EN ENTIER, tout en
+ * laissant intact un éventuel champ futur non listé (ce qu'un `set()` sans
+ * option écraserait).
+ *
+ * @param {{get: Function, set: Function}} tx transaction Firestore.
+ * @param {Object} docRef référence du document budget.
+ * @param {Object} args
+ * @param {string} args.campagne
+ * @param {string} args.label
+ * @param {Object<string, number>} args.budgets valeurs validées entrantes.
+ * @param {Array<string>} [args.famillesConnues] référentiel courant (purge).
+ * @param {string|null} args.uid
+ * @param {string} args.profileId
+ * @param {*} args.serverTimestamp valeur d'horodatage serveur (injectée).
+ * @returns {Promise<{budgets: Object<string, number>, purgees: Array<string>}>}
+ */
+async function writeBudgetInTransaction(tx, docRef, args) {
+  const a = args || {}
+  const snap = await tx.get(docRef)
+  const exists = snap && (typeof snap.exists === 'function' ? snap.exists() : snap.exists)
+  const prev = exists ? ((snap.data() || {}).budgets || null) : null
+  const merged = mergeBudgets(prev, a.budgets || {})
+  const purged = purgeFamillesInconnues(merged, a.famillesConnues)
+  tx.set(
+    docRef,
+    {
+      campagne: a.campagne,
+      label_bee_one: a.label,
+      budgets: purged.budgets,
+      updated_by: { uid: a.uid == null ? null : a.uid, profileId: a.profileId },
+      updated_at: a.serverTimestamp,
+    },
+    // `budgets` listé → map remplacée en entier (cf. commentaire ci-dessus).
+    { mergeFields: ['campagne', 'label_bee_one', 'budgets', 'updated_by', 'updated_at'] }
+  )
+  return purged
+}
+
 module.exports = {
   MAX_JH_PAR_HA,
   MAX_FAMILLES,
@@ -251,4 +354,6 @@ module.exports = {
   parseBudgetValue,
   validateBudgetSave,
   mergeBudgets,
+  purgeFamillesInconnues,
+  writeBudgetInTransaction,
 }
