@@ -448,7 +448,8 @@
 
   /** Écrit le classeur stylé avec ExcelJS et déclenche le téléchargement. */
   function writeWithExcelJS(ExcelJS, wbData) {
-    var K = window.CampagneExportUtils.ROW_KIND;
+    var CEU = window.CampagneExportUtils;
+    var K = CEU.ROW_KIND;
     var wb = new ExcelJS.Workbook();
     wb.creator = 'Smart Berry';
     wb.created = new Date();
@@ -473,15 +474,19 @@
         if (r.kind === K.COL_HEADER) headerRowIndex = i + 1;
         styleRow(row, r.kind, K, nbCols);
         // Nombres : alignés à droite, format lisible (séparateur de milliers).
+        // Le format est choisi VALEUR PAR VALEUR (CEU.numFmtFor) : un format
+        // unique `#,##0.##` laisse un séparateur décimal traîner sur les
+        // entiers (« 6. », « 12. »).
         row.eachCell({
           includeEmpty: false
         }, function (cell, col) {
           if (col === 1) return;
-          if (typeof cell.value === 'number') {
+          var fmt = CEU.numFmtFor(cell.value);
+          if (fmt) {
             cell.alignment = {
               horizontal: 'right'
             };
-            cell.numFmt = '#,##0.##';
+            cell.numFmt = fmt;
           }
         });
       });

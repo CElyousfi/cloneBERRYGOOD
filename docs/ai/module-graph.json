@@ -52,19 +52,19 @@
       },
       {
         "commits": 5,
-        "file": "public/components/ParcellesGroupesPanel.jsx"
-      },
-      {
-        "commits": 4,
-        "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 4,
         "file": "public/components/CampagneAnalytiqueTab.js"
+      },
+      {
+        "commits": 5,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
+      },
+      {
+        "commits": 5,
+        "file": "public/components/ParcellesGroupesPanel.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c9e98f146e8ab353",
+    "sourceFingerprint": "sha256:d17483df4a262835",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
@@ -769,7 +769,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
