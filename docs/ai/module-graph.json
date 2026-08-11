@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 27,
+        "commits": 26,
         "file": "public/app.jsx"
       },
       {
@@ -60,11 +60,11 @@
       },
       {
         "commits": 4,
-        "file": "public/components/MagStockFilesTab.js"
+        "file": "public/components/CampagneAnalytiqueTab.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8b3a6fb6e29d03fc",
+    "sourceFingerprint": "sha256:c9e98f146e8ab353",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
@@ -769,6 +769,13 @@
       },
       "gitCoupling": [
         {
+          "coCommits": 4,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 3,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
@@ -779,6 +786,20 @@
           "coCommits": 3,
           "domain": null,
           "file": "public/components/ParcellesReferentielTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }

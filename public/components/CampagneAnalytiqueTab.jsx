@@ -293,8 +293,11 @@
       s.src = EXCELJS_URL;
       s.async = true;
       s.onload = function () {
-        if (window.ExcelJS) resolve(window.ExcelJS);
-        else reject(new Error('ExcelJS chargé mais window.ExcelJS absent'));
+        if (window.ExcelJS) { resolve(window.ExcelJS); return; }
+        // Même traitement que onerror : sans reset, le repli deviendrait
+        // définitif jusqu'au rechargement de la page.
+        excelJsPromise = null;
+        reject(new Error('ExcelJS chargé mais window.ExcelJS absent'));
       };
       s.onerror = function () {
         // On oublie la promesse rejetée pour qu'un 2e clic puisse réessayer.
@@ -321,20 +324,36 @@
     return { type: 'pattern', pattern: 'solid', fgColor: { argb: argb } };
   }
 
+  /**
+   * Applique un style sur TOUTE la largeur de la feuille (1..nbCols), y compris
+   * les cellules vides : `row.eachCell` s'arrête à la dernière cellule
+   * renseignée, ce qui donnait un aplat limité à la colonne A sur les lignes
+   * ne portant qu'un libellé (famille, total…) au lieu d'un bandeau.
+   */
+  function styleFullWidth(row, nbCols, fn) {
+    for (var c = 1; c <= nbCols; c += 1) fn(row.getCell(c));
+  }
+
   /** Applique le style correspondant au `kind` d'une ligne. */
-  function styleRow(row, kind, K) {
+  function styleRow(row, kind, K, nbCols) {
     if (kind === K.META) {
       row.getCell(1).font = { bold: true, color: { argb: XL.textSec } };
       return;
     }
     if (kind === K.COL_HEADER) {
       row.font = { bold: true, color: { argb: XL.white } };
-      row.eachCell({ includeEmpty: true }, function (cell) { cell.fill = xlFill(XL.berry); });
+      styleFullWidth(row, nbCols, function (cell) {
+        cell.font = { bold: true, color: { argb: XL.white } };
+        cell.fill = xlFill(XL.berry);
+      });
       return;
     }
     if (kind === K.FAMILLE) {
       row.font = { bold: true };
-      row.eachCell({ includeEmpty: true }, function (cell) { cell.fill = xlFill(XL.grayLight); });
+      styleFullWidth(row, nbCols, function (cell) {
+        cell.font = { bold: true };
+        cell.fill = xlFill(XL.grayLight);
+      });
       return;
     }
     if (kind === K.OPERATION) {
@@ -345,14 +364,16 @@
     }
     if (kind === K.TOTAL_FAMILLE) {
       row.font = { bold: true };
-      row.eachCell({ includeEmpty: true }, function (cell) {
+      styleFullWidth(row, nbCols, function (cell) {
+        cell.font = { bold: true };
         cell.border = { top: { style: 'thin', color: { argb: XL.border } } };
       });
       return;
     }
     if (kind === K.TOTAL_GENERAL) {
       row.font = { bold: true };
-      row.eachCell({ includeEmpty: true }, function (cell) {
+      styleFullWidth(row, nbCols, function (cell) {
+        cell.font = { bold: true };
         cell.fill = xlFill(XL.berryLight);
         cell.border = { top: { style: 'medium', color: { argb: XL.berry } } };
       });
@@ -371,11 +392,17 @@
       if (s.cols) {
         ws.columns = s.cols.map(function (c) { return { width: c.wch }; });
       }
+      // Largeur de la feuille : les largeurs de colonnes font foi, avec un
+      // garde-fou sur la ligne la plus longue (feuille sans `cols`).
+      var nbCols = (s.cols && s.cols.length) || 0;
+      s.rows.forEach(function (r) {
+        if (r.cells.length > nbCols) nbCols = r.cells.length;
+      });
       var headerRowIndex = 0;
       s.rows.forEach(function (r, i) {
         var row = ws.addRow(r.cells);
         if (r.kind === K.COL_HEADER) headerRowIndex = i + 1;
-        styleRow(row, r.kind, K);
+        styleRow(row, r.kind, K, nbCols);
         // Nombres : alignés à droite, format lisible (séparateur de milliers).
         row.eachCell({ includeEmpty: false }, function (cell, col) {
           if (col === 1) return;
@@ -816,8 +843,15 @@
             onClick: function () {
               if (exporting !== null) return;
               setExporting(cult);
-              exportCulture(cult, data, farmFilter, sbMap)
-                .catch(function () {})
+              // Promise.resolve().then(…) : si exportCulture jette de façon
+              // SYNCHRONE, l'erreur devient un rejet capturé et les boutons
+              // sont réactivés — sinon ils resteraient grisés « Génération… »
+              // jusqu'au remontage de l'onglet.
+              Promise.resolve()
+                .then(function () { return exportCulture(cult, data, farmFilter, sbMap); })
+                .catch(function (e) {
+                  if (window.console) console.error('[Campagne] Export ' + cult + ' échoué :', e);
+                })
                 .then(function () { setExporting(null); });
             },
             title: 'Exporter toutes les parcelles ' + cult + ' (une feuille par parcelle)',
