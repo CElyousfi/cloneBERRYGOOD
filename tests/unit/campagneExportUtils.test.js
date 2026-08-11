@@ -116,14 +116,39 @@ test('buildSyntheseAoA — TOTAL JH/Ha = moyenne PONDÉRÉE (ΣJH / Σha)', () =
   assert.strictEqual(aoa[3][5], 6.1);
 });
 
-test('buildSyntheseAoA — ha manquant sur une parcelle : exclu du ratio, pas du total', () => {
+// Décision produit : une parcelle sans superficie connue est exclue des DEUX
+// sommes du ratio (numérateur ET dénominateur). Garder ses JH au numérateur
+// gonflerait le JH/ha global — faux, et faux dans le sens qui inquiète.
+test('buildSyntheseAoA — parcelle sans ha : exclue du ratio (numérateur ET dénominateur)', () => {
   const aoa = buildSyntheseAoA([
     { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 10 },
     { nomSb: 'B', label: 'B', ferme: 'F1', ha: null, totalJh: 6 },
   ]);
-  assert.strictEqual(aoa[2][5], '');
-  // Σha = 2 (B n'apporte aucune superficie), ΣJH = 16 → 8
-  assert.strictEqual(aoa[3][5], 8);
+  assert.strictEqual(aoa[2][5], '', 'la parcelle sans ha n\'a pas de ratio');
+  // Total JH = 16 : le VOLUME ne perd rien, même sans superficie
+  assert.strictEqual(aoa[3][4], 16);
+  // Ratio = 10 JH / 2 ha = 5 — surtout PAS 16/2 = 8
+  assert.strictEqual(aoa[3][5], 5);
+});
+
+test('buildSyntheseAoA — ha = 0 ou négatif traité comme inconnu dans le ratio', () => {
+  const aoa = buildSyntheseAoA([
+    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 4, totalJh: 20 },
+    { nomSb: 'B', label: 'B', ferme: 'F1', ha: 0, totalJh: 9 },
+    { nomSb: 'C', label: 'C', ferme: 'F1', ha: -1, totalJh: 7 },
+  ]);
+  assert.strictEqual(aoa[4][4], 36);      // Total JH = 20 + 9 + 7
+  assert.strictEqual(aoa[4][5], 5);       // ratio = 20 / 4
+});
+
+test('buildSyntheseAoA — aucune parcelle avec superficie → ratio vide, pas de division par zéro', () => {
+  const aoa = buildSyntheseAoA([
+    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 0, totalJh: 10 },
+    { nomSb: 'B', label: 'B', ferme: 'F1', ha: null, totalJh: 6 },
+  ]);
+  assert.strictEqual(aoa[3][3], '');      // Σha nulle → superficie vide
+  assert.strictEqual(aoa[3][4], 16);      // le total de JH reste complet
+  assert.strictEqual(aoa[3][5], '');      // ni Infinity ni NaN
 });
 
 test('buildSyntheseRows — lignes typées (en-tête, données, total)', () => {

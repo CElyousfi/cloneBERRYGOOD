@@ -229,11 +229,21 @@ function buildSyntheseRows(parcelles) {
   const rows = [{ kind: ROW_KIND.COL_HEADER, cells: __cexp_SYNTHESE_HEADER.slice() }];
   let totalHa = 0;
   let totalJh = 0;
+  // Sommes du RATIO : périmètre restreint aux parcelles dont la superficie est
+  // connue (cf. ligne TOTAL plus bas).
+  let ratioHa = 0;
+  let ratioJh = 0;
   let n = 0;
   (parcelles || []).forEach(function (p) {
     const src = p || {};
-    totalHa += Number(src.ha) || 0;
-    totalJh += Number(src.totalJh) || 0;
+    const ha = Number(src.ha);
+    const jh = Number(src.totalJh) || 0;
+    totalHa += ha || 0;
+    totalJh += jh;
+    if (ha && isFinite(ha) && ha > 0) {
+      ratioHa += ha;
+      ratioJh += jh;
+    }
     n += 1;
     rows.push({
       kind: ROW_KIND.DATA,
@@ -248,10 +258,22 @@ function buildSyntheseRows(parcelles) {
     });
   });
   if (n > 0) {
-    // Ligne TOTAL : le JH/Ha global est la SOMME des JH ÷ la SOMME des ha
-    // (moyenne pondérée par la superficie), pas la moyenne des ratios ligne à
-    // ligne — cette dernière donnerait le même poids à une parcelle de 0,2 ha
-    // qu'à une de 5 ha et ne correspondrait à aucune réalité agronomique.
+    // Ligne TOTAL — DEUX périmètres différents, volontairement :
+    //
+    // • « Total JH » = somme de TOUS les JH, y compris ceux des parcelles sans
+    //   superficie connue : c'est un total de VOLUME, il ne doit rien perdre.
+    //
+    // • « Total JH / Ha » = ΣJH ÷ Σha calculés sur les SEULES parcelles dont on
+    //   connaît la superficie — exclusion DOUBLE (numérateur ET dénominateur).
+    //   Garder les JH d'une parcelle au numérateur alors que ses hectares
+    //   manquent au dénominateur gonflerait le ratio : le chiffre serait faux,
+    //   et faux dans le sens qui inquiète (consommation de main-d'œuvre
+    //   surestimée). Le ratio se lit « JH/ha sur le périmètre dont la surface
+    //   est connue ». C'est aussi, pour la même raison, une moyenne PONDÉRÉE
+    //   (ΣJH ÷ Σha) et non la moyenne des ratios ligne à ligne, qui donnerait
+    //   le même poids à une parcelle de 0,2 ha qu'à une de 5 ha.
+    //   Aucune parcelle avec superficie → Σha = 0 → cellule vide (pas de
+    //   division par zéro).
     rows.push({
       kind: ROW_KIND.TOTAL_GENERAL,
       cells: [
@@ -259,7 +281,7 @@ function buildSyntheseRows(parcelles) {
         '', '',
         __cexp_num(totalHa),
         __cexp_num(totalJh),
-        __cexp_perHa(totalJh, totalHa),
+        __cexp_perHa(ratioJh, ratioHa),
       ],
     });
   }
