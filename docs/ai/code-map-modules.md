@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:ab89812cfcdf4b8e -->
+<!-- sourceFingerprint: sha256:3e96b43dea94c1ad -->
 # Code Map — Modules lib (150)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -132,7 +132,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
 | public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
-| public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, safeSheetName, buildSyntheseAoA, buildParcelleSheetAoA |
+| public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, haLabel, safeSheetName, buildSyntheseAoA, buildParcelleSheetAoA |
 | public/lib/campagneUtils.js | CampagneUtils | campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne |
 | public/lib/cultureUtils.js | CultureUtils | CULTURES, normCulture, resolveCulture, matchesCulture |
 | public/lib/emargementExcel.js | EmargementExcel | genSansCnssXlsx, genAvecCnssXlsx, genTransporteursXlsx, genBulletinsXlsx |

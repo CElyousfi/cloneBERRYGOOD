@@ -4,10 +4,28 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   SHEET_MAX,
+  haLabel,
   safeSheetName,
   buildSyntheseAoA,
   buildParcelleSheetAoA,
 } = require('../../public/lib/campagneExportUtils.js');
+
+// ============================================================================
+// haLabel — superficie AFFICHÉE, locale fr (écran + en-tête Excel)
+// ============================================================================
+test('haLabel — virgule décimale, 2 décimales, suffixe ha', () => {
+  assert.strictEqual(haLabel(2.4), '2,40 ha');
+  assert.strictEqual(haLabel(0.5), '0,50 ha');
+  assert.strictEqual(haLabel(12), '12,00 ha');
+});
+
+test('haLabel — superficie inconnue/nulle/négative → tiret', () => {
+  assert.strictEqual(haLabel(0), '—');
+  assert.strictEqual(haLabel(null), '—');
+  assert.strictEqual(haLabel(undefined), '—');
+  assert.strictEqual(haLabel(-1), '—');
+  assert.strictEqual(haLabel('abc'), '—');
+});
 
 // ============================================================================
 // safeSheetName — nettoyage, troncature, déduplication
@@ -46,6 +64,14 @@ test('safeSheetName — collision insensible à la casse', () => {
   const used = {};
   assert.strictEqual(safeSheetName('Parcelle A', 1, used), 'Parcelle A');
   assert.strictEqual(safeSheetName('PARCELLE A', 2, used), 'PARCELLE A~2');
+});
+
+test('safeSheetName — dictionnaire partagé : une parcelle « Synthèse » est renommée', () => {
+  // Le classeur réserve d'abord le nom de la feuille de synthèse ; une parcelle
+  // homonyme doit être suffixée, sinon XLSX.book_append_sheet lève (nom pris).
+  const used = {};
+  assert.strictEqual(safeSheetName('Synthèse', 0, used), 'Synthèse');
+  assert.strictEqual(safeSheetName('Synthèse', 1, used), 'Synthèse~2');
 });
 
 test('safeSheetName — nom vide ou non-string → repli sur l\'index', () => {

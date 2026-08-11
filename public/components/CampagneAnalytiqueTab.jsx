@@ -70,6 +70,19 @@
     return parseFloat(v).toFixed(2);
   }
 
+  /**
+   * Superficie affichée en locale fr ('2,40 ha' / '—'). Même format que
+   * l'en-tête des feuilles Excel (source unique : CampagneExportUtils.haLabel),
+   * avec un repli local si le module n'est pas chargé. fmtHa est laissé
+   * inchangé : il sert aussi aux colonnes Ha des tableaux.
+   */
+  function fmtHaLabel(v) {
+    var CEU = window.CampagneExportUtils;
+    if (CEU && typeof CEU.haLabel === 'function') return CEU.haLabel(v);
+    if (!v || v <= 0) return '—';
+    return parseFloat(v).toFixed(2).replace('.', ',') + ' ha';
+  }
+
   function fmtDHPerHa(cout, ha) {
     if (!ha || ha === 0 || !cout) return '—';
     return Math.round(cout / ha).toLocaleString('fr-MA');
@@ -214,7 +227,11 @@
 
     var synthese = [];
     var sheets = [];
+    // Dictionnaire de noms de feuille PARTAGÉ : la Synthèse réserve son nom en
+    // premier, sinon une parcelle nommée « Synthèse » ferait échouer
+    // book_append_sheet (nom déjà pris) et planterait l'export.
     var used = {};
+    var syntheseName = CEU.safeSheetName('Synthèse', 0, used);
     labels.forEach(function (label, i) {
       var opRows = buildVarieteView(rows, label, periodes);
       var totalJh = 0; var totalCout = 0;
@@ -243,7 +260,6 @@
       });
     });
 
-    var syntheseName = CEU.safeSheetName('Synthèse', 0, {});
     return {
       fileName: 'Campagne_' + culture + '_' + new Date().toISOString().slice(0, 10),
       sheets: [{ name: syntheseName, aoa: CEU.buildSyntheseAoA(synthese) }].concat(sheets),
@@ -606,7 +622,7 @@
         ),
         selectedParcelle
           ? React.createElement('span', { style: { fontSize: '13px', color: C.textSec } },
-              'Superficie : ' + fmtHa(selectedHa) + (selectedHa ? ' ha' : '')
+              'Superficie : ' + fmtHaLabel(selectedHa)
             )
           : null,
         React.createElement('span', { style: { marginLeft: '8px' } }),

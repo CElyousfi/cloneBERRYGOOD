@@ -56,11 +56,14 @@ function __cexp_num(v) {
 }
 
 /**
- * Superficie affichée dans l'en-tête d'une feuille parcelle : '2,40 ha' ou '—'.
+ * Superficie AFFICHÉE (locale fr, virgule décimale) : '2,40 ha' ou '—'.
+ * Utilisée par l'en-tête des feuilles parcelle ET par l'écran Campagne — même
+ * format des deux côtés. Ne concerne QUE l'affichage : les cellules de données
+ * de l'AoA restent des Number bruts.
  * @param {*} ha
  * @returns {string}
  */
-function __cexp_haLabel(ha) {
+function haLabel(ha) {
   const n = Number(ha);
   if (!n || !isFinite(n) || n <= 0) return '—';
   return n.toFixed(2).replace('.', ',') + ' ha';
@@ -168,7 +171,7 @@ function buildParcelleSheetAoA(params) {
   const opRows = p.opRows || [];
 
   const aoa = [
-    ['Parcelle : ' + (p.nomSb || ''), 'Superficie : ' + __cexp_haLabel(p.ha)],
+    ['Parcelle : ' + (p.nomSb || ''), 'Superficie : ' + haLabel(p.ha)],
     ['Culture : ' + (p.culture || ''), 'Campagne : ' + (p.campagne || '')],
     [],
   ];
@@ -245,6 +248,7 @@ function buildParcelleSheetAoA(params) {
 
 const __cexp_api = {
   SHEET_MAX: __cexp_SHEET_MAX,
+  haLabel,
   safeSheetName,
   buildSyntheseAoA,
   buildParcelleSheetAoA,
