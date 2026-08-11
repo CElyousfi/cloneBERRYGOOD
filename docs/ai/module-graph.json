@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 26,
+        "commits": 25,
         "file": "public/app.jsx"
       },
       {
@@ -31,12 +31,20 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 7,
+        "commits": 8,
         "file": "scripts/build-frontend.js"
       },
       {
         "commits": 6,
         "file": "functions/dgAgent.js"
+      },
+      {
+        "commits": 6,
+        "file": "public/components/CampagneAnalytiqueTab.js"
+      },
+      {
+        "commits": 6,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
         "commits": 6,
@@ -53,18 +61,10 @@
       {
         "commits": 5,
         "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 5,
-        "file": "public/components/CampagneAnalytiqueTab.js"
-      },
-      {
-        "commits": 5,
-        "file": "public/components/CampagneAnalytiqueTab.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:22ce78355c9f6864",
+    "sourceFingerprint": "sha256:c686f47c5b5148e2",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -772,16 +772,30 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 5,
+          "coCommits": 6,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 5,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -789,20 +803,6 @@
           "coCommits": 3,
           "domain": null,
           "file": "public/components/ParcellesReferentielTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }

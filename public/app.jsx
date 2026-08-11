@@ -67941,7 +67941,10 @@ ${rejetHtml}
                                 {renderTab('hors_recolte', HorsRecolteTab, { data, farmFilter, avoSubFilter }, 'Hors Récolte')}
                                 {renderTab('hors_recolte_suivi', HorsRecolteSuiviTab, { data, farmFilter, avoSubFilter }, 'Suivi Hors Récolte')}
                                 {renderTab('quinzaine', QuinzaineTab, { data, farmFilter, farmLabel, avoSubFilter, cultureFilter, currentProfile, onNavigateToPrimes: (periode) => { setPrimesInitialPeriode(periode || ''); setCurrentTab('primes'); localStorage.setItem('lastTab', 'primes'); } }, 'Quinzaine')}
-                                {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter }, 'Campagne')}
+                                {/* userRole : requis par le sous-onglet Budget (CampagneBudgetTab) pour
+                                    n'ouvrir la saisie qu'aux profils DG/RH — même source que
+                                    'parcelles_referentiel' ci-dessous. Le backend refuse de toute façon. */}
+                                {renderTab('campagne', window.CampagneAnalytiqueTab, { data, farmFilter, avoSubFilter, userRole: currentProfile }, 'Campagne')}
                                 {renderTab('rh_equipes', EquipesTab, { data }, 'Équipes')}
                                 {renderTab('primes', PrimesTab, { data, farmFilter, avoSubFilter, initialPeriode: primesInitialPeriode, onInitialPeriodeConsumed: () => setPrimesInitialPeriode(null) }, 'Primes')}
                                 {renderTab('paie', PaieTab, { data, currentProfile }, 'Paie')}

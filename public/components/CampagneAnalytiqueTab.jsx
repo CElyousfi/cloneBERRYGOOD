@@ -1294,7 +1294,9 @@
 
     // Chargement conso (paresseux — uniquement à la première transition vers engrais/pesticides)
     useEffect(function () {
-      if (subTab === 'mo' || consoFetched) return;
+      // 'budget' n'utilise PAS campagne-conso-parcelle (saisie, pas conso) :
+      // l'exclure évite un fetch inutile à l'ouverture de l'onglet.
+      if (subTab === 'mo' || subTab === 'budget' || consoFetched) return;
       setConsoFetched(true);
       setConsoLoading(true);
       setConsoErr(null);
@@ -1354,11 +1356,17 @@
     }
 
     // Sous-tabs definition
+    // 'budget' n'est proposé que si le composant est réellement chargé : une
+    // référence nue à un global absent crashe GLOBALEMENT (piège projet
+    // « tab bare global ref »), on garde donc l'onglet ET son rendu.
     var subTabs = [
       { id: 'mo',         label: 'Main Oeuvre',  icon: 'fa-person-digging' },
       { id: 'engrais',    label: 'Engrais',       icon: 'fa-flask' },
       { id: 'pesticides', label: 'Pesticides',    icon: 'fa-spray-can' },
     ];
+    if (window.CampagneBudgetTab) {
+      subTabs.push({ id: 'budget', label: 'Budget', icon: 'fa-bullseye' });
+    }
 
     var cultures = ['Toutes', 'Framboise', 'Myrtille', 'Avocatier'];
 
@@ -1408,8 +1416,9 @@
           : null
       ),
 
-      // Ligne 2 : Filtre culture (toujours visible)
-      React.createElement('div', {
+      // Ligne 2 : Filtre culture (masqué sur 'budget' : la saisie porte sur UNE
+      // parcelle choisie explicitement, un filtre culture sans effet mentirait).
+      subTab !== 'budget' && React.createElement('div', {
         style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }
       },
         React.createElement('span', { style: { fontSize: '13px', color: C.textSec, marginRight: '4px' } }, 'Culture :'),
@@ -1432,7 +1441,11 @@
       ),
 
       // Contenu
-      subTab === 'mo'
+      subTab === 'budget'
+        ? (window.CampagneBudgetTab
+            ? React.createElement(window.CampagneBudgetTab, { userRole: props.userRole })
+            : null)
+      : subTab === 'mo'
         ? (view === 'ha'
             ? React.createElement(HaView, {
                 data: data,
