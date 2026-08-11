@@ -79,6 +79,17 @@ if (!fs.readFileSync(CULTURE_UTILS, "utf8").includes("resolveCulture")) {
   process.exit(2);
 }
 
+// 2ter-quater. Sibling lib check — campagneExportUtils.js (export Excel Campagne).
+const CAMPAGNE_EXPORT_UTILS = path.join(ROOT, "public/lib/campagneExportUtils.js");
+if (!fs.existsSync(CAMPAGNE_EXPORT_UTILS)) {
+  console.error("[build-frontend] missing public/lib/campagneExportUtils.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(CAMPAGNE_EXPORT_UTILS, "utf8").includes("buildParcelleSheetAoA")) {
+  console.error("[build-frontend] sentinel missing in public/lib/campagneExportUtils.js: buildParcelleSheetAoA");
+  process.exit(2);
+}
+
 // 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
 // puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
 // <script> séparés et partagent le scope global (IIFE → un seul global unique).

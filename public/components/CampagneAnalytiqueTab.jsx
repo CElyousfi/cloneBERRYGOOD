@@ -81,18 +81,48 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* deriveCulture — dérive la culture d'une ligne à partir de la ferme  */
-  /* et du nom de parcelle. Utilisé pour le filtre culture côté frontend. */
+  /* Culture / nom / superficie — référentiel Smart Berry                 */
   /* ------------------------------------------------------------------ */
-  function deriveCulture(ferme, parcelle) {
-    if (ferme === 'Avocatier' || ferme === 'BAHIA') return 'Avocatier';
-    if (ferme === 'F1') return 'Framboise';
-    if (ferme === 'F5') {
-      var p = (parcelle || '').toLowerCase();
-      if (p.includes('myrtille') || p.includes('corina') || p.includes('breeze') || p.includes('cascade')) return 'Myrtille';
-      return 'Framboise';
+
+  /**
+   * Culture d'une parcelle depuis le référentiel SB (window.CultureUtils).
+   * Renvoie null si le module n'est pas chargé (garde défensive : on ne
+   * filtre alors rien plutôt que de vider l'écran).
+   */
+  function cultureOf(label, sbMap) {
+    var CU = window.CultureUtils;
+    if (!CU || typeof CU.resolveCulture !== 'function') return null;
+    return CU.resolveCulture({ label: label }, sbMap);
+  }
+
+  /** Prédicat du filtre Culture de l'écran ('Toutes' = pas de filtre). */
+  function matchCulture(label, cultureFilter, sbMap) {
+    if (!cultureFilter || cultureFilter === 'Toutes') return true;
+    var c = cultureOf(label, sbMap);
+    if (c === null) return true;
+    return c === cultureFilter;
+  }
+
+  /** Nom Smart Berry d'une parcelle, repli sur le libellé BEE ONE. */
+  function sbNom(label, sbMap) {
+    if (typeof window.sbParcelleNom === 'function') {
+      var n = window.sbParcelleNom(label);
+      if (n && n !== '—' && n !== label) return n;
     }
-    return 'Autre';
+    var key = String(label || '').toUpperCase().trim();
+    var entry = sbMap && sbMap[key];
+    if (entry && entry.nom_sb) return entry.nom_sb;
+    return label || '—';
+  }
+
+  /** Superficie (ha) d'une parcelle : global app.jsx, puis sbMap, puis haByRef. */
+  function sbHa(label, sbMap, haByRef) {
+    var key = String(label || '').toUpperCase().trim();
+    var v = 0;
+    if (typeof window.sbParcelleHa === 'function') v = window.sbParcelleHa(label) || 0;
+    if (!v && sbMap && sbMap[key] && sbMap[key].ha > 0) v = sbMap[key].ha;
+    if (!v && haByRef && haByRef[key] > 0) v = haByRef[key];
+    return v || 0;
   }
 
   /* ------------------------------------------------------------------ */
@@ -154,12 +184,113 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Export Excel — une feuille Synthèse + une feuille par parcelle       */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Construit les feuilles du classeur d'une culture. Indépendant du filtre
+   * Culture de l'écran et de la parcelle sélectionnée, mais respecte le
+   * farmFilter (périmètre du profil chef).
+   * Retourne { fileName, sheets: [{ name, aoa }] }.
+   */
+  function buildCultureWorkbook(culture, data, farmFilter, sbMap) {
+    var CEU = window.CampagneExportUtils;
+    var rows = (data && data.rows) || [];
+    var periodes = (data && data.periodes) || [];
+    var haByRef = (data && data.haByRef) || {};
+
+    // Parcelles de la culture (distinctes, ordre alphabétique du nom SB)
+    var seen = {};
+    var labels = [];
+    rows.forEach(function (r) {
+      var label = r.parcelle || r.refParcelle;
+      if (!label || seen[label]) return;
+      if (farmFilter && r.ferme !== farmFilter) return;
+      if (cultureOf(label, sbMap) !== culture) return;
+      seen[label] = { ferme: r.ferme };
+      labels.push(label);
+    });
+    labels.sort(function (a, b) { return sbNom(a, sbMap).localeCompare(sbNom(b, sbMap)); });
+
+    var synthese = [];
+    var sheets = [];
+    var used = {};
+    labels.forEach(function (label, i) {
+      var opRows = buildVarieteView(rows, label, periodes);
+      var totalJh = 0; var totalCout = 0;
+      opRows.forEach(function (r) { totalJh += r.total.jh; totalCout += r.total.cout; });
+      var ha = sbHa(label, sbMap, haByRef);
+      var nom = sbNom(label, sbMap);
+      synthese.push({
+        nomSb: nom,
+        label: label,
+        ferme: seen[label].ferme,
+        ha: ha,
+        totalJh: totalJh,
+        totalCout: totalCout,
+      });
+      sheets.push({
+        name: CEU.safeSheetName(nom, i + 1, used),
+        aoa: CEU.buildParcelleSheetAoA({
+          nomSb: nom,
+          ha: ha,
+          culture: culture,
+          campagne: (data && data.campagne) || '',
+          periodes: periodes,
+          opRows: opRows,
+          famillesOrdered: (data && data.famillesOrdered) || [],
+        }),
+      });
+    });
+
+    var syntheseName = CEU.safeSheetName('Synthèse', 0, {});
+    return {
+      fileName: 'Campagne_' + culture + '_' + new Date().toISOString().slice(0, 10),
+      sheets: [{ name: syntheseName, aoa: CEU.buildSyntheseAoA(synthese) }].concat(sheets),
+    };
+  }
+
+  /** Écrit le classeur (SheetJS via CDN) ou, à défaut, la Synthèse en CSV. */
+  function exportCulture(culture, data, farmFilter, sbMap) {
+    if (!window.CampagneExportUtils) return;
+    var wbData = buildCultureWorkbook(culture, data, farmFilter, sbMap);
+    if (wbData.sheets.length <= 1) {
+      window.alert('Aucune parcelle ' + culture + ' dans le périmètre.');
+      return;
+    }
+
+    if (window.XLSX) {
+      var wb = window.XLSX.utils.book_new();
+      wbData.sheets.forEach(function (s) {
+        window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(s.aoa), s.name);
+      });
+      window.XLSX.writeFile(wb, wbData.fileName + '.xlsx');
+      return;
+    }
+
+    // Fallback CSV (feuille Synthèse) si SheetJS absent.
+    var csv = wbData.sheets[0].aoa.map(function (r) {
+      return r.map(function (c) {
+        var s = String(c == null ? '' : c);
+        return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+      }).join(';');
+    }).join('\n');
+    var blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = wbData.fileName + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /* ------------------------------------------------------------------ */
   /* Sous-composant : Vue Affectation par Ha                              */
   /* ------------------------------------------------------------------ */
   function HaView(props) {
     var data = props.data;
     var farmFilter = props.farmFilter;
     var cultureFilter = props.cultureFilter;
+    var sbMap = props.sbMap || {};
     var metric = props.metric; // 'cout' | 'jh'
     var setMetric = props.setMetric;
 
@@ -189,11 +320,11 @@
     var filteredRows = useMemo(function () {
       var r = rows;
       if (farmFilter) r = r.filter(function (row) { return row.ferme === farmFilter; });
-      if (cultureFilter && cultureFilter !== 'Toutes') {
-        r = r.filter(function (row) { return deriveCulture(row.ferme, row.parcelle) === cultureFilter; });
-      }
+      r = r.filter(function (row) {
+        return matchCulture(row.parcelle || row.refParcelle, cultureFilter, sbMap);
+      });
       return r;
-    }, [rows, farmFilter, cultureFilter]);
+    }, [rows, farmFilter, cultureFilter, sbMap]);
 
     // Totaux colonnes
     var colTotals = useMemo(function () {
@@ -306,7 +437,10 @@
                     key: row.refParcelle || row.parcelle,
                     style: { background: idx % 2 === 0 ? C.surface : C.surface2 }
                   },
-                    React.createElement('td', { style: tdFirstStyle }, row.parcelle || row.refParcelle),
+                    React.createElement('td', {
+                      style: tdFirstStyle,
+                      title: row.parcelle || row.refParcelle,
+                    }, sbNom(row.parcelle || row.refParcelle, sbMap)),
                     React.createElement('td', { style: tdStyle }, row.ferme || '—'),
                     React.createElement('td', { style: tdStyle }, fmtHa(row.ha)),
                     activeFamilles.map(function (f) {
@@ -353,12 +487,15 @@
     var data = props.data;
     var farmFilter = props.farmFilter;
     var cultureFilter = props.cultureFilter;
+    var sbMap = props.sbMap || {};
     var selectedParcelle = props.selectedParcelle;
     var setSelectedParcelle = props.setSelectedParcelle;
     var metric = props.metric;
     var setMetric = props.setMetric;
 
-    // Liste distincte des parcelles (filtrée par farmFilter + cultureFilter)
+    // Liste distincte des parcelles (filtrée par farmFilter + cultureFilter).
+    // `value` = libellé BEE ONE brut (clé de jointure de buildVarieteView),
+    // affichage = nom Smart Berry ; tri sur le libellé affiché.
     var parcelles = useMemo(function () {
       var seen = {};
       var list = [];
@@ -366,12 +503,18 @@
         var key = r.parcelle || r.refParcelle;
         if (!key || seen[key]) return;
         if (farmFilter && r.ferme !== farmFilter) return;
-        if (cultureFilter && cultureFilter !== 'Toutes' && deriveCulture(r.ferme, r.parcelle) !== cultureFilter) return;
+        if (!matchCulture(key, cultureFilter, sbMap)) return;
         seen[key] = true;
-        list.push(key);
+        list.push({ value: key, label: sbNom(key, sbMap) });
       });
-      return list.sort();
-    }, [data, farmFilter, cultureFilter]);
+      return list.sort(function (a, b) { return a.label.localeCompare(b.label); });
+    }, [data, farmFilter, cultureFilter, sbMap]);
+
+    // Superficie de la parcelle sélectionnée
+    var selectedHa = useMemo(function () {
+      if (!selectedParcelle) return 0;
+      return sbHa(selectedParcelle, sbMap, data.haByRef);
+    }, [selectedParcelle, sbMap, data]);
 
     // Quinzaines de la campagne présentes dans les données
     var periodes = data.periodes || [];
@@ -458,9 +601,14 @@
         },
           React.createElement('option', { value: '' }, '— Choisir une parcelle —'),
           parcelles.map(function (p) {
-            return React.createElement('option', { key: p, value: p }, p);
+            return React.createElement('option', { key: p.value, value: p.value }, p.label);
           })
         ),
+        selectedParcelle
+          ? React.createElement('span', { style: { fontSize: '13px', color: C.textSec } },
+              'Superficie : ' + fmtHa(selectedHa) + (selectedHa ? ' ha' : '')
+            )
+          : null,
         React.createElement('span', { style: { marginLeft: '8px' } }),
         ['jh', 'cout'].map(function (m) {
           var label = m === 'cout' ? 'Coût DH' : 'JH';
@@ -478,6 +626,28 @@
               cursor: 'pointer',
             }
           }, label);
+        }),
+        // Exports Excel — toutes les parcelles de la culture (indépendants du
+        // filtre Culture et de la parcelle sélectionnée), périmètre farmFilter.
+        ['Framboise', 'Myrtille'].map(function (cult) {
+          return React.createElement('button', {
+            key: 'export-' + cult,
+            onClick: function () { exportCulture(cult, data, farmFilter, sbMap); },
+            title: 'Exporter toutes les parcelles ' + cult + ' (une feuille par parcelle)',
+            style: {
+              padding: '5px 14px',
+              border: '1.5px solid ' + C.green,
+              borderRadius: '16px',
+              background: C.surface,
+              color: C.green,
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }
+          },
+            React.createElement('i', { className: 'fa-solid fa-file-excel', style: { marginRight: '6px' } }),
+            'Export ' + cult
+          );
         })
       ),
       // Contenu
@@ -612,6 +782,7 @@
     var subTab = props.subTab; // 'engrais' | 'pesticides'
     var farmFilter = props.farmFilter;
     var cultureFilter = props.cultureFilter;
+    var sbMap = props.sbMap || {};
 
     var _metric = useState('perha');
     var metric = _metric[0]; var setMetric = _metric[1];
@@ -621,10 +792,10 @@
       if (!consoData) return [];
       return (consoData.parcelles || []).filter(function (p) {
         if (farmFilter && p.ferme !== farmFilter) return false;
-        if (cultureFilter && cultureFilter !== 'Toutes' && deriveCulture(p.ferme, p.parcelle) !== cultureFilter) return false;
+        if (!matchCulture(p.parcelle, cultureFilter, sbMap)) return false;
         return true;
       });
-    }, [consoData, farmFilter, cultureFilter]);
+    }, [consoData, farmFilter, cultureFilter, sbMap]);
 
     // Articles dynamiques selon le sub-tab
     var articles = useMemo(function () {
@@ -854,6 +1025,27 @@
     var _consoFetched = useState(false);
     var consoFetched = _consoFetched[0]; var setConsoFetched = _consoFetched[1];
 
+    // Référentiel parcelles Smart Berry (culture_sb, nom_sb, ha) — en state :
+    // window.SB_PARCELLE_REF est peuplé de façon asynchrone par app.jsx sans
+    // re-render, il ne sert donc que de valeur initiale.
+    var _sbMap = useState(window.SB_PARCELLE_REF || {});
+    var sbMap = _sbMap[0]; var setSbMap = _sbMap[1];
+
+    useEffect(function () {
+      fetch('/api/pointage-rh?action=sb-referentiel-list')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || !d.success) return;
+          var map = {};
+          (d.parcelles || []).forEach(function (p) {
+            map[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
+          });
+          window.SB_PARCELLE_REF = map;
+          setSbMap(map);
+        })
+        .catch(function () {});
+    }, []);
+
     useEffect(function () {
       setLoading(true);
       setErr(null);
@@ -1016,6 +1208,7 @@
                 data: data,
                 farmFilter: farmFilter,
                 cultureFilter: cultureFilter,
+                sbMap: sbMap,
                 metric: metric,
                 setMetric: setMetric,
               })
@@ -1023,6 +1216,7 @@
                 data: data,
                 farmFilter: farmFilter,
                 cultureFilter: cultureFilter,
+                sbMap: sbMap,
                 selectedParcelle: selectedParcelle,
                 setSelectedParcelle: setSelectedParcelle,
                 metric: metric,
@@ -1048,6 +1242,7 @@
                   subTab: subTab,
                   farmFilter: farmFilter,
                   cultureFilter: cultureFilter,
+                  sbMap: sbMap,
                 })
           )
     );
