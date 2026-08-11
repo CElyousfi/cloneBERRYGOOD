@@ -42,11 +42,13 @@
     Avocatier: { bg: '#d1fae5', text: '#065f46' },
   };
 
+  // Délègue à la source de vérité partagée public/lib/cultureUtils.js (chargée
+  // AVANT ce composant dans index.html) : la copie locale du regex avait divergé
+  // (variétés d'avocatier manquantes → « F2 ZUTANO » classé Framboise).
+  // Repli 'Framboise' = défaut historique du module, si le lib n'est pas chargé.
   function normCulture(cultureField, labelFallback) {
-    var src = (cultureField || labelFallback || '').toUpperCase();
-    if (!src) return 'Framboise';
-    if (/MYRTILL|BLUEBERRY|CORINA|CASCADE|BREEZE/.test(src)) return 'Myrtille';
-    if (/AVOCAT|AVOCADO|HAAS|BACON/.test(src))               return 'Avocatier';
+    var CU = window.CultureUtils;
+    if (CU && typeof CU.normCulture === 'function') return CU.normCulture(cultureField, labelFallback);
     return 'Framboise';
   }
 

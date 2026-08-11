@@ -41,15 +41,34 @@ const __cult_CULTURES = ['Framboise', 'Myrtille', 'Avocatier'];
 /** Culture par défaut quand rien ne permet de trancher (comportement historique). */
 const __cult_DEFAUT = 'Framboise';
 
+/** Termes myrtille (substring, historique : CORINA/CASCADE/BREEZE sont des variétés). */
+const __cult_RE_MYRTILLE = /MYRTILL|BLUEBERRY|CORINA|CASCADE|BREEZE/;
+
+/**
+ * Termes avocatier. Historique en substring (AVOCAT|AVOCADO|HAAS|BACON), puis
+ * variétés d'avocatier ajoutées en MOT ENTIER (`\b`) — un libellé de parcelle
+ * ne porte souvent que le nom de variété (cas réel : « F2 ZUTANO », classé à
+ * tort en Framboise par défaut). Le `\b` évite qu'un mot plus long contenant
+ * la séquence ne déclenche à tort (ex. REED dans « BREEDER »).
+ * Volontairement NON inclus : « GEM », « LULA », « ORO » — trop courts ou trop
+ * ambigus pour un repli automatique.
+ */
+const __cult_RE_AVOCAT = /AVOCAT|AVOCADO|HAAS|BACON|\b(HASS|ZUTANO|FUERTE|ETTINGER|PINKERTON|REED|MEXICOLA|NABAL)\b/;
+
 // ============================================================================
 // PUBLIC API
 // ============================================================================
 
 /**
- * Heuristique historique : déduit la culture d'un champ culture BEE ONE, à
- * défaut du libellé de la parcelle. COPIE CONFORME du helper local de
- * public/components/ParcellesReferentielTab.jsx (défaut 'Framboise' inclus) —
- * comportement volontairement inchangé.
+ * Heuristique de REPLI : déduit la culture d'un champ culture BEE ONE, à défaut
+ * du libellé de la parcelle. Source de vérité partagée — ParcellesReferentielTab
+ * consomme cette fonction (plus de copie locale).
+ *
+ * ⚠️ Ce n'est qu'un repli : la correction durable d'une parcelle mal classée est
+ * de renseigner `culture_sb` dans Paramètres → Parcelles (resolveCulture lui
+ * donne la priorité). Le regex ne fait que limiter les dégâts par défaut.
+ *
+ * L'ordre compte : Myrtille est testée AVANT Avocatier (comportement historique).
  *
  * @param {*} cultureField   champ culture (BEE ONE), éventuellement vide
  * @param {*} [labelFallback] libellé de parcelle utilisé si la culture est vide
@@ -58,8 +77,8 @@ const __cult_DEFAUT = 'Framboise';
 function normCulture(cultureField, labelFallback) {
   const src = String(cultureField || labelFallback || '').toUpperCase();
   if (!src) return __cult_DEFAUT;
-  if (/MYRTILL|BLUEBERRY|CORINA|CASCADE|BREEZE/.test(src)) return 'Myrtille';
-  if (/AVOCAT|AVOCADO|HAAS|BACON/.test(src)) return 'Avocatier';
+  if (__cult_RE_MYRTILLE.test(src)) return 'Myrtille';
+  if (__cult_RE_AVOCAT.test(src)) return 'Avocatier';
   return __cult_DEFAUT;
 }
 

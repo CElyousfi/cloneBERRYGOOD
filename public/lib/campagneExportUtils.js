@@ -6,9 +6,21 @@
  *   - Browser : <script src="lib/campagneExportUtils.js"> → window.CampagneExportUtils
  *   - node:test : require('.../campagneExportUtils.js') → module.exports
  *
- * Ces helpers ne font QUE produire des tableaux de tableaux (AoA) et des noms de
- * feuille : aucune dépendance à SheetJS, au DOM ou au réseau. L'écriture du
- * classeur reste dans le composant (window.XLSX).
+ * Ces helpers ne font QUE produire des tableaux de tableaux (AoA), des largeurs
+ * de colonnes et des noms de feuille : aucune dépendance à SheetJS, au DOM ou au
+ * réseau. L'écriture du classeur reste dans le composant (window.XLSX).
+ *
+ * L'export ne contient QUE des journées-homme (JH) — décision produit : les
+ * coûts DH restent à l'écran (toggle JH / Coût DH), pas dans le fichier.
+ *
+ * MISE EN FORME — vérifié sur le build réellement chargé (CDN xlsx-0.20.3,
+ * community) en écrivant un .xlsx et en relisant sheet1.xml :
+ *   - `ws['!cols'] = [{ wch }]`      → écrit `<cols><col customWidth/>` : SUPPORTÉ ;
+ *   - `ws['!freeze']` / `ws['!panes']` → aucun `<pane>` produit : IGNORÉ ;
+ *   - styles de cellule (`cell.s` gras/couleurs) → aucun `s=` produit : IGNORÉ
+ *     (réservé à la version Pro).
+ * La lisibilité vient donc de la STRUCTURE (indentation par espaces — préservée
+ * par `xml:space="preserve"` —, lignes de total, ligne vide entre familles).
  *
  * IMPORTANT (mémoire #75 — collision global a déjà cassé l'app) : ce module
  * n'expose QU'UN SEUL global (`window.CampagneExportUtils`). Les const internes
@@ -28,16 +40,27 @@ const __cexp_SHEET_MAX = 31;
 /** Caractères interdits par Excel dans un nom de feuille : : \ / ? * [ ] */
 const __cexp_SHEET_FORBIDDEN = /[:\\/?*[\]]/g;
 
-/** En-tête de la feuille « Synthèse ». */
+/** En-tête de la feuille « Synthèse » (JH uniquement, aucune colonne DH). */
 const __cexp_SYNTHESE_HEADER = [
   'Parcelle',
   'Libellé BEE ONE',
   'Ferme',
   'Superficie (ha)',
   'Total JH',
-  'Total DH',
-  'DH/ha',
 ];
+
+/** Indentation des opérations sous leur famille (préservée par Excel). */
+const __cexp_INDENT = '    ';
+
+/** Largeurs de colonnes (unité `wch` de SheetJS ≈ nombre de caractères). */
+const __cexp_WCH = {
+  libelle: 42,   // colonne A des feuilles parcelle : « Famille / Opération »
+  periode: 14,
+  total: 12,
+  parcelle: 32,  // feuille Synthèse
+  ferme: 10,
+  ha: 14,
+};
 
 // ============================================================================
 // INTERNES
@@ -129,38 +152,62 @@ function safeSheetName(nom, index, used) {
 }
 
 /**
- * Feuille « Synthèse » : une ligne par parcelle exportée.
+ * Feuille « Synthèse » : une ligne par parcelle exportée. JH uniquement.
  *
- * @param {Array<*>} parcelles [{ nomSb, label, ferme, ha, totalJh, totalCout }]
+ * @param {Array<*>} parcelles [{ nomSb, label, ferme, ha, totalJh }]
  * @returns {Array<Array<*>>} AoA prête pour XLSX.utils.aoa_to_sheet
  */
 function buildSyntheseAoA(parcelles) {
   const aoa = [__cexp_SYNTHESE_HEADER.slice()];
   (parcelles || []).forEach(function (p) {
     const src = p || {};
-    const ha = Number(src.ha) || 0;
-    const cout = Number(src.totalCout) || 0;
     aoa.push([
       src.nomSb || src.label || '',
       src.label || '',
       src.ferme || '',
-      __cexp_num(ha),
+      __cexp_num(src.ha),
       __cexp_num(src.totalJh),
-      __cexp_num(cout),
-      ha > 0 && cout ? Math.round(cout / ha) : '',
     ]);
   });
   return aoa;
 }
 
+/** Largeurs de colonnes de la feuille « Synthèse » (ws['!cols']). */
+function syntheseSheetCols() {
+  return [
+    { wch: __cexp_WCH.parcelle },
+    { wch: __cexp_WCH.parcelle },
+    { wch: __cexp_WCH.ferme },
+    { wch: __cexp_WCH.ha },
+    { wch: __cexp_WCH.total },
+  ];
+}
+
 /**
- * Feuille d'une parcelle : en-tête (nom SB, superficie, culture, campagne),
- * ligne vide, puis le pivot Famille/Opération × quinzaines (JH + DH), avec une
- * ligne `Total <famille>` par famille et une ligne `TOTAL GÉNÉRAL` finale —
- * mêmes agrégats que l'écran.
+ * Largeurs de colonnes d'une feuille parcelle (ws['!cols']) : libellé large,
+ * une colonne par quinzaine, colonne Total.
+ * @param {*} nbPeriodes
+ * @returns {Array<{wch:number}>}
+ */
+function parcelleSheetCols(nbPeriodes) {
+  const n = Math.max(0, Number(nbPeriodes) || 0);
+  const cols = [{ wch: __cexp_WCH.libelle }];
+  for (let i = 0; i < n; i += 1) cols.push({ wch: __cexp_WCH.periode });
+  cols.push({ wch: __cexp_WCH.total });
+  return cols;
+}
+
+/**
+ * Feuille d'une parcelle. JH uniquement (aucune colonne DH) :
+ *   A1..A4 : libellés `Parcelle :` / `Superficie :` / `Culture :` / `Campagne :`
+ *            avec la VALEUR en colonne B (cellules distinctes → pas de troncature) ;
+ *   ligne vide, puis `Famille / Opération | <quinzaine> … | Total JH` ;
+ *   par famille : une ligne titre, les opérations indentées, `Total <famille>`
+ *   et une ligne vide de séparation ; `TOTAL GÉNÉRAL` en dernier.
  *
  * `opRows` est la sortie de buildVarieteView (CampagneAnalytiqueTab) :
  * [{ famille, operation, byPeriode: { <periode>: { jh, cout } }, total: { jh, cout } }]
+ * — le champ `cout` est volontairement ignoré (export JH uniquement).
  *
  * @param {*} params { nomSb, ha, culture, campagne, periodes, opRows, famillesOrdered }
  * @returns {Array<Array<*>>} AoA prête pour XLSX.utils.aoa_to_sheet
@@ -171,72 +218,55 @@ function buildParcelleSheetAoA(params) {
   const opRows = p.opRows || [];
 
   const aoa = [
-    ['Parcelle : ' + (p.nomSb || ''), 'Superficie : ' + haLabel(p.ha)],
-    ['Culture : ' + (p.culture || ''), 'Campagne : ' + (p.campagne || '')],
+    ['Parcelle :', p.nomSb || ''],
+    ['Superficie :', haLabel(p.ha)],
+    ['Culture :', p.culture || ''],
+    ['Campagne :', p.campagne || ''],
     [],
   ];
 
   const header = ['Famille / Opération'];
-  periodes.forEach(function (per) {
-    header.push(per + ' JH');
-    header.push(per + ' DH');
-  });
+  periodes.forEach(function (per) { header.push(per); });
   header.push('Total JH');
-  header.push('Total DH');
   aoa.push(header);
 
-  const grand = { byP: {}, jh: 0, cout: 0 };
+  const grand = { byP: {}, jh: 0 };
 
   __cexp_orderFamilles(opRows, p.famillesOrdered).forEach(function (famille) {
     const famRows = opRows.filter(function (r) { return r && r.famille === famille; });
     if (famRows.length === 0) return;
-    const famTotal = { byP: {}, jh: 0, cout: 0 };
+    const famTotal = { byP: {}, jh: 0 };
+
+    aoa.push([famille]);
 
     famRows.forEach(function (r) {
-      const line = [r.operation || ''];
+      const line = [__cexp_INDENT + (r.operation || '')];
       periodes.forEach(function (per) {
         const cell = (r.byPeriode || {})[per];
         const jh = cell ? Number(cell.jh) || 0 : 0;
-        const cout = cell ? Number(cell.cout) || 0 : 0;
         line.push(__cexp_num(jh));
-        line.push(__cexp_num(cout));
-        if (!famTotal.byP[per]) famTotal.byP[per] = { jh: 0, cout: 0 };
-        famTotal.byP[per].jh += jh;
-        famTotal.byP[per].cout += cout;
-        if (!grand.byP[per]) grand.byP[per] = { jh: 0, cout: 0 };
-        grand.byP[per].jh += jh;
-        grand.byP[per].cout += cout;
+        if (!famTotal.byP[per]) famTotal.byP[per] = 0;
+        famTotal.byP[per] += jh;
+        if (!grand.byP[per]) grand.byP[per] = 0;
+        grand.byP[per] += jh;
       });
       const tJh = Number((r.total || {}).jh) || 0;
-      const tCout = Number((r.total || {}).cout) || 0;
       line.push(__cexp_num(tJh));
-      line.push(__cexp_num(tCout));
       famTotal.jh += tJh;
-      famTotal.cout += tCout;
       grand.jh += tJh;
-      grand.cout += tCout;
       aoa.push(line);
     });
 
     const famLine = ['Total ' + famille];
-    periodes.forEach(function (per) {
-      const cell = famTotal.byP[per];
-      famLine.push(__cexp_num(cell ? cell.jh : 0));
-      famLine.push(__cexp_num(cell ? cell.cout : 0));
-    });
+    periodes.forEach(function (per) { famLine.push(__cexp_num(famTotal.byP[per])); });
     famLine.push(__cexp_num(famTotal.jh));
-    famLine.push(__cexp_num(famTotal.cout));
     aoa.push(famLine);
+    aoa.push([]);
   });
 
   const totalLine = ['TOTAL GÉNÉRAL'];
-  periodes.forEach(function (per) {
-    const cell = grand.byP[per];
-    totalLine.push(__cexp_num(cell ? cell.jh : 0));
-    totalLine.push(__cexp_num(cell ? cell.cout : 0));
-  });
+  periodes.forEach(function (per) { totalLine.push(__cexp_num(grand.byP[per])); });
   totalLine.push(__cexp_num(grand.jh));
-  totalLine.push(__cexp_num(grand.cout));
   aoa.push(totalLine);
 
   return aoa;
@@ -251,7 +281,9 @@ const __cexp_api = {
   haLabel,
   safeSheetName,
   buildSyntheseAoA,
+  syntheseSheetCols,
   buildParcelleSheetAoA,
+  parcelleSheetCols,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = __cexp_api;

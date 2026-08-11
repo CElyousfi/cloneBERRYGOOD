@@ -7,7 +7,9 @@ const {
   haLabel,
   safeSheetName,
   buildSyntheseAoA,
+  syntheseSheetCols,
   buildParcelleSheetAoA,
+  parcelleSheetCols,
 } = require('../../public/lib/campagneExportUtils.js');
 
 // ============================================================================
@@ -81,24 +83,49 @@ test('safeSheetName — nom vide ou non-string → repli sur l\'index', () => {
 });
 
 // ============================================================================
-// buildSyntheseAoA
+// buildSyntheseAoA — JH uniquement (aucune colonne DH)
 // ============================================================================
-test('buildSyntheseAoA — en-tête + une ligne par parcelle, DH/ha calculé', () => {
+test('buildSyntheseAoA — en-tête + une ligne par parcelle, JH seul', () => {
   const aoa = buildSyntheseAoA([
-    { nomSb: 'S5 MARAVILLA', label: 'F1- S5 MARAVILLA MD', ferme: 'F1', ha: 2.4, totalJh: 28.35, totalCout: 24000 },
-    { nomSb: '', label: 'F5- S1 CORINA', ferme: 'F5', ha: 0, totalJh: 0, totalCout: 0 },
+    { nomSb: 'S5 MARAVILLA', label: 'F1- S5 MARAVILLA MD', ferme: 'F1', ha: 2.4, totalJh: 28.35 },
+    { nomSb: '', label: 'F5- S1 CORINA', ferme: 'F5', ha: 0, totalJh: 0 },
   ]);
   assert.deepStrictEqual(aoa[0], [
-    'Parcelle', 'Libellé BEE ONE', 'Ferme', 'Superficie (ha)', 'Total JH', 'Total DH', 'DH/ha',
+    'Parcelle', 'Libellé BEE ONE', 'Ferme', 'Superficie (ha)', 'Total JH',
   ]);
-  assert.deepStrictEqual(aoa[1], ['S5 MARAVILLA', 'F1- S5 MARAVILLA MD', 'F1', 2.4, 28.35, 24000, 10000]);
-  // ha = 0 → superficie, JH, DH vides et pas de DH/ha (division impossible)
-  assert.deepStrictEqual(aoa[2], ['F5- S1 CORINA', 'F5- S1 CORINA', 'F5', '', '', '', '']);
+  assert.deepStrictEqual(aoa[1], ['S5 MARAVILLA', 'F1- S5 MARAVILLA MD', 'F1', 2.4, 28.35]);
+  // ha = 0 → superficie et JH vides
+  assert.deepStrictEqual(aoa[2], ['F5- S1 CORINA', 'F5- S1 CORINA', 'F5', '', '']);
+});
+
+test('buildSyntheseAoA — aucune colonne DH ni DH/ha', () => {
+  const aoa = buildSyntheseAoA([
+    { nomSb: 'P', label: 'P', ferme: 'F1', ha: 2, totalJh: 10, totalCout: 9999 },
+  ]);
+  assert.strictEqual(aoa[0].length, 5);
+  assert.ok(!aoa[0].some((h) => /DH/.test(h) && h !== 'Total JH'));
+  assert.ok(!aoa[1].includes(9999), 'le coût ne doit plus apparaître');
 });
 
 test('buildSyntheseAoA — liste vide/absente → en-tête seul', () => {
   assert.strictEqual(buildSyntheseAoA([]).length, 1);
   assert.strictEqual(buildSyntheseAoA(null).length, 1);
+});
+
+// ============================================================================
+// Largeurs de colonnes (ws['!cols'] — seule mise en forme écrite par SheetJS
+// community : styles de cellule et volets figés y sont ignorés)
+// ============================================================================
+test('syntheseSheetCols — 5 largeurs, colonnes parcelle larges', () => {
+  const cols = syntheseSheetCols();
+  assert.strictEqual(cols.length, 5);
+  assert.deepStrictEqual(cols.map((c) => c.wch), [32, 32, 10, 14, 12]);
+});
+
+test('parcelleSheetCols — colonne A large, une colonne par quinzaine, + Total', () => {
+  assert.deepStrictEqual(parcelleSheetCols(3).map((c) => c.wch), [42, 14, 14, 14, 12]);
+  assert.deepStrictEqual(parcelleSheetCols(0).map((c) => c.wch), [42, 12]);
+  assert.deepStrictEqual(parcelleSheetCols(null).map((c) => c.wch), [42, 12]);
 });
 
 // ============================================================================
@@ -137,41 +164,54 @@ function sheet() {
   });
 }
 
-test('buildParcelleSheetAoA — en-tête parcelle, superficie, culture, campagne', () => {
+test('buildParcelleSheetAoA — en-tête : libellé en A, valeur en B (2 cellules)', () => {
   const aoa = sheet();
-  assert.deepStrictEqual(aoa[0], ['Parcelle : S5 MARAVILLA', 'Superficie : 2,40 ha']);
-  assert.deepStrictEqual(aoa[1], ['Culture : Framboise', 'Campagne : 2026/2027']);
-  assert.deepStrictEqual(aoa[2], []);
-  assert.deepStrictEqual(aoa[3], ['Famille / Opération', 'Q01 JH', 'Q01 DH', 'Q02 JH', 'Q02 DH', 'Total JH', 'Total DH']);
+  assert.deepStrictEqual(aoa[0], ['Parcelle :', 'S5 MARAVILLA']);
+  assert.deepStrictEqual(aoa[1], ['Superficie :', '2,40 ha']);
+  assert.deepStrictEqual(aoa[2], ['Culture :', 'Framboise']);
+  assert.deepStrictEqual(aoa[3], ['Campagne :', '2026/2027']);
+  assert.deepStrictEqual(aoa[4], []);
+});
+
+test('buildParcelleSheetAoA — une seule colonne par quinzaine (JH), pas de DH', () => {
+  const aoa = sheet();
+  assert.deepStrictEqual(aoa[5], ['Famille / Opération', 'Q01', 'Q02', 'Total JH']);
+  // aucune valeur de coût dans toute la feuille
+  const flat = aoa.reduce((acc, r) => acc.concat(r), []);
+  [4200, 300, 1500, 750, 2250, 4500, 5700, 6750].forEach((cout) => {
+    assert.ok(!flat.includes(cout), 'le coût ' + cout + ' ne doit plus figurer dans l\'export');
+  });
 });
 
 test('buildParcelleSheetAoA — superficie inconnue → « — »', () => {
   const aoa = buildParcelleSheetAoA({ nomSb: 'X', ha: 0, periodes: [], opRows: [] });
-  assert.deepStrictEqual(aoa[0], ['Parcelle : X', 'Superficie : —']);
+  assert.deepStrictEqual(aoa[1], ['Superficie :', '—']);
 });
 
-test('buildParcelleSheetAoA — lignes opérations groupées par famille, ordre du référentiel', () => {
+test('buildParcelleSheetAoA — familles : titre, opérations indentées, total, ligne vide', () => {
   const aoa = sheet();
-  const labels = aoa.slice(4).map(function (r) { return r[0]; });
+  const labels = aoa.slice(6).map(function (r) { return r[0]; });
   assert.deepStrictEqual(labels, [
-    'Grattage', 'Binage', 'Total Travaux du sol',
-    'Cueillette', 'Total Récolte',
+    'Travaux du sol', '    Grattage', '    Binage', 'Total Travaux du sol', undefined,
+    'Récolte', '    Cueillette', 'Total Récolte', undefined,
     'TOTAL GÉNÉRAL',
   ]);
 });
 
 test('buildParcelleSheetAoA — valeurs numériques brutes, cellule vide si 0', () => {
   const aoa = sheet();
-  assert.deepStrictEqual(aoa[4], ['Grattage', 28, 4200, '', '', 28, 4200]);
-  assert.deepStrictEqual(aoa[5], ['Binage', '', '', 2, 300, 2, 300]);
+  assert.deepStrictEqual(aoa[6], ['Travaux du sol']);
+  assert.deepStrictEqual(aoa[7], ['    Grattage', 28, '', 28]);
+  assert.deepStrictEqual(aoa[8], ['    Binage', '', 2, 2]);
 });
 
 test('buildParcelleSheetAoA — totaux famille et total général', () => {
   const aoa = sheet();
-  assert.deepStrictEqual(aoa[6], ['Total Travaux du sol', 28, 4200, 2, 300, 30, 4500]);
-  assert.deepStrictEqual(aoa[7], ['Cueillette', 10, 1500, 5, 750, 15, 2250]);
-  assert.deepStrictEqual(aoa[8], ['Total Récolte', 10, 1500, 5, 750, 15, 2250]);
-  assert.deepStrictEqual(aoa[9], ['TOTAL GÉNÉRAL', 38, 5700, 7, 1050, 45, 6750]);
+  assert.deepStrictEqual(aoa[9], ['Total Travaux du sol', 28, 2, 30]);
+  assert.deepStrictEqual(aoa[10], []);
+  assert.deepStrictEqual(aoa[12], ['    Cueillette', 10, 5, 15]);
+  assert.deepStrictEqual(aoa[13], ['Total Récolte', 10, 5, 15]);
+  assert.deepStrictEqual(aoa[15], ['TOTAL GÉNÉRAL', 38, 7, 45]);
 });
 
 test('buildParcelleSheetAoA — famille hors référentiel ajoutée à la fin', () => {
@@ -184,18 +224,23 @@ test('buildParcelleSheetAoA — famille hors référentiel ajoutée à la fin', 
     ],
     famillesOrdered: ['Récolte'],
   });
-  const labels = aoa.slice(4).map(function (r) { return r[0]; });
-  assert.deepStrictEqual(labels, ['Cueillette', 'Total Récolte', 'Op X', 'Total Inconnue', 'TOTAL GÉNÉRAL']);
+  const labels = aoa.slice(6).map(function (r) { return r[0]; });
+  assert.deepStrictEqual(labels, [
+    'Récolte', '    Cueillette', 'Total Récolte', undefined,
+    'Inconnue', '    Op X', 'Total Inconnue', undefined,
+    'TOTAL GÉNÉRAL',
+  ]);
 });
 
 test('buildParcelleSheetAoA — aucune ligne → en-tête + TOTAL GÉNÉRAL vide', () => {
   const aoa = buildParcelleSheetAoA({ nomSb: 'X', periodes: ['Q01'], opRows: [], famillesOrdered: [] });
-  assert.strictEqual(aoa.length, 5);
-  assert.deepStrictEqual(aoa[4], ['TOTAL GÉNÉRAL', '', '', '', '']);
+  assert.strictEqual(aoa.length, 7);
+  assert.deepStrictEqual(aoa[6], ['TOTAL GÉNÉRAL', '', '']);
 });
 
 test('buildParcelleSheetAoA — paramètres absents tolérés, aucun throw', () => {
   const aoa = buildParcelleSheetAoA(null);
-  assert.deepStrictEqual(aoa[0], ['Parcelle : ', 'Superficie : —']);
-  assert.deepStrictEqual(aoa[3], ['Famille / Opération', 'Total JH', 'Total DH']);
+  assert.deepStrictEqual(aoa[0], ['Parcelle :', '']);
+  assert.deepStrictEqual(aoa[1], ['Superficie :', '—']);
+  assert.deepStrictEqual(aoa[5], ['Famille / Opération', 'Total JH']);
 });

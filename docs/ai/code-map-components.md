@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:7896e8b3c008ee46 -->
+<!-- sourceFingerprint: sha256:0835b86918a3148f -->
 # Code Map — Composants frontend (294)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -65,7 +65,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60380 | — |
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1002 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1012 | campagne |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
 | CanevaFinanceQueue | public/app.jsx:60920 | — |
@@ -90,7 +90,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62005 | coming_soon |
 | ConditionnementSub | public/app.jsx:24300 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:796 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:806 | — |
 | CoutRecolteTab | public/app.jsx:8647 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
@@ -145,7 +145,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | FuelWeeklyChart | public/app.jsx:35291 | — |
 | Gauge | public/app.jsx:40883 | — |
 | GDDTrackingTab | public/app.jsx:44584 | — |
-| HaView | public/components/CampagneAnalytiqueTab.jsx:305 | — |
+| HaView | public/components/CampagneAnalytiqueTab.jsx:315 | — |
 | HeuresSupSub | public/app.jsx:26623 | — |
 | HorsRecolteSuiviTab | public/app.jsx:27798 | hors_recolte_suivi |
 | HorsRecolteTab | public/app.jsx:10730 | hors_recolte |
@@ -190,7 +190,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MeteoPrevisionExterieure | public/app.jsx:28186 | — |
 | MeteoTab | public/app.jsx:28516 | station_meteo |
 | MMC_Kpi | public/components/MagMappingConsoTab.jsx:126 | — |
-| MOReferentielView | public/components/ParcellesReferentielTab.jsx:424 | — |
+| MOReferentielView | public/components/ParcellesReferentielTab.jsx:426 | — |
 | MSF_Dropzone | public/components/MagStockFilesTab.jsx:164 | — |
 | NewVersionToast | public/app.jsx:66871 | — |
 | NotificationPopup | public/app.jsx:67343 | — |
@@ -199,7 +199,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ParametresTab | public/app.jsx:27162 | parametres |
 | ParcellesGroupesPanel | public/components/ParcellesGroupesPanel.jsx:470 | — |
 | ParcellesParamsTab | public/components/ParcellesParamsTab.jsx:115 | mag_parcelles_params |
-| ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:566 | parcelles_referentiel |
+| ParcellesReferentielTab | public/components/ParcellesReferentielTab.jsx:568 | parcelles_referentiel |
 | PDP_fmtNum | public/components/PmpDetailPopup.jsx:46 | — |
 | PDP_SourceBadge | public/components/PmpDetailPopup.jsx:52 | — |
 | PDP_Td | public/components/PmpDetailPopup.jsx:67 | — |
@@ -241,13 +241,13 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ProductivityTreatmentsTable | public/app.jsx:66175 | — |
 | ProductivityTrendSvg | public/app.jsx:66505 | — |
 | ProfileLoadErrorScreen | public/app.jsx:66848 | — |
-| PRT_buildSavePayload | public/components/ParcellesReferentielTab.jsx:110 | — |
-| PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:366 | — |
-| PRT_CultureBadge | public/components/ParcellesReferentielTab.jsx:67 | — |
-| PRT_EditRow | public/components/ParcellesReferentielTab.jsx:120 | — |
-| PRT_filterRows | public/components/ParcellesReferentielTab.jsx:259 | — |
-| PRT_initialHaVal | public/components/ParcellesReferentielTab.jsx:91 | — |
-| PRT_Table | public/components/ParcellesReferentielTab.jsx:273 | — |
+| PRT_buildSavePayload | public/components/ParcellesReferentielTab.jsx:112 | — |
+| PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:368 | — |
+| PRT_CultureBadge | public/components/ParcellesReferentielTab.jsx:69 | — |
+| PRT_EditRow | public/components/ParcellesReferentielTab.jsx:122 | — |
+| PRT_filterRows | public/components/ParcellesReferentielTab.jsx:261 | — |
+| PRT_initialHaVal | public/components/ParcellesReferentielTab.jsx:93 | — |
+| PRT_Table | public/components/ParcellesReferentielTab.jsx:275 | — |
 | QCS_group | public/components/QuinzaineCampagneSelect.jsx:85 | — |
 | QCS_num | public/components/QuinzaineCampagneSelect.jsx:52 | — |
 | QCS_resolveCampagnes | public/components/QuinzaineCampagneSelect.jsx:62 | — |
@@ -295,7 +295,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | TraitementSub | public/app.jsx:24342 | — |
 | TransportSub | public/app.jsx:24474 | — |
 | TutorialMenu | public/app.jsx:66965 | — |
-| VarieteView | public/components/CampagneAnalytiqueTab.jsx:502 | — |
+| VarieteView | public/components/CampagneAnalytiqueTab.jsx:512 | — |
 | WhatsAppConfigPanel | public/app.jsx:62241 | — |
 | WorkerDetailModal | public/app.jsx:3029 | — |
 | WorkerDetailProvider | public/app.jsx:3128 | — |

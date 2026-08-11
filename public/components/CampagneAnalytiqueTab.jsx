@@ -204,7 +204,9 @@
    * Construit les feuilles du classeur d'une culture. Indépendant du filtre
    * Culture de l'écran et de la parcelle sélectionnée, mais respecte le
    * farmFilter (périmètre du profil chef).
-   * Retourne { fileName, sheets: [{ name, aoa }] }.
+   * Retourne { fileName, sheets: [{ name, aoa, cols }] } — `cols` alimente
+   * ws['!cols'] (largeurs de colonnes, seule mise en forme écrite par le build
+   * community de SheetJS ; styles et volets figés y sont ignorés).
    */
   function buildCultureWorkbook(culture, data, farmFilter, sbMap) {
     var CEU = window.CampagneExportUtils;
@@ -234,8 +236,8 @@
     var syntheseName = CEU.safeSheetName('Synthèse', 0, used);
     labels.forEach(function (label, i) {
       var opRows = buildVarieteView(rows, label, periodes);
-      var totalJh = 0; var totalCout = 0;
-      opRows.forEach(function (r) { totalJh += r.total.jh; totalCout += r.total.cout; });
+      var totalJh = 0;
+      opRows.forEach(function (r) { totalJh += r.total.jh; });
       var ha = sbHa(label, sbMap, haByRef);
       var nom = sbNom(label, sbMap);
       synthese.push({
@@ -244,7 +246,6 @@
         ferme: seen[label].ferme,
         ha: ha,
         totalJh: totalJh,
-        totalCout: totalCout,
       });
       sheets.push({
         name: CEU.safeSheetName(nom, i + 1, used),
@@ -257,12 +258,17 @@
           opRows: opRows,
           famillesOrdered: (data && data.famillesOrdered) || [],
         }),
+        cols: CEU.parcelleSheetCols(periodes.length),
       });
     });
 
     return {
       fileName: 'Campagne_' + culture + '_' + new Date().toISOString().slice(0, 10),
-      sheets: [{ name: syntheseName, aoa: CEU.buildSyntheseAoA(synthese) }].concat(sheets),
+      sheets: [{
+        name: syntheseName,
+        aoa: CEU.buildSyntheseAoA(synthese),
+        cols: CEU.syntheseSheetCols(),
+      }].concat(sheets),
     };
   }
 
@@ -278,7 +284,11 @@
     if (window.XLSX) {
       var wb = window.XLSX.utils.book_new();
       wbData.sheets.forEach(function (s) {
-        window.XLSX.utils.book_append_sheet(wb, window.XLSX.utils.aoa_to_sheet(s.aoa), s.name);
+        var ws = window.XLSX.utils.aoa_to_sheet(s.aoa);
+        // Largeurs de colonnes : seule mise en forme honorée par SheetJS
+        // community (les styles de cellule et les volets figés sont ignorés).
+        if (s.cols) ws['!cols'] = s.cols;
+        window.XLSX.utils.book_append_sheet(wb, ws, s.name);
       });
       window.XLSX.writeFile(wb, wbData.fileName + '.xlsx');
       return;
