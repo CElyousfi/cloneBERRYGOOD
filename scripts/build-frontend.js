@@ -115,6 +115,7 @@ const COMPONENT_SENTINELS = {
   "AffectationAnalytiqueTable.js": "window.AffectationAnalytiqueTable",
   "QuinzaineRecapCards.js": "window.QuinzaineRecapCards",
   "CampagneAnalytiqueTab.js": "window.CampagneAnalytiqueTab",
+  "CampagneBudgetTab.js": "window.CampagneBudgetTab",
   "MagStockFilesTab.js": "window.MagStockFilesTab",
 };
 if (fs.existsSync(COMPONENTS_DIR)) {

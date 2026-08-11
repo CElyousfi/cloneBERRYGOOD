@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:061d2496c55bd7d7",
+    "sourceFingerprint": "sha256:ac4c0ea6dd78676a",
     "stats": {
-      "targetFiles": 197,
-      "targetFilesWithDirectTests": 121,
-      "targetFilesWithTransitiveTests": 138,
-      "testFilesScanned": 158
+      "targetFiles": 200,
+      "targetFilesWithDirectTests": 122,
+      "targetFilesWithTransitiveTests": 139,
+      "testFilesScanned": 160
     }
   },
   "index": {
@@ -133,6 +133,14 @@
       "directTests": [],
       "transitiveTests": [
         "tests/unit/caisseImport.test.js"
+      ]
+    },
+    "functions/lib/campagneBudget/validate.js": {
+      "directTests": [
+        "functions/lib/campagneBudget/__tests__/validate.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/campagneBudget/__tests__/validate.test.js"
       ]
     },
     "functions/lib/fonctions/fonctionsHistory.js": {
@@ -1132,6 +1140,14 @@
       "transitiveTests": []
     },
     "public/components/CampagneAnalytiqueTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CampagneBudgetTab.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CampagneBudgetTab.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
