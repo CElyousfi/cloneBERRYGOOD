@@ -2,9 +2,9 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:999eec33661b3cc0",
+    "sourceFingerprint": "sha256:d0428d8ac1cea1c9",
     "stats": {
-      "targetFiles": 194,
+      "targetFiles": 196,
       "targetFilesWithDirectTests": 120,
       "targetFilesWithTransitiveTests": 137,
       "testFilesScanned": 156
@@ -1100,6 +1100,14 @@
       ]
     },
     "functions/middleware/requireAuth.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/AffectationAnalytiqueTable.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/AffectationAnalytiqueTable.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
