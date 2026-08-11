@@ -91,6 +91,8 @@ const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 // Initialisation des Ha manquants du référentiel SB depuis les surfaces BEE ONE.
 const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
+// Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
+const campagneBudget = require("./lib/campagneBudget/validate");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -4045,6 +4047,106 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           total_parcelles: planS.toCreate.length + planS.skipped.length,
           a_creer: planS.toCreate.map((c) => ({ label: c.label, ha: c.ha })),
           ignorees: planS.skipped,
+        });
+      }
+
+      // ===== BUDGET JH / Ha PAR PARCELLE × FAMILLE D'OPÉRATION =====
+      // Collection `sb_campagne_budget_jh`, clé `${campagne}__${LABEL_BEE_ONE}`.
+      // La campagne fait partie de la clé (contrairement à
+      // `sb_parcelle_referentiel`, clé par le seul label) : un budget est propre
+      // à une campagne. Validation/merge purs : lib/campagneBudget/validate.
+      //
+      // Gating : ces deux actions ne sont PAS dans GATING_EXEMPT_ACTIONS — elles
+      // passent donc par verifyAuth + resolvePerimetre + resolvePointageRHAccess
+      // en amont (403 fail-closed pour tout profil hors périmètre). `_fermeFilter`
+      // (chef) est appliqué ici aussi : lecture filtrée sur SA ferme, écriture
+      // refusée.
+
+      // Lecture des budgets d'une campagne (défaut : campagne courante).
+      if (action === "campagne-budget-list") {
+        const campagneB = campagneBudget.normCampagne(req.query.campagne || campagneCourante());
+        if (!campagneB) {
+          return res.status(400).json({ success: false, error: "Campagne invalide" });
+        }
+        const snapB = await db_firestore.collection("sb_campagne_budget_jh")
+          .where("campagne", "==", campagneB).get();
+        const budgets = [];
+        snapB.forEach((doc) => {
+          const d = doc.data() || {};
+          const label = d.label_bee_one || "";
+          // Chef : cloisonnement ferme. deriveFerme retourne 'Autre' si la
+          // parcelle n'est pas rattachable → exclue (fail-closed).
+          if (_fermeFilter && deriveFerme(null, label, campagneB) !== _fermeFilter) return;
+          budgets.push({
+            id: doc.id,
+            campagne: d.campagne || campagneB,
+            label_bee_one: label,
+            budgets: campagneBudget.mergeBudgets(d.budgets, {}),
+          });
+        });
+        budgets.sort((a, b) => (a.label_bee_one || "").localeCompare(b.label_bee_one || ""));
+        return res.json({ success: true, campagne: campagneB, budgets });
+      }
+
+      // Upsert d'un budget (DG/RH/admin — même gate que sb-referentiel-save).
+      if (action === "campagne-budget-save" && req.method === "POST") {
+        const _authUserB = await verifyAuth(req);
+        const callerProfileB = await resolveCallerProfile(_authUserB);
+        const _pidB = callerProfileB && (callerProfileB.profileId || callerProfileB.role || '');
+        if (!['dg', 'rh', 'admin'].includes(_pidB)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
+        }
+        // Défense en profondeur : un profil à périmètre restreint (chef) n'écrit
+        // jamais, même si son profileId devenait un jour éligible ci-dessus.
+        if (_fermeFilter) {
+          return res.status(403).json({ success: false, error: "Accès refusé — périmètre restreint" });
+        }
+
+        const bodyB = req.body || {};
+        // Familles AUTORISÉES = référentiel des tâches (jamais une liste figée).
+        const refDataB = await loadReferentielTaches();
+        const famillesConnuesB = [...new Set((refDataB.ops || []).map((o) => o.famille).filter(Boolean))];
+        // Labels AUTORISÉS = référentiel parcelles Smart Berry.
+        const refSnapB = await db_firestore.collection("sb_parcelle_referentiel").get();
+        const labelsConnusB = [];
+        refSnapB.forEach((doc) => {
+          const d = doc.data() || {};
+          const lbl = (d.label_bee_one || doc.id || "").trim();
+          if (lbl) labelsConnusB.push(lbl);
+        });
+
+        const verdictB = campagneBudget.validateBudgetSave({
+          campagne: bodyB.campagne || campagneCourante(),
+          label_bee_one: bodyB.label_bee_one,
+          budgets: bodyB.budgets,
+          famillesConnues: famillesConnuesB,
+          labelsConnus: labelsConnusB,
+        });
+        if (!verdictB.ok) {
+          return res.status(400).json({ success: false, error: verdictB.error });
+        }
+
+        const docRefB = db_firestore.collection("sb_campagne_budget_jh").doc(verdictB.docId);
+        // Transaction : le merge lit l'existant (les familles absentes du body
+        // sont conservées) — sans transaction, deux saves concurrents sur deux
+        // familles différentes en perdraient une.
+        const mergedB = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(docRefB);
+          const prev = snap.exists ? (snap.data() || {}).budgets : null;
+          const next = campagneBudget.mergeBudgets(prev, verdictB.budgets);
+          tx.set(docRefB, {
+            campagne: verdictB.campagne,
+            label_bee_one: verdictB.label,
+            budgets: next,
+            updated_by: { uid: (_authUserB && _authUserB.uid) || null, profileId: _pidB },
+            updated_at: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+          return next;
+        });
+
+        return res.json({
+          success: true, id: verdictB.docId, campagne: verdictB.campagne,
+          label_bee_one: verdictB.label, budgets: mergedB,
         });
       }
 

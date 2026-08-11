@@ -329,5 +329,16 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
+    // Budget JH/Ha par parcelle × famille d'opération (campagne dans la clé).
+    // CF-only DANS LES DEUX SENS — même convention que sb_parcelle_referentiel
+    // (non déclaré ici → deny par défaut) : le client lit via
+    // pointageRH ?action=campagne-budget-list, qui applique le cloisonnement
+    // ferme d'un chef. Une lecture client directe court-circuiterait ce filtre.
+    // Écriture : pointageRH ?action=campagne-budget-save (gate DG/RH/admin).
+    match /sb_campagne_budget_jh/{docId} {
+      allow read: if false;
+      allow write: if false;
+    }
   }
 }
