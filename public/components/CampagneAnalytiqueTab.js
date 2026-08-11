@@ -215,9 +215,10 @@
    * Construit les feuilles du classeur d'une culture. Indépendant du filtre
    * Culture de l'écran et de la parcelle sélectionnée, mais respecte le
    * farmFilter (périmètre du profil chef).
-   * Retourne { fileName, sheets: [{ name, aoa, cols }] } — `cols` alimente
-   * ws['!cols'] (largeurs de colonnes, seule mise en forme écrite par le build
-   * community de SheetJS ; styles et volets figés y sont ignorés).
+   * Retourne { fileName, sheets: [{ name, rows, aoa, cols }] } :
+   *   - `rows` = lignes typées (ROW_KIND) consommées par le rendu ExcelJS ;
+   *   - `aoa`  = les mêmes lignes aplaties, pour le repli SheetJS puis CSV ;
+   *   - `cols` = largeurs de colonnes, honorées par les deux moteurs.
    */
   function buildCultureWorkbook(culture, data, farmFilter, sbMap) {
     var CEU = window.CampagneExportUtils;
@@ -263,17 +264,19 @@
         ha: ha,
         totalJh: totalJh
       });
+      var params = {
+        nomSb: nom,
+        ha: ha,
+        culture: culture,
+        campagne: data && data.campagne || '',
+        periodes: periodes,
+        opRows: opRows,
+        famillesOrdered: data && data.famillesOrdered || []
+      };
       sheets.push({
         name: CEU.safeSheetName(nom, i + 1, used),
-        aoa: CEU.buildParcelleSheetAoA({
-          nomSb: nom,
-          ha: ha,
-          culture: culture,
-          campagne: data && data.campagne || '',
-          periodes: periodes,
-          opRows: opRows,
-          famillesOrdered: data && data.famillesOrdered || []
-        }),
+        rows: CEU.buildParcelleSheetRows(params),
+        aoa: CEU.buildParcelleSheetAoA(params),
         cols: CEU.parcelleSheetCols(periodes.length)
       });
     });
@@ -281,20 +284,208 @@
       fileName: 'Campagne_' + culture + '_' + new Date().toISOString().slice(0, 10),
       sheets: [{
         name: syntheseName,
+        rows: CEU.buildSyntheseRows(synthese),
         aoa: CEU.buildSyntheseAoA(synthese),
         cols: CEU.syntheseSheetCols()
       }].concat(sheets)
     };
   }
 
-  /** Écrit le classeur (SheetJS via CDN) ou, à défaut, la Synthèse en CSV. */
-  function exportCulture(culture, data, farmFilter, sbMap) {
-    if (!window.CampagneExportUtils) return;
-    var wbData = buildCultureWorkbook(culture, data, farmFilter, sbMap);
-    if (wbData.sheets.length <= 1) {
-      window.alert('Aucune parcelle ' + culture + ' dans le périmètre.');
+  /* ---- ExcelJS : chargement PARESSEUX au premier clic ---------------- */
+
+  // Version FIGÉE (jamais @latest) sur jsDelivr, domaine déjà utilisé par
+  // index.html. ExcelJS expose window.ExcelJS — global distinct de window.XLSX,
+  // les deux cohabitent (vérifié par smoke-load des deux bundles ensemble).
+  var EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+  var excelJsPromise = null;
+
+  /** Charge ExcelJS une seule fois ; rejette si le CDN est injoignable. */
+  function loadExcelJS() {
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    if (excelJsPromise) return excelJsPromise;
+    excelJsPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = EXCELJS_URL;
+      s.async = true;
+      s.onload = function () {
+        if (window.ExcelJS) resolve(window.ExcelJS);else reject(new Error('ExcelJS chargé mais window.ExcelJS absent'));
+      };
+      s.onerror = function () {
+        // On oublie la promesse rejetée pour qu'un 2e clic puisse réessayer.
+        excelJsPromise = null;
+        reject(new Error('CDN ExcelJS injoignable'));
+      };
+      document.head.appendChild(s);
+    });
+    return excelJsPromise;
+  }
+
+  /* ---- Rendu ExcelJS (styles, bordures, volets figés) ---------------- */
+
+  var XL = {
+    berry: 'FFC0392B',
+    berryLight: 'FFF7E3E1',
+    grayLight: 'FFEBEAE3',
+    white: 'FFFFFFFF',
+    textSec: 'FF5F5E5A',
+    border: 'FFD8D6CF'
+  };
+  function xlFill(argb) {
+    return {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: {
+        argb: argb
+      }
+    };
+  }
+
+  /** Applique le style correspondant au `kind` d'une ligne. */
+  function styleRow(row, kind, K) {
+    if (kind === K.META) {
+      row.getCell(1).font = {
+        bold: true,
+        color: {
+          argb: XL.textSec
+        }
+      };
       return;
     }
+    if (kind === K.COL_HEADER) {
+      row.font = {
+        bold: true,
+        color: {
+          argb: XL.white
+        }
+      };
+      row.eachCell({
+        includeEmpty: true
+      }, function (cell) {
+        cell.fill = xlFill(XL.berry);
+      });
+      return;
+    }
+    if (kind === K.FAMILLE) {
+      row.font = {
+        bold: true
+      };
+      row.eachCell({
+        includeEmpty: true
+      }, function (cell) {
+        cell.fill = xlFill(XL.grayLight);
+      });
+      return;
+    }
+    if (kind === K.OPERATION) {
+      // Indentation NATIVE Excel (pas d'espaces en dur) : alignement propre et
+      // libellé toujours recherchable tel quel.
+      row.getCell(1).alignment = {
+        indent: 1
+      };
+      return;
+    }
+    if (kind === K.TOTAL_FAMILLE) {
+      row.font = {
+        bold: true
+      };
+      row.eachCell({
+        includeEmpty: true
+      }, function (cell) {
+        cell.border = {
+          top: {
+            style: 'thin',
+            color: {
+              argb: XL.border
+            }
+          }
+        };
+      });
+      return;
+    }
+    if (kind === K.TOTAL_GENERAL) {
+      row.font = {
+        bold: true
+      };
+      row.eachCell({
+        includeEmpty: true
+      }, function (cell) {
+        cell.fill = xlFill(XL.berryLight);
+        cell.border = {
+          top: {
+            style: 'medium',
+            color: {
+              argb: XL.berry
+            }
+          }
+        };
+      });
+    }
+  }
+
+  /** Écrit le classeur stylé avec ExcelJS et déclenche le téléchargement. */
+  function writeWithExcelJS(ExcelJS, wbData) {
+    var K = window.CampagneExportUtils.ROW_KIND;
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Smart Berry';
+    wb.created = new Date();
+    wbData.sheets.forEach(function (s) {
+      var ws = wb.addWorksheet(s.name);
+      if (s.cols) {
+        ws.columns = s.cols.map(function (c) {
+          return {
+            width: c.wch
+          };
+        });
+      }
+      var headerRowIndex = 0;
+      s.rows.forEach(function (r, i) {
+        var row = ws.addRow(r.cells);
+        if (r.kind === K.COL_HEADER) headerRowIndex = i + 1;
+        styleRow(row, r.kind, K);
+        // Nombres : alignés à droite, format lisible (séparateur de milliers).
+        row.eachCell({
+          includeEmpty: false
+        }, function (cell, col) {
+          if (col === 1) return;
+          if (typeof cell.value === 'number') {
+            cell.alignment = {
+              horizontal: 'right'
+            };
+            cell.numFmt = '#,##0.##';
+          }
+        });
+      });
+      // Volets figés sous l'en-tête de colonnes (ignoré par SheetJS community).
+      if (headerRowIndex) {
+        ws.views = [{
+          state: 'frozen',
+          xSplit: 1,
+          ySplit: headerRowIndex
+        }];
+      }
+    });
+    return wb.xlsx.writeBuffer().then(function (buf) {
+      downloadBlob(new Blob([buf], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }), wbData.fileName + '.xlsx');
+    });
+  }
+
+  /* ---- Repli SheetJS / CSV (sans styles) ----------------------------- */
+
+  function downloadBlob(blob, fileName) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /** Repli quand ExcelJS n'a pas pu être chargé : fichier SANS mise en forme. */
+  function writeWithoutStyles(wbData) {
     if (window.XLSX) {
       var wb = window.XLSX.utils.book_new();
       wbData.sheets.forEach(function (s) {
@@ -308,24 +499,38 @@
       return;
     }
 
-    // Fallback CSV (feuille Synthèse) si SheetJS absent.
+    // Dernier repli : CSV de la feuille Synthèse si SheetJS est absent aussi.
     var csv = wbData.sheets[0].aoa.map(function (r) {
       return r.map(function (c) {
         var s = String(c == null ? '' : c);
         return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
       }).join(';');
     }).join('\n');
-    var blob = new Blob(['﻿' + csv], {
+    downloadBlob(new Blob(['﻿' + csv], {
       type: 'text/csv;charset=utf-8;'
+    }), wbData.fileName + '.csv');
+  }
+
+  /**
+   * Export d'une culture. Charge ExcelJS à la demande pour un fichier stylé ;
+   * si le CDN est injoignable, retombe sur l'export SheetJS (sans styles)
+   * plutôt que d'échouer. Retourne toujours une Promise résolue.
+   */
+  function exportCulture(culture, data, farmFilter, sbMap) {
+    if (!window.CampagneExportUtils) return Promise.resolve();
+    var wbData = buildCultureWorkbook(culture, data, farmFilter, sbMap);
+    if (wbData.sheets.length <= 1) {
+      window.alert('Aucune parcelle ' + culture + ' dans le périmètre.');
+      return Promise.resolve();
+    }
+    return loadExcelJS().then(function (ExcelJS) {
+      return writeWithExcelJS(ExcelJS, wbData);
+    }).catch(function (e) {
+      if (window.console) {
+        console.warn('[Campagne] Export stylé indisponible (' + (e && e.message) + ') — repli sans mise en forme.');
+      }
+      writeWithoutStyles(wbData);
     });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = wbData.fileName + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   }
 
   /* ------------------------------------------------------------------ */
@@ -587,6 +792,12 @@
     var metric = props.metric;
     var setMetric = props.setMetric;
 
+    // Culture dont l'export est en cours (ExcelJS chargé à la demande) — null
+    // quand aucun export ne tourne.
+    var _exporting = useState(null);
+    var exporting = _exporting[0];
+    var setExporting = _exporting[1];
+
     // Liste distincte des parcelles (filtrée par farmFilter + cultureFilter).
     // `value` = libellé BEE ONE brut (clé de jointure de buildVarieteView),
     // affichage = nom Smart Berry ; tri sur le libellé affiché.
@@ -772,10 +983,17 @@
     // Exports Excel — toutes les parcelles de la culture (indépendants du
     // filtre Culture et de la parcelle sélectionnée), périmètre farmFilter.
     ['Framboise', 'Myrtille'].map(function (cult) {
+      var busy = exporting === cult;
+      var disabled = exporting !== null;
       return React.createElement('button', {
         key: 'export-' + cult,
+        disabled: disabled,
         onClick: function () {
-          exportCulture(cult, data, farmFilter, sbMap);
+          if (exporting !== null) return;
+          setExporting(cult);
+          exportCulture(cult, data, farmFilter, sbMap).catch(function () {}).then(function () {
+            setExporting(null);
+          });
         },
         title: 'Exporter toutes les parcelles ' + cult + ' (une feuille par parcelle)',
         style: {
@@ -786,14 +1004,15 @@
           color: C.green,
           fontSize: '12px',
           fontWeight: 600,
-          cursor: 'pointer'
+          cursor: disabled ? 'wait' : 'pointer',
+          opacity: disabled && !busy ? 0.5 : 1
         }
       }, React.createElement('i', {
-        className: 'fa-solid fa-file-excel',
+        className: busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-file-excel',
         style: {
           marginRight: '6px'
         }
-      }), 'Export ' + cult);
+      }), busy ? 'Génération…' : 'Export ' + cult);
     })),
     // Contenu
     !selectedParcelle ? React.createElement('div', {

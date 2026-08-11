@@ -6,21 +6,21 @@
  *   - Browser : <script src="lib/campagneExportUtils.js"> → window.CampagneExportUtils
  *   - node:test : require('.../campagneExportUtils.js') → module.exports
  *
- * Ces helpers ne font QUE produire des tableaux de tableaux (AoA), des largeurs
- * de colonnes et des noms de feuille : aucune dépendance à SheetJS, au DOM ou au
- * réseau. L'écriture du classeur reste dans le composant (window.XLSX).
+ * Ces helpers ne font QUE décrire les DONNÉES (lignes typées, AoA, largeurs de
+ * colonnes, noms de feuille) : aucune dépendance à SheetJS/ExcelJS, au DOM ou au
+ * réseau. L'écriture du classeur reste dans le composant.
  *
  * L'export ne contient QUE des journées-homme (JH) — décision produit : les
  * coûts DH restent à l'écran (toggle JH / Coût DH), pas dans le fichier.
  *
- * MISE EN FORME — vérifié sur le build réellement chargé (CDN xlsx-0.20.3,
- * community) en écrivant un .xlsx et en relisant sheet1.xml :
- *   - `ws['!cols'] = [{ wch }]`      → écrit `<cols><col customWidth/>` : SUPPORTÉ ;
- *   - `ws['!freeze']` / `ws['!panes']` → aucun `<pane>` produit : IGNORÉ ;
- *   - styles de cellule (`cell.s` gras/couleurs) → aucun `s=` produit : IGNORÉ
- *     (réservé à la version Pro).
- * La lisibilité vient donc de la STRUCTURE (indentation par espaces — préservée
- * par `xml:space="preserve"` —, lignes de total, ligne vide entre familles).
+ * DEUX RENDUS, UNE SEULE SOURCE DE DONNÉES :
+ *   - `build*Rows` → lignes typées (`ROW_KIND`) : consommées par le rendu
+ *     ExcelJS (chargé paresseusement au clic), qui applique gras, couleurs,
+ *     bordures et volets figés ;
+ *   - `build*AoA`  → les MÊMES lignes aplaties : rendu de repli SheetJS (déjà
+ *     chargé) puis CSV. Vérifié sur le build CDN xlsx-0.20.3 (community) en
+ *     relisant sheet1.xml : `!cols` est écrit, mais `!freeze`/`!panes` et les
+ *     styles de cellule sont IGNORÉS — d'où la bascule du rendu sur ExcelJS.
  *
  * IMPORTANT (mémoire #75 — collision global a déjà cassé l'app) : ce module
  * n'expose QU'UN SEUL global (`window.CampagneExportUtils`). Les const internes
@@ -49,8 +49,24 @@ const __cexp_SYNTHESE_HEADER = [
   'Total JH',
 ];
 
-/** Indentation des opérations sous leur famille (préservée par Excel). */
+/** Indentation des opérations sous leur famille (rendu AoA/SheetJS). */
 const __cexp_INDENT = '    ';
+
+/**
+ * Nature d'une ligne de feuille. C'est le CONTRAT entre les helpers purs (qui
+ * décrivent la structure) et le moteur de rendu (qui décide du style) : aucun
+ * renderer ne doit re-deviner le rôle d'une ligne d'après son texte.
+ */
+const ROW_KIND = {
+  META: 'meta',                   // « Parcelle : » / valeur
+  BLANK: 'blank',                 // séparateur
+  COL_HEADER: 'col-header',       // bandeau d'en-tête de colonnes
+  FAMILLE: 'famille',             // titre de famille
+  OPERATION: 'operation',         // ligne d'opération (indentée au rendu)
+  TOTAL_FAMILLE: 'total-famille',
+  TOTAL_GENERAL: 'total-general',
+  DATA: 'data',                   // ligne de données (feuille Synthèse)
+};
 
 /** Largeurs de colonnes (unité `wch` de SheetJS ≈ nombre de caractères). */
 const __cexp_WCH = {
@@ -152,24 +168,52 @@ function safeSheetName(nom, index, used) {
 }
 
 /**
- * Feuille « Synthèse » : une ligne par parcelle exportée. JH uniquement.
+ * Feuille « Synthèse » — description STRUCTURÉE : une ligne par parcelle, plus
+ * une ligne de total quand il y a au moins une parcelle. Chaque ligne porte son
+ * `kind`, ce qui permet au moteur de rendu (ExcelJS) d'appliquer un style SANS
+ * re-deviner la nature de la ligne à partir de son texte.
+ *
+ * @param {Array<*>} parcelles [{ nomSb, label, ferme, ha, totalJh }]
+ * @returns {Array<{kind:string, cells:Array<*>}>}
+ */
+function buildSyntheseRows(parcelles) {
+  const rows = [{ kind: ROW_KIND.COL_HEADER, cells: __cexp_SYNTHESE_HEADER.slice() }];
+  let totalHa = 0;
+  let totalJh = 0;
+  let n = 0;
+  (parcelles || []).forEach(function (p) {
+    const src = p || {};
+    totalHa += Number(src.ha) || 0;
+    totalJh += Number(src.totalJh) || 0;
+    n += 1;
+    rows.push({
+      kind: ROW_KIND.DATA,
+      cells: [
+        src.nomSb || src.label || '',
+        src.label || '',
+        src.ferme || '',
+        __cexp_num(src.ha),
+        __cexp_num(src.totalJh),
+      ],
+    });
+  });
+  if (n > 0) {
+    rows.push({
+      kind: ROW_KIND.TOTAL_GENERAL,
+      cells: ['TOTAL (' + n + ' parcelle' + (n > 1 ? 's' : '') + ')', '', '', __cexp_num(totalHa), __cexp_num(totalJh)],
+    });
+  }
+  return rows;
+}
+
+/**
+ * Feuille « Synthèse » en AoA (rendu SheetJS / CSV de repli).
  *
  * @param {Array<*>} parcelles [{ nomSb, label, ferme, ha, totalJh }]
  * @returns {Array<Array<*>>} AoA prête pour XLSX.utils.aoa_to_sheet
  */
 function buildSyntheseAoA(parcelles) {
-  const aoa = [__cexp_SYNTHESE_HEADER.slice()];
-  (parcelles || []).forEach(function (p) {
-    const src = p || {};
-    aoa.push([
-      src.nomSb || src.label || '',
-      src.label || '',
-      src.ferme || '',
-      __cexp_num(src.ha),
-      __cexp_num(src.totalJh),
-    ]);
-  });
-  return aoa;
+  return buildSyntheseRows(parcelles).map(function (r) { return r.cells; });
 }
 
 /** Largeurs de colonnes de la feuille « Synthèse » (ws['!cols']). */
@@ -198,37 +242,43 @@ function parcelleSheetCols(nbPeriodes) {
 }
 
 /**
- * Feuille d'une parcelle. JH uniquement (aucune colonne DH) :
- *   A1..A4 : libellés `Parcelle :` / `Superficie :` / `Culture :` / `Campagne :`
- *            avec la VALEUR en colonne B (cellules distinctes → pas de troncature) ;
- *   ligne vide, puis `Famille / Opération | <quinzaine> … | Total JH` ;
- *   par famille : une ligne titre, les opérations indentées, `Total <famille>`
- *   et une ligne vide de séparation ; `TOTAL GÉNÉRAL` en dernier.
+ * Feuille d'une parcelle — description STRUCTURÉE. JH uniquement (aucune
+ * colonne DH) :
+ *   4 lignes META : libellés `Parcelle :` / `Superficie :` / `Culture :` /
+ *   `Campagne :` en colonne A, valeur en colonne B (cellules distinctes → pas
+ *   de troncature) ; une ligne vide ; la ligne COL_HEADER
+ *   `Famille / Opération | <quinzaine> … | Total JH` ; par famille une ligne
+ *   FAMILLE, ses OPERATION, un TOTAL_FAMILLE et une ligne vide ;
+ *   TOTAL_GENERAL en dernier.
+ *
+ * Le libellé d'une ligne OPERATION n'est PAS indenté ici : l'indentation est
+ * une décision de rendu (espaces en dur pour l'AoA SheetJS/CSV, alignement
+ * `indent` natif pour ExcelJS).
  *
  * `opRows` est la sortie de buildVarieteView (CampagneAnalytiqueTab) :
  * [{ famille, operation, byPeriode: { <periode>: { jh, cout } }, total: { jh, cout } }]
  * — le champ `cout` est volontairement ignoré (export JH uniquement).
  *
  * @param {*} params { nomSb, ha, culture, campagne, periodes, opRows, famillesOrdered }
- * @returns {Array<Array<*>>} AoA prête pour XLSX.utils.aoa_to_sheet
+ * @returns {Array<{kind:string, cells:Array<*>}>}
  */
-function buildParcelleSheetAoA(params) {
+function buildParcelleSheetRows(params) {
   const p = params || {};
   const periodes = p.periodes || [];
   const opRows = p.opRows || [];
 
-  const aoa = [
-    ['Parcelle :', p.nomSb || ''],
-    ['Superficie :', haLabel(p.ha)],
-    ['Culture :', p.culture || ''],
-    ['Campagne :', p.campagne || ''],
-    [],
+  const rows = [
+    { kind: ROW_KIND.META, cells: ['Parcelle :', p.nomSb || ''] },
+    { kind: ROW_KIND.META, cells: ['Superficie :', haLabel(p.ha)] },
+    { kind: ROW_KIND.META, cells: ['Culture :', p.culture || ''] },
+    { kind: ROW_KIND.META, cells: ['Campagne :', p.campagne || ''] },
+    { kind: ROW_KIND.BLANK, cells: [] },
   ];
 
   const header = ['Famille / Opération'];
   periodes.forEach(function (per) { header.push(per); });
   header.push('Total JH');
-  aoa.push(header);
+  rows.push({ kind: ROW_KIND.COL_HEADER, cells: header });
 
   const grand = { byP: {}, jh: 0 };
 
@@ -237,10 +287,10 @@ function buildParcelleSheetAoA(params) {
     if (famRows.length === 0) return;
     const famTotal = { byP: {}, jh: 0 };
 
-    aoa.push([famille]);
+    rows.push({ kind: ROW_KIND.FAMILLE, cells: [famille] });
 
     famRows.forEach(function (r) {
-      const line = [__cexp_INDENT + (r.operation || '')];
+      const line = [r.operation || ''];
       periodes.forEach(function (per) {
         const cell = (r.byPeriode || {})[per];
         const jh = cell ? Number(cell.jh) || 0 : 0;
@@ -254,22 +304,39 @@ function buildParcelleSheetAoA(params) {
       line.push(__cexp_num(tJh));
       famTotal.jh += tJh;
       grand.jh += tJh;
-      aoa.push(line);
+      rows.push({ kind: ROW_KIND.OPERATION, cells: line });
     });
 
     const famLine = ['Total ' + famille];
     periodes.forEach(function (per) { famLine.push(__cexp_num(famTotal.byP[per])); });
     famLine.push(__cexp_num(famTotal.jh));
-    aoa.push(famLine);
-    aoa.push([]);
+    rows.push({ kind: ROW_KIND.TOTAL_FAMILLE, cells: famLine });
+    rows.push({ kind: ROW_KIND.BLANK, cells: [] });
   });
 
   const totalLine = ['TOTAL GÉNÉRAL'];
   periodes.forEach(function (per) { totalLine.push(__cexp_num(grand.byP[per])); });
   totalLine.push(__cexp_num(grand.jh));
-  aoa.push(totalLine);
+  rows.push({ kind: ROW_KIND.TOTAL_GENERAL, cells: totalLine });
 
-  return aoa;
+  return rows;
+}
+
+/**
+ * Feuille d'une parcelle en AoA (rendu SheetJS / CSV de repli) : mêmes données
+ * que buildParcelleSheetRows, avec l'indentation des opérations matérialisée
+ * par des espaces (SheetJS ne sait pas indenter).
+ *
+ * @param {*} params cf. buildParcelleSheetRows
+ * @returns {Array<Array<*>>} AoA prête pour XLSX.utils.aoa_to_sheet
+ */
+function buildParcelleSheetAoA(params) {
+  return buildParcelleSheetRows(params).map(function (r) {
+    if (r.kind !== ROW_KIND.OPERATION) return r.cells;
+    const cells = r.cells.slice();
+    cells[0] = __cexp_INDENT + cells[0];
+    return cells;
+  });
 }
 
 // ============================================================================
@@ -278,10 +345,13 @@ function buildParcelleSheetAoA(params) {
 
 const __cexp_api = {
   SHEET_MAX: __cexp_SHEET_MAX,
+  ROW_KIND,
   haLabel,
   safeSheetName,
+  buildSyntheseRows,
   buildSyntheseAoA,
   syntheseSheetCols,
+  buildParcelleSheetRows,
   buildParcelleSheetAoA,
   parcelleSheetCols,
 };

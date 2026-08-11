@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:0835b86918a3148f -->
+<!-- sourceFingerprint: sha256:823bdae887c8ba61 -->
 # Code Map — Composants frontend (294)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -65,7 +65,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60380 | — |
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1012 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1177 | campagne |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
 | CanevaFinanceQueue | public/app.jsx:60920 | — |
@@ -90,7 +90,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62005 | coming_soon |
 | ConditionnementSub | public/app.jsx:24300 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:806 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:971 | — |
 | CoutRecolteTab | public/app.jsx:8647 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
@@ -145,7 +145,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | FuelWeeklyChart | public/app.jsx:35291 | — |
 | Gauge | public/app.jsx:40883 | — |
 | GDDTrackingTab | public/app.jsx:44584 | — |
-| HaView | public/components/CampagneAnalytiqueTab.jsx:315 | — |
+| HaView | public/components/CampagneAnalytiqueTab.jsx:462 | — |
 | HeuresSupSub | public/app.jsx:26623 | — |
 | HorsRecolteSuiviTab | public/app.jsx:27798 | hors_recolte_suivi |
 | HorsRecolteTab | public/app.jsx:10730 | hors_recolte |
@@ -295,7 +295,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | TraitementSub | public/app.jsx:24342 | — |
 | TransportSub | public/app.jsx:24474 | — |
 | TutorialMenu | public/app.jsx:66965 | — |
-| VarieteView | public/components/CampagneAnalytiqueTab.jsx:512 | — |
+| VarieteView | public/components/CampagneAnalytiqueTab.jsx:659 | — |
 | WhatsAppConfigPanel | public/app.jsx:62241 | — |
 | WorkerDetailModal | public/app.jsx:3029 | — |
 | WorkerDetailProvider | public/app.jsx:3128 | — |

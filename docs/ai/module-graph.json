@@ -39,6 +39,10 @@
         "file": "functions/dgAgent.js"
       },
       {
+        "commits": 6,
+        "file": "public/components/ParcellesReferentielTab.jsx"
+      },
+      {
         "commits": 5,
         "file": "functions/lib/bdc/bdcDigest.js"
       },
@@ -51,10 +55,6 @@
         "file": "public/components/ParcellesGroupesPanel.jsx"
       },
       {
-        "commits": 5,
-        "file": "public/components/ParcellesReferentielTab.jsx"
-      },
-      {
         "commits": 4,
         "file": "functions/pointageService.js"
       },
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c928a11579473fc0",
+    "sourceFingerprint": "sha256:8b3a6fb6e29d03fc",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,
@@ -767,7 +767,22 @@
           "FinCodesAnalytiquesTab"
         ]
       },
-      "gitCoupling": [],
+      "gitCoupling": [
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/ParcellesReferentielTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
       "label": "Référentiel & Analytique",
       "tests": {
         "backend": [

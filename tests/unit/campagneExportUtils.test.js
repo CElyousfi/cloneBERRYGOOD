@@ -4,10 +4,13 @@ const test = require('node:test');
 const assert = require('node:assert');
 const {
   SHEET_MAX,
+  ROW_KIND,
   haLabel,
   safeSheetName,
+  buildSyntheseRows,
   buildSyntheseAoA,
   syntheseSheetCols,
+  buildParcelleSheetRows,
   buildParcelleSheetAoA,
   parcelleSheetCols,
 } = require('../../public/lib/campagneExportUtils.js');
@@ -96,6 +99,26 @@ test('buildSyntheseAoA — en-tête + une ligne par parcelle, JH seul', () => {
   assert.deepStrictEqual(aoa[1], ['S5 MARAVILLA', 'F1- S5 MARAVILLA MD', 'F1', 2.4, 28.35]);
   // ha = 0 → superficie et JH vides
   assert.deepStrictEqual(aoa[2], ['F5- S1 CORINA', 'F5- S1 CORINA', 'F5', '', '']);
+  // ligne de total finale
+  assert.deepStrictEqual(aoa[3], ['TOTAL (2 parcelles)', '', '', 2.4, 28.35]);
+});
+
+test('buildSyntheseRows — lignes typées (en-tête, données, total)', () => {
+  const rows = buildSyntheseRows([
+    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 1, totalJh: 5 },
+  ]);
+  assert.deepStrictEqual(rows.map((r) => r.kind), [
+    ROW_KIND.COL_HEADER, ROW_KIND.DATA, ROW_KIND.TOTAL_GENERAL,
+  ]);
+  assert.deepStrictEqual(rows[2].cells, ['TOTAL (1 parcelle)', '', '', 1, 5]);
+});
+
+test('buildSyntheseRows/AoA — mêmes cellules (une seule source de données)', () => {
+  const parcelles = [{ nomSb: 'A', label: 'A', ferme: 'F1', ha: 1, totalJh: 5 }];
+  assert.deepStrictEqual(
+    buildSyntheseAoA(parcelles),
+    buildSyntheseRows(parcelles).map((r) => r.cells)
+  );
 });
 
 test('buildSyntheseAoA — aucune colonne DH ni DH/ha', () => {
@@ -107,7 +130,7 @@ test('buildSyntheseAoA — aucune colonne DH ni DH/ha', () => {
   assert.ok(!aoa[1].includes(9999), 'le coût ne doit plus apparaître');
 });
 
-test('buildSyntheseAoA — liste vide/absente → en-tête seul', () => {
+test('buildSyntheseAoA — liste vide/absente → en-tête seul, sans ligne de total', () => {
   assert.strictEqual(buildSyntheseAoA([]).length, 1);
   assert.strictEqual(buildSyntheseAoA(null).length, 1);
 });
@@ -236,6 +259,50 @@ test('buildParcelleSheetAoA — aucune ligne → en-tête + TOTAL GÉNÉRAL vide
   const aoa = buildParcelleSheetAoA({ nomSb: 'X', periodes: ['Q01'], opRows: [], famillesOrdered: [] });
   assert.strictEqual(aoa.length, 7);
   assert.deepStrictEqual(aoa[6], ['TOTAL GÉNÉRAL', '', '']);
+});
+
+// ============================================================================
+// buildParcelleSheetRows — contrat de typage des lignes consommé par ExcelJS
+// ============================================================================
+test('buildParcelleSheetRows — kinds dans l\'ordre attendu', () => {
+  const rows = buildParcelleSheetRows({
+    nomSb: 'S5 MARAVILLA', ha: 2.4, culture: 'Framboise', campagne: '2026/2027',
+    periodes: ['Q01', 'Q02'], opRows: OP_ROWS, famillesOrdered: ['Travaux du sol', 'Récolte'],
+  });
+  assert.deepStrictEqual(rows.map((r) => r.kind), [
+    ROW_KIND.META, ROW_KIND.META, ROW_KIND.META, ROW_KIND.META, ROW_KIND.BLANK,
+    ROW_KIND.COL_HEADER,
+    ROW_KIND.FAMILLE, ROW_KIND.OPERATION, ROW_KIND.OPERATION, ROW_KIND.TOTAL_FAMILLE, ROW_KIND.BLANK,
+    ROW_KIND.FAMILLE, ROW_KIND.OPERATION, ROW_KIND.TOTAL_FAMILLE, ROW_KIND.BLANK,
+    ROW_KIND.TOTAL_GENERAL,
+  ]);
+});
+
+test('buildParcelleSheetRows — libellé d\'opération NON indenté (indent = rendu)', () => {
+  const rows = buildParcelleSheetRows({
+    periodes: ['Q01'],
+    opRows: [{ famille: 'Récolte', operation: 'Cueillette', byPeriode: { Q01: { jh: 2 } }, total: { jh: 2 } }],
+    famillesOrdered: ['Récolte'],
+  });
+  const op = rows.find((r) => r.kind === ROW_KIND.OPERATION);
+  assert.strictEqual(op.cells[0], 'Cueillette');
+  // …et l'AoA (SheetJS/CSV) porte bien l'indentation par espaces
+  const aoa = buildParcelleSheetAoA({
+    periodes: ['Q01'],
+    opRows: [{ famille: 'Récolte', operation: 'Cueillette', byPeriode: { Q01: { jh: 2 } }, total: { jh: 2 } }],
+    famillesOrdered: ['Récolte'],
+  });
+  assert.strictEqual(aoa[7][0], '    Cueillette');
+});
+
+test('buildParcelleSheetRows/AoA — mêmes valeurs numériques', () => {
+  const params = {
+    nomSb: 'X', periodes: ['Q01', 'Q02'], opRows: OP_ROWS,
+    famillesOrdered: ['Travaux du sol', 'Récolte'],
+  };
+  const fromRows = buildParcelleSheetRows(params).map((r) => r.cells.slice(1));
+  const fromAoa = buildParcelleSheetAoA(params).map((r) => r.slice(1));
+  assert.deepStrictEqual(fromAoa, fromRows);
 });
 
 test('buildParcelleSheetAoA — paramètres absents tolérés, aucun throw', () => {
