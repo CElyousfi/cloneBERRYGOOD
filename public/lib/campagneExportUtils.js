@@ -47,6 +47,7 @@ const __cexp_SYNTHESE_HEADER = [
   'Ferme',
   'Superficie (ha)',
   'Total JH',
+  'Total JH / Ha',
 ];
 
 /** Indentation des opérations sous leur famille (rendu AoA/SheetJS). */
@@ -76,6 +77,7 @@ const __cexp_WCH = {
   parcelle: 32,  // feuille Synthèse
   ferme: 10,
   ha: 14,
+  jhPerHa: 14,   // colonne « Total JH / Ha » (dernière colonne)
 };
 
 // ============================================================================
@@ -92,6 +94,22 @@ function __cexp_num(v) {
   const n = Number(v);
   if (!n || !isFinite(n)) return '';
   return Math.round(n * 100) / 100;
+}
+
+/**
+ * Ratio « JH / Ha » d'une ligne : JH ÷ superficie, arrondi 2 décimales, NOMBRE
+ * brut (jamais une chaîne formatée). Renvoie '' — cellule vide — dès que le
+ * calcul n'a pas de sens : superficie inconnue, nulle ou négative (jamais de
+ * division par zéro → ni Infinity ni NaN dans le fichier), JH nuls ou non
+ * numériques.
+ * @param {*} jh
+ * @param {*} ha
+ * @returns {number|string}
+ */
+function __cexp_perHa(jh, ha) {
+  const h = Number(ha);
+  if (!h || !isFinite(h) || h <= 0) return '';
+  return __cexp_num(Number(jh) / h);
 }
 
 /**
@@ -130,6 +148,37 @@ function __cexp_orderFamilles(opRows, famillesOrdered) {
 // ============================================================================
 // PUBLIC API
 // ============================================================================
+
+/**
+ * Format numérique Excel (`numFmt`) d'une cellule, choisi VALEUR PAR VALEUR.
+ *
+ * Pourquoi pas un format unique : `#,##0.##` laisse le séparateur décimal
+ * traîner sur les entiers — Excel affiche « 6. », « 12. », « 28. » (les `#`
+ * suppriment les chiffres décimaux, pas le séparateur qui les précède ;
+ * reproduit sur le moteur de formatage SSF : format('#,##0.##', 6) === '6.').
+ * Aucun code de format ne sait masquer ce séparateur conditionnellement, donc
+ * on décide du format à l'écriture, avec un nombre de décimales EXACT :
+ *   6     → `#,##0`     → « 6 »
+ *   6,5   → `#,##0.0`   → « 6,5 »
+ *   11,81 → `#,##0.00`  → « 11,81 »
+ * (le `.` du CODE de format est un marqueur : Excel le rend avec le
+ * séparateur décimal de la locale — virgule en fr.)
+ *
+ * Les valeurs sont déjà arrondies à 2 décimales en amont (`__cexp_num`,
+ * `__cexp_perHa`) : l'arrondi ici n'est qu'un garde-fou.
+ *
+ * @param {*} v valeur de la cellule (seuls les nombres sont formatés)
+ * @returns {string|null} code de format, ou null si la valeur n'est pas un nombre
+ */
+function numFmtFor(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return null;
+  const r = Math.round(v * 100) / 100;
+  // Décimales réellement portées par la valeur (String évite les artefacts
+  // flottants d'un test `r * 10 % 1 === 0`, cf. 2.1 * 10 = 21.000000000000004).
+  const dec = (String(r).split('.')[1] || '').length;
+  if (dec === 0) return '#,##0';
+  return dec === 1 ? '#,##0.0' : '#,##0.00';
+}
 
 /**
  * Nom de feuille Excel valide : caractères interdits nettoyés, 31 caractères
@@ -180,11 +229,21 @@ function buildSyntheseRows(parcelles) {
   const rows = [{ kind: ROW_KIND.COL_HEADER, cells: __cexp_SYNTHESE_HEADER.slice() }];
   let totalHa = 0;
   let totalJh = 0;
+  // Sommes du RATIO : périmètre restreint aux parcelles dont la superficie est
+  // connue (cf. ligne TOTAL plus bas).
+  let ratioHa = 0;
+  let ratioJh = 0;
   let n = 0;
   (parcelles || []).forEach(function (p) {
     const src = p || {};
-    totalHa += Number(src.ha) || 0;
-    totalJh += Number(src.totalJh) || 0;
+    const ha = Number(src.ha);
+    const jh = Number(src.totalJh) || 0;
+    totalHa += ha || 0;
+    totalJh += jh;
+    if (ha && isFinite(ha) && ha > 0) {
+      ratioHa += ha;
+      ratioJh += jh;
+    }
     n += 1;
     rows.push({
       kind: ROW_KIND.DATA,
@@ -194,13 +253,36 @@ function buildSyntheseRows(parcelles) {
         src.ferme || '',
         __cexp_num(src.ha),
         __cexp_num(src.totalJh),
+        __cexp_perHa(src.totalJh, src.ha),
       ],
     });
   });
   if (n > 0) {
+    // Ligne TOTAL — DEUX périmètres différents, volontairement :
+    //
+    // • « Total JH » = somme de TOUS les JH, y compris ceux des parcelles sans
+    //   superficie connue : c'est un total de VOLUME, il ne doit rien perdre.
+    //
+    // • « Total JH / Ha » = ΣJH ÷ Σha calculés sur les SEULES parcelles dont on
+    //   connaît la superficie — exclusion DOUBLE (numérateur ET dénominateur).
+    //   Garder les JH d'une parcelle au numérateur alors que ses hectares
+    //   manquent au dénominateur gonflerait le ratio : le chiffre serait faux,
+    //   et faux dans le sens qui inquiète (consommation de main-d'œuvre
+    //   surestimée). Le ratio se lit « JH/ha sur le périmètre dont la surface
+    //   est connue ». C'est aussi, pour la même raison, une moyenne PONDÉRÉE
+    //   (ΣJH ÷ Σha) et non la moyenne des ratios ligne à ligne, qui donnerait
+    //   le même poids à une parcelle de 0,2 ha qu'à une de 5 ha.
+    //   Aucune parcelle avec superficie → Σha = 0 → cellule vide (pas de
+    //   division par zéro).
     rows.push({
       kind: ROW_KIND.TOTAL_GENERAL,
-      cells: ['TOTAL (' + n + ' parcelle' + (n > 1 ? 's' : '') + ')', '', '', __cexp_num(totalHa), __cexp_num(totalJh)],
+      cells: [
+        'TOTAL (' + n + ' parcelle' + (n > 1 ? 's' : '') + ')',
+        '', '',
+        __cexp_num(totalHa),
+        __cexp_num(totalJh),
+        __cexp_perHa(ratioJh, ratioHa),
+      ],
     });
   }
   return rows;
@@ -224,12 +306,17 @@ function syntheseSheetCols() {
     { wch: __cexp_WCH.ferme },
     { wch: __cexp_WCH.ha },
     { wch: __cexp_WCH.total },
+    { wch: __cexp_WCH.jhPerHa },
   ];
 }
 
 /**
  * Largeurs de colonnes d'une feuille parcelle (ws['!cols']) : libellé large,
- * une colonne par quinzaine, colonne Total.
+ * une colonne par quinzaine, colonne Total, colonne Total JH / Ha.
+ *
+ * Le compte DOIT rester égal au nombre de colonnes de la ligne COL_HEADER : le
+ * rendu ExcelJS dérive la largeur des bandeaux pleine largeur de
+ * `cols.length` (cf. styleFullWidth).
  * @param {*} nbPeriodes
  * @returns {Array<{wch:number}>}
  */
@@ -238,6 +325,7 @@ function parcelleSheetCols(nbPeriodes) {
   const cols = [{ wch: __cexp_WCH.libelle }];
   for (let i = 0; i < n; i += 1) cols.push({ wch: __cexp_WCH.periode });
   cols.push({ wch: __cexp_WCH.total });
+  cols.push({ wch: __cexp_WCH.jhPerHa });
   return cols;
 }
 
@@ -278,7 +366,13 @@ function buildParcelleSheetRows(params) {
   const header = ['Famille / Opération'];
   periodes.forEach(function (per) { header.push(per); });
   header.push('Total JH');
+  header.push('Total JH / Ha');
   rows.push({ kind: ROW_KIND.COL_HEADER, cells: header });
+
+  // Superficie de la parcelle : dénominateur de TOUTE la colonne JH / Ha
+  // (opérations, totaux famille, total général). Inconnue ou nulle → colonne
+  // vide sur toute la feuille, jamais d'Infinity/NaN.
+  const ha = p.ha;
 
   const grand = { byP: {}, jh: 0 };
 
@@ -302,6 +396,7 @@ function buildParcelleSheetRows(params) {
       });
       const tJh = Number((r.total || {}).jh) || 0;
       line.push(__cexp_num(tJh));
+      line.push(__cexp_perHa(tJh, ha));
       famTotal.jh += tJh;
       grand.jh += tJh;
       rows.push({ kind: ROW_KIND.OPERATION, cells: line });
@@ -310,6 +405,7 @@ function buildParcelleSheetRows(params) {
     const famLine = ['Total ' + famille];
     periodes.forEach(function (per) { famLine.push(__cexp_num(famTotal.byP[per])); });
     famLine.push(__cexp_num(famTotal.jh));
+    famLine.push(__cexp_perHa(famTotal.jh, ha));
     rows.push({ kind: ROW_KIND.TOTAL_FAMILLE, cells: famLine });
     rows.push({ kind: ROW_KIND.BLANK, cells: [] });
   });
@@ -317,6 +413,7 @@ function buildParcelleSheetRows(params) {
   const totalLine = ['TOTAL GÉNÉRAL'];
   periodes.forEach(function (per) { totalLine.push(__cexp_num(grand.byP[per])); });
   totalLine.push(__cexp_num(grand.jh));
+  totalLine.push(__cexp_perHa(grand.jh, ha));
   rows.push({ kind: ROW_KIND.TOTAL_GENERAL, cells: totalLine });
 
   return rows;
@@ -347,6 +444,7 @@ const __cexp_api = {
   SHEET_MAX: __cexp_SHEET_MAX,
   ROW_KIND,
   haLabel,
+  numFmtFor,
   safeSheetName,
   buildSyntheseRows,
   buildSyntheseAoA,

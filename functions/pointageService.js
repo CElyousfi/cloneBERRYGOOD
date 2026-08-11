@@ -91,6 +91,8 @@ const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 // Initialisation des Ha manquants du référentiel SB depuis les surfaces BEE ONE.
 const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
+// Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
+const campagneBudget = require("./lib/campagneBudget/validate");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -4045,6 +4047,119 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           total_parcelles: planS.toCreate.length + planS.skipped.length,
           a_creer: planS.toCreate.map((c) => ({ label: c.label, ha: c.ha })),
           ignorees: planS.skipped,
+        });
+      }
+
+      // ===== BUDGET JH / Ha PAR PARCELLE × FAMILLE D'OPÉRATION =====
+      // Collection `sb_campagne_budget_jh`, clé `${campagne}__${LABEL_BEE_ONE}`.
+      // La campagne fait partie de la clé (contrairement à
+      // `sb_parcelle_referentiel`, clé par le seul label) : un budget est propre
+      // à une campagne. Validation/merge purs : lib/campagneBudget/validate.
+      //
+      // Gating : ces deux actions ne sont PAS dans GATING_EXEMPT_ACTIONS — elles
+      // passent donc par verifyAuth + resolvePerimetre + resolvePointageRHAccess
+      // en amont (403 fail-closed pour tout profil hors périmètre). `_fermeFilter`
+      // (chef) est appliqué ici aussi : lecture filtrée sur SA ferme, écriture
+      // refusée.
+
+      // Lecture des budgets d'une campagne (défaut : campagne courante).
+      if (action === "campagne-budget-list" && req.method === "GET") {
+        const campagneB = campagneBudget.normCampagne(req.query.campagne || campagneCourante());
+        if (!campagneB) {
+          return res.status(400).json({ success: false, error: "Campagne invalide" });
+        }
+        const snapB = await db_firestore.collection("sb_campagne_budget_jh")
+          .where("campagne", "==", campagneB).get();
+        const budgets = [];
+        snapB.forEach((doc) => {
+          const d = doc.data() || {};
+          const label = d.label_bee_one || "";
+          // Chef : cloisonnement ferme. deriveFerme retourne 'Autre' si la
+          // parcelle n'est pas rattachable → exclue (fail-closed).
+          if (_fermeFilter && deriveFerme(null, label, campagneB) !== _fermeFilter) return;
+          // Chef Myrtille (chef_f5) : filtre culture additionnel, via le MÊME
+          // helper que les lignes miroir (cf. _keepCulture) — un budget porte
+          // le seul label, `filterMirrorRowsByCulture` sait le résoudre.
+          if (_cultureFilter
+            && filterMirrorRowsByCulture([{ Parcelle_Culturale: label }], _cultureFilter).length === 0) return;
+          budgets.push({
+            id: doc.id,
+            campagne: d.campagne || campagneB,
+            label_bee_one: label,
+            budgets: campagneBudget.mergeBudgets(d.budgets, {}),
+          });
+        });
+        budgets.sort((a, b) => (a.label_bee_one || "").localeCompare(b.label_bee_one || ""));
+        return res.json({ success: true, campagne: campagneB, budgets });
+      }
+
+      // Upsert d'un budget (DG/RH/admin — même gate que sb-referentiel-save).
+      if (action === "campagne-budget-save" && req.method === "POST") {
+        const _authUserB = await verifyAuth(req);
+        const callerProfileB = await resolveCallerProfile(_authUserB);
+        const _pidB = callerProfileB && (callerProfileB.profileId || callerProfileB.role || '');
+        if (!['dg', 'rh', 'admin'].includes(_pidB)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH requis" });
+        }
+        // Défense en profondeur : un profil à périmètre restreint (chef) n'écrit
+        // jamais, même si son profileId devenait un jour éligible ci-dessus.
+        if (_fermeFilter) {
+          return res.status(403).json({ success: false, error: "Accès refusé — périmètre restreint" });
+        }
+
+        const bodyB = req.body || {};
+        // Familles AUTORISÉES = référentiel des tâches (jamais une liste figée).
+        const refDataB = await loadReferentielTaches();
+        const famillesConnuesB = [...new Set((refDataB.ops || []).map((o) => o.famille).filter(Boolean))];
+        // Labels AUTORISÉS = référentiel parcelles Smart Berry.
+        const refSnapB = await db_firestore.collection("sb_parcelle_referentiel").get();
+        const labelsConnusB = [];
+        refSnapB.forEach((doc) => {
+          const d = doc.data() || {};
+          const lbl = (d.label_bee_one || doc.id || "").trim();
+          if (lbl) labelsConnusB.push(lbl);
+        });
+
+        const verdictB = campagneBudget.validateBudgetSave({
+          campagne: bodyB.campagne || campagneCourante(),
+          label_bee_one: bodyB.label_bee_one,
+          budgets: bodyB.budgets,
+          famillesConnues: famillesConnuesB,
+          labelsConnus: labelsConnusB,
+        });
+        if (!verdictB.ok) {
+          return res.status(400).json({ success: false, error: verdictB.error });
+        }
+
+        const docRefB = db_firestore.collection("sb_campagne_budget_jh").doc(verdictB.docId);
+        // Transaction : le merge lit l'existant (les familles absentes du body
+        // sont conservées) — sans transaction, deux saves concurrents sur deux
+        // familles différentes en perdraient une. L'écriture elle-même est dans
+        // lib/campagneBudget (writeBudgetInTransaction) : elle utilise
+        // `mergeFields` et NON `{merge:true}`, sans quoi une famille retirée
+        // survivrait en base (masque de champs construit sur les feuilles).
+        const writeB = await db_firestore.runTransaction((tx) =>
+          campagneBudget.writeBudgetInTransaction(tx, docRefB, {
+            campagne: verdictB.campagne,
+            label: verdictB.label,
+            budgets: verdictB.budgets,
+            famillesConnues: famillesConnuesB,
+            uid: (_authUserB && _authUserB.uid) || null,
+            profileId: _pidB,
+            serverTimestamp: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+          })
+        );
+
+        // RELECTURE après commit : on renvoie l'état RÉELLEMENT persisté, jamais
+        // le calculé. Un succès affiché par le client doit être prouvé — c'est
+        // exactement ce qui masquait la survie des familles supprimées.
+        const afterB = await docRefB.get();
+        const persistedB = (afterB.exists && (afterB.data() || {}).budgets) || {};
+
+        return res.json({
+          success: true, id: verdictB.docId, campagne: verdictB.campagne,
+          label_bee_one: verdictB.label, budgets: persistedB,
+          familles_purgees: writeB.purgees,
         });
       }
 

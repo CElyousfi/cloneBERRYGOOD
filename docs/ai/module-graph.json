@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "209/348 fichiers classifiés",
+          "detail": "211/350 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,12 +14,12 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "44/141 modules avec ≥1 test",
+          "detail": "46/143 modules avec ≥1 test",
           "max": 30,
-          "score": 9
+          "score": 10
         }
       },
-      "total": 60
+      "total": 61
     },
     "heatmap": [
       {
@@ -31,12 +31,24 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 7,
+        "commits": 8,
         "file": "scripts/build-frontend.js"
+      },
+      {
+        "commits": 7,
+        "file": "public/components/CampagneAnalytiqueTab.js"
+      },
+      {
+        "commits": 7,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
         "commits": 6,
         "file": "functions/dgAgent.js"
+      },
+      {
+        "commits": 6,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 6,
@@ -48,35 +60,23 @@
       },
       {
         "commits": 5,
-        "file": "functions/notificationDispatcher.js"
-      },
-      {
-        "commits": 5,
         "file": "public/components/ParcellesGroupesPanel.jsx"
-      },
-      {
-        "commits": 4,
-        "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 4,
-        "file": "public/components/CampagneAnalytiqueTab.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c9e98f146e8ab353",
+    "sourceFingerprint": "sha256:5c597ece711f59a3",
     "stats": {
-      "backendModules": 90,
+      "backendModules": 91,
       "cloudFunctions": 87,
-      "coverageScore": 31,
+      "coverageScore": 32,
       "domains": 10,
-      "extractedComponents": 22,
-      "firestoreCollections": 57,
+      "extractedComponents": 23,
+      "firestoreCollections": 58,
       "libHelpers": 29,
       "monolithSymbols": 120,
       "tabFunctions": 120,
       "unclassifiedFiles": 139,
-      "unitTestFiles": 27
+      "unitTestFiles": 28
     }
   },
   "domains": {
@@ -721,6 +721,7 @@
           "parcelles"
         ],
         "modules": [
+          "campagneBudget",
           "parcelleGroupes"
         ],
         "routes": [
@@ -735,7 +736,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 50,
+      "coverageScore": 57,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -744,6 +745,7 @@
           "parcelle_ferme_referentiel_meta",
           "parcelles_consommation",
           "parcelles_culturales_charge",
+          "sb_campagne_budget_jh",
           "sb_parcelle_groupes"
         ]
       },
@@ -751,6 +753,7 @@
         "components": [
           "public/components/AffectationAnalytiqueTable.jsx",
           "public/components/CampagneAnalytiqueTab.jsx",
+          "public/components/CampagneBudgetTab.jsx",
           "public/components/ParcellesGroupesPanel.jsx",
           "public/components/ParcellesParamsTab.jsx",
           "public/components/ParcellesReferentielTab.jsx"
@@ -769,6 +772,20 @@
       },
       "gitCoupling": [
         {
+          "coCommits": 7,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 4,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
@@ -776,9 +793,9 @@
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
+          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -788,30 +805,18 @@
           "file": "public/components/ParcellesReferentielTab.js",
           "note": "probabilistic",
           "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
         }
       ],
       "label": "Référentiel & Analytique",
       "tests": {
         "backend": [
+          "functions/lib/campagneBudget/__tests__/validate.test.js",
           "functions/lib/parcelleGroupes/__tests__/seedHa.test.js",
           "functions/lib/parcelleGroupes/__tests__/split.test.js",
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
         ],
         "unit": [
+          "tests/unit/CampagneBudgetTab.test.js",
           "tests/unit/ParcellesGroupesPanel.test.js",
           "tests/unit/analytiqueUtils.test.js",
           "tests/unit/campagneExportUtils.test.js",
@@ -1899,6 +1904,10 @@
       "confidence": "high",
       "domain": "caisse"
     },
+    "functions/lib/campagneBudget": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
     "functions/lib/fonctions": {
       "confidence": "high",
       "domain": "paie"
@@ -2104,6 +2113,10 @@
       "domain": "admin"
     },
     "public/components/CampagneAnalytiqueTab.jsx": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/components/CampagneBudgetTab.jsx": {
       "confidence": "high",
       "domain": "referentiel"
     },
@@ -2432,6 +2445,10 @@
     "rh_config": {
       "accessLevel": "CF-only",
       "domain": null
+    },
+    "sb_campagne_budget_jh": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
     },
     "sb_parcelle_groupes": {
       "accessLevel": "CF-only",

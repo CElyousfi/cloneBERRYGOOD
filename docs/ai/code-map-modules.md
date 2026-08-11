@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:c6f80e30bb4964c7 -->
-# Code Map — Modules lib (150)
+<!-- sourceFingerprint: sha256:fe5f9d08abec1009 -->
+# Code Map — Modules lib (151)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -22,6 +22,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/caisseImport/excelToISO.js | — | excelToISO |
 | functions/lib/caisseImport/index.js | — | parseWorkbook, buildDrySummary, excelToISO, detectCols, CAISSE_FORMATS, SAMPLE_LIMIT |
 | functions/lib/caisseImport/parsers.js | — | parseDepensesMonthly, parsePaieRecap, parseBahiaSingle |
+| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, normCampagne, normLabel, budgetDocId, parseBudgetValue, validateBudgetSave, mergeBudgets, purgeFamillesInconnues, writeBudgetInTransaction |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
@@ -132,7 +133,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
 | public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
-| public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, haLabel, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
+| public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, haLabel, numFmtFor, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
 | public/lib/campagneUtils.js | CampagneUtils | campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne |
 | public/lib/cultureUtils.js | CultureUtils | CULTURES, normCulture, resolveCulture, matchesCulture |
 | public/lib/emargementExcel.js | EmargementExcel | genSansCnssXlsx, genAvecCnssXlsx, genTransporteursXlsx, genBulletinsXlsx |

@@ -448,7 +448,8 @@
 
   /** Écrit le classeur stylé avec ExcelJS et déclenche le téléchargement. */
   function writeWithExcelJS(ExcelJS, wbData) {
-    var K = window.CampagneExportUtils.ROW_KIND;
+    var CEU = window.CampagneExportUtils;
+    var K = CEU.ROW_KIND;
     var wb = new ExcelJS.Workbook();
     wb.creator = 'Smart Berry';
     wb.created = new Date();
@@ -473,15 +474,19 @@
         if (r.kind === K.COL_HEADER) headerRowIndex = i + 1;
         styleRow(row, r.kind, K, nbCols);
         // Nombres : alignés à droite, format lisible (séparateur de milliers).
+        // Le format est choisi VALEUR PAR VALEUR (CEU.numFmtFor) : un format
+        // unique `#,##0.##` laisse un séparateur décimal traîner sur les
+        // entiers (« 6. », « 12. »).
         row.eachCell({
           includeEmpty: false
         }, function (cell, col) {
           if (col === 1) return;
-          if (typeof cell.value === 'number') {
+          var fmt = CEU.numFmtFor(cell.value);
+          if (fmt) {
             cell.alignment = {
               horizontal: 'right'
             };
-            cell.numFmt = '#,##0.##';
+            cell.numFmt = fmt;
           }
         });
       });
@@ -1580,7 +1585,9 @@
 
     // Chargement conso (paresseux — uniquement à la première transition vers engrais/pesticides)
     useEffect(function () {
-      if (subTab === 'mo' || consoFetched) return;
+      // 'budget' n'utilise PAS campagne-conso-parcelle (saisie, pas conso) :
+      // l'exclure évite un fetch inutile à l'ouverture de l'onglet.
+      if (subTab === 'mo' || subTab === 'budget' || consoFetched) return;
       setConsoFetched(true);
       setConsoLoading(true);
       setConsoErr(null);
@@ -1649,6 +1656,9 @@
     }
 
     // Sous-tabs definition
+    // 'budget' n'est proposé que si le composant est réellement chargé : une
+    // référence nue à un global absent crashe GLOBALEMENT (piège projet
+    // « tab bare global ref »), on garde donc l'onglet ET son rendu.
     var subTabs = [{
       id: 'mo',
       label: 'Main Oeuvre',
@@ -1662,6 +1672,13 @@
       label: 'Pesticides',
       icon: 'fa-spray-can'
     }];
+    if (window.CampagneBudgetTab) {
+      subTabs.push({
+        id: 'budget',
+        label: 'Budget',
+        icon: 'fa-bullseye'
+      });
+    }
     var cultures = ['Toutes', 'Framboise', 'Myrtille', 'Avocatier'];
     return React.createElement('div', {
       style: containerStyle
@@ -1737,8 +1754,9 @@
         marginRight: '6px'
       }
     }), 'Par Variété / Quinzaine')) : null),
-    // Ligne 2 : Filtre culture (toujours visible)
-    React.createElement('div', {
+    // Ligne 2 : Filtre culture (masqué sur 'budget' : la saisie porte sur UNE
+    // parcelle choisie explicitement, un filtre culture sans effet mentirait).
+    subTab !== 'budget' && React.createElement('div', {
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -1771,7 +1789,9 @@
       }, c);
     })),
     // Contenu
-    subTab === 'mo' ? view === 'ha' ? React.createElement(HaView, {
+    subTab === 'budget' ? window.CampagneBudgetTab ? React.createElement(window.CampagneBudgetTab, {
+      userRole: props.userRole
+    }) : null : subTab === 'mo' ? view === 'ha' ? React.createElement(HaView, {
       data: data,
       farmFilter: farmFilter,
       cultureFilter: cultureFilter,
