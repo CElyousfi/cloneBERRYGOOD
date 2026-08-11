@@ -42,10 +42,14 @@
  * HORS PÉRIMÈTRE : le garde-fou « preview interdit depuis main ».
  *
  * LIMITE CONNUE (mesurée, pas supposée) : ajouter `|| true` sur la seule
- * capture `DEPLOY_OUTPUT=…` ne fait PAS rougir ce test — le script garde une
- * seconde ligne de défense (preview.sh:90-93, « impossible d'extraire l'URL »)
- * qui sort en 1. Le contrat testé (« deploy en échec ⇒ exit non nul ») reste
- * donc honoré, seul le message d'erreur devient moins parlant.
+ * capture `DEPLOY_OUTPUT=…` ne fait pas rougir les cas où firebase échoue
+ * SANS rien imprimer — le script garde une 2e ligne de défense (preview.sh:90-93,
+ * « impossible d'extraire l'URL ») qui sort en 1. Le contrat reste donc honoré
+ * **tant que l'échec ne laisse pas d'URL dans la sortie**. Si firebase imprime
+ * une URL PUIS sort en erreur (deploy partiel), cette 2e ligne de défense ne
+ * protège plus : un `|| true` donnerait exit 0 AVEC une PREVIEW_URL, c'est-à-dire
+ * exactement le bug d'origine. D'où le cas de test « deploy partiel » ci-dessous,
+ * qui est le seul à couvrir cette faille.
  */
 
 const test = require('node:test');
@@ -67,6 +71,16 @@ const SKIP = GIT_OK ? false : 'nécessite git et un shell POSIX';
 // Token bidon, jamais une vraie valeur : preview.sh exige seulement qu'il soit
 // non vide, et le stub `firebase` ne le lit pas.
 const FAKE_TOKEN = 'fake-token-not-a-secret';
+
+// URL bidon imprimée par les stubs firebase qui « réussissent » le deploy.
+const STUB_URL = 'https://berrygood-farms-dashboard--sb-feature-abc123.web.app';
+
+// Ancre de progression : cette ligne est écrite par preview.sh JUSTE avant
+// l'appel firebase (preview.sh:81). L'asserter prouve que le script a bien
+// atteint l'étape de deploy — sans elle, un garde-fou ajouté PLUS TÔT ferait
+// passer les cas d'échec au vert pour la mauvaise raison (faux vert déjà
+// rencontré deux fois sur ce ticket).
+const DEPLOY_REACHED = /déploiement hosting sur le canal/;
 
 const GIT_FLAGS = [
   '-c',
@@ -92,18 +106,21 @@ function writeExecutable(file, body) {
 /**
  * Construit un bac à sable hermétique.
  *
+ * @param {import('node:test').TestContext} t   pour le nettoyage automatique du bac à sable
  * @param {object} opts
- * @param {'fail'|'success'|'no-url'} opts.firebase  comportement du stub firebase
+ * @param {'fail'|'success'|'no-url'|'url-then-fail'} opts.firebase comportement du stub firebase
  * @param {boolean} [opts.withEnvFile=true]          écrire un .env avec FIREBASE_TOKEN
  * @param {boolean} [opts.sabotage=false]            casser la propagation du code de sortie
  * @returns {{root: string, stubs: string}}
  */
-function makeSandbox(opts) {
+function makeSandbox(t, opts) {
   const { firebase, withEnvFile = true, sabotage = false } = opts;
   // Les stubs vivent HORS du faux repo : dans le repo ils seraient untracked
   // et feraient échouer le garde-fou « working tree propre » — les cas
   // d'échec passeraient alors pour la mauvaise raison.
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-exit-code-'));
+  // Sans ça, chaque `npm run qa` laisse un bac à sable (~170 Ko) derrière lui.
+  t.after(() => fs.rmSync(base, { recursive: true, force: true }));
   const root = path.join(base, 'repo');
   fs.mkdirSync(root);
 
@@ -145,14 +162,17 @@ function makeSandbox(opts) {
   fs.mkdirSync(stubs);
   writeExecutable(path.join(stubs, 'npm'), '#!/bin/sh\nexit 0\n');
 
+  const urlLine =
+    'echo "✔  hosting:channel: Channel URL (sb-feature): ' +
+    `${STUB_URL} [expires 2026-08-12]"\n`;
   const firebaseStub = {
     fail: '#!/bin/sh\necho "Error: HTTP Error: 403, The caller does not have permission" >&2\nexit 2\n',
-    success:
-      '#!/bin/sh\n' +
-      'echo "✔  hosting:channel: Channel URL (sb-feature): ' +
-      'https://berrygood-farms-dashboard--sb-feature-abc123.web.app [expires 2026-08-12]"\n' +
-      'exit 0\n',
+    success: `#!/bin/sh\n${urlLine}exit 0\n`,
     'no-url': '#!/bin/sh\necho "✔  Deploy complete!"\nexit 0\n',
+    // Deploy partiel : firebase annonce une URL PUIS sort en erreur. C'est le
+    // seul scénario où la 2e ligne de défense (extraction d'URL) ne protège
+    // plus — cf. LIMITE CONNUE en tête de fichier.
+    'url-then-fail': `#!/bin/sh\n${urlLine}echo "Error: deploy failed after channel creation" >&2\nexit 2\n`,
   }[firebase];
   assert.ok(firebaseStub, `stub firebase inconnu : ${firebase}`);
   writeExecutable(path.join(stubs, 'firebase'), firebaseStub);
@@ -183,15 +203,16 @@ function runPreview(sandbox) {
 // Cas nominal : le chemin de succès ne doit pas être cassé par le verrou.
 // ---------------------------------------------------------------------------
 
-test('deploy réussi → exit 0 et PREVIEW_URL sur stdout', { skip: SKIP }, () => {
-  const sandbox = makeSandbox({ firebase: 'success' });
+test('deploy réussi → exit 0 et PREVIEW_URL sur stdout', { skip: SKIP }, (t) => {
+  const sandbox = makeSandbox(t, { firebase: 'success' });
   const res = runPreview(sandbox);
 
   assert.strictEqual(res.status, 0, `attendu exit 0, obtenu ${res.status}\n${res.stderr}`);
-  assert.match(
-    res.stdout,
-    /^PREVIEW_URL=https:\/\/berrygood-farms-dashboard--sb-feature-abc123\.web\.app$/m,
-    `stdout ne contient pas la ligne PREVIEW_URL :\n${res.stdout}`
+  assert.match(res.stdout, DEPLOY_REACHED);
+  assert.strictEqual(
+    res.stdout.includes(`PREVIEW_URL=${STUB_URL}\n`),
+    true,
+    `stdout ne contient pas la ligne PREVIEW_URL attendue :\n${res.stdout}`
   );
 });
 
@@ -199,10 +220,19 @@ test('deploy réussi → exit 0 et PREVIEW_URL sur stdout', { skip: SKIP }, () =
 // Le verrou proprement dit : échec du deploy → code de sortie non nul.
 // ---------------------------------------------------------------------------
 
-test('deploy firebase en échec → exit non nul', { skip: SKIP }, () => {
-  const sandbox = makeSandbox({ firebase: 'fail' });
+test('deploy firebase en échec → exit non nul', { skip: SKIP }, (t) => {
+  const sandbox = makeSandbox(t, { firebase: 'fail' });
   const res = runPreview(sandbox);
 
+  // Ancrer la raison AVANT le code de sortie : sinon un garde-fou ajouté plus
+  // tôt dans le script ferait passer ce test au vert sans jamais tester la
+  // propagation du code de sortie du deploy.
+  assert.match(
+    res.stdout,
+    DEPLOY_REACHED,
+    `le script n'a pas atteint l'étape de deploy — ce test ne prouve rien sur ` +
+      `la propagation du code de sortie :\nstdout:\n${res.stdout}\nstderr:\n${res.stderr}`
+  );
   assert.notStrictEqual(
     res.status,
     0,
@@ -213,20 +243,40 @@ test('deploy firebase en échec → exit non nul', { skip: SKIP }, () => {
   assert.doesNotMatch(res.stdout, /PREVIEW_URL=/);
 });
 
-test('deploy OK mais aucune URL extractible → exit non nul', { skip: SKIP }, () => {
-  const sandbox = makeSandbox({ firebase: 'no-url' });
+test('deploy partiel — firebase imprime une URL PUIS échoue → exit non nul', { skip: SKIP }, (t) => {
+  const sandbox = makeSandbox(t, { firebase: 'url-then-fail' });
   const res = runPreview(sandbox);
 
+  assert.match(res.stdout, DEPLOY_REACHED);
+  assert.notStrictEqual(
+    res.status,
+    0,
+    `preview.sh a rendu 0 sur un deploy partiel : c'est EXACTEMENT le bug qui ` +
+      `avait été (à tort) rapporté\nstdout:\n${res.stdout}\nstderr:\n${res.stderr}`
+  );
+  // Le cas critique : ne JAMAIS annoncer une URL de preview issue d'un deploy
+  // qui a échoué — l'appelant la publierait comme si tout allait bien.
+  assert.doesNotMatch(res.stdout, /PREVIEW_URL=/);
+});
+
+test('deploy OK mais aucune URL extractible → exit non nul', { skip: SKIP }, (t) => {
+  const sandbox = makeSandbox(t, { firebase: 'no-url' });
+  const res = runPreview(sandbox);
+
+  assert.match(res.stdout, DEPLOY_REACHED);
   assert.notStrictEqual(res.status, 0, `attendu exit non nul, obtenu ${res.status}`);
   assert.doesNotMatch(res.stdout, /PREVIEW_URL=/);
 });
 
-test('FIREBASE_TOKEN absent → exit non nul avant tout deploy', { skip: SKIP }, () => {
-  const sandbox = makeSandbox({ firebase: 'success', withEnvFile: false });
+// Ce cas sort VOLONTAIREMENT avant l'étape de deploy : pas d'ancre
+// DEPLOY_REACHED ici, on ancre sur le message du garde-fou lui-même.
+test('FIREBASE_TOKEN absent → exit non nul avant tout deploy', { skip: SKIP }, (t) => {
+  const sandbox = makeSandbox(t, { firebase: 'success', withEnvFile: false });
   const res = runPreview(sandbox);
 
+  assert.match(res.stderr, /FIREBASE_TOKEN absent/);
   assert.notStrictEqual(res.status, 0, `attendu exit non nul, obtenu ${res.status}`);
-  assert.match(res.stderr, /FIREBASE_TOKEN/);
+  assert.doesNotMatch(res.stdout, DEPLOY_REACHED);
   assert.doesNotMatch(res.stdout, /PREVIEW_URL=/);
 });
 
@@ -237,8 +287,8 @@ test('FIREBASE_TOKEN absent → exit non nul avant tout deploy', { skip: SKIP },
 // et on vérifie que le harness voit bien ce 0.
 // ---------------------------------------------------------------------------
 
-test('méta — script saboté (toujours exit 0) : le harness le détecte', { skip: SKIP }, () => {
-  const sandbox = makeSandbox({ firebase: 'fail', sabotage: true });
+test('méta — script saboté (toujours exit 0) : le harness le détecte', { skip: SKIP }, (t) => {
+  const sandbox = makeSandbox(t, { firebase: 'fail', sabotage: true });
   const res = runPreview(sandbox);
 
   assert.strictEqual(
