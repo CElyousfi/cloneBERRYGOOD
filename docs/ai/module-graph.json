@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 25,
+        "commits": 26,
         "file": "public/app.jsx"
       },
       {
@@ -35,16 +35,20 @@
         "file": "scripts/build-frontend.js"
       },
       {
+        "commits": 7,
+        "file": "public/components/CampagneAnalytiqueTab.js"
+      },
+      {
+        "commits": 7,
+        "file": "public/components/CampagneAnalytiqueTab.jsx"
+      },
+      {
         "commits": 6,
         "file": "functions/dgAgent.js"
       },
       {
         "commits": 6,
-        "file": "public/components/CampagneAnalytiqueTab.js"
-      },
-      {
-        "commits": 6,
-        "file": "public/components/CampagneAnalytiqueTab.jsx"
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 6,
@@ -56,15 +60,11 @@
       },
       {
         "commits": 5,
-        "file": "functions/notificationDispatcher.js"
-      },
-      {
-        "commits": 5,
-        "file": "functions/pointageService.js"
+        "file": "public/components/ParcellesGroupesPanel.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c686f47c5b5148e2",
+    "sourceFingerprint": "sha256:5c597ece711f59a3",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -772,7 +772,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 6,
+          "coCommits": 7,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",

@@ -149,6 +149,31 @@ test('buildSavePayload — refuse campagne/parcelle manquante et valeur invalide
   assert.strictEqual(CBT.buildSavePayload(Object.assign({}, base, { values: { Taille: '-2' } })).ok, false);
 });
 
+// ---------------------------------------------------------------- saveMessage
+
+test('saveMessage — sans purge : message de succès inchangé', () => {
+  assert.deepStrictEqual(plain(CBT.saveMessage({ success: true })),
+    { type: 'ok', text: 'Budget enregistré' });
+  assert.deepStrictEqual(plain(CBT.saveMessage({ familles_purgees: [] })),
+    { type: 'ok', text: 'Budget enregistré' });
+  // Réponse absente ou champ non conforme → jamais de mention de purge.
+  assert.strictEqual(CBT.saveMessage(null).purge, undefined);
+  assert.strictEqual(CBT.saveMessage({ familles_purgees: 'Taille' }).purge, undefined);
+  assert.strictEqual(CBT.saveMessage({ familles_purgees: ['', '  '] }).purge, undefined);
+});
+
+test('saveMessage — avec purge : suppression annoncée, accord singulier/pluriel', () => {
+  const un = CBT.saveMessage({ familles_purgees: ['Ancienne famille'] });
+  assert.strictEqual(un.type, 'ok');
+  assert.strictEqual(un.purge, true);
+  assert.strictEqual(un.text,
+    'Budget enregistré — 1 famille obsolète retirée : Ancienne famille');
+
+  const deux = CBT.saveMessage({ familles_purgees: ['Famille A', ' Famille B '] });
+  assert.strictEqual(deux.text,
+    'Budget enregistré — 2 familles obsolètes retirées : Famille A, Famille B');
+});
+
 // ------------------------------------------------------------------- totalJH
 
 test('totalJH — JH/Ha × Ha, arrondi 2 décimales, 0 si donnée absente', () => {
@@ -204,6 +229,42 @@ test('rendu — le message de succès n\'est effacé QUE par un changement de pa
     plain(msgEffects[0].deps),
     [STATE[S.selected]],
     'l\'effet ne doit dépendre QUE de la parcelle sélectionnée'
+  );
+});
+
+test('rendu — la purge est affichée et signalée visuellement', () => {
+  const msg = CBT.saveMessage({ familles_purgees: ['Ancienne famille'] });
+  const withMsg = STATE.slice();
+  withMsg[S.msg] = msg;
+  const tree = load(withMsg)({ userRole: 'dg' });
+
+  assert.ok(textOf(tree).includes('1 famille obsolète retirée : Ancienne famille'));
+  // Une suppression de données ne doit pas passer pour un simple succès vert.
+  const icons = walk(tree).filter(function (n) {
+    return n.type === 'i' && String(n.props.className).includes('fa-triangle-exclamation');
+  });
+  assert.strictEqual(icons.length, 1, 'icône d\'avertissement attendue');
+  assert.strictEqual(
+    walk(tree).filter(function (n) {
+      return n.type === 'i' && String(n.props.className).includes('fa-circle-check');
+    }).length,
+    0,
+    'pas d\'icône de succès neutre quand des données ont été supprimées'
+  );
+});
+
+test('rendu — succès sans purge : icône de succès, aucun avertissement', () => {
+  const withMsg = STATE.slice();
+  withMsg[S.msg] = CBT.saveMessage({ success: true });
+  const tree = load(withMsg)({ userRole: 'dg' });
+  const txt = textOf(tree);
+  assert.ok(txt.includes('Budget enregistré'));
+  assert.ok(!txt.includes('obsolète'));
+  assert.strictEqual(
+    walk(tree).filter(function (n) {
+      return n.type === 'i' && String(n.props.className).includes('fa-circle-check');
+    }).length,
+    1
   );
 });
 

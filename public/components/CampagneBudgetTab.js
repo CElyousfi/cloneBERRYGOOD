@@ -30,6 +30,7 @@
   var CBT_C = {
     berry: '#c0392b',
     green: '#1D9E75',
+    amber: '#b45309',
     gray: '#888780',
     surface: '#ffffff',
     surface2: '#f5f4ef',
@@ -179,6 +180,35 @@
         label_bee_one: a.label,
         budgets: budgets
       }
+    };
+  }
+
+  /**
+   * Message de retour d'une sauvegarde réussie. PURE.
+   *
+   * Le backend purge les familles disparues du référentiel des tâches et les
+   * renvoie dans `familles_purgees`. C'est une SUPPRESSION de données : elle ne
+   * doit jamais passer inaperçue, même si elle est légitime. Le message reste
+   * du niveau « succès » (ce n'est pas une erreur) mais porte `purge: true`,
+   * que le rendu traduit par une couleur ambre et une icône d'avertissement.
+   *
+   * @param {{familles_purgees?: Array<string>}|null|undefined} res réponse API.
+   * @returns {{type: string, text: string, purge?: boolean}}
+   */
+  function CBT_saveMessage(res) {
+    var brutes = res && res.familles_purgees;
+    var purgees = (Array.isArray(brutes) ? brutes : []).map(function (f) {
+      return String(f == null ? '' : f).trim();
+    }).filter(Boolean);
+    if (purgees.length === 0) return {
+      type: 'ok',
+      text: 'Budget enregistré'
+    };
+    var n = purgees.length;
+    return {
+      type: 'ok',
+      purge: true,
+      text: 'Budget enregistré — ' + n + (n > 1 ? ' familles obsolètes retirées : ' : ' famille obsolète retirée : ') + purgees.join(', ')
     };
   }
 
@@ -362,10 +392,10 @@
           next[String(d.label_bee_one || selected).toUpperCase().trim()] = d.budgets || {};
           return next;
         });
-        setMsg({
-          type: 'ok',
-          text: 'Budget enregistré'
-        });
+        // Message posé APRÈS setBudgetsByLabel : l'effet de reset du message
+        // ne dépend que de `selected` (cf. plus haut), la mise à jour des
+        // budgets ne l'efface donc pas.
+        setMsg(CBT_saveMessage(d));
       }).catch(function (e) {
         setMsg({
           type: 'ko',
@@ -629,14 +659,18 @@
         cursor: saving ? 'not-allowed' : 'pointer',
         opacity: saving ? 0.6 : 1
       }
-    }, saving ? 'Enregistrement…' : 'Enregistrer'), msg && React.createElement('span', {
+    }, saving ? 'Enregistrement…' : 'Enregistrer'),
+    // Succès, succès-avec-purge, erreur : même niveau visuel (une ligne
+    // à côté du bouton). La purge est un succès, mais elle SUPPRIME des
+    // données : ambre + icône d'avertissement pour qu'elle se remarque.
+    msg && React.createElement('span', {
       style: {
         fontSize: 12,
-        color: msg.type === 'ok' ? CBT_C.green : '#dc2626',
-        fontWeight: 600
+        fontWeight: 600,
+        color: msg.type !== 'ok' ? '#dc2626' : msg.purge ? CBT_C.amber : CBT_C.green
       }
     }, React.createElement('i', {
-      className: 'fa-solid ' + (msg.type === 'ok' ? 'fa-circle-check' : 'fa-circle-exclamation'),
+      className: 'fa-solid ' + (msg.type !== 'ok' ? 'fa-circle-exclamation' : msg.purge ? 'fa-triangle-exclamation' : 'fa-circle-check'),
       style: {
         marginRight: 6
       }
@@ -651,6 +685,7 @@
   // Helpers purs exposés pour les tests unitaires — accrochés au composant déjà
   // exposé, pas de nouveau nom global (collisions UMD de public/components).
   CampagneBudgetTab.famillesFromOps = CBT_famillesFromOps;
+  CampagneBudgetTab.saveMessage = CBT_saveMessage;
   CampagneBudgetTab.budgetsByLabel = CBT_budgetsByLabel;
   CampagneBudgetTab.buildSavePayload = CBT_buildSavePayload;
   CampagneBudgetTab.totalJH = CBT_totalJH;

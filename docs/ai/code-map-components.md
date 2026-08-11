@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:4b3c7dff67a938a9 -->
-# Code Map — Composants frontend (300)
+<!-- sourceFingerprint: sha256:a95c325d04e82b84 -->
+# Code Map — Composants frontend (301)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -66,7 +66,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
 | CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1216 | campagne |
-| CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:189 | — |
+| CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:218 | — |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
 | CanevaFinanceQueue | public/app.jsx:60920 | — |
@@ -76,11 +76,12 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaporalHistoriqueTab | public/app.jsx:29592 | caporal_historique |
 | CaporalSaisieTab | public/app.jsx:29787 | caporal_saisie |
 | CaporalSuiviTab | public/app.jsx:29024 | chef_suivi_caporal |
-| CBT_budgetsByLabel | public/components/CampagneBudgetTab.jsx:112 | — |
-| CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:136 | — |
-| CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:177 | — |
-| CBT_famillesFromOps | public/components/CampagneBudgetTab.jsx:90 | — |
-| CBT_totalJH | public/components/CampagneBudgetTab.jsx:170 | — |
+| CBT_budgetsByLabel | public/components/CampagneBudgetTab.jsx:113 | — |
+| CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:137 | — |
+| CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:206 | — |
+| CBT_famillesFromOps | public/components/CampagneBudgetTab.jsx:91 | — |
+| CBT_saveMessage | public/components/CampagneBudgetTab.jsx:176 | — |
+| CBT_totalJH | public/components/CampagneBudgetTab.jsx:199 | — |
 | ChargementSub | public/app.jsx:24257 | — |
 | ChartSVG | public/app.jsx:41604 | — |
 | ChefAgronomieTab | public/app.jsx:45762 | chef_agronomie |
