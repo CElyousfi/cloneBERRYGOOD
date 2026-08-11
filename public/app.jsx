@@ -11130,6 +11130,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [quinzChargesPopup, setQuinzChargesPopup] = useState(null);
             const [analytiqueView, setAnalytiqueView] = useState('jh');
             const [analytiqueDetailCell, setAnalytiqueDetailCell] = useState(null);
+            // Toggle Récap (défaut) / Détail du panneau Affectation Analytique. State
+            // gardé ICI et non dans AffectationAnalytiqueTable, comme ses 4 voisins :
+            // l'early-return `if (loading)` ci-dessous démonte l'enfant à chaque
+            // changement de quinzaine globale, ce qui ferait silencieusement retomber
+            // le panneau en Récap alors que les pills voisines (Ha/Total, JH/Coût)
+            // conservent leur valeur.
+            const [analytiqueDetailMode, setAnalytiqueDetailMode] = useState(false);
             const [emargementOpen, setEmargementOpen] = useState(false);
             const [emargementLang, setEmargementLang] = useState('fr'); // 'fr' | 'ar'
             const [emargementLoading, setEmargementLoading] = useState(false);
@@ -12784,6 +12791,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             setView={setAnalytiqueView}
                             detailCell={analytiqueDetailCell}
                             setDetailCell={setAnalytiqueDetailCell}
+                            detailMode={analytiqueDetailMode}
+                            setDetailMode={setAnalytiqueDetailMode}
                             scopeMode={analytiqueScopeMode}
                             setScopeMode={setAnalytiqueScopeMode}
                             scopeValue={analytiqueScopeValue}

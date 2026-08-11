@@ -51,6 +51,16 @@
  *     totalMode / setTotalMode        false = par Ha, true = total.
  *     view / setView                  'jh' | 'cout'.
  *     detailCell / setDetailCell      Cellule ouverte dans le pop-up de détail.
+ *     detailMode / setDetailMode      false = Récap (défaut, lignes famille seules),
+ *                                     true = Détail (lignes famille + leurs
+ *                                     opérations fines juste en dessous).
+ *                                     Contrôlé par le parent pour la même raison
+ *                                     que les autres : l'early-return `if (loading)`
+ *                                     de QuinzaineTab démonte ce composant à chaque
+ *                                     changement de quinzaine globale, et un retour
+ *                                     silencieux en Récap alors que les pills
+ *                                     voisines (Ha/Total, JH/Coût) gardent leur
+ *                                     valeur se lirait comme un bug.
  *     scopeMode / setScopeMode        'quinzaine' | 'campagne' (sélecteur local).
  *     scopeValue / setScopeValue      Quinzaine ou campagne locale sélectionnée.
  *     scopeData / setScopeData        null = pas d'override (lit analytiqueData).
@@ -72,8 +82,9 @@
  *    été dans le scope de QuinzaineTab (défini dans un useCallback d'un autre
  *    composant), donc `typeof prettyParcelle === 'function'` valait déjà false
  *    et l'expression rend `pKey`. Ne pas « réparer » = ne pas changer l'affichage.
- *  - Le code mort après le `return` de la ligne famille (branche
- *    `type=operation`) est déplacé TEL QUEL.
+ *  - Le placeholder de code mort qui suivait le `return` de la ligne famille
+ *    (branche `type=operation`) a été remplacé par la vraie branche du mode
+ *    Détail, placée AVANT ce `return`.
  */
 (function () {
   'use strict';
@@ -101,6 +112,8 @@
     const setAnalytiqueView = props.setView;
     const analytiqueDetailCell = props.detailCell;
     const setAnalytiqueDetailCell = props.setDetailCell;
+    const detailMode = !!props.detailMode; // false = Récap (défaut), true = Détail
+    const setDetailMode = props.setDetailMode;
     const analytiqueScopeMode = props.scopeMode;
     const setAnalytiqueScopeMode = props.setScopeMode;
     const analytiqueScopeValue = props.scopeValue;
@@ -244,12 +257,18 @@
     // familles d'opérations sur une clé normalisée (casse/tirets) pour supprimer
     // les lignes dupliquées post-bascule BDP. Garde anti-crash si la lib n'est
     // pas chargée (cf. mémoire projet : global manquant = crash React global).
+    // `detail` ajoute, sous chaque ligne famille, ses lignes d'opérations fines
+    // (les lignes famille restent affichées). Aucun useMemo ici : le pivot est
+    // recalculé à chaque render, donc le clic sur le toggle suffit à le
+    // rafraîchir. Ne PAS mémoïser sans mettre detailMode dans les dépendances.
     const _buildAnalytiquePivot = rows => {
       if (!window.AnalytiqueUtils) return {
         parcelles: [],
         groupedRows: []
       };
-      return window.AnalytiqueUtils.buildAnalytiquePivotByFamille ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows) : {
+      return window.AnalytiqueUtils.buildAnalytiquePivotByFamille ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows, {
+        detail: detailMode
+      }) : {
         parcelles: [],
         groupedRows: []
       };
@@ -540,7 +559,7 @@
       style: {
         color: 'var(--berry)'
       }
-    }), "Affectation Analytique", analytiqueTotalMode ? ' — Total' : ' — par Ha', " \xB7 Famille"), /*#__PURE__*/React.createElement("div", {
+    }), "Affectation Analytique", analytiqueTotalMode ? ' — Total' : ' — par Ha', " \xB7 ", detailMode ? 'Détail opérations' : 'Famille'), /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -585,6 +604,28 @@
         border: 'none',
         background: (analytiqueTotalMode ? v === 'total' : v === 'ha') ? 'var(--berry)' : 'transparent',
         color: (analytiqueTotalMode ? v === 'total' : v === 'ha') ? '#fff' : 'var(--gray-500)',
+        fontSize: 12,
+        fontWeight: 600,
+        cursor: 'pointer',
+        transition: 'all 0.15s'
+      }
+    }, label))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 4,
+        background: 'var(--gray-100)',
+        borderRadius: 8,
+        padding: '3px'
+      }
+    }, [['recap', 'Récap'], ['detail', 'Détail']].map(([v, label]) => /*#__PURE__*/React.createElement("button", {
+      key: v,
+      onClick: () => setDetailMode(v === 'detail'),
+      style: {
+        padding: '4px 12px',
+        borderRadius: 8,
+        border: 'none',
+        background: (detailMode ? v === 'detail' : v === 'recap') ? 'var(--berry)' : 'transparent',
+        color: (detailMode ? v === 'detail' : v === 'recap') ? '#fff' : 'var(--gray-500)',
         fontSize: 12,
         fontWeight: 600,
         cursor: 'pointer',
@@ -909,6 +950,99 @@
             }, analytiqueView === 'jh' ? `${Math.round(_rowTotal)} JH total` : `${Math.round(_rowTotal).toLocaleString('fr-FR')} DH`)));
           }
 
+          // ── Ligne opération (mode Détail) : détail d'une famille,
+          //    insérée juste sous elle. La ligne famille reste affichée
+          //    et garde le total ; ces lignes ne sont JAMAIS de type
+          //    'famille', sinon le tfoot doublerait les totaux. ──
+          if (row.type === 'operation') {
+            return /*#__PURE__*/React.createElement("tr", {
+              key: row.key,
+              style: {
+                background: '#fcfafc',
+                borderBottom: '1px solid #f7f0f6'
+              }
+            }, /*#__PURE__*/React.createElement("td", {
+              style: {
+                padding: '6px 14px 6px 44px',
+                fontSize: 11,
+                fontWeight: 500,
+                color: 'var(--gray-600)',
+                position: 'sticky',
+                left: 0,
+                background: '#fcfafc',
+                borderRight: `2px solid ${color}`,
+                zIndex: 1,
+                borderLeft: `3px solid ${color}55`
+              }
+            }, /*#__PURE__*/React.createElement("span", {
+              style: {
+                color: 'var(--gray-400)',
+                marginRight: 6
+              }
+            }, "\u21B3"), row.label), parcelles.map(([pKey, ha]) => {
+              const c = row.pivot[pKey];
+              if (!c) return /*#__PURE__*/React.createElement("td", {
+                key: pKey,
+                style: {
+                  padding: '6px 10px',
+                  textAlign: 'center',
+                  color: 'var(--gray-200)',
+                  borderRight: '1px solid #f5edf4',
+                  fontSize: 12
+                }
+              }, "\u2014");
+              const _val = analytiqueView === 'jh' ? c.jh : c.cout;
+              return /*#__PURE__*/React.createElement("td", {
+                key: pKey,
+                onClick: () => setAnalytiqueDetailCell({
+                  parcelle: pKey,
+                  operationFamille: row.label,
+                  ha,
+                  detailRows: c.detailRows
+                }),
+                title: `Voir le détail de ${row.label} sur ${pKey}`,
+                style: {
+                  padding: '6px 10px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  borderRight: '1px solid #f5edf4',
+                  transition: 'background 0.12s',
+                  fontSize: 11
+                },
+                onMouseEnter: e => e.currentTarget.style.background = '#fdf4f8',
+                onMouseLeave: e => e.currentTarget.style.background = ''
+              }, /*#__PURE__*/React.createElement("div", {
+                style: {
+                  fontWeight: 500,
+                  color: 'var(--gray-600)'
+                }
+              }, _fmt(_val, ha)), /*#__PURE__*/React.createElement("div", {
+                style: {
+                  fontSize: 9,
+                  color: 'var(--gray-400)'
+                }
+              }, _unit));
+            }), /*#__PURE__*/React.createElement("td", {
+              style: {
+                padding: '6px 10px',
+                textAlign: 'center',
+                fontWeight: 600,
+                color: 'var(--gray-600)',
+                background: '#fcfafc',
+                position: 'sticky',
+                right: 0,
+                borderLeft: '1px solid #f0e6ef',
+                fontSize: 11
+              }
+            }, /*#__PURE__*/React.createElement("div", null, _fmt(_rowTotal, _totalHaForRow)), /*#__PURE__*/React.createElement("div", {
+              style: {
+                fontSize: 9,
+                color: 'var(--gray-400)',
+                fontWeight: 400
+              }
+            }, _unit)));
+          }
+
           // ── Ligne famille (clic sur cellule → popup) ──
           return /*#__PURE__*/React.createElement("tr", {
             key: row.key,
@@ -993,61 +1127,6 @@
               fontSize: 10,
               color: 'var(--gray-400)',
               fontWeight: 400
-            }
-          }, _unit)));
-          // (dead code placeholder for linter — was type=operation branch)
-          return /*#__PURE__*/React.createElement("tr", {
-            key: row.key
-          }, /*#__PURE__*/React.createElement("td", null), parcelles.map(([pKey, ha]) => {
-            const c = row.pivot[pKey];
-            if (!c) return /*#__PURE__*/React.createElement("td", {
-              key: pKey
-            });
-            const _val = analytiqueView === 'jh' ? c.jh : c.cout;
-            return /*#__PURE__*/React.createElement("td", {
-              key: pKey,
-              onClick: () => setAnalytiqueDetailCell({
-                parcelle: pKey,
-                operationFamille: row.label,
-                ha,
-                detailRows: c.detailRows
-              }),
-              style: {
-                padding: '6px 10px',
-                textAlign: 'center',
-                cursor: 'pointer',
-                borderRight: '1px solid var(--gray-100)',
-                transition: 'background 0.1s',
-                fontSize: 11
-              },
-              onMouseEnter: e => e.currentTarget.style.background = `${color}18`,
-              onMouseLeave: e => e.currentTarget.style.background = ''
-            }, /*#__PURE__*/React.createElement("div", {
-              style: {
-                fontWeight: 500,
-                color: 'var(--gray-700)'
-              }
-            }, _fmt(_val, ha)), /*#__PURE__*/React.createElement("div", {
-              style: {
-                fontSize: 10,
-                color: 'var(--gray-400)'
-              }
-            }, _unit));
-          }), /*#__PURE__*/React.createElement("td", {
-            style: {
-              padding: '6px 10px',
-              textAlign: 'center',
-              fontWeight: 600,
-              color: 'var(--gray-600)',
-              background: 'var(--gray-100)',
-              position: 'sticky',
-              right: 0,
-              fontSize: 11
-            }
-          }, /*#__PURE__*/React.createElement("div", null, _fmt(_rowTotal, _totalHaForRow)), /*#__PURE__*/React.createElement("div", {
-            style: {
-              fontSize: 10,
-              color: 'var(--gray-400)'
             }
           }, _unit)));
         })), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", {

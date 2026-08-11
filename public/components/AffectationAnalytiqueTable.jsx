@@ -51,6 +51,16 @@
  *     totalMode / setTotalMode        false = par Ha, true = total.
  *     view / setView                  'jh' | 'cout'.
  *     detailCell / setDetailCell      Cellule ouverte dans le pop-up de détail.
+ *     detailMode / setDetailMode      false = Récap (défaut, lignes famille seules),
+ *                                     true = Détail (lignes famille + leurs
+ *                                     opérations fines juste en dessous).
+ *                                     Contrôlé par le parent pour la même raison
+ *                                     que les autres : l'early-return `if (loading)`
+ *                                     de QuinzaineTab démonte ce composant à chaque
+ *                                     changement de quinzaine globale, et un retour
+ *                                     silencieux en Récap alors que les pills
+ *                                     voisines (Ha/Total, JH/Coût) gardent leur
+ *                                     valeur se lirait comme un bug.
  *     scopeMode / setScopeMode        'quinzaine' | 'campagne' (sélecteur local).
  *     scopeValue / setScopeValue      Quinzaine ou campagne locale sélectionnée.
  *     scopeData / setScopeData        null = pas d'override (lit analytiqueData).
@@ -72,8 +82,9 @@
  *    été dans le scope de QuinzaineTab (défini dans un useCallback d'un autre
  *    composant), donc `typeof prettyParcelle === 'function'` valait déjà false
  *    et l'expression rend `pKey`. Ne pas « réparer » = ne pas changer l'affichage.
- *  - Le code mort après le `return` de la ligne famille (branche
- *    `type=operation`) est déplacé TEL QUEL.
+ *  - Le placeholder de code mort qui suivait le `return` de la ligne famille
+ *    (branche `type=operation`) a été remplacé par la vraie branche du mode
+ *    Détail, placée AVANT ce `return`.
  */
 (function () {
   'use strict';
@@ -100,6 +111,8 @@
             const setAnalytiqueView = props.setView;
             const analytiqueDetailCell = props.detailCell;
             const setAnalytiqueDetailCell = props.setDetailCell;
+            const detailMode = !!props.detailMode; // false = Récap (défaut), true = Détail
+            const setDetailMode = props.setDetailMode;
             const analytiqueScopeMode = props.scopeMode;
             const setAnalytiqueScopeMode = props.setScopeMode;
             const analytiqueScopeValue = props.scopeValue;
@@ -221,10 +234,14 @@
             // familles d'opérations sur une clé normalisée (casse/tirets) pour supprimer
             // les lignes dupliquées post-bascule BDP. Garde anti-crash si la lib n'est
             // pas chargée (cf. mémoire projet : global manquant = crash React global).
+            // `detail` ajoute, sous chaque ligne famille, ses lignes d'opérations fines
+            // (les lignes famille restent affichées). Aucun useMemo ici : le pivot est
+            // recalculé à chaque render, donc le clic sur le toggle suffit à le
+            // rafraîchir. Ne PAS mémoïser sans mettre detailMode dans les dépendances.
             const _buildAnalytiquePivot = (rows) => {
                 if (!window.AnalytiqueUtils) return { parcelles: [], groupedRows: [] };
                 return window.AnalytiqueUtils.buildAnalytiquePivotByFamille
-                    ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows)
+                    ? window.AnalytiqueUtils.buildAnalytiquePivotByFamille(rows, { detail: detailMode })
                     : { parcelles: [], groupedRows: [] };
             };
 
@@ -344,7 +361,7 @@
                             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12,flexWrap:'wrap',gap:8}}>
                                 <div style={{fontSize:14,fontWeight:700,color:'var(--gray-700)',display:'flex',alignItems:'center',gap:8}}>
                                     <i className="fa-solid fa-chart-pie" style={{color:'var(--berry)'}}></i>
-                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'} · Famille
+                                    Affectation Analytique{analytiqueTotalMode ? ' — Total' : ' — par Ha'} · {detailMode ? 'Détail opérations' : 'Famille'}
                                 </div>
                                 <div style={{display:'flex',alignItems:'center',gap:6}}>
                                     <div style={{display:'flex',gap:6,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
@@ -371,6 +388,25 @@
                                                     border: 'none',
                                                     background: (analytiqueTotalMode ? v === 'total' : v === 'ha') ? 'var(--berry)' : 'transparent',
                                                     color: (analytiqueTotalMode ? v === 'total' : v === 'ha') ? '#fff' : 'var(--gray-500)',
+                                                    fontSize: 12,
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.15s',
+                                                }}>{label}</button>
+                                        ))}
+                                    </div>
+                                    {/* Récap (défaut) = lignes famille seules. Détail = les mêmes
+                                        lignes famille + leurs opérations fines en dessous. */}
+                                    <div style={{display:'flex',gap:4,background:'var(--gray-100)',borderRadius:8,padding:'3px'}}>
+                                        {[['recap', 'Récap'], ['detail', 'Détail']].map(([v, label]) => (
+                                            <button key={v}
+                                                onClick={() => setDetailMode(v === 'detail')}
+                                                style={{
+                                                    padding: '4px 12px',
+                                                    borderRadius: 8,
+                                                    border: 'none',
+                                                    background: (detailMode ? v === 'detail' : v === 'recap') ? 'var(--berry)' : 'transparent',
+                                                    color: (detailMode ? v === 'detail' : v === 'recap') ? '#fff' : 'var(--gray-500)',
                                                     fontSize: 12,
                                                     fontWeight: 600,
                                                     cursor: 'pointer',
@@ -543,6 +579,40 @@
                                                                 );
                                                             }
 
+                                                            // ── Ligne opération (mode Détail) : détail d'une famille,
+                                                            //    insérée juste sous elle. La ligne famille reste affichée
+                                                            //    et garde le total ; ces lignes ne sont JAMAIS de type
+                                                            //    'famille', sinon le tfoot doublerait les totaux. ──
+                                                            if (row.type === 'operation') {
+                                                                return (
+                                                                    <tr key={row.key} style={{background:'#fcfafc',borderBottom:'1px solid #f7f0f6'}}>
+                                                                        <td style={{padding:'6px 14px 6px 44px',fontSize:11,fontWeight:500,color:'var(--gray-600)',position:'sticky',left:0,background:'#fcfafc',borderRight:`2px solid ${color}`,zIndex:1,borderLeft:`3px solid ${color}55`}}>
+                                                                            <span style={{color:'var(--gray-400)',marginRight:6}}>↳</span>{row.label}
+                                                                        </td>
+                                                                        {parcelles.map(([pKey, ha]) => {
+                                                                            const c = row.pivot[pKey];
+                                                                            if (!c) return <td key={pKey} style={{padding:'6px 10px',textAlign:'center',color:'var(--gray-200)',borderRight:'1px solid #f5edf4',fontSize:12}}>—</td>;
+                                                                            const _val = analytiqueView === 'jh' ? c.jh : c.cout;
+                                                                            return (
+                                                                                <td key={pKey}
+                                                                                    onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: row.label, ha, detailRows: c.detailRows })}
+                                                                                    title={`Voir le détail de ${row.label} sur ${pKey}`}
+                                                                                    style={{padding:'6px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid #f5edf4',transition:'background 0.12s',fontSize:11}}
+                                                                                    onMouseEnter={e => e.currentTarget.style.background='#fdf4f8'}
+                                                                                    onMouseLeave={e => e.currentTarget.style.background=''}>
+                                                                                    <div style={{fontWeight:500,color:'var(--gray-600)'}}>{_fmt(_val, ha)}</div>
+                                                                                    <div style={{fontSize:9,color:'var(--gray-400)'}}>{_unit}</div>
+                                                                                </td>
+                                                                            );
+                                                                        })}
+                                                                        <td style={{padding:'6px 10px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',background:'#fcfafc',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef',fontSize:11}}>
+                                                                            <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
+                                                                            <div style={{fontSize:9,color:'var(--gray-400)',fontWeight:400}}>{_unit}</div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            }
+
                                                             // ── Ligne famille (clic sur cellule → popup) ──
                                                             return (
                                                                 <tr key={row.key} style={{background:'#fff',borderBottom:'1px solid #f0e6ef'}}>
@@ -569,31 +639,6 @@
                                                                     <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color,background:'#fdf4f8',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef'}}>
                                                                         <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
                                                                         <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{_unit}</div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                            // (dead code placeholder for linter — was type=operation branch)
-                                                            return (
-                                                                <tr key={row.key}>
-                                                                    <td></td>
-                                                                    {parcelles.map(([pKey, ha]) => {
-                                                                        const c = row.pivot[pKey];
-                                                                        if (!c) return <td key={pKey}></td>;
-                                                                        const _val = analytiqueView === 'jh' ? c.jh : c.cout;
-                                                                        return (
-                                                                            <td key={pKey}
-                                                                                onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: row.label, ha, detailRows: c.detailRows })}
-                                                                                style={{padding:'6px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid var(--gray-100)',transition:'background 0.1s',fontSize:11}}
-                                                                                onMouseEnter={e => e.currentTarget.style.background=`${color}18`}
-                                                                                onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                                <div style={{fontWeight:500,color:'var(--gray-700)'}}>{_fmt(_val, ha)}</div>
-                                                                                <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
-                                                                            </td>
-                                                                        );
-                                                                    })}
-                                                                    <td style={{padding:'6px 10px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',background:'var(--gray-100)',position:'sticky',right:0,fontSize:11}}>
-                                                                        <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
-                                                                        <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
                                                                     </td>
                                                                 </tr>
                                                             );
