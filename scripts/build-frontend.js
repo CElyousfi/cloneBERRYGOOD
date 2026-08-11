@@ -101,6 +101,7 @@ const COMPONENT_SENTINELS = {
   "ScanAttachmentButton.js": "window.ScanAttachmentButton",
   "ConsoValoriseeTab.js": "window.ConsoValoriseeTab",
   "QuinzaineCampagneSelect.js": "window.QuinzaineCampagneSelect",
+  "AffectationAnalytiqueTable.js": "window.AffectationAnalytiqueTable",
   "QuinzaineRecapCards.js": "window.QuinzaineRecapCards",
   "CampagneAnalytiqueTab.js": "window.CampagneAnalytiqueTab",
   "MagStockFilesTab.js": "window.MagStockFilesTab",

@@ -239,11 +239,13 @@
 
   /**
    * @typedef {Object} AnalytiqueGroupedRow
-   * @property {'groupe'|'famille'} type
-   * @property {string} key          — groupe: nom du groupe ; famille: code GB (GB01…GB11) ou 'AUTRE'
+   * @property {'groupe'|'famille'|'operation'} type
+   * @property {string} key          — groupe: nom du groupe ; famille: code GB (GB01…GB11) ou
+   *                                   'AUTRE' ; operation: '<gbCode>::<clé opKey normalisée>'
    * @property {string} label
    * @property {Object<string, {jh:number, cout:number, ha:number, detailRows:AnalytiqueRow[]}>} pivot
-   * @property {string} [groupeKey]  — présent uniquement quand type==='famille'
+   * @property {string} [groupeKey]  — présent quand type==='famille' ou 'operation'
+   * @property {string} [familleKey] — présent uniquement quand type==='operation' (code GB parent)
    */
 
   /**
@@ -253,10 +255,35 @@
    * et lignes famille (type='famille', indentées). Le détail opération est accessible
    * via detailRows dans chaque cellule pivot, pour popup au clic.
    *
-   * @param {Array<AnalytiqueRow & {operationGroupe?: string, haRef?: number}>} rows
+   * Option `{ detail: true }` : insère en plus, APRÈS chaque ligne famille, ses lignes
+   * d'opérations fines (type='operation'), triées par JH total décroissant — même ordre
+   * que la pop-up de détail. Les lignes famille restent présentes et inchangées : les
+   * lignes opération sont un DÉTAIL de la famille, pas un remplacement.
+   *
+   * ⚠️ INVARIANT : les lignes opération ne sont JAMAIS typées 'famille'. Le `tfoot` du
+   * tableau (et tout autre total) somme uniquement `type === 'famille'` — les typer
+   * 'famille' doublerait tous les totaux.
+   *
+   * Sans `opts` (ou avec `{detail:false}`) la sortie est STRICTEMENT identique au
+   * comportement historique (non-régression du mode Récap).
+   *
+   * @param {Array<AnalytiqueRow & {operationGroupe?: string, haRef?: number, operation?: string}>} rows
+   * @param {{detail?: boolean}} [opts]
    * @returns {{ parcelles: Array<[string, number]>, groupedRows: AnalytiqueGroupedRow[] }}
    */
-  function buildAnalytiquePivotByFamille(rows) {
+  /**
+   * Somme des JH d'un pivot { [parcelle]: {jh, …} } — utilisé pour trier les
+   * lignes opération par poids décroissant.
+   *
+   * @param {Object<string, {jh:number}>} pivot
+   * @returns {number}
+   */
+  function sumJh(pivot) {
+    return Object.keys(pivot || {}).reduce(function (s, p) { return s + (pivot[p].jh || 0); }, 0);
+  }
+
+  function buildAnalytiquePivotByFamille(rows, opts) {
+    var wantDetail = !!(opts && opts.detail);
     // 1. Parcelles
     var parcelleMap = {};
     (rows || []).forEach(function (r) {
@@ -269,6 +296,9 @@
     // 2. Agréger par famille (GB code) et par groupe
     var famillePivot = {}; // { [gbCode]: { nom, groupeName, total: {[parc]: cell} } }
     var groupePivot  = {}; // { [groupeName]: { total: {[parc]: cell} } }
+    // { [gbCode + ' ' + opKey(operation)]: { gbCode, opKeyNorm, label, groupeName, total } }
+    // Alimenté systématiquement (coût négligeable) mais consommé seulement si opts.detail.
+    var operationPivot = {};
 
     (rows || []).forEach(function (r) {
       var gbCode     = resolveGbCode(r.operationGroupe, r.operationFamille) || 'AUTRE';
@@ -296,6 +326,26 @@
       grp.total[parc].cout += cout;
       if (grp.total[parc].ha === 0 && ha > 0) grp.total[parc].ha = ha;
       grp.total[parc].detailRows.push(r);
+
+      // Opération fine (détail sous la famille) — même normalisation MÉCANIQUE que
+      // le reste du module (opKey : préfixe numérique, casse, tirets). Aucun mapping
+      // métier : « 3. Désherbage » et « désherbage » fusionnent, deux libellés
+      // réellement différents restent deux lignes.
+      var opKeyNorm = opKey(r.operation);
+      var opRowKey  = gbCode + ' ' + opKeyNorm;
+      if (!operationPivot[opRowKey]) operationPivot[opRowKey] = {
+        gbCode: gbCode,
+        opKeyNorm: opKeyNorm,
+        label: opLabel(r.operation) || '—',
+        groupeName: groupeName,
+        total: {},
+      };
+      var op = operationPivot[opRowKey];
+      if (!op.total[parc]) op.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      op.total[parc].jh   += jh;
+      op.total[parc].cout += cout;
+      if (op.total[parc].ha === 0 && ha > 0) op.total[parc].ha = ha;
+      op.total[parc].detailRows.push(r);
     });
 
     // 3. Liste plate : groupe header → familles triées GB01..GB11, puis AUTRE
@@ -312,6 +362,24 @@
         var fam = famillePivot[gbCode];
         if (!fam || fam.groupeName !== groupeName) return;
         groupedRows.push({ type: 'famille', key: gbCode, label: fam.nom, pivot: fam.total, groupeKey: groupeName });
+        if (!wantDetail) return;
+        // Lignes opération de CETTE famille, triées par JH total décroissant (même
+        // ordre que la pop-up de détail : `(a, b) => b.jh - a.jh`). Le tri natif est
+        // stable → à JH égal, l'ordre de première apparition est conservé.
+        Object.keys(operationPivot)
+          .filter(function (k) { return operationPivot[k].gbCode === gbCode; })
+          .map(function (k) { return operationPivot[k]; })
+          .sort(function (a, b) { return sumJh(b.total) - sumJh(a.total); })
+          .forEach(function (op) {
+            groupedRows.push({
+              type: 'operation',
+              key: gbCode + '::' + op.opKeyNorm,
+              label: op.label,
+              pivot: op.total,
+              familleKey: gbCode,
+              groupeKey: groupeName,
+            });
+          });
       });
     });
 
