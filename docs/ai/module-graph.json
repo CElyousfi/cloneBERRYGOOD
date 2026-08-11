@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 26,
+        "commits": 27,
         "file": "public/app.jsx"
       },
       {
@@ -31,12 +31,12 @@
         "file": "functions/index.js"
       },
       {
-        "commits": 6,
-        "file": "functions/dgAgent.js"
+        "commits": 7,
+        "file": "scripts/build-frontend.js"
       },
       {
         "commits": 6,
-        "file": "scripts/build-frontend.js"
+        "file": "functions/dgAgent.js"
       },
       {
         "commits": 5,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:b5fac0d7c35a303b",
+    "sourceFingerprint": "sha256:d2146c288329cb35",
     "stats": {
       "backendModules": 90,
       "cloudFunctions": 87,

@@ -246,3 +246,132 @@ test('pivotByFamille: entrée vide/nulle → structures vides', () => {
   assert.deepStrictEqual(buildAnalytiquePivotByFamille([]), { parcelles: [], groupedRows: [] });
   assert.deepStrictEqual(buildAnalytiquePivotByFamille(null), { parcelles: [], groupedRows: [] });
 });
+
+// ---------------------------------------------------------------------------
+// buildAnalytiquePivotByFamille — option { detail: true } (mode Détail)
+// Les lignes famille RESTENT affichées ; les lignes opération s'insèrent juste
+// après, en détail de leur famille.
+// ---------------------------------------------------------------------------
+const rowOp = (parcelle, ha, operationFamille, operation, jh, cout, operationGroupe) =>
+  ({ parcelle, ha, operationFamille, operation, jh, cout, operationGroupe: operationGroupe || '' });
+
+const SAMPLE_DETAIL_ROWS = [
+  rowOp('P1', 2, '1. Travaux du sol', '1. Labour', 3, 300, 'GB01'),
+  rowOp('P1', 2, '1. Travaux du sol', 'Cover cropage', 2, 250, 'GB01'),
+  rowOp('P2', 4, '1. Travaux du sol', '1. Labour', 1, 90, 'GB01'),
+  rowOp('P1', 2, '8. Récolte', 'Cueillette', 5, 500, 'GB08'),
+];
+
+test('pivotByFamille detail: sans opts → sortie strictement identique à {detail:false}', () => {
+  const sansOpts = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS);
+  const detailOff = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS, { detail: false });
+  const optsVide = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS, {});
+  assert.deepStrictEqual(detailOff, sansOpts, '{detail:false} ne doit rien changer');
+  assert.deepStrictEqual(optsVide, sansOpts, 'opts sans clé detail ne doit rien changer');
+  assert.ok(!sansOpts.groupedRows.some(r => r.type === 'operation'),
+    'aucune ligne operation en mode Récap');
+});
+
+test('pivotByFamille detail: chaque ligne famille est suivie de ses lignes opération', () => {
+  const { groupedRows } = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS, { detail: true });
+  const idxGB01 = groupedRows.findIndex(r => r.type === 'famille' && r.key === 'GB01');
+  assert.ok(idxGB01 >= 0, 'ligne famille GB01 toujours présente en mode Détail');
+  // Les 2 lignes juste après GB01 sont ses opérations
+  const suivantes = groupedRows.slice(idxGB01 + 1, idxGB01 + 3);
+  assert.deepStrictEqual(suivantes.map(r => r.type), ['operation', 'operation']);
+  assert.deepStrictEqual(suivantes.map(r => r.label).sort(), ['Cover cropage', 'Labour']);
+  suivantes.forEach(r => {
+    assert.strictEqual(r.familleKey, 'GB01', 'familleKey = code GB parent');
+    assert.strictEqual(r.groupeKey, 'M.O Hors récolte', 'groupeKey = groupe de la famille');
+    assert.ok(r.key.startsWith('GB01::'), 'clé préfixée par la famille : ' + r.key);
+  });
+  // La famille GB08 garde sa propre opération, pas celle de GB01
+  const opsGB08 = groupedRows.filter(r => r.type === 'operation' && r.familleKey === 'GB08');
+  assert.deepStrictEqual(opsGB08.map(r => r.label), ['Cueillette']);
+});
+
+test('pivotByFamille detail: somme des lignes opération == ligne famille (jh ET cout, par parcelle)', () => {
+  const { groupedRows } = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS, { detail: true });
+  groupedRows.filter(r => r.type === 'famille').forEach(fam => {
+    const ops = groupedRows.filter(r => r.type === 'operation' && r.familleKey === fam.key);
+    assert.ok(ops.length > 0, 'famille ' + fam.key + ' doit avoir au moins une opération');
+    Object.keys(fam.pivot).forEach(parc => {
+      const sumJh = ops.reduce((s, o) => s + ((o.pivot[parc] && o.pivot[parc].jh) || 0), 0);
+      const sumCout = ops.reduce((s, o) => s + ((o.pivot[parc] && o.pivot[parc].cout) || 0), 0);
+      assert.strictEqual(sumJh, fam.pivot[parc].jh, `JH ${fam.key}/${parc}`);
+      assert.strictEqual(sumCout, fam.pivot[parc].cout, `coût ${fam.key}/${parc}`);
+    });
+  });
+});
+
+test('pivotByFamille detail: aucune ligne opération typée famille (le tfoot ne doit pas doubler)', () => {
+  // Le tfoot du tableau somme uniquement r.type === 'famille' : si une ligne
+  // opération était typée 'famille', tous les totaux doubleraient.
+  const recap = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS);
+  const detail = buildAnalytiquePivotByFamille(SAMPLE_DETAIL_ROWS, { detail: true });
+  const totalFamille = (res, parc) => res.groupedRows
+    .filter(r => r.type === 'famille')
+    .reduce((s, r) => s + ((r.pivot[parc] && r.pivot[parc].jh) || 0), 0);
+  assert.strictEqual(totalFamille(detail, 'P1'), totalFamille(recap, 'P1'));
+  assert.strictEqual(totalFamille(detail, 'P2'), totalFamille(recap, 'P2'));
+  assert.strictEqual(totalFamille(detail, 'P1'), 10, 'P1 : 3 + 2 + 5');
+});
+
+test('pivotByFamille detail: variantes de casse/préfixe fusionnées sur une seule ligne opération', () => {
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowOp('P1', 2, 'Travaux du sol', '3. Désherbage', 2, 200, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', 'désherbage', 3, 300, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', 'Ferti-irrigation', 1, 100, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', 'Ferti irrigation', 1, 100, 'GB01'),
+  ], { detail: true });
+  const ops = groupedRows.filter(r => r.type === 'operation');
+  assert.strictEqual(ops.length, 2, 'désherbage x2 et ferti x2 fusionnent → 2 lignes');
+  const desherbage = ops.find(r => r.key === 'GB01::DÉSHERBAGE');
+  assert.ok(desherbage, 'clé normalisée sans préfixe numérique ni casse');
+  assert.strictEqual(desherbage.label, 'Désherbage', 'libellé = 1re occurrence, préfixe retiré');
+  assert.strictEqual(desherbage.pivot['P1'].jh, 5);
+  assert.strictEqual(desherbage.pivot['P1'].cout, 500);
+  const ferti = ops.find(r => r.key === 'GB01::FERTI IRRIGATION');
+  assert.ok(ferti, 'tiret ≡ espace');
+  assert.strictEqual(ferti.pivot['P1'].jh, 2);
+});
+
+test('pivotByFamille detail: opération vide/null → ligne « — » non perdue', () => {
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowOp('P1', 2, 'Travaux du sol', '', 2, 200, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', null, 3, 300, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', 'Labour', 1, 100, 'GB01'),
+  ], { detail: true });
+  const ops = groupedRows.filter(r => r.type === 'operation');
+  assert.strictEqual(ops.length, 2, 'vide et null fusionnent sur la même ligne');
+  const vide = ops.find(r => r.label === '—');
+  assert.ok(vide, 'ligne « — » présente');
+  assert.strictEqual(vide.pivot['P1'].jh, 5, 'les JH sans opération ne sont pas perdus');
+  const fam = groupedRows.find(r => r.type === 'famille' && r.key === 'GB01');
+  assert.strictEqual(fam.pivot['P1'].jh, 6, 'la famille garde bien le total complet');
+});
+
+test('pivotByFamille detail: lignes opération triées par JH total décroissant', () => {
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowOp('P1', 2, 'Travaux du sol', 'Petite', 1, 10, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', 'Grosse', 4, 40, 'GB01'),
+    rowOp('P2', 2, 'Travaux du sol', 'Moyenne', 2, 20, 'GB01'),
+    rowOp('P1', 2, 'Travaux du sol', 'Moyenne', 1, 10, 'GB01'),
+  ], { detail: true });
+  const ops = groupedRows.filter(r => r.type === 'operation');
+  assert.deepStrictEqual(ops.map(r => r.label), ['Grosse', 'Moyenne', 'Petite'],
+    'tri sur le JH cumulé toutes parcelles (Moyenne = 2 + 1 = 3)');
+});
+
+test('pivotByFamille detail: rows sans champ operation → une seule ligne « — » par famille', () => {
+  // Archives d'avant l'ajout du champ operation : le mode Détail ne doit ni
+  // crasher ni perdre de JH.
+  const { groupedRows } = buildAnalytiquePivotByFamille([
+    rowFam('P1', 2, '1. Travaux du sol', 3, 300, 'GB01'),
+    rowFam('P1', 2, '8. Récolte', 5, 500, 'GB08'),
+  ], { detail: true });
+  const ops = groupedRows.filter(r => r.type === 'operation');
+  assert.strictEqual(ops.length, 2, 'une ligne « — » par famille');
+  ops.forEach(r => assert.strictEqual(r.label, '—'));
+  assert.strictEqual(ops.find(r => r.familleKey === 'GB08').pivot['P1'].jh, 5);
+});
