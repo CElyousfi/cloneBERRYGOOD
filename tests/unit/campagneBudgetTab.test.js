@@ -781,6 +781,59 @@ test('rendu — « Confirmer et enregistrer » déclenche bien le save', () => {
   assert.deepStrictEqual(body.budgets_operations['Récolte'], { 'Cueillette': 12 });
 });
 
+test('rendu — un changement de parcelle (ou un Rafraîchir) ferme la confirmation', () => {
+  // Sans ça : confirmation posée sur la parcelle A, on change de parcelle, le
+  // panneau reste affiché avec les chiffres de A et « Confirmer » écrit B.
+  const spy = { effects: [], sets: [], fetches: [] };
+  load(stateOps({ confirmList: [{ famille: 'Récolte', valeur: 1800, total: 12 }] }), spy)(
+    { userRole: 'dg' });
+
+  const resets = spy.effects.filter(function (e) {
+    spy.sets.length = 0;
+    try { e.fn(); } catch (err) { /* effets async (fetch stubé) ignorés */ }
+    return spy.sets.some(function (s) { return s.index === S.confirmList && s.value === null; });
+  });
+  assert.strictEqual(resets.length, 1, 'un effet doit invalider la confirmation');
+  assert.deepStrictEqual(plain(resets[0].deps), ['F5- CASCADE -S13', 0],
+    'invalidée par la parcelle sélectionnée ET par tick (Rafraîchir)');
+});
+
+test('rendu — une confirmation PÉRIMÉE n\'écrit rien (bretelles)', () => {
+  // Ceinture (reset par effet) doublée d'une revalidation : ce qui a été
+  // confirmé doit être exactement ce qui va être écrit.
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(stateOps({
+    familles: ['Récolte'],
+    opsByFamille: { 'Récolte': ['Cueillette'] },
+    // Saisie courante : Récolte 1800 → 12…
+    values: { 'Récolte': '1800' },
+    opValues: { 'Récolte': { 'Cueillette': '12' } },
+    // …mais la confirmation affichée porte sur un AUTRE état (parcelle A).
+    confirmList: [{ famille: 'Arrachage', valeur: 100, total: 7 }],
+  }), spy)({ userRole: 'dg' });
+
+  buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
+
+  assert.strictEqual(spy.fetches.length, 0, 'aucune écriture sur une confirmation périmée');
+  // La confirmation est reposée sur l'état RÉEL, et l'utilisateur est prévenu.
+  const poses = spy.sets.filter(function (s) { return s.index === S.confirmList; });
+  assert.deepStrictEqual(plain(poses[poses.length - 1].value),
+    [{ famille: 'Récolte', valeur: 1800, total: 12 }]);
+  const msgs = spy.sets.filter(function (s) { return s.index === S.msg && s.value; });
+  assert.match(String(msgs[msgs.length - 1].value.text), /La saisie a changé depuis la confirmation/);
+});
+
+test('memeNeutralisations — égalité stricte, insensible à l\'ordre', () => {
+  const a = [{ famille: 'A', valeur: 1, total: 2 }, { famille: 'B', valeur: 3, total: 4 }];
+  const b = [{ famille: 'B', valeur: 3, total: 4 }, { famille: 'A', valeur: 1, total: 2 }];
+  assert.strictEqual(CBT.memeNeutralisations(a, b), true);
+  assert.strictEqual(CBT.memeNeutralisations(a, a.slice(0, 1)), false);
+  assert.strictEqual(CBT.memeNeutralisations(a, [{ famille: 'A', valeur: 9, total: 2 },
+    { famille: 'B', valeur: 3, total: 4 }]), false, 'une valeur différente = liste différente');
+  assert.strictEqual(CBT.memeNeutralisations(null, []), true);
+  assert.strictEqual(CBT.memeNeutralisations(null, a), false);
+});
+
 test('rendu — un save sans neutralisation part directement, sans confirmation', () => {
   const spy = { effects: [], sets: [], fetches: [] };
   const tree = load(stateOps({

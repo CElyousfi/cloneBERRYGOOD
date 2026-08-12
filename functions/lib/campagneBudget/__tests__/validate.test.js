@@ -721,6 +721,40 @@ test('writeBudgetInTransaction — une famille NON éditée est signalée elle a
   )
 })
 
+test('writeBudgetInTransaction — purge REPORTÉE : pas de fausse neutralisation annoncée', async () => {
+  // Référentiel amputé : les 3 opérations de « Taille » sont toutes devenues
+  // « inconnues », la purge est reportée (elles restent en base). La valeur de
+  // famille tombe, mais il n'y a AUCUN détail légitime pour la remplacer :
+  // annoncer une neutralisation serait un faux signal.
+  const f = fakeTx({
+    budgets: { 'Taille': 1800, 'Ferti-irrigation': 40 },
+    budgets_operations: {
+      'Taille': { 'Obsolete1': 1, 'Obsolete2': 2, 'Obsolete3': 3 },
+      'Ferti-irrigation': { 'Fertigation': 5 },
+    },
+  })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
+    budgets: { 'Taille': 0, 'Ferti-irrigation': 0 },
+  }))
+  assert.ok(out.purge_differee > 0, 'la purge doit bien être reportée')
+  // Ferti-irrigation a un vrai détail au référentiel → neutralisation réelle.
+  assert.deepStrictEqual(out.familles_neutralisees,
+    [{ famille: 'Ferti-irrigation', valeur_precedente: 40 }])
+  // Les opérations obsolètes de Taille survivent en base (rien n'est supprimé).
+  assert.deepStrictEqual(f.calls[0].data.budgets_operations['Taille'],
+    { 'Obsolete1': 1, 'Obsolete2': 2, 'Obsolete3': 3 })
+})
+
+test('purgeOperationsInconnues — expose la vue « référentiel seul » dans tous les cas', () => {
+  const src = { 'Taille': { 'Taille d\'hiver': 1, 'Obsolete': 2 } }
+  // Purge appliquée : les deux vues coïncident.
+  const applique = purgeOperationsInconnues(src, OPERATIONS)
+  assert.deepStrictEqual(applique.budgets_operations_connues, applique.budgets_operations)
+  // Sans référentiel : aucune supposition, les deux vues coïncident aussi.
+  const sansRef = purgeOperationsInconnues(src, [])
+  assert.deepStrictEqual(sansRef.budgets_operations_connues, sansRef.budgets_operations)
+})
+
 test('writeBudgetInTransaction — une suppression SANS opération n\'est pas une neutralisation', async () => {
   // L'utilisateur vide simplement le champ d'une famille : c'est une
   // suppression volontaire et lisible, pas un effet de bord à signaler.

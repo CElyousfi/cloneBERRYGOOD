@@ -522,9 +522,13 @@ function familleTotal(famille, budgets, budgetsOperations) {
  * @param {Array<{famille?: *, operation?: *}>|null|undefined} operationsConnues
  *   liste vide/absente = aucune purge.
  * @returns {{budgets_operations: Object<string, Object<string, number>>,
- *   purgees: Array<string>, purge_differee?: number}} `purgees` = libellés
- *   « Famille — Opération » ; `purge_differee` = nombre d'entrées épargnées par
- *   le garde-fou proportionnel (cf. MAX_PURGE_RATIO).
+ *   budgets_operations_connues: Object<string, Object<string, number>>,
+ *   purgees: Array<string>, purge_differee?: number}} `budgets_operations` = ce
+ *   qui sera PERSISTÉ (entrées obsolètes comprises si la purge est reportée) ;
+ *   `budgets_operations_connues` = les seules entrées présentes au référentiel,
+ *   pour les décisions qui ne doivent pas se fonder sur du fantôme ;
+ *   `purgees` = libellés « Famille — Opération » ; `purge_differee` = nombre
+ *   d'entrées épargnées par le garde-fou proportionnel (cf. MAX_PURGE_RATIO).
  */
 function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
   const src =
@@ -533,7 +537,15 @@ function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
       : {}
   const index = indexOperations(operationsConnues)
   if (Object.keys(index).length === 0) {
-    return { budgets_operations: mergeBudgetsOperations(src, {}), purgees: [] }
+    // Aucun référentiel : impossible de distinguer connu et obsolète. Les deux
+    // vues sont donc identiques (on ne suppose rien, on ne supprime rien).
+    const tout = mergeBudgetsOperations(src, {})
+    return {
+      budgets_operations: tout,
+      budgets_operations_connues: tout,
+      purgees: [],
+      purge_differee: 0,
+    }
   }
   /** @type {Object<string, Object<string, number>>} */
   const out = {}
@@ -560,11 +572,16 @@ function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
   if (!purgeAutorisee(purgees.length, nbTotal)) {
     return {
       budgets_operations: mergeBudgetsOperations(src, {}),
+      // Vue « référentiel seul » : ce qui subsiste en base contient des entrées
+      // obsolètes qu'on a choisi de ne PAS supprimer, mais elles ne doivent pas
+      // compter comme un détail par opération légitime (sinon on annonce une
+      // neutralisation de famille qui n'a pas lieu d'être).
+      budgets_operations_connues: out,
       purgees: [],
       purge_differee: purgees.length,
     }
   }
-  return { budgets_operations: out, purgees, purge_differee: 0 }
+  return { budgets_operations: out, budgets_operations_connues: out, purge_differee: 0, purgees }
 }
 
 /**
@@ -680,7 +697,10 @@ async function writeBudgetInTransaction(tx, docRef, args) {
   const neutralisees = []
   for (const f of Object.keys(avant)) {
     if (purged.budgets[f] > 0) continue
-    const ops = purgedOps.budgets_operations[f]
+    // Vue « référentiel seul » : une famille dont il ne reste que des opérations
+    // obsolètes épargnées par le garde-fou n'a PAS de détail légitime — annoncer
+    // sa neutralisation serait un faux signal.
+    const ops = purgedOps.budgets_operations_connues[f]
     if (!ops || Object.keys(ops).length === 0) continue
     neutralisees.push({ famille: f, valeur_precedente: avant[f] })
   }

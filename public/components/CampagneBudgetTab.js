@@ -287,6 +287,28 @@
   }
 
   /**
+   * Deux listes de neutralisations décrivent-elles EXACTEMENT le même effet ?
+   * PURE.
+   *
+   * Sert à refuser une confirmation devenue caduque (parcelle changée, données
+   * rechargées, saisie modifiée entre-temps) : ce qui a été confirmé doit être
+   * ce qui est écrit, sinon on ne écrit pas.
+   *
+   * @param {Array<{famille?: *, valeur?: *, total?: *}>|null|undefined} a
+   * @param {Array<{famille?: *, valeur?: *, total?: *}>|null|undefined} b
+   * @returns {boolean}
+   */
+  function CBT_memeNeutralisations(a, b) {
+    function cle(list) {
+      return (Array.isArray(list) ? list : []).map(function (n) {
+        if (!n || typeof n !== 'object') return '';
+        return String(n.famille) + '|' + CBT_num(n.valeur) + '|' + CBT_num(n.total);
+      }).sort().join('§');
+    }
+    return cle(a) === cle(b);
+  }
+
+  /**
    * Construit le body de `campagne-budget-save`. PURE.
    *
    * Toutes les familles AFFICHÉES et toutes leurs opérations sont envoyées, y
@@ -583,6 +605,16 @@
       setMsg(null);
     }, [selected]);
 
+    // Une confirmation en attente devient CADUQUE dès que l'état qui l'a
+    // produite change. Le panneau vit dans le tableau, sous un sélecteur de
+    // parcelle resté actif : sans ce reset, on pouvait changer de parcelle puis
+    // confirmer — le panneau affichant les chiffres de la parcelle A pendant que
+    // l'écriture portait sur B, dont les valeurs de famille n'ont jamais été
+    // confirmées. Même mécanisme via « Rafraîchir » (tick), qui recharge tout.
+    useEffect(function () {
+      setConfirmList(null);
+    }, [selected, tick]);
+
     // Changement de parcelle (ou de budgets connus) → recharger les champs.
     useEffect(function () {
       if (!selected) {
@@ -632,17 +664,28 @@
       // famille repliée peut être neutralisée sans que rien ne l'ait montré.
       // C'est la seule protection possible pour ce cas — on demande donc une
       // confirmation explicite, avec la liste et les valeurs concernées.
+      var menacees = CBT_famillesNeutralisees({
+        familles: familles,
+        values: values,
+        opValues: opValues
+      });
       if (!confirme) {
-        var menacees = CBT_famillesNeutralisees({
-          familles: familles,
-          values: values,
-          opValues: opValues
-        });
         if (menacees.length > 0) {
           setConfirmList(menacees);
           setMsg(null);
           return;
         }
+      } else if (!CBT_memeNeutralisations(confirmList, menacees)) {
+        // Bretelles : on ne se fie pas au seul reset de `confirmList` par les
+        // effets. Ce qui a été confirmé doit être EXACTEMENT ce qui va être
+        // écrit, sinon on refuse et on re-demande. Ferme aussi tout chemin
+        // futur qui rendrait la confirmation obsolète autrement.
+        setConfirmList(menacees.length > 0 ? menacees : null);
+        setMsg({
+          type: 'ko',
+          text: 'La saisie a changé depuis la confirmation — vérifiez, puis enregistrez à nouveau.'
+        });
+        return;
       }
       setConfirmList(null);
       var built = CBT_buildSavePayload({
@@ -1199,5 +1242,6 @@
   CampagneBudgetTab.buildSavePayload = CBT_buildSavePayload;
   CampagneBudgetTab.familleTotal = CBT_familleTotal;
   CampagneBudgetTab.famillesNeutralisees = CBT_famillesNeutralisees;
+  CampagneBudgetTab.memeNeutralisations = CBT_memeNeutralisations;
   CampagneBudgetTab.totalJH = CBT_totalJH;
 })();
