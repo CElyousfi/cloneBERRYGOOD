@@ -11,6 +11,7 @@ const {
   normLabel,
   budgetDocId,
   indexOperations,
+  purgeAutorisee,
   parseBudgetValue,
   validateBudgetSave,
   mergeBudgets,
@@ -635,6 +636,98 @@ test('writeBudgetInTransaction — création : les deux maps sont écrites et ma
   for (const k of Object.keys(call.data)) {
     assert.ok(call.options.mergeFields.includes(k), 'champ hors masque : ' + k)
   }
+})
+
+// ------------------------------- garde-fou proportionnel de purge (M2)
+
+test('purgeAutorisee — une entrée toujours purgeable, au-delà un tiers maximum', () => {
+  assert.strictEqual(purgeAutorisee(1, 1), true, 'plancher : 1 sur 1')
+  assert.strictEqual(purgeAutorisee(1, 2), true)
+  assert.strictEqual(purgeAutorisee(2, 6), true, '2 sur 6 = un tiers')
+  assert.strictEqual(purgeAutorisee(3, 6), false, '3 sur 6 = la moitié')
+  assert.strictEqual(purgeAutorisee(40, 108), false)
+  assert.strictEqual(purgeAutorisee(36, 108), true)
+})
+
+test('purgeOperationsInconnues — référentiel PARTIELLEMENT dégradé : purge reportée', () => {
+  // 6 opérations en base, un référentiel amputé n'en connaît plus que 2 : ce
+  // n'est pas un renommage, c'est une lecture incomplète. On ne supprime rien.
+  const budgetsOps = {
+    'Taille': { 'A': 1, 'B': 2, 'C': 3 },
+    'Ferti-irrigation': { 'D': 4, 'E': 5, 'F': 6 },
+  }
+  const referentielAmpute = [
+    { famille: 'Taille', operation: 'A' },
+    { famille: 'Ferti-irrigation', operation: 'D' },
+  ]
+  const r = purgeOperationsInconnues(budgetsOps, referentielAmpute)
+  assert.deepStrictEqual(r.purgees, [], 'aucune suppression')
+  assert.deepStrictEqual(r.budgets_operations, budgetsOps, 'les 6 opérations survivent')
+  assert.strictEqual(r.purge_differee, 4, 'ampleur de la purge évitée, remontée')
+})
+
+test('purgeOperationsInconnues — purge d\'ampleur plausible : toujours appliquée', () => {
+  const r = purgeOperationsInconnues(
+    { 'Taille': { 'Taille d\'hiver': 1, 'Obsolete': 2, 'Taille de formation': 3 } },
+    OPERATIONS
+  )
+  assert.deepStrictEqual(r.purgees, ['Taille — Obsolete'])
+  assert.strictEqual(r.purge_differee, 0)
+})
+
+test('purgeFamillesInconnues — même garde-fou proportionnel au niveau famille', () => {
+  const budgets = { 'Taille': 1, 'Ferti-irrigation': 2, 'Entretien structure': 3, 'X': 4 }
+  // Référentiel amputé : 3 des 4 familles deviendraient inconnues.
+  const r = purgeFamillesInconnues(budgets, ['Taille'])
+  assert.deepStrictEqual(r.purgees, [])
+  assert.deepStrictEqual(r.budgets, budgets)
+  assert.strictEqual(r.purge_differee, 3)
+})
+
+// ----------------------------- rapport des neutralisations (cas mixte)
+
+test('writeBudgetInTransaction — la valeur de famille remplacée est REMONTÉE', async () => {
+  // Récolte valait 1800 au niveau famille ; le save ajoute une opération et
+  // remet la famille à 0 (payload du front). La perte doit être signalée.
+  const f = fakeTx({ budgets: { 'Taille': 1800 }, budgets_operations: {} })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
+    budgets: { 'Taille': 0 },
+    budgets_operations: { 'Taille': { 'Taille d\'hiver': 12 } },
+  }))
+  assert.deepStrictEqual(out.familles_neutralisees, [
+    { famille: 'Taille', valeur_precedente: 1800 },
+  ])
+  assert.deepStrictEqual(out.budgets, {})
+  assert.strictEqual(familleTotal('Taille', out.budgets, out.budgets_operations).total, 12)
+})
+
+test('writeBudgetInTransaction — une famille NON éditée est signalée elle aussi', async () => {
+  // Le save est global à la parcelle : une famille devenue mixte hors écran
+  // est neutralisée par le même enregistrement. C'est exactement le cas que
+  // l'utilisateur ne peut pas voir — il DOIT donc le lire dans la réponse.
+  const f = fakeTx({
+    budgets: { 'Taille': 1800, 'Ferti-irrigation': 40 },
+    budgets_operations: { 'Ferti-irrigation': { 'Fertigation': 3 } },
+  })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
+    // Le front n'édite que Taille, mais renvoie tout : Ferti-irrigation, déjà
+    // détaillée en base, voit sa valeur de famille tomber.
+    budgets: { 'Taille': 0, 'Ferti-irrigation': 0 },
+    budgets_operations: { 'Taille': { 'Taille d\'hiver': 12 } },
+  }))
+  assert.deepStrictEqual(
+    out.familles_neutralisees.map((n) => n.famille).sort(),
+    ['Ferti-irrigation', 'Taille']
+  )
+})
+
+test('writeBudgetInTransaction — une suppression SANS opération n\'est pas une neutralisation', async () => {
+  // L'utilisateur vide simplement le champ d'une famille : c'est une
+  // suppression volontaire et lisible, pas un effet de bord à signaler.
+  const f = fakeTx({ budgets: { 'Taille': 5 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 0 } }))
+  assert.deepStrictEqual(out.familles_neutralisees, [])
 })
 
 test('writeBudgetInTransaction — purge les opérations obsolètes et les signale', async () => {

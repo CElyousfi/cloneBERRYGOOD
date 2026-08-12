@@ -27,8 +27,15 @@
  * opérations gagnent, la valeur de famille est neutralisée à l'enregistrement.
  * Additionner reviendrait à compter deux fois ce que les opérations détaillent
  * déjà ; garder la valeur de famille en base la ferait ressurgir après
- * effacement des opérations. Comme c'est une perte de saisie, l'écran l'annonce
- * AVANT le save (pictogramme ambre sur le total de famille concerné).
+ * effacement des opérations. Comme c'est une perte de saisie, elle est signalée
+ * TROIS fois, jamais par un simple `title=` (invisible au doigt) :
+ *   1. badge ambre TEXTE sur la ligne, portant la valeur menacée ;
+ *   2. confirmation avant l'écriture, listant TOUTES les familles concernées —
+ *      le save porte sur la parcelle entière, donc une famille repliée peut
+ *      être neutralisée par un enregistrement déclenché pour une autre ;
+ *   3. rapport ambre après l'écriture, alimenté par `familles_neutralisees`
+ *      renvoyé par le backend (seule source fiable de ce qui a réellement été
+ *      remplacé).
  *
  * Sources :
  *   GET  /api/pointage-rh?action=parcelles-campagne-list   (parcelles campagne)
@@ -217,7 +224,10 @@
     var key = String(famille == null ? '' : famille);
     var ops = (opValues || {})[key];
     var somme = 0;
-    if (ops && typeof ops === 'object') {
+    // `!Array.isArray` : garde alignée sur le miroir backend. Inatteignable via
+    // l'UI, mais les deux implémentations doivent rester STRICTEMENT
+    // équivalentes — un test à corpus partagé le vérifie.
+    if (ops && typeof ops === 'object' && !Array.isArray(ops)) {
       Object.keys(ops).forEach(function (op) {
         var n = CBT_num(ops[op]);
         if (n > 0) somme += n;
@@ -227,6 +237,34 @@
     var n = CBT_num((values || {})[key]);
     if (n > 0) return { total: Math.round(n * 100) / 100, source: 'famille' };
     return { total: 0, source: 'aucun' };
+  }
+
+  /**
+   * Familles dont la valeur de famille va être REMPLACÉE par le détail des
+   * opérations au prochain enregistrement. PURE.
+   *
+   * Indispensable parce que le save est global à la parcelle, pas limité à la
+   * famille éditée : une famille repliée — ou jamais ouverte — peut être
+   * neutralisée par un enregistrement déclenché pour une autre. L'utilisateur
+   * n'a aucun moyen de le deviner ; cette liste alimente la confirmation.
+   *
+   * @param {Object} args
+   * @param {Array<string>} args.familles
+   * @param {Object<string, *>} args.values
+   * @param {Object<string, Object<string, *>>} args.opValues
+   * @returns {Array<{famille: string, valeur: number, total: number}>}
+   */
+  function CBT_famillesNeutralisees(args) {
+    var a = args || {};
+    var out = [];
+    (a.familles || []).forEach(function (f) {
+      var valeur = CBT_num((a.values || {})[f]);
+      if (!(valeur > 0)) return;
+      var tot = CBT_familleTotal(f, a.values, a.opValues);
+      if (tot.source !== 'operations') return;
+      out.push({ famille: f, valeur: valeur, total: tot.total });
+    });
+    return out;
   }
 
   /**
@@ -310,9 +348,11 @@
   /**
    * Message de retour d'une sauvegarde réussie. PURE.
    *
-   * Le backend purge les familles ET les opérations disparues du référentiel
-   * des tâches, et les renvoie dans `familles_purgees` / `operations_purgees`.
-   * C'est une SUPPRESSION de données : elle ne doit jamais passer inaperçue,
+   * Le backend renvoie TROIS effets de bord possibles d'un save :
+   * `familles_purgees` / `operations_purgees` (entrées hors référentiel),
+   * `familles_neutralisees` (valeur de famille remplacée par le détail des
+   * opérations) et `purge_differee` (nettoyage bloqué par le garde-fou).
+   * Une suppression de données ne doit jamais passer inaperçue,
    * même si elle est légitime. Le message reste du niveau « succès » (ce n'est
    * pas une erreur) mais porte `purge: true`, que le rendu traduit par une
    * couleur ambre et une icône d'avertissement.
@@ -329,10 +369,37 @@
     }
     var purgees = clean(res && res.familles_purgees);
     var opsPurgees = clean(res && res.operations_purgees);
-    if (purgees.length === 0 && opsPurgees.length === 0) {
+    // Valeurs de famille remplacées par le détail des opérations : le backend
+    // les renvoie parce que l'écran seul ne peut pas les connaître (familles
+    // hors écran neutralisées par un save global).
+    var neutralisees = (Array.isArray(res && res.familles_neutralisees)
+      ? res.familles_neutralisees : [])
+      .map(function (n) {
+        if (!n || typeof n !== 'object') return '';
+        var famille = String(n.famille == null ? '' : n.famille).trim();
+        if (!famille) return '';
+        var v = CBT_num(n.valeur_precedente);
+        return v > 0 ? famille + ' (' + v + ')' : famille;
+      })
+      .filter(Boolean);
+    var differee = CBT_num(res && res.purge_differee);
+    if (purgees.length === 0 && opsPurgees.length === 0
+      && neutralisees.length === 0 && differee <= 0) {
       return { type: 'ok', text: 'Budget enregistré' };
     }
     var parts = [];
+    if (neutralisees.length > 0) {
+      parts.push(neutralisees.length
+        + (neutralisees.length > 1
+          ? ' valeurs de famille remplacées par le détail des opérations : '
+          : ' valeur de famille remplacée par le détail des opérations : ')
+        + neutralisees.join(', '));
+    }
+    if (differee > 0) {
+      parts.push('nettoyage de ' + differee
+        + (differee > 1 ? ' entrées obsolètes reporté' : ' entrée obsolète reporté')
+        + ' (référentiel incomplet) — rien n\'a été supprimé');
+    }
     if (purgees.length > 0) {
       parts.push(purgees.length
         + (purgees.length > 1 ? ' familles obsolètes retirées : ' : ' famille obsolète retirée : ')
@@ -416,6 +483,10 @@
     // famille sur plusieurs parcelles).
     var _open = useState({});
     var openFamilles = _open[0]; var setOpenFamilles = _open[1];
+    // Familles dont la valeur de famille va être remplacée : null = pas de
+    // confirmation en attente.
+    var _confirm = useState(null);
+    var confirmList = _confirm[0]; var setConfirmList = _confirm[1];
 
     useEffect(function () {
       var cancelled = false;
@@ -502,7 +573,26 @@
 
     var ha = selectedRow ? cbtHa(selectedRow.label) : 0;
 
-    function handleSave() {
+    /**
+     * @param {boolean} [confirme] true = l'utilisateur a validé la liste des
+     *   valeurs de famille qui vont être remplacées.
+     */
+    function handleSave(confirme) {
+      // Le save porte sur TOUTE la parcelle, pas sur la famille éditée : une
+      // famille repliée peut être neutralisée sans que rien ne l'ait montré.
+      // C'est la seule protection possible pour ce cas — on demande donc une
+      // confirmation explicite, avec la liste et les valeurs concernées.
+      if (!confirme) {
+        var menacees = CBT_famillesNeutralisees({
+          familles: familles, values: values, opValues: opValues,
+        });
+        if (menacees.length > 0) {
+          setConfirmList(menacees);
+          setMsg(null);
+          return;
+        }
+      }
+      setConfirmList(null);
       var built = CBT_buildSavePayload({
         campagne: campagne, label: selected, familles: familles,
         opsByFamille: opsByFamille, values: values, opValues: opValues,
@@ -692,7 +782,27 @@
                       f,
                       ops.length > 0 && React.createElement('span', {
                         style: { marginLeft: 8, fontSize: 11, fontWeight: 500, color: CBT_C.textTer },
-                      }, ops.length + ' op.')
+                      }, ops.length + ' op.'),
+                      // CAS MIXTE : la famille avait un total saisi ET porte
+                      // maintenant des opérations. Le total bascule sur les
+                      // opérations et la valeur de famille sera remplacée à
+                      // l'enregistrement. Badge TEXTE (pas un `title=` : illisible
+                      // au doigt, or la validation se fait au téléphone), portant
+                      // la valeur menacée — sans quoi elle a déjà disparu de
+                      // l'écran (la cellule affiche la somme des opérations).
+                      ecrase && React.createElement('span', {
+                        style: {
+                          display: 'inline-block', marginLeft: 8, padding: '1px 7px',
+                          borderRadius: 9, fontSize: 10.5, fontWeight: 700,
+                          background: '#fef3c7', color: CBT_C.amber, whiteSpace: 'nowrap',
+                        },
+                      },
+                        React.createElement('i', {
+                          className: 'fa-solid fa-triangle-exclamation',
+                          style: { marginRight: 5 },
+                        }),
+                        'famille ' + CBT_num(values[f]) + ' → remplacée par les opérations'
+                      )
                     ),
                     React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
                       // Dès qu'une opération est budgétée, le total de famille
@@ -718,18 +828,6 @@
                           style: { fontFamily: 'monospace', fontWeight: 700 },
                           title: calcule ? 'Somme des opérations de la famille' : undefined,
                         },
-                          // CAS MIXTE : la famille avait un total saisi ET porte
-                          // maintenant des opérations. Le total bascule sur les
-                          // opérations et la valeur de famille sera remise à 0 à
-                          // l'enregistrement : ça ne doit pas être silencieux
-                          // (« Récolte » vaut 1800 JH/Ha au niveau famille).
-                          ecrase && React.createElement('i', {
-                            className: 'fa-solid fa-triangle-exclamation',
-                            title: 'Total désormais calculé depuis les opérations : la valeur'
-                              + ' de famille saisie (' + CBT_num(values[f]) + ') sera remplacée'
-                              + ' à l\'enregistrement.',
-                            style: { color: CBT_C.amber, marginRight: 6, fontSize: 11 },
-                          }),
                           tot.total > 0 ? tot.total.toFixed(2) : '—')
                     ),
                     React.createElement('td', {
@@ -779,6 +877,53 @@
             )
           ),
 
+          // CONFIRMATION : le save étant global à la parcelle, une famille
+          // repliée peut voir sa valeur de famille remplacée sans que rien ne
+          // l'ait signalé à l'écran. On liste explicitement les familles
+          // concernées AVANT d'écrire, avec la valeur perdue et son
+          // remplacement.
+          canEdit && confirmList && confirmList.length > 0 && React.createElement('div', {
+            style: {
+              padding: '12px 14px', borderTop: '1px solid ' + CBT_C.border,
+              background: '#fffbeb', color: CBT_C.amber, fontSize: 12,
+            },
+          },
+            React.createElement('div', { style: { fontWeight: 700, marginBottom: 6 } },
+              React.createElement('i', {
+                className: 'fa-solid fa-triangle-exclamation', style: { marginRight: 8 },
+              }),
+              confirmList.length > 1
+                ? confirmList.length + ' valeurs de famille vont être remplacées par le détail'
+                  + ' de leurs opérations :'
+                : 'Une valeur de famille va être remplacée par le détail de ses opérations :'
+            ),
+            React.createElement('ul', { style: { margin: '0 0 10px', paddingLeft: 26 } },
+              confirmList.map(function (n) {
+                return React.createElement('li', { key: n.famille, style: { marginBottom: 2 } },
+                  n.famille + ' : ' + n.valeur + ' JH/Ha → ' + n.total + ' JH/Ha');
+              })
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 10, flexWrap: 'wrap' } },
+              React.createElement('button', {
+                onClick: function () { handleSave(true); },
+                disabled: saving,
+                style: {
+                  padding: '6px 16px', borderRadius: 8, border: 'none',
+                  background: CBT_C.amber, color: '#fff', fontSize: 12, fontWeight: 700,
+                  cursor: saving ? 'not-allowed' : 'pointer',
+                },
+              }, 'Confirmer et enregistrer'),
+              React.createElement('button', {
+                onClick: function () { setConfirmList(null); },
+                style: {
+                  padding: '6px 16px', borderRadius: 8,
+                  border: '1px solid ' + CBT_C.border, background: CBT_C.surface,
+                  color: CBT_C.textSec, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                },
+              }, 'Annuler')
+            )
+          ),
+
           React.createElement('div', {
             style: {
               display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
@@ -786,7 +931,7 @@
             },
           },
             canEdit && React.createElement('button', {
-              onClick: handleSave,
+              onClick: function () { handleSave(false); },
               disabled: saving,
               style: {
                 padding: '7px 18px', borderRadius: 8, border: 'none',
@@ -834,5 +979,6 @@
   CampagneBudgetTab.operationsByLabel = CBT_operationsByLabel;
   CampagneBudgetTab.buildSavePayload = CBT_buildSavePayload;
   CampagneBudgetTab.familleTotal = CBT_familleTotal;
+  CampagneBudgetTab.famillesNeutralisees = CBT_famillesNeutralisees;
   CampagneBudgetTab.totalJH = CBT_totalJH;
 })();

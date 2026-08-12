@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:f3b1731755488b68",
+    "sourceFingerprint": "sha256:f4bc7c7b3e5ebae4",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -795,6 +795,20 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "public/components/CampagneBudgetTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
+          "file": "tests/unit/campagneBudgetTab.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -802,21 +816,7 @@
         {
           "coCommits": 3,
           "domain": null,
-          "file": "public/components/CampagneBudgetTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
           "file": "public/components/ParcellesReferentielTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneBudgetTab.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }

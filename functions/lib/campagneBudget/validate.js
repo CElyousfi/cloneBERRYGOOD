@@ -72,6 +72,44 @@ const MAX_FAMILLES = 50
 const MAX_OPERATIONS = 500
 
 /**
+ * Part maximale des entrées existantes qu'une purge automatique a le droit de
+ * supprimer d'un coup (au-delà d'UNE entrée).
+ *
+ * POURQUOI : le fail-safe « référentiel vide = aucune purge » ne couvre que la
+ * panne franche. Un référentiel PARTIELLEMENT dégradé (non vide mais amputé —
+ * lecture Firestore incomplète, import de `referentiel_taches` à moitié
+ * appliqué) passe la garde et supprime définitivement, au premier save, tout ce
+ * qui manque. La surface est passée de ~11 familles à ~108 opérations : le coût
+ * d'une purge erronée a été multiplié par dix.
+ *
+ * SEUIL RETENU — un tiers, avec un plancher de 1 entrée :
+ *  - une purge légitime est un ÉVÉNEMENT DE RÉFÉRENTIEL isolé (une opération
+ *    renommée, une famille supprimée) : elle porte sur une ou deux entrées,
+ *    jamais sur un tiers du budget d'une parcelle ;
+ *  - le plancher de 1 garde le cas « le document n'a qu'une ou deux entrées,
+ *    dont une obsolète » nettoyable (1 sur 2 = 50 %, au-dessus du ratio) ;
+ *  - au-delà, on ne SUPPRIME pas : la purge est REPORTÉE (les entrées restent
+ *    en base) et signalée à l'appelant. Un vrai grand ménage de référentiel se
+ *    fera alors en plusieurs saves, ou par une opération dédiée validée — pas
+ *    par effet de bord d'une saisie.
+ * Décision volontairement conservatrice : une purge reportée coûte un budget
+ * fantôme de plus, une purge erronée coûte une saisie perdue.
+ */
+const MAX_PURGE_RATIO = 1 / 3
+
+/**
+ * La purge est-elle d'une ampleur plausible ? PURE.
+ *
+ * @param {number} nbPurgees
+ * @param {number} nbTotal nombre d'entrées AVANT purge.
+ * @returns {boolean}
+ */
+function purgeAutorisee(nbPurgees, nbTotal) {
+  if (nbPurgees <= 1) return true
+  return nbPurgees <= nbTotal * MAX_PURGE_RATIO
+}
+
+/**
  * Séparateur de clé d'index (famille, opération) — jamais persisté. Caractère
  * de contrôle : un séparateur imprimable rendrait ('A B', 'C') et ('A', 'B C')
  * indiscernables.
@@ -484,7 +522,9 @@ function familleTotal(famille, budgets, budgetsOperations) {
  * @param {Array<{famille?: *, operation?: *}>|null|undefined} operationsConnues
  *   liste vide/absente = aucune purge.
  * @returns {{budgets_operations: Object<string, Object<string, number>>,
- *   purgees: Array<string>}} `purgees` = libellés « Famille — Opération ».
+ *   purgees: Array<string>, purge_differee?: number}} `purgees` = libellés
+ *   « Famille — Opération » ; `purge_differee` = nombre d'entrées épargnées par
+ *   le garde-fou proportionnel (cf. MAX_PURGE_RATIO).
  */
 function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
   const src =
@@ -510,7 +550,21 @@ function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
     }
     if (Object.keys(kept).length > 0) out[famille] = kept
   }
-  return { budgets_operations: out, purgees }
+  let nbTotal = 0
+  for (const famille of Object.keys(src)) {
+    const ops = src[famille]
+    if (ops && typeof ops === 'object' && !Array.isArray(ops)) nbTotal += Object.keys(ops).length
+  }
+  // Purge d'ampleur invraisemblable → référentiel probablement dégradé : on ne
+  // supprime rien (cf. MAX_PURGE_RATIO).
+  if (!purgeAutorisee(purgees.length, nbTotal)) {
+    return {
+      budgets_operations: mergeBudgetsOperations(src, {}),
+      purgees: [],
+      purge_differee: purgees.length,
+    }
+  }
+  return { budgets_operations: out, purgees, purge_differee: 0 }
 }
 
 /**
@@ -527,10 +581,16 @@ function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
  * (`validateBudgetSave`) — donc jamais de purge totale sur un référentiel
  * momentanément indisponible.
  *
+ * DEUXIÈME GARDE-FOU : la purge est aussi REPORTÉE si son ampleur est
+ * invraisemblable (cf. MAX_PURGE_RATIO) — le référentiel est alors
+ * probablement dégradé, pas réellement amputé.
+ *
  * @param {Object<string, number>} budgets
  * @param {Array<string>|null|undefined} famillesConnues liste vide/absente =
  *   aucune purge (fail-safe : on ne supprime rien sans référentiel).
- * @returns {{budgets: Object<string, number>, purgees: Array<string>}}
+ * @returns {{budgets: Object<string, number>, purgees: Array<string>,
+ *   purge_differee?: number}} `purge_differee` = nombre d'entrées qui AURAIENT
+ *   été supprimées si le garde-fou n'avait pas bloqué (0 = purge appliquée).
  */
 function purgeFamillesInconnues(budgets, famillesConnues) {
   const src = budgets && typeof budgets === 'object' ? budgets : {}
@@ -549,7 +609,11 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
     if (known[String(k).trim().toUpperCase()]) out[k] = src[k]
     else purgees.push(k)
   }
-  return { budgets: out, purgees }
+  // Même garde-fou proportionnel qu'au niveau opération (cf. MAX_PURGE_RATIO).
+  if (!purgeAutorisee(purgees.length, Object.keys(src).length)) {
+    return { budgets: Object.assign({}, src), purgees: [], purge_differee: purgees.length }
+  }
+  return { budgets: out, purgees, purge_differee: 0 }
 }
 
 /**
@@ -589,13 +653,16 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
  * @param {*} args.serverTimestamp valeur d'horodatage serveur (injectée).
  * @returns {Promise<{budgets: Object<string, number>,
  *   budgets_operations: Object<string, Object<string, number>>,
- *   purgees: Array<string>, operations_purgees: Array<string>}>}
+ *   purgees: Array<string>, operations_purgees: Array<string>,
+ *   familles_neutralisees: Array<{famille: string, valeur_precedente: number}>,
+ *   purge_differee: number}>}
  */
 async function writeBudgetInTransaction(tx, docRef, args) {
   const a = args || {}
   const snap = await tx.get(docRef)
   const exists = snap && (typeof snap.exists === 'function' ? snap.exists() : snap.exists)
   const data = exists ? (snap.data() || {}) : {}
+  const avant = mergeBudgets(data.budgets || null, {})
   const merged = mergeBudgets(data.budgets || null, a.budgets || {})
   const purged = purgeFamillesInconnues(merged, a.famillesConnues)
   const mergedOps = mergeBudgetsOperations(
@@ -603,6 +670,20 @@ async function writeBudgetInTransaction(tx, docRef, args) {
     a.budgets_operations || {}
   )
   const purgedOps = purgeOperationsInconnues(mergedOps, a.operationsConnues)
+
+  // NEUTRALISATIONS : une valeur de famille qui existait, qui disparaît, et
+  // dont la famille porte désormais un détail par opération. C'est une perte de
+  // saisie légitime (le total bascule sur les opérations, cf. familleTotal) mais
+  // JAMAIS anodine — « Récolte » vaut 1800 JH/Ha, ~73 % du budget. On la
+  // remonte à l'appelant pour qu'elle soit affichée, comme les purges.
+  /** @type {Array<{famille: string, valeur_precedente: number}>} */
+  const neutralisees = []
+  for (const f of Object.keys(avant)) {
+    if (purged.budgets[f] > 0) continue
+    const ops = purgedOps.budgets_operations[f]
+    if (!ops || Object.keys(ops).length === 0) continue
+    neutralisees.push({ famille: f, valeur_precedente: avant[f] })
+  }
   tx.set(
     docRef,
     {
@@ -631,6 +712,8 @@ async function writeBudgetInTransaction(tx, docRef, args) {
     budgets_operations: purgedOps.budgets_operations,
     purgees: purged.purgees,
     operations_purgees: purgedOps.purgees,
+    familles_neutralisees: neutralisees,
+    purge_differee: (purged.purge_differee || 0) + (purgedOps.purge_differee || 0),
   }
 }
 
@@ -638,6 +721,8 @@ module.exports = {
   MAX_JH_PAR_HA,
   MAX_FAMILLES,
   MAX_OPERATIONS,
+  MAX_PURGE_RATIO,
+  purgeAutorisee,
   normCampagne,
   normLabel,
   budgetDocId,

@@ -4183,6 +4183,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           budgets_operations: persistedOpsB,
           familles_purgees: writeB.purgees,
           operations_purgees: writeB.operations_purgees,
+          // Valeurs de famille remplacées par le détail des opérations, et
+          // purge reportée faute d'ampleur plausible : deux effets de bord
+          // possibles d'un save, remontés pour être AFFICHÉS (jamais silencieux).
+          familles_neutralisees: writeB.familles_neutralisees,
+          purge_differee: writeB.purge_differee,
         });
       }
 
