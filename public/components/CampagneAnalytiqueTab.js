@@ -136,6 +136,27 @@
     return v || 0;
   }
 
+  /**
+   * Indexe la réponse de `campagne-budget-list` par libellé BEE ONE. PURE.
+   *
+   * Clé normalisée `trim().toUpperCase()` — la MÊME normalisation que sbMap /
+   * sbHa / sbNom : c'est la jointure entre les budgets saisis et les libellés
+   * BEE ONE des lignes de pointage. Une normalisation différente ici ferait
+   * silencieusement rater tous les budgets (colonnes vides, sans erreur).
+   *
+   * @param {Array<{label_bee_one?: string, budgets?: Object}>} list
+   * @returns {Object<string, Object<string, number>>} LABEL_MAJ → famille → JH/Ha
+   */
+  function CAT_budgetsByLabel(list) {
+    var out = {};
+    (list || []).forEach(function (b) {
+      var key = String(b && b.label_bee_one || '').trim().toUpperCase();
+      if (!key) return;
+      out[key] = b && b.budgets || {};
+    });
+    return out;
+  }
+
   /* ------------------------------------------------------------------ */
   /* Helpers de calcul pivot                                              */
   /* ------------------------------------------------------------------ */
@@ -220,11 +241,12 @@
    *   - `aoa`  = les mêmes lignes aplaties, pour le repli SheetJS puis CSV ;
    *   - `cols` = largeurs de colonnes, honorées par les deux moteurs.
    */
-  function buildCultureWorkbook(culture, data, farmFilter, sbMap) {
+  function buildCultureWorkbook(culture, data, farmFilter, sbMap, budgetsByLabel) {
     var CEU = window.CampagneExportUtils;
     var rows = data && data.rows || [];
     var periodes = data && data.periodes || [];
     var haByRef = data && data.haByRef || {};
+    var budgets = budgetsByLabel || {};
 
     // Parcelles de la culture (distinctes, ordre alphabétique du nom SB)
     var seen = {};
@@ -257,12 +279,17 @@
       });
       var ha = sbHa(label, sbMap, haByRef);
       var nom = sbNom(label, sbMap);
+      // Budgets JH/Ha de la parcelle : jointure sur le libellé BEE ONE
+      // normalisé, EXACTEMENT comme sbMap/sbHa (trim + majuscules) — toute
+      // autre normalisation ferait silencieusement rater la jointure.
+      var budParcelle = budgets[String(label || '').toUpperCase().trim()] || {};
       synthese.push({
         nomSb: nom,
         label: label,
         ferme: seen[label].ferme,
         ha: ha,
-        totalJh: totalJh
+        totalJh: totalJh,
+        budgets: budParcelle
       });
       var params = {
         nomSb: nom,
@@ -271,7 +298,8 @@
         campagne: data && data.campagne || '',
         periodes: periodes,
         opRows: opRows,
-        famillesOrdered: data && data.famillesOrdered || []
+        famillesOrdered: data && data.famillesOrdered || [],
+        budgets: budParcelle
       };
       sheets.push({
         name: CEU.safeSheetName(nom, i + 1, used),
@@ -335,7 +363,11 @@
     grayLight: 'FFEBEAE3',
     white: 'FFFFFFFF',
     textSec: 'FF5F5E5A',
-    border: 'FFD8D6CF'
+    border: 'FFD8D6CF',
+    // Dépassement de budget (> 100 % consommé) — rouge/rose « Incorrect »
+    // d'Excel, lisible aussi en niveaux de gris à l'impression.
+    badText: 'FF9C0006',
+    badFill: 'FFFFC7CE'
   };
   function xlFill(argb) {
     return {
@@ -469,6 +501,13 @@
         if (r.cells.length > nbCols) nbCols = r.cells.length;
       });
       var headerRowIndex = 0;
+      // Colonne(s) « % Consommé » repérées par leur EN-TÊTE (jamais un index en
+      // dur) : elles portent un RATIO, à afficher avec un format de pourcentage
+      // — c'est le code de format qui multiplie par 100.
+      var pctCols = {};
+      CEU.percentColumns(s.rows).forEach(function (c) {
+        pctCols[c] = true;
+      });
       s.rows.forEach(function (r, i) {
         var row = ws.addRow(r.cells);
         if (r.kind === K.COL_HEADER) headerRowIndex = i + 1;
@@ -481,6 +520,25 @@
           includeEmpty: false
         }, function (cell, col) {
           if (col === 1) return;
+          if (pctCols[col] && r.kind !== K.COL_HEADER) {
+            var pfmt = CEU.percentFmtFor(cell.value);
+            if (!pfmt) return;
+            cell.alignment = {
+              horizontal: 'right'
+            };
+            cell.numFmt = pfmt;
+            // Dépassement : signalé, JAMAIS plafonné (la valeur reste exacte).
+            if (cell.value > 1) {
+              cell.font = {
+                bold: true,
+                color: {
+                  argb: XL.badText
+                }
+              };
+              cell.fill = xlFill(XL.badFill);
+            }
+            return;
+          }
           var fmt = CEU.numFmtFor(cell.value);
           if (fmt) {
             cell.alignment = {
@@ -521,6 +579,7 @@
 
   /** Repli quand ExcelJS n'a pas pu être chargé : fichier SANS mise en forme. */
   function writeWithoutStyles(wbData) {
+    var CEU = window.CampagneExportUtils;
     if (window.XLSX) {
       var wb = window.XLSX.utils.book_new();
       wbData.sheets.forEach(function (s) {
@@ -528,6 +587,22 @@
         // Largeurs de colonnes : seule mise en forme honorée par SheetJS
         // community (les styles de cellule et les volets figés sont ignorés).
         if (s.cols) ws['!cols'] = s.cols;
+        // Format de pourcentage (`z`) sur la colonne « % Consommé » : la
+        // cellule porte un RATIO, la lire sans format donnerait « 0,75 » là où
+        // il faut lire « 75 % ». Les formats numériques, contrairement aux
+        // styles, sont écrits par le build community.
+        CEU.percentColumns(s.rows).forEach(function (col) {
+          s.aoa.forEach(function (r, ri) {
+            var addr = window.XLSX.utils.encode_cell({
+              c: col - 1,
+              r: ri
+            });
+            var cell = ws[addr];
+            if (!cell || cell.t !== 'n') return;
+            var fmt = CEU.percentFmtFor(cell.v);
+            if (fmt) cell.z = fmt;
+          });
+        });
         window.XLSX.utils.book_append_sheet(wb, ws, s.name);
       });
       window.XLSX.writeFile(wb, wbData.fileName + '.xlsx');
@@ -535,6 +610,8 @@
     }
 
     // Dernier repli : CSV de la feuille Synthèse si SheetJS est absent aussi.
+    // Le CSV ne porte aucun format : « % Consommé » y sort en ratio brut
+    // (0,75 = 75 %), comme toutes les autres colonnes en valeur brute.
     var csv = wbData.sheets[0].aoa.map(function (r) {
       return r.map(function (c) {
         var s = String(c == null ? '' : c);
@@ -551,9 +628,9 @@
    * si le CDN est injoignable, retombe sur l'export SheetJS (sans styles)
    * plutôt que d'échouer. Retourne toujours une Promise résolue.
    */
-  function exportCulture(culture, data, farmFilter, sbMap) {
+  function exportCulture(culture, data, farmFilter, sbMap, budgetsByLabel) {
     if (!window.CampagneExportUtils) return Promise.resolve();
-    var wbData = buildCultureWorkbook(culture, data, farmFilter, sbMap);
+    var wbData = buildCultureWorkbook(culture, data, farmFilter, sbMap, budgetsByLabel);
     if (wbData.sheets.length <= 1) {
       window.alert('Aucune parcelle ' + culture + ' dans le périmètre.');
       return Promise.resolve();
@@ -822,6 +899,7 @@
     var farmFilter = props.farmFilter;
     var cultureFilter = props.cultureFilter;
     var sbMap = props.sbMap || {};
+    var budgetsByLabel = props.budgetsByLabel || {};
     var selectedParcelle = props.selectedParcelle;
     var setSelectedParcelle = props.setSelectedParcelle;
     var metric = props.metric;
@@ -1031,7 +1109,7 @@
           // sont réactivés — sinon ils resteraient grisés « Génération… »
           // jusqu'au remontage de l'onglet.
           Promise.resolve().then(function () {
-            return exportCulture(cult, data, farmFilter, sbMap);
+            return exportCulture(cult, data, farmFilter, sbMap, budgetsByLabel);
           }).catch(function (e) {
             if (window.console) console.error('[Campagne] Export ' + cult + ' échoué :', e);
           }).then(function () {
@@ -1552,6 +1630,22 @@
     var _sbMap = useState(window.SB_PARCELLE_REF || {});
     var sbMap = _sbMap[0];
     var setSbMap = _sbMap[1];
+
+    // Budgets JH/Ha de la campagne courante : { LABEL_BEE_ONE_MAJ: { famille:
+    // jhParHa } }. Alimente les colonnes de suivi budgétaire de l'export Excel.
+    // Un échec de chargement n'est PAS bloquant : l'export part sans budget
+    // (colonnes vides), exactement comme avant toute saisie.
+    var _budgets = useState({});
+    var budgetsByLabel = _budgets[0];
+    var setBudgetsByLabel = _budgets[1];
+    useEffect(function () {
+      fetch('/api/pointage-rh?action=campagne-budget-list').then(function (r) {
+        return r.json();
+      }).then(function (d) {
+        if (!d || !d.success) return;
+        setBudgetsByLabel(CAT_budgetsByLabel(d.budgets || []));
+      }).catch(function () {});
+    }, []);
     useEffect(function () {
       fetch('/api/pointage-rh?action=sb-referentiel-list').then(function (r) {
         return r.json();
@@ -1803,6 +1897,7 @@
       farmFilter: farmFilter,
       cultureFilter: cultureFilter,
       sbMap: sbMap,
+      budgetsByLabel: budgetsByLabel,
       selectedParcelle: selectedParcelle,
       setSelectedParcelle: setSelectedParcelle,
       metric: metric,
@@ -1836,4 +1931,7 @@
     }));
   }
   window.CampagneAnalytiqueTab = CampagneAnalytiqueTab;
+  // Exposés pour les tests unitaires (node:test + vm), comme CampagneBudgetTab.
+  CampagneAnalytiqueTab.budgetsByLabel = CAT_budgetsByLabel;
+  CampagneAnalytiqueTab.buildCultureWorkbook = buildCultureWorkbook;
 })();

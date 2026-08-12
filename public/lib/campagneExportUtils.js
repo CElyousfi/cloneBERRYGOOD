@@ -40,6 +40,27 @@ const __cexp_SHEET_MAX = 31;
 /** Caractères interdits par Excel dans un nom de feuille : : \ / ? * [ ] */
 const __cexp_SHEET_FORBIDDEN = /[:\\/?*[\]]/g;
 
+/**
+ * En-tête des 4 colonnes de suivi budgétaire, communes aux deux feuilles.
+ * Elles ne sont renseignées QUE sur les lignes qui portent un budget :
+ * TOTAL_FAMILLE / TOTAL_GENERAL (feuille parcelle) et DATA / TOTAL_GENERAL
+ * (feuille Synthèse). Le budget est saisi par parcelle × famille : il n'existe
+ * pas à la maille opération, ces cellules y restent donc vides.
+ */
+const __cexp_BUDGET_HEADER = [
+  'Budget par Ha',
+  '% Consommé',
+  'JH par Ha restant',
+  'Total JH Restant',
+];
+
+/**
+ * Libellé de la colonne de pourcentage. Exporté : le moteur de rendu retrouve
+ * la (ou les) colonne(s) de % par leur EN-TÊTE et non par un index en dur, qui
+ * se décalerait au prochain ajout de colonne.
+ */
+const PERCENT_HEADER = '% Consommé';
+
 /** En-tête de la feuille « Synthèse » (JH uniquement, aucune colonne DH). */
 const __cexp_SYNTHESE_HEADER = [
   'Parcelle',
@@ -48,7 +69,7 @@ const __cexp_SYNTHESE_HEADER = [
   'Superficie (ha)',
   'Total JH',
   'Total JH / Ha',
-];
+].concat(__cexp_BUDGET_HEADER);
 
 /** Indentation des opérations sous leur famille (rendu AoA/SheetJS). */
 const __cexp_INDENT = '    ';
@@ -77,8 +98,22 @@ const __cexp_WCH = {
   parcelle: 32,  // feuille Synthèse
   ferme: 10,
   ha: 14,
-  jhPerHa: 14,   // colonne « Total JH / Ha » (dernière colonne)
+  jhPerHa: 14,   // colonne « Total JH / Ha »
+  budgetHa: 14,  // « Budget par Ha »
+  pct: 13,       // « % Consommé »
+  jhHaRest: 17,  // « JH par Ha restant »
+  jhRest: 16,    // « Total JH Restant »
 };
+
+/** Largeurs des 4 colonnes de suivi budgétaire, dans l'ordre de l'en-tête. */
+function __cexp_budgetCols() {
+  return [
+    { wch: __cexp_WCH.budgetHa },
+    { wch: __cexp_WCH.pct },
+    { wch: __cexp_WCH.jhHaRest },
+    { wch: __cexp_WCH.jhRest },
+  ];
+}
 
 // ============================================================================
 // INTERNES
@@ -110,6 +145,85 @@ function __cexp_perHa(jh, ha) {
   const h = Number(ha);
   if (!h || !isFinite(h) || h <= 0) return '';
   return __cexp_num(Number(jh) / h);
+}
+
+/**
+ * Comme __cexp_num, mais CONSERVE le zéro. Réservé aux colonnes de suivi
+ * budgétaire : « 0 % consommé » et « 0 JH restant » sont des informations, pas
+ * des cases vides — alors qu'un 0 de JH réalisé n'apporte rien et reste blanc.
+ * @param {*} v
+ * @returns {number|string} '' seulement si la valeur n'est pas un nombre fini.
+ */
+function __cexp_num0(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Ratio de consommation, arrondi à 4 décimales : la cellule porte le RATIO
+ * (0,4567), jamais 45,67 — un format Excel de pourcentage multiplie déjà par
+ * 100. 4 décimales = 2 décimales à l'affichage en %.
+ * @param {*} v
+ * @returns {number|string}
+ */
+function __cexp_ratio(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  return Math.round(n * 10000) / 10000;
+}
+
+/**
+ * Somme des budgets JH/Ha d'une parcelle (toutes familles confondues).
+ *
+ * Un budget à 0 vaut « pas de budget défini » (même convention que le backend
+ * `campagneBudget.mergeBudgets`, qui ne stocke pas les 0) : il n'entre pas dans
+ * la somme et ne rend pas la parcelle budgétée.
+ *
+ * @param {*} budgets map famille → JH/Ha
+ * @returns {number} 0 si aucun budget défini
+ */
+function sumBudget(budgets) {
+  const src = budgets || {};
+  let s = 0;
+  Object.keys(src).forEach(function (f) {
+    const v = Number(src[f]);
+    if (v && isFinite(v) && v > 0) s += v;
+  });
+  return Math.round(s * 100) / 100;
+}
+
+/**
+ * Les 4 cellules de suivi budgétaire d'une ligne :
+ *   [ Budget par Ha, % Consommé, JH par Ha restant, Total JH Restant ]
+ *
+ * Règle cardinale : SANS budget défini (absent, 0, négatif, non numérique) ou
+ * SANS superficie connue, les quatre cellules sont VIDES. Jamais 0, jamais
+ * 100 %, jamais ∞, jamais NaN — c'est le cas NOMINAL tant qu'aucun budget n'a
+ * été saisi, et une colonne remplie de 0 ou de 100 % laisserait croire à un
+ * dépassement généralisé.
+ *
+ * Le dépassement (> 100 %) est légitime et n'est PAS plafonné : les restants
+ * deviennent négatifs, ce qui est l'information attendue.
+ *
+ * @param {*} budgetJhParHa budget de la ligne, en JH/Ha
+ * @param {*} ha            superficie de la parcelle
+ * @param {*} jh            JH réellement consommés sur le périmètre de la ligne
+ * @returns {Array<number|string>} toujours 4 cellules
+ */
+function budgetCells(budgetJhParHa, ha, jh) {
+  const b = Number(budgetJhParHa);
+  const h = Number(ha);
+  if (!b || !isFinite(b) || b <= 0) return ['', '', '', ''];
+  if (!h || !isFinite(h) || h <= 0) return ['', '', '', ''];
+  const realized = Number(jh) || 0;
+  const budgetJh = b * h;
+  return [
+    __cexp_num0(b),
+    __cexp_ratio(realized / budgetJh),
+    __cexp_num0(b - realized / h),
+    __cexp_num0(budgetJh - realized),
+  ];
 }
 
 /**
@@ -181,6 +295,43 @@ function numFmtFor(v) {
 }
 
 /**
+ * Format Excel de la colonne « % Consommé ». La cellule contient le RATIO
+ * (0,4567) : le code `0.00%` le multiplie par 100 à l'affichage → « 45,67 % ».
+ * Même logique de décimales exactes que numFmtFor (pas de « 50, % » ni de
+ * « 45,70 % » factice).
+ *
+ * @param {*} v ratio de consommation
+ * @returns {string|null} null si la valeur n'est pas un nombre fini
+ */
+function percentFmtFor(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return null;
+  const shown = Math.round(v * 10000) / 100; // valeur telle qu'Excel l'affichera
+  const dec = (String(shown).split('.')[1] || '').length;
+  if (dec === 0) return '0%';
+  return dec === 1 ? '0.0%' : '0.00%';
+}
+
+/**
+ * Index (base 1, comme ExcelJS) des colonnes de pourcentage d'une feuille,
+ * repérées par leur EN-TÊTE dans la ligne COL_HEADER. Le renderer n'a ainsi
+ * aucun index en dur à maintenir quand une colonne est insérée.
+ *
+ * @param {Array<{kind:string, cells:Array<*>}>} rows lignes typées de la feuille
+ * @returns {Array<number>}
+ */
+function percentColumns(rows) {
+  const out = [];
+  const header = (rows || []).filter(function (r) {
+    return r && r.kind === ROW_KIND.COL_HEADER;
+  })[0];
+  if (!header) return out;
+  (header.cells || []).forEach(function (c, i) {
+    if (c === PERCENT_HEADER) out.push(i + 1);
+  });
+  return out;
+}
+
+/**
  * Nom de feuille Excel valide : caractères interdits nettoyés, 31 caractères
  * max, dédupliqué avec un suffixe `~2`, `~3`… en cas de collision (fréquent
  * après troncature : deux libellés longs se ressemblent sur leurs 31 premiers
@@ -222,7 +373,9 @@ function safeSheetName(nom, index, used) {
  * `kind`, ce qui permet au moteur de rendu (ExcelJS) d'appliquer un style SANS
  * re-deviner la nature de la ligne à partir de son texte.
  *
- * @param {Array<*>} parcelles [{ nomSb, label, ferme, ha, totalJh }]
+ * @param {Array<*>} parcelles [{ nomSb, label, ferme, ha, totalJh, budgets }]
+ *   `budgets` = map famille → JH/Ha saisie sur l'écran Budget ; absente ou vide
+ *   → colonnes de suivi budgétaire vides pour cette parcelle.
  * @returns {Array<{kind:string, cells:Array<*>}>}
  */
 function buildSyntheseRows(parcelles) {
@@ -233,16 +386,27 @@ function buildSyntheseRows(parcelles) {
   // connue (cf. ligne TOTAL plus bas).
   let ratioHa = 0;
   let ratioJh = 0;
+  // Sommes du BUDGET : périmètre encore plus restreint — parcelles à la fois
+  // budgétées ET de superficie connue (cf. ligne TOTAL).
+  let budHa = 0;
+  let budJh = 0;    // Σ (budget JH/Ha × ha) = budget total en JH
+  let budReel = 0;  // Σ JH réalisés sur ce même périmètre
   let n = 0;
   (parcelles || []).forEach(function (p) {
     const src = p || {};
     const ha = Number(src.ha);
     const jh = Number(src.totalJh) || 0;
+    const bud = sumBudget(src.budgets);
     totalHa += ha || 0;
     totalJh += jh;
     if (ha && isFinite(ha) && ha > 0) {
       ratioHa += ha;
       ratioJh += jh;
+      if (bud > 0) {
+        budHa += ha;
+        budJh += bud * ha;
+        budReel += jh;
+      }
     }
     n += 1;
     rows.push({
@@ -254,7 +418,7 @@ function buildSyntheseRows(parcelles) {
         __cexp_num(src.ha),
         __cexp_num(src.totalJh),
         __cexp_perHa(src.totalJh, src.ha),
-      ],
+      ].concat(budgetCells(bud, src.ha, jh)),
     });
   });
   if (n > 0) {
@@ -274,6 +438,14 @@ function buildSyntheseRows(parcelles) {
     //   le même poids à une parcelle de 0,2 ha qu'à une de 5 ha.
     //   Aucune parcelle avec superficie → Σha = 0 → cellule vide (pas de
     //   division par zéro).
+    //
+    // • Colonnes de suivi budgétaire = MÊME règle de périmètre, resserrée d'un
+    //   cran : seules les parcelles budgétées ET de superficie connue comptent.
+    //   « Budget par Ha » est donc la moyenne PONDÉRÉE Σ(budget × ha) ÷ Σha de
+    //   ce périmètre, et le « % Consommé » ne rapporte que les JH de ces mêmes
+    //   parcelles à leur budget — sinon les JH d'une parcelle non budgétée
+    //   viendraient consommer le budget des autres. Aucune parcelle budgétée →
+    //   les quatre cellules restent vides (cas nominal au démarrage).
     rows.push({
       kind: ROW_KIND.TOTAL_GENERAL,
       cells: [
@@ -282,7 +454,7 @@ function buildSyntheseRows(parcelles) {
         __cexp_num(totalHa),
         __cexp_num(totalJh),
         __cexp_perHa(ratioJh, ratioHa),
-      ],
+      ].concat(budgetCells(budHa > 0 ? budJh / budHa : 0, budHa, budReel)),
     });
   }
   return rows;
@@ -307,7 +479,7 @@ function syntheseSheetCols() {
     { wch: __cexp_WCH.ha },
     { wch: __cexp_WCH.total },
     { wch: __cexp_WCH.jhPerHa },
-  ];
+  ].concat(__cexp_budgetCols());
 }
 
 /**
@@ -326,7 +498,7 @@ function parcelleSheetCols(nbPeriodes) {
   for (let i = 0; i < n; i += 1) cols.push({ wch: __cexp_WCH.periode });
   cols.push({ wch: __cexp_WCH.total });
   cols.push({ wch: __cexp_WCH.jhPerHa });
-  return cols;
+  return cols.concat(__cexp_budgetCols());
 }
 
 /**
@@ -347,7 +519,8 @@ function parcelleSheetCols(nbPeriodes) {
  * [{ famille, operation, byPeriode: { <periode>: { jh, cout } }, total: { jh, cout } }]
  * — le champ `cout` est volontairement ignoré (export JH uniquement).
  *
- * @param {*} params { nomSb, ha, culture, campagne, periodes, opRows, famillesOrdered }
+ * @param {*} params { nomSb, ha, culture, campagne, periodes, opRows,
+ *   famillesOrdered, budgets } — `budgets` = map famille → JH/Ha.
  * @returns {Array<{kind:string, cells:Array<*>}>}
  */
 function buildParcelleSheetRows(params) {
@@ -367,7 +540,11 @@ function buildParcelleSheetRows(params) {
   periodes.forEach(function (per) { header.push(per); });
   header.push('Total JH');
   header.push('Total JH / Ha');
+  __cexp_BUDGET_HEADER.forEach(function (h) { header.push(h); });
   rows.push({ kind: ROW_KIND.COL_HEADER, cells: header });
+
+  // Budgets JH/Ha de la parcelle, par famille (écran Campagne › Budget).
+  const budgets = p.budgets || {};
 
   // Superficie de la parcelle : dénominateur de TOUTE la colonne JH / Ha
   // (opérations, totaux famille, total général). Inconnue ou nulle → colonne
@@ -397,6 +574,10 @@ function buildParcelleSheetRows(params) {
       const tJh = Number((r.total || {}).jh) || 0;
       line.push(__cexp_num(tJh));
       line.push(__cexp_perHa(tJh, ha));
+      // Suivi budgétaire : rien à la maille opération — le budget est saisi
+      // par famille. Cellules présentes mais vides pour garder l'alignement
+      // des colonnes (AoA/CSV inclus).
+      line.push('', '', '', '');
       famTotal.jh += tJh;
       grand.jh += tJh;
       rows.push({ kind: ROW_KIND.OPERATION, cells: line });
@@ -406,6 +587,7 @@ function buildParcelleSheetRows(params) {
     periodes.forEach(function (per) { famLine.push(__cexp_num(famTotal.byP[per])); });
     famLine.push(__cexp_num(famTotal.jh));
     famLine.push(__cexp_perHa(famTotal.jh, ha));
+    budgetCells(budgets[famille], ha, famTotal.jh).forEach(function (c) { famLine.push(c); });
     rows.push({ kind: ROW_KIND.TOTAL_FAMILLE, cells: famLine });
     rows.push({ kind: ROW_KIND.BLANK, cells: [] });
   });
@@ -414,6 +596,13 @@ function buildParcelleSheetRows(params) {
   periodes.forEach(function (per) { totalLine.push(__cexp_num(grand.byP[per])); });
   totalLine.push(__cexp_num(grand.jh));
   totalLine.push(__cexp_perHa(grand.jh, ha));
+  // Budget de la ligne TOTAL GÉNÉRAL = somme de TOUS les budgets saisis sur la
+  // parcelle, y compris ceux de familles sur lesquelles aucune journée n'a
+  // encore été pointée (elles n'ont donc pas de ligne dans la feuille). C'est
+  // le budget du PLAN complet : ne compter que les familles déjà travaillées
+  // ferait afficher un « % consommé » proche de 100 % dès la première
+  // quinzaine, exactement l'illusion de dépassement qu'on veut éviter.
+  budgetCells(sumBudget(budgets), ha, grand.jh).forEach(function (c) { totalLine.push(c); });
   rows.push({ kind: ROW_KIND.TOTAL_GENERAL, cells: totalLine });
 
   return rows;
@@ -443,8 +632,13 @@ function buildParcelleSheetAoA(params) {
 const __cexp_api = {
   SHEET_MAX: __cexp_SHEET_MAX,
   ROW_KIND,
+  PERCENT_HEADER,
   haLabel,
   numFmtFor,
+  percentFmtFor,
+  percentColumns,
+  sumBudget,
+  budgetCells,
   safeSheetName,
   buildSyntheseRows,
   buildSyntheseAoA,

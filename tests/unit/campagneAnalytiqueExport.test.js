@@ -1,0 +1,130 @@
+'use strict';
+
+// Jointure BUDGETS ↔ EXPORT de l'écran Campagne analytique.
+//
+// Les calculs vivent dans les helpers purs (campagneExportUtils, testés à part).
+// Ce fichier couvre le seul point où le composant peut se tromper en silence :
+// la CLÉ de jointure entre les budgets saisis (label BEE ONE) et les parcelles
+// de l'export. Une normalisation divergente ne lève aucune erreur — elle vide
+// simplement les colonnes de budget.
+//
+// Le composant est un IIFE chargé dans un faux `window` (vm), même technique
+// que tests/unit/campagneBudgetTab.test.js.
+
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+/**
+ * Ramène une valeur produite DANS le sandbox vm vers le realm des tests :
+ * sans ça, deepStrictEqual échoue sur l'identité des prototypes (Array/Object
+ * du vm ≠ ceux du test) alors que les structures sont identiques.
+ */
+function plain(v) {
+  return JSON.parse(JSON.stringify(v));
+}
+
+function read(rel) {
+  return fs.readFileSync(path.join(__dirname, '../..', rel), 'utf8');
+}
+
+function loadTab() {
+  const sandbox = { window: {}, console, document: undefined };
+  sandbox.window.React = {
+    createElement: function () { return null; },
+    useState: function (v) { return [v, function () {}]; },
+    useEffect: function () {},
+    useMemo: function (fn) { return fn(); },
+  };
+  vm.createContext(sandbox);
+  // Dépendances UMD réelles (pas de stub) : la normalisation de clé testée ici
+  // est précisément celle qu'elles imposent.
+  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
+  vm.runInContext(read('public/lib/campagneExportUtils.js'), sandbox);
+  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
+  return sandbox.window.CampagneAnalytiqueTab;
+}
+
+const Tab = loadTab();
+
+/** Jeu de données minimal : une parcelle Framboise, 2 ha, 30 JH de Taille. */
+const DATA = {
+  campagne: '2026-2027',
+  periodes: ['Q01'],
+  famillesOrdered: ['Taille'],
+  haByRef: { 'F1- S5 MARAVILLA': 2 },
+  rows: [{
+    parcelle: 'F1- S5 MARAVILLA',
+    refParcelle: 'F1- S5 MARAVILLA',
+    ferme: 'F1',
+    famille: 'Taille',
+    operation: 'Taille longue',
+    periode: 'Q01',
+    jh: 30,
+    cout: 4500,
+  }],
+};
+
+const SB_MAP = { 'F1- S5 MARAVILLA': { culture_sb: 'Framboise', nom_sb: 'S5 MARAVILLA', ha: 2 } };
+
+/** Les 4 dernières cellules (colonnes budgétaires) de la ligne TOTAL_FAMILLE. */
+function famBudgetCells(wb) {
+  const sheet = wb.sheets[1]; // 0 = Synthèse, 1 = la parcelle
+  const row = sheet.rows.filter((r) => r.kind === 'total-famille')[0];
+  return plain(row.cells.slice(-4));
+}
+
+test('budgetsByLabel — clé trim + MAJUSCULES, entrées sans label ignorées', () => {
+  const map = plain(Tab.budgetsByLabel([
+    { label_bee_one: '  f1- s5 maravilla  ', budgets: { Taille: 15 } },
+    { label_bee_one: '', budgets: { Taille: 99 } },
+    { budgets: { Taille: 99 } },
+    { label_bee_one: 'F5- S1 CORINA' },
+  ]));
+  assert.deepStrictEqual(Object.keys(map).sort(), ['F1- S5 MARAVILLA', 'F5- S1 CORINA']);
+  assert.deepStrictEqual(map['F1- S5 MARAVILLA'], { Taille: 15 });
+  assert.deepStrictEqual(map['F5- S1 CORINA'], {}, 'budgets absents → objet vide');
+});
+
+test('budgetsByLabel — liste vide / absente → map vide, aucun throw', () => {
+  assert.deepStrictEqual(plain(Tab.budgetsByLabel([])), {});
+  assert.deepStrictEqual(plain(Tab.budgetsByLabel(null)), {});
+  assert.deepStrictEqual(plain(Tab.budgetsByLabel(undefined)), {});
+});
+
+test('buildCultureWorkbook — le budget de la parcelle atteint la feuille', () => {
+  const budgets = Tab.budgetsByLabel([
+    { label_bee_one: 'F1- S5 MARAVILLA', budgets: { Taille: 20 } },
+  ]);
+  const wb = Tab.buildCultureWorkbook('Framboise', DATA, null, SB_MAP, budgets);
+  // 20 JH/ha × 2 ha = 40 JH budgétés, 30 réalisés → 75 %, 5 JH/ha, 10 JH
+  assert.deepStrictEqual(famBudgetCells(wb), [20, 0.75, 5, 10]);
+  // …et la ligne de la parcelle dans la Synthèse porte les mêmes valeurs
+  const dataRow = wb.sheets[0].rows.filter((r) => r.kind === 'data')[0];
+  assert.deepStrictEqual(plain(dataRow.cells.slice(-4)), [20, 0.75, 5, 10]);
+});
+
+test('buildCultureWorkbook — jointure insensible à la casse et aux espaces', () => {
+  const budgets = Tab.budgetsByLabel([
+    { label_bee_one: ' f1- s5 maravilla ', budgets: { Taille: 20 } },
+  ]);
+  const wb = Tab.buildCultureWorkbook('Framboise', DATA, null, SB_MAP, budgets);
+  assert.deepStrictEqual(famBudgetCells(wb), [20, 0.75, 5, 10]);
+});
+
+test('buildCultureWorkbook — aucun budget chargé → colonnes vides (cas nominal)', () => {
+  [undefined, {}, { 'AUTRE PARCELLE': { Taille: 20 } }].forEach((budgets) => {
+    const wb = Tab.buildCultureWorkbook('Framboise', DATA, null, SB_MAP, budgets);
+    assert.deepStrictEqual(famBudgetCells(wb), ['', '', '', ''], JSON.stringify(budgets));
+  });
+});
+
+test('buildCultureWorkbook — largeurs de colonnes alignées sur l\'en-tête', () => {
+  const wb = Tab.buildCultureWorkbook('Framboise', DATA, null, SB_MAP, {});
+  wb.sheets.forEach((s) => {
+    const header = s.rows.filter((r) => r.kind === 'col-header')[0];
+    assert.strictEqual(s.cols.length, header.cells.length, s.name);
+  });
+});
