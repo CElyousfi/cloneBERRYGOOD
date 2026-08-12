@@ -2,7 +2,7 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:ac4c0ea6dd78676a",
+    "sourceFingerprint": "sha256:e07ddc605e47720d",
     "stats": {
       "targetFiles": 200,
       "targetFilesWithDirectTests": 122,
@@ -137,10 +137,12 @@
     },
     "functions/lib/campagneBudget/validate.js": {
       "directTests": [
-        "functions/lib/campagneBudget/__tests__/validate.test.js"
+        "functions/lib/campagneBudget/__tests__/validate.test.js",
+        "tests/unit/campagneBudgetTab.test.js"
       ],
       "transitiveTests": [
-        "functions/lib/campagneBudget/__tests__/validate.test.js"
+        "functions/lib/campagneBudget/__tests__/validate.test.js",
+        "tests/unit/campagneBudgetTab.test.js"
       ]
     },
     "functions/lib/fonctions/fonctionsHistory.js": {
