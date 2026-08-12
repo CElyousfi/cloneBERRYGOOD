@@ -37,6 +37,17 @@
  *      renvoyé par le backend (seule source fiable de ce qui a réellement été
  *      remplacé).
  *
+ * CLÉ D'UNE OPÉRATION = (CODE GB, LIBELLÉ), jamais (FAMILLE, LIBELLÉ). Le
+ * tableau Campagne ne lit pas la famille inscrite sur la fiche d'une opération :
+ * il la déduit du code GB porté par chaque ligne de pointage BEE ONE
+ * (`resolveFamily` → `_refMap[code].famille`). Deux fiches légitimes portent le
+ * même libellé sous deux codes — « Nettoyage » existe en GB05 (Entretien
+ * structure) ET en GB11 (Service générale). Cet écran résout donc la famille
+ * DEPUIS LE CODE (`familles_par_code`, servi par referentiel-taches-list),
+ * identifie chaque opération par la clé `CODE::Libellé`, et AFFICHE le code à
+ * côté du libellé : deux lignes distinctes, deux budgets distincts, aucune
+ * ambiguïté à l'œil.
+ *
  * Sources :
  *   GET  /api/pointage-rh?action=parcelles-campagne-list   (parcelles campagne)
  *   GET  /api/pointage-rh?action=sb-referentiel-list       (nom SB + Ha)
@@ -109,24 +120,100 @@
     return typeof window.sbParcelleNom === 'function' ? window.sbParcelleNom(label) : (label || '—');
   }
 
+  /** Séparateur de la clé persistée `CODE::Libellé` — miroir du backend. */
+  var CBT_OP_KEY_SEP = '::';
+
+  /** Forme d'un code de groupe BEE ONE ('GB05', 'LB03'). */
+  var CBT_CODE_RE = /^[A-Za-z0-9_-]+$/;
+
+  /**
+   * Clé canonique d'une opération : `CODE::Libellé`. PURE.
+   *
+   * Miroir exact de `opKey` de functions/lib/campagneBudget/validate.js (le
+   * backend ne peut pas requérir public/ — cf. CLAUDE.md) ; un corpus partagé
+   * vérifie que les deux implémentations ne divergent pas.
+   *
+   * @param {*} code
+   * @param {*} operation
+   * @returns {string}
+   */
+  function CBT_opKey(code, operation) {
+    var c = String(code == null ? '' : code).trim().toUpperCase();
+    var op = String(operation == null ? '' : operation).trim();
+    if (!c || !CBT_CODE_RE.test(c)) return op;
+    return c + CBT_OP_KEY_SEP + op;
+  }
+
+  /**
+   * Décompose une clé d'opération. PURE. Miroir de `splitOpKey` (backend).
+   *
+   * @param {*} key
+   * @returns {{code: string, operation: string}} `code: ''` = clé sans code.
+   */
+  function CBT_splitOpKey(key) {
+    var raw = String(key == null ? '' : key).trim();
+    var i = raw.indexOf(CBT_OP_KEY_SEP);
+    if (i <= 0) return { code: '', operation: raw };
+    var code = raw.slice(0, i);
+    if (!CBT_CODE_RE.test(code)) return { code: '', operation: raw };
+    return { code: code.toUpperCase(), operation: raw.slice(i + CBT_OP_KEY_SEP.length).trim() };
+  }
+
+  /**
+   * Famille d'une opération, résolue DEPUIS LE CODE GB. PURE.
+   *
+   * Miroir de `familleDuCode` (backend), lui-même miroir de `resolveFamily` de
+   * functions/pointageService.js : le tableau Campagne n'utilise JAMAIS la
+   * famille inscrite sur la fiche, il la déduit du code porté par la ligne de
+   * pointage. L'écran de saisie doit faire pareil, sinon un budget peut être
+   * saisi sous une famille que le réalisé n'alimentera jamais.
+   *
+   * @param {*} code
+   * @param {*} familleFiche repli quand le code est inconnu de la table.
+   * @param {Object<string, *>} famillesParCode code → famille (ou → {famille}).
+   * @returns {string}
+   */
+  function CBT_familleDuCode(code, familleFiche, famillesParCode) {
+    var c = String(code == null ? '' : code).trim();
+    var map = famillesParCode && typeof famillesParCode === 'object'
+      && !Array.isArray(famillesParCode) ? famillesParCode : {};
+    var hit = c ? map[c] : null;
+    var resolved = hit && typeof hit === 'object' ? hit.famille : hit;
+    var r = String(resolved == null ? '' : resolved).trim();
+    if (r) return r;
+    return String(familleFiche == null ? '' : familleFiche).trim();
+  }
+
+  /**
+   * Libellé lisible d'une opération : « Libellé (CODE) ». PURE.
+   *
+   * @param {*} key clé d'opération.
+   * @returns {string}
+   */
+  function CBT_operationLabel(key) {
+    var p = CBT_splitOpKey(key);
+    return p.operation + (p.code ? ' (' + p.code + ')' : '');
+  }
+
   /**
    * Liste ordonnée et dédupliquée des familles d'opération. PURE.
    *
-   * Même dérivation que le backend (`famillesOrdered` de
-   * campagne-analytique-detail) : ordre d'apparition des opérations du
-   * référentiel, JAMAIS une liste figée en dur.
+   * Familles RÉSOLUES DEPUIS LE CODE (cf. CBT_familleDuCode), triées par l'ordre
+   * du référentiel — la même maille et le même ordre que le tableau Campagne,
+   * jamais une liste figée en dur.
    *
-   * @param {Array<{famille?: string, ordre?: number}>} ops
+   * @param {Array<{code?: string, famille?: string, ordre?: number}>} ops
+   * @param {Object<string, *>} [famillesParCode] table code → famille.
    * @returns {Array<string>}
    */
-  function CBT_famillesFromOps(ops) {
+  function CBT_famillesFromOps(ops, famillesParCode) {
     var sorted = (ops || []).slice().sort(function (a, b) {
       return ((a && a.ordre) || 0) - ((b && b.ordre) || 0);
     });
     var seen = {};
     var out = [];
     sorted.forEach(function (o) {
-      var f = o && o.famille ? String(o.famille).trim() : '';
+      var f = CBT_familleDuCode(o && o.code, o && o.famille, famillesParCode);
       if (!f || seen[f]) return;
       seen[f] = true;
       out.push(f);
@@ -137,22 +224,29 @@
   /**
    * Opérations du référentiel groupées par famille, dans l'ordre. PURE.
    *
-   * Aucune liste figée : la source est `referentiel-taches-list`.
+   * Chaque opération est identifiée par sa CLÉ `CODE::Libellé` : un même libellé
+   * porté par deux codes donne DEUX lignes distinctes, donc deux budgets
+   * distincts (cas réel « Nettoyage » GB05/GB11). La déduplication porte sur la
+   * clé, jamais sur le seul libellé — sinon la seconde opération disparaissait
+   * silencieusement de l'écran.
    *
-   * @param {Array<{famille?: string, operation?: string, ordre?: number}>} ops
-   * @returns {Object<string, Array<string>>}
+   * @param {Array<{code?: string, famille?: string, operation?: string,
+   *   ordre?: number}>} ops
+   * @param {Object<string, *>} [famillesParCode] table code → famille.
+   * @returns {Object<string, Array<string>>} famille → clés d'opération.
    */
-  function CBT_opsByFamille(ops) {
+  function CBT_opsByFamille(ops, famillesParCode) {
     var sorted = (ops || []).slice().sort(function (a, b) {
       return ((a && a.ordre) || 0) - ((b && b.ordre) || 0);
     });
     var out = {};
     sorted.forEach(function (o) {
-      var f = o && o.famille ? String(o.famille).trim() : '';
+      var f = CBT_familleDuCode(o && o.code, o && o.famille, famillesParCode);
       var op = o && o.operation ? String(o.operation).trim() : '';
       if (!f || !op) return;
+      var key = CBT_opKey(o && o.code, op);
       if (!out[f]) out[f] = [];
-      if (out[f].indexOf(op) === -1) out[f].push(op);
+      if (out[f].indexOf(key) === -1) out[f].push(key);
     });
     return out;
   }
@@ -310,8 +404,8 @@
    * @param {string} args.campagne
    * @param {string} args.label
    * @param {Array<string>} args.familles familles affichées, dans l'ordre.
-   * @param {Object<string, Array<string>>} [args.opsByFamille] opérations
-   *   affichées par famille (référentiel).
+   * @param {Object<string, Array<string>>} [args.opsByFamille] clés d'opération
+   *   affichées par famille (référentiel), forme `CODE::Libellé`.
    * @param {Object<string, string>} args.values saisie brute niveau famille.
    * @param {Object<string, Object<string, string>>} [args.opValues] saisie brute
    *   niveau opération.
@@ -346,7 +440,10 @@
         var op = ops[j];
         var vOp = parseOne((opValues[f] || {})[op]);
         if (vOp === null) {
-          return { ok: false, error: 'Valeur invalide pour « ' + f + ' — ' + op + ' »' };
+          return {
+            ok: false,
+            error: 'Valeur invalide pour « ' + f + ' — ' + CBT_operationLabel(op) + ' »',
+          };
         }
         famOps[op] = vOp;
         somme += vOp;
@@ -539,8 +636,12 @@
             window.SB_PARCELLE_REF = map;
           }
           setRows(parc.campagne_courante || []);
-          setFamilles(CBT_famillesFromOps(taches.operations || []));
-          setOpsByFamille(CBT_opsByFamille(taches.operations || []));
+          // `familles_par_code` = la table de résolution du tableau Campagne.
+          // Absente (backend antérieur) → repli sur la famille de la fiche, comme
+          // avant : l'écran reste utilisable, il perd seulement l'alignement.
+          var famillesParCode = taches.familles_par_code || {};
+          setFamilles(CBT_famillesFromOps(taches.operations || [], famillesParCode));
+          setOpsByFamille(CBT_opsByFamille(taches.operations || [], famillesParCode));
           setBudgetsByLabel(CBT_budgetsByLabel(buds.budgets || []));
           setOpBudgetsByLabel(CBT_operationsByLabel(buds.budgets || []));
           setCampagne(buds.campagne || '');
@@ -884,11 +985,26 @@
                 if (isOpen) {
                   ops.forEach(function (op) {
                     var vOp = (opValues[f] || {})[op];
+                    var opInfo = CBT_splitOpKey(op);
                     famRows.push(React.createElement('tr', {
-                      key: f + '::' + op,
+                      key: f + '||' + op,
                       style: { background: CBT_C.surface },
                     },
-                      React.createElement('td', { style: { ...tdStyle, paddingLeft: 46, color: CBT_C.textSec } }, op),
+                      React.createElement('td', { style: { ...tdStyle, paddingLeft: 46, color: CBT_C.textSec } },
+                        opInfo.operation,
+                        // CODE GB affiché : c'est LUI la clé du budget, et le même
+                        // libellé peut exister sous deux codes (« Nettoyage » =
+                        // GB05 Entretien structure ET GB11 Service générale). Sans
+                        // le code, deux lignes légitimes seraient indiscernables.
+                        opInfo.code && React.createElement('span', {
+                          style: {
+                            marginLeft: 8, padding: '1px 6px', borderRadius: 6,
+                            fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
+                            background: CBT_C.surface2, color: CBT_C.textTer,
+                          },
+                          title: 'Code référentiel BEE ONE — clé de rapprochement avec le réalisé',
+                        }, opInfo.code)
+                      ),
                       React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
                         canEdit
                           ? React.createElement('input', {
@@ -1020,6 +1136,10 @@
   // exposé, pas de nouveau nom global (collisions UMD de public/components).
   CampagneBudgetTab.famillesFromOps = CBT_famillesFromOps;
   CampagneBudgetTab.opsByFamille = CBT_opsByFamille;
+  CampagneBudgetTab.opKey = CBT_opKey;
+  CampagneBudgetTab.splitOpKey = CBT_splitOpKey;
+  CampagneBudgetTab.familleDuCode = CBT_familleDuCode;
+  CampagneBudgetTab.operationLabel = CBT_operationLabel;
   CampagneBudgetTab.saveMessage = CBT_saveMessage;
   CampagneBudgetTab.budgetsByLabel = CBT_budgetsByLabel;
   CampagneBudgetTab.operationsByLabel = CBT_operationsByLabel;

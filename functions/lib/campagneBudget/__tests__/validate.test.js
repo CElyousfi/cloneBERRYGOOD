@@ -10,7 +10,12 @@ const {
   normCampagne,
   normLabel,
   budgetDocId,
+  opKey,
+  splitOpKey,
+  familleDuCode,
   indexOperations,
+  canonicalizeOperationKeys,
+  operationLabel,
   purgeAutorisee,
   parseBudgetValue,
   validateBudgetSave,
@@ -25,13 +30,35 @@ const {
 const FAMILLES = ['Ferti-irrigation', 'Entretien structure', 'Taille', 'Tuteurage & palissage']
 const LABELS = ['F5- CASCADE -S13', 'F1- ROUGE -S01']
 
-/** Référentiel des couples (famille, opération) — forme de `loadReferentielTaches().ops`. */
+/**
+ * Référentiel des triplets (code, famille, opération) — forme de
+ * `referentielOperationsConnues(loadReferentielTaches())`, famille RÉSOLUE DEPUIS
+ * LE CODE. Les codes sont ceux du référentiel réel.
+ */
 const OPERATIONS = [
-  { famille: 'Taille', operation: 'Taille de formation' },
-  { famille: 'Taille', operation: 'Taille d\'hiver' },
-  { famille: 'Ferti-irrigation', operation: 'Nettoyage goutteurs' },
-  { famille: 'Ferti-irrigation', operation: 'Fertigation' },
-  { famille: 'Entretien structure', operation: 'Réparation filets' },
+  { code: 'GB09', famille: 'Taille', operation: 'Taille de formation' },
+  { code: 'GB09', famille: 'Taille', operation: 'Taille d\'hiver' },
+  { code: 'GB02', famille: 'Ferti-irrigation', operation: 'Nettoyage goutteurs' },
+  { code: 'GB02', famille: 'Ferti-irrigation', operation: 'Fertigation' },
+  { code: 'GB05', famille: 'Entretien structure', operation: 'Réparation filets' },
+]
+
+/** Clés canoniques du référentiel de test — lisibilité des assertions. */
+const K = {
+  hiver: 'GB09::Taille d\'hiver',
+  formation: 'GB09::Taille de formation',
+  fertigation: 'GB02::Fertigation',
+  goutteurs: 'GB02::Nettoyage goutteurs',
+  filets: 'GB05::Réparation filets',
+}
+
+/**
+ * Cas RÉEL du référentiel : « Nettoyage » existe sous DEUX codes, avec deux
+ * familles distinctes. C'est la raison d'être de la clé (code, opération).
+ */
+const OPERATIONS_NETTOYAGE = [
+  { code: 'GB05', famille: 'Entretien structure', operation: 'Nettoyage' },
+  { code: 'GB11', famille: 'Service générale', operation: 'Nettoyage' },
 ]
 
 function base(overrides) {
@@ -323,14 +350,16 @@ test('writeBudgetInTransaction — supporte un snapshot dont `exists` est une fo
 
 test('indexOperations — indexe les couples, ignore le bruit', () => {
   const idx = indexOperations([
-    { famille: ' Taille ', operation: ' Taille d\'hiver ' },
+    { code: ' gb09 ', famille: ' Taille ', operation: ' Taille d\'hiver ' },
     { famille: 'Taille', operation: '' },
     { famille: '', operation: 'X' },
     null,
     'pas un objet',
   ])
-  assert.strictEqual(Object.keys(idx).length, 1)
-  assert.deepStrictEqual(Object.values(idx)[0], { famille: 'Taille', operation: 'Taille d\'hiver' })
+  // Deux entrées de lookup (clé canonique + alias hérité), une seule opération.
+  assert.strictEqual(Object.keys(idx).length, 2)
+  const entree = { famille: 'Taille', operation: 'Taille d\'hiver', code: 'GB09', key: K.hiver }
+  Object.values(idx).forEach((v) => assert.deepStrictEqual(v, entree))
 })
 
 test('indexOperations — sans référentiel : index vide (l\'appelant fail-close)', () => {
@@ -338,18 +367,177 @@ test('indexOperations — sans référentiel : index vide (l\'appelant fail-clos
   assert.deepStrictEqual(indexOperations([]), {})
 })
 
+// ------------------------------------------- clé (code, opération) — le cœur
+//
+// Le tableau Campagne ne lit JAMAIS la famille de la fiche : il la déduit du
+// code GB de la ligne de pointage (resolveFamily → _refMap[code].famille). La
+// clé du budget doit donc être (code, opération), sinon rien ne garantit qu'un
+// budget rejoigne les JH réalisés.
+
+test('opKey / splitOpKey — aller-retour, et tolérance aux clés sans code', () => {
+  assert.strictEqual(opKey('gb05', ' Nettoyage '), 'GB05::Nettoyage')
+  assert.deepStrictEqual(splitOpKey('GB05::Nettoyage'), { code: 'GB05', operation: 'Nettoyage' })
+  // Document antérieur à l'alignement : la clé se réduit au libellé.
+  assert.strictEqual(opKey('', 'Nettoyage'), 'Nettoyage')
+  assert.strictEqual(opKey(null, 'Nettoyage'), 'Nettoyage')
+  assert.deepStrictEqual(splitOpKey('Nettoyage'), { code: '', operation: 'Nettoyage' })
+  // Un libellé qui contiendrait le séparateur n'est PAS pris pour un code.
+  assert.strictEqual(opKey('Entretien structure', 'Nettoyage'), 'Nettoyage')
+  assert.deepStrictEqual(splitOpKey('Sortie :: retour'), { code: '', operation: 'Sortie :: retour' })
+  assert.deepStrictEqual(splitOpKey(null), { code: '', operation: '' })
+})
+
+test('familleDuCode — la famille vient du CODE, la fiche n\'est qu\'un repli', () => {
+  const map = { GB05: { famille: 'Entretien structure' }, GB11: 'Service générale' }
+  // Fiche divergente (faute de frappe, import partiel) : le code tranche —
+  // sans quoi le budget partirait sous une famille que le réalisé n'alimente pas.
+  assert.strictEqual(familleDuCode('GB05', 'Entretien Structure', map), 'Entretien structure')
+  assert.strictEqual(familleDuCode('GB11', 'Autre', map), 'Service générale')
+  // Code inconnu de la table → repli sur la fiche, jamais de famille vide.
+  assert.strictEqual(familleDuCode('GB99', ' Récolte ', map), 'Récolte')
+  assert.strictEqual(familleDuCode('', 'Récolte', map), 'Récolte')
+  assert.strictEqual(familleDuCode('GB05', 'X', null), 'X')
+  assert.strictEqual(familleDuCode(null, null, map), '')
+})
+
+/**
+ * Clé de lookup de l'index — miroir de `__cb_opKey` (non exporté). Séparateur
+ * = caractère NUL : un séparateur imprimable rendrait ('A B', 'C') et
+ * ('A', 'B C') indiscernables.
+ */
+function lk(famille, key) {
+  return String(famille).trim().toUpperCase() + '\u0000' + String(key).trim().toUpperCase()
+}
+
+test('indexOperations — MÊME opération sous DEUX codes : deux entrées distinctes', () => {
+  const idx = indexOperations(OPERATIONS_NETTOYAGE)
+  assert.strictEqual(idx[lk('Entretien structure', 'GB05::Nettoyage')].key, 'GB05::Nettoyage')
+  assert.strictEqual(idx[lk('Service générale', 'GB11::Nettoyage')].key, 'GB11::Nettoyage')
+  // Les deux alias hérités existent : ils sont non ambigus DANS LEUR famille.
+  assert.strictEqual(idx[lk('Entretien structure', 'Nettoyage')].key, 'GB05::Nettoyage')
+  assert.strictEqual(idx[lk('Service générale', 'Nettoyage')].key, 'GB11::Nettoyage')
+})
+
+test('indexOperations — alias hérité AMBIGU (deux codes, même famille) : retiré', () => {
+  // Cas que la clé (famille, opération) rendait indistinguable : ici on refuse
+  // de deviner, la clé nue ne désigne plus rien.
+  const idx = indexOperations([
+    { code: 'GB03', famille: 'plantation', operation: 'Plantation' },
+    { code: 'LB03', famille: 'plantation', operation: 'Plantation' },
+  ])
+  assert.strictEqual(idx[lk('plantation', 'Plantation')], undefined)
+  assert.strictEqual(idx[lk('plantation', 'GB03::Plantation')].key, 'GB03::Plantation')
+  assert.strictEqual(idx[lk('plantation', 'LB03::Plantation')].key, 'LB03::Plantation')
+})
+
+test('operationLabel — le code est affiché quand la clé en porte un', () => {
+  assert.strictEqual(operationLabel('Entretien structure', 'GB05::Nettoyage'),
+    'Entretien structure — Nettoyage (GB05)')
+  assert.strictEqual(operationLabel('Service générale', 'GB11::Nettoyage'),
+    'Service générale — Nettoyage (GB11)')
+  // Clé héritée : libellé seul, aucun code inventé.
+  assert.strictEqual(operationLabel('Taille', 'Taille d\'hiver'), 'Taille — Taille d\'hiver')
+})
+
+// -------------------------------------------------- canonicalizeOperationKeys
+
+test('canonicalizeOperationKeys — une clé héritée est ramenée à sa forme canonique', () => {
+  assert.deepStrictEqual(
+    canonicalizeOperationKeys({ 'Taille': { 'Taille d\'hiver': 1.5 } }, OPERATIONS),
+    { 'Taille': { [K.hiver]: 1.5 } }
+  )
+})
+
+test('canonicalizeOperationKeys — deux formes de la MÊME opération : la canonique gagne', () => {
+  // Sans ça, familleTotal compterait deux fois la même opération.
+  const out = canonicalizeOperationKeys(
+    { 'Taille': { 'Taille d\'hiver': 1, [K.hiver]: 4 } }, OPERATIONS)
+  assert.deepStrictEqual(out, { 'Taille': { [K.hiver]: 4 } })
+  assert.strictEqual(familleTotal('Taille', {}, out).total, 4)
+})
+
+test('canonicalizeOperationKeys — clé inconnue laissée telle quelle, 0 conservé', () => {
+  // Le sort d'une clé inconnue appartient à la purge (et à son garde-fou), pas
+  // à cette fonction ; un 0 signifie « supprimer » et doit atteindre le merge.
+  assert.deepStrictEqual(
+    canonicalizeOperationKeys({ 'Taille': { 'Fantôme': 2, [K.hiver]: 0 } }, OPERATIONS),
+    { 'Taille': { 'Fantôme': 2, [K.hiver]: 0 } }
+  )
+})
+
+test('canonicalizeOperationKeys — sans référentiel : aucune conversion, aucune perte', () => {
+  const src = { 'Taille': { 'Taille d\'hiver': 1, 'Zero': 0 } }
+  assert.deepStrictEqual(canonicalizeOperationKeys(src, []), src)
+  assert.deepStrictEqual(canonicalizeOperationKeys(src, null), src)
+  assert.deepStrictEqual(canonicalizeOperationKeys(null, OPERATIONS), {})
+  assert.deepStrictEqual(canonicalizeOperationKeys({ 'Taille': 3 }, OPERATIONS), {})
+})
+
 // ------------------------------------------- validateBudgetSave (opérations)
 
-test('validateBudgetSave — accepte un budget par opération, casse canonisée', () => {
+test('validateBudgetSave — accepte un budget par opération, clés canonisées', () => {
   const v = validateBudgetSave(base({
     budgets: {},
-    budgets_operations: { 'taille': { 'TAILLE D\'HIVER': '1,5', 'Taille de formation': 2 } },
+    // Formes acceptées en entrée : clé canonique, clé héritée, casse quelconque.
+    // Sortie TOUJOURS canonique `CODE::Libellé`.
+    budgets_operations: { 'taille': { 'GB09::TAILLE D\'HIVER': '1,5', 'Taille de formation': 2 } },
   }))
   assert.strictEqual(v.ok, true)
   assert.deepStrictEqual(v.budgets, {})
   assert.deepStrictEqual(v.budgets_operations, {
-    'Taille': { 'Taille d\'hiver': 1.5, 'Taille de formation': 2 },
+    'Taille': { [K.hiver]: 1.5, [K.formation]: 2 },
   })
+})
+
+test('validateBudgetSave — MÊME libellé sous DEUX codes : deux budgets distincts', () => {
+  // « Nettoyage » existe en GB05 (Entretien structure) ET en GB11 (Service
+  // générale). Le tableau Campagne impute les JH selon le code de la ligne de
+  // pointage : les deux budgets ne doivent JAMAIS se confondre.
+  const v = validateBudgetSave({
+    campagne: '2026-2027',
+    label_bee_one: 'F5- CASCADE -S13',
+    budgets: {},
+    budgets_operations: {
+      'Entretien structure': { 'GB05::Nettoyage': 3 },
+      'Service générale': { 'GB11::Nettoyage': 8 },
+    },
+    famillesConnues: ['Entretien structure', 'Service générale'],
+    operationsConnues: OPERATIONS_NETTOYAGE,
+    labelsConnus: LABELS,
+  })
+  assert.strictEqual(v.ok, true)
+  assert.deepStrictEqual(v.budgets_operations, {
+    'Entretien structure': { 'GB05::Nettoyage': 3 },
+    'Service générale': { 'GB11::Nettoyage': 8 },
+  })
+  assert.strictEqual(familleTotal('Entretien structure', {}, v.budgets_operations).total, 3)
+  assert.strictEqual(familleTotal('Service générale', {}, v.budgets_operations).total, 8)
+})
+
+test('validateBudgetSave — un code n\'ouvre pas les opérations d\'un autre code', () => {
+  // GB11::Nettoyage sous « Entretien structure » : le couple n'existe pas.
+  const v = validateBudgetSave({
+    campagne: '2026-2027',
+    label_bee_one: 'F5- CASCADE -S13',
+    budgets: {},
+    budgets_operations: { 'Entretien structure': { 'GB11::Nettoyage': 3 } },
+    famillesConnues: ['Entretien structure', 'Service générale'],
+    operationsConnues: OPERATIONS_NETTOYAGE,
+    labelsConnus: LABELS,
+  })
+  assert.strictEqual(v.ok, false)
+  assert.match(String(v.error), /Opération inconnue du référentiel/)
+})
+
+test('validateBudgetSave — clé héritée ET clé canonique de la même opération = doublon', () => {
+  // Les deux désignent la même chose : accepter les deux ferait écraser
+  // silencieusement l'une par l'autre.
+  const v = validateBudgetSave(base({
+    budgets: {},
+    budgets_operations: { 'Taille': { 'Taille d\'hiver': 1, [K.hiver]: 2 } },
+  }))
+  assert.strictEqual(v.ok, false)
+  assert.match(String(v.error), /doublon/)
 })
 
 test('validateBudgetSave — les deux niveaux cohabitent dans un même save', () => {
@@ -360,7 +548,7 @@ test('validateBudgetSave — les deux niveaux cohabitent dans un même save', ()
   }))
   assert.strictEqual(v.ok, true)
   assert.deepStrictEqual(v.budgets, { 'Entretien structure': 4 })
-  assert.deepStrictEqual(v.budgets_operations, { 'Taille': { 'Taille d\'hiver': 1 } })
+  assert.deepStrictEqual(v.budgets_operations, { 'Taille': { [K.hiver]: 1 } })
 })
 
 test('validateBudgetSave — `budgets` absent est admis si des opérations sont saisies', () => {
@@ -589,15 +777,15 @@ test('purgeOperationsInconnues — référentiel vide/absent = AUCUNE purge (fai
 test('writeBudgetInTransaction — supprimer UNE opération l\'efface réellement en base', async () => {
   const f = fakeTx({
     budgets: {},
-    budgets_operations: { 'Taille': { 'Taille d\'hiver': 1, 'Taille de formation': 2 } },
+    budgets_operations: { 'Taille': { [K.hiver]: 1, [K.formation]: 2 } },
   })
   const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
-    budgets_operations: { 'Taille': { 'Taille d\'hiver': 0 } },
+    budgets_operations: { 'Taille': { [K.hiver]: 0 } },
   }))
 
   assert.strictEqual(f.calls.length, 1)
   const call = f.calls[0]
-  assert.deepStrictEqual(call.data.budgets_operations, { 'Taille': { 'Taille de formation': 2 } })
+  assert.deepStrictEqual(call.data.budgets_operations, { 'Taille': { [K.formation]: 2 } })
   // Le masque doit porter la RACINE `budgets_operations`. Avec {merge:true} (ou
   // un mergeFields au chemin `budgets_operations.Taille."Taille d'hiver"`), la
   // valeur 1 survivrait en base : c'est le bug du lot précédent, transposé à
@@ -608,17 +796,18 @@ test('writeBudgetInTransaction — supprimer UNE opération l\'efface réellemen
     !call.options.mergeFields.some((p) => String(p).indexOf('budgets_operations.') === 0),
     'aucun chemin descendant sous budgets_operations'
   )
-  assert.deepStrictEqual(out.budgets_operations, { 'Taille': { 'Taille de formation': 2 } })
+  assert.deepStrictEqual(out.budgets_operations, { 'Taille': { [K.formation]: 2 } })
 })
 
 test('writeBudgetInTransaction — un doc niveau famille reste intact quand on ajoute des opérations', async () => {
   // Donnée déjà en PROD (lot précédent) : aucune migration, rien n'est perdu.
+  // C'est EXACTEMENT la forme du seul document existant (`budgets` seul).
   const f = fakeTx({ budgets: { 'Entretien structure': 4, 'Taille': 9 } })
   const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
-    budgets_operations: { 'Taille': { 'Taille d\'hiver': 1 } },
+    budgets_operations: { 'Taille': { [K.hiver]: 1 } },
   }))
   assert.deepStrictEqual(out.budgets, { 'Entretien structure': 4, 'Taille': 9 })
-  assert.deepStrictEqual(out.budgets_operations, { 'Taille': { 'Taille d\'hiver': 1 } })
+  assert.deepStrictEqual(out.budgets_operations, { 'Taille': { [K.hiver]: 1 } })
   // …et la règle de total tranche : Taille = 1 (opérations), Entretien = 4.
   assert.strictEqual(familleTotal('Taille', out.budgets, out.budgets_operations).total, 1)
   assert.strictEqual(familleTotal('Entretien structure', out.budgets, out.budgets_operations).total, 4)
@@ -628,11 +817,11 @@ test('writeBudgetInTransaction — création : les deux maps sont écrites et ma
   const f = fakeTx(null)
   await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
     budgets: { 'Entretien structure': 4 },
-    budgets_operations: { 'Taille': { 'Taille d\'hiver': 1 } },
+    budgets_operations: { 'Taille': { [K.hiver]: 1 } },
   }))
   const call = f.calls[0]
   assert.deepStrictEqual(call.data.budgets, { 'Entretien structure': 4 })
-  assert.deepStrictEqual(call.data.budgets_operations, { 'Taille': { 'Taille d\'hiver': 1 } })
+  assert.deepStrictEqual(call.data.budgets_operations, { 'Taille': { [K.hiver]: 1 } })
   for (const k of Object.keys(call.data)) {
     assert.ok(call.options.mergeFields.includes(k), 'champ hors masque : ' + k)
   }
@@ -767,14 +956,16 @@ test('writeBudgetInTransaction — une suppression SANS opération n\'est pas un
 test('writeBudgetInTransaction — purge les opérations obsolètes et les signale', async () => {
   const f = fakeTx({
     budgets: { 'Ancienne famille': 3 },
+    // Document ANTÉRIEUR à l'alignement : clés sans code. Elles sont ramenées à
+    // leur forme canonique, PAS purgées — aucune migration, aucune perte.
     budgets_operations: { 'Taille': { 'Taille d\'hiver': 1, 'Op supprimée': 7 } },
   })
   const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
-    budgets_operations: { 'Taille': { 'Taille de formation': 2 } },
+    budgets_operations: { 'Taille': { [K.formation]: 2 } },
   }))
   assert.deepStrictEqual(out.purgees, ['Ancienne famille'])
   assert.deepStrictEqual(out.operations_purgees, ['Taille — Op supprimée'])
   assert.deepStrictEqual(f.calls[0].data.budgets_operations, {
-    'Taille': { 'Taille d\'hiver': 1, 'Taille de formation': 2 },
+    'Taille': { [K.hiver]: 1, [K.formation]: 2 },
   })
 })
