@@ -52,19 +52,19 @@
       },
       {
         "commits": 6,
-        "file": "public/components/ParcellesReferentielTab.jsx"
-      },
-      {
-        "commits": 5,
-        "file": "functions/lib/bdc/bdcDigest.js"
-      },
-      {
-        "commits": 5,
         "file": "public/components/CampagneBudgetTab.js"
+      },
+      {
+        "commits": 6,
+        "file": "public/components/CampagneBudgetTab.jsx"
+      },
+      {
+        "commits": 6,
+        "file": "public/components/ParcellesReferentielTab.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:a3a28a739a237cde",
+    "sourceFingerprint": "sha256:663065932b58b640",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -779,14 +779,14 @@
           "windowDays": 90
         },
         {
-          "coCommits": 5,
+          "coCommits": 6,
           "domain": null,
           "file": "public/components/CampagneBudgetTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 5,
+          "coCommits": 6,
           "domain": null,
           "file": "tests/unit/campagneBudgetTab.test.js",
           "note": "probabilistic",
@@ -802,6 +802,20 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "functions/lib/campagneBudget/__tests__/validate.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
+          "file": "functions/lib/campagneBudget/validate.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -810,20 +824,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/lib/campagneBudget/__tests__/validate.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/lib/campagneBudget/validate.js",
           "note": "probabilistic",
           "windowDays": 90
         },
