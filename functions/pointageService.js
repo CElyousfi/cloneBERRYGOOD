@@ -937,6 +937,31 @@ async function loadReferentielTaches() {
   }
 }
 
+/**
+ * Triplets (code, famille, opération) du référentiel, la famille étant RÉSOLUE
+ * DEPUIS LE CODE — la même règle que `resolveFamily` applique aux lignes de
+ * pointage BEE ONE. C'est le référentiel autorisé du budget JH/Ha : sans cette
+ * résolution, une fiche dont le champ `famille` diverge de celle que son code
+ * résout ferait saisir un budget que le réalisé ne rejoindrait jamais.
+ *
+ * @param {{map: Object, ops: Array}} ref sortie de loadReferentielTaches().
+ * @returns {Array<{code: string, famille: string, operation: string}>}
+ */
+function referentielOperationsConnues(ref) {
+  const map = (ref && ref.map) || {};
+  // Une fiche sans code reste admise : sa clé se réduit alors au libellé
+  // (cf. campagneBudget.opKey) et sa famille à celle de la fiche — on ne
+  // l'exclut pas du budget sous prétexte qu'elle est incomplète.
+  return ((ref && ref.ops) || [])
+    .filter((o) => o && o.operation)
+    .map((o) => ({
+      code: String(o.code == null ? '' : o.code).trim(),
+      famille: campagneBudget.familleDuCode(o.code, o.famille, map),
+      operation: String(o.operation).trim(),
+    }))
+    .filter((o) => o.famille && o.operation);
+}
+
 // _refMap : populé par warmRefTaches() — utilisé de manière synchrone dans resolveFamily
 let _refMap = {};
 
@@ -2826,7 +2851,21 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // ------ REFERENTIEL-TACHES-LIST: liste complète des opérations du référentiel ------
       if (action === 'referentiel-taches-list') {
         const ref = await loadReferentielTaches();
-        return res.json({ success: true, operations: ref.ops.sort((a, b) => a.ordre - b.ordre) });
+        // `familles_par_code` = la table que `resolveFamily` utilise pour
+        // attribuer une famille à une ligne de pointage BEE ONE. Exposée pour que
+        // l'écran Budget résolve la famille d'une opération EXACTEMENT comme le
+        // tableau Campagne — depuis le code GB, jamais depuis le champ `famille`
+        // de la fiche (deux fiches peuvent porter le même libellé sous deux codes,
+        // cf. « Nettoyage » GB05/GB11).
+        const famillesParCode = {};
+        Object.keys(ref.map || {}).forEach((code) => {
+          famillesParCode[code] = (ref.map[code] || {}).famille || '';
+        });
+        return res.json({
+          success: true,
+          operations: ref.ops.sort((a, b) => a.ordre - b.ordre),
+          familles_par_code: famillesParCode,
+        });
       }
 
       // ------ SUIVI-TUNNELS: hors-récolte progress by parcelle/tâche for caporal screens ------
@@ -4077,6 +4116,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         }
         const snapB = await db_firestore.collection("sb_campagne_budget_jh")
           .where("campagne", "==", campagneB).get();
+        // Référentiel (cache 1h) : sert UNIQUEMENT à ramener les clés d'opération
+        // héritées (libellé nu) à leur forme canonique `CODE::Libellé` en lecture.
+        // Aucune écriture, aucune purge ici — la conversion est en mémoire.
+        const refListB = await loadReferentielTaches();
+        const operationsConnuesListB = referentielOperationsConnues(refListB);
         const budgets = [];
         snapB.forEach((doc) => {
           const d = doc.data() || {};
@@ -4096,7 +4140,10 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             // mergeBudgets(x, {}) / mergeBudgetsOperations(x, {}) = normalisation
             // en lecture (valeurs numériques > 0 seulement), aucune écriture.
             budgets: campagneBudget.mergeBudgets(d.budgets, {}),
-            budgets_operations: campagneBudget.mergeBudgetsOperations(d.budgets_operations, {}),
+            budgets_operations: campagneBudget.mergeBudgetsOperations(
+              campagneBudget.canonicalizeOperationKeys(d.budgets_operations, operationsConnuesListB),
+              {}
+            ),
           });
         });
         budgets.sort((a, b) => (a.label_bee_one || "").localeCompare(b.label_bee_one || ""));
@@ -4118,13 +4165,13 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         }
 
         const bodyB = req.body || {};
-        // Familles ET COUPLES (famille, opération) AUTORISÉS = référentiel des
-        // tâches (jamais une liste figée en dur).
+        // Familles ET COUPLES (code, opération) AUTORISÉS = référentiel des tâches
+        // (jamais une liste figée en dur), la famille étant RÉSOLUE DEPUIS LE CODE
+        // — exactement comme le tableau Campagne attribue une famille à une ligne
+        // de pointage. C'est ce qui rend budget et réalisé inséparables.
         const refDataB = await loadReferentielTaches();
-        const famillesConnuesB = [...new Set((refDataB.ops || []).map((o) => o.famille).filter(Boolean))];
-        const operationsConnuesB = (refDataB.ops || [])
-          .filter((o) => o && o.famille && o.operation)
-          .map((o) => ({ famille: o.famille, operation: o.operation }));
+        const operationsConnuesB = referentielOperationsConnues(refDataB);
+        const famillesConnuesB = [...new Set(operationsConnuesB.map((o) => o.famille))];
         // Labels AUTORISÉS = référentiel parcelles Smart Berry.
         const refSnapB = await db_firestore.collection("sb_parcelle_referentiel").get();
         const labelsConnusB = [];

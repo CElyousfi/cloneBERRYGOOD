@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:505169121339c870 -->
+<!-- sourceFingerprint: sha256:0e4b5b6db4f23e6e -->
 # Code Map — Modules lib (151)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -22,7 +22,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/caisseImport/excelToISO.js | — | excelToISO |
 | functions/lib/caisseImport/index.js | — | parseWorkbook, buildDrySummary, excelToISO, detectCols, CAISSE_FORMATS, SAMPLE_LIMIT |
 | functions/lib/caisseImport/parsers.js | — | parseDepensesMonthly, parsePaieRecap, parseBahiaSingle |
-| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_PURGE_RATIO, purgeAutorisee, normCampagne, normLabel, budgetDocId, indexOperations, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, writeBudgetInTransaction |
+| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_PURGE_RATIO, OP_KEY_SEP, purgeAutorisee, normCampagne, normLabel, budgetDocId, opKey, splitOpKey, familleDuCode, indexOperations, canonicalizeOperationKeys, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, writeBudgetInTransaction |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |

@@ -16,7 +16,7 @@
  *     label_bee_one: 'F5- CASCADE -S13',   // libellé source, non normalisé
  *     budgets: { 'Ferti-irrigation': 3.5, 'Taille': 1.2 },  // JH/Ha AU NIVEAU FAMILLE
  *     budgets_operations: {                                 // JH/Ha PAR OPÉRATION
- *       'Ferti-irrigation': { 'Nettoyage goutteurs': 0.8, 'Fertigation': 2.7 },
+ *       'Ferti-irrigation': { 'GB02::Nettoyage goutteurs': 0.8, 'GB02::Fertigation': 2.7 },
  *     },
  *     updated_by: { uid, profileId },
  *     updated_at: serverTimestamp(),
@@ -44,8 +44,25 @@
  *    `sb_parcelle_referentiel`), sans '/' (interdit dans un docId Firestore) ;
  *  - familles : uniquement des familles du référentiel des tâches
  *    (`referentiel_taches`), jamais une liste figée en dur ;
- *  - opérations : uniquement des COUPLES (famille, opération) du même
+ *  - opérations : uniquement des COUPLES (code GB, opération) du même
  *    référentiel — une opération rattachée à une autre famille est refusée ;
+ *
+ * CLÉ D'UNE OPÉRATION = LE COUPLE (CODE GB, OPÉRATION), PAS (FAMILLE, OPÉRATION).
+ * Le tableau Campagne ne lit JAMAIS la famille inscrite sur la fiche d'une
+ * opération : il la déduit du code GB porté par chaque ligne de pointage BEE ONE
+ * (`resolveFamily` → `_refMap[code].famille`, functions/pointageService.js). Deux
+ * fiches légitimes peuvent porter le MÊME libellé d'opération sous deux codes —
+ * cas réel du référentiel : « Nettoyage » existe en GB05 (Entretien structure) ET
+ * en GB11 (Service générale). Keyer le budget par (famille, opération) le rendait
+ * dépendant d'un champ que le réalisé n'utilise pas ; keyer par (code, opération)
+ * rend les deux écrans structurellement inséparables.
+ * Forme persistée d'une clé d'opération : `CODE::Libellé` (cf. `opKey`). Les clés
+ * SANS code (documents écrits avant cet alignement) restent lisibles et sont
+ * ramenées à leur forme canonique à la lecture et avant toute écriture
+ * (`canonicalizeOperationKeys`) — jamais de migration de masse.
+ * Le niveau FAMILLE (`budgets`) reste keyé par le NOM de famille : c'est aussi la
+ * maille d'agrégation du réalisé côté Campagne (`byFamille`), et le nom de famille
+ * y est déjà celui résolu depuis le code.
  *  - valeurs : nombres finis, >= 0, <= MAX_JH_PAR_HA ; virgule décimale
  *    acceptée (saisie FR) ; arrondies à 2 décimales.
  *  - un budget à 0 n'est pas stocké : 0 = « pas de budget défini » (cf.
@@ -130,36 +147,180 @@ function __cb_opKey(famille, operation) {
   )
 }
 
+/** Séparateur de la clé persistée `CODE::Libellé`. */
+const OP_KEY_SEP = '::'
+
 /**
- * Indexe le référentiel des opérations par couple (famille, opération).
+ * Forme d'un code de groupe BEE ONE ('GB05', 'LB03'). Sert à ne PAS confondre le
+ * préfixe d'une clé canonique avec un libellé d'opération qui contiendrait '::'.
+ */
+const __cb_CODE_RE = /^[A-Za-z0-9_-]+$/
+
+/**
+ * Clé canonique d'une opération : `CODE::Libellé`. PURE.
  *
- * @param {Array<{famille?: *, operation?: *}>|null|undefined} operationsConnues
- * @returns {Object<string, {famille: string, operation: string}>} vide si le
- *   référentiel est absent (l'appelant décide alors du fail-closed).
+ * Sans code exploitable, la clé se réduit au libellé — c'est exactement la forme
+ * des documents antérieurs à l'alignement sur le code GB, qui restent ainsi
+ * lisibles sans conversion.
+ *
+ * @param {*} code code GB du référentiel.
+ * @param {*} operation libellé de l'opération.
+ * @returns {string}
+ */
+function opKey(code, operation) {
+  const c = String(code == null ? '' : code).trim().toUpperCase()
+  const op = String(operation == null ? '' : operation).trim()
+  if (!c || !__cb_CODE_RE.test(c)) return op
+  return c + OP_KEY_SEP + op
+}
+
+/**
+ * Décompose une clé d'opération. PURE.
+ *
+ * @param {*} key
+ * @returns {{code: string, operation: string}} `code: ''` = clé sans code
+ *   (document antérieur à l'alignement), le libellé est alors rendu tel quel.
+ */
+function splitOpKey(key) {
+  const raw = String(key == null ? '' : key).trim()
+  const i = raw.indexOf(OP_KEY_SEP)
+  if (i <= 0) return { code: '', operation: raw }
+  const code = raw.slice(0, i)
+  if (!__cb_CODE_RE.test(code)) return { code: '', operation: raw }
+  return { code: code.toUpperCase(), operation: raw.slice(i + OP_KEY_SEP.length).trim() }
+}
+
+/**
+ * Famille d'une opération telle que le tableau Campagne la résout : depuis le
+ * CODE GB, jamais depuis le champ `famille` de la fiche. PURE.
+ *
+ * Miroir de `resolveFamily` (functions/pointageService.js) restreint au
+ * référentiel : `_refMap[code].famille` d'abord, la famille de la fiche seulement
+ * si le code est inconnu de la table de résolution. Sans ça, une fiche dont la
+ * famille diverge de celle que le code résout produirait une ligne de budget que
+ * le réalisé ne rejoindrait jamais.
+ *
+ * @param {*} code
+ * @param {*} familleFiche famille inscrite sur la fiche (repli).
+ * @param {Object<string, *>|null|undefined} famillesParCode code → famille, ou
+ *   code → { famille } (forme de `_refMap`).
+ * @returns {string}
+ */
+function familleDuCode(code, familleFiche, famillesParCode) {
+  const c = String(code == null ? '' : code).trim()
+  const map =
+    famillesParCode && typeof famillesParCode === 'object' && !Array.isArray(famillesParCode)
+      ? famillesParCode
+      : {}
+  const hit = c ? map[c] : null
+  const resolved = hit && typeof hit === 'object' ? hit.famille : hit
+  const r = String(resolved == null ? '' : resolved).trim()
+  if (r) return r
+  return String(familleFiche == null ? '' : familleFiche).trim()
+}
+
+/**
+ * Indexe le référentiel des opérations par couple (famille, clé d'opération).
+ *
+ * L'index accepte DEUX formes de clé pour la même opération :
+ *  - la clé canonique `CODE::Libellé` ;
+ *  - le seul libellé (documents antérieurs à l'alignement sur le code) — mais
+ *    UNIQUEMENT s'il est non ambigu dans sa famille. Si deux codes portent le
+ *    même libellé DANS LA MÊME famille, le libellé nu ne désigne plus rien : il
+ *    est retiré de l'index plutôt que rattaché arbitrairement à l'un des deux.
+ *
+ * @param {Array<{code?: *, famille?: *, operation?: *}>|null|undefined} operationsConnues
+ * @returns {Object<string, {famille: string, operation: string, code: string,
+ *   key: string}>} vide si le référentiel est absent (l'appelant décide alors du
+ *   fail-closed). Toute entrée pointe sur sa forme CANONIQUE (`key`).
  */
 function indexOperations(operationsConnues) {
-  /** @type {Object<string, {famille: string, operation: string}>} */
+  /** @type {Object<string, {famille: string, operation: string, code: string, key: string}>} */
   const out = {}
+  /** @type {Object<string, string|null>} clé nue → clé canonique, null = ambiguë. */
+  const legacySeen = {}
   const list = Array.isArray(operationsConnues) ? operationsConnues : []
   for (const o of list) {
     if (!o || typeof o !== 'object') continue
     const famille = String(o.famille == null ? '' : o.famille).trim()
     const operation = String(o.operation == null ? '' : o.operation).trim()
     if (!famille || !operation) continue
-    const k = __cb_opKey(famille, operation)
-    if (!out[k]) out[k] = { famille, operation }
+    const key = opKey(o.code, operation)
+    const k = __cb_opKey(famille, key)
+    if (!out[k]) out[k] = { famille, operation, code: splitOpKey(key).code, key }
+    const legacy = __cb_opKey(famille, operation)
+    if (legacy === k) continue
+    if (legacySeen[legacy] === undefined) {
+      legacySeen[legacy] = key
+      if (!out[legacy]) out[legacy] = out[k]
+    } else if (legacySeen[legacy] !== key) {
+      legacySeen[legacy] = null
+      delete out[legacy]
+    }
   }
   return out
 }
 
 /**
- * Libellé lisible d'un couple purgé — sert les messages utilisateur.
+ * Libellé lisible d'une opération — sert les messages utilisateur. PURE.
+ *
+ * Le code est affiché quand la clé en porte un : deux opérations de même libellé
+ * sous deux codes ne doivent JAMAIS produire deux messages identiques.
+ *
  * @param {string} famille
- * @param {string} operation
+ * @param {string} key clé d'opération (canonique ou libellé nu).
  * @returns {string}
  */
-function operationLabel(famille, operation) {
-  return famille + ' — ' + operation
+function operationLabel(famille, key) {
+  const parts = splitOpKey(key)
+  return famille + ' — ' + parts.operation + (parts.code ? ' (' + parts.code + ')' : '')
+}
+
+/**
+ * Ramène les clés d'opération d'un budget à leur forme canonique `CODE::Libellé`.
+ * PURE.
+ *
+ * Appliquée à la LECTURE et avant le merge d'écriture : un document écrit avant
+ * l'alignement sur le code reste exploitable sans migration de masse, et ne peut
+ * pas cohabiter avec sa propre forme canonique (sinon `familleTotal` compterait
+ * deux fois la même opération).
+ *
+ * Une clé introuvable au référentiel est laissée TELLE QUELLE : c'est la purge —
+ * et son garde-fou proportionnel — qui décide de son sort, pas cette fonction.
+ *
+ * @param {Object<string, *>|null|undefined} budgetsOperations
+ * @param {Array<{code?: *, famille?: *, operation?: *}>|null|undefined} operationsConnues
+ *   référentiel absent = aucune conversion (on ne devine rien).
+ * @returns {Object<string, Object<string, *>>} nouvelle map (aucun argument muté).
+ */
+function canonicalizeOperationKeys(budgetsOperations, operationsConnues) {
+  const src =
+    budgetsOperations && typeof budgetsOperations === 'object' && !Array.isArray(budgetsOperations)
+      ? budgetsOperations
+      : {}
+  const index = indexOperations(operationsConnues)
+  const aucunReferentiel = Object.keys(index).length === 0
+  /** @type {Object<string, Object<string, *>>} */
+  const out = {}
+  for (const famille of Object.keys(src)) {
+    const ops = src[famille]
+    if (!ops || typeof ops !== 'object' || Array.isArray(ops)) continue
+    /** @type {Object<string, *>} */
+    const kept = {}
+    for (const k of Object.keys(ops)) {
+      // Sans référentiel, aucune conversion : on recopie à l'identique. On ne
+      // filtre PAS les valeurs (un 0 signifie « supprimer » et doit survivre
+      // jusqu'au merge) — cette fonction renomme des clés, rien d'autre.
+      const hit = aucunReferentiel ? null : index[__cb_opKey(famille, k)]
+      const target = hit ? hit.key : k
+      // Résidu : la forme canonique existe déjà, la clé nue est son ancêtre. On
+      // garde la canonique (autoritaire) et on jette le doublon.
+      if (target !== k && Object.prototype.hasOwnProperty.call(ops, target)) continue
+      kept[target] = ops[k]
+    }
+    if (Object.keys(kept).length > 0) out[famille] = kept
+  }
+  return out
 }
 
 /**
@@ -269,11 +430,14 @@ function parseBudgetValue(raw) {
  * @param {*} input.campagne libellé de campagne.
  * @param {*} input.label_bee_one label BEE ONE de la parcelle.
  * @param {*} [input.budgets] map famille → JH/Ha.
- * @param {*} [input.budgets_operations] map famille → (opération → JH/Ha).
- * @param {Array<string>} input.famillesConnues familles du référentiel tâches.
- * @param {Array<{famille?: *, operation?: *}>} [input.operationsConnues] couples
- *   (famille, opération) du référentiel tâches — requis dès qu'une opération
- *   est saisie (fail-closed).
+ * @param {*} [input.budgets_operations] map famille → (clé d'opération → JH/Ha).
+ *   Clé acceptée sous sa forme canonique `CODE::Libellé` OU sous la forme
+ *   héritée (libellé nu, non ambigu) ; la sortie est TOUJOURS canonique.
+ * @param {Array<string>} input.famillesConnues familles du référentiel tâches,
+ *   résolues DEPUIS LE CODE (cf. familleDuCode).
+ * @param {Array<{code?: *, famille?: *, operation?: *}>} [input.operationsConnues]
+ *   triplets (code, famille, opération) du référentiel tâches — requis dès qu'une
+ *   opération est saisie (fail-closed).
  * @param {Array<string>} input.labelsConnus labels du référentiel parcelles.
  * @returns {ValidationBudget}
  */
@@ -392,18 +556,22 @@ function validateBudgetSave(input) {
       if (!hit) {
         return {
           ok: false,
-          error: 'Opération inconnue du référentiel : « ' + rawOperation
+          error: 'Opération inconnue du référentiel : « '
+            + splitOpKey(rawOperation).operation
             + ' » (' + canonFamille + ')',
         }
       }
-      if (Object.prototype.hasOwnProperty.call(famBudgets, hit.operation)) {
+      // Doublon détecté sur la clé CANONIQUE : envoyer la même opération sous sa
+      // forme nue ET sous sa forme `CODE::Libellé` doit être refusé, sinon la
+      // dernière écrasait silencieusement la première.
+      if (Object.prototype.hasOwnProperty.call(famBudgets, hit.key)) {
         return { ok: false, error: 'Opération en doublon : « ' + hit.operation + ' »' }
       }
       const parsedOp = parseBudgetValue(rawFamilleOps[rawOperation])
       if (!parsedOp.ok) {
-        return { ok: false, error: parsedOp.error + ' (' + operationLabel(canonFamille, hit.operation) + ')' }
+        return { ok: false, error: parsedOp.error + ' (' + operationLabel(canonFamille, hit.key) + ')' }
       }
-      famBudgets[hit.operation] = /** @type {number} */ (parsedOp.value)
+      famBudgets[hit.key] = /** @type {number} */ (parsedOp.value)
     }
     budgetsOperations[canonFamille] = famBudgets
   }
@@ -518,8 +686,9 @@ function familleTotal(famille, budgets, budgetsOperations) {
  * absents du référentiel courant. Même décision que `purgeFamillesInconnues`
  * (purge à l'écriture, fail-safe si le référentiel est vide).
  *
- * @param {Object<string, Object<string, number>>} budgetsOperations
- * @param {Array<{famille?: *, operation?: *}>|null|undefined} operationsConnues
+ * @param {Object<string, Object<string, number>>} budgetsOperations clés supposées
+ *   canoniques (cf. canonicalizeOperationKeys, appliqué en amont).
+ * @param {Array<{code?: *, famille?: *, operation?: *}>|null|undefined} operationsConnues
  *   liste vide/absente = aucune purge.
  * @returns {{budgets_operations: Object<string, Object<string, number>>,
  *   budgets_operations_connues: Object<string, Object<string, number>>,
@@ -663,8 +832,8 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
  * @param {Object<string, Object<string, number>>} [args.budgets_operations]
  *   valeurs validées entrantes (niveau opération).
  * @param {Array<string>} [args.famillesConnues] référentiel courant (purge).
- * @param {Array<{famille?: *, operation?: *}>} [args.operationsConnues]
- *   référentiel courant des opérations (purge).
+ * @param {Array<{code?: *, famille?: *, operation?: *}>} [args.operationsConnues]
+ *   référentiel courant des opérations (canonisation des clés + purge).
  * @param {string|null} args.uid
  * @param {string} args.profileId
  * @param {*} args.serverTimestamp valeur d'horodatage serveur (injectée).
@@ -682,9 +851,17 @@ async function writeBudgetInTransaction(tx, docRef, args) {
   const avant = mergeBudgets(data.budgets || null, {})
   const merged = mergeBudgets(data.budgets || null, a.budgets || {})
   const purged = purgeFamillesInconnues(merged, a.famillesConnues)
+  // Canonisation AVANT le merge : l'entrant est keyé `CODE::Libellé`, un document
+  // antérieur porte le libellé nu. Sans cette étape les deux formes de la MÊME
+  // opération cohabiteraient dans la map fusionnée — soit un double comptage dans
+  // familleTotal, soit une purge de la forme héritée.
+  // L'entrant est canonisé lui aussi : en production il sort déjà de
+  // validateBudgetSave (donc canonique), mais cette fonction doit être correcte
+  // seule — un appelant qui passerait des clés héritées ne doit pas créer un
+  // doublon indétectable.
   const mergedOps = mergeBudgetsOperations(
-    data.budgets_operations || null,
-    a.budgets_operations || {}
+    canonicalizeOperationKeys(data.budgets_operations || null, a.operationsConnues),
+    canonicalizeOperationKeys(a.budgets_operations || {}, a.operationsConnues)
   )
   const purgedOps = purgeOperationsInconnues(mergedOps, a.operationsConnues)
 
@@ -742,11 +919,16 @@ module.exports = {
   MAX_FAMILLES,
   MAX_OPERATIONS,
   MAX_PURGE_RATIO,
+  OP_KEY_SEP,
   purgeAutorisee,
   normCampagne,
   normLabel,
   budgetDocId,
+  opKey,
+  splitOpKey,
+  familleDuCode,
   indexOperations,
+  canonicalizeOperationKeys,
   operationLabel,
   parseBudgetValue,
   validateBudgetSave,

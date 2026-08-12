@@ -112,21 +112,51 @@ const CBT = load();
 
 // ------------------------------------------------------------ famillesFromOps
 
+/** Table code → famille, telle que servie par `referentiel-taches-list`. */
+const FAMILLES_PAR_CODE = {
+  GB02: 'Ferti-irrigation',
+  GB05: 'Entretien structure',
+  GB09: 'Taille',
+  GB11: 'Service générale',
+};
+
+/**
+ * Référentiel de test, forme de `referentiel-taches-list`. « Nettoyage » y
+ * figure DEUX fois, sous GB05 et sous GB11 — cas réel du référentiel d'Omar.
+ */
+const REF_OPS = [
+  { code: 'GB02', famille: 'Ferti-irrigation', operation: 'Fertigation', ordre: 1 },
+  { code: 'GB05', famille: 'Entretien structure', operation: 'Nettoyage', ordre: 2 },
+  { code: 'GB09', famille: 'Taille', operation: 'Taille d\'hiver', ordre: 3 },
+  { code: 'GB11', famille: 'Service générale', operation: 'Nettoyage', ordre: 4 },
+];
+
 test('famillesFromOps — dédupliqué, trié par ordre du référentiel', () => {
   const ops = [
-    { famille: 'Taille', ordre: 3 },
-    { famille: 'Ferti-irrigation', ordre: 1 },
-    { famille: 'Taille', ordre: 4 },
-    { famille: 'Entretien structure', ordre: 2 },
+    { code: 'GB09', famille: 'Taille', ordre: 3 },
+    { code: 'GB02', famille: 'Ferti-irrigation', ordre: 1 },
+    { code: 'GB09', famille: 'Taille', ordre: 4 },
+    { code: 'GB05', famille: 'Entretien structure', ordre: 2 },
   ];
-  assert.deepStrictEqual(plain(CBT.famillesFromOps(ops)), [
+  assert.deepStrictEqual(plain(CBT.famillesFromOps(ops, FAMILLES_PAR_CODE)), [
     'Ferti-irrigation', 'Entretien structure', 'Taille',
   ]);
 });
 
+test('famillesFromOps — la famille vient du CODE, pas du champ de la fiche', () => {
+  // Le tableau Campagne impute les JH via _refMap[code].famille : une fiche dont
+  // le champ `famille` diverge (faute de frappe, import partiel) produirait sinon
+  // une ligne de budget que le réalisé n'alimenterait jamais.
+  const ops = [{ code: 'GB05', famille: 'Entretien Structure ', ordre: 1 }];
+  assert.deepStrictEqual(plain(CBT.famillesFromOps(ops, FAMILLES_PAR_CODE)),
+    ['Entretien structure']);
+  // Sans table de résolution (backend antérieur) : repli sur la fiche.
+  assert.deepStrictEqual(plain(CBT.famillesFromOps(ops, {})), ['Entretien Structure']);
+});
+
 test('famillesFromOps — tolère vide, null et familles blanches', () => {
-  assert.deepStrictEqual(plain(CBT.famillesFromOps(null)), []);
-  assert.deepStrictEqual(plain(CBT.famillesFromOps([{ famille: '  ' }, {}])), []);
+  assert.deepStrictEqual(plain(CBT.famillesFromOps(null, FAMILLES_PAR_CODE)), []);
+  assert.deepStrictEqual(plain(CBT.famillesFromOps([{ famille: '  ' }, {}], {})), []);
 });
 
 // ------------------------------------------------------------ budgetsByLabel
@@ -211,22 +241,83 @@ test('buildSavePayload — refuse une valeur d\'opération invalide, message sit
   assert.strictEqual(neg.ok, false);
 });
 
+test('buildSavePayload — envoie les CLÉS (code, opération), message d\'erreur situé par code', () => {
+  const r = CBT.buildSavePayload({
+    campagne: '2026-2027',
+    label: 'P1',
+    familles: ['Entretien structure', 'Service générale'],
+    opsByFamille: {
+      'Entretien structure': ['GB05::Nettoyage'],
+      'Service générale': ['GB11::Nettoyage'],
+    },
+    values: {},
+    opValues: {
+      'Entretien structure': { 'GB05::Nettoyage': '3' },
+      'Service générale': { 'GB11::Nettoyage': '8' },
+    },
+  });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(plain(r.payload.budgets_operations), {
+    'Entretien structure': { 'GB05::Nettoyage': 3 },
+    'Service générale': { 'GB11::Nettoyage': 8 },
+  });
+
+  const bad = CBT.buildSavePayload({
+    campagne: '2026-2027', label: 'P1', familles: ['Entretien structure'],
+    opsByFamille: { 'Entretien structure': ['GB05::Nettoyage'] },
+    values: {}, opValues: { 'Entretien structure': { 'GB05::Nettoyage': 'abc' } },
+  });
+  assert.strictEqual(bad.ok, false);
+  // Le message doit désigner LAQUELLE des deux opérations « Nettoyage ».
+  assert.match(String(bad.error), /Entretien structure — Nettoyage \(GB05\)/);
+});
+
 // -------------------------------------------------------------- opsByFamille
 
 test('opsByFamille — groupé par famille, ordre du référentiel, dédupliqué', () => {
   const ops = [
-    { famille: 'Taille', operation: 'B', ordre: 2 },
-    { famille: 'Taille', operation: 'A', ordre: 1 },
-    { famille: 'Taille', operation: 'A', ordre: 3 },
-    { famille: 'Ferti-irrigation', operation: 'C', ordre: 4 },
-    { famille: '', operation: 'X', ordre: 5 },
-    { famille: 'Taille', operation: '', ordre: 6 },
+    { code: 'GB09', famille: 'Taille', operation: 'B', ordre: 2 },
+    { code: 'GB09', famille: 'Taille', operation: 'A', ordre: 1 },
+    { code: 'GB09', famille: 'Taille', operation: 'A', ordre: 3 },
+    { code: 'GB02', famille: 'Ferti-irrigation', operation: 'C', ordre: 4 },
+    { code: '', famille: '', operation: 'X', ordre: 5 },
+    { code: 'GB09', famille: 'Taille', operation: '', ordre: 6 },
   ];
-  assert.deepStrictEqual(plain(CBT.opsByFamille(ops)), {
-    'Taille': ['A', 'B'],
-    'Ferti-irrigation': ['C'],
+  assert.deepStrictEqual(plain(CBT.opsByFamille(ops, FAMILLES_PAR_CODE)), {
+    'Taille': ['GB09::A', 'GB09::B'],
+    'Ferti-irrigation': ['GB02::C'],
   });
-  assert.deepStrictEqual(plain(CBT.opsByFamille(null)), {});
+  assert.deepStrictEqual(plain(CBT.opsByFamille(null, FAMILLES_PAR_CODE)), {});
+});
+
+test('opsByFamille — MÊME libellé sous DEUX codes : deux lignes, deux budgets', () => {
+  // « Nettoyage » GB05 (Entretien structure) et GB11 (Service générale). Keyer
+  // par le libellé seul en perdait une ; keyer par (code, opération) les sépare,
+  // exactement comme le tableau Campagne sépare les JH réalisés.
+  const byFamille = plain(CBT.opsByFamille(REF_OPS, FAMILLES_PAR_CODE));
+  assert.deepStrictEqual(byFamille['Entretien structure'], ['GB05::Nettoyage']);
+  assert.deepStrictEqual(byFamille['Service générale'], ['GB11::Nettoyage']);
+
+  // Deux budgets INDÉPENDANTS : la valeur de l'un ne fuit pas dans l'autre.
+  const opValues = {
+    'Entretien structure': { 'GB05::Nettoyage': '3' },
+    'Service générale': { 'GB11::Nettoyage': '8' },
+  };
+  assert.strictEqual(CBT.familleTotal('Entretien structure', {}, opValues).total, 3);
+  assert.strictEqual(CBT.familleTotal('Service générale', {}, opValues).total, 8);
+});
+
+test('opsByFamille — deux codes dans la MÊME famille ne se dédupliquent plus', () => {
+  // GB03/LB03 partagent la famille « plantation » au référentiel réel. Avec la
+  // clé (famille, opération), la seconde opération disparaissait de l'écran.
+  const ops = [
+    { code: 'GB03', famille: 'plantation', operation: 'Plantation', ordre: 1 },
+    { code: 'LB03', famille: 'plantation', operation: 'Plantation', ordre: 2 },
+  ];
+  assert.deepStrictEqual(
+    plain(CBT.opsByFamille(ops, { GB03: 'plantation', LB03: 'plantation' })),
+    { 'plantation': ['GB03::Plantation', 'LB03::Plantation'] }
+  );
 });
 
 // --------------------------------------------------------- operationsByLabel
@@ -351,6 +442,66 @@ test('familleTotal — le corpus partagé couvre bien les trois sources', () => 
     return backendBudget.familleTotal(cas[1], cas[2], cas[3]).source;
   }));
   assert.deepStrictEqual([...sources].sort(), ['aucun', 'famille', 'operations']);
+});
+
+// ------------------- équivalence des miroirs de la CLÉ (code, opération)
+//
+// `opKey` / `splitOpKey` / `familleDuCode` existent DEUX fois (composant +
+// functions/lib/campagneBudget/validate.js). Une dérive rendrait le budget
+// illisible par le backend — clés écrites d'un côté, cherchées de l'autre.
+// Corpus PARTAGÉ, égalité stricte exigée.
+
+const CORPUS_OP_KEY = [
+  ['nominal', 'GB05', 'Nettoyage'],
+  ['casse et espaces', ' gb05 ', ' Nettoyage '],
+  ['sans code (document antérieur)', '', 'Nettoyage'],
+  ['code null', null, 'Nettoyage'],
+  ['code non conforme (un libellé de famille)', 'Entretien structure', 'Nettoyage'],
+  ['libellé vide', 'GB05', ''],
+  ['libellé contenant le séparateur', 'GB05', 'Sortie :: retour'],
+  ['tout absent', null, null],
+];
+
+test('opKey — front et back donnent la MÊME clé sur corpus partagé', () => {
+  CORPUS_OP_KEY.forEach(function (cas) {
+    const [libelle, code, operation] = cas;
+    assert.strictEqual(CBT.opKey(code, operation), backendBudget.opKey(code, operation),
+      'divergence front/back — cas : ' + libelle);
+  });
+});
+
+test('splitOpKey — front et back décomposent à l\'identique', () => {
+  const cles = ['GB05::Nettoyage', 'Nettoyage', 'Sortie :: retour', '::X', '', null,
+    'GB05::', 'gb05::Nettoyage'];
+  cles.forEach(function (k) {
+    assert.deepStrictEqual(plain(CBT.splitOpKey(k)), backendBudget.splitOpKey(k),
+      'divergence front/back — clé : ' + String(k));
+  });
+});
+
+test('familleDuCode — front et back résolvent la MÊME famille', () => {
+  const map = { GB05: { famille: 'Entretien structure' }, GB11: 'Service générale' };
+  const cas = [
+    ['GB05', 'Entretien Structure', map],
+    ['GB11', 'Autre', map],
+    ['GB99', ' Récolte ', map],
+    ['', 'Récolte', map],
+    ['GB05', 'X', null],
+    [null, null, map],
+    ['GB05', 'X', []],
+  ];
+  cas.forEach(function (c) {
+    assert.strictEqual(
+      CBT.familleDuCode(c[0], c[1], c[2]),
+      backendBudget.familleDuCode(c[0], c[1], c[2]),
+      'divergence front/back — code : ' + String(c[0])
+    );
+  });
+});
+
+test('operationLabel — le code est affiché quand la clé en porte un', () => {
+  assert.strictEqual(CBT.operationLabel('GB05::Nettoyage'), 'Nettoyage (GB05)');
+  assert.strictEqual(CBT.operationLabel('Nettoyage'), 'Nettoyage');
 });
 
 // ---------------------------------------------------- famillesNeutralisees
@@ -609,8 +760,8 @@ test('rendu — sans parcelle sélectionnée, invite au choix et pas de tableau'
 // ------------------------------------------------- rendu : niveau opération
 
 const OPS_BY_FAMILLE = {
-  'Taille': ['Taille d\'hiver', 'Taille de formation'],
-  'Ferti-irrigation': ['Fertigation'],
+  'Taille': ['GB09::Taille d\'hiver', 'GB09::Taille de formation'],
+  'Ferti-irrigation': ['GB02::Fertigation'],
 };
 
 /** État de base avec le référentiel des opérations chargé. */
@@ -636,7 +787,9 @@ test('rendu — familles repliées par défaut : une seule ligne par famille', (
 test('rendu — famille dépliée : une ligne et un champ par opération', () => {
   const tree = load(stateOps({ openFamilles: { 'Taille': true } }))({ userRole: 'dg' });
   const txt = textOf(tree);
+  // Le LIBELLÉ est affiché, jamais la clé brute `GB09::Taille d'hiver`.
   assert.ok(txt.includes('Taille d\'hiver'));
+  assert.ok(!txt.includes('GB09::'), 'la clé technique ne doit pas fuir à l\'écran');
   assert.ok(txt.includes('Taille de formation'));
   assert.ok(!txt.includes('Fertigation'), 'les autres familles restent repliées');
   // 2 champs famille + 2 champs opération de Taille.
@@ -644,10 +797,47 @@ test('rendu — famille dépliée : une ligne et un champ par opération', () =>
     FAMILLES.length + 2);
 });
 
+test('rendu — chaque opération porte SON code, et deux codes = deux lignes', () => {
+  // Sans le code affiché, les deux « Nettoyage » (GB05 Entretien structure /
+  // GB11 Service générale) seraient deux lignes d'apparence identique — et
+  // impossible de savoir laquelle rejoint quels JH réalisés.
+  const tree = load(stateOps({
+    familles: ['Entretien structure', 'Service générale'],
+    opsByFamille: {
+      'Entretien structure': ['GB05::Nettoyage'],
+      'Service générale': ['GB11::Nettoyage'],
+    },
+    opValues: {
+      'Entretien structure': { 'GB05::Nettoyage': '3' },
+      'Service générale': { 'GB11::Nettoyage': '8' },
+    },
+    openFamilles: { 'Entretien structure': true, 'Service générale': true },
+  }))({ userRole: 'dg' });
+
+  const txt = textOf(tree);
+  assert.ok(txt.includes('GB05'), 'code de la première ligne affiché');
+  assert.ok(txt.includes('GB11'), 'code de la seconde ligne affiché');
+
+  // Deux champs d'opération, chacun lié à SA clé : aucune valeur ne fuit.
+  const inputs = walk(tree).filter(function (n) { return n.type === 'input'; });
+  const valeurs = inputs.map(function (n) { return n.props.value; }).filter(Boolean);
+  assert.deepStrictEqual(valeurs, ['3', '8']);
+});
+
+test('rendu — une clé héritée (sans code) n\'affiche aucun badge inventé', () => {
+  const tree = load(stateOps({
+    familles: ['Récolte'],
+    opsByFamille: { 'Récolte': ['Cueillette'] },
+    openFamilles: { 'Récolte': true },
+  }))({ userRole: 'dg' });
+  assert.ok(textOf(tree).includes('Cueillette'));
+  assert.ok(!textOf(tree).includes('::'));
+});
+
 test('rendu — total de famille CALCULÉ dès qu\'une opération est saisie (non éditable)', () => {
   const tree = load(stateOps({
     openFamilles: { 'Taille': true },
-    opValues: { 'Taille': { 'Taille d\'hiver': '1,5', 'Taille de formation': '2' } },
+    opValues: { 'Taille': { 'GB09::Taille d\'hiver': '1,5', 'GB09::Taille de formation': '2' } },
   }))({ userRole: 'dg' });
   // Le champ famille de Taille a disparu : seul reste celui de Ferti-irrigation
   // (sans opération budgétée), plus les 2 champs d'opération.
@@ -869,7 +1059,7 @@ test('rendu — rapport post-save : les familles neutralisées s\'affichent en a
 test('rendu — lecture seule : aucun champ, mais les opérations dépliées restent lisibles', () => {
   const tree = load(stateOps({
     openFamilles: { 'Taille': true },
-    opValues: { 'Taille': { 'Taille d\'hiver': '1,5' } },
+    opValues: { 'Taille': { 'GB09::Taille d\'hiver': '1,5' } },
   }))({ userRole: 'chef' });
   assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'input'; }).length, 0);
   const txt = textOf(tree);
