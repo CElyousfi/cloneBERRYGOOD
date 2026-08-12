@@ -260,7 +260,15 @@
     labels.forEach(function (label, i) {
       var opRows = buildVarieteView(rows, label, periodes);
       var totalJh = 0;
-      opRows.forEach(function (r) { totalJh += r.total.jh; });
+      // JH par famille : le suivi budgétaire compare à PÉRIMÈTRE ÉGAL — sans ce
+      // détail, la Synthèse imputerait au budget les JH de familles non
+      // budgétées (dépassement fantôme, cf. régression QA LOT 2).
+      var jhByFamille = {};
+      opRows.forEach(function (r) {
+        totalJh += r.total.jh;
+        if (!r.famille) return;
+        jhByFamille[r.famille] = (jhByFamille[r.famille] || 0) + (r.total.jh || 0);
+      });
       var ha = sbHa(label, sbMap, haByRef);
       var nom = sbNom(label, sbMap);
       // Budgets JH/Ha de la parcelle : jointure sur le libellé BEE ONE
@@ -274,6 +282,7 @@
         ha: ha,
         totalJh: totalJh,
         budgets: budParcelle,
+        jhByFamille: jhByFamille,
       });
       var params = {
         nomSb: nom,
@@ -392,6 +401,12 @@
       // Indentation NATIVE Excel (pas d'espaces en dur) : alignement propre et
       // libellé toujours recherchable tel quel.
       row.getCell(1).alignment = { indent: 1 };
+      return;
+    }
+    if (kind === K.NOTE) {
+      // Mention de périmètre : discrète (italique, gris), jamais un bandeau —
+      // elle informe sans concurrencer les totaux.
+      row.getCell(1).font = { italic: true, size: 9, color: { argb: XL.textSec } };
       return;
     }
     if (kind === K.TOTAL_FAMILLE) {
@@ -519,10 +534,21 @@
     }
 
     // Dernier repli : CSV de la feuille Synthèse si SheetJS est absent aussi.
-    // Le CSV ne porte aucun format : « % Consommé » y sort en ratio brut
-    // (0,75 = 75 %), comme toutes les autres colonnes en valeur brute.
-    var csv = wbData.sheets[0].aoa.map(function (r) {
-      return r.map(function (c) {
+    // Le CSV ne porte AUCUN format : la cellule de pourcentage y sort en ratio
+    // brut (0,75). Sous un en-tête « % Consommé » ça se lirait « 0,75 % » — on
+    // renomme donc l'en-tête (et LUI SEUL, les valeurs restent identiques à
+    // celles des autres rendus).
+    var syntheseSheet = wbData.sheets[0];
+    var pctCols = CEU.percentColumns(syntheseSheet.rows);
+    var csv = syntheseSheet.aoa.map(function (r, ri) {
+      var cells = r;
+      if (ri === 0 && pctCols.length) {
+        cells = r.slice();
+        pctCols.forEach(function (col) {
+          if (cells[col - 1] === CEU.PERCENT_HEADER) cells[col - 1] = CEU.PERCENT_HEADER + ' (ratio)';
+        });
+      }
+      return cells.map(function (c) {
         var s = String(c == null ? '' : c);
         return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
       }).join(';');
@@ -1336,15 +1362,22 @@
     var _budgets = useState({});
     var budgetsByLabel = _budgets[0]; var setBudgetsByLabel = _budgets[1];
 
+    // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
+    // l'export), et pas seulement au montage : sinon un budget saisi dans le
+    // sous-onglet Budget puis exporté sans recharger la page produirait un
+    // fichier périmé, silencieusement.
     useEffect(function () {
+      if (subTab !== 'mo') return;
+      var cancelled = false;
       fetch('/api/pointage-rh?action=campagne-budget-list')
         .then(function (r) { return r.json(); })
         .then(function (d) {
-          if (!d || !d.success) return;
+          if (cancelled || !d || !d.success) return;
           setBudgetsByLabel(CAT_budgetsByLabel(d.budgets || []));
         })
         .catch(function () {});
-    }, []);
+      return function () { cancelled = true; };
+    }, [subTab]);
 
     useEffect(function () {
       fetch('/api/pointage-rh?action=sb-referentiel-list')

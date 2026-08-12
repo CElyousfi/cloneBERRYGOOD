@@ -128,3 +128,41 @@ test('buildCultureWorkbook — largeurs de colonnes alignées sur l\'en-tête', 
     assert.strictEqual(s.cols.length, header.cells.length, s.name);
   });
 });
+
+// Régression QA LOT 2 : la Synthèse ne peut comparer à périmètre égal que si le
+// composant lui fournit les JH PAR FAMILLE. Ce test verrouille ce câblage —
+// sans lui, un `jhByFamille` oublié repasserait en dépassement fantôme sans
+// qu'aucun test de helper pur ne bronche.
+const DATA_2_FAMILLES = Object.assign({}, DATA, {
+  famillesOrdered: ['Travaux du sol', 'Taille'],
+  rows: [
+    Object.assign({}, DATA.rows[0], { famille: 'Travaux du sol', operation: 'Grattage', jh: 30 }),
+    Object.assign({}, DATA.rows[0], { jh: 15 }),   // Taille, 15 JH
+  ],
+});
+
+test('buildCultureWorkbook — JH d\'une famille NON budgétée hors du % consommé', () => {
+  const budgets = Tab.budgetsByLabel([
+    { label_bee_one: 'F1- S5 MARAVILLA', budgets: { Taille: 10 } },  // Travaux du sol : rien
+  ]);
+  const wb = Tab.buildCultureWorkbook('Framboise', DATA_2_FAMILLES, null, SB_MAP, budgets);
+  // Taille : 10 JH/ha × 2 ha = 20 JH budgétés, 15 réalisés → 75 %
+  const dataRow = wb.sheets[0].rows.filter((r) => r.kind === 'data')[0];
+  assert.deepStrictEqual(plain(dataRow.cells.slice(-4)), [10, 0.75, 2.5, 5]);
+  assert.strictEqual(dataRow.cells[4], 45, 'le volume de JH reste complet');
+  // …identique sur la feuille parcelle, et surtout pas 45/20 = 225 %
+  const tot = wb.sheets[1].rows.filter((r) => r.kind === 'total-general')[0];
+  assert.deepStrictEqual(plain(tot.cells.slice(-4)), [10, 0.75, 2.5, 5]);
+});
+
+test('buildCultureWorkbook — mention de périmètre présente sur les deux feuilles', () => {
+  const budgets = Tab.budgetsByLabel([
+    { label_bee_one: 'F1- S5 MARAVILLA', budgets: { Taille: 10 } },
+  ]);
+  const wb = Tab.buildCultureWorkbook('Framboise', DATA_2_FAMILLES, null, SB_MAP, budgets);
+  const synthNote = wb.sheets[0].rows.filter((r) => r.kind === 'note')[0];
+  assert.ok(synthNote.cells[0].indexOf('parcelles budgétées à superficie connue (1/1)') !== -1,
+    synthNote.cells[0]);
+  const parcNote = wb.sheets[1].rows.filter((r) => r.kind === 'note')[0];
+  assert.ok(parcNote.cells[0].indexOf('familles budgétées (1/2)') !== -1, parcNote.cells[0]);
+});

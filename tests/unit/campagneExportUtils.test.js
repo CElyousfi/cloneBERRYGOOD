@@ -163,7 +163,7 @@ test('buildSyntheseRows — lignes typées (en-tête, données, total)', () => {
     { nomSb: 'A', label: 'A', ferme: 'F1', ha: 1, totalJh: 5 },
   ]);
   assert.deepStrictEqual(rows.map((r) => r.kind), [
-    ROW_KIND.COL_HEADER, ROW_KIND.DATA, ROW_KIND.TOTAL_GENERAL,
+    ROW_KIND.COL_HEADER, ROW_KIND.DATA, ROW_KIND.TOTAL_GENERAL, ROW_KIND.NOTE,
   ]);
   assert.deepStrictEqual(rows[2].cells, ['TOTAL (1 parcelle)', '', '', 1, 5, 5, '', '', '', '']);
 });
@@ -291,6 +291,8 @@ test('buildParcelleSheetAoA — familles : titre, opérations indentées, total,
     'Travaux du sol', '    Grattage', '    Binage', 'Total Travaux du sol', undefined,
     'Récolte', '    Cueillette', 'Total Récolte', undefined,
     'TOTAL GÉNÉRAL',
+    // Mention de périmètre : ici aucune famille budgétée sur les 2 présentes.
+    'Colonnes budget : périmètre des familles budgétées (0/2). Les colonnes JH couvrent l\'ensemble.',
   ]);
 });
 
@@ -359,6 +361,7 @@ test('buildParcelleSheetAoA — famille hors référentiel ajoutée à la fin', 
     'Récolte', '    Cueillette', 'Total Récolte', undefined,
     'Inconnue', '    Op X', 'Total Inconnue', undefined,
     'TOTAL GÉNÉRAL',
+    'Colonnes budget : périmètre des familles budgétées (0/2). Les colonnes JH couvrent l\'ensemble.',
   ]);
 });
 
@@ -381,7 +384,7 @@ test('buildParcelleSheetRows — kinds dans l\'ordre attendu', () => {
     ROW_KIND.COL_HEADER,
     ROW_KIND.FAMILLE, ROW_KIND.OPERATION, ROW_KIND.OPERATION, ROW_KIND.TOTAL_FAMILLE, ROW_KIND.BLANK,
     ROW_KIND.FAMILLE, ROW_KIND.OPERATION, ROW_KIND.TOTAL_FAMILLE, ROW_KIND.BLANK,
-    ROW_KIND.TOTAL_GENERAL,
+    ROW_KIND.TOTAL_GENERAL, ROW_KIND.NOTE,
   ]);
 });
 
@@ -599,13 +602,47 @@ test('feuille parcelle — budget porté par TOTAL_FAMILLE, jamais par les OPERA
   assert.deepStrictEqual(fam[1].cells.slice(-4), [10, 0.75, 2.5, 5]);
 });
 
-test('feuille parcelle — TOTAL GÉNÉRAL : somme de TOUS les budgets saisis', () => {
+test('feuille parcelle — TOTAL GÉNÉRAL : tous les budgets, JH des seules familles budgétées', () => {
   const rows = buildParcelleSheetRows(BUD_PARAMS);
   const tot = rows.filter((r) => r.kind === ROW_KIND.TOTAL_GENERAL)[0];
-  // Σ budgets = 20 + 10 + 5 = 35 JH/ha (la famille « Taille » est budgétée mais
-  // pas encore travaillée : elle n'a pas de ligne, son budget compte quand même)
-  // → 70 JH budgétés, 45 réalisés = 64,29 %, restant 12,5 JH/ha et 25 JH.
+  // Σ budgets = 20 + 10 + 5 = 35 JH/ha (« Taille » est budgétée mais pas encore
+  // travaillée : pas de ligne dans la feuille, son budget compte quand même)
+  // → 70 JH budgétés sur 2 ha. Les deux familles travaillées (Travaux du sol
+  // 30 JH, Récolte 15 JH) sont budgétées, donc toutes deux au numérateur : 45 JH
+  // → 64,29 %, restant 12,5 JH/ha et 25 JH.
   assert.deepStrictEqual(tot.cells.slice(-4), [35, 0.6429, 12.5, 25]);
+  // Périmètre : 3 familles budgétées sur 3 connues (2 travaillées + Taille).
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.strictEqual(note.cells[0],
+    'Colonnes budget : périmètre des familles budgétées (3/3). Les colonnes JH couvrent l\'ensemble.');
+});
+
+// RÉGRESSION (QA LOT 2) : le TOTAL comparait un numérateur exhaustif à un
+// dénominateur partiel → dépassement fantôme. Périmètre égal des deux côtés.
+test('feuille parcelle — famille NON budgétée : ses JH ne consomment pas le budget des autres', () => {
+  const rows = buildParcelleSheetRows({
+    nomSb: 'X', ha: 2, periodes: ['Q01'],
+    opRows: [
+      { famille: 'Travaux du sol', operation: 'Grattage', byPeriode: { Q01: { jh: 30 } }, total: { jh: 30 } },
+      { famille: 'Récolte', operation: 'Cueillette', byPeriode: { Q01: { jh: 15 } }, total: { jh: 15 } },
+    ],
+    famillesOrdered: ['Travaux du sol', 'Récolte'],
+    budgets: { 'Récolte': 10 },   // Travaux du sol : AUCUN budget
+  });
+  const fam = rows.filter((r) => r.kind === ROW_KIND.TOTAL_FAMILLE);
+  assert.deepStrictEqual(fam[0].cells.slice(-4), ['', '', '', ''], 'Travaux du sol non budgétée');
+  // Récolte : 10 × 2 = 20 JH budgétés, 15 réalisés → 75 %
+  assert.deepStrictEqual(fam[1].cells.slice(-4), [10, 0.75, 2.5, 5]);
+  // TOTAL : MÊME 75 % — et surtout PAS 45/20 = 225 % (le bug corrigé), qui
+  // s'affichait en rouge alors qu'aucune ligne visible ne dépassait.
+  const tot = rows.filter((r) => r.kind === ROW_KIND.TOTAL_GENERAL)[0];
+  assert.deepStrictEqual(tot.cells.slice(-4), [10, 0.75, 2.5, 5]);
+  // …et le volume de JH reste complet (30 + 15), lui.
+  assert.strictEqual(tot.cells[2], 45);
+  // La mention de périmètre annonce 1 famille budgétée sur 2.
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.strictEqual(note.cells[0],
+    'Colonnes budget : périmètre des familles budgétées (1/2). Les colonnes JH couvrent l\'ensemble.');
 });
 
 test('feuille parcelle — aucun budget saisi : colonnes vides partout (cas nominal)', () => {
@@ -631,9 +668,16 @@ test('feuille parcelle — budget d\'une famille à 0 = pas de budget → vide',
   const fam = rows.filter((r) => r.kind === ROW_KIND.TOTAL_FAMILLE);
   assert.deepStrictEqual(fam[0].cells.slice(-4), ['', '', '', '']);
   assert.deepStrictEqual(fam[1].cells.slice(-4), [10, 0.75, 2.5, 5]);
-  // TOTAL GÉNÉRAL ne retient que le budget non nul (10 × 2 = 20 JH ; 45 réalisés)
+  // TOTAL GÉNÉRAL : budget 10 × 2 = 20 JH, et au numérateur les SEULS JH de
+  // Récolte (15) — les 30 JH de Travaux du sol, dont le budget à 0 vaut « pas
+  // de budget », sont hors périmètre. 15/20 = 75 %, identique à la ligne
+  // Récolte. L'ancienne règle imputait 45 JH à ce budget → 225 % en rouge.
   const tot = rows.filter((r) => r.kind === ROW_KIND.TOTAL_GENERAL)[0];
-  assert.deepStrictEqual(tot.cells.slice(-4), [10, 2.25, -12.5, -25]);
+  assert.deepStrictEqual(tot.cells.slice(-4), [10, 0.75, 2.5, 5]);
+  assert.strictEqual(tot.cells[3], 45, 'le volume de JH reste complet');
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.strictEqual(note.cells[0],
+    'Colonnes budget : périmètre des familles budgétées (1/2). Les colonnes JH couvrent l\'ensemble.');
 });
 
 test('feuille parcelle — dépassement famille > 100 % non plafonné', () => {
@@ -654,51 +698,81 @@ test('feuille parcelle — AoA identique aux lignes typées (budget compris)', (
 // Feuille Synthèse — colonnes budgétaires agrégées par parcelle
 // ============================================================================
 test('synthèse — budget d\'une parcelle = Σ des budgets de ses familles', () => {
-  const aoa = buildSyntheseAoA([
-    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 30, budgets: { Taille: 8, Récolte: 12 } },
-  ]);
-  // Σ budgets = 20 JH/ha × 2 ha = 40 JH ; 30 réalisés → 75 %, 5 JH/ha, 10 JH
+  const aoa = buildSyntheseAoA([{
+    nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 30,
+    budgets: { Taille: 8, 'Récolte': 12 },
+    jhByFamille: { Taille: 10, 'Récolte': 20 },
+  }]);
+  // Σ budgets = 20 JH/ha × 2 ha = 40 JH ; 30 JH sur familles budgétées → 75 %,
+  // 5 JH/ha et 10 JH restants.
   assert.deepStrictEqual(aoa[1].slice(-4), [20, 0.75, 5, 10]);
   assert.deepStrictEqual(aoa[2].slice(-4), [20, 0.75, 5, 10]);
 });
 
+// RÉGRESSION (QA LOT 2) : même bug que sur la feuille parcelle, côté Synthèse.
+test('synthèse — les JH d\'une famille non budgétée ne consomment pas le budget', () => {
+  const aoa = buildSyntheseAoA([{
+    nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 45,
+    budgets: { 'Récolte': 10 },                              // Travaux du sol : rien
+    jhByFamille: { 'Travaux du sol': 30, 'Récolte': 15 },
+  }]);
+  // Périmètre budgété : Récolte seule → 20 JH budgétés, 15 réalisés = 75 %.
+  // Surtout PAS 45/20 = 225 % (le bug corrigé).
+  assert.deepStrictEqual(aoa[1].slice(-4), [10, 0.75, 2.5, 5]);
+  assert.strictEqual(aoa[1][4], 45, 'le volume de JH reste complet');
+  assert.deepStrictEqual(aoa[2].slice(-4), [10, 0.75, 2.5, 5], 'TOTAL cohérent avec la ligne');
+});
+
 test('synthèse — aucun budget saisi : colonnes vides sur les parcelles ET le TOTAL', () => {
-  const aoa = buildSyntheseAoA([
-    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 30 },
+  const rows = buildSyntheseRows([
+    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 30, jhByFamille: { Taille: 30 } },
     { nomSb: 'B', label: 'B', ferme: 'F1', ha: 3, totalJh: 10, budgets: {} },
   ]);
-  aoa.slice(1).forEach((r) => assert.deepStrictEqual(r.slice(-4), ['', '', '', ''], r[0]));
+  rows.filter((r) => r.kind === ROW_KIND.DATA || r.kind === ROW_KIND.TOTAL_GENERAL)
+    .forEach((r) => assert.deepStrictEqual(r.cells.slice(-4), ['', '', '', ''], r.cells[0]));
+  // La mention de périmètre le dit explicitement : 0 parcelle budgétée sur 2.
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.strictEqual(note.cells[0],
+    'Colonnes budget : périmètre des parcelles budgétées à superficie connue (0/2). '
+    + 'Les colonnes JH couvrent l\'ensemble.');
 });
 
 test('synthèse — TOTAL : parcelles sans superficie exclues des sommes budgétaires', () => {
-  const aoa = buildSyntheseAoA([
-    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 30, budgets: { Taille: 20 } },
-    { nomSb: 'B', label: 'B', ferme: 'F1', ha: null, totalJh: 50, budgets: { Taille: 20 } },
+  const rows = buildSyntheseRows([
+    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 30, budgets: { Taille: 20 }, jhByFamille: { Taille: 30 } },
+    { nomSb: 'B', label: 'B', ferme: 'F1', ha: null, totalJh: 50, budgets: { Taille: 20 }, jhByFamille: { Taille: 50 } },
   ]);
+  const aoa = rows.map((r) => r.cells);
   assert.deepStrictEqual(aoa[2].slice(-4), ['', '', '', ''], 'B n\'a pas de ha connu');
   // TOTAL : seule A compte → 40 JH budgétés, 30 réalisés (les 50 JH de B, dont
   // la surface est inconnue, ne consomment pas le budget de A)
   assert.deepStrictEqual(aoa[3].slice(-4), [20, 0.75, 5, 10]);
   assert.strictEqual(aoa[3][4], 80, 'le TOTAL des JH reste complet (volume)');
+  assert.strictEqual(rows[4].kind, ROW_KIND.NOTE);
+  assert.ok(rows[4].cells[0].indexOf('(1/2)') !== -1, rows[4].cells[0]);
 });
 
 test('synthèse — TOTAL : parcelles non budgétées exclues, budget par ha PONDÉRÉ', () => {
-  const aoa = buildSyntheseAoA([
-    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 1, totalJh: 5,  budgets: { Taille: 10 } },  // 10 JH
-    { nomSb: 'B', label: 'B', ferme: 'F1', ha: 3, totalJh: 60, budgets: { Taille: 30 } },  // 90 JH
-    { nomSb: 'C', label: 'C', ferme: 'F1', ha: 5, totalJh: 40 },                            // hors budget
+  const rows = buildSyntheseRows([
+    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 1, totalJh: 5, budgets: { Taille: 10 }, jhByFamille: { Taille: 5 } },   // 10 JH
+    { nomSb: 'B', label: 'B', ferme: 'F1', ha: 3, totalJh: 60, budgets: { Taille: 30 }, jhByFamille: { Taille: 60 } }, // 90 JH
+    { nomSb: 'C', label: 'C', ferme: 'F1', ha: 5, totalJh: 40, jhByFamille: { Taille: 40 } },                          // hors budget
   ]);
+  const total = rows.filter((r) => r.kind === ROW_KIND.TOTAL_GENERAL)[0].cells;
   // Σ budget = 100 JH sur 4 ha budgétés → 25 JH/ha (pondéré, PAS (10+30)/2 = 20)
   // consommé = 65 JH sur 100 → 65 % ; restant 8,75 JH/ha et 35 JH
-  assert.deepStrictEqual(aoa[4].slice(-4), [25, 0.65, 8.75, 35]);
-  assert.strictEqual(aoa[4][4], 105, 'le TOTAL des JH inclut la parcelle non budgétée');
+  assert.deepStrictEqual(total.slice(-4), [25, 0.65, 8.75, 35]);
+  assert.strictEqual(total[4], 105, 'le TOTAL des JH inclut la parcelle non budgétée');
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.ok(note.cells[0].indexOf('(2/3)') !== -1, note.cells[0]);
 });
 
 test('synthèse — dépassement > 100 % remonté au TOTAL', () => {
-  const aoa = buildSyntheseAoA([
-    { nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 60, budgets: { Taille: 20 } },
-  ]);
-  // 40 JH budgétés, 60 réalisés → 150 %, -10 JH/ha, -20 JH
+  const aoa = buildSyntheseAoA([{
+    nomSb: 'A', label: 'A', ferme: 'F1', ha: 2, totalJh: 60,
+    budgets: { Taille: 20 }, jhByFamille: { Taille: 60 },
+  }]);
+  // 40 JH budgétés, 60 réalisés sur la famille budgétée → 150 %, -10 JH/ha, -20 JH
   assert.deepStrictEqual(aoa[1].slice(-4), [20, 1.5, -10, -20]);
   assert.deepStrictEqual(aoa[2].slice(-4), [20, 1.5, -10, -20]);
 });
