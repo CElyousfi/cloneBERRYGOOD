@@ -260,6 +260,50 @@ test('familleTotal — rien de saisi', () => {
     { total: 0, source: 'aucun' });
 });
 
+test('familleTotal — bascule DANS LES DEUX SENS entre famille et opérations', () => {
+  // Cas réel « Récolte » : 1800 JH/Ha au niveau famille, 11 opérations vides.
+  const values = { 'Récolte': '1800' };
+  const vides = { 'Récolte': { 'Cueillette': '', 'Pesée': '' } };
+  assert.deepStrictEqual(plain(CBT.familleTotal('Récolte', values, vides)),
+    { total: 1800, source: 'famille' });
+
+  // → on renseigne UNE opération : le total bascule sur les opérations.
+  const une = { 'Récolte': { 'Cueillette': '12', 'Pesée': '' } };
+  assert.deepStrictEqual(plain(CBT.familleTotal('Récolte', values, une)),
+    { total: 12, source: 'operations' });
+
+  // → on l'efface : le total redescend sur la valeur de famille.
+  assert.deepStrictEqual(
+    plain(CBT.familleTotal('Récolte', values, { 'Récolte': { 'Cueillette': '0', 'Pesée': '' } })),
+    { total: 1800, source: 'famille' }
+  );
+});
+
+test('familleTotal — cas MIXTE : les opérations gagnent, jamais d\'addition', () => {
+  // « Arrachage » : total de famille saisi ET 8 opérations sur 9 renseignées.
+  const r = CBT.familleTotal('Arrachage', { 'Arrachage': '100' },
+    { 'Arrachage': { 'A': '3', 'B': '4', 'C': '' } });
+  assert.deepStrictEqual(plain(r), { total: 7, source: 'operations' });
+  assert.notStrictEqual(r.total, 107, 'les deux niveaux ne s\'additionnent jamais');
+});
+
+test('buildSavePayload — cas MIXTE : la valeur de famille est neutralisée en base', () => {
+  const r = CBT.buildSavePayload({
+    campagne: '2026-2027', label: 'P1',
+    familles: ['Arrachage', 'Récolte'],
+    opsByFamille: { 'Arrachage': ['A', 'B'], 'Récolte': ['Cueillette'] },
+    values: { 'Arrachage': '100', 'Récolte': '1800' },
+    opValues: { 'Arrachage': { 'A': '3', 'B': '4' }, 'Récolte': { 'Cueillette': '' } },
+  });
+  assert.strictEqual(r.ok, true);
+  // Arrachage détaillé → 0 ; Récolte sans opération renseignée → 1800 conservé.
+  assert.deepStrictEqual(plain(r.payload.budgets), { 'Arrachage': 0, 'Récolte': 1800 });
+  assert.deepStrictEqual(plain(r.payload.budgets_operations), {
+    'Arrachage': { 'A': 3, 'B': 4 },
+    'Récolte': { 'Cueillette': 0 },
+  });
+});
+
 test('buildSavePayload — refuse campagne/parcelle manquante et valeur invalide', () => {
   const base = { campagne: '2026-2027', label: 'P1', familles: ['Taille'], values: {} };
   assert.strictEqual(CBT.buildSavePayload(Object.assign({}, base, { campagne: '' })).ok, false);
@@ -473,6 +517,44 @@ test('rendu — famille sans opération saisie : total de famille éditable (cas
   // 1 champ famille (encore éditable) + 1 champ opération.
   assert.strictEqual(inputs.length, 2);
   assert.strictEqual(inputs[0].props.value, '12,5');
+});
+
+test('rendu — famille budgétée au seul total, opérations vides : cas nominal (Récolte)', () => {
+  // 11 opérations au référentiel, aucune renseignée → le total de famille reste
+  // saisissable et fait foi. C'est ~73 % du budget d'Omar : rien ne doit forcer
+  // une saisie par opération.
+  const tree = load(stateOps({
+    familles: ['Récolte'],
+    opsByFamille: { 'Récolte': ['Cueillette', 'Pesée'] },
+    values: { 'Récolte': '1800' },
+    opValues: { 'Récolte': { 'Cueillette': '', 'Pesée': '' } },
+    openFamilles: { 'Récolte': true },
+  }))({ userRole: 'dg' });
+  const inputs = walk(tree).filter(function (n) { return n.type === 'input'; });
+  assert.strictEqual(inputs.length, 3, '1 champ famille éditable + 2 champs opération');
+  assert.strictEqual(inputs[0].props.value, '1800');
+  // Aucun avertissement d'écrasement : rien n'est perdu dans cet état.
+  assert.strictEqual(walk(tree).filter(function (n) {
+    return n.type === 'i' && String(n.props.className).includes('fa-triangle-exclamation');
+  }).length, 0);
+});
+
+test('rendu — cas MIXTE : l\'écrasement de la valeur de famille est annoncé AVANT le save', () => {
+  const tree = load(stateOps({
+    familles: ['Récolte'],
+    opsByFamille: { 'Récolte': ['Cueillette', 'Pesée'] },
+    values: { 'Récolte': '1800' },
+    opValues: { 'Récolte': { 'Cueillette': '12', 'Pesée': '' } },
+  }))({ userRole: 'dg' });
+  const warn = walk(tree).filter(function (n) {
+    return n.type === 'i' && String(n.props.className).includes('fa-triangle-exclamation');
+  });
+  assert.strictEqual(warn.length, 1, 'pictogramme d\'avertissement attendu');
+  assert.match(String(warn[0].props.title), /1800.*sera remplacée/);
+  // Le total affiché est celui des opérations, pas 1800 et pas 1812.
+  const txt = textOf(tree);
+  assert.ok(txt.includes('12.00'));
+  assert.ok(!txt.includes('1812'));
 });
 
 test('rendu — lecture seule : aucun champ, mais les opérations dépliées restent lisibles', () => {

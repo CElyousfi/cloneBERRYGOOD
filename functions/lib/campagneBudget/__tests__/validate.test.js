@@ -533,6 +533,25 @@ test('familleTotal — rien de saisi', () => {
   assert.deepStrictEqual(familleTotal('Taille', { 'Taille': 'abc' }, {}), { total: 0, source: 'aucun' })
 })
 
+test('familleTotal — bascule DANS LES DEUX SENS (cas réel « Récolte »)', () => {
+  // 1800 JH/Ha au niveau famille, 11 opérations au référentiel, aucune saisie.
+  const budgets = { 'Récolte': 1800 }
+  assert.deepStrictEqual(familleTotal('Récolte', budgets, { 'Récolte': {} }),
+    { total: 1800, source: 'famille' })
+  // On renseigne une opération → bascule sur les opérations.
+  assert.deepStrictEqual(familleTotal('Récolte', budgets, { 'Récolte': { 'Cueillette': 12 } }),
+    { total: 12, source: 'operations' })
+  // On l'efface → retour à la valeur de famille.
+  assert.deepStrictEqual(familleTotal('Récolte', budgets, { 'Récolte': { 'Cueillette': 0 } }),
+    { total: 1800, source: 'famille' })
+})
+
+test('familleTotal — cas MIXTE : opérations prioritaires, jamais d\'addition', () => {
+  const r = familleTotal('Arrachage', { 'Arrachage': 100 }, { 'Arrachage': { 'A': 3, 'B': 4 } })
+  assert.deepStrictEqual(r, { total: 7, source: 'operations' })
+  assert.notStrictEqual(r.total, 107)
+})
+
 test('familleTotal — valeurs saisies en chaîne FR, arrondi 2 décimales', () => {
   assert.deepStrictEqual(
     familleTotal('Taille', {}, { 'Taille': { 'A': '1,1', 'B': '2,2' } }),

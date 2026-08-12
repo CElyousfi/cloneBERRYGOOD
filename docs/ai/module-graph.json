@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 26,
+        "commits": 25,
         "file": "public/app.jsx"
       },
       {
@@ -33,6 +33,10 @@
       {
         "commits": 8,
         "file": "scripts/build-frontend.js"
+      },
+      {
+        "commits": 7,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 7,
@@ -48,10 +52,6 @@
       },
       {
         "commits": 6,
-        "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 6,
         "file": "public/components/ParcellesReferentielTab.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:bf90104ac284b757",
+    "sourceFingerprint": "sha256:f3b1731755488b68",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -802,7 +802,21 @@
         {
           "coCommits": 3,
           "domain": null,
+          "file": "public/components/CampagneBudgetTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
           "file": "public/components/ParcellesReferentielTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/campagneBudgetTab.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }

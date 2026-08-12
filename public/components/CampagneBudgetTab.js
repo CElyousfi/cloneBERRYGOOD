@@ -12,10 +12,23 @@
  *   - par FAMILLE : quand aucune opération de la famille n'est budgétée. C'est
  *     le cas réel de « Service générale » dans le fichier d'Omar, et c'est
  *     aussi la forme des documents écrits par le lot précédent.
+ * Le niveau famille est le cas NOMINAL, pas un cas limite : dans le fichier
+ * d'Omar, « Récolte » (1800 JH/Ha, ~73 % du budget) et « Service générale » ne
+ * sont budgétées qu'au total de famille, aucune de leurs 11 + 18 opérations
+ * n'est renseignée.
+ *
  * Total d'une famille (CBT_familleTotal, PURE) : somme de ses opérations si
  * elle en porte au moins une, SINON sa valeur de famille. Jamais les deux —
  * la ligne « famille » devient donc calculée (non éditable) dès qu'une
- * opération est renseignée.
+ * opération est renseignée, et redevient saisissable si on efface toutes les
+ * opérations.
+ *
+ * CAS MIXTE (total de famille saisi ET quelques opérations renseignées) : les
+ * opérations gagnent, la valeur de famille est neutralisée à l'enregistrement.
+ * Additionner reviendrait à compter deux fois ce que les opérations détaillent
+ * déjà ; garder la valeur de famille en base la ferait ressurgir après
+ * effacement des opérations. Comme c'est une perte de saisie, l'écran l'annonce
+ * AVANT le save (pictogramme ambre sur le total de famille concerné).
  *
  * Sources :
  *   GET  /api/pointage-rh?action=parcelles-campagne-list   (parcelles campagne)
@@ -795,6 +808,8 @@
       var ops = opsByFamille[f] || [];
       var tot = CBT_familleTotal(f, values, opValues);
       var calcule = tot.source === 'operations';
+      // Cas MIXTE : total de famille saisi ET opérations renseignées.
+      var ecrase = calcule && CBT_num(values[f]) > 0;
       var isOpen = !!openFamilles[f];
       var famRows = [React.createElement('tr', {
         key: f,
@@ -870,7 +885,21 @@
           fontWeight: 700
         },
         title: calcule ? 'Somme des opérations de la famille' : undefined
-      }, tot.total > 0 ? tot.total.toFixed(2) : '—')), React.createElement('td', {
+      },
+      // CAS MIXTE : la famille avait un total saisi ET porte
+      // maintenant des opérations. Le total bascule sur les
+      // opérations et la valeur de famille sera remise à 0 à
+      // l'enregistrement : ça ne doit pas être silencieux
+      // (« Récolte » vaut 1800 JH/Ha au niveau famille).
+      ecrase && React.createElement('i', {
+        className: 'fa-solid fa-triangle-exclamation',
+        title: 'Total désormais calculé depuis les opérations : la valeur' + ' de famille saisie (' + CBT_num(values[f]) + ') sera remplacée' + ' à l\'enregistrement.',
+        style: {
+          color: CBT_C.amber,
+          marginRight: 6,
+          fontSize: 11
+        }
+      }), tot.total > 0 ? tot.total.toFixed(2) : '—')), React.createElement('td', {
         style: {
           ...tdStyle,
           textAlign: 'right',
