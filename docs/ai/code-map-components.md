@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:a95c325d04e82b84 -->
-# Code Map — Composants frontend (301)
+<!-- sourceFingerprint: sha256:b116168caf4a1aa4 -->
+# Code Map — Composants frontend (302)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -65,7 +65,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60380 | — |
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1216 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1310 | campagne |
 | CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:218 | — |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
@@ -76,6 +76,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaporalHistoriqueTab | public/app.jsx:29592 | caporal_historique |
 | CaporalSaisieTab | public/app.jsx:29787 | caporal_saisie |
 | CaporalSuiviTab | public/app.jsx:29024 | chef_suivi_caporal |
+| CAT_budgetsByLabel | public/components/CampagneAnalytiqueTab.jsx:152 | — |
 | CBT_budgetsByLabel | public/components/CampagneBudgetTab.jsx:113 | — |
 | CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:137 | — |
 | CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:206 | — |
@@ -97,7 +98,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62005 | coming_soon |
 | ConditionnementSub | public/app.jsx:24300 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1010 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1104 | — |
 | CoutRecolteTab | public/app.jsx:8647 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
@@ -152,7 +153,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | FuelWeeklyChart | public/app.jsx:35291 | — |
 | Gauge | public/app.jsx:40883 | — |
 | GDDTrackingTab | public/app.jsx:44584 | — |
-| HaView | public/components/CampagneAnalytiqueTab.jsx:494 | — |
+| HaView | public/components/CampagneAnalytiqueTab.jsx:585 | — |
 | HeuresSupSub | public/app.jsx:26623 | — |
 | HorsRecolteSuiviTab | public/app.jsx:27798 | hors_recolte_suivi |
 | HorsRecolteTab | public/app.jsx:10730 | hors_recolte |
@@ -302,7 +303,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | TraitementSub | public/app.jsx:24342 | — |
 | TransportSub | public/app.jsx:24474 | — |
 | TutorialMenu | public/app.jsx:66965 | — |
-| VarieteView | public/components/CampagneAnalytiqueTab.jsx:691 | — |
+| VarieteView | public/components/CampagneAnalytiqueTab.jsx:782 | — |
 | WhatsAppConfigPanel | public/app.jsx:62241 | — |
 | WorkerDetailModal | public/app.jsx:3029 | — |
 | WorkerDetailProvider | public/app.jsx:3128 | — |
