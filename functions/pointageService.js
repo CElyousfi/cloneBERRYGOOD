@@ -4050,8 +4050,15 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         });
       }
 
-      // ===== BUDGET JH / Ha PAR PARCELLE × FAMILLE D'OPÉRATION =====
+      // ===== BUDGET JH / Ha PAR PARCELLE × FAMILLE × OPÉRATION =====
       // Collection `sb_campagne_budget_jh`, clé `${campagne}__${LABEL_BEE_ONE}`.
+      // Deux niveaux COEXISTENT dans le même document, sans migration :
+      //   `budgets`            = JH/Ha au niveau famille (documents du lot
+      //                          précédent + familles sans détail, ex.
+      //                          « Service générale ») ;
+      //   `budgets_operations` = JH/Ha au niveau opération (famille → opération).
+      // Total d'une famille = somme de ses opérations si elle en porte, sinon
+      // sa valeur de famille (campagneBudget.familleTotal) — jamais les deux.
       // La campagne fait partie de la clé (contrairement à
       // `sb_parcelle_referentiel`, clé par le seul label) : un budget est propre
       // à une campagne. Validation/merge purs : lib/campagneBudget/validate.
@@ -4086,7 +4093,10 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             id: doc.id,
             campagne: d.campagne || campagneB,
             label_bee_one: label,
+            // mergeBudgets(x, {}) / mergeBudgetsOperations(x, {}) = normalisation
+            // en lecture (valeurs numériques > 0 seulement), aucune écriture.
             budgets: campagneBudget.mergeBudgets(d.budgets, {}),
+            budgets_operations: campagneBudget.mergeBudgetsOperations(d.budgets_operations, {}),
           });
         });
         budgets.sort((a, b) => (a.label_bee_one || "").localeCompare(b.label_bee_one || ""));
@@ -4108,9 +4118,13 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         }
 
         const bodyB = req.body || {};
-        // Familles AUTORISÉES = référentiel des tâches (jamais une liste figée).
+        // Familles ET COUPLES (famille, opération) AUTORISÉS = référentiel des
+        // tâches (jamais une liste figée en dur).
         const refDataB = await loadReferentielTaches();
         const famillesConnuesB = [...new Set((refDataB.ops || []).map((o) => o.famille).filter(Boolean))];
+        const operationsConnuesB = (refDataB.ops || [])
+          .filter((o) => o && o.famille && o.operation)
+          .map((o) => ({ famille: o.famille, operation: o.operation }));
         // Labels AUTORISÉS = référentiel parcelles Smart Berry.
         const refSnapB = await db_firestore.collection("sb_parcelle_referentiel").get();
         const labelsConnusB = [];
@@ -4124,7 +4138,9 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           campagne: bodyB.campagne || campagneCourante(),
           label_bee_one: bodyB.label_bee_one,
           budgets: bodyB.budgets,
+          budgets_operations: bodyB.budgets_operations,
           famillesConnues: famillesConnuesB,
+          operationsConnues: operationsConnuesB,
           labelsConnus: labelsConnusB,
         });
         if (!verdictB.ok) {
@@ -4136,14 +4152,17 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         // sont conservées) — sans transaction, deux saves concurrents sur deux
         // familles différentes en perdraient une. L'écriture elle-même est dans
         // lib/campagneBudget (writeBudgetInTransaction) : elle utilise
-        // `mergeFields` et NON `{merge:true}`, sans quoi une famille retirée
+        // `mergeFields` aux RACINES `budgets` / `budgets_operations` et NON
+        // `{merge:true}`, sans quoi une famille — ou une opération — retirée
         // survivrait en base (masque de champs construit sur les feuilles).
         const writeB = await db_firestore.runTransaction((tx) =>
           campagneBudget.writeBudgetInTransaction(tx, docRefB, {
             campagne: verdictB.campagne,
             label: verdictB.label,
             budgets: verdictB.budgets,
+            budgets_operations: verdictB.budgets_operations,
             famillesConnues: famillesConnuesB,
+            operationsConnues: operationsConnuesB,
             uid: (_authUserB && _authUserB.uid) || null,
             profileId: _pidB,
             serverTimestamp: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
@@ -4154,12 +4173,16 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         // le calculé. Un succès affiché par le client doit être prouvé — c'est
         // exactement ce qui masquait la survie des familles supprimées.
         const afterB = await docRefB.get();
-        const persistedB = (afterB.exists && (afterB.data() || {}).budgets) || {};
+        const afterDataB = (afterB.exists && afterB.data()) || {};
+        const persistedB = afterDataB.budgets || {};
+        const persistedOpsB = afterDataB.budgets_operations || {};
 
         return res.json({
           success: true, id: verdictB.docId, campagne: verdictB.campagne,
           label_bee_one: verdictB.label, budgets: persistedB,
+          budgets_operations: persistedOpsB,
           familles_purgees: writeB.purgees,
+          operations_purgees: writeB.operations_purgees,
         });
       }
 

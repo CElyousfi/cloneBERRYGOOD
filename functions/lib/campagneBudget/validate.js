@@ -14,10 +14,25 @@
  *   champs = {
  *     campagne: '2026-2027',
  *     label_bee_one: 'F5- CASCADE -S13',   // libellé source, non normalisé
- *     budgets: { 'Ferti-irrigation': 3.5, 'Taille': 1.2 },  // JH par Ha
+ *     budgets: { 'Ferti-irrigation': 3.5, 'Taille': 1.2 },  // JH/Ha AU NIVEAU FAMILLE
+ *     budgets_operations: {                                 // JH/Ha PAR OPÉRATION
+ *       'Ferti-irrigation': { 'Nettoyage goutteurs': 0.8, 'Fertigation': 2.7 },
+ *     },
  *     updated_by: { uid, profileId },
  *     updated_at: serverTimestamp(),
  *   }
+ *
+ * COEXISTENCE DES DEUX NIVEAUX (aucune migration) : `budgets` est CONSERVÉ tel
+ * quel. Les documents écrits par le lot précédent (niveau famille uniquement)
+ * restent lisibles et exploitables sans être touchés — `budgets_operations` est
+ * simplement absent, donc `{}`. Cas métier réel : dans le budget d'Omar, la
+ * famille « Service générale » n'a QU'un total de famille, sans détail par
+ * opération — le niveau famille n'est donc pas une compatibilité héritée mais
+ * un mode de saisie de plein droit.
+ *
+ * RÈGLE DE TOTAL D'UNE FAMILLE (`familleTotal`, PURE) : somme de ses opérations
+ * si elle en porte au moins une > 0, SINON la valeur saisie au niveau famille.
+ * Les deux ne s'additionnent jamais (pas de double comptage).
  *
  * Pourquoi la campagne DANS la clé : `sb_parcelle_referentiel` est clé par le
  * seul label, ce qui rend impossible une valeur propre à une campagne. Un
@@ -29,6 +44,8 @@
  *    `sb_parcelle_referentiel`), sans '/' (interdit dans un docId Firestore) ;
  *  - familles : uniquement des familles du référentiel des tâches
  *    (`referentiel_taches`), jamais une liste figée en dur ;
+ *  - opérations : uniquement des COUPLES (famille, opération) du même
+ *    référentiel — une opération rattachée à une autre famille est refusée ;
  *  - valeurs : nombres finis, >= 0, <= MAX_JH_PAR_HA ; virgule décimale
  *    acceptée (saisie FR) ; arrondies à 2 décimales.
  *  - un budget à 0 n'est pas stocké : 0 = « pas de budget défini » (cf.
@@ -46,6 +63,66 @@ const MAX_JH_PAR_HA = 1000
 
 /** Garde-fou : nombre de familles acceptées dans un seul save. */
 const MAX_FAMILLES = 50
+
+/**
+ * Garde-fou : nombre d'opérations acceptées dans un seul save, toutes familles
+ * confondues. Le référentiel d'Omar en compte 108 — on laisse une marge large
+ * sans autoriser un payload arbitraire.
+ */
+const MAX_OPERATIONS = 500
+
+/**
+ * Séparateur de clé d'index (famille, opération) — jamais persisté. Caractère
+ * de contrôle : un séparateur imprimable rendrait ('A B', 'C') et ('A', 'B C')
+ * indiscernables.
+ */
+const __cb_SEP = '\u0000'
+
+/**
+ * Clé d'index d'un couple (famille, opération), insensible à la casse.
+ * @param {*} famille
+ * @param {*} operation
+ * @returns {string}
+ */
+function __cb_opKey(famille, operation) {
+  return (
+    String(famille == null ? '' : famille).trim().toUpperCase() +
+    __cb_SEP +
+    String(operation == null ? '' : operation).trim().toUpperCase()
+  )
+}
+
+/**
+ * Indexe le référentiel des opérations par couple (famille, opération).
+ *
+ * @param {Array<{famille?: *, operation?: *}>|null|undefined} operationsConnues
+ * @returns {Object<string, {famille: string, operation: string}>} vide si le
+ *   référentiel est absent (l'appelant décide alors du fail-closed).
+ */
+function indexOperations(operationsConnues) {
+  /** @type {Object<string, {famille: string, operation: string}>} */
+  const out = {}
+  const list = Array.isArray(operationsConnues) ? operationsConnues : []
+  for (const o of list) {
+    if (!o || typeof o !== 'object') continue
+    const famille = String(o.famille == null ? '' : o.famille).trim()
+    const operation = String(o.operation == null ? '' : o.operation).trim()
+    if (!famille || !operation) continue
+    const k = __cb_opKey(famille, operation)
+    if (!out[k]) out[k] = { famille, operation }
+  }
+  return out
+}
+
+/**
+ * Libellé lisible d'un couple purgé — sert les messages utilisateur.
+ * @param {string} famille
+ * @param {string} operation
+ * @returns {string}
+ */
+function operationLabel(famille, operation) {
+  return famille + ' — ' + operation
+}
 
 /**
  * Normalise un libellé de campagne. Accepte 'AAAA-BBBB' et 'AAAA/BBBB'
@@ -138,16 +215,27 @@ function parseBudgetValue(raw) {
  * @property {string} [label] label BEE ONE tel que connu du référentiel.
  * @property {Object<string, number>} [budgets] familles → JH/Ha (0 conservés
  *   ici : c'est mergeBudgets qui décide de la suppression).
+ * @property {Object<string, Object<string, number>>} [budgets_operations]
+ *   famille → opération → JH/Ha (0 conservés, cf. mergeBudgetsOperations).
  */
 
 /**
  * Valide un `campagne-budget-save`.
  *
+ * Les deux niveaux sont acceptés ensemble ou séparément : un save peut ne
+ * porter que des familles (cas « Service générale », ou document historique du
+ * lot précédent), que des opérations, ou les deux. Au moins un des deux doit
+ * être non vide.
+ *
  * @param {Object} input
  * @param {*} input.campagne libellé de campagne.
  * @param {*} input.label_bee_one label BEE ONE de la parcelle.
- * @param {*} input.budgets map famille → JH/Ha.
+ * @param {*} [input.budgets] map famille → JH/Ha.
+ * @param {*} [input.budgets_operations] map famille → (opération → JH/Ha).
  * @param {Array<string>} input.famillesConnues familles du référentiel tâches.
+ * @param {Array<{famille?: *, operation?: *}>} [input.operationsConnues] couples
+ *   (famille, opération) du référentiel tâches — requis dès qu'une opération
+ *   est saisie (fail-closed).
  * @param {Array<string>} input.labelsConnus labels du référentiel parcelles.
  * @returns {ValidationBudget}
  */
@@ -197,12 +285,13 @@ function validateBudgetSave(input) {
   const docId = budgetDocId(campagne, label)
   if (!docId) return { ok: false, error: 'Libellé de parcelle invalide' }
 
-  const rawBudgets = src.budgets
+  // Niveau FAMILLE — `undefined` admis depuis l'ajout du niveau opération : un
+  // client peut n'envoyer que le détail par opération.
+  const rawBudgets = src.budgets === undefined ? {} : src.budgets
   if (rawBudgets === null || typeof rawBudgets !== 'object' || Array.isArray(rawBudgets)) {
     return { ok: false, error: 'Budgets invalides' }
   }
   const entries = Object.keys(rawBudgets)
-  if (entries.length === 0) return { ok: false, error: 'Aucun budget à enregistrer' }
   if (entries.length > MAX_FAMILLES) {
     return { ok: false, error: 'Trop de familles dans un seul enregistrement' }
   }
@@ -224,7 +313,75 @@ function validateBudgetSave(input) {
     budgets[canon] = /** @type {number} */ (parsed.value)
   }
 
-  return { ok: true, docId, campagne, label: labelByKey[label], budgets }
+  // Niveau OPÉRATION.
+  const rawOps = src.budgets_operations === undefined ? {} : src.budgets_operations
+  if (rawOps === null || typeof rawOps !== 'object' || Array.isArray(rawOps)) {
+    return { ok: false, error: 'Budgets par opération invalides' }
+  }
+  const familleOpsEntries = Object.keys(rawOps)
+  if (familleOpsEntries.length > MAX_FAMILLES) {
+    return { ok: false, error: 'Trop de familles dans un seul enregistrement' }
+  }
+  const opsIndex = indexOperations(src.operationsConnues)
+  /** @type {Object<string, Object<string, number>>} */
+  const budgetsOperations = {}
+  let nbOperations = 0
+  for (const rawFamille of familleOpsEntries) {
+    const canonFamille = familleByKey[String(rawFamille).trim().toUpperCase()]
+    if (!canonFamille) {
+      return { ok: false, error: 'Famille d\'opération inconnue : « ' + rawFamille + ' »' }
+    }
+    if (Object.prototype.hasOwnProperty.call(budgetsOperations, canonFamille)) {
+      return { ok: false, error: 'Famille en doublon : « ' + canonFamille + ' »' }
+    }
+    const rawFamilleOps = rawOps[rawFamille]
+    if (rawFamilleOps === null || typeof rawFamilleOps !== 'object' || Array.isArray(rawFamilleOps)) {
+      return { ok: false, error: 'Budgets par opération invalides (' + canonFamille + ')' }
+    }
+    /** @type {Object<string, number>} */
+    const famBudgets = {}
+    for (const rawOperation of Object.keys(rawFamilleOps)) {
+      // Fail-closed : sans référentiel des opérations, aucune validation
+      // possible → on refuse plutôt que d'écrire une clé arbitraire.
+      if (Object.keys(opsIndex).length === 0) {
+        return { ok: false, error: 'Référentiel des opérations indisponible' }
+      }
+      nbOperations += 1
+      if (nbOperations > MAX_OPERATIONS) {
+        return { ok: false, error: 'Trop d\'opérations dans un seul enregistrement' }
+      }
+      const hit = opsIndex[__cb_opKey(canonFamille, rawOperation)]
+      if (!hit) {
+        return {
+          ok: false,
+          error: 'Opération inconnue du référentiel : « ' + rawOperation
+            + ' » (' + canonFamille + ')',
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(famBudgets, hit.operation)) {
+        return { ok: false, error: 'Opération en doublon : « ' + hit.operation + ' »' }
+      }
+      const parsedOp = parseBudgetValue(rawFamilleOps[rawOperation])
+      if (!parsedOp.ok) {
+        return { ok: false, error: parsedOp.error + ' (' + operationLabel(canonFamille, hit.operation) + ')' }
+      }
+      famBudgets[hit.operation] = /** @type {number} */ (parsedOp.value)
+    }
+    budgetsOperations[canonFamille] = famBudgets
+  }
+
+  if (entries.length === 0 && familleOpsEntries.length === 0) {
+    return { ok: false, error: 'Aucun budget à enregistrer' }
+  }
+
+  return {
+    ok: true,
+    docId,
+    campagne,
+    label: labelByKey[label],
+    budgets,
+    budgets_operations: budgetsOperations,
+  }
 }
 
 /**
@@ -254,6 +411,106 @@ function mergeBudgets(existing, incoming) {
     else delete out[k]
   }
   return out
+}
+
+/**
+ * Fusionne les budgets PAR OPÉRATION, même sémantique que `mergeBudgets` mais
+ * sur deux niveaux : l'entrant est autoritaire sur les couples (famille,
+ * opération) qu'il porte, les autres sont conservés. Une valeur 0 supprime
+ * l'opération ; une famille dont il ne reste aucune opération est retirée
+ * (jamais de map vide stockée).
+ *
+ * @param {Object<string, *>|null|undefined} existing
+ * @param {Object<string, Object<string, number>>} incoming
+ * @returns {Object<string, Object<string, number>>} nouvelle map (aucun
+ *   argument muté).
+ */
+function mergeBudgetsOperations(existing, incoming) {
+  /** @type {Object<string, Object<string, number>>} */
+  const out = {}
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}
+  for (const famille of Object.keys(base)) {
+    const merged = mergeBudgets(base[famille], {})
+    if (Object.keys(merged).length > 0) out[famille] = merged
+  }
+  const inc = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {}
+  for (const famille of Object.keys(inc)) {
+    const merged = mergeBudgets(out[famille], inc[famille] || {})
+    if (Object.keys(merged).length > 0) out[famille] = merged
+    else delete out[famille]
+  }
+  return out
+}
+
+/**
+ * Total JH/Ha d'une famille — RÈGLE MÉTIER CENTRALE, PURE.
+ *
+ * Somme des opérations de la famille si elle en porte au moins une > 0 ; sinon
+ * la valeur saisie au niveau famille. Les deux niveaux ne s'additionnent
+ * JAMAIS : le niveau famille est un total de repli, pas un complément (sans
+ * quoi la famille « Service générale », saisie au seul niveau famille, serait
+ * comptée deux fois le jour où on lui ajoute une opération).
+ *
+ * @param {*} famille
+ * @param {Object<string, *>|null|undefined} budgets map niveau famille.
+ * @param {Object<string, *>|null|undefined} budgetsOperations map niveau opération.
+ * @returns {{total: number, source: 'operations'|'famille'|'aucun'}} total
+ *   arrondi à 2 décimales.
+ */
+function familleTotal(famille, budgets, budgetsOperations) {
+  const key = String(famille == null ? '' : famille)
+  const ops =
+    budgetsOperations && typeof budgetsOperations === 'object' ? budgetsOperations[key] : null
+  let somme = 0
+  if (ops && typeof ops === 'object' && !Array.isArray(ops)) {
+    for (const op of Object.keys(ops)) {
+      const n = parseFloat(String(ops[op]).replace(',', '.'))
+      if (isFinite(n) && n > 0) somme += n
+    }
+  }
+  if (somme > 0) return { total: Math.round(somme * 100) / 100, source: 'operations' }
+  const brut = budgets && typeof budgets === 'object' ? budgets[key] : null
+  const n = parseFloat(String(brut == null ? '' : brut).replace(',', '.'))
+  if (isFinite(n) && n > 0) return { total: Math.round(n * 100) / 100, source: 'famille' }
+  return { total: 0, source: 'aucun' }
+}
+
+/**
+ * Retire d'une map de budgets par opération les couples (famille, opération)
+ * absents du référentiel courant. Même décision que `purgeFamillesInconnues`
+ * (purge à l'écriture, fail-safe si le référentiel est vide).
+ *
+ * @param {Object<string, Object<string, number>>} budgetsOperations
+ * @param {Array<{famille?: *, operation?: *}>|null|undefined} operationsConnues
+ *   liste vide/absente = aucune purge.
+ * @returns {{budgets_operations: Object<string, Object<string, number>>,
+ *   purgees: Array<string>}} `purgees` = libellés « Famille — Opération ».
+ */
+function purgeOperationsInconnues(budgetsOperations, operationsConnues) {
+  const src =
+    budgetsOperations && typeof budgetsOperations === 'object' && !Array.isArray(budgetsOperations)
+      ? budgetsOperations
+      : {}
+  const index = indexOperations(operationsConnues)
+  if (Object.keys(index).length === 0) {
+    return { budgets_operations: mergeBudgetsOperations(src, {}), purgees: [] }
+  }
+  /** @type {Object<string, Object<string, number>>} */
+  const out = {}
+  /** @type {Array<string>} */
+  const purgees = []
+  for (const famille of Object.keys(src)) {
+    const ops = src[famille]
+    if (!ops || typeof ops !== 'object' || Array.isArray(ops)) continue
+    /** @type {Object<string, number>} */
+    const kept = {}
+    for (const operation of Object.keys(ops)) {
+      if (index[__cb_opKey(famille, operation)]) kept[operation] = ops[operation]
+      else purgees.push(operationLabel(famille, operation))
+    }
+    if (Object.keys(kept).length > 0) out[famille] = kept
+  }
+  return { budgets_operations: out, purgees }
 }
 
 /**
@@ -310,50 +567,88 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
  * masque contient le chemin `budgets`, la map est remplacée EN ENTIER, tout en
  * laissant intact un éventuel champ futur non listé (ce qu'un `set()` sans
  * option écraserait).
+ * `budgets_operations` (map de maps) est exposé au MÊME piège, en pire : un
+ * `{merge:true}` produirait des chemins `budgets_operations.<famille>.<op>` et
+ * ferait survivre toute opération retirée. Le champ est donc listé lui aussi
+ * dans `mergeFields`, à la racine et à la racine SEULEMENT.
  *
  * @param {{get: Function, set: Function}} tx transaction Firestore.
  * @param {Object} docRef référence du document budget.
  * @param {Object} args
  * @param {string} args.campagne
  * @param {string} args.label
- * @param {Object<string, number>} args.budgets valeurs validées entrantes.
+ * @param {Object<string, number>} args.budgets valeurs validées entrantes
+ *   (niveau famille).
+ * @param {Object<string, Object<string, number>>} [args.budgets_operations]
+ *   valeurs validées entrantes (niveau opération).
  * @param {Array<string>} [args.famillesConnues] référentiel courant (purge).
+ * @param {Array<{famille?: *, operation?: *}>} [args.operationsConnues]
+ *   référentiel courant des opérations (purge).
  * @param {string|null} args.uid
  * @param {string} args.profileId
  * @param {*} args.serverTimestamp valeur d'horodatage serveur (injectée).
- * @returns {Promise<{budgets: Object<string, number>, purgees: Array<string>}>}
+ * @returns {Promise<{budgets: Object<string, number>,
+ *   budgets_operations: Object<string, Object<string, number>>,
+ *   purgees: Array<string>, operations_purgees: Array<string>}>}
  */
 async function writeBudgetInTransaction(tx, docRef, args) {
   const a = args || {}
   const snap = await tx.get(docRef)
   const exists = snap && (typeof snap.exists === 'function' ? snap.exists() : snap.exists)
-  const prev = exists ? ((snap.data() || {}).budgets || null) : null
-  const merged = mergeBudgets(prev, a.budgets || {})
+  const data = exists ? (snap.data() || {}) : {}
+  const merged = mergeBudgets(data.budgets || null, a.budgets || {})
   const purged = purgeFamillesInconnues(merged, a.famillesConnues)
+  const mergedOps = mergeBudgetsOperations(
+    data.budgets_operations || null,
+    a.budgets_operations || {}
+  )
+  const purgedOps = purgeOperationsInconnues(mergedOps, a.operationsConnues)
   tx.set(
     docRef,
     {
       campagne: a.campagne,
       label_bee_one: a.label,
       budgets: purged.budgets,
+      budgets_operations: purgedOps.budgets_operations,
       updated_by: { uid: a.uid == null ? null : a.uid, profileId: a.profileId },
       updated_at: a.serverTimestamp,
     },
-    // `budgets` listé → map remplacée en entier (cf. commentaire ci-dessus).
-    { mergeFields: ['campagne', 'label_bee_one', 'budgets', 'updated_by', 'updated_at'] }
+    // `budgets` et `budgets_operations` listés → maps remplacées en entier
+    // (cf. commentaire ci-dessus).
+    {
+      mergeFields: [
+        'campagne',
+        'label_bee_one',
+        'budgets',
+        'budgets_operations',
+        'updated_by',
+        'updated_at',
+      ],
+    }
   )
-  return purged
+  return {
+    budgets: purged.budgets,
+    budgets_operations: purgedOps.budgets_operations,
+    purgees: purged.purgees,
+    operations_purgees: purgedOps.purgees,
+  }
 }
 
 module.exports = {
   MAX_JH_PAR_HA,
   MAX_FAMILLES,
+  MAX_OPERATIONS,
   normCampagne,
   normLabel,
   budgetDocId,
+  indexOperations,
+  operationLabel,
   parseBudgetValue,
   validateBudgetSave,
   mergeBudgets,
+  mergeBudgetsOperations,
+  familleTotal,
   purgeFamillesInconnues,
+  purgeOperationsInconnues,
   writeBudgetInTransaction,
 }

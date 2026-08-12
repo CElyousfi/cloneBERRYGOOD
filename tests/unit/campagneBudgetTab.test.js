@@ -31,10 +31,15 @@ function plain(v) {
 
 function createElement(type, props, ...children) {
   const flat = [];
-  for (const c of children) {
-    if (Array.isArray(c)) flat.push(...c);
+  // Aplatissement RÉCURSIF : depuis la descente au niveau opération, un
+  // `familles.map()` renvoie un TABLEAU de lignes (famille + ses opérations),
+  // donc des tableaux imbriqués. React les aplatit ; le harnais doit le faire
+  // aussi, sinon les lignes d'opération sont invisibles dans les assertions.
+  const push = (c) => {
+    if (Array.isArray(c)) c.forEach(push);
     else if (c != null && c !== false) flat.push(c);
-  }
+  };
+  children.forEach(push);
   const p = props || {};
   return { type, key: p.key, props: p, children: flat };
 }
@@ -42,7 +47,8 @@ function createElement(type, props, ...children) {
 /**
  * @param {Array<*>} [stateOverrides] valeurs successives de useState DANS
  *   L'ORDRE DES APPELS : [rows, familles, budgetsByLabel, campagne, selected,
- *   values, loading, err, saving, msg, tick]. `undefined` = garder l'initial.
+ *   values, loading, err, saving, msg, tick, opsByFamille, opBudgetsByLabel,
+ *   opValues, openFamilles]. `undefined` = garder l'initial.
  */
 function load(stateOverrides, spy) {
   const sandbox = { window: {}, fetch: function () { return new Promise(function () {}); } };
@@ -71,6 +77,7 @@ function load(stateOverrides, spy) {
 const S = {
   rows: 0, familles: 1, budgetsByLabel: 2, campagne: 3, selected: 4,
   values: 5, loading: 6, err: 7, saving: 8, msg: 9, tick: 10,
+  opsByFamille: 11, opBudgetsByLabel: 12, opValues: 13, openFamilles: 14,
 };
 
 /** Aplatit l'arbre rendu en liste de nœuds. */
@@ -135,7 +142,122 @@ test('buildSavePayload — envoie TOUTES les familles affichées, vide = 0', () 
     // Ferti-irrigation vidé → 0 → le backend supprime la ligne (pas d'action
     // de suppression dédiée) ; Entretien structure jamais saisi → 0 aussi.
     budgets: { 'Taille': 2.5, 'Ferti-irrigation': 0, 'Entretien structure': 0 },
+    budgets_operations: {},
   });
+});
+
+test('buildSavePayload — envoie le détail par opération, vide = 0', () => {
+  const r = CBT.buildSavePayload({
+    campagne: '2026-2027',
+    label: 'P1',
+    familles: ['Taille'],
+    opsByFamille: { 'Taille': ['Taille d\'hiver', 'Taille de formation'] },
+    values: {},
+    opValues: { 'Taille': { 'Taille d\'hiver': '1,5' } },
+  });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(plain(r.payload.budgets_operations), {
+    'Taille': { 'Taille d\'hiver': 1.5, 'Taille de formation': 0 },
+  });
+});
+
+test('buildSavePayload — une famille détaillée voit sa valeur de famille neutralisée', () => {
+  // Sinon l'ancienne valeur de famille (saisie avant la descente au niveau
+  // opération) resterait en base et ressortirait après effacement des opérations.
+  const r = CBT.buildSavePayload({
+    campagne: '2026-2027',
+    label: 'P1',
+    familles: ['Taille', 'Service générale'],
+    opsByFamille: { 'Taille': ['Taille d\'hiver'], 'Service générale': ['Gardiennage'] },
+    values: { 'Taille': '9', 'Service générale': '12,5' },
+    opValues: { 'Taille': { 'Taille d\'hiver': '2' } },
+  });
+  assert.strictEqual(r.ok, true);
+  // Taille : détaillée → famille remise à 0. Service générale : aucune
+  // opération budgétée → la valeur de famille est conservée (cas d'Omar).
+  assert.deepStrictEqual(plain(r.payload.budgets), { 'Taille': 0, 'Service générale': 12.5 });
+  assert.deepStrictEqual(plain(r.payload.budgets_operations), {
+    'Taille': { 'Taille d\'hiver': 2 },
+    'Service générale': { 'Gardiennage': 0 },
+  });
+});
+
+test('buildSavePayload — refuse une valeur d\'opération invalide, message situé', () => {
+  const bad = CBT.buildSavePayload({
+    campagne: '2026-2027', label: 'P1', familles: ['Taille'],
+    opsByFamille: { 'Taille': ['Taille d\'hiver'] },
+    values: {}, opValues: { 'Taille': { 'Taille d\'hiver': 'abc' } },
+  });
+  assert.strictEqual(bad.ok, false);
+  assert.match(String(bad.error), /Taille — Taille d'hiver/);
+  const neg = CBT.buildSavePayload({
+    campagne: '2026-2027', label: 'P1', familles: ['Taille'],
+    opsByFamille: { 'Taille': ['Taille d\'hiver'] },
+    values: {}, opValues: { 'Taille': { 'Taille d\'hiver': '-1' } },
+  });
+  assert.strictEqual(neg.ok, false);
+});
+
+// -------------------------------------------------------------- opsByFamille
+
+test('opsByFamille — groupé par famille, ordre du référentiel, dédupliqué', () => {
+  const ops = [
+    { famille: 'Taille', operation: 'B', ordre: 2 },
+    { famille: 'Taille', operation: 'A', ordre: 1 },
+    { famille: 'Taille', operation: 'A', ordre: 3 },
+    { famille: 'Ferti-irrigation', operation: 'C', ordre: 4 },
+    { famille: '', operation: 'X', ordre: 5 },
+    { famille: 'Taille', operation: '', ordre: 6 },
+  ];
+  assert.deepStrictEqual(plain(CBT.opsByFamille(ops)), {
+    'Taille': ['A', 'B'],
+    'Ferti-irrigation': ['C'],
+  });
+  assert.deepStrictEqual(plain(CBT.opsByFamille(null)), {});
+});
+
+// --------------------------------------------------------- operationsByLabel
+
+test('operationsByLabel — indexé par label, document historique = map vide', () => {
+  const map = CBT.operationsByLabel([
+    { label_bee_one: ' p1 ', budgets_operations: { 'Taille': { 'A': 1 } } },
+    // Document du lot précédent : pas de champ budgets_operations, lu tel quel.
+    { label_bee_one: 'P2', budgets: { 'Taille': 3 } },
+    { label_bee_one: '' },
+  ]);
+  assert.deepStrictEqual(plain(map), { 'P1': { 'Taille': { 'A': 1 } }, 'P2': {} });
+});
+
+// --------------------------------------------------------------- familleTotal
+
+test('familleTotal — somme des opérations si la famille en porte', () => {
+  assert.deepStrictEqual(
+    plain(CBT.familleTotal('Taille', { 'Taille': '99' }, { 'Taille': { 'A': '1,25', 'B': '2,5' } })),
+    { total: 3.75, source: 'operations' }
+  );
+});
+
+test('familleTotal — sinon la valeur de famille (cas « Service générale »)', () => {
+  assert.deepStrictEqual(
+    plain(CBT.familleTotal('Service générale', { 'Service générale': '12,5' }, {})),
+    { total: 12.5, source: 'famille' }
+  );
+  // Document historique : aucune map d'opérations du tout.
+  assert.deepStrictEqual(
+    plain(CBT.familleTotal('Taille', { 'Taille': 3 }, undefined)),
+    { total: 3, source: 'famille' }
+  );
+  // Opérations toutes vides → repli sur la famille.
+  assert.deepStrictEqual(
+    plain(CBT.familleTotal('Taille', { 'Taille': 4 }, { 'Taille': { 'A': '', 'B': '0' } })),
+    { total: 4, source: 'famille' }
+  );
+});
+
+test('familleTotal — rien de saisi', () => {
+  assert.deepStrictEqual(plain(CBT.familleTotal('Taille', {}, {})), { total: 0, source: 'aucun' });
+  assert.deepStrictEqual(plain(CBT.familleTotal('Taille', { 'Taille': 'abc' }, {})),
+    { total: 0, source: 'aucun' });
 });
 
 test('buildSavePayload — refuse campagne/parcelle manquante et valeur invalide', () => {
@@ -172,6 +294,21 @@ test('saveMessage — avec purge : suppression annoncée, accord singulier/pluri
   const deux = CBT.saveMessage({ familles_purgees: ['Famille A', ' Famille B '] });
   assert.strictEqual(deux.text,
     'Budget enregistré — 2 familles obsolètes retirées : Famille A, Famille B');
+});
+
+test('saveMessage — les opérations purgées sont annoncées elles aussi', () => {
+  const ops = CBT.saveMessage({ operations_purgees: ['Taille — Op X'] });
+  assert.strictEqual(ops.purge, true);
+  assert.strictEqual(ops.text, 'Budget enregistré — 1 opération obsolète retirée : Taille — Op X');
+
+  const deux = CBT.saveMessage({
+    familles_purgees: ['Famille A'],
+    operations_purgees: ['Taille — Op X', 'Taille — Op Y'],
+  });
+  assert.strictEqual(deux.text,
+    'Budget enregistré — 1 famille obsolète retirée : Famille A'
+    + ' ; 2 opérations obsolètes retirées : Taille — Op X, Taille — Op Y');
+  assert.strictEqual(CBT.saveMessage({ operations_purgees: [] }).purge, undefined);
 });
 
 // ------------------------------------------------------------------- totalJH
@@ -273,4 +410,79 @@ test('rendu — sans parcelle sélectionnée, invite au choix et pas de tableau'
   const tree = Comp({ userRole: 'dg' });
   assert.ok(textOf(tree).includes('Sélectionner une parcelle pour saisir son budget.'));
   assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'table'; }).length, 0);
+});
+
+// ------------------------------------------------- rendu : niveau opération
+
+const OPS_BY_FAMILLE = {
+  'Taille': ['Taille d\'hiver', 'Taille de formation'],
+  'Ferti-irrigation': ['Fertigation'],
+};
+
+/** État de base avec le référentiel des opérations chargé. */
+function stateOps(overrides) {
+  const s = [ROWS, FAMILLES, {}, '2026-2027', 'F5- CASCADE -S13', {}, false,
+    undefined, undefined, undefined, undefined, OPS_BY_FAMILLE, {}, {}, {}];
+  Object.keys(overrides || {}).forEach(function (k) { s[S[k]] = overrides[k]; });
+  return s;
+}
+
+test('rendu — familles repliées par défaut : une seule ligne par famille', () => {
+  // 108 opérations à plat rendraient l'écran inutilisable : tout est replié.
+  const tree = load(stateOps())({ userRole: 'dg' });
+  const txt = textOf(tree);
+  assert.ok(txt.includes('Taille'));
+  assert.ok(!txt.includes('Taille d\'hiver'), 'aucune opération visible repliée');
+  // Un champ « famille » par famille, aucun champ d'opération.
+  assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'input'; }).length,
+    FAMILLES.length);
+  assert.ok(txt.includes('2 op.'), 'nombre d\'opérations annoncé sur la ligne famille');
+});
+
+test('rendu — famille dépliée : une ligne et un champ par opération', () => {
+  const tree = load(stateOps({ openFamilles: { 'Taille': true } }))({ userRole: 'dg' });
+  const txt = textOf(tree);
+  assert.ok(txt.includes('Taille d\'hiver'));
+  assert.ok(txt.includes('Taille de formation'));
+  assert.ok(!txt.includes('Fertigation'), 'les autres familles restent repliées');
+  // 2 champs famille + 2 champs opération de Taille.
+  assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'input'; }).length,
+    FAMILLES.length + 2);
+});
+
+test('rendu — total de famille CALCULÉ dès qu\'une opération est saisie (non éditable)', () => {
+  const tree = load(stateOps({
+    openFamilles: { 'Taille': true },
+    opValues: { 'Taille': { 'Taille d\'hiver': '1,5', 'Taille de formation': '2' } },
+  }))({ userRole: 'dg' });
+  // Le champ famille de Taille a disparu : seul reste celui de Ferti-irrigation
+  // (sans opération budgétée), plus les 2 champs d'opération.
+  assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'input'; }).length, 1 + 2);
+  // 1,5 + 2 = 3.50 affiché en total de famille.
+  assert.ok(textOf(tree).includes('3.50'));
+});
+
+test('rendu — famille sans opération saisie : total de famille éditable (cas Service générale)', () => {
+  const tree = load(stateOps({
+    familles: ['Service générale'],
+    opsByFamille: { 'Service générale': ['Gardiennage'] },
+    values: { 'Service générale': '12,5' },
+    openFamilles: { 'Service générale': true },
+  }))({ userRole: 'dg' });
+  const inputs = walk(tree).filter(function (n) { return n.type === 'input'; });
+  // 1 champ famille (encore éditable) + 1 champ opération.
+  assert.strictEqual(inputs.length, 2);
+  assert.strictEqual(inputs[0].props.value, '12,5');
+});
+
+test('rendu — lecture seule : aucun champ, mais les opérations dépliées restent lisibles', () => {
+  const tree = load(stateOps({
+    openFamilles: { 'Taille': true },
+    opValues: { 'Taille': { 'Taille d\'hiver': '1,5' } },
+  }))({ userRole: 'chef' });
+  assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'input'; }).length, 0);
+  const txt = textOf(tree);
+  assert.ok(txt.includes('Taille d\'hiver'));
+  assert.ok(txt.includes('1,5'));
+  assert.ok(txt.includes('Saisie réservée aux profils DG/RH.'));
 });
