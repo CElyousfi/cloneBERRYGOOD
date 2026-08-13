@@ -43,7 +43,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 8,
+        "commits": 9,
         "file": "scripts/build-frontend.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:21ce24890c3c01c5",
+    "sourceFingerprint": "sha256:485bf6f4ab3c0fe2",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
