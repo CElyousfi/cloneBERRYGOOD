@@ -74,7 +74,13 @@ function transform(rel) {
   }).code;
 }
 
-const Tab = (function () {
+/**
+ * Charge le composant dans un faux `window`. `deps` permet d'OMETTRE une
+ * dépendance UMD pour vérifier le comportement dégradé (un <script> qui n'a pas
+ * chargé est un cas réel : CDN lent, 404 après un déploiement partiel).
+ */
+function loadTab(deps) {
+  const withCulture = !deps || deps.cultureUtils !== false;
   const sandbox = { window: {}, console, document: undefined };
   sandbox.window.React = {
     createElement,
@@ -86,12 +92,14 @@ const Tab = (function () {
   vm.createContext(sandbox);
   // Dépendances RÉELLES (pas de stub) : le pivot et la résolution de culture
   // testés ici sont précisément ceux de la prod.
-  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
+  if (withCulture) vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
   vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
   vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
   vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
   return sandbox.window.CampagneAnalytiqueTab;
-})();
+}
+
+const Tab = loadTab();
 
 // -------------------------------------------------------------- fixtures
 //
@@ -162,10 +170,10 @@ function headers(tree) { return walk(section(tree, 'thead')).filter((n) => n.typ
  * Rend la vue. `states` = [totalMode, detailMode, detailCell] injectés dans
  * l'ordre des useState du composant.
  */
-function render(props, states) {
+function render(props, states, TabRef) {
   stateQueue = (states || []).slice();
   setterCalls = [];
-  return Tab.PivotView(Object.assign({
+  return (TabRef || Tab).PivotView(Object.assign({
     data: DATA, sbMap: SB_MAP, metric: 'jh', setMetric: function () {},
   }, props || {}));
 }
@@ -240,9 +248,23 @@ test('grille — mode Détail : les opérations fines s\'insèrent SOUS leur fam
     ['M.O Hors récolte', 'Taille', 'Taille longue', 'Taille courte', 'M.O Récolte', 'Récolte', 'Cueillette']);
 });
 
+test('recoupement — Récap et Détail affichent le MÊME pied de tableau', () => {
+  // Le piège classique du mode Détail : les lignes opération rejouent les JH de
+  // leur famille. Si elles étaient typées 'famille', le pied doublerait — sans
+  // que rien ne le signale. Verrouillé ici, en JH/Ha ET en Total DH.
+  const foot = (states, props) => cells(footRow(tables(render(props, states))[0]));
+  assert.deepStrictEqual(foot([false, true, null]), foot([false, false, null]));
+  assert.deepStrictEqual(
+    foot([true, true, null], { metric: 'cout' }),
+    foot([true, false, null], { metric: 'cout' })
+  );
+  // Et cette valeur commune est bien la somme brute, pas un doublon.
+  assert.strictEqual(foot([true, true, null], { metric: 'cout' }).pop(), nb(11400) + ' | DH');
+});
+
 test('recoupement — en Total DH, la grille affiche les sommes brutes de l\'API', () => {
   // Témoins calculés directement sur DATA.rows : ce sont EXACTEMENT les
-  // « Total DH » par parcelle de la vue « Affectation par Ha » historique.
+  // « Total DH » par parcelle qu'affichait l'ancienne vue tabulaire.
   const maravilla = sumRaw('cout', (r) => r.parcelle === 'F1- S5 MARAVILLA'); // 9000
   const corina = sumRaw('cout', (r) => r.parcelle === 'F5- S1 CORINA');       // 2400
   assert.deepStrictEqual([maravilla, corina, maravilla + corina], [9000, 2400, 11400]);
@@ -268,7 +290,47 @@ test('recoupement — en JH par Ha, chaque cellule est le total divisé par le H
   assert.strictEqual(cells(footRow(tables(render({ metric: 'jh' }))[0])).pop(), '12.0 | JH/Ha');
 });
 
-test('pop-up — le clic sur une cellule ouvre le détail, colonne Ouvriers alimentée', () => {
+test('famille à code GB inconnu — rangée sous AUTRE, et comptée dans le total', () => {
+  const data = {
+    haByRef: {},
+    rows: [
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', operation: 'Bricolage divers',
+        famille: 'Bricolage', code: 'GB99', jh: 4, cout: 600, nbOuv: 1 },
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', operation: 'Taille longue',
+        famille: 'Taille', code: 'GB09', jh: 6, cout: 900, nbOuv: 2 },
+    ],
+  };
+  const tree = render({ data: data, metric: 'cout' }, [true, false, null]);
+  const rows = bodyRows(tables(tree)[0]);
+  // Le libellé BEE ONE est conservé, le code affiché est 'AUTRE' — la ligne
+  // n'est ni perdue, ni fondue dans une famille voisine.
+  assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ').slice(0, 2)), [
+    ['M.O Hors récolte', nb(900) + ' DH'],
+    ['Taille', 'GB09'],
+    ['M.O Service générale', nb(600) + ' DH'],
+    ['Bricolage', 'AUTRE'],
+  ]);
+  // 900 + 600 : la famille AUTRE entre bien dans le total général.
+  assert.strictEqual(cells(footRow(tables(tree)[0])).pop(), nb(1500) + ' | DH');
+});
+
+test('module manquant — message d\'erreur explicite, jamais une grille qui ment', () => {
+  // CultureUtils absent : sans garde, toutes les parcelles retombaient sur
+  // 'Framboise' et une grille titrée Framboise affichait des myrtilles.
+  const TabSansCulture = loadTab({ cultureUtils: false });
+  const tree = render(null, null, TabSansCulture);
+  assert.strictEqual(tables(tree).length, 0, 'aucune grille rendue');
+  assert.match(textOf(tree), /Affectation par Ha indisponible/);
+
+  // Ceinture de sécurité de la fonction pure elle-même : le groupe est nommé,
+  // pas silencieusement rebaptisé Framboise.
+  const groups = plain(TabSansCulture.byCulture(
+    TabSansCulture.pivotRows(DATA.rows, SB_MAP, DATA.haByRef), SB_MAP));
+  assert.deepStrictEqual(groups.map((g) => g.culture), [TabSansCulture.CULTURE_INCONNUE]);
+  assert.strictEqual(TabSansCulture.CULTURE_INCONNUE, 'Culture non résolue');
+});
+
+test('pop-up — le clic sur une cellule ouvre le détail, colonne Présences alimentée', () => {
   const tree = render();
   const td = (bodyRows(tables(tree)[0])[1].children || []).filter((c) => c.type === 'td')[1];
   td.props.onClick();
@@ -282,6 +344,12 @@ test('pop-up — le clic sur une cellule ouvre le détail, colonne Ouvriers alim
   // et le total (5 + 3 ouvriers, 40 JH, 6000 DH).
   const ouvert = render(null, [false, false, cell]);
   const popup = tables(ouvert)[0];
+  // « Présences » et non « Ouvriers » : la colonne cumule des présences
+  // journalières sur toute la campagne (un ouvrier venu 10 jours pèse 10).
+  assert.deepStrictEqual(headers(popup),
+    ['Opération', 'Présences', 'JH', 'JH / Ha', 'Coût (DH)', 'DH / Ha']);
+  const thPresences = walk(popup).filter((n) => n.type === 'th')[1];
+  assert.match(thPresences.props.title, /Ce n'est pas un effectif/);
   assert.deepStrictEqual(bodyRows(popup).map(cells), [
     ['9. Taille longue', '5', '30.0', '15', nb(4500), nb(2250)],
     ['Taille courte', '3', '10.0', '5', nb(1500), nb(750)],
