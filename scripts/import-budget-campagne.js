@@ -22,9 +22,26 @@
  *   --verbose                détaille chaque opération dans le rapport
  *   --apply                  ÉCRIT RÉELLEMENT (sinon simulation)
  *   --base-url <url>         défaut : https://berrygood-farms-dashboard.web.app
+ *   --backup-dir <dossier>   défaut : ~/sb-import-backups (HORS dépôt)
  *
  * Le chemin du budget est TOUJOURS un argument : le fichier est une donnée
  * métier, il n'est pas committé et n'a pas de place en dur dans le repo.
+ *
+ * SÉQUENCE (identique en dry-run et en apply, seule la dernière étape diffère) :
+ *   1. plan hors ligne depuis le classeur ;
+ *   2. authentification (compte DG/RH) — AVANT toute écriture, y compris celle
+ *      du référentiel : des identifiants absents ne doivent pas laisser
+ *      derrière eux 3 documents créés en prod pour rien ;
+ *   3. LECTURES seules : `sb-referentiel-list` (labels autorisés) et
+ *      `campagne-budget-list` (état existant) ;
+ *   4. PRÉ-VALIDATION TOUT-OU-RIEN : chaque payload passe par
+ *      `validateBudgetSave`. Une seule parcelle refusée → on s'arrête, rien
+ *      n'est écrit (sinon le lot partirait en écriture partielle sans reprise) ;
+ *   5. DIFF avant/après : ce qui sera écrasé, supprimé, conservé ;
+ *   6. `--apply` seulement : backup horodaté → création des opérations de
+ *      référentiel → écriture des budgets.
+ * Sans identifiants, le dry-run reste utilisable mais DÉGRADÉ (bornes et
+ * format vérifiés, existence des parcelles et diff impossibles) — et il le dit.
  *
  * ÉCRITURES (`--apply`), deux natures distinctes, rapportées séparément :
  *  1. Les budgets passent par l'action `campagne-budget-save`
@@ -40,9 +57,13 @@
  *     est peuplée par un seed admin (scripts/seeds/import-referentiel-taches.js).
  *     Créer une action dédiée serait hors périmètre de ce lot. Aucune
  *     suppression n'est faite : uniquement des créations de documents absents.
+ *     Note : le plan est calculé AVANT cette création, donc ces 3 opérations ne
+ *     reçoivent aucun budget à cet import — elles sont vides partout dans le
+ *     fichier d'Omar, c'est voulu.
  */
 
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 
 const PROJECT_DIR = path.resolve(__dirname, '..')
@@ -55,6 +76,8 @@ const REFERENTIEL_PAR_DEFAUT = path.join(
 )
 const BASE_URL_PAR_DEFAUT = 'https://berrygood-farms-dashboard.web.app'
 const CAMPAGNE_PAR_DEFAUT = '2026-2027'
+/** Backup HORS dépôt : une sauvegarde committée serait une fuite de données. */
+const BACKUP_DIR_PAR_DEFAUT = path.join(os.homedir(), 'sb-import-backups')
 
 /**
  * @typedef {Object} Options
@@ -62,6 +85,7 @@ const CAMPAGNE_PAR_DEFAUT = '2026-2027'
  * @property {string} referentiel
  * @property {string} campagne
  * @property {string} baseUrl
+ * @property {string} backupDir
  * @property {boolean} apply
  * @property {boolean} verbose
  */
@@ -77,6 +101,7 @@ function parseArgs(argv) {
     referentiel: REFERENTIEL_PAR_DEFAUT,
     campagne: CAMPAGNE_PAR_DEFAUT,
     baseUrl: BASE_URL_PAR_DEFAUT,
+    backupDir: BACKUP_DIR_PAR_DEFAUT,
     apply: false,
     verbose: false,
   }
@@ -87,6 +112,7 @@ function parseArgs(argv) {
     else if (a === '--campagne') o.campagne = String(argv[++i] || '')
     else if (a === '--referentiel') o.referentiel = String(argv[++i] || '')
     else if (a === '--base-url') o.baseUrl = String(argv[++i] || '')
+    else if (a === '--backup-dir') o.backupDir = String(argv[++i] || '')
     else if (a.startsWith('--')) return { ok: false, error: 'Option inconnue : ' + a }
     else if (!o.budget) o.budget = a
     else return { ok: false, error: 'Argument en trop : ' + a }
@@ -127,6 +153,14 @@ function parseReferentielRows(rows) {
     }))
 }
 
+/** @returns {boolean} des identifiants sont-ils disponibles ? */
+function hasCredentials() {
+  return !!(
+    (process.env.SB_IMPORT_EMAIL || process.env.QA_TEST_EMAIL) &&
+    (process.env.SB_IMPORT_PASSWORD || process.env.QA_TEST_PASSWORD)
+  )
+}
+
 /**
  * ID token Firebase d'un compte DG/RH (identifiants par variables
  * d'environnement — jamais en dur, jamais committés).
@@ -156,6 +190,57 @@ async function authenticate() {
     throw new Error('Authentification échouée : ' + ((json.error && json.error.message) || res.status))
   }
   return json.idToken
+}
+
+/**
+ * Appel GET authentifié à l'API (LECTURE SEULE).
+ *
+ * @param {string} baseUrl
+ * @param {string} token
+ * @param {string} query ex. 'action=campagne-budget-list&campagne=2026-2027'
+ * @returns {Promise<*>}
+ */
+async function apiGet(baseUrl, token, query) {
+  const res = await fetch(baseUrl + '/api/pointage-rh?' + query, {
+    headers: { Authorization: 'Bearer ' + token },
+  })
+  const json = await res.json().catch(() => null)
+  if (!res.ok || !json || !json.success) {
+    throw new Error(
+      'Lecture « ' + query + ' » échouée : ' + ((json && json.error) || res.status)
+    )
+  }
+  return json
+}
+
+/**
+ * Sauvegarde des documents de budget CONCERNÉS, avant la première écriture.
+ * Fichier horodaté, HORS dépôt.
+ *
+ * @param {string} dir
+ * @param {string} campagne
+ * @param {Array<*>} documents documents existants des parcelles du plan.
+ * @returns {string} chemin du fichier écrit.
+ */
+function writeBackup(dir, campagne, documents) {
+  fs.mkdirSync(dir, { recursive: true })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const file = path.join(dir, 'sb_campagne_budget_jh-' + campagne + '-' + stamp + '.json')
+  fs.writeFileSync(
+    file,
+    JSON.stringify(
+      {
+        collection: 'sb_campagne_budget_jh',
+        campagne,
+        exporte_le: new Date().toISOString(),
+        nb_documents: documents.length,
+        documents,
+      },
+      null,
+      2
+    )
+  )
+  return file
 }
 
 /**
@@ -208,6 +293,7 @@ async function run() {
     console.error('ERREUR : ' + parsed.error)
     console.error('Usage : node scripts/import-budget-campagne.js <budget.xlsx> [--campagne AAAA-BBBB]')
     console.error('        [--referentiel <fichier>] [--verbose] [--apply] [--base-url <url>]')
+    console.error('        [--backup-dir <dossier>]')
     process.exit(1)
     return
   }
@@ -240,11 +326,68 @@ async function run() {
       ' opération(s) de référentiel à créer.'
   )
 
-  if (!o.apply) {
+  // ── Authentification AVANT toute écriture (y compris celle du référentiel) :
+  // des identifiants absents ne doivent pas laisser 3 documents créés pour rien.
+  // En dry-run, elle n'est tentée que si des identifiants existent : sans eux le
+  // rapport reste utilisable, mais DÉGRADÉ, et il l'annonce.
+  const fiches = parseReferentielRows(referentiel.rows)
+  /** @type {string|null} */
+  let token = null
+  /** @type {Array<string>|undefined} */
+  let labelsConnus
+  /** @type {Array<*>} */
+  let existants = []
+  if (o.apply || hasCredentials()) {
+    token = await authenticate()
+    const refParcelles = await apiGet(o.baseUrl, token, 'action=sb-referentiel-list')
+    labelsConnus = (refParcelles.parcelles || [])
+      .map((p) => String((p && (p.label_bee_one || p.id)) || '').trim())
+      .filter(Boolean)
+    const budgets = await apiGet(
+      o.baseUrl,
+      token,
+      'action=campagne-budget-list&campagne=' + encodeURIComponent(o.campagne)
+    )
+    const labelsDuPlan = {}
+    for (const p of plan.parcelles) p.label && (labelsDuPlan[p.label.trim().toUpperCase()] = true)
+    existants = (budgets.budgets || []).filter(
+      (d) => d && labelsDuPlan[String(d.label_bee_one || '').trim().toUpperCase()]
+    )
+    console.log('Lecture     : ' + labelsConnus.length + ' parcelle(s) au référentiel, '
+      + existants.length + ' budget(s) déjà enregistré(s) sur le périmètre.')
     console.log('')
+  }
+
+  // ── PRÉ-VALIDATION TOUT-OU-RIEN, avant la moindre écriture.
+  const pre = lib.preValidatePlan({ plan, referentiel: fiches, labelsConnus })
+  console.log(lib.formatPreValidation(pre).join('\n'))
+  console.log('')
+
+  if (token) {
+    console.log(lib.formatDiff(lib.buildDiff({ plan, existants, referentiel: fiches })).join('\n'))
+    console.log('')
+  } else {
+    console.log('=== DIFF AVANT / APRÈS ===')
+    console.log('  ⚠ non calculé : sans identifiants, l\'état existant n\'est pas lisible.')
+    console.log('    Ce dry-run ne peut donc PAS dire ce qui sera écrasé ou supprimé.')
+    console.log('')
+  }
+
+  if (!pre.ok) {
+    console.error('APPLY BLOQUÉ : ' + pre.nb_invalides + ' parcelle(s) refusée(s) par la validation')
+    console.error('backend. Rien n\'a été écrit — corriger la source avant de relancer.')
+    process.exit(1)
+    return
+  }
+
+  if (!o.apply) {
     console.log('DRY-RUN : rien n\'a été écrit. Relancer avec --apply après validation.')
     return
   }
+
+  console.log('--- BACKUP avant écriture ---')
+  const backup = writeBackup(o.backupDir, o.campagne, existants)
+  console.log('  ' + existants.length + ' document(s) sauvegardé(s) → ' + backup)
 
   console.log('')
   console.log('--- ÉCRITURE 1/2 : référentiel des opérations (firebase-admin) ---')
@@ -259,7 +402,6 @@ async function run() {
 
   console.log('')
   console.log('--- ÉCRITURE 2/2 : budgets via campagne-budget-save ---')
-  const token = await authenticate()
   let ok = 0
   let ko = 0
   for (const p of plan.parcelles) {

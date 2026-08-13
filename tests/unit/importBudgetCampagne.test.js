@@ -14,6 +14,7 @@ const test = require('node:test')
 const assert = require('node:assert')
 
 const lib = require('../../scripts/lib/importBudgetCampagne')
+const campagneBudget = require('../../functions/lib/campagneBudget/validate')
 
 /** Référentiel minimal, même forme que `referentiel_taches`. */
 const REFERENTIEL = [
@@ -377,6 +378,198 @@ test('le rapport de dry-run cite chaque parcelle, ses totaux et les ignorés', (
   assert.match(txt, /PARCELLE INCONNUE .*hors mapping/)
   assert.match(txt, /Chaulage \/ Déchaulage .*aucune valeur > 0/)
   assert.match(txt, /\+ GB11 · Service générale · Caporal/)
+})
+
+// ── Pré-validation tout-ou-rien ─────────────────────────────────────────────
+
+test('chaque payload du plan passe validateBudgetSave (la validation du backend)', () => {
+  const p = plan()
+  const pre = lib.preValidatePlan({ plan: p, referentiel: REFERENTIEL })
+  const refuses = pre.resultats.filter((r) => !r.ok)
+  assert.deepStrictEqual(refuses, [], 'aucune parcelle ne doit être refusée')
+  assert.strictEqual(pre.ok, true)
+  assert.strictEqual(pre.resultats.length, p.parcelles.length)
+})
+
+test('une valeur hors borne fait échouer la pré-validation ENTIÈRE (tout-ou-rien)', () => {
+  // C'est exactement le bloquant réel : Récolte à 1800 JH/Ha refusée par un
+  // plafond mal calibré, après que d'autres parcelles aient été écrites.
+  const rows = fixtureRows()
+  rows[16][3] = campagneBudget.MAX_JH_PAR_HA + 1 // total de famille « RECOLTE » pour MIA
+  const p = lib.buildImportPlan({ budgetRows: rows, referentiel: REFERENTIEL, campagne: '2026-2027' })
+  const pre = lib.preValidatePlan({ plan: p, referentiel: REFERENTIEL })
+  assert.strictEqual(pre.ok, false)
+  assert.strictEqual(pre.nb_invalides, 1)
+  const ko = pre.resultats.filter((r) => !r.ok)[0]
+  assert.strictEqual(ko.label, 'F5- MYA S9')
+  assert.match(ko.error, /hors limite/)
+})
+
+test('1800 JH/Ha (valeur réelle de Récolte) passe la pré-validation', () => {
+  const rows = fixtureRows()
+  rows[16][3] = 1800
+  const p = lib.buildImportPlan({ budgetRows: rows, referentiel: REFERENTIEL, campagne: '2026-2027' })
+  assert.strictEqual(parcelle(p, 'F5- MYA S9').budgets['Récolte'], 1800)
+  assert.strictEqual(lib.preValidatePlan({ plan: p, referentiel: REFERENTIEL }).ok, true)
+})
+
+test('une parcelle absente de sb_parcelle_referentiel est refusée AVANT toute écriture', () => {
+  const p = plan()
+  const pre = lib.preValidatePlan({
+    plan: p,
+    referentiel: REFERENTIEL,
+    labelsConnus: ['F5- MYA S9', 'F1- S5 MARAVILLA MD'], // F5 YAZMIN MT absent
+  })
+  assert.strictEqual(pre.labels_verifies, true)
+  assert.strictEqual(pre.ok, false)
+  const ko = pre.resultats.filter((r) => !r.ok)[0]
+  assert.strictEqual(ko.label, 'F5 YAZMIN MT')
+  assert.match(ko.error, /Parcelle inconnue du référentiel/)
+})
+
+test('sans référentiel parcelles, la pré-validation le SIGNALE au lieu de faire semblant', () => {
+  const pre = lib.preValidatePlan({ plan: plan(), referentiel: REFERENTIEL })
+  assert.strictEqual(pre.labels_verifies, false)
+  const txt = lib.formatPreValidation(pre).join('\n')
+  assert.match(txt, /n'est PAS vérifiée/)
+})
+
+test('le rapport de pré-validation annonce le blocage de --apply', () => {
+  const rows = fixtureRows()
+  rows[16][3] = campagneBudget.MAX_JH_PAR_HA + 1
+  const p = lib.buildImportPlan({ budgetRows: rows, referentiel: REFERENTIEL, campagne: '2026-2027' })
+  const txt = lib.formatPreValidation(lib.preValidatePlan({ plan: p, referentiel: REFERENTIEL })).join('\n')
+  assert.match(txt, /REFUSÉ {2}F5- MYA S9/)
+  assert.match(txt, /--apply est bloqué \(tout-ou-rien\), aucune écriture/)
+})
+
+// ── Diff avant / après ──────────────────────────────────────────────────────
+
+test('sans budget existant, le diff annonce une création sans écrasement', () => {
+  const p = plan()
+  const diff = lib.buildDiff({ plan: p, existants: [], referentiel: REFERENTIEL })
+  assert.strictEqual(diff.length, p.parcelles.length)
+  assert.strictEqual(diff[0].existe, false)
+  assert.strictEqual(diff[0].total_avant, 0)
+  assert.strictEqual(diff[0].total_apres, diff[0].total_plan)
+  assert.match(lib.formatDiff(diff).join('\n'), /aucun budget existant — création/)
+})
+
+test('diff : une valeur de famille existante SUPPRIMÉE par le détail par opération', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    // Saisie manuelle antérieure au niveau famille sur une famille que le
+    // fichier détaille par opération → budgets[f] = 0 l'efface définitivement.
+    existants: [{ label_bee_one: 'F5- MYA S9', budgets: { 'Travaux du sol': 12 }, budgets_operations: {} }],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  assert.strictEqual(d.existe, true)
+  const sup = d.entrees.filter((e) => e.etat === 'supprimee')
+  assert.deepStrictEqual(sup, [{ famille: 'Travaux du sol', avant: 12, apres: 0, etat: 'supprimee' }])
+  assert.match(lib.formatDiff(diff).join('\n'), /SUPPRIMEE Travaux du sol \[famille\] : 12 → 0/)
+})
+
+test('diff : une opération saisie à la main HORS fichier est conservée et gonfle le total', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      {
+        label_bee_one: 'F5- MYA S9',
+        budgets: {},
+        budgets_operations: { 'Ferti-irrigation': { 'GB02::Nettoyage goutteurs': 7 } },
+      },
+    ],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const conservee = d.entrees.filter((e) => e.etat === 'conservee_hors_fichier')
+  assert.strictEqual(conservee.length, 1)
+  assert.strictEqual(conservee[0].operation, 'GB02::Nettoyage goutteurs')
+  // Le document final dépasse le total annoncé par le plan : c'est exactement
+  // ce que le rapport de plan seul ne pouvait pas dire.
+  assert.strictEqual(d.ecart_conserve, 7)
+  assert.strictEqual(d.total_apres, d.total_plan + 7)
+  assert.match(lib.formatDiff(diff).join('\n'), /ÉCART 7 dû aux entrées conservées/)
+})
+
+test('diff : une valeur identique n\'est pas présentée comme un écrasement', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [{ label_bee_one: 'F5- MYA S9', budgets: { 'Récolte': 18 }, budgets_operations: {} }],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const rec = d.entrees.filter((e) => e.famille === 'Récolte' && !e.operation)[0]
+  assert.strictEqual(rec.etat, 'identique')
+  assert.strictEqual(d.ecart_conserve, 0)
+})
+
+test('diff : une opération dont la valeur change est signalée comme écrasée', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      {
+        label_bee_one: 'F5- MYA S9',
+        budgets: {},
+        budgets_operations: { 'Travaux du sol': { 'GB01::Billonage': 99 } },
+      },
+    ],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const e = d.entrees.filter((x) => x.operation === 'GB01::Billonage')[0]
+  assert.deepStrictEqual(e, {
+    famille: 'Travaux du sol',
+    operation: 'GB01::Billonage',
+    avant: 99,
+    apres: 6,
+    etat: 'ecrasee',
+  })
+})
+
+test('diff : une clé d\'opération héritée (libellé nu) est canonisée, pas dupliquée', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      {
+        label_bee_one: 'F5- MYA S9',
+        budgets: {},
+        // Document antérieur à l'alignement sur le code GB : clé sans code.
+        budgets_operations: { 'Travaux du sol': { Billonage: 6 } },
+      },
+    ],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const surBillonage = d.entrees.filter((e) => e.operation && /Billonage/.test(e.operation))
+  assert.strictEqual(surBillonage.length, 1, 'pas de doublon nu + canonique')
+  assert.strictEqual(surBillonage[0].operation, 'GB01::Billonage')
+  assert.strictEqual(surBillonage[0].etat, 'identique')
+})
+
+// ── Colonne en doublon ──────────────────────────────────────────────────────
+
+test('une colonne en doublon est ignorée, pas importée deux fois', () => {
+  const entetes = ['GROUPE/ RUBRIQUES', 'FAMILLE ', 'Nature Opération', 'MIA', 'YASMINE', 'mia']
+  const r = lib.resolveColonnes(entetes)
+  assert.deepStrictEqual(r.colonnes.map((c) => c.label), ['F5- MYA S9', 'F5 YAZMIN MT'])
+  const doublon = r.ignorees.filter((i) => i.entete === 'mia')[0]
+  assert.ok(doublon, 'la colonne en doublon doit être signalée')
+  assert.match(doublon.raison, /doublon \(déjà vue en position 3\)/)
+})
+
+test('le doublon de colonne ne crée pas deux parcelles dans le plan', () => {
+  const rows = fixtureRows()
+  rows[lib.LIGNE_ENTETES][5] = 'MIA' // la colonne « hors mapping » devient un doublon
+  const p = lib.buildImportPlan({ budgetRows: rows, referentiel: REFERENTIEL, campagne: '2026-2027' })
+  assert.strictEqual(p.parcelles.filter((x) => x.label === 'F5- MYA S9').length, 1)
+  assert.match(p.colonnes_ignorees.filter((c) => c.index === 5)[0].raison, /doublon/)
 })
 
 // ── Arguments du script ─────────────────────────────────────────────────────

@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:e07ddc605e47720d",
+    "sourceFingerprint": "sha256:a91fef37e966970f",
     "stats": {
       "targetFiles": 200,
       "targetFilesWithDirectTests": 122,
       "targetFilesWithTransitiveTests": 139,
-      "testFilesScanned": 161
+      "testFilesScanned": 162
     }
   },
   "index": {
@@ -138,11 +138,13 @@
     "functions/lib/campagneBudget/validate.js": {
       "directTests": [
         "functions/lib/campagneBudget/__tests__/validate.test.js",
-        "tests/unit/campagneBudgetTab.test.js"
+        "tests/unit/campagneBudgetTab.test.js",
+        "tests/unit/importBudgetCampagne.test.js"
       ],
       "transitiveTests": [
         "functions/lib/campagneBudget/__tests__/validate.test.js",
-        "tests/unit/campagneBudgetTab.test.js"
+        "tests/unit/campagneBudgetTab.test.js",
+        "tests/unit/importBudgetCampagne.test.js"
       ]
     },
     "functions/lib/fonctions/fonctionsHistory.js": {

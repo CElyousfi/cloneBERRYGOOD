@@ -75,8 +75,18 @@ const __cb_CAMPAGNE_RE = /^(\d{4})-(\d{4})$/
 /** Nombre décimal strict (pas de '3abc', pas de '1e3', pas d'espaces internes). */
 const __cb_NUMERIC_RE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/
 
-/** Garde-fou : au-delà, c'est une faute de frappe, pas un budget. */
-const MAX_JH_PAR_HA = 1000
+/**
+ * Garde-fou : au-delà, c'est une faute de frappe, pas un budget.
+ *
+ * CALIBRAGE (validé par Omar, 2026-08-13) — ne pas rabaisser par réflexe :
+ * la plus grosse valeur LÉGITIME constatée est 1800 JH/Ha (famille « Récolte »
+ * framboise, ~73 % du budget d'une parcelle). 5000 laisse une marge d'environ
+ * ×3 tout en attrapant la faute de frappe classique : un 18000 saisi au lieu de
+ * 1800 reste refusé.
+ * Le plafond initial de 1000 avait été posé sans le confronter aux données
+ * réelles — il refusait le budget de production de 3 des 9 parcelles.
+ */
+const MAX_JH_PAR_HA = 5000
 
 /** Garde-fou : nombre de familles acceptées dans un seul save. */
 const MAX_FAMILLES = 50

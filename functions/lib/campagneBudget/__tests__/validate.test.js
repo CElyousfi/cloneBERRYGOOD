@@ -124,6 +124,24 @@ test('parseBudgetValue — rejette négatif, non numérique, hors limite, boolé
   assert.strictEqual(parseBudgetValue(Infinity).ok, false)
 })
 
+test('MAX_JH_PAR_HA — calibré sur les données réelles, pas sur une intuition', () => {
+  // 1800 JH/Ha = famille « Récolte » framboise (MIA, YASMINE) dans le budget de
+  // campagne d'Omar, ~73 % du budget de la parcelle. C'est une valeur LÉGITIME :
+  // l'ancien plafond de 1000 refusait 3 parcelles sur 9 à l'import.
+  assert.deepStrictEqual(parseBudgetValue(1800), { ok: true, value: 1800 })
+  assert.deepStrictEqual(parseBudgetValue(1500), { ok: true, value: 1500 })
+  // 18000 = la faute de frappe classique (un zéro de trop sur 1800) : refusée.
+  assert.strictEqual(parseBudgetValue(18000).ok, false)
+  assert.strictEqual(MAX_JH_PAR_HA, 5000)
+})
+
+test('le message d\'erreur cite la borne COURANTE, jamais une valeur figée', () => {
+  const verdict = parseBudgetValue(MAX_JH_PAR_HA + 1)
+  assert.strictEqual(verdict.ok, false)
+  assert.strictEqual(verdict.error, 'Budget JH/Ha hors limite (max ' + MAX_JH_PAR_HA + ')')
+  assert.match(verdict.error, /max 5000/)
+})
+
 test('parseBudgetValue — parsing STRICT : pas de queue non numérique (action POST-able)', () => {
   // parseFloat('3abc') vaut 3 : refusé ici, sinon un POST manuel écrit 3.
   assert.strictEqual(parseBudgetValue('3abc').ok, false)

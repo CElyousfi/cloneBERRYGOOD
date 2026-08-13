@@ -48,9 +48,29 @@
  * (functions/lib/campagneBudget/validate.js) fait gagner les opérations, une
  * valeur de famille cohabitante serait un fantôme — et déclencherait la
  * « neutralisation » signalée par le backend à chaque save.
+ *
+ * LE DRY-RUN DOIT ANNONCER CE QUI SE PRODUIRA, pas un plan théorique. Deux
+ * garanties, toutes deux pures et testées :
+ *  - `preValidatePlan` rejoue CHAQUE payload dans `validateBudgetSave` (la
+ *    validation du backend, à l'identique) et bloque `--apply` en TOUT-OU-RIEN
+ *    dès qu'une seule parcelle est refusée — jamais d'état partiel ;
+ *  - `buildDiff` rejoue le MERGE du backend contre l'état lu en base pour dire
+ *    ce qui sera écrasé, supprimé, conservé — `budgets[famille] = 0` supprime
+ *    définitivement une valeur existante, et une opération saisie à la main
+ *    absente du fichier survit et s'ajoute au total.
  */
 
-const { opKey } = require('../../functions/lib/campagneBudget/validate')
+const campagneBudget = require('../../functions/lib/campagneBudget/validate')
+
+const {
+  opKey,
+  normLabel,
+  validateBudgetSave,
+  mergeBudgets,
+  mergeBudgetsOperations,
+  canonicalizeOperationKeys,
+  familleTotal,
+} = campagneBudget
 
 /**
  * Colonne du fichier → label EXACT de `sb_parcelle_referentiel`.
@@ -638,6 +658,312 @@ function buildSavePayload(plan, parcelle) {
 }
 
 /**
+ * @typedef {Object} PreValidation
+ * @property {boolean} ok VRAI seulement si les N payloads sont valides.
+ * @property {Array<{label: string, ok: boolean, error?: string}>} resultats
+ * @property {boolean} labels_verifies faux = l'existence des parcelles dans
+ *   `sb_parcelle_referentiel` n'a PAS pu être contrôlée (référentiel parcelles
+ *   non fourni).
+ * @property {number} nb_invalides
+ */
+
+/**
+ * Rejoue CHAQUE payload du plan dans `validateBudgetSave` — la validation
+ * EXACTE du backend — avant la moindre écriture. PURE.
+ *
+ * POURQUOI TOUT-OU-RIEN : la boucle d'écriture traite les parcelles une par
+ * une. Sans ce contrôle en amont, un payload refusé au milieu du lot (borne
+ * `MAX_JH_PAR_HA` dépassée, parcelle absente du référentiel…) laisserait la
+ * campagne dans un état PARTIEL — une partie des parcelles écrites, l'autre
+ * non, sans reprise possible. Le dry-run doit annoncer un résultat qui se
+ * produira réellement : on refuse donc `--apply` dès qu'UNE parcelle est
+ * invalide.
+ *
+ * @param {Object} args
+ * @param {PlanImport} args.plan
+ * @param {Array<{code?: *, groupe?: *, famille?: *, operation?: *}>} args.referentiel
+ *   fiches de `referentiel_taches`.
+ * @param {Array<string>} [args.labelsConnus] labels de
+ *   `sb_parcelle_referentiel`. ABSENT = l'existence des parcelles n'est pas
+ *   vérifiée (les labels du plan sont alors utilisés pour ne pas bloquer sur le
+ *   fail-closed du backend) — signalé par `labels_verifies: false`.
+ * @returns {PreValidation}
+ */
+function preValidatePlan(args) {
+  const a = args || {}
+  const plan = a.plan || { parcelles: [], campagne: '' }
+  const ref = indexReferentiel(a.referentiel)
+  const operationsConnues = ref.operations.map((o) => ({
+    code: o.code,
+    famille: o.famille,
+    operation: o.operation,
+  }))
+  const famillesConnues = []
+  for (const o of operationsConnues) {
+    if (famillesConnues.indexOf(o.famille) === -1) famillesConnues.push(o.famille)
+  }
+  const labelsFournis = Array.isArray(a.labelsConnus) && a.labelsConnus.length > 0
+  const labelsConnus = labelsFournis
+    ? a.labelsConnus
+    : plan.parcelles.map((p) => p.label)
+
+  /** @type {Array<{label: string, ok: boolean, error?: string}>} */
+  const resultats = []
+  for (const p of plan.parcelles) {
+    const payload = buildSavePayload(plan, p)
+    const verdict = validateBudgetSave({
+      campagne: payload.campagne,
+      label_bee_one: payload.label_bee_one,
+      budgets: payload.budgets,
+      budgets_operations: payload.budgets_operations,
+      famillesConnues,
+      operationsConnues,
+      labelsConnus,
+    })
+    resultats.push({ label: p.label, ok: !!verdict.ok, error: verdict.ok ? undefined : verdict.error })
+  }
+  const nbInvalides = resultats.filter((r) => !r.ok).length
+  return {
+    ok: nbInvalides === 0,
+    resultats,
+    labels_verifies: labelsFournis,
+    nb_invalides: nbInvalides,
+  }
+}
+
+/**
+ * @typedef {Object} DiffEntree
+ * @property {string} famille
+ * @property {string} [operation] clé `CODE::Libellé` (absent = niveau famille).
+ * @property {number} avant
+ * @property {number} apres
+ * @property {'ajoutee'|'ecrasee'|'identique'|'supprimee'|'conservee_hors_fichier'} etat
+ */
+
+/**
+ * @typedef {Object} DiffParcelle
+ * @property {string} label
+ * @property {boolean} existe un document de budget existe déjà.
+ * @property {Array<DiffEntree>} entrees
+ * @property {number} total_avant
+ * @property {number} total_apres
+ * @property {number} total_plan total annoncé par le plan (fichier seul).
+ * @property {number} ecart_conserve total_apres - total_plan : écart dû aux
+ *   entrées saisies à la main, absentes du fichier, que le merge CONSERVE.
+ */
+
+/**
+ * Diff avant/après d'un import, en rejouant EXACTEMENT le merge du backend
+ * (`mergeBudgets` / `mergeBudgetsOperations` / `canonicalizeOperationKeys`).
+ * PURE.
+ *
+ * POURQUOI : le rapport de plan décrit ce que le FICHIER contient, pas l'état
+ * final du document. Deux effets invisibles sans diff :
+ *  - `budgets[famille] = 0` SUPPRIME définitivement une valeur de famille déjà
+ *    en base (règle de `mergeBudgets`) — une saisie manuelle peut être perdue ;
+ *  - une opération saisie à la main et ABSENTE du fichier est CONSERVÉE par le
+ *    merge et s'ajoute au total de sa famille : le document final peut donc
+ *    dépasser le total annoncé par le plan (`ecart_conserve`).
+ *
+ * @param {Object} args
+ * @param {PlanImport} args.plan
+ * @param {Array<{label_bee_one?: *, budgets?: *, budgets_operations?: *}>} [args.existants]
+ *   documents renvoyés par `campagne-budget-list` (lecture seule).
+ * @param {Array<{code?: *, groupe?: *, famille?: *, operation?: *}>} [args.referentiel]
+ *   nécessaire pour canoniser les clés héritées, comme le fait le backend.
+ * @returns {Array<DiffParcelle>}
+ */
+function buildDiff(args) {
+  const a = args || {}
+  const plan = a.plan || { parcelles: [], campagne: '' }
+  const refOps = indexReferentiel(a.referentiel).operations
+  /** @type {Object<string, *>} */
+  const parLabel = {}
+  for (const d of Array.isArray(a.existants) ? a.existants : []) {
+    if (!d) continue
+    const k = normLabel(d.label_bee_one)
+    if (k) parLabel[k] = d
+  }
+
+  /**
+   * Somme des totaux de famille d'un document (règle `familleTotal` : les
+   * opérations l'emportent sur la valeur de famille, jamais les deux).
+   * @param {Object<string, *>} budgets
+   * @param {Object<string, *>} ops
+   * @returns {number}
+   */
+  function totalDoc(budgets, ops) {
+    /** @type {Object<string, boolean>} */
+    const vues = {}
+    for (const f of Object.keys(budgets)) vues[f] = true
+    for (const f of Object.keys(ops)) vues[f] = true
+    let somme = 0
+    for (const f of Object.keys(vues)) somme += familleTotal(f, budgets, ops).total
+    return Math.round(somme * 100) / 100
+  }
+
+  /**
+   * @param {number} avant
+   * @param {number} apres
+   * @param {boolean} dansLeFichier
+   * @returns {DiffEntree['etat']|null} null = 0 → 0, rien à signaler.
+   */
+  function etatDe(avant, apres, dansLeFichier) {
+    if (avant > 0 && apres === 0) return 'supprimee'
+    if (avant === 0 && apres > 0) return 'ajoutee'
+    if (avant > 0 && apres > 0) {
+      if (!dansLeFichier) return 'conservee_hors_fichier'
+      return avant === apres ? 'identique' : 'ecrasee'
+    }
+    return null
+  }
+
+  /** @type {Array<DiffParcelle>} */
+  const out = []
+  for (const p of plan.parcelles) {
+    const doc = parLabel[normLabel(p.label)] || null
+    const avantBudgets = mergeBudgets(doc && doc.budgets, {})
+    const avantOps = mergeBudgetsOperations(
+      canonicalizeOperationKeys(doc && doc.budgets_operations, refOps),
+      {}
+    )
+    const entrantOps = canonicalizeOperationKeys(p.budgets_operations, refOps)
+    const apresBudgets = mergeBudgets(avantBudgets, p.budgets)
+    const apresOps = mergeBudgetsOperations(avantOps, entrantOps)
+
+    /** @type {Array<DiffEntree>} */
+    const entrees = []
+
+    /** @type {Object<string, boolean>} */
+    const famillesVues = {}
+    for (const f of Object.keys(avantBudgets)) famillesVues[f] = true
+    for (const f of Object.keys(p.budgets)) famillesVues[f] = true
+    for (const f of Object.keys(famillesVues)) {
+      const avant = avantBudgets[f] > 0 ? avantBudgets[f] : 0
+      const apres = apresBudgets[f] > 0 ? apresBudgets[f] : 0
+      const dansLeFichier = Object.prototype.hasOwnProperty.call(p.budgets, f)
+      const etat = etatDe(avant, apres, dansLeFichier)
+      if (etat) entrees.push({ famille: f, avant, apres, etat })
+    }
+
+    /** @type {Object<string, boolean>} */
+    const famillesOps = {}
+    for (const f of Object.keys(avantOps)) famillesOps[f] = true
+    for (const f of Object.keys(entrantOps)) famillesOps[f] = true
+    for (const f of Object.keys(famillesOps)) {
+      const av = avantOps[f] || {}
+      const en = entrantOps[f] || {}
+      const ap = apresOps[f] || {}
+      /** @type {Object<string, boolean>} */
+      const cles = {}
+      for (const k of Object.keys(av)) cles[k] = true
+      for (const k of Object.keys(en)) cles[k] = true
+      for (const k of Object.keys(cles)) {
+        const avant = av[k] > 0 ? av[k] : 0
+        const apres = ap[k] > 0 ? ap[k] : 0
+        const dansLeFichier = Object.prototype.hasOwnProperty.call(en, k)
+        const etat = etatDe(avant, apres, dansLeFichier)
+        if (etat) entrees.push({ famille: f, operation: k, avant, apres, etat })
+      }
+    }
+
+    const totalApres = totalDoc(apresBudgets, apresOps)
+    out.push({
+      label: p.label,
+      existe: !!doc,
+      entrees,
+      total_avant: totalDoc(avantBudgets, avantOps),
+      total_apres: totalApres,
+      total_plan: p.total_jh_ha,
+      ecart_conserve: Math.round((totalApres - p.total_jh_ha) * 100) / 100,
+    })
+  }
+  return out
+}
+
+/**
+ * Rapport de pré-validation. PURE.
+ * @param {PreValidation} pre
+ * @returns {Array<string>}
+ */
+function formatPreValidation(pre) {
+  /** @type {Array<string>} */
+  const out = []
+  out.push('=== PRÉ-VALIDATION (validateBudgetSave, la validation du backend) ===')
+  if (!pre.labels_verifies) {
+    out.push(
+      '  ⚠ référentiel des parcelles NON consulté : l\'existence des labels dans'
+    )
+    out.push('    sb_parcelle_referentiel n\'est PAS vérifiée par ce dry-run.')
+  }
+  for (const r of pre.resultats) {
+    out.push('  ' + (r.ok ? 'OK      ' : 'REFUSÉ  ') + r.label + (r.ok ? '' : ' — ' + r.error))
+  }
+  if (pre.ok) {
+    out.push('  → les ' + pre.resultats.length + ' parcelles passent la validation backend.')
+  } else {
+    out.push(
+      '  → ' +
+        pre.nb_invalides +
+        ' parcelle(s) REFUSÉE(S) : --apply est bloqué (tout-ou-rien), aucune écriture.'
+    )
+  }
+  return out
+}
+
+/**
+ * Rapport de diff avant/après. PURE.
+ * @param {Array<DiffParcelle>} diff
+ * @returns {Array<string>}
+ */
+function formatDiff(diff) {
+  /** @type {Array<string>} */
+  const out = []
+  out.push('=== DIFF AVANT / APRÈS (état réel des documents) ===')
+  for (const d of diff) {
+    if (!d.existe) {
+      out.push('  ' + d.label + ' : aucun budget existant — création, rien n\'est écrasé.')
+      continue
+    }
+    const supprimees = d.entrees.filter((e) => e.etat === 'supprimee')
+    const ecrasees = d.entrees.filter((e) => e.etat === 'ecrasee')
+    const conservees = d.entrees.filter((e) => e.etat === 'conservee_hors_fichier')
+    const identiques = d.entrees.filter((e) => e.etat === 'identique')
+    const ajoutees = d.entrees.filter((e) => e.etat === 'ajoutee')
+    out.push(
+      '  ' +
+        d.label +
+        ' : ' +
+        d.total_avant +
+        ' → ' +
+        d.total_apres +
+        ' JH/Ha  (plan : ' +
+        d.total_plan +
+        (d.ecart_conserve === 0 ? '' : ', ÉCART ' + d.ecart_conserve + ' dû aux entrées conservées') +
+        ')'
+    )
+    out.push(
+      '      ' +
+        ajoutees.length +
+        ' ajoutée(s), ' +
+        ecrasees.length +
+        ' écrasée(s), ' +
+        supprimees.length +
+        ' SUPPRIMÉE(S), ' +
+        conservees.length +
+        ' conservée(s) hors fichier, ' +
+        identiques.length +
+        ' identique(s)'
+    )
+    for (const e of supprimees.concat(ecrasees, conservees)) {
+      const nom = e.famille + (e.operation ? ' — ' + e.operation : ' [famille]')
+      out.push('      · ' + e.etat.toUpperCase() + ' ' + nom + ' : ' + e.avant + ' → ' + e.apres)
+    }
+  }
+  return out
+}
+
+/**
  * Rapport de dry-run lisible, parcelle par parcelle. PURE (retourne des
  * lignes, n'écrit rien).
  *
@@ -749,5 +1075,9 @@ module.exports = {
   parseBlocs,
   buildImportPlan,
   buildSavePayload,
+  preValidatePlan,
+  buildDiff,
   formatDryRunReport,
+  formatPreValidation,
+  formatDiff,
 }
