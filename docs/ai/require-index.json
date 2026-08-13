@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:a91fef37e966970f",
+    "sourceFingerprint": "sha256:3c4de0b5bdcf3c39",
     "stats": {
-      "targetFiles": 200,
+      "targetFiles": 202,
       "targetFilesWithDirectTests": 122,
       "targetFilesWithTransitiveTests": 139,
-      "testFilesScanned": 162
+      "testFilesScanned": 164
     }
   },
   "index": {
@@ -1240,6 +1240,14 @@
       "transitiveTests": []
     },
     "public/components/ParcellesReferentielTab.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PivotAnalytiqueGrid.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/PivotAnalytiqueGrid.jsx": {
       "directTests": [],
       "transitiveTests": []
     },

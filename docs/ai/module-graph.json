@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "211/350 fichiers classifiés",
+          "detail": "212/351 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "46/143 modules avec ≥1 test",
+          "detail": "48/144 modules avec ≥1 test",
           "max": 30,
           "score": 10
         }
@@ -32,6 +32,10 @@
       },
       {
         "commits": 9,
+        "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 9,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
@@ -40,11 +44,15 @@
       },
       {
         "commits": 8,
-        "file": "functions/pointageService.js"
+        "file": "scripts/build-frontend.js"
       },
       {
-        "commits": 8,
-        "file": "scripts/build-frontend.js"
+        "commits": 7,
+        "file": "public/components/CampagneBudgetTab.js"
+      },
+      {
+        "commits": 7,
+        "file": "public/components/CampagneBudgetTab.jsx"
       },
       {
         "commits": 7,
@@ -52,31 +60,23 @@
       },
       {
         "commits": 7,
-        "file": "tests/unit/campagneExportUtils.test.js"
-      },
-      {
-        "commits": 6,
-        "file": "functions/dgAgent.js"
-      },
-      {
-        "commits": 6,
-        "file": "public/components/CampagneBudgetTab.js"
+        "file": "tests/unit/campagneBudgetTab.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:705dc6cd5c4321fc",
+    "sourceFingerprint": "sha256:21ce24890c3c01c5",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
-      "coverageScore": 32,
+      "coverageScore": 33,
       "domains": 10,
-      "extractedComponents": 23,
+      "extractedComponents": 24,
       "firestoreCollections": 58,
       "libHelpers": 29,
       "monolithSymbols": 120,
       "tabFunctions": 120,
       "unclassifiedFiles": 139,
-      "unitTestFiles": 28
+      "unitTestFiles": 30
     }
   },
   "domains": {
@@ -736,7 +736,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 57,
+      "coverageScore": 67,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -756,7 +756,8 @@
           "public/components/CampagneBudgetTab.jsx",
           "public/components/ParcellesGroupesPanel.jsx",
           "public/components/ParcellesParamsTab.jsx",
-          "public/components/ParcellesReferentielTab.jsx"
+          "public/components/ParcellesReferentielTab.jsx",
+          "public/components/PivotAnalytiqueGrid.jsx"
         ],
         "libs": [
           "public/lib/analytiqueUtils.js",
@@ -781,6 +782,20 @@
         {
           "coCommits": 7,
           "domain": null,
+          "file": "public/components/CampagneBudgetTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
+          "file": "tests/unit/campagneBudgetTab.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -795,40 +810,26 @@
         {
           "coCommits": 6,
           "domain": null,
-          "file": "public/components/CampagneBudgetTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
-          "file": "tests/unit/campagneBudgetTab.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
           "file": "functions/lib/campagneBudget/__tests__/validate.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
           "file": "functions/lib/campagneBudget/validate.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
           "file": "functions/pointageService.js",
           "note": "probabilistic",
@@ -851,8 +852,10 @@
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
         ],
         "unit": [
+          "tests/unit/AffectationAnalytiqueTable.test.js",
           "tests/unit/CampagneBudgetTab.test.js",
           "tests/unit/ParcellesGroupesPanel.test.js",
+          "tests/unit/PivotAnalytiqueGrid.test.js",
           "tests/unit/analytiqueUtils.test.js",
           "tests/unit/campagneExportUtils.test.js",
           "tests/unit/campagneUtils.test.js",
@@ -2196,6 +2199,10 @@
       "domain": "referentiel"
     },
     "public/components/ParcellesReferentielTab.jsx": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/components/PivotAnalytiqueGrid.jsx": {
       "confidence": "high",
       "domain": "referentiel"
     },

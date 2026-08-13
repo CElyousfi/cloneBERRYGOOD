@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:23cb7259ac457032 -->
-# Code Map — Composants frontend (312)
+<!-- sourceFingerprint: sha256:9695d3177a005ca9 -->
+# Code Map — Composants frontend (313)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -22,7 +22,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | AchatsScanFacturesTab | public/app.jsx:51931 | achats_scan_factures |
 | AchatsVentePlastiqueTab | public/app.jsx:54284 | achats_vente_plastique |
 | AdminConsoleTab | public/app.jsx:62739 | — |
-| AffectationAnalytiqueTable | public/components/AffectationAnalytiqueTable.jsx:96 | — |
+| AffectationAnalytiqueTable | public/components/AffectationAnalytiqueTable.jsx:110 | — |
 | AgroAnalyseFoliairesTab | public/app.jsx:43523 | — |
 | AgroAvancementTab | public/app.jsx:39442 | agro_avancement |
 | AgroCompositionTab | public/app.jsx:42858 | agro_composition |
@@ -239,6 +239,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PGP_haSb | public/components/ParcellesGroupesPanel.jsx:49 | — |
 | PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:130 | — |
 | PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:90 | — |
+| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:153 | — |
 | PlanificationTab | public/app.jsx:28967 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
 | PointageDiversTab | public/app.jsx:24695 | pointage_divers |
