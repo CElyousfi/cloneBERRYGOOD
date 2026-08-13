@@ -359,7 +359,14 @@ async function run() {
   }
 
   // ── PRÉ-VALIDATION TOUT-OU-RIEN, avant la moindre écriture.
-  const pre = lib.preValidatePlan({ plan, referentiel: fiches, labelsConnus })
+  // `exigerLabels` sous --apply : un référentiel de parcelles illisible bloque
+  // le lot au lieu de retomber silencieusement sur les labels du fichier.
+  const pre = lib.preValidatePlan({
+    plan,
+    referentiel: fiches,
+    labelsConnus,
+    exigerLabels: o.apply,
+  })
   console.log(lib.formatPreValidation(pre).join('\n'))
   console.log('')
 
@@ -402,8 +409,12 @@ async function run() {
 
   console.log('')
   console.log('--- ÉCRITURE 2/2 : budgets via campagne-budget-save ---')
-  let ok = 0
-  let ko = 0
+  // ARRÊT À LA PREMIÈRE ERREUR. Poursuivre après un refus (référentiel Firestore
+  // divergent du classeur local, functions pas encore déployées…) accumulerait
+  // exactement l'état partiel que la pré-validation cherche à éviter. On stoppe,
+  // on liste ce qui est déjà écrit, et on rappelle où est le backup.
+  /** @type {Array<string>} */
+  const ecrites = []
   for (const p of plan.parcelles) {
     const payload = lib.buildSavePayload(plan, p)
     const res = await fetch(o.baseUrl + '/api/pointage-rh?action=campagne-budget-save', {
@@ -413,11 +424,21 @@ async function run() {
     })
     const json = await res.json().catch(() => ({ success: false, error: 'réponse illisible' }))
     if (!res.ok || !json.success) {
-      ko++
-      console.log('  ÉCHEC ' + p.label + ' : ' + (json.error || res.status))
-      continue
+      console.error('  ÉCHEC ' + p.label + ' : ' + (json.error || res.status))
+      console.error('')
+      console.error('=== ARRÊT IMMÉDIAT — ÉTAT PARTIEL ===')
+      console.error(
+        '  ' + ecrites.length + ' parcelle(s) DÉJÀ ÉCRITE(S) : ' +
+          (ecrites.length ? ecrites.join(', ') : '(aucune)')
+      )
+      console.error('  ' + (plan.parcelles.length - ecrites.length) + ' parcelle(s) NON écrite(s), à partir de ' + p.label + '.')
+      console.error('  Backup de l\'état antérieur : ' + backup)
+      console.error('  Pour revenir en arrière, restaurer les documents de ce fichier ;')
+      console.error('  pour reprendre, corriger la cause puis relancer (le script est idempotent).')
+      process.exit(1)
+      return
     }
-    ok++
+    ecrites.push(p.label)
     const effets = []
     if ((json.familles_purgees || []).length) effets.push('familles purgées : ' + json.familles_purgees.join(', '))
     if ((json.operations_purgees || []).length) effets.push('opérations purgées : ' + json.operations_purgees.join(', '))
@@ -431,8 +452,8 @@ async function run() {
     console.log('  OK    ' + p.label + ' — ' + p.nb_valeurs + ' valeur(s)' + (effets.length ? ' · ' + effets.join(' · ') : ''))
   }
   console.log('')
-  console.log('=== APPLY TERMINÉ === ' + ok + ' parcelle(s) écrite(s), ' + ko + ' échec(s).')
-  if (ko > 0) process.exit(1)
+  console.log('=== APPLY TERMINÉ === ' + ecrites.length + ' parcelle(s) écrite(s), 0 échec.')
+  console.log('Backup de l\'état antérieur conservé : ' + backup)
 }
 
 if (require.main === module) {

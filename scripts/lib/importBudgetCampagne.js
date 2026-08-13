@@ -69,6 +69,8 @@ const {
   mergeBudgets,
   mergeBudgetsOperations,
   canonicalizeOperationKeys,
+  purgeFamillesInconnues,
+  purgeOperationsInconnues,
   familleTotal,
 } = campagneBudget
 
@@ -687,6 +689,8 @@ function buildSavePayload(plan, parcelle) {
  *   `sb_parcelle_referentiel`. ABSENT = l'existence des parcelles n'est pas
  *   vérifiée (les labels du plan sont alors utilisés pour ne pas bloquer sur le
  *   fail-closed du backend) — signalé par `labels_verifies: false`.
+ * @param {boolean} [args.exigerLabels] mode ÉCRITURE : `labelsConnus` devient
+ *   obligatoire, son absence refuse tout le lot (cf. corps de la fonction).
  * @returns {PreValidation}
  */
 function preValidatePlan(args) {
@@ -706,6 +710,23 @@ function preValidatePlan(args) {
   const labelsConnus = labelsFournis
     ? a.labelsConnus
     : plan.parcelles.map((p) => p.label)
+
+  // Sous `--apply`, le repli sur les labels du plan est INTERDIT : un
+  // référentiel de parcelles illisible (API en erreur, réponse vide) n'est pas
+  // une raison de faire confiance au fichier source. On refuse en bloc plutôt
+  // que d'écrire sur des labels jamais confrontés à `sb_parcelle_referentiel`.
+  if (a.exigerLabels && !labelsFournis) {
+    return {
+      ok: false,
+      resultats: plan.parcelles.map((p) => ({
+        label: p.label,
+        ok: false,
+        error: 'Référentiel des parcelles illisible — écriture refusée (fail-closed)',
+      })),
+      labels_verifies: false,
+      nb_invalides: plan.parcelles.length,
+    }
+  }
 
   /** @type {Array<{label: string, ok: boolean, error?: string}>} */
   const resultats = []
@@ -737,7 +758,9 @@ function preValidatePlan(args) {
  * @property {string} [operation] clé `CODE::Libellé` (absent = niveau famille).
  * @property {number} avant
  * @property {number} apres
- * @property {'ajoutee'|'ecrasee'|'identique'|'supprimee'|'conservee_hors_fichier'} etat
+ * @property {'ajoutee'|'ecrasee'|'identique'|'supprimee'|'conservee_hors_fichier'|'purgee'} etat
+ *   `purgee` = entrée absente du référentiel courant, supprimée par la purge du
+ *   backend (pas par le fichier).
  */
 
 /**
@@ -750,15 +773,26 @@ function preValidatePlan(args) {
  * @property {number} total_plan total annoncé par le plan (fichier seul).
  * @property {number} ecart_conserve total_apres - total_plan : écart dû aux
  *   entrées saisies à la main, absentes du fichier, que le merge CONSERVE.
+ * @property {number} purge_differee nombre d'entrées obsolètes qu'un
+ *   garde-fou proportionnel a épargnées (elles RESTENT en base).
  */
 
 /**
- * Diff avant/après d'un import, en rejouant EXACTEMENT le merge du backend
- * (`mergeBudgets` / `mergeBudgetsOperations` / `canonicalizeOperationKeys`).
- * PURE.
+ * Diff avant/après d'un import, en rejouant EXACTEMENT ce que
+ * `writeBudgetInTransaction` persiste : merge (`mergeBudgets` /
+ * `mergeBudgetsOperations` / `canonicalizeOperationKeys`) PUIS purge
+ * (`purgeFamillesInconnues` / `purgeOperationsInconnues`). PURE.
  *
- * POURQUOI : le rapport de plan décrit ce que le FICHIER contient, pas l'état
- * final du document. Deux effets invisibles sans diff :
+ * POURQUOI LE MERGE SEUL NE SUFFIT PAS : le backend purge, dans la même
+ * transaction, les familles et opérations absentes du référentiel courant. Un
+ * diff qui s'arrête au merge annonce « conservée » une entrée obsolète qui sera
+ * en réalité SUPPRIMÉE, et surévalue `total_apres` d'autant. Les deux purges
+ * embarquent leur garde-fou proportionnel (`purgeAutorisee`, cf. MAX_PURGE_RATIO)
+ * : les appeler telles quelles reproduit aussi le cas « purge REPORTÉE », où les
+ * entrées obsolètes survivent — d'où `purge_differee`.
+ *
+ * POURQUOI UN DIFF TOUT COURT : le rapport de plan décrit ce que le FICHIER
+ * contient, pas l'état final du document. Deux effets invisibles sans lui :
  *  - `budgets[famille] = 0` SUPPRIME définitivement une valeur de famille déjà
  *    en base (règle de `mergeBudgets`) — une saisie manuelle peut être perdue ;
  *  - une opération saisie à la main et ABSENTE du fichier est CONSERVÉE par le
@@ -770,13 +804,25 @@ function preValidatePlan(args) {
  * @param {Array<{label_bee_one?: *, budgets?: *, budgets_operations?: *}>} [args.existants]
  *   documents renvoyés par `campagne-budget-list` (lecture seule).
  * @param {Array<{code?: *, groupe?: *, famille?: *, operation?: *}>} [args.referentiel]
- *   nécessaire pour canoniser les clés héritées, comme le fait le backend.
+ *   référentiel courant : canonisation des clés héritées ET purge, comme le
+ *   backend. Absent = aucune purge (fail-safe, même règle que le backend).
  * @returns {Array<DiffParcelle>}
  */
 function buildDiff(args) {
   const a = args || {}
   const plan = a.plan || { parcelles: [], campagne: '' }
-  const refOps = indexReferentiel(a.referentiel).operations
+  const refIndex = indexReferentiel(a.referentiel)
+  const refOps = refIndex.operations
+  // Mêmes entrées que celles passées par pointageService.js à la transaction.
+  const operationsConnues = refOps.map((o) => ({
+    code: o.code,
+    famille: o.famille,
+    operation: o.operation,
+  }))
+  const famillesConnues = []
+  for (const o of operationsConnues) {
+    if (famillesConnues.indexOf(o.famille) === -1) famillesConnues.push(o.famille)
+  }
   /** @type {Object<string, *>} */
   const parLabel = {}
   for (const d of Array.isArray(a.existants) ? a.existants : []) {
@@ -805,11 +851,15 @@ function buildDiff(args) {
   /**
    * @param {number} avant
    * @param {number} apres
-   * @param {boolean} dansLeFichier
+   * @param {boolean} dansLeFichier l'entrée est-elle portée par le fichier ?
    * @returns {DiffEntree['etat']|null} null = 0 → 0, rien à signaler.
    */
   function etatDe(avant, apres, dansLeFichier) {
-    if (avant > 0 && apres === 0) return 'supprimee'
+    if (avant > 0 && apres === 0) {
+      // Le merge ne supprime que sur une valeur entrante à 0 : une disparition
+      // hors fichier ne peut venir QUE de la purge du référentiel.
+      return dansLeFichier ? 'supprimee' : 'purgee'
+    }
     if (avant === 0 && apres > 0) return 'ajoutee'
     if (avant > 0 && apres > 0) {
       if (!dansLeFichier) return 'conservee_hors_fichier'
@@ -828,8 +878,16 @@ function buildDiff(args) {
       {}
     )
     const entrantOps = canonicalizeOperationKeys(p.budgets_operations, refOps)
-    const apresBudgets = mergeBudgets(avantBudgets, p.budgets)
-    const apresOps = mergeBudgetsOperations(avantOps, entrantOps)
+    // Merge PUIS purge — l'ordre exact de writeBudgetInTransaction. Sans la
+    // purge, une entrée obsolète serait annoncée « conservée » alors qu'elle
+    // sera supprimée, et total_apres serait surévalué d'autant.
+    const purgeFam = purgeFamillesInconnues(mergeBudgets(avantBudgets, p.budgets), famillesConnues)
+    const apresBudgets = purgeFam.budgets
+    const purgeOps = purgeOperationsInconnues(
+      mergeBudgetsOperations(avantOps, entrantOps),
+      operationsConnues
+    )
+    const apresOps = purgeOps.budgets_operations
 
     /** @type {Array<DiffEntree>} */
     const entrees = []
@@ -876,6 +934,7 @@ function buildDiff(args) {
       total_apres: totalApres,
       total_plan: p.total_jh_ha,
       ecart_conserve: Math.round((totalApres - p.total_jh_ha) * 100) / 100,
+      purge_differee: (purgeFam.purge_differee || 0) + (purgeOps.purge_differee || 0),
     })
   }
   return out
@@ -926,6 +985,7 @@ function formatDiff(diff) {
       continue
     }
     const supprimees = d.entrees.filter((e) => e.etat === 'supprimee')
+    const purgees = d.entrees.filter((e) => e.etat === 'purgee')
     const ecrasees = d.entrees.filter((e) => e.etat === 'ecrasee')
     const conservees = d.entrees.filter((e) => e.etat === 'conservee_hors_fichier')
     const identiques = d.entrees.filter((e) => e.etat === 'identique')
@@ -950,12 +1010,21 @@ function formatDiff(diff) {
         ' écrasée(s), ' +
         supprimees.length +
         ' SUPPRIMÉE(S), ' +
+        purgees.length +
+        ' PURGÉE(S) hors référentiel, ' +
         conservees.length +
         ' conservée(s) hors fichier, ' +
         identiques.length +
         ' identique(s)'
     )
-    for (const e of supprimees.concat(ecrasees, conservees)) {
+    if (d.purge_differee > 0) {
+      out.push(
+        '      ⚠ purge REPORTÉE sur ' +
+          d.purge_differee +
+          ' entrée(s) (ampleur invraisemblable, garde-fou backend) : elles RESTENT en base.'
+      )
+    }
+    for (const e of supprimees.concat(purgees, ecrasees, conservees)) {
       const nom = e.famille + (e.operation ? ' — ' + e.operation : ' [famille]')
       out.push('      · ' + e.etat.toUpperCase() + ' ' + nom + ' : ' + e.avant + ' → ' + e.apres)
     }

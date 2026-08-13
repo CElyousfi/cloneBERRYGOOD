@@ -553,6 +553,115 @@ test('diff : une clé d\'opération héritée (libellé nu) est canonisée, pas 
   assert.strictEqual(surBillonage[0].etat, 'identique')
 })
 
+test('diff : une entrée HORS RÉFÉRENTIEL est annoncée PURGÉE, pas « conservée »', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      {
+        label_bee_one: 'F5- MYA S9',
+        budgets: {},
+        // 'GB01::Obsolete' n'existe pas au référentiel : le merge la garderait,
+        // mais purgeOperationsInconnues (appliquée par le backend dans la MÊME
+        // transaction) la supprime.
+        budgets_operations: { 'Travaux du sol': { 'GB01::Obsolete': 9 } },
+      },
+    ],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const obsolete = d.entrees.filter((e) => e.operation === 'GB01::Obsolete')[0]
+  assert.strictEqual(obsolete.etat, 'purgee', 'ne doit PAS être annoncée conservee_hors_fichier')
+  assert.strictEqual(obsolete.apres, 0)
+  // Le total ne doit pas être surévalué de la valeur purgée.
+  assert.strictEqual(d.ecart_conserve, 0)
+  assert.strictEqual(d.total_apres, d.total_plan)
+  assert.match(lib.formatDiff(diff).join('\n'), /PURGEE Travaux du sol — GB01::Obsolete : 9 → 0/)
+})
+
+test('diff : une famille hors référentiel est purgée elle aussi', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      { label_bee_one: 'F5- MYA S9', budgets: { 'Famille disparue': 5 }, budgets_operations: {} },
+    ],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const e = d.entrees.filter((x) => x.famille === 'Famille disparue')[0]
+  assert.strictEqual(e.etat, 'purgee')
+  assert.strictEqual(d.total_apres, d.total_plan)
+})
+
+test('diff : une purge d\'ampleur invraisemblable est REPORTÉE, comme côté backend', () => {
+  const p = plan()
+  // 3 opérations obsolètes sur 3 : au-delà du garde-fou proportionnel
+  // (MAX_PURGE_RATIO), le backend ne supprime rien et reporte.
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      {
+        label_bee_one: 'F1- S5 MARAVILLA MD',
+        budgets: {},
+        budgets_operations: {
+          'Travaux du sol': { 'GB01::ObsoleteA': 1, 'GB01::ObsoleteB': 2, 'GB01::ObsoleteC': 3 },
+        },
+      },
+    ],
+    referentiel: REFERENTIEL,
+  })
+  const d = diff.filter((x) => x.label === 'F1- S5 MARAVILLA MD')[0]
+  assert.strictEqual(d.purge_differee, 3)
+  // Purge reportée = les entrées SURVIVENT : elles sont bien « conservées ».
+  const survivantes = d.entrees.filter((e) => e.etat === 'conservee_hors_fichier')
+  assert.strictEqual(survivantes.length, 3)
+  assert.strictEqual(d.ecart_conserve, 6)
+  assert.match(lib.formatDiff(diff).join('\n'), /purge REPORTÉE sur 3 entrée\(s\)/)
+})
+
+test('diff sans référentiel : aucune purge inventée (fail-safe, comme le backend)', () => {
+  const p = plan()
+  const diff = lib.buildDiff({
+    plan: p,
+    existants: [
+      {
+        label_bee_one: 'F5- MYA S9',
+        budgets: {},
+        budgets_operations: { 'Travaux du sol': { 'GB01::Obsolete': 9 } },
+      },
+    ],
+    referentiel: [],
+  })
+  const d = diff.filter((x) => x.label === 'F5- MYA S9')[0]
+  const e = d.entrees.filter((x) => x.operation === 'GB01::Obsolete')[0]
+  assert.strictEqual(e.etat, 'conservee_hors_fichier')
+})
+
+// ── Écriture : fail-closed sous --apply ─────────────────────────────────────
+
+test('sous --apply, un référentiel de parcelles illisible BLOQUE tout le lot', () => {
+  const p = plan()
+  const pre = lib.preValidatePlan({ plan: p, referentiel: REFERENTIEL, exigerLabels: true })
+  assert.strictEqual(pre.ok, false)
+  assert.strictEqual(pre.labels_verifies, false)
+  assert.strictEqual(pre.nb_invalides, p.parcelles.length, 'aucune parcelle ne doit passer')
+  assert.match(pre.resultats[0].error, /Référentiel des parcelles illisible/)
+})
+
+test('exigerLabels n\'a aucun effet quand le référentiel parcelles est fourni', () => {
+  const p = plan()
+  const labels = p.parcelles.map((x) => x.label)
+  const pre = lib.preValidatePlan({
+    plan: p,
+    referentiel: REFERENTIEL,
+    labelsConnus: labels,
+    exigerLabels: true,
+  })
+  assert.strictEqual(pre.ok, true)
+  assert.strictEqual(pre.labels_verifies, true)
+})
+
 // ── Colonne en doublon ──────────────────────────────────────────────────────
 
 test('une colonne en doublon est ignorée, pas importée deux fois', () => {
