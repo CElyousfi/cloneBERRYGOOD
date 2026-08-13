@@ -200,6 +200,48 @@ test('metrics — Ha inconnu : « — » quand la conversion en dépend, valeur 
   assert.strictEqual(cells(bodyRows(total)[0])[1], '7.0 | Réalisé JH | — | Budget JH');
 });
 
+test('metrics — valeur ABSENTE : « — », jamais 0 (cas nominal « pas de budget »)', () => {
+  // Le cœur du LOT 2c : la plupart des parcelles n'ont AUCUN budget saisi. Un 0
+  // affiché à côté du réalisé se lirait « budget nul », donc dépassement total ;
+  // et un écart à 0 se lirait « pile dans le budget ». Les deux sont faux.
+  const parcelles = [['P2', 2], ['P4', 4]];
+  const grouped = [{ type: 'famille', key: 'GB09', label: 'Taille',
+    // P4 est travaillée mais PAS budgétée : pas de champ `budget`.
+    pivot: { P2: { jh: 10, ha: 2, budget: 6 }, P4: { jh: 20, ha: 4 } } }];
+  const ecart = function (c) {
+    return c.budget > 0 && c.ha > 0 ? (c.jh || 0) - c.budget * c.ha : null;
+  };
+  const tree = render([
+    { key: 'jh', label: 'Réalisé', unit: 'JH/Ha', basis: 'total', display: 'perHa', format: un },
+    { key: 'budget', label: 'Budget', unit: 'JH/Ha', basis: 'perHa', display: 'perHa', format: un },
+    { label: 'Écart', unit: 'JH/Ha', get: ecart, basis: 'total', display: 'perHa', format: signe },
+  ], { parcelles: parcelles, groupedRows: grouped });
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1, 3), [
+    '5.0 | Réalisé JH/Ha | 6.0 | Budget JH/Ha | -1.0 | Écart JH/Ha',
+    '5.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Écart JH/Ha',
+  ]);
+  // Une valeur absente ne pèse rien dans les agrégats : le budget total est
+  // celui du PÉRIMÈTRE BUDGÉTÉ (12 JH / 6 Ha = 2.0), et l'écart aussi
+  // (−2 JH / 6 Ha = −0.3). Le réalisé, lui, reste complet (30 JH / 6 Ha).
+  assert.strictEqual(cells(bodyRows(tree)[0])[3],
+    '5.0 | Réalisé JH/Ha | 2.0 | Budget JH/Ha | -0.3 | Écart JH/Ha');
+});
+
+test('metrics — une valeur non finie est indéterminable, jamais affichée', () => {
+  // Filet anti-NaN/∞ : une division par un Ha nul en amont ne doit pas remonter
+  // « NaN » ni « Infinity » dans une cellule.
+  const grouped = [{ type: 'famille', key: 'GB09', label: 'Taille',
+    pivot: { P2: { jh: 10, ha: 2 } } }];
+  const tree = render([
+    { label: 'Bancal', unit: 'JH', get: function () { return 0 / 0; },
+      basis: 'total', display: 'total', format: un },
+    { label: 'Infini', unit: 'JH', get: function () { return 1 / 0; },
+      basis: 'total', display: 'total', format: un },
+  ], { parcelles: [['P2', 2]], groupedRows: grouped });
+  assert.strictEqual(cells(bodyRows(tree)[0])[1], '— | Bancal JH | — | Infini JH');
+  assert.strictEqual(cells(bodyRows(tree)[0])[2], '0.0 | Bancal JH | 0.0 | Infini JH');
+});
+
 test('metrics — le bandeau de groupe ne résume que la PREMIÈRE série', () => {
   const tree = render(troisSeries('perHa'));
   // Le total brut du groupe (30 JH), pas le budget ni l'écart.

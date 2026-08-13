@@ -174,6 +174,27 @@
     return out;
   }
 
+  /**
+   * Idem pour les budgets PAR OPÉRATION (`budgets_operations`). PURE.
+   *
+   * Séparé de CAT_budgetsByLabel, comme côté saisie (CampagneBudgetTab) : un
+   * document écrit avant la descente au niveau opération n'a pas ce champ et
+   * doit rester lisible tel quel (→ map vide, aucune migration).
+   *
+   * @param {Array<{label_bee_one?: string, budgets_operations?: Object}>} list
+   * @returns {Object<string, Object<string, Object<string, number>>>}
+   *   LABEL_MAJ → famille → `CODE::Libellé` → JH/Ha
+   */
+  function CAT_opBudgetsByLabel(list) {
+    var out = {};
+    (list || []).forEach(function (b) {
+      var key = String((b && b.label_bee_one) || '').trim().toUpperCase();
+      if (!key) return;
+      out[key] = (b && b.budgets_operations) || {};
+    });
+    return out;
+  }
+
   /* ------------------------------------------------------------------ */
   /* Helpers de calcul pivot                                              */
   /* ------------------------------------------------------------------ */
@@ -1142,12 +1163,25 @@
    * avec leur Ha, une grille par culture.
    *
    * Cette vue ne calcule RIEN elle-même : le pivot vient de
-   * AnalytiqueUtils.buildAnalytiquePivotByFamille (lib partagée, inchangée) et
-   * la présentation de PivotAnalytiqueGrid. Elle ne fait que mapper les
-   * champs (CAT_pivotRows) et traduire ses bascules en séries `metrics`.
+   * AnalytiqueUtils.buildAnalytiquePivotByFamille (lib partagée, inchangée), la
+   * superposition du budget de CampagneBudgetPivot.buildBudgetPivot (qui
+   * applique la règle métier `familleTotal`), et la présentation de
+   * PivotAnalytiqueGrid. Elle ne fait que mapper les champs (CAT_pivotRows) et
+   * traduire ses bascules en séries `metrics`.
    *
    * Bascules : JH ↔ Coût DH (état partagé avec les autres vues MO, prop
    * `metric`), Ha ↔ Total et Récap ↔ Détail (locaux à la vue).
+   *
+   * ── BUDGET ET ÉCART ───────────────────────────────────────────────────────
+   * Deux séries s'ajoutent au réalisé DANS chaque cellule, seulement quand :
+   *   - la métrique est JH : le budget est saisi en JH/Ha, il n'a aucune
+   *     traduction en DH — afficher un « budget » sous un coût serait faux ;
+   *   - la culture affichée porte au moins un budget : sinon la grille se
+   *     remplirait de deux lignes de « — » (état nominal de l'avocatier).
+   * Le budget est en JH/Ha (`basis: 'perHa'`), le réalisé en JH total
+   * (`basis: 'total'`) : la conversion est portée PAR SÉRIE par la grille, elle
+   * n'est jamais faite ici — et ses agrégats reconvertissent en total avant de
+   * sommer (sommer des JH/Ha entre parcelles n'aurait aucun sens).
    */
   function PivotView(props) {
     var data = props.data || {};
@@ -1176,21 +1210,54 @@
     }, [data, sbMap, props.farmFilter, props.cultureFilter]);
 
     var isJh = metric === 'jh';
+    var uniteJh = totalMode ? 'JH' : 'JH/Ha';
+    var fmtJh1 = function (v) { return (Math.round(v * 10) / 10).toFixed(1); };
     var metrics = [{
       key: isJh ? 'jh' : 'cout',
-      unit: isJh ? (totalMode ? 'JH' : 'JH/Ha') : (totalMode ? 'DH' : 'DH/Ha'),
+      label: isJh ? 'Réalisé' : 'Coût',
+      unit: isJh ? uniteJh : (totalMode ? 'DH' : 'DH/Ha'),
       // Le pivot stocke des TOTAUX par cellule ; seul `display` bouge avec la
-      // bascule Ha/Total. Le budget du lot suivant arrivera, lui, en
-      // `basis: 'perHa'` — d'où le sens de conversion porté par série.
+      // bascule Ha/Total. Le budget, lui, est déjà en JH/Ha (`basis: 'perHa'`)
+      // — d'où le sens de conversion porté par série.
       basis: 'total',
       display: totalMode ? 'total' : 'perHa',
       format: isJh
-        ? function (v) { return (Math.round(v * 10) / 10).toFixed(1); }
+        ? fmtJh1
         : function (v) { return Math.round(v).toLocaleString('fr-MA'); },
       summary: isJh
         ? function (t) { return Math.round(t).toLocaleString('fr-MA') + ' JH total'; }
         : function (t) { return Math.round(t).toLocaleString('fr-MA') + ' DH'; },
     }];
+
+    // Séries Budget / Écart — ajoutées seulement en JH et seulement sur une
+    // culture budgétée (cf. en-tête). Aucun plafonnement de l'écart : un
+    // dépassement s'affiche tel quel, en rouge.
+    var metricsBudget = metrics.concat([
+      {
+        key: 'budget',
+        label: 'Budget',
+        unit: uniteJh,
+        basis: 'perHa',
+        display: totalMode ? 'total' : 'perHa',
+        format: fmtJh1,
+      },
+      {
+        label: 'Écart',
+        unit: uniteJh,
+        // Écart = réalisé − budget, en JH total. `null` (aucun budget saisi, ou
+        // Ha inconnu) → cellule « — » : jamais 0, qui se lirait « pile dans le
+        // budget ».
+        get: window.CampagneBudgetPivot && window.CampagneBudgetPivot.ecartCell,
+        basis: 'total',
+        display: totalMode ? 'total' : 'perHa',
+        format: function (v) {
+          var txt = (v > 0 ? '+' : '') + fmtJh1(v);
+          if (!(v > 0)) return txt;
+          // Dépassement : même code couleur que l'export Excel (rouge).
+          return React.createElement('span', { style: { color: C.berry } }, txt);
+        },
+      },
+    ]);
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
     // rendu React (mémoire projet « tab bare global ref »).
@@ -1235,11 +1302,29 @@
         : groups.map(function (g) {
             var pivot = AU.buildAnalytiquePivotByFamille(g.rows, { detail: detailMode });
             if (!pivot.groupedRows || pivot.groupedRows.length === 0) return null;
+            // Superposition du budget : lignes IDENTIQUES (mêmes clés, même
+            // ordre), plus les familles/opérations budgétées mais jamais
+            // travaillées — un budget non consommé doit rester visible.
+            // Modules absents (script non chargé) → réalisé seul, jamais un
+            // budget deviné.
+            var CBP = window.CampagneBudgetPivot;
+            var rules = window.CampagneBudgetTab;
+            var sup = (isJh && CBP && typeof CBP.buildBudgetPivot === 'function' && rules)
+              ? CBP.buildBudgetPivot({
+                  groupedRows: pivot.groupedRows,
+                  parcelles: pivot.parcelles,
+                  budgetsByLabel: props.budgetsByLabel || {},
+                  opBudgetsByLabel: props.opBudgetsByLabel || {},
+                  analytique: AU,
+                  budgetRules: rules,
+                  detail: detailMode,
+                })
+              : null;
             return React.createElement(Grid, {
               key: g.culture,
               parcelles: pivot.parcelles,
-              groupedRows: pivot.groupedRows,
-              metrics: metrics,
+              groupedRows: sup ? sup.groupedRows : pivot.groupedRows,
+              metrics: (sup && sup.hasBudget) ? metricsBudget : metrics,
               color: g.color,
               title: g.culture,
               icon: g.icon,
@@ -1510,11 +1595,20 @@
     var sbMap = _sbMap[0]; var setSbMap = _sbMap[1];
 
     // Budgets JH/Ha de la campagne courante : { LABEL_BEE_ONE_MAJ: { famille:
-    // jhParHa } }. Alimente les colonnes de suivi budgétaire de l'export Excel.
+    // jhParHa } }. Alimente les colonnes de suivi budgétaire de l'export Excel
+    // ET les séries Budget/Écart de la grille (PivotView).
     // Un échec de chargement n'est PAS bloquant : l'export part sans budget
-    // (colonnes vides), exactement comme avant toute saisie.
+    // (colonnes vides) et la grille n'affiche que le réalisé, exactement comme
+    // avant toute saisie.
     var _budgets = useState({});
     var budgetsByLabel = _budgets[0]; var setBudgetsByLabel = _budgets[1];
+
+    // Même source, même fetch : le détail par opération du MÊME appel
+    // `campagne-budget-list` (jamais un second aller-retour). Il sert la maille
+    // fine de la grille en mode Détail, et la règle « les opérations écrasent la
+    // famille » a besoin des deux niveaux.
+    var _opBudgets = useState({});
+    var opBudgetsByLabel = _opBudgets[0]; var setOpBudgetsByLabel = _opBudgets[1];
 
     // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
     // l'export), et pas seulement au montage : sinon un budget saisi dans le
@@ -1528,6 +1622,7 @@
         .then(function (d) {
           if (cancelled || !d || !d.success) return;
           setBudgetsByLabel(CAT_budgetsByLabel(d.budgets || []));
+          setOpBudgetsByLabel(CAT_opBudgetsByLabel(d.budgets || []));
         })
         .catch(function () {});
       return function () { cancelled = true; };
@@ -1728,6 +1823,8 @@
                 farmFilter: farmFilter,
                 cultureFilter: cultureFilter,
                 sbMap: sbMap,
+                budgetsByLabel: budgetsByLabel,
+                opBudgetsByLabel: opBudgetsByLabel,
                 metric: metric,
                 setMetric: setMetric,
               })
@@ -1771,6 +1868,7 @@
   window.CampagneAnalytiqueTab = CampagneAnalytiqueTab;
   // Exposés pour les tests unitaires (node:test + vm), comme CampagneBudgetTab.
   CampagneAnalytiqueTab.budgetsByLabel = CAT_budgetsByLabel;
+  CampagneAnalytiqueTab.opBudgetsByLabel = CAT_opBudgetsByLabel;
   CampagneAnalytiqueTab.buildCultureWorkbook = buildCultureWorkbook;
   CampagneAnalytiqueTab.CULTURE_INCONNUE = CAT_CULTURE_INCONNUE;
   CampagneAnalytiqueTab.pivotRows = CAT_pivotRows;

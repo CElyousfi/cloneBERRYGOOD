@@ -41,8 +41,12 @@
  * ré-extraire la grille.
  *
  *   key      {string}    Champ lu dans la cellule du pivot (ex. 'jh', 'cout').
- *   get      {Function}  (cellule) => number. Prioritaire sur `key` — c'est par
- *                        là que passe une série CALCULÉE (l'écart, typiquement).
+ *   get      {Function}  (cellule) => number|null. Prioritaire sur `key` — c'est
+ *                        par là que passe une série CALCULÉE (l'écart,
+ *                        typiquement). `null`/`undefined` (par `get` comme par
+ *                        `key` absent) = valeur NON RENSEIGNÉE : la cellule
+ *                        affiche « — » et ne pèse rien dans les agrégats. À NE
+ *                        PAS confondre avec 0 (cf. _pag_raw).
  *   label    {string}    Nom court de la série. Affiché UNIQUEMENT s'il y a
  *                        plusieurs séries (sinon le balisage divergerait du
  *                        rendu historique).
@@ -77,7 +81,7 @@
  *     { key: 'budget', label: 'Budget',  unit: 'JH/Ha',
  *       basis: 'perHa', display: 'perHa', format: _un },
  *     { label: 'Écart', unit: 'JH/Ha',
- *       get: (c) => (c.jh || 0) - (c.budget || 0) * (c.ha || 0),
+ *       get: CampagneBudgetPivot.ecartCell,   // null si pas de budget / Ha inconnu
  *       basis: 'total', display: 'perHa', format: _signe },
  *   ]}
  * En basculant l'affichage sur Total, l'appelant passe `display: 'total'` sur
@@ -91,18 +95,36 @@
   if (!_PAG_R) return;
   var _pag_h = _PAG_R.createElement;
 
-  /** Valeur brute d'une série dans une cellule du pivot. */
+  /**
+   * Valeur brute d'une série dans une cellule du pivot.
+   *
+   * `null` = valeur NON RENSEIGNÉE, à distinguer de 0. Le budget en a un besoin
+   * structurel : « aucun budget saisi » (l'état de la plupart des parcelles) doit
+   * s'afficher « — », jamais « 0.0 » — un budget nul affiché à côté d'un réalisé
+   * se lit comme un dépassement total. Même chose pour l'écart, qui n'existe pas
+   * sans budget : un 0 s'y lirait « pile dans le budget ».
+   * Une valeur non finie (NaN, ±∞ — division par un Ha nul en amont) est traitée
+   * de la même façon : indéterminable, jamais affichée.
+   */
   function _pag_raw(metric, cell) {
-    if (!cell) return 0;
+    if (!cell) return null;
     var v = typeof metric.get === 'function' ? metric.get(cell) : cell[metric.key];
-    return Number(v) || 0;
+    if (v === null || v === undefined || v === '') return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
   }
 
   function _pag_basis(metric) { return metric.basis === 'perHa' ? 'perHa' : 'total'; }
   function _pag_disp(metric) { return metric.display === 'perHa' ? 'perHa' : 'total'; }
 
-  /** Quantité TOTALE portée par une cellule — la seule grandeur sommable. */
+  /**
+   * Quantité TOTALE portée par une cellule — la seule grandeur sommable.
+   * Une valeur non renseignée ne pèse rien dans un agrégat (elle ne le rend pas
+   * indéterminable pour autant : un total de budget reste la somme des budgets
+   * saisis, à périmètre budgété, comme dans l'export Excel).
+   */
   function _pag_toTotal(metric, raw, ha) {
+    if (raw === null) return 0;
     return _pag_basis(metric) === 'perHa' ? raw * (ha || 0) : raw;
   }
 
@@ -110,8 +132,9 @@
     return typeof metric.format === 'function' ? metric.format(value) : String(value);
   }
 
-  /** Rendu d'une cellule. `null` = indéterminable (Ha inconnu). */
+  /** Rendu d'une cellule. `null` = indéterminable (valeur absente ou Ha inconnu). */
   function _pag_renderCell(metric, raw, ha) {
+    if (raw === null) return null;
     var basis = _pag_basis(metric);
     var disp = _pag_disp(metric);
     if (basis === disp) return _pag_fmt(metric, raw);

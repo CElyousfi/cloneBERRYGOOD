@@ -90,6 +90,18 @@ if (!fs.readFileSync(CAMPAGNE_EXPORT_UTILS, "utf8").includes("buildParcelleSheet
   process.exit(2);
 }
 
+// 2ter-quinquies. Sibling lib check — campagneBudgetPivot.js (budget/écart superposés
+// sur la grille du pivot analytique, écran Campagne).
+const CAMPAGNE_BUDGET_PIVOT = path.join(ROOT, "public/lib/campagneBudgetPivot.js");
+if (!fs.existsSync(CAMPAGNE_BUDGET_PIVOT)) {
+  console.error("[build-frontend] missing public/lib/campagneBudgetPivot.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(CAMPAGNE_BUDGET_PIVOT, "utf8").includes("buildBudgetPivot")) {
+  console.error("[build-frontend] sentinel missing in public/lib/campagneBudgetPivot.js: buildBudgetPivot");
+  process.exit(2);
+}
+
 // 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
 // puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
 // <script> séparés et partagent le scope global (IIFE → un seul global unique).
