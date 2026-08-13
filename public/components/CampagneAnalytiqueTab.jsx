@@ -52,6 +52,21 @@
     'Récolte':               'fa-basket-shopping',
   };
 
+  /**
+   * Identité visuelle des cultures dans la vue Pivot analytique — MÊMES
+   * couleurs et icônes que le panneau Affectation Analytique de l'écran
+   * Quinzaine, pour qu'un utilisateur reconnaisse la même grille d'un écran à
+   * l'autre.
+   */
+  var CAT_CULTURES_DEF = [
+    { culture: 'Framboise', color: '#8B2252', icon: 'fa-seedling' },
+    { culture: 'Myrtille',  color: '#3498DB', icon: 'fa-circle-dot' },
+    { culture: 'Avocatier', color: '#2D8B4E', icon: 'fa-tree' },
+  ];
+
+  /** Titre du groupe quand la culture n'a PAS pu être résolue (cf. CAT_byCulture). */
+  var CAT_CULTURE_INCONNUE = 'Culture non résolue';
+
   /* ------------------------------------------------------------------ */
   /* Formatage                                                            */
   /* ------------------------------------------------------------------ */
@@ -162,31 +177,10 @@
   /* ------------------------------------------------------------------ */
   /* Helpers de calcul pivot                                              */
   /* ------------------------------------------------------------------ */
-  function buildHaView(rows, haByRef) {
-    var byParcelle = {};
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      var key = r.refParcelle || r.parcelle;
-      if (!byParcelle[key]) {
-        var haKey = (r.parcelle || r.refParcelle || '').toUpperCase();
-        byParcelle[key] = {
-          parcelle: r.parcelle,
-          refParcelle: r.refParcelle,
-          ferme: r.ferme,
-          ha: haByRef[haKey] || 0,
-          byFamille: {},
-          total: { jh: 0, cout: 0 },
-        };
-      }
-      var fam = r.famille;
-      if (!byParcelle[key].byFamille[fam]) byParcelle[key].byFamille[fam] = { jh: 0, cout: 0 };
-      byParcelle[key].byFamille[fam].jh  += r.jh;
-      byParcelle[key].byFamille[fam].cout += r.cout;
-      byParcelle[key].total.jh  += r.jh;
-      byParcelle[key].total.cout += r.cout;
-    }
-    return Object.values(byParcelle).sort(function (a, b) { return b.total.cout - a.total.cout; });
-  }
+  // `buildHaView` (agrégation parcelle × famille de l'ancienne vue tabulaire)
+  // est SUPPRIMÉ : la vue « Affectation par Ha » est désormais rendue par la
+  // grille partagée (PivotView + AnalytiqueUtils.buildAnalytiquePivotByFamille),
+  // qui agrège la même chose. Aucun autre appelant (vérifié dans tout le repo).
 
   function buildVarieteView(rows, parcelle, periodes) {
     var filtered = rows.filter(function (r) {
@@ -215,6 +209,111 @@
       var fc = a.famille.localeCompare(b.famille);
       return fc !== 0 ? fc : a.operation.localeCompare(b.operation);
     });
+  }
+
+  /**
+   * Mappe les lignes de `campagne-analytique-detail` vers la forme attendue par
+   * AnalytiqueUtils.buildAnalytiquePivotByFamille. PURE (sbMap/haByRef injectés).
+   *
+   * Le seul écart entre les deux sources est le NOM des champs — les valeurs
+   * (jh, cout) sont reprises telles quelles, sans recalcul :
+   *   campagne-analytique-detail        →  AnalytiqueRow (public/lib/analytiqueUtils.js)
+   *   ────────────────────────────────     ──────────────────────────────────────────
+   *   code    (ex. 'GB09')              →  operationGroupe   (code GB, clé du pivot)
+   *   famille (libellé BEE ONE résolu)  →  operationFamille  (repli si code absent)
+   *   operation                         →  operation         (lignes du mode Détail)
+   *   parcelle || refParcelle           →  parcelle          (clé de colonne)
+   *   —                                 →  ha  = sbHa(label, sbMap, haByRef)
+   *
+   * La clé de colonne reste le LIBELLÉ BEE ONE (pas le nom Smart Berry) : c'est
+   * la clé de jointure du référentiel (sbHa/sbNom/culture), et l'affichage passe
+   * par la prop `parcelleLabel` de la grille. `nbOuv` est conservé pour la
+   * pop-up de détail.
+   *
+   * ⚠️ VENTILATION DIFFÉRENTE DE L'ANCIENNE VUE TABULAIRE (attendu, pas un bug).
+   * `buildHaView` regroupait sur `refParcelle || parcelle`, cette grille sur
+   * `parcelle || refParcelle`. Or plusieurs libellés culturaux partagent un même
+   * Ref_parcelle en production — relevé exhaustivement sur la campagne
+   * 2026-2027 (44 journées, 4 328 lignes de sql_mirror_pointage, 2026-08-13) :
+   *   F5 → « CASCADE MYRTILLE S8-1 », « BREEZE MYRTILLE S8-2 »,
+   *        « F5 CORINA myrtille S8-3 », « AVOCAT F5 »
+   *   F2 → « F2 - HAAS », « F2 - ZUTANO »
+   *   F4 → « F4 -HAAS », « F4 -FUERTE »
+   * L'ancienne vue en faisait UNE ligne (« F5 » mélangeait donc trois parcelles
+   * de myrtille ET l'avocatier, avec le Ha d'un seul libellé au dénominateur du
+   * DH/Ha) ; la grille en fait autant de colonnes, chacune avec SON Ha et SA
+   * culture. Les totaux généraux sont identiques, la ventilation est plus fine.
+   * Aucun libellé ne porte deux Ref_parcelle (0 cas), donc rien n'est éclaté à
+   * tort dans l'autre sens.
+   *
+   * Les filtres de l'écran sont appliqués ICI, en amont du pivot : filtrer après
+   * coup laisserait des colonnes de parcelles vides dans la grille.
+   *
+   * @param {Array<Object>} rows            data.rows de campagne-analytique-detail
+   * @param {Object} sbMap                  référentiel SB indexé LABEL_MAJ → entrée
+   * @param {Object} haByRef                data.haByRef (repli Ha)
+   * @param {{farmFilter?: string, cultureFilter?: string}} [opts]
+   * @returns {Array<Object>} lignes prêtes pour buildAnalytiquePivotByFamille
+   */
+  function CAT_pivotRows(rows, sbMap, haByRef, opts) {
+    var farmFilter = (opts && opts.farmFilter) || null;
+    var cultureFilter = (opts && opts.cultureFilter) || null;
+    var out = [];
+    (rows || []).forEach(function (r) {
+      var label = r.parcelle || r.refParcelle;
+      if (!label) return;
+      if (farmFilter && r.ferme !== farmFilter) return;
+      if (!matchCulture(label, cultureFilter, sbMap)) return;
+      out.push({
+        parcelle: label,
+        ferme: r.ferme,
+        ha: sbHa(label, sbMap, haByRef),
+        jh: r.jh || 0,
+        cout: r.cout || 0,
+        nbOuv: r.nbOuv || 0,
+        operation: r.operation,
+        operationGroupe: r.code,
+        operationFamille: r.famille,
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Regroupe les lignes mappées par culture (référentiel SB prioritaire, cf.
+   * cultureOf). PURE. Retourne la liste ordonnée des cultures présentes avec
+   * leurs lignes — l'ordre suit CAT_CULTURES_DEF, les cultures inconnues du
+   * référentiel visuel sont ajoutées à la fin plutôt que perdues.
+   *
+   * ⚠️ Culture NON RÉSOLUE (module CultureUtils absent) → groupe explicite
+   * `CAT_CULTURE_INCONNUE`, JAMAIS un repli sur 'Framboise' : une grille titrée
+   * « Framboise » remplie de myrtilles est un mensonge silencieux, que personne
+   * ne peut détecter en lisant l'écran. L'appelant (PivotView) intercepte le cas
+   * en amont avec un message d'erreur ; ce groupe est la ceinture de sécurité
+   * pour tout autre appelant.
+   *
+   * @param {Array<Object>} pivotRows
+   * @param {Object} sbMap
+   * @returns {Array<{culture: string, color: string, icon: string, rows: Array<Object>}>}
+   */
+  function CAT_byCulture(pivotRows, sbMap) {
+    var groups = {};
+    (pivotRows || []).forEach(function (r) {
+      var c = cultureOf(r.parcelle, sbMap) || CAT_CULTURE_INCONNUE;
+      if (!groups[c]) groups[c] = [];
+      groups[c].push(r);
+    });
+    var out = [];
+    CAT_CULTURES_DEF.forEach(function (def) {
+      if (groups[def.culture] && groups[def.culture].length) {
+        out.push({ culture: def.culture, color: def.color, icon: def.icon, rows: groups[def.culture] });
+      }
+    });
+    Object.keys(groups).forEach(function (c) {
+      if (out.some(function (o) { return o.culture === c; })) return;
+      out.push({ culture: c, color: C.gray, icon: 'fa-leaf', rows: groups[c] });
+    });
+    return out;
   }
 
   /* ------------------------------------------------------------------ */
@@ -580,203 +679,6 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Sous-composant : Vue Affectation par Ha                              */
-  /* ------------------------------------------------------------------ */
-  function HaView(props) {
-    var data = props.data;
-    var farmFilter = props.farmFilter;
-    var cultureFilter = props.cultureFilter;
-    var sbMap = props.sbMap || {};
-    var metric = props.metric; // 'cout' | 'jh'
-    var setMetric = props.setMetric;
-
-    var rows = useMemo(function () {
-      return buildHaView(data.rows, data.haByRef);
-    }, [data]);
-
-    // Familles actives (cout > 0 dans tout le dataset)
-    var activeFamilles = useMemo(function () {
-      var famSet = {};
-      for (var i = 0; i < rows.length; i++) {
-        var bf = rows[i].byFamille;
-        Object.keys(bf).forEach(function (f) {
-          if (bf[f].cout > 0) famSet[f] = true;
-        });
-      }
-      // Conserver l'ordre du référentiel
-      var ordered = (data.famillesOrdered || []).filter(function (f) { return famSet[f]; });
-      // Ajouter les familles non reconnues dans le référentiel
-      Object.keys(famSet).forEach(function (f) {
-        if (ordered.indexOf(f) === -1) ordered.push(f);
-      });
-      return ordered;
-    }, [rows, data.famillesOrdered]);
-
-    // Filtrer par ferme puis par culture
-    var filteredRows = useMemo(function () {
-      var r = rows;
-      if (farmFilter) r = r.filter(function (row) { return row.ferme === farmFilter; });
-      r = r.filter(function (row) {
-        return matchCulture(row.parcelle || row.refParcelle, cultureFilter, sbMap);
-      });
-      return r;
-    }, [rows, farmFilter, cultureFilter, sbMap]);
-
-    // Totaux colonnes
-    var colTotals = useMemo(function () {
-      var t = { byFamille: {}, total: { jh: 0, cout: 0 } };
-      filteredRows.forEach(function (r) {
-        activeFamilles.forEach(function (f) {
-          if (!t.byFamille[f]) t.byFamille[f] = { jh: 0, cout: 0 };
-          var cell = r.byFamille[f];
-          if (cell) {
-            t.byFamille[f].jh  += cell.jh;
-            t.byFamille[f].cout += cell.cout;
-          }
-        });
-        t.total.jh  += r.total.jh;
-        t.total.cout += r.total.cout;
-      });
-      return t;
-    }, [filteredRows, activeFamilles]);
-
-    var thStyle = {
-      padding: '8px 10px',
-      borderBottom: '2px solid ' + C.border,
-      background: C.surface2,
-      fontSize: '12px',
-      fontWeight: 600,
-      color: C.textSec,
-      whiteSpace: 'nowrap',
-      textAlign: 'right',
-    };
-    var thFirstStyle = Object.assign({}, thStyle, { textAlign: 'left' });
-    var tdStyle = {
-      padding: '7px 10px',
-      borderBottom: '1px solid ' + C.border,
-      fontSize: '13px',
-      color: C.text,
-      textAlign: 'right',
-      whiteSpace: 'nowrap',
-    };
-    var tdFirstStyle = Object.assign({}, tdStyle, { textAlign: 'left', fontWeight: 500 });
-    var tdDashStyle = Object.assign({}, tdStyle, { color: C.textSec });
-    var totalRowStyle = {
-      background: C.berry,
-      color: '#fff',
-    };
-    var totalCellStyle = {
-      padding: '8px 10px',
-      fontSize: '13px',
-      fontWeight: 700,
-      textAlign: 'right',
-      whiteSpace: 'nowrap',
-      color: '#fff',
-    };
-
-    return React.createElement('div', null,
-      // Barre de contrôle (métrique)
-      React.createElement('div', {
-        style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }
-      },
-        React.createElement('span', { style: { fontSize: '13px', color: C.textSec, marginRight: '4px' } }, 'Afficher :'),
-        ['cout', 'jh'].map(function (m) {
-          var label = m === 'cout' ? 'Coût DH' : 'Journées-Homme';
-          return React.createElement('button', {
-            key: m,
-            onClick: function () { setMetric(m); },
-            style: {
-              padding: '5px 14px',
-              border: '1.5px solid ' + (metric === m ? C.berry : C.border),
-              borderRadius: '16px',
-              background: metric === m ? C.berry : C.surface,
-              color: metric === m ? '#fff' : C.text,
-              fontSize: '12px',
-              fontWeight: metric === m ? 700 : 400,
-              cursor: 'pointer',
-            }
-          }, label);
-        })
-      ),
-      // Tableau
-      filteredRows.length === 0
-        ? React.createElement('div', {
-            style: { padding: '40px', textAlign: 'center', color: C.textSec, fontSize: '14px' }
-          }, 'Aucune donnée pour cette sélection.')
-        : React.createElement('div', { style: { overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' } },
-            React.createElement('table', {
-              style: { minWidth: '600px', borderCollapse: 'collapse', fontSize: '13px' }
-            },
-              React.createElement('thead', null,
-                React.createElement('tr', null,
-                  React.createElement('th', { style: thFirstStyle }, 'Parcelle'),
-                  React.createElement('th', { style: thStyle }, 'Ferme'),
-                  React.createElement('th', { style: thStyle }, 'Ha'),
-                  activeFamilles.map(function (f) {
-                    var icon = FAMILLE_ICONS[f];
-                    return React.createElement('th', { key: f, style: thStyle, title: f },
-                      icon
-                        ? React.createElement('span', null,
-                            React.createElement('i', { className: 'fa-solid ' + icon, style: { marginRight: '4px' } }),
-                            f
-                          )
-                        : f
-                    );
-                  }),
-                  React.createElement('th', { style: thStyle }, 'Total DH'),
-                  React.createElement('th', { style: thStyle }, 'DH/Ha')
-                )
-              ),
-              React.createElement('tbody', null,
-                filteredRows.map(function (row, idx) {
-                  return React.createElement('tr', {
-                    key: row.refParcelle || row.parcelle,
-                    style: { background: idx % 2 === 0 ? C.surface : C.surface2 }
-                  },
-                    React.createElement('td', {
-                      style: tdFirstStyle,
-                      title: row.parcelle || row.refParcelle,
-                    }, sbNom(row.parcelle || row.refParcelle, sbMap)),
-                    React.createElement('td', { style: tdStyle }, row.ferme || '—'),
-                    React.createElement('td', { style: tdStyle }, fmtHa(row.ha)),
-                    activeFamilles.map(function (f) {
-                      var cell = row.byFamille[f];
-                      var val = cell ? (metric === 'cout' ? cell.cout : cell.jh) : 0;
-                      if (!val || val === 0) return React.createElement('td', { key: f, style: tdDashStyle }, '—');
-                      return React.createElement('td', { key: f, style: tdStyle },
-                        metric === 'cout' ? fmtDH(val) : fmtJH(val)
-                      );
-                    }),
-                    React.createElement('td', { style: Object.assign({}, tdStyle, { fontWeight: 700 }) },
-                      fmtDH(row.total.cout)
-                    ),
-                    React.createElement('td', { style: tdStyle },
-                      fmtDHPerHa(row.total.cout, row.ha)
-                    )
-                  );
-                }),
-                // Ligne de total
-                React.createElement('tr', { style: totalRowStyle },
-                  React.createElement('td', { style: Object.assign({}, totalCellStyle, { textAlign: 'left' }) }, 'TOTAL'),
-                  React.createElement('td', { style: totalCellStyle }, ''),
-                  React.createElement('td', { style: totalCellStyle }, ''),
-                  activeFamilles.map(function (f) {
-                    var cell = colTotals.byFamille[f];
-                    var val = cell ? (metric === 'cout' ? cell.cout : cell.jh) : 0;
-                    return React.createElement('td', { key: f, style: totalCellStyle },
-                      val ? (metric === 'cout' ? fmtDH(val) : fmtJH(val)) : '—'
-                    );
-                  }),
-                  React.createElement('td', { style: totalCellStyle }, fmtDH(colTotals.total.cout)),
-                  React.createElement('td', { style: totalCellStyle }, '')
-                )
-              )
-            )
-          )
-    );
-  }
-
-  /* ------------------------------------------------------------------ */
   /* Sous-composant : Vue Par Variété / Quinzaine                        */
   /* ------------------------------------------------------------------ */
   function VarieteView(props) {
@@ -1095,6 +997,258 @@
                 )
               )
             )
+    );
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Sous-composant : Vue Pivot analytique (grille partagée)              */
+  /* ------------------------------------------------------------------ */
+
+  /** Pastille de bascule — même gabarit que les autres bascules de l'écran. */
+  function CAT_pillStyle(active) {
+    return {
+      padding: '5px 14px',
+      border: '1.5px solid ' + (active ? C.berry : C.border),
+      borderRadius: '16px',
+      background: active ? C.berry : C.surface,
+      color: active ? '#fff' : C.text,
+      fontSize: '12px',
+      fontWeight: active ? 700 : 400,
+      cursor: 'pointer',
+    };
+  }
+
+  /** Groupe de bascules `[[valeur, libellé], …]`. */
+  function CAT_pills(options, current, onPick, keyPrefix) {
+    return options.map(function (opt) {
+      return React.createElement('button', {
+        key: keyPrefix + opt[0],
+        onClick: function () { onPick(opt[0]); },
+        style: CAT_pillStyle(current === opt[0]),
+      }, opt[1]);
+    });
+  }
+
+  /**
+   * Pop-up de détail d'une cellule de la grille : opérations fines de la
+   * famille sur la parcelle.
+   *
+   * La colonne s'appelle « Présences » et NON « Ouvriers » (comme sur l'écran
+   * Quinzaine) : `campagne-analytique-detail` agrège jour par jour, donc
+   * `nbOuv` compte les ouvriers distincts D'UNE JOURNÉE. Additionné sur toute
+   * la campagne, il vaut un cumul de présences — un ouvrier venu 10 jours pèse
+   * 10. Le lire « Ouvriers » ferait croire à un effectif.
+   */
+  function CAT_DetailPopup(props) {
+    var cell = props.cell;
+    var onClose = props.onClose;
+    var ha = cell.ha || 0;
+    var byOp = {};
+    (cell.detailRows || []).forEach(function (r) {
+      var k = r.operation || '—';
+      if (!byOp[k]) byOp[k] = { operation: k, jh: 0, cout: 0, nbOuv: 0 };
+      byOp[k].jh += r.jh || 0;
+      byOp[k].cout += r.cout || 0;
+      byOp[k].nbOuv += r.nbOuv || 0;
+    });
+    var opRows = Object.keys(byOp).map(function (k) { return byOp[k]; })
+      .sort(function (a, b) { return b.jh - a.jh; });
+    var totals = opRows.reduce(function (t, r) {
+      t.jh += r.jh; t.cout += r.cout; t.nbOuv += r.nbOuv; return t;
+    }, { jh: 0, cout: 0, nbOuv: 0 });
+
+    function perHa(v) { return ha > 0 ? (Math.round(v / ha * 10) / 10).toLocaleString('fr-MA') : '—'; }
+    function jhTxt(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+    function dhTxt(v) { return Math.round(v).toLocaleString('fr-MA'); }
+
+    var th = { padding: '6px 10px', textAlign: 'right', fontSize: '11px', color: C.textSec, borderBottom: '1px solid ' + C.border };
+    var thL = Object.assign({}, th, { textAlign: 'left' });
+    var td = { padding: '6px 10px', textAlign: 'right', fontSize: '12px' };
+    var tdL = Object.assign({}, td, { textAlign: 'left', fontWeight: 500 });
+    var tdT = Object.assign({}, td, { fontWeight: 700 });
+
+    return React.createElement('div', {
+      style: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)',
+        zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' },
+      onClick: onClose,
+    },
+      React.createElement('div', {
+        style: { background: '#fff', borderRadius: '16px', maxWidth: '680px', width: '100%',
+          maxHeight: '80vh', overflow: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.35)' },
+        onClick: function (e) { e.stopPropagation(); },
+      },
+        React.createElement('div', {
+          style: { padding: '16px 20px', background: C.berry, borderRadius: '16px 16px 0 0', color: '#fff',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+        },
+          React.createElement('div', null,
+            React.createElement('div', { style: { fontSize: '15px', fontWeight: 700 } }, cell.parcelleLabel || cell.parcelle),
+            React.createElement('div', { style: { fontSize: '11px', opacity: 0.85, marginTop: '2px' } },
+              (cell.operationFamille || '') + ' · ' + (ha > 0 ? fmtHaLabel(ha) : 'Ha inconnu'))
+          ),
+          React.createElement('button', {
+            onClick: onClose,
+            style: { background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', fontSize: '16px',
+              cursor: 'pointer', borderRadius: '8px', width: '32px', height: '32px' },
+          }, React.createElement('i', { className: 'fa-solid fa-xmark' }))
+        ),
+        React.createElement('div', { style: { padding: '16px 20px' } },
+          React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } },
+            React.createElement('thead', null,
+              React.createElement('tr', null,
+                React.createElement('th', { style: thL }, 'Opération'),
+                React.createElement('th', {
+                  style: th,
+                  title: 'Cumul des présences sur la campagne : un ouvrier présent 10 jours compte 10. Ce n\'est pas un effectif.',
+                }, 'Présences'),
+                React.createElement('th', { style: th }, 'JH'),
+                React.createElement('th', { style: th }, 'JH / Ha'),
+                React.createElement('th', { style: th }, 'Coût (DH)'),
+                React.createElement('th', { style: th }, 'DH / Ha')
+              )
+            ),
+            React.createElement('tbody', null,
+              opRows.map(function (r, i) {
+                return React.createElement('tr', { key: i, style: { background: i % 2 === 0 ? C.surface : C.surface2 } },
+                  React.createElement('td', { style: tdL }, r.operation),
+                  React.createElement('td', { style: td }, r.nbOuv),
+                  React.createElement('td', { style: td }, jhTxt(r.jh)),
+                  React.createElement('td', { style: td }, perHa(r.jh)),
+                  React.createElement('td', { style: td }, dhTxt(r.cout)),
+                  React.createElement('td', { style: td }, ha > 0 ? dhTxt(r.cout / ha) : '—')
+                );
+              })
+            ),
+            React.createElement('tfoot', null,
+              React.createElement('tr', { style: { background: C.surface3 } },
+                React.createElement('td', { style: Object.assign({}, tdT, { textAlign: 'left' }) }, 'TOTAL'),
+                React.createElement('td', { style: tdT }, totals.nbOuv),
+                React.createElement('td', { style: tdT }, jhTxt(totals.jh)),
+                React.createElement('td', { style: tdT }, perHa(totals.jh)),
+                React.createElement('td', { style: tdT }, dhTxt(totals.cout)),
+                React.createElement('td', { style: tdT }, ha > 0 ? dhTxt(totals.cout / ha) : '—')
+              )
+            )
+          )
+        )
+      )
+    );
+  }
+
+  /**
+   * Vue « Pivot analytique » : la MÊME grille que l'écran Quinzaine
+   * (window.PivotAnalytiqueGrid), alimentée par les lignes de la campagne.
+   * Lignes = groupe M.O → famille (code GB) → opération, colonnes = parcelles
+   * avec leur Ha, une grille par culture.
+   *
+   * Cette vue ne calcule RIEN elle-même : le pivot vient de
+   * AnalytiqueUtils.buildAnalytiquePivotByFamille (lib partagée, inchangée) et
+   * la présentation de PivotAnalytiqueGrid. Elle ne fait que mapper les
+   * champs (CAT_pivotRows) et traduire ses bascules en séries `metrics`.
+   *
+   * Bascules : JH ↔ Coût DH (état partagé avec les autres vues MO, prop
+   * `metric`), Ha ↔ Total et Récap ↔ Détail (locaux à la vue).
+   */
+  function PivotView(props) {
+    var data = props.data || {};
+    var sbMap = props.sbMap || {};
+    var metric = props.metric;          // 'cout' | 'jh'
+    var setMetric = props.setMetric;
+
+    var _totalMode = useState(false);
+    var totalMode = _totalMode[0]; var setTotalMode = _totalMode[1];
+
+    var _detailMode = useState(false);
+    var detailMode = _detailMode[0]; var setDetailMode = _detailMode[1];
+
+    var _detailCell = useState(null);
+    var detailCell = _detailCell[0]; var setDetailCell = _detailCell[1];
+
+    var Grid = window.PivotAnalytiqueGrid;
+    var AU = window.AnalytiqueUtils;
+
+    var groups = useMemo(function () {
+      var rows = CAT_pivotRows(data.rows, sbMap, data.haByRef || {}, {
+        farmFilter: props.farmFilter,
+        cultureFilter: props.cultureFilter,
+      });
+      return CAT_byCulture(rows, sbMap);
+    }, [data, sbMap, props.farmFilter, props.cultureFilter]);
+
+    var isJh = metric === 'jh';
+    var metrics = [{
+      key: isJh ? 'jh' : 'cout',
+      unit: isJh ? (totalMode ? 'JH' : 'JH/Ha') : (totalMode ? 'DH' : 'DH/Ha'),
+      // Le pivot stocke des TOTAUX par cellule ; seul `display` bouge avec la
+      // bascule Ha/Total. Le budget du lot suivant arrivera, lui, en
+      // `basis: 'perHa'` — d'où le sens de conversion porté par série.
+      basis: 'total',
+      display: totalMode ? 'total' : 'perHa',
+      format: isJh
+        ? function (v) { return (Math.round(v * 10) / 10).toFixed(1); }
+        : function (v) { return Math.round(v).toLocaleString('fr-MA'); },
+      summary: isJh
+        ? function (t) { return Math.round(t).toLocaleString('fr-MA') + ' JH total'; }
+        : function (t) { return Math.round(t).toLocaleString('fr-MA') + ' DH'; },
+    }];
+
+    // Garde anti-crash : une référence à un global absent fait planter TOUT le
+    // rendu React (mémoire projet « tab bare global ref »).
+    //
+    // CultureUtils est dans la MÊME garde que la grille et le pivot, et pas
+    // seulement pour éviter un crash : sans lui, aucune parcelle n'est
+    // rattachable à sa culture. Afficher quand même la grille produirait des
+    // tableaux dont le titre ment sur leur contenu — un écran faux est pire
+    // qu'un écran absent, personne ne peut le détecter à la lecture.
+    var CU = window.CultureUtils;
+    if (!Grid || !AU || typeof AU.buildAnalytiquePivotByFamille !== 'function'
+      || !CU || typeof CU.resolveCulture !== 'function') {
+      return React.createElement('div', {
+        style: { padding: '40px', textAlign: 'center', color: '#c0392b', fontSize: '14px' },
+      },
+        React.createElement('i', { className: 'fa-solid fa-triangle-exclamation', style: { marginRight: '8px' } }),
+        'Affectation par Ha indisponible : un module de calcul n\'a pas été chargé '
+          + '(grille, pivot analytique ou référentiel des cultures). Rechargez la page.'
+      );
+    }
+
+    return React.createElement('div', null,
+      React.createElement('div', {
+        style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' },
+      },
+        React.createElement('span', { style: { fontSize: '13px', color: C.textSec, marginRight: '4px' } }, 'Afficher :'),
+        CAT_pills([['jh', 'JH'], ['cout', 'Coût DH']], metric, setMetric, 'm-'),
+        React.createElement('span', { style: { width: '8px' } }),
+        CAT_pills([['ha', 'Par Ha'], ['total', 'Total']], totalMode ? 'total' : 'ha',
+          function (v) { setTotalMode(v === 'total'); }, 't-'),
+        React.createElement('span', { style: { width: '8px' } }),
+        CAT_pills([['recap', 'Récap'], ['detail', 'Détail']], detailMode ? 'detail' : 'recap',
+          function (v) { setDetailMode(v === 'detail'); }, 'd-')
+      ),
+      detailCell
+        ? React.createElement(CAT_DetailPopup, { cell: detailCell, onClose: function () { setDetailCell(null); } })
+        : null,
+      groups.length === 0
+        ? React.createElement('div', {
+            style: { padding: '40px', textAlign: 'center', color: C.textSec, fontSize: '14px' },
+          }, 'Aucune donnée pour cette sélection.')
+        : groups.map(function (g) {
+            var pivot = AU.buildAnalytiquePivotByFamille(g.rows, { detail: detailMode });
+            if (!pivot.groupedRows || pivot.groupedRows.length === 0) return null;
+            return React.createElement(Grid, {
+              key: g.culture,
+              parcelles: pivot.parcelles,
+              groupedRows: pivot.groupedRows,
+              metrics: metrics,
+              color: g.color,
+              title: g.culture,
+              icon: g.icon,
+              parcelleLabel: function (k) { return sbNom(k, sbMap); },
+              onCellClick: function (c) {
+                setDetailCell(Object.assign({ parcelleLabel: sbNom(c.parcelle, sbMap) }, c));
+              },
+            });
+          })
     );
   }
 
@@ -1520,7 +1674,7 @@
                 onClick: function () { setView('ha'); },
                 style: toggleBtnStyle(view === 'ha'),
               },
-                React.createElement('i', { className: 'fa-solid fa-chart-bar', style: { marginRight: '6px' } }),
+                React.createElement('i', { className: 'fa-solid fa-table-cells-large', style: { marginRight: '6px' } }),
                 'Affectation par Ha'
               ),
               React.createElement('button', {
@@ -1564,8 +1718,12 @@
             ? React.createElement(window.CampagneBudgetTab, { userRole: props.userRole })
             : null)
       : subTab === 'mo'
+        // Vue « Affectation par Ha » = la grille partagée (PivotView). L'ancienne
+        // vue tabulaire parcelle × famille a été RETIRÉE : deux présentations du
+        // même chiffre entretiennent une redondance que personne ne saura
+        // départager plus tard (décision Omar, LOT 2b).
         ? (view === 'ha'
-            ? React.createElement(HaView, {
+            ? React.createElement(PivotView, {
                 data: data,
                 farmFilter: farmFilter,
                 cultureFilter: cultureFilter,
@@ -1614,5 +1772,9 @@
   // Exposés pour les tests unitaires (node:test + vm), comme CampagneBudgetTab.
   CampagneAnalytiqueTab.budgetsByLabel = CAT_budgetsByLabel;
   CampagneAnalytiqueTab.buildCultureWorkbook = buildCultureWorkbook;
+  CampagneAnalytiqueTab.CULTURE_INCONNUE = CAT_CULTURE_INCONNUE;
+  CampagneAnalytiqueTab.pivotRows = CAT_pivotRows;
+  CampagneAnalytiqueTab.byCulture = CAT_byCulture;
+  CampagneAnalytiqueTab.PivotView = PivotView;
 
 })();

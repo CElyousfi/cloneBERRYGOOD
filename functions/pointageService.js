@@ -3636,7 +3636,10 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         await warmRefTaches();
 
         const cached = await withCache(
-          pointageCacheKey(`campagne_analytique_detail_v1_${campagne.start}`, _fermeFilter),
+          // v2 : ajout de `nbOuv` par ligne. Sans bump de clé, une réponse v1
+          // encore en cache (TTL 30 min) servirait des lignes sans `nbOuv` et
+          // la colonne « Ouvriers » de la pop-up afficherait 0 sans erreur.
+          pointageCacheKey(`campagne_analytique_detail_v2_${campagne.start}`, _fermeFilter),
           30 * 60 * 1000,
           async () => {
             const meta = await getPointageMeta();
@@ -3670,11 +3673,21 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
                       code: (r.Operation_Groupe || '').trim(),
                       jh: 0,
                       cout: 0,
+                      // Matricules DISTINCTS du groupe (jamais un compteur : un
+                      // ouvrier pointé deux fois sur la même opération le même
+                      // jour ne compte qu'une fois). Remplacé par `nbOuv` avant
+                      // le push — un Set sérialiserait en `{}`.
+                      workers: new Set(),
                     };
                     groups[key].jh += r.Nombre_Jr || 0;
                     groups[key].cout += r.Cout || 0;
+                    if (r.Personnel_Matricule) groups[key].workers.add(r.Personnel_Matricule);
                   }
-                  for (const g of Object.values(groups)) rows.push(g);
+                  for (const g of Object.values(groups)) {
+                    g.nbOuv = g.workers.size;
+                    delete g.workers;
+                    rows.push(g);
+                  }
                 }
               }
             }
