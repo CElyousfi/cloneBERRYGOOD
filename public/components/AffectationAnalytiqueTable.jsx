@@ -16,10 +16,21 @@
  * les props sont ré-aliasées en tête de fonction sous les noms qu'elles avaient
  * dans QuinzaineTab, pour qu'aucune ligne du bloc déplacé n'ait à être réécrite.
  *
+ * LOT 2a — la GRILLE (tableau croisé lui-même) est extraite dans
+ * public/components/PivotAnalytiqueGrid.jsx, composant de présentation
+ * réutilisable et sans état. Ce fichier reste la COQUILLE QUINZAINE et garde
+ * tout ce qui n'est pas de la présentation de grille : fetch
+ * `quinzaine-analytique` (scope quinzaine ou campagne), résolution
+ * culture/Ha des parcelles, regroupement par culture, carrousel de cultures,
+ * plein écran, sélecteur local Quinzaine/Campagne, bascules JH↔Coût /
+ * Ha↔Total / Récap↔Détail, et pop-up de détail d'une cellule. Il traduit
+ * l'état de ses bascules en une SÉRIE (`metrics`) qu'il passe à la grille.
+ *
  * Dépendances lues sur window (elles étaient dans le scope d'app.jsx) :
  *   - window.PARCELLES_CULTURALES  (référentiel parcelles, exposé par app.jsx)
  *   - window.sbParcelleHa()        (exposé par app.jsx)
  *   - window.deriveSubFerme()      (exposé par app.jsx)
+ *   - window.PivotAnalytiqueGrid   (public/components/PivotAnalytiqueGrid.jsx)
  * Déjà globales avant l'extraction : window.AnalytiqueUtils (public/lib),
  * window.CampagneUtils, window.QuinzaineCampagneSelect, window.SB_PARCELLE_CAMPAGNE
  * (lue indirectement par window.sbParcelleHa), React (CDN).
@@ -78,10 +89,13 @@
  *    le panneau ; il est ici rendu juste après. Aucun impact visuel : c'est un
  *    overlay position:fixed / zIndex 10001, supérieur à tous les z-index de la
  *    zone (panneau plein écran 9999, popup transport 9999).
- *  - `prettyParcelle` (ligne du <th>) est recopié À L'IDENTIQUE : il n'a jamais
- *    été dans le scope de QuinzaineTab (défini dans un useCallback d'un autre
- *    composant), donc `typeof prettyParcelle === 'function'` valait déjà false
- *    et l'expression rend `pKey`. Ne pas « réparer » = ne pas changer l'affichage.
+ *  - `prettyParcelle` (ligne du <th>) n'a JAMAIS été dans le scope de ce
+ *    composant (défini dans un useCallback d'un autre composant) : le
+ *    `typeof prettyParcelle === 'function'` du <th> valait déjà false et
+ *    l'expression rendait `pKey`. LOT 2a : le test mort disparaît au profit de
+ *    la prop `parcelleLabel` de la grille, que ce panneau ne passe PAS — la
+ *    grille rend donc `pKey`, comme avant. Ne pas « réparer » = ne pas changer
+ *    l'affichage.
  *  - Le placeholder de code mort qui suivait le `return` de la ligne famille
  *    (branche `type=operation`) a été remplacé par la vraie branche du mode
  *    Détail, placée AVANT ce `return`.
@@ -277,6 +291,33 @@
             const _analytiqueLocalPeriodes = ((apiData && apiData.periodes) || []).filter(p => (
                 !_analytiqueLocalCampagneCourante || _analytiqueLocalPeriodeCampagne[p] === _analytiqueLocalCampagneCourante
             ));
+
+            // ── Série affichée dans la grille (LOT 2a) ──────────────────────
+            // La grille ne connaît plus `jh`/`cout` : elle reçoit une LISTE de
+            // séries. Le panneau quinzaine n'en publie qu'UNE, celle de la
+            // bascule JH/Coût, et lui dit explicitement ce que vaut la valeur
+            // brute (`basis: 'total'` — le pivot stocke des totaux par cellule)
+            // et ce qu'il veut afficher (`display`, piloté par la bascule
+            // Ha/Total). Un budget, lui, arriverait en `basis: 'perHa'` : c'est
+            // tout l'intérêt de porter le sens de la conversion par série.
+            const PivotGrid = window.PivotAnalytiqueGrid;
+            const _unit = analytiqueView === 'jh'
+                ? (analytiqueTotalMode ? 'JH' : 'JH/Ha')
+                : (_parcelleEmpCostMap.ready
+                    ? (analytiqueTotalMode ? 'DH emp.' : 'DH emp./Ha')
+                    : (analytiqueTotalMode ? 'DH' : 'DH/Ha'));
+            const _metrics = [{
+                key: analytiqueView === 'jh' ? 'jh' : 'cout',
+                unit: _unit,
+                basis: 'total',
+                display: analytiqueTotalMode ? 'total' : 'perHa',
+                format: analytiqueView === 'jh'
+                    ? (v) => (Math.round(v * 10) / 10).toFixed(1)
+                    : (v) => Math.round(v).toLocaleString('fr-FR'),
+                summary: analytiqueView === 'jh'
+                    ? (t) => `${Math.round(t)} JH total`
+                    : (t) => `${Math.round(t).toLocaleString('fr-FR')} DH`,
+            }];
 
             return (<>
                     {/* Popup détail opérations Affectation Analytique */}
@@ -514,163 +555,19 @@
                                 const groupedRows = _pivotResult.groupedRows || null;
                                 const _hasRows = groupedRows && groupedRows.length > 0;
                                 if (!_hasRows) return null;
-                                const _totalHa = parcelles.reduce((s, [, ha]) => s + ha, 0);
-                                const _unit = analytiqueView === 'jh'
-                                    ? (analytiqueTotalMode ? 'JH' : 'JH/Ha')
-                                    : (_parcelleEmpCostMap.ready
-                                        ? (analytiqueTotalMode ? 'DH emp.' : 'DH emp./Ha')
-                                        : (analytiqueTotalMode ? 'DH' : 'DH/Ha'));
-                                const _fmt = (val, ha) => {
-                                    if (!analytiqueTotalMode && ha === 0) return <span style={{fontSize:10,color:'var(--gray-400)'}}>—</span>;
-                                    if (analytiqueTotalMode) {
-                                        return analytiqueView === 'jh'
-                                            ? (Math.round(val * 10) / 10).toFixed(1)
-                                            : Math.round(val).toLocaleString('fr-FR');
-                                    }
-                                    const v = val / ha;
-                                    return analytiqueView === 'jh'
-                                        ? (Math.round(v * 10) / 10).toFixed(1)
-                                        : Math.round(v).toLocaleString('fr-FR');
-                                };
+                                // Garde anti-crash : un global manquant fait planter TOUT le
+                                // rendu React (cf. mémoire projet tab-bare-global-ref-crash).
+                                if (!PivotGrid) return null;
                                 return (
-                                    <div key={culture} style={{marginBottom:20,background:'#fff',borderRadius:12,border:'1px solid var(--gray-200)',overflow:'hidden',boxShadow:'0 2px 8px rgba(0,0,0,0.04)'}}>
-                                        <div style={{padding:'10px 16px',background:`linear-gradient(135deg,${color}15,${color}08)`,borderBottom:`2px solid ${color}30`,display:'flex',alignItems:'center',gap:10}}>
-                                            <i className={`fa-solid ${icon}`} style={{color,fontSize:14}}></i>
-                                            <span style={{fontSize:13,fontWeight:700,color}}>{culture}</span>
-                                            <span style={{fontSize:11,color:'var(--gray-500)',fontWeight:400}}>
-                                                {parcelles.length} parcelle{parcelles.length > 1 ? 's' : ''}
-                                                {_totalHa > 0 ? ` · ${_totalHa.toFixed(2)} Ha total` : ''}
-                                            </span>
-                                        </div>
-                                        <div style={{overflowX:'auto'}}>
-                                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
-                                                <thead>
-                                                    <tr style={{background:'var(--gray-50)'}}>
-                                                        <th style={{padding:'8px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)',position:'sticky',left:0,background:'var(--gray-50)',minWidth:160,borderRight:'1px solid var(--gray-200)',zIndex:1}}>Opération</th>
-                                                        {parcelles.map(([pKey, ha]) => (
-                                                            <th key={pKey} style={{padding:'6px 10px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',minWidth:110,borderRight:'1px solid var(--gray-100)'}}>
-                                                                <div style={{color,fontWeight:700}}>{(typeof prettyParcelle === 'function' ? prettyParcelle(pKey) : pKey) || pKey}</div>
-                                                                <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{ha > 0 ? `${ha} Ha` : 'Ha ?'}</div>
-                                                            </th>
-                                                        ))}
-                                                        <th style={{padding:'6px 10px',textAlign:'center',fontWeight:700,color:'var(--gray-700)',minWidth:100,background:'var(--gray-100)',position:'sticky',right:0,zIndex:1}}>Total</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {(groupedRows || []).map((row) => {
-                                                            const _totalHaForRow = parcelles.reduce((s, [, ha]) => s + ha, 0);
-                                                            const _rowTotal = analytiqueView === 'jh'
-                                                                ? parcelles.reduce((s, [pKey]) => { const c = row.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
-                                                                : parcelles.reduce((s, [pKey]) => { const c = row.pivot[pKey]; return s + (c ? c.cout : 0); }, 0);
-
-                                                            // ── Ligne groupe (en-tête de section) ──
-                                                            if (row.type === 'groupe') {
-                                                                return (
-                                                                    <tr key={row.key}>
-                                                                        <td colSpan={parcelles.length + 2} style={{padding:'8px 14px',fontWeight:700,fontSize:12,background:color,color:'white',letterSpacing:'0.04em',textTransform:'uppercase',position:'sticky',left:0}}>
-                                                                            {row.label}
-                                                                            <span style={{fontWeight:400,fontSize:10,opacity:0.75,marginLeft:8}}>
-                                                                                {analytiqueView === 'jh'
-                                                                                    ? `${Math.round(_rowTotal)} JH total`
-                                                                                    : `${Math.round(_rowTotal).toLocaleString('fr-FR')} DH`}
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            }
-
-                                                            // ── Ligne opération (mode Détail) : détail d'une famille,
-                                                            //    insérée juste sous elle. La ligne famille reste affichée
-                                                            //    et garde le total ; ces lignes ne sont JAMAIS de type
-                                                            //    'famille', sinon le tfoot doublerait les totaux. ──
-                                                            if (row.type === 'operation') {
-                                                                return (
-                                                                    <tr key={row.key} style={{background:'#fcfafc',borderBottom:'1px solid #f7f0f6'}}>
-                                                                        <td style={{padding:'6px 14px 6px 44px',fontSize:11,fontWeight:500,color:'var(--gray-600)',position:'sticky',left:0,background:'#fcfafc',borderRight:`2px solid ${color}`,zIndex:1,borderLeft:`3px solid ${color}55`}}>
-                                                                            <span style={{color:'var(--gray-400)',marginRight:6}}>↳</span>{row.label}
-                                                                        </td>
-                                                                        {parcelles.map(([pKey, ha]) => {
-                                                                            const c = row.pivot[pKey];
-                                                                            if (!c) return <td key={pKey} style={{padding:'6px 10px',textAlign:'center',color:'var(--gray-200)',borderRight:'1px solid #f5edf4',fontSize:12}}>—</td>;
-                                                                            const _val = analytiqueView === 'jh' ? c.jh : c.cout;
-                                                                            return (
-                                                                                <td key={pKey}
-                                                                                    onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: row.label, ha, detailRows: c.detailRows })}
-                                                                                    title={`Voir le détail de ${row.label} sur ${pKey}`}
-                                                                                    style={{padding:'6px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid #f5edf4',transition:'background 0.12s',fontSize:11}}
-                                                                                    onMouseEnter={e => e.currentTarget.style.background='#fdf4f8'}
-                                                                                    onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                                    <div style={{fontWeight:500,color:'var(--gray-600)'}}>{_fmt(_val, ha)}</div>
-                                                                                    <div style={{fontSize:9,color:'var(--gray-400)'}}>{_unit}</div>
-                                                                                </td>
-                                                                            );
-                                                                        })}
-                                                                        <td style={{padding:'6px 10px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',background:'#fcfafc',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef',fontSize:11}}>
-                                                                            <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
-                                                                            <div style={{fontSize:9,color:'var(--gray-400)',fontWeight:400}}>{_unit}</div>
-                                                                        </td>
-                                                                    </tr>
-                                                                );
-                                                            }
-
-                                                            // ── Ligne famille (clic sur cellule → popup) ──
-                                                            return (
-                                                                <tr key={row.key} style={{background:'#fff',borderBottom:'1px solid #f0e6ef'}}>
-                                                                    <td style={{padding:'9px 14px',fontWeight:600,color,position:'sticky',left:0,background:'#fff',borderRight:`2px solid ${color}`,zIndex:1,borderLeft:`3px solid ${color}`}}>
-                                                                        {row.label}
-                                                                        <span style={{fontSize:10,fontWeight:400,color:'var(--gray-400)',marginLeft:6}}>{row.key}</span>
-                                                                    </td>
-                                                                    {parcelles.map(([pKey, ha]) => {
-                                                                        const c = row.pivot[pKey];
-                                                                        if (!c) return <td key={pKey} style={{padding:'8px 10px',textAlign:'center',color:'var(--gray-200)',borderRight:'1px solid #f5edf4',fontSize:13}}>—</td>;
-                                                                        const _val = analytiqueView === 'jh' ? c.jh : c.cout;
-                                                                        return (
-                                                                            <td key={pKey}
-                                                                                onClick={() => setAnalytiqueDetailCell({ parcelle: pKey, operationFamille: row.label, ha, detailRows: c.detailRows })}
-                                                                                title={`Voir le détail de ${row.label} sur ${pKey}`}
-                                                                                style={{padding:'8px 10px',textAlign:'center',cursor:'pointer',borderRight:'1px solid #f5edf4',transition:'background 0.12s'}}
-                                                                                onMouseEnter={e => e.currentTarget.style.background='#fdf4f8'}
-                                                                                onMouseLeave={e => e.currentTarget.style.background=''}>
-                                                                                <div style={{fontWeight:700,color:'var(--gray-700)'}}>{_fmt(_val, ha)}</div>
-                                                                                <div style={{fontSize:10,color:'var(--gray-400)'}}>{_unit}</div>
-                                                                            </td>
-                                                                        );
-                                                                    })}
-                                                                    <td style={{padding:'8px 10px',textAlign:'center',fontWeight:700,color,background:'#fdf4f8',position:'sticky',right:0,borderLeft:'1px solid #f0e6ef'}}>
-                                                                        <div>{_fmt(_rowTotal, _totalHaForRow)}</div>
-                                                                        <div style={{fontSize:10,color:'var(--gray-400)',fontWeight:400}}>{_unit}</div>
-                                                                    </td>
-                                                                </tr>
-                                                            );
-                                                        })}
-                                                </tbody>
-                                                <tfoot>
-                                                    <tr style={{background:`${color}18`,fontWeight:700}}>
-                                                        <td style={{padding:'8px 12px',position:'sticky',left:0,background:`${color}18`,borderRight:'1px solid var(--gray-200)',zIndex:1,color}}>TOTAL</td>
-                                                        {parcelles.map(([pKey, ha]) => {
-                                                            const colTotal = analytiqueView === 'jh'
-                                                                ? (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => { const c = r.pivot[pKey]; return s + (c ? c.jh : 0); }, 0)
-                                                                : (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => { const c = r.pivot[pKey]; return s + (c ? c.cout : 0); }, 0);
-                                                            return (
-                                                                <td key={pKey} style={{padding:'8px 10px',textAlign:'center',borderRight:'1px solid var(--gray-100)',color}}>
-                                                                    <div>{_fmt(colTotal, ha)}</div>
-                                                                    <div style={{fontSize:10,opacity:0.7}}>{_unit}</div>
-                                                                </td>
-                                                            );
-                                                        })}
-                                                        <td style={{padding:'8px 10px',textAlign:'center',background:`${color}28`,position:'sticky',right:0,color}}>
-                                                            {(() => {
-                                                                const gt = analytiqueView === 'jh'
-                                                                    ? (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => s + parcelles.reduce((ps, [pKey]) => { const c = r.pivot[pKey]; return ps + (c ? c.jh : 0); }, 0), 0)
-                                                                    : (groupedRows || []).filter(r => r.type === 'famille').reduce((s, r) => s + parcelles.reduce((ps, [pKey]) => { const c = r.pivot[pKey]; return ps + (c ? c.cout : 0); }, 0), 0);
-                                                                return <><div>{_fmt(gt, _totalHa)}</div><div style={{fontSize:10,opacity:0.7}}>{_unit}</div></>;
-                                                            })()}
-                                                        </td>
-                                                    </tr>
-                                                </tfoot>
-                                            </table>
-                                        </div>
-                                    </div>
+                                    <PivotGrid key={culture}
+                                        parcelles={parcelles}
+                                        groupedRows={groupedRows}
+                                        metrics={_metrics}
+                                        color={color}
+                                        title={culture}
+                                        icon={icon}
+                                        onCellClick={setAnalytiqueDetailCell}
+                                    />
                                 );
                             })}
                                 </>);
