@@ -32,8 +32,15 @@
  *   icon          {string}  Classe Font Awesome du bandeau.
  *   firstColumnLabel {string}  En-tête de la 1re colonne (défaut 'Opération').
  *   parcelleLabel {Function}  (cléParcelle) => libellé affiché (défaut : la clé).
+ *   note          {string}  Légende discrète sous la grille, reprise en `title`
+ *                 sur l'en-tête Total. Sert à énoncer ce que les chiffres ne
+ *                 disent pas — typiquement le PÉRIMÈTRE d'une série.
  *   onCellClick   {Function}  ({parcelle, operationFamille, ha, detailRows}) =>
  *                 void. Absent = cellules non cliquables (ni curseur, ni survol).
+ *                 Une cellule dont `detailRows` est un tableau VIDE ne l'est pas
+ *                 non plus : elle n'existe que parce qu'un budget y est saisi,
+ *                 il n'y a rien à détailler. (`detailRows` absent = cliquable,
+ *                 contrat historique préservé.)
  *
  * ── Metric ─────────────────────────────────────────────────────────────────
  * Une série = une valeur par cellule. Les séries s'empilent DANS la cellule :
@@ -71,7 +78,8 @@
  * Les agrégats (total de ligne, de colonne, grand total) somment TOUJOURS la
  * quantité totale de chaque cellule (`basis === 'perHa'` ⇒ valeur × Ha de la
  * colonne), puis appliquent `display` au résultat. Sommer des JH/Ha entre
- * parcelles n'aurait aucun sens.
+ * parcelles n'aurait aucun sens. Un agrégat dont AUCUNE cellule n'est
+ * renseignée vaut « — », pas 0 (cf. _pag_agrege).
  *
  * Exemple à trois séries (cible du chantier — réalisé / budget / écart) :
  *   metrics={[
@@ -122,13 +130,43 @@
 
   /**
    * Quantité TOTALE portée par une cellule — la seule grandeur sommable.
-   * Une valeur non renseignée ne pèse rien dans un agrégat (elle ne le rend pas
-   * indéterminable pour autant : un total de budget reste la somme des budgets
-   * saisis, à périmètre budgété, comme dans l'export Excel).
+   * Jamais appelée sur une valeur non renseignée (les agrégats l'écartent en
+   * amont, cf. _pag_agrege).
    */
   function _pag_toTotal(metric, raw, ha) {
-    if (raw === null) return 0;
     return _pag_basis(metric) === 'perHa' ? raw * (ha || 0) : raw;
+  }
+
+  /**
+   * Agrège une liste de valeurs par cellule. `null` = AUCUNE cellule renseignée,
+   * donc agrégat indéterminable.
+   *
+   * Deux règles distinctes, et c'est tout l'objet de cette fonction :
+   *  - ligne PARTIELLEMENT renseignée → on somme ce qui existe. C'est le
+   *    « périmètre budgété » : le budget d'une ligne est la somme des budgets
+   *    saisis, jamais complété par des zéros implicites (même règle que les
+   *    colonnes budgétaires de l'export Excel).
+   *  - ligne ENTIÈREMENT non renseignée → « — », jamais 0. Sans ça une ligne se
+   *    contredisait elle-même : toutes ses cellules « — », son total « 0.0 » —
+   *    lu « budget nul, donc dépassement total » sur la série budget, et « pile
+   *    dans le budget » sur la série écart. C'est le cas COURANT en production
+   *    (budget saisi progressivement, Récolte rarement budgétée).
+   * Une valeur 0 RENSEIGNÉE, elle, compte : un réalisé nul reste « 0.0 » (le
+   * panneau Quinzaine, dont toutes les cellules sont numériques, n'a donc aucun
+   * total qui bascule en « — »).
+   *
+   * @param {Array<{raw: number|null, ha: number}>} parts
+   * @returns {number|null}
+   */
+  function _pag_agrege(metric, parts) {
+    var somme = 0;
+    var renseigne = false;
+    parts.forEach(function (p) {
+      if (p.raw === null) return;
+      renseigne = true;
+      somme += _pag_toTotal(metric, p.raw, p.ha);
+    });
+    return renseigne ? somme : null;
   }
   function _pag_fmt(metric, value) {
     return typeof metric.format === 'function' ? metric.format(value) : String(value);
@@ -146,6 +184,7 @@
 
   /** Rendu d'un agrégat DÉJÀ exprimé en total. `null` = indéterminable. */
   function _pag_renderTotal(metric, total, ha) {
+    if (total === null) return null;
     if (_pag_disp(metric) === 'total') return _pag_fmt(metric, total);
     if (!(ha > 0)) return null;
     return _pag_fmt(metric, total / ha);
@@ -194,15 +233,20 @@
     var onCellClick = typeof props.onCellClick === 'function' ? props.onCellClick : null;
     var parcelleLabel = typeof props.parcelleLabel === 'function' ? props.parcelleLabel : null;
     var firstColumnLabel = props.firstColumnLabel || 'Opération';
+    var note = props.note || '';
     var totalHa = parcelles.reduce(function (s, p) {
       return s + p[1];
     }, 0);
 
-    /** Total (sommable) d'une série sur toute une ligne. */
+    /** Total (sommable) d'une série sur toute une ligne. `null` = ligne
+     *  entièrement non renseignée (cf. _pag_agrege). */
     function rowTotal(metric, row) {
-      return parcelles.reduce(function (s, p) {
-        return s + _pag_toTotal(metric, _pag_raw(metric, row.pivot[p[0]]), p[1]);
-      }, 0);
+      return _pag_agrege(metric, parcelles.map(function (p) {
+        return {
+          raw: _pag_raw(metric, row.pivot[p[0]]),
+          ha: p[1]
+        };
+      }));
     }
     var familles = groupedRows.filter(function (r) {
       return r.type === 'famille';
@@ -211,14 +255,25 @@
     /** Total d'une série sur une colonne — lignes FAMILLE seules (jamais les
      *  lignes groupe ni opération : elles rejouent les mêmes JH). */
     function colTotal(metric, pKey, ha) {
-      return familles.reduce(function (s, r) {
-        return s + _pag_toTotal(metric, _pag_raw(metric, r.pivot[pKey]), ha);
-      }, 0);
+      return _pag_agrege(metric, familles.map(function (r) {
+        return {
+          raw: _pag_raw(metric, r.pivot[pKey]),
+          ha: ha
+        };
+      }));
     }
+
+    /** Grand total : somme des totaux de ligne DÉJÀ agrégés (donc en total),
+     *  indéterminable seulement si AUCUNE ligne n'est renseignée. */
     function grandTotal(metric) {
-      return familles.reduce(function (s, r) {
-        return s + rowTotal(metric, r);
-      }, 0);
+      return _pag_agrege({
+        basis: 'total'
+      }, familles.map(function (r) {
+        return {
+          raw: rowTotal(metric, r),
+          ha: 0
+        };
+      }));
     }
 
     // ── Cellule de parcelle (lignes famille et opération) ───────────────────
@@ -247,7 +302,13 @@
         key: pKey,
         style: style
       };
-      if (onCellClick) {
+      // Détail EXPLICITEMENT vide → pas de clic. Une cellule qui n'existe que
+      // parce qu'un BUDGET y est saisi (aucun pointage réalisé) porte
+      // `detailRows: []` : la rendre cliquable ouvrirait une pop-up vide.
+      // `detailRows` ABSENT reste cliquable : le contrat n'a jamais exigé ce
+      // champ, l'appelant peut détailler autrement.
+      var cliquable = !(Array.isArray(cell.detailRows) && cell.detailRows.length === 0);
+      if (onCellClick && cliquable) {
         style.cursor = 'pointer';
         attrs.title = 'Voir le détail de ' + row.label + ' sur ' + pKey;
         attrs.onClick = function () {
@@ -275,7 +336,9 @@
       // Ligne groupe (en-tête de section).
       if (row.type === 'groupe') {
         var primaire = metrics[0];
-        var resume = typeof primaire.summary === 'function' ? primaire.summary(rowTotal(primaire, row)) : null;
+        var totalGroupe = rowTotal(primaire, row);
+        // Total indéterminable → aucune mention, jamais un « NaN JH total ».
+        var resume = totalGroupe !== null && typeof primaire.summary === 'function' ? primaire.summary(totalGroupe) : null;
         return _pag_h('tr', {
           key: row.key
         }, _pag_h('td', {
@@ -511,6 +574,7 @@
         }
       }, p[1] > 0 ? p[1] + ' Ha' : 'Ha ?'));
     }), _pag_h('th', {
+      title: note || undefined,
       style: {
         padding: '6px 10px',
         textAlign: 'center',
@@ -566,7 +630,24 @@
     }, undefined, {
       fontSize: 10,
       opacity: 0.7
-    })))))));
+    })))))),
+    // Légende : le périmètre des séries n'est PAS déductible des chiffres
+    // affichés (81 réalisé − 15 budget ≠ −3 d'écart quand une partie des
+    // lignes n'est pas budgétée). Sans mention visible, le lecteur conclut à
+    // une erreur de calcul.
+    note ? _pag_h('div', {
+      style: {
+        padding: '6px 14px 10px',
+        fontSize: 10,
+        color: 'var(--gray-500)',
+        borderTop: '1px solid var(--gray-100)'
+      }
+    }, _pag_h('i', {
+      className: 'fa-solid fa-circle-info',
+      style: {
+        marginRight: 6
+      }
+    }), note) : null);
   }
   window.PivotAnalytiqueGrid = PivotAnalytiqueGrid;
 })();

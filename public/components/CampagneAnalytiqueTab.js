@@ -1546,8 +1546,14 @@
       basis: 'total',
       display: totalMode ? 'total' : 'perHa',
       format: function (v) {
-        var txt = (v > 0 ? '+' : '') + fmtJh1(v);
-        if (!(v > 0)) return txt;
+        // Le signe est décidé sur la valeur ARRONDIE, celle qu'on affiche :
+        // un écart de 0,02 JH rendu « +0.0 » en rouge annoncerait un
+        // dépassement que le chiffre affiché contredit.
+        var r = Math.round(v * 10) / 10;
+        var txt = (r > 0 ? '+' : '') + r.toFixed(1); // « -2.0 » porte son signe
+        // 0.0 = pile dans le budget : ni signe, ni couleur. C'est une valeur
+        // légitime, à ne pas confondre avec « — » (budget non saisi).
+        if (!(r > 0)) return txt;
         // Dépassement : même code couleur que l'export Excel (rouge).
         return React.createElement('span', {
           style: {
@@ -1556,6 +1562,12 @@
         }, txt);
       }
     }]);
+
+    // Énoncé du périmètre — invisible autrement, et indéductible des chiffres :
+    // sur une ligne partiellement budgétée, « 81 Réalisé | 15 Budget | −3 Écart »
+    // fait conclure à une erreur de calcul si on ignore que les deux dernières
+    // séries ne portent que sur les familles budgétées.
+    var noteBudget = 'Budget et Écart : périmètre budgété uniquement ' + '(les familles et parcelles sans budget saisi sont exclues de ces deux ' + 'totaux, mais restent comptées dans le Réalisé). « — » = aucun budget ' + 'saisi, ou superficie inconnue.';
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
     // rendu React (mémoire projet « tab bare global ref »).
@@ -1645,6 +1657,7 @@
         parcelles: pivot.parcelles,
         groupedRows: sup ? sup.groupedRows : pivot.groupedRows,
         metrics: sup && sup.hasBudget ? metricsBudget : metrics,
+        note: sup && sup.hasBudget ? noteBudget : null,
         color: g.color,
         title: g.culture,
         icon: g.icon,

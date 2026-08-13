@@ -474,6 +474,53 @@ test('budget — mode Détail : le budget descend à la maille opération', () =
   assert.strictEqual(cells(rows[3])[1], '15.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Écart JH/Ha');
 });
 
+test('budget — ligne et colonne entièrement non budgétées : totaux « — »', () => {
+  // Seule la Taille de MARAVILLA est budgétée. La ligne Récolte (aucune des
+  // deux parcelles) et la colonne CORINA (aucune famille) n'ont donc AUCUN
+  // budget : leurs totaux doivent dire « — », pas « 0.0 » — qui se lirait
+  // « budget nul, dépassement total » puis « pile dans le budget ».
+  const rows = bodyRows(tables(renderBudget(
+    { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
+    [true, false, null]
+  ))[0]);
+  assert.strictEqual(cells(rows[1])[3], '40.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH');
+  assert.strictEqual(cells(rows[3])[3], '32.0 | Réalisé JH | — | Budget JH | — | Écart JH');
+
+  const foot = cells(footRow(tables(renderBudget(
+    { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
+    [true, false, null]
+  ))[0]));
+  assert.deepStrictEqual(foot.slice(1), [
+    '60.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH',
+    '12.0 | Réalisé JH | — | Budget JH | — | Écart JH',
+    '72.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH',
+  ]);
+});
+
+test('budget — le périmètre des séries est ÉCRIT sous la grille', () => {
+  // 72 Réalisé − 30 Budget ≠ +10 Écart : sans mention visible, le lecteur
+  // conclut à une erreur de calcul. La légende n'apparaît que sur une grille
+  // qui porte réellement les séries budgétaires.
+  const tree = renderBudget();
+  assert.match(textOf(tree), /Budget et Écart : périmètre budgété uniquement/);
+  const totalTh = walk(section(tables(tree)[0], 'thead'))
+    .filter((n) => n.type === 'th').pop();
+  assert.match(totalTh.props.title, /périmètre budgété uniquement/);
+  // Culture sans budget (Myrtille) : ni légende ni title — rien à expliquer.
+  const sansBudget = renderBudget({ cultureFilter: 'Myrtille' });
+  assert.strictEqual(textOf(sansBudget).indexOf('périmètre budgété'), -1);
+});
+
+test('budget — une cellule créée par le seul budget n\'ouvre pas de pop-up vide', () => {
+  // Ferti-irrigation sur CORINA : aucun pointage, donc aucun détail à afficher.
+  const rows = bodyRows(tables(renderBudget())[0]);
+  const tds = (rows[1].children || []).filter((c) => c.type === 'td');
+  assert.strictEqual(tds[2].props.onClick, undefined);
+  // La cellule réalisée voisine, elle, reste cliquable.
+  assert.strictEqual(typeof (bodyRows(tables(renderBudget())[0])[2].children || [])
+    .filter((c) => c.type === 'td')[1].props.onClick, 'function');
+});
+
 test('budget — module non chargé : réalisé seul, jamais de grille cassée', () => {
   // `Tab` est chargé SANS campagneBudgetPivot ni CampagneBudgetTab.
   const rows = bodyRows(tables(render({ budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS }))[0]);

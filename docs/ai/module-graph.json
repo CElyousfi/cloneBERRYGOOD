@@ -27,11 +27,11 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 11,
+        "commits": 12,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 11,
+        "commits": 12,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -43,7 +43,7 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 9,
+        "commits": 10,
         "file": "scripts/build-frontend.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:245162480ac5c439",
+    "sourceFingerprint": "sha256:1c658f9b13fbdb7a",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -774,7 +774,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 11,
+          "coCommits": 12,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",

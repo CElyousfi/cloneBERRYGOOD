@@ -227,6 +227,108 @@ test('metrics — valeur ABSENTE : « — », jamais 0 (cas nominal « pas de bu
     '5.0 | Réalisé JH/Ha | 2.0 | Budget JH/Ha | -0.3 | Écart JH/Ha');
 });
 
+test('agrégats — ligne et colonne ENTIÈREMENT non budgétées : « — », jamais 0.0', () => {
+  // Le piège corrigé : le « — » de chaque cellule redevenait « 0.0 » dans le
+  // total, qui se lit « budget nul donc dépassement total » (série budget) et
+  // « pile dans le budget » (série écart). Cas COURANT : le budget est saisi
+  // progressivement, la Récolte n'est en général pas budgétée.
+  //   P2 (2 Ha) budgétée en Taille seulement ; P4 (4 Ha) jamais budgétée.
+  const parcelles = [['P2', 2], ['P4', 4]];
+  const grouped = [
+    { type: 'famille', key: 'GB09', label: 'Taille',
+      pivot: { P2: { jh: 10, ha: 2, budget: 6 }, P4: { jh: 20, ha: 4 } } },
+    { type: 'famille', key: 'GB08', label: 'Récolte',
+      pivot: { P2: { jh: 8, ha: 2 }, P4: { jh: 12, ha: 4 } } },
+  ];
+  const ecart = function (c) {
+    return c.budget > 0 && c.ha > 0 ? (c.jh || 0) - c.budget * c.ha : null;
+  };
+  const metrics = [
+    { key: 'jh', label: 'Réalisé', unit: 'JH', basis: 'total', display: 'total', format: un },
+    { key: 'budget', label: 'Budget', unit: 'JH', basis: 'perHa', display: 'total', format: un },
+    { label: 'Écart', unit: 'JH', get: ecart, basis: 'total', display: 'total', format: signe },
+  ];
+  const tree = render(metrics, { parcelles: parcelles, groupedRows: grouped });
+
+  // LIGNE entièrement non budgétée (Récolte) : total de ligne « — » sur budget
+  // et écart, mais le réalisé reste complet.
+  assert.strictEqual(cells(bodyRows(tree)[1])[3],
+    '20.0 | Réalisé JH | — | Budget JH | — | Écart JH');
+  // LIGNE partiellement budgétée (Taille) : périmètre budgété, inchangé.
+  assert.strictEqual(cells(bodyRows(tree)[0])[3],
+    '30.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH');
+  // COLONNE entièrement non budgétée (P4) : idem au pied de tableau.
+  assert.deepStrictEqual(cells(footRow(tree)), [
+    'TOTAL',
+    '18.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH',
+    '32.0 | Réalisé JH | — | Budget JH | — | Écart JH',
+    '50.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH',
+  ]);
+});
+
+test('agrégats — un 0 RENSEIGNÉ reste 0.0 (non-régression panneau Quinzaine)', () => {
+  // Toutes les cellules du pivot Quinzaine portent des `jh`/`cout` numériques :
+  // aucun total ne doit basculer en « — », et une ligne légitimement à zéro doit
+  // continuer d'afficher 0.0 — sans quoi le fix ci-dessus casserait l'écran
+  // Affectation Analytique.
+  const grouped = [
+    { type: 'groupe', key: 'G', label: 'M.O HORS RÉCOLTE',
+      pivot: { P2: { jh: 0, cout: 0, ha: 2, detailRows: [] } } },
+    { type: 'famille', key: 'GB09', label: 'Taille',
+      pivot: { P2: { jh: 0, cout: 0, ha: 2, detailRows: [] } } },
+  ];
+  const tree = render([{ key: 'jh', unit: 'JH', basis: 'total', display: 'total', format: un,
+    summary: function (t) { return Math.round(t) + ' JH total'; } }],
+  { parcelles: [['P2', 2]], groupedRows: grouped });
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1), ['0.0 | JH', '0.0 | JH']);
+  assert.deepStrictEqual(cells(footRow(tree)), ['TOTAL', '0.0 | JH', '0.0 | JH']);
+  // Le bandeau de groupe résume aussi ce zéro (il est déterminé, lui).
+  assert.ok(textOf(bodyRows(tree)[0]).includes('0 JH total'));
+});
+
+test('agrégats — grille dont AUCUNE cellule n\'est renseignée : pas de « NaN »', () => {
+  const grouped = [
+    { type: 'groupe', key: 'G', label: 'GROUPE', pivot: { P2: { jh: 1, ha: 2 } } },
+    { type: 'famille', key: 'GB09', label: 'Taille', pivot: { P2: { jh: 1, ha: 2 } } },
+  ];
+  const tree = render([{ key: 'budget', label: 'Budget', unit: 'JH/Ha', basis: 'perHa',
+    display: 'perHa', format: un, summary: function (t) { return t + ' JH'; } }],
+  { parcelles: [['P2', 2]], groupedRows: grouped });
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1), ['— | JH/Ha', '— | JH/Ha']);
+  assert.deepStrictEqual(cells(footRow(tree)), ['TOTAL', '— | JH/Ha', '— | JH/Ha']);
+  // Bandeau de groupe : aucune mention plutôt qu'un « NaN JH ».
+  assert.strictEqual(textOf(bodyRows(tree)[0]), 'GROUPE');
+});
+
+test('grille — une cellule sans detailRows n\'est jamais cliquable (pop-up vide)', () => {
+  // Cellule née d'un BUDGET sans aucun pointage : il n'y a rien à détailler.
+  const grouped = [{ type: 'famille', key: 'GB02', label: 'Ferti-irrigation',
+    pivot: { P2: { jh: 0, cout: 0, ha: 2, budget: 3, detailRows: [] },
+      P4: { jh: 8, cout: 100, ha: 4, detailRows: [{ jh: 8 }] },
+      // `detailRows` ABSENT : contrat historique, la cellule reste cliquable.
+      P6: { jh: 3, cout: 50, ha: 6 } } }];
+  const tree = render([{ key: 'jh', unit: 'JH', basis: 'total', display: 'total', format: un }],
+    { parcelles: [['P2', 2], ['P4', 4], ['P6', 6]], groupedRows: grouped,
+      onCellClick: function () {} });
+  const tds = (bodyRows(tree)[0].children || []).filter(function (c) { return c.type === 'td'; });
+  assert.strictEqual(tds[1].props.onClick, undefined, 'cellule budget seule : inerte');
+  assert.strictEqual(tds[1].props.style.cursor, undefined);
+  assert.strictEqual(typeof tds[2].props.onClick, 'function', 'cellule réalisée : cliquable');
+  assert.strictEqual(typeof tds[3].props.onClick, 'function', 'detailRows absent : cliquable');
+});
+
+test('grille — `note` : légende sous la grille et title sur l\'en-tête Total', () => {
+  const tree = render(troisSeries('perHa'), { note: 'Périmètre budgété uniquement' });
+  assert.ok(textOf(tree).indexOf('Périmètre budgété uniquement') >= 0);
+  const totalTh = walk(section(tree, 'thead')).filter(function (n) { return n.type === 'th'; }).pop();
+  assert.strictEqual(totalTh.props.title, 'Périmètre budgété uniquement');
+  // Sans `note`, aucun bruit ajouté (et pas de title vide).
+  const sans = render(troisSeries('perHa'));
+  assert.strictEqual(
+    walk(section(sans, 'thead')).filter(function (n) { return n.type === 'th'; }).pop().props.title,
+    undefined);
+});
+
 test('metrics — une valeur non finie est indéterminable, jamais affichée', () => {
   // Filet anti-NaN/∞ : une division par un Ha nul en amont ne doit pas remonter
   // « NaN » ni « Infinity » dans une cellule.
@@ -239,7 +341,8 @@ test('metrics — une valeur non finie est indéterminable, jamais affichée', (
       basis: 'total', display: 'total', format: un },
   ], { parcelles: [['P2', 2]], groupedRows: grouped });
   assert.strictEqual(cells(bodyRows(tree)[0])[1], '— | Bancal JH | — | Infini JH');
-  assert.strictEqual(cells(bodyRows(tree)[0])[2], '0.0 | Bancal JH | 0.0 | Infini JH');
+  // Aucune cellule renseignée → le total ne vaut pas 0, il n'existe pas.
+  assert.strictEqual(cells(bodyRows(tree)[0])[2], '— | Bancal JH | — | Infini JH');
 });
 
 test('metrics — le bandeau de groupe ne résume que la PREMIÈRE série', () => {
