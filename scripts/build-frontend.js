@@ -102,6 +102,18 @@ if (!fs.readFileSync(CAMPAGNE_BUDGET_PIVOT, "utf8").includes("buildBudgetPivot")
   process.exit(2);
 }
 
+// 2ter-sexies. Sibling lib check — campagneRythme.js (les deux restes de la
+// grille Campagne : budgété et au rythme).
+const CAMPAGNE_RYTHME = path.join(ROOT, "public/lib/campagneRythme.js");
+if (!fs.existsSync(CAMPAGNE_RYTHME)) {
+  console.error("[build-frontend] missing public/lib/campagneRythme.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(CAMPAGNE_RYTHME, "utf8").includes("decoreRestes")) {
+  console.error("[build-frontend] sentinel missing in public/lib/campagneRythme.js: decoreRestes");
+  process.exit(2);
+}
+
 // 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
 // puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
 // <script> séparés et partagent le scope global (IIFE → un seul global unique).

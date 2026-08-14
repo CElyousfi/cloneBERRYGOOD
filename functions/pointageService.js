@@ -913,7 +913,12 @@ async function loadReferentielTaches() {
         map[d.code] = { famille: d.famille.trim(), groupe: (d.groupe || '').trim() };
       }
       if (d.famille && d.operation) {
-        ops.push({ code: d.code, groupe: (d.groupe || '').trim(), famille: d.famille.trim(), operation: d.operation.trim(), ordre: d.ordre || 0 });
+        // `classe_rythme` (continu | saisonnier | recolte) : dit si une
+        // opération se projette au rythme des dernières quinzaines (grille
+        // Campagne, lot 3a). Recopié TEL QUEL, y compris vide : une fiche sans
+        // classe doit rester sans classe côté client, qui affiche alors « — ».
+        // Un défaut posé ici ferait projeter des opérations jamais qualifiées.
+        ops.push({ code: d.code, groupe: (d.groupe || '').trim(), famille: d.famille.trim(), operation: d.operation.trim(), ordre: d.ordre || 0, classe_rythme: (d.classe_rythme || '').trim() });
       }
     });
     _refTachesCache = { map, ops };

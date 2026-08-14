@@ -103,6 +103,11 @@ function loadTab(deps) {
     // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
     // builder par PivotView.
     vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
+    // Les deux restes (LOT 3a). Omissible : sans ce module, la grille doit
+    // retomber sur Réalisé + Budget, jamais afficher deux colonnes de « — ».
+    if (!deps || deps.rythme !== false) {
+      vm.runInContext(read('public/lib/campagneRythme.js'), sandbox);
+    }
   }
   vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
   vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
@@ -119,6 +124,11 @@ const Tab = loadTab();
 
 const DATA = {
   campagne: '2026-2027',
+  // Quinzaines de la campagne telles que renvoyées par l'API : elles couvrent
+  // TOUTES les parcelles, pas seulement les lignes de ce jeu d'essai — d'où 4
+  // quinzaines écoulées (donc 20 restantes) pour des lignes qui n'en occupent
+  // que deux. C'est ce qui rend la projection calculable ici.
+  periodes: ['Q01', 'Q02', 'Q03', 'Q04'],
   haByRef: { 'F5- S9 BLUE': 5 },
   rows: [
     { parcelle: 'F1- S5 MARAVILLA', refParcelle: 'F1S5', ferme: 'F1', periode: 'Q01',
@@ -367,9 +377,15 @@ test('pop-up — le clic sur une cellule ouvre le détail, colonne Présences al
   assert.deepStrictEqual(cells(footRow(popup)), ['TOTAL', '8', '40.0', '20', nb(6000), nb(3000)]);
 });
 
-// ------------------------------------------------- budget & écart (LOT 2c)
+// ------------------------------ budget (LOT 2c) & LES DEUX RESTES (LOT 3a)
 //
-// Les séries Budget et Écart superposées au réalisé DANS la cellule. Budgets
+// ⚠️ La série « Écart » (réalisé − budget) du LOT 2c est REMPLACÉE par
+// « Reste budg. » (budget − réalisé) : même nombre au signe près, et c'est le
+// sens « reste » qu'exige la comparaison avec le reste au rythme. Les deux
+// restes s'affichent CÔTE À CÔTE, jamais fusionnés : leur divergence est
+// l'alerte de dépassement projeté.
+//
+// Les séries superposées au réalisé DANS la cellule. Budgets
 // choisis pour couvrir les quatre cas du lot en un seul rendu :
 //   MARAVILLA (2 Ha) Taille   : budget FAMILLE 15 JH/Ha → 30 JH pour 40 réalisés
 //                               (dépassement) ;
@@ -390,60 +406,105 @@ const OP_BUDGETS = {
   'F1- S5 MARAVILLA': { 'Récolte': { 'GB08::Cueillette': 8 } },
 };
 
+// Classes de rythme du référentiel (`classe_rythme`). Ferti-irrigation est
+// volontairement MIXTE — c'est le cas réel : irrigation continue et
+// installation GAG saisonnière cohabitent sous GB02.
+const REF_OPS = [
+  { code: 'GB09', operation: 'Taille longue', classe_rythme: 'saisonnier' },
+  { code: 'GB09', operation: 'Taille courte', classe_rythme: 'saisonnier' },
+  { code: 'GB08', operation: 'Cueillette', classe_rythme: 'recolte' },
+  { code: 'GB02', operation: 'Irrigation & fertigation', classe_rythme: 'continu' },
+  { code: 'GB02', operation: 'Installation GAG', classe_rythme: 'saisonnier' },
+];
+
 function renderBudget(props, states) {
   return render(Object.assign({
-    budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS,
+    budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
   }, props || {}), states, TabBudget);
 }
 
-test('budget — réalisé, budget et écart dans la MÊME cellule (JH par Ha)', () => {
+test('restes — réalisé, budget et LES DEUX RESTES dans la MÊME cellule (JH par Ha)', () => {
   const rows = bodyRows(tables(renderBudget())[0]);
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
     ['M.O Hors récolte', 'Ferti-irrigation', 'Taille', 'M.O Récolte', 'Récolte']);
 
-  // Taille : 40 JH / 2 Ha = 20.0 réalisé, 15.0 budgété → écart (40 − 30) / 2 = +5.0.
-  // CORINA n'a ni réalisé ni budget en Taille : cellule vide, pas trois « — ».
-  assert.deepStrictEqual(cells(rows[2]).slice(1, 3),
-    ['20.0 | Réalisé JH/Ha | 15.0 | Budget JH/Ha | +5.0 | Écart JH/Ha', '—']);
+  // Taille : 40 JH / 2 Ha = 20.0 réalisé, 15.0 budgété → reste budgété
+  // (30 − 40) / 2 = −5.0. Famille SAISONNIÈRE : le reste au rythme vaut le
+  // reste budgété (une taille ne se projette pas au rythme des dernières
+  // quinzaines). CORINA n'a ni réalisé ni budget en Taille : cellule vide.
+  assert.deepStrictEqual(cells(rows[2]).slice(1, 3), [
+    '20.0 | Réalisé JH/Ha | 15.0 | Budget JH/Ha | -5.0 | Reste budg. JH/Ha'
+      + ' | -5.0 | Reste rythme JH/Ha',
+    '—',
+  ]);
 
-  // Récolte : le budget vient des OPÉRATIONS (8), pas du niveau famille (12) —
-  // et surtout pas de leur somme. CORINA est réalisée mais non budgétée.
+  // Récolte : le budget vient des OPÉRATIONS (8), pas du niveau famille (12).
+  // Reste au rythme : « — » TOUJOURS (classe `recolte` = jamais de projection).
+  // CORINA est réalisée mais non budgétée → aucun des deux restes.
   assert.deepStrictEqual(cells(rows[4]).slice(1, 3), [
-    '10.0 | Réalisé JH/Ha | 8.0 | Budget JH/Ha | +2.0 | Écart JH/Ha',
-    '3.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Écart JH/Ha',
+    '10.0 | Réalisé JH/Ha | 8.0 | Budget JH/Ha | -2.0 | Reste budg. JH/Ha'
+      + ' | — | Reste rythme JH/Ha',
+    '3.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Reste budg. JH/Ha'
+      + ' | — | Reste rythme JH/Ha',
   ]);
 });
 
-test('budget — famille budgétée jamais travaillée : ligne visible, réalisé à 0', () => {
+test('restes — famille budgétée jamais travaillée : budget entier restant, jamais 0', () => {
   // Sans cette ligne, 2 JH/Ha × 4 Ha = 8 JH de budget non consommé seraient
-  // parfaitement invisibles à l'écran.
+  // parfaitement invisibles. Reste budgété = +2.0 JH/Ha. Reste au rythme :
+  // « — » car GB02 est MIXTE (continu + saisonnier) et cette cellule n'a
+  // aucune opération identifiable — on ne devine pas sa classe.
   const rows = bodyRows(tables(renderBudget())[0]);
-  assert.deepStrictEqual(cells(rows[1]).slice(1, 3),
-    ['—', '0.0 | Réalisé JH/Ha | 2.0 | Budget JH/Ha | -2.0 | Écart JH/Ha']);
+  assert.deepStrictEqual(cells(rows[1]).slice(1, 3), [
+    '—',
+    '0.0 | Réalisé JH/Ha | 2.0 | Budget JH/Ha | 2.0 | Reste budg. JH/Ha'
+      + ' | — | Reste rythme JH/Ha',
+  ]);
 });
 
-test('budget — dépassement signalé en rouge, sous-consommation neutre', () => {
-  const rows = bodyRows(tables(renderBudget())[0]);
-  const spans = (tr, i) => walk((tr.children || []).filter((c) => c.type === 'td')[i])
-    .filter((n) => n.type === 'span');
-  // Taille sur MARAVILLA : +5.0 → rouge.
-  const depassement = spans(rows[2], 1);
-  assert.strictEqual(depassement.length, 1);
-  assert.strictEqual(textOf(depassement[0]), '+5.0');
-  assert.strictEqual(depassement[0].props.style.color, '#c0392b');
-  // Ferti sur CORINA : −2.0 → aucun span coloré.
-  assert.strictEqual(spans(rows[1], 2).length, 0);
+test('restes — un poste CONTINU se projette au rythme, et peut dépasser son budget', () => {
+  // 16 JH réalisés sur les 4 quinzaines écoulées → 4 JH/quinzaine → 80 JH sur
+  // les 20 quinzaines restantes, quand il n'en reste que 44 au budget.
+  // C'est L'ALERTE du lot : reste au rythme (40.0) > reste budgété (22.0).
+  const data = {
+    campagne: '2026-2027',
+    periodes: ['Q01', 'Q02', 'Q03', 'Q04'],
+    haByRef: {},
+    rows: [
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q03', operation: 'Irrigation & fertigation',
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 8, cout: 0, nbOuv: 2 },
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q04', operation: 'Irrigation & fertigation',
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 8, cout: 0, nbOuv: 2 },
+    ],
+  };
+  const tree = renderBudget({ data: data, budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Ferti-irrigation': 30 } } });
+  assert.strictEqual(cells(bodyRows(tables(tree)[0])[1])[1],
+    '8.0 | Réalisé JH/Ha | 30.0 | Budget JH/Ha | 22.0 | Reste budg. JH/Ha'
+      + ' | 40.0 | Reste rythme JH/Ha');
 });
 
-test('budget — en mode Total, les trois séries suivent la bascule', () => {
+test('restes — dépassement (reste négatif) signalé en rouge, sans plafonnement', () => {
+  const rows = bodyRows(tables(renderBudget())[0]);
+  // Rouges UNIQUEMENT : le « — » des valeurs absentes est lui aussi un <span>.
+  const rouges = (tr, i) => walk((tr.children || []).filter((c) => c.type === 'td')[i])
+    .filter((n) => n.type === 'span' && n.props.style && n.props.style.color === '#c0392b');
+  // Taille sur MARAVILLA : les DEUX restes sont à −5.0 → deux valeurs rouges.
+  assert.deepStrictEqual(rouges(rows[2], 1).map(textOf), ['-5.0', '-5.0']);
+  // Ferti sur CORINA : reste budgété +2.0 → rien de rouge.
+  assert.deepStrictEqual(rouges(rows[1], 2), []);
+});
+
+test('restes — en mode Total, les quatre séries suivent la bascule', () => {
   const rows = bodyRows(tables(renderBudget(null, [true, false, null]))[0]);
-  // Budget en JH/Ha × 2 Ha = 30 JH, réalisé 40 JH, écart +10 JH.
+  // Budget en JH/Ha × 2 Ha = 30 JH, réalisé 40 JH, reste budgété −10 JH.
   assert.strictEqual(cells(rows[2])[1],
-    '40.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH');
-  // Pied de tableau : budget à PÉRIMÈTRE BUDGÉTÉ (30 + 16 + 8 = 54 JH), écart
-  // sur ce même périmètre (+10 + 4 − 8 = +6). Le réalisé, lui, reste complet.
+    '40.0 | Réalisé JH | 30.0 | Budget JH | -10.0 | Reste budg. JH | -10.0 | Reste rythme JH');
+  // Pied de tableau : budget à PÉRIMÈTRE BUDGÉTÉ (30 + 16 + 8 = 54 JH), reste
+  // budgété sur ce même périmètre (−10 − 4 + 8 = −6). Le reste au rythme, lui,
+  // ne porte QUE sur la Taille (−10) : la Récolte et la Ferti n'étant pas
+  // projetées, les deux totaux ne sont pas comparables — d'où la légende.
   assert.strictEqual(cells(footRow(tables(renderBudget(null, [true, false, null]))[0])).pop(),
-    '72.0 | Réalisé JH | 54.0 | Budget JH | +6.0 | Écart JH');
+    '72.0 | Réalisé JH | 54.0 | Budget JH | -6.0 | Reste budg. JH | -10.0 | Reste rythme JH');
 });
 
 test('budget — culture sans aucun budget : grille inchangée, une seule série', () => {
@@ -465,13 +526,17 @@ test('budget — mode Détail : le budget descend à la maille opération', () =
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
     ['M.O Hors récolte', 'Ferti-irrigation', 'Taille', 'Taille longue', 'Taille courte',
       'M.O Récolte', 'Récolte', 'Cueillette']);
-  // L'opération budgétée porte son budget…
+  // L'opération budgétée porte son budget… et sa classe : `recolte`, donc
+  // aucune projection même à ce niveau de détail.
   assert.strictEqual(cells(rows[7])[1],
-    '10.0 | Réalisé JH/Ha | 8.0 | Budget JH/Ha | +2.0 | Écart JH/Ha');
+    '10.0 | Réalisé JH/Ha | 8.0 | Budget JH/Ha | -2.0 | Reste budg. JH/Ha'
+      + ' | — | Reste rythme JH/Ha');
   // …et les opérations d'une famille budgétée AU NIVEAU FAMILLE n'héritent de
   // rien : le budget de Taille reste sur sa ligne famille, il n'est pas
-  // réparti au jugé entre « Taille longue » et « Taille courte ».
-  assert.strictEqual(cells(rows[3])[1], '15.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Écart JH/Ha');
+  // réparti au jugé entre « Taille longue » et « Taille courte » — donc aucun
+  // reste non plus (pas de budget sur la ligne = pas de périmètre).
+  assert.strictEqual(cells(rows[3])[1],
+    '15.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Reste budg. JH/Ha | — | Reste rythme JH/Ha');
 });
 
 test('budget — ligne et colonne entièrement non budgétées : totaux « — »', () => {
@@ -483,32 +548,53 @@ test('budget — ligne et colonne entièrement non budgétées : totaux « — �
     { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
     [true, false, null]
   ))[0]);
-  assert.strictEqual(cells(rows[1])[3], '40.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH');
-  assert.strictEqual(cells(rows[3])[3], '32.0 | Réalisé JH | — | Budget JH | — | Écart JH');
+  assert.strictEqual(cells(rows[1])[3],
+    '40.0 | Réalisé JH | 30.0 | Budget JH | -10.0 | Reste budg. JH | -10.0 | Reste rythme JH');
+  assert.strictEqual(cells(rows[3])[3],
+    '32.0 | Réalisé JH | — | Budget JH | — | Reste budg. JH | — | Reste rythme JH');
 
   const foot = cells(footRow(tables(renderBudget(
     { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
     [true, false, null]
   ))[0]));
   assert.deepStrictEqual(foot.slice(1), [
-    '60.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH',
-    '12.0 | Réalisé JH | — | Budget JH | — | Écart JH',
-    '72.0 | Réalisé JH | 30.0 | Budget JH | +10.0 | Écart JH',
+    '60.0 | Réalisé JH | 30.0 | Budget JH | -10.0 | Reste budg. JH | -10.0 | Reste rythme JH',
+    '12.0 | Réalisé JH | — | Budget JH | — | Reste budg. JH | — | Reste rythme JH',
+    '72.0 | Réalisé JH | 30.0 | Budget JH | -10.0 | Reste budg. JH | -10.0 | Reste rythme JH',
   ]);
 });
 
-test('budget — le périmètre des séries est ÉCRIT sous la grille', () => {
-  // 72 Réalisé − 30 Budget ≠ +10 Écart : sans mention visible, le lecteur
-  // conclut à une erreur de calcul. La légende n'apparaît que sur une grille
-  // qui porte réellement les séries budgétaires.
+test('restes — le PÉRIMÈTRE PROJETÉ est compté sous la grille, pas seulement énoncé', () => {
+  // La Récolte pèse l'essentiel du budget et n'est jamais projetée : sans ce
+  // compte, un total « reste au rythme » très inférieur au « reste budgété »
+  // se lit comme une sous-consommation massive.
   const tree = renderBudget();
-  assert.match(textOf(tree), /Budget et Écart : périmètre budgété uniquement/);
+  assert.match(textOf(tree), /Projeté sur 1 famille budgétée sur 3/);
+  assert.match(textOf(tree), /Non projetées : Ferti-irrigation, Récolte/);
+  assert.match(textOf(tree), /20 quinzaines restantes/);
   const totalTh = walk(section(tables(tree)[0], 'thead'))
     .filter((n) => n.type === 'th').pop();
-  assert.match(totalTh.props.title, /périmètre budgété uniquement/);
+  assert.match(totalTh.props.title, /Projeté sur 1 famille/);
   // Culture sans budget (Myrtille) : ni légende ni title — rien à expliquer.
   const sansBudget = renderBudget({ cultureFilter: 'Myrtille' });
-  assert.strictEqual(textOf(sansBudget).indexOf('périmètre budgété'), -1);
+  assert.strictEqual(textOf(sansBudget).indexOf('Reste budgété'), -1);
+});
+
+test('restes — moins de 3 quinzaines consommées : aucune projection, budget intact', () => {
+  const tree = renderBudget({ data: Object.assign({}, DATA, { periodes: ['Q01', 'Q02'] }) });
+  const rows = bodyRows(tables(tree)[0]);
+  assert.strictEqual(cells(rows[2])[1],
+    '20.0 | Réalisé JH/Ha | 15.0 | Budget JH/Ha | -5.0 | Reste budg. JH/Ha'
+      + ' | — | Reste rythme JH/Ha');
+  assert.match(textOf(tree), /Aucune projection : moins de 3 quinzaines consommées/);
+});
+
+test('restes — module de calcul absent : Réalisé + Budget, jamais deux colonnes de « — »', () => {
+  const TabSansRythme = loadTab({ budget: true, rythme: false });
+  const rows = bodyRows(tables(render({
+    budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
+  }, null, TabSansRythme))[0]);
+  assert.strictEqual(cells(rows[2])[1], '20.0 | Réalisé JH/Ha | 15.0 | Budget JH/Ha');
 });
 
 test('budget — une cellule créée par le seul budget n\'ouvre pas de pop-up vide', () => {
