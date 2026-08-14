@@ -51,24 +51,51 @@ test('quinzainesInfo : restantes = total − DERNIÈRE quinzaine vue (pas leur n
   // Q03 sans le moindre pointage : elle est écoulée quand même. La compter
   // comme « à venir » gonflerait le reste au rythme d'une quinzaine entière.
   const q = CR.quinzainesInfo({
-    periodes: ['Quinzaine 01', 'Quinzaine 02', 'Quinzaine 04'],
+    periodes: ['Quinzaine 01', 'Quinzaine 02', 'Quinzaine 04', 'Quinzaine 05'],
     campagne: '2026/2027',
   });
-  assert.strictEqual(q.ecoulees, 4);
-  assert.strictEqual(q.consommees, 3);
-  assert.strictEqual(q.restantes, 20);
+  assert.strictEqual(q.ecoulees, 5);
+  assert.strictEqual(q.consommees, 4);
+  assert.strictEqual(q.restantes, 19);
   assert.strictEqual(q.projetable, true);
 });
 
-test('quinzainesInfo : moins de 3 quinzaines consommées → non projetable', () => {
-  const q = CR.quinzainesInfo({ periodes: ['Quinzaine 01', 'Quinzaine 02'], campagne: '2026/2027' });
-  assert.strictEqual(q.projetable, false);
+test('quinzainesInfo : la quinzaine EN COURS est écoulée mais pas COMPLÈTE', () => {
+  const q = CR.quinzainesInfo({
+    periodes: ['Quinzaine 01', 'Quinzaine 02', 'Quinzaine 03', 'Quinzaine 04'],
+    campagne: '2026/2027',
+  });
+  // Q04 est en cours : elle compte dans les écoulées (donc dans restantes =
+  // 24 − 4), mais la fenêtre du rythme s'arrête à Q03.
+  assert.strictEqual(q.ecoulees, 4);
+  assert.strictEqual(q.completes, 3);
+  assert.strictEqual(q.restantes, 20);
+  assert.strictEqual(q.consommees, 4);
+  assert.strictEqual(q.consommeesCompletes, 3);
+  assert.strictEqual(q.projetable, true);
+});
+
+test('quinzainesInfo : le minimum de 3 porte sur les quinzaines COMPLÈTES', () => {
+  // 3 quinzaines vues dont la dernière en cours = 2 complètes → pas assez.
+  const q3 = CR.quinzainesInfo({
+    periodes: ['Quinzaine 01', 'Quinzaine 02', 'Quinzaine 03'], campagne: '2026/2027',
+  });
+  assert.strictEqual(q3.consommeesCompletes, 2);
+  assert.strictEqual(q3.projetable, false);
+  const q2 = CR.quinzainesInfo({ periodes: ['Quinzaine 01', 'Quinzaine 02'], campagne: '2026/2027' });
+  assert.strictEqual(q2.projetable, false);
 });
 
 test('quinzainesInfo : campagne illisible → restantes null, non projetable', () => {
   const q = CR.quinzainesInfo({ periodes: ['Quinzaine 01', 'Quinzaine 02', 'Quinzaine 03'], campagne: '' });
   assert.strictEqual(q.restantes, null);
   assert.strictEqual(q.projetable, false);
+  // Et la note ne promet AUCUNE formule chiffrée : ni « × ? quinzaine restante »,
+  // ni une moyenne annoncée puis niée dans la phrase suivante.
+  const note = CR.noteRestes({ famillesBudgetees: 0, famillesProjetees: 0, nonProjetees: [] }, q, 4);
+  assert.match(note, /durée de la campagne n'a pas pu être déterminée/);
+  assert.strictEqual(note.indexOf('?'), -1);
+  assert.strictEqual(note.indexOf('moyenne'), -1);
 });
 
 // ---------------------------------------------------------------------------
@@ -136,7 +163,7 @@ test('resteBudgetCellule est l’opposé exact de ecartCell (d’où une seule d
 // moyenneMobile
 // ---------------------------------------------------------------------------
 
-test('moyenneMobile : fenêtre GLISSANTE sur les dernières quinzaines écoulées', () => {
+test('moyenneMobile : fenêtre GLISSANTE jusqu’à la dernière quinzaine COMPLÈTE', () => {
   const rows = [
     { periode: 'Quinzaine 01', jh: 100 },   // hors fenêtre
     { periode: 'Quinzaine 05', jh: 10 },
@@ -144,23 +171,45 @@ test('moyenneMobile : fenêtre GLISSANTE sur les dernières quinzaines écoulée
     { periode: 'Quinzaine 07', jh: 30 },
     { periode: 'Quinzaine 08', jh: 40 },
   ];
-  // Fenêtre 4 sur 8 quinzaines écoulées → Q05..Q08 → (10+20+30+40)/4.
-  assert.strictEqual(CR.moyenneMobile(rows, { ecoulees: 8, fenetre: 4 }), 25);
+  // Fenêtre 4 s'arrêtant à Q08 → (10+20+30+40)/4.
+  assert.strictEqual(CR.moyenneMobile(rows, { jusqua: 8, fenetre: 4 }), 25);
   // La Q01 à 100 JH est ignorée : une moyenne depuis le début dirait 40 et
   // masquerait le rythme réel des deux derniers mois.
-  assert.notStrictEqual(CR.moyenneMobile(rows, { ecoulees: 8, fenetre: 4 }), 40);
+  assert.notStrictEqual(CR.moyenneMobile(rows, { jusqua: 8, fenetre: 4 }), 40);
+});
+
+test('moyenneMobile : la quinzaine EN COURS, à moitié pointée, est EXCLUE de la fenêtre', () => {
+  // ⚠️ Test de non-régression du biais corrigé après QA. Q08 est en cours : 1 JH
+  // pointé sur les 4 qui seront saisis. L'inclure donnerait (4+4+4+1)/4 = 3.25
+  // au lieu de 3 — une sous-estimation de 8 % du rythme, MULTIPLIÉE ensuite par
+  // les quinzaines restantes, et toujours dans le sens de la SOUS-ALERTE.
+  const rows = [
+    { periode: 'Quinzaine 05', jh: 4 },
+    { periode: 'Quinzaine 06', jh: 4 },
+    { periode: 'Quinzaine 07', jh: 4 },
+    { periode: 'Quinzaine 08', jh: 1 },   // en cours
+  ];
+  const q = CR.quinzainesInfo({
+    periodes: ['Quinzaine 05', 'Quinzaine 06', 'Quinzaine 07', 'Quinzaine 08'],
+    campagne: '2026/2027',
+  });
+  assert.strictEqual(q.completes, 7);
+  // Fenêtre Q04..Q07 (Q04 chômée = un vrai zéro) → (0+4+4+4)/4 = 3.
+  assert.strictEqual(CR.moyenneMobile(rows, { jusqua: q.completes, fenetre: 4 }), 3);
+  // Ce que produisait l'implémentation précédente, et qu'on refuse désormais :
+  assert.strictEqual(CR.moyenneMobile(rows, { jusqua: q.ecoulees, fenetre: 4 }), 3.25);
 });
 
 test('moyenneMobile : une quinzaine sans travail est un ZÉRO du rythme, pas une absence', () => {
   const rows = [{ periode: 'Quinzaine 08', jh: 40 }];
   // Diviseur = 4 (la fenêtre), pas 1 (la seule quinzaine travaillée).
-  assert.strictEqual(CR.moyenneMobile(rows, { ecoulees: 8, fenetre: 4 }), 10);
+  assert.strictEqual(CR.moyenneMobile(rows, { jusqua: 8, fenetre: 4 }), 10);
 });
 
 test('moyenneMobile : fenêtre tronquée en début de campagne', () => {
   const rows = [{ periode: 'Quinzaine 01', jh: 6 }, { periode: 'Quinzaine 03', jh: 6 }];
-  assert.strictEqual(CR.moyenneMobile(rows, { ecoulees: 3, fenetre: 4 }), 4);   // 12 / 3
-  assert.strictEqual(CR.moyenneMobile(rows, { ecoulees: 0, fenetre: 4 }), null);
+  assert.strictEqual(CR.moyenneMobile(rows, { jusqua: 3, fenetre: 4 }), 4);   // 12 / 3
+  assert.strictEqual(CR.moyenneMobile(rows, { jusqua: 0, fenetre: 4 }), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -168,7 +217,8 @@ test('moyenneMobile : fenêtre tronquée en début de campagne', () => {
 // ---------------------------------------------------------------------------
 //
 // Une parcelle P (2 Ha), campagne 2026/2027 (24 quinzaines), 8 quinzaines
-// écoulées → 16 restantes, fenêtre 4 (Q05..Q08).
+// écoulées → 16 restantes. Q08 est EN COURS : la fenêtre du rythme s'arrête à
+// Q07 et couvre Q04..Q07 (Q04 chômée = un vrai zéro).
 //
 //  GB02 Ferti-irrigation — MIXTE
 //    Irrigation & fertigation (continu)  : 4 JH par quinzaine de Q05 à Q08,
@@ -176,9 +226,9 @@ test('moyenneMobile : fenêtre tronquée en début de campagne', () => {
 //    Installation GAG (saisonnier)       : 6 JH cumulés (Q01), budget 5 JH/Ha
 //    budget famille = 25 JH/Ha × 2 Ha = 50 JH ; réalisé = 22 JH
 //      reste budgété   = 50 − 22 = 28
-//      reste au rythme = continu (16/4=4 → 4 × 16 = 64)
-//                      + saisonnier (5 × 2 − 6 = 4)  = 68
-//      → 68 > 28 : dépassement projeté. C'est LE signal du lot.
+//      reste au rythme = continu ((0+4+4+4)/4 = 3 → 3 × 16 = 48)
+//                      + saisonnier (5 × 2 − 6 = 4)  = 52
+//      → 52 > 28 : dépassement projeté. C'est LE signal du lot.
 //
 //  GB09 Taille — SAISONNIER pur, budget 10 JH/Ha, réalisé 0
 //      reste budgété = 20 ; reste au rythme = 20 (JAMAIS 0)
@@ -246,7 +296,7 @@ function ligne(res, key) {
 test('famille MIXTE : chaque opération selon SA classe (continu projeté + saisonnier budgété)', () => {
   const cell = ligne(construire(), 'GB02').pivot.P;
   assert.strictEqual(cell.resteBudget, 28);
-  assert.strictEqual(cell.resteRythme, 68);
+  assert.strictEqual(cell.resteRythme, 52);
   // La divergence est l'alerte : la fusionner en un chiffre la ferait disparaître.
   assert.ok(cell.resteRythme > cell.resteBudget);
 });
@@ -268,9 +318,9 @@ test('mode Détail : la ligne opération continue porte sa propre projection', (
   const res = construire(true);
   const irrig = res.groupedRows.filter(
     (r) => r.type === 'operation' && r.key === 'GB02::' + AU.opKey('Irrigation & fertigation'))[0];
-  // budget 20 JH/Ha × 2 Ha − 16 JH = 24 ; rythme 4 JH/quinzaine × 16 = 64.
+  // budget 20 JH/Ha × 2 Ha − 16 JH = 24 ; rythme 3 JH/quinzaine × 16 = 48.
   assert.strictEqual(irrig.pivot.P.resteBudget, 24);
-  assert.strictEqual(irrig.pivot.P.resteRythme, 64);
+  assert.strictEqual(irrig.pivot.P.resteRythme, 48);
   const gag = res.groupedRows.filter(
     (r) => r.type === 'operation' && r.key === 'GB02::' + AU.opKey('Installation GAG'))[0];
   assert.strictEqual(gag.pivot.P.resteBudget, 4);
@@ -285,7 +335,38 @@ test('périmètre : compte des familles projetées + familles écartées nommée
   const note = CR.noteRestes(res.perimetre, QUINZ, 4);
   assert.match(note, /2 familles budgétées sur 3/);
   assert.match(note, /Récolte/);
-  assert.match(note, /16 quinzaines restantes/);
+  assert.match(note, /4 dernières quinzaines complètes × 16 quinzaines restantes/);
+});
+
+test('périmètre : projetée sur UNE parcelle sur deux ≠ « projetée » (légende honnête)', () => {
+  // Même famille, deux parcelles : l'une porte une opération continue, l'autre
+  // une opération absente du référentiel (classe inconnue). La compter comme
+  // projetée rendrait la légende optimiste là où elle doit avertir.
+  const classes = CR.indexClasses([
+    { code: 'GB02', operation: 'Irrigation & fertigation', classe_rythme: 'continu' },
+  ], AU.opKey);
+  const rows = [
+    { parcelle: 'A', ha: 2, jh: 4, periode: 'Quinzaine 06', operation: 'Irrigation & fertigation',
+      operationGroupe: 'GB02', operationFamille: 'Ferti-irrigation' },
+    { parcelle: 'B', ha: 2, jh: 4, periode: 'Quinzaine 06', operation: 'Sondage piézométrique',
+      operationGroupe: 'GB02', operationFamille: 'Ferti-irrigation' },
+  ];
+  const pivot = AU.buildAnalytiquePivotByFamille(rows, {});
+  const sup = CBP.buildBudgetPivot({
+    groupedRows: pivot.groupedRows, parcelles: pivot.parcelles,
+    budgetsByLabel: { A: { 'Ferti-irrigation': 10 }, B: { 'Ferti-irrigation': 10 } },
+    opBudgetsByLabel: {}, analytique: AU, budgetRules: REGLES,
+  });
+  const res = CR.decoreRestes({
+    groupedRows: sup.groupedRows, classes: classes, quinzaines: QUINZ, analytique: AU, fenetre: 4,
+  });
+  const fam = ligne(res, 'GB02');
+  assert.strictEqual(typeof fam.pivot.A.resteRythme, 'number');
+  assert.strictEqual(fam.pivot.B.resteRythme, undefined);
+  assert.strictEqual(res.perimetre.famillesProjetees, 0);
+  assert.deepStrictEqual(res.perimetre.partiellementProjetees, ['Ferti-irrigation']);
+  assert.match(CR.noteRestes(res.perimetre, QUINZ, 4),
+    /Projetée sur une partie des parcelles seulement : Ferti-irrigation/);
 });
 
 test('PÉRIMÈTRE COMMUN : pas de budget → les DEUX restes absents (jamais l’un sans l’autre)', () => {
@@ -332,7 +413,10 @@ test('minimum d’historique : 2 quinzaines consommées → aucune projection, b
   const cell = ligne(res, 'GB02').pivot.P;
   assert.strictEqual(cell.resteBudget, 28);        // le reste budgété, lui, existe
   assert.strictEqual(cell.resteRythme, undefined); // « — » : pas assez d'historique
-  assert.match(CR.noteRestes(res.perimetre, q, 4), /Aucune projection/);
+  // La note ne doit PAS annoncer une formule pour la nier juste après.
+  const note = CR.noteRestes(res.perimetre, q, 4);
+  assert.match(note, /Aucun reste au rythme n'est calculé : moins de 3 quinzaines complètes/);
+  assert.strictEqual(note.indexOf('moyenne'), -1);
 });
 
 test('classe INCONNUE sur une opération → la famille entière passe à « — »', () => {
@@ -422,15 +506,19 @@ test('plan — défaut SAISONNIER, GB08 entier en recolte, continues sur liste e
   assert.strictEqual(p.ecrasees.length, 0);
 });
 
-test('plan — une classe déjà posée et DIFFÉRENTE est signalée, jamais écrasée en silence', () => {
+test('plan — une classe déjà posée et DIFFÉRENTE sort du lot par défaut (--force requis)', () => {
   const p = plan.planClasses([
     { id: 'a', code: 'GB02', operation: 'Irrigation & fertigation', classe_rythme: 'continu' },
     { id: 'b', code: 'GB09', operation: 'Taille', classe_rythme: 'continu' },
+    { id: 'c', code: 'GB09', operation: 'Pincements' },
   ]);
   assert.deepStrictEqual(p.inchangees.map((e) => e.id), ['a']);
+  // `aEcrire` = le lot écrit SANS --force : uniquement les fiches sans classe.
+  // Écraser une classification posée à la main est une décision, pas un effet
+  // de bord d'un import — d'où la séparation de ces deux listes.
+  assert.deepStrictEqual(p.aEcrire.map((e) => e.id), ['c']);
   assert.deepStrictEqual(p.ecrasees.map((e) => [e.id, e.actuelle, e.cible]),
     [['b', 'continu', 'saisonnier']]);
-  assert.strictEqual(p.aEcrire.length, 0);
 });
 
 test('plan — une opération continue MAL ORTHOGRAPHIÉE est détectée (sinon jamais projetée)', () => {

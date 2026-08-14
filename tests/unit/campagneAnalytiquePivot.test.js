@@ -127,7 +127,8 @@ const DATA = {
   // Quinzaines de la campagne telles que renvoyées par l'API : elles couvrent
   // TOUTES les parcelles, pas seulement les lignes de ce jeu d'essai — d'où 4
   // quinzaines écoulées (donc 20 restantes) pour des lignes qui n'en occupent
-  // que deux. C'est ce qui rend la projection calculable ici.
+  // que deux. Q04 est EN COURS : la fenêtre du rythme s'arrête à Q03, et il
+  // faut 3 quinzaines COMPLÈTES pour projeter — on est pile au seuil.
   periodes: ['Q01', 'Q02', 'Q03', 'Q04'],
   haByRef: { 'F5- S9 BLUE': 5 },
   rows: [
@@ -463,23 +464,48 @@ test('restes — famille budgétée jamais travaillée : budget entier restant, 
 });
 
 test('restes — un poste CONTINU se projette au rythme, et peut dépasser son budget', () => {
-  // 16 JH réalisés sur les 4 quinzaines écoulées → 4 JH/quinzaine → 80 JH sur
-  // les 20 quinzaines restantes, quand il n'en reste que 44 au budget.
-  // C'est L'ALERTE du lot : reste au rythme (40.0) > reste budgété (22.0).
+  // 12 JH sur les 3 quinzaines COMPLÈTES (Q01 chômée, Q02 et Q03 à 6 JH) →
+  // 4 JH/quinzaine → 80 JH sur les 20 quinzaines restantes, quand il n'en reste
+  // que 48 au budget. C'est L'ALERTE du lot : 40.0 au rythme contre 24.0
+  // budgétés (en JH/Ha, sur 2 Ha).
   const data = {
     campagne: '2026-2027',
     periodes: ['Q01', 'Q02', 'Q03', 'Q04'],
     haByRef: {},
     rows: [
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q02', operation: 'Irrigation & fertigation',
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 6, cout: 0, nbOuv: 2 },
       { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q03', operation: 'Irrigation & fertigation',
-        famille: 'Ferti-irrigation', code: 'GB02', jh: 8, cout: 0, nbOuv: 2 },
-      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q04', operation: 'Irrigation & fertigation',
-        famille: 'Ferti-irrigation', code: 'GB02', jh: 8, cout: 0, nbOuv: 2 },
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 6, cout: 0, nbOuv: 2 },
     ],
   };
   const tree = renderBudget({ data: data, budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Ferti-irrigation': 30 } } });
   assert.strictEqual(cells(bodyRows(tables(tree)[0])[1])[1],
-    '8.0 | Réalisé JH/Ha | 30.0 | Budget JH/Ha | 22.0 | Reste budg. JH/Ha'
+    '6.0 | Réalisé JH/Ha | 30.0 | Budget JH/Ha | 24.0 | Reste budg. JH/Ha'
+      + ' | 40.0 | Reste rythme JH/Ha');
+});
+
+test('restes — le travail de la quinzaine EN COURS ne gonfle PAS la projection', () => {
+  // Mêmes données que ci-dessus, plus 6 JH pointés dans Q04 (en cours). Ils
+  // entrent dans le réalisé (9.0 au lieu de 6.0 par Ha) et réduisent le reste
+  // budgété, mais la projection reste calée sur les quinzaines complètes : une
+  // quinzaine à moitié saisie ne doit ni gonfler ni écraser le rythme.
+  const data = {
+    campagne: '2026-2027',
+    periodes: ['Q01', 'Q02', 'Q03', 'Q04'],
+    haByRef: {},
+    rows: [
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q02', operation: 'Irrigation & fertigation',
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 6, cout: 0, nbOuv: 2 },
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q03', operation: 'Irrigation & fertigation',
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 6, cout: 0, nbOuv: 2 },
+      { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', periode: 'Q04', operation: 'Irrigation & fertigation',
+        famille: 'Ferti-irrigation', code: 'GB02', jh: 6, cout: 0, nbOuv: 2 },
+    ],
+  };
+  const tree = renderBudget({ data: data, budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Ferti-irrigation': 30 } } });
+  assert.strictEqual(cells(bodyRows(tables(tree)[0])[1])[1],
+    '9.0 | Réalisé JH/Ha | 30.0 | Budget JH/Ha | 21.0 | Reste budg. JH/Ha'
       + ' | 40.0 | Reste rythme JH/Ha');
 });
 
@@ -571,7 +597,7 @@ test('restes — le PÉRIMÈTRE PROJETÉ est compté sous la grille, pas seuleme
   const tree = renderBudget();
   assert.match(textOf(tree), /Projeté sur 1 famille budgétée sur 3/);
   assert.match(textOf(tree), /Non projetées : Ferti-irrigation, Récolte/);
-  assert.match(textOf(tree), /20 quinzaines restantes/);
+  assert.match(textOf(tree), /3 dernières quinzaines complètes × 20 quinzaines restantes/);
   const totalTh = walk(section(tables(tree)[0], 'thead'))
     .filter((n) => n.type === 'th').pop();
   assert.match(totalTh.props.title, /Projeté sur 1 famille/);
@@ -580,13 +606,15 @@ test('restes — le PÉRIMÈTRE PROJETÉ est compté sous la grille, pas seuleme
   assert.strictEqual(textOf(sansBudget).indexOf('Reste budgété'), -1);
 });
 
-test('restes — moins de 3 quinzaines consommées : aucune projection, budget intact', () => {
-  const tree = renderBudget({ data: Object.assign({}, DATA, { periodes: ['Q01', 'Q02'] }) });
+test('restes — moins de 3 quinzaines COMPLÈTES : aucune projection, budget intact', () => {
+  // Q01..Q03 dont Q03 en cours = 2 complètes : sous le seuil, alors que le même
+  // jeu passait avec l'ancien décompte (3 « consommées »).
+  const tree = renderBudget({ data: Object.assign({}, DATA, { periodes: ['Q01', 'Q02', 'Q03'] }) });
   const rows = bodyRows(tables(tree)[0]);
   assert.strictEqual(cells(rows[2])[1],
     '20.0 | Réalisé JH/Ha | 15.0 | Budget JH/Ha | -5.0 | Reste budg. JH/Ha'
       + ' | — | Reste rythme JH/Ha');
-  assert.match(textOf(tree), /Aucune projection : moins de 3 quinzaines consommées/);
+  assert.match(textOf(tree), /Aucun reste au rythme n'est calculé : moins de 3 quinzaines complètes/);
 });
 
 test('restes — module de calcul absent : Réalisé + Budget, jamais deux colonnes de « — »', () => {

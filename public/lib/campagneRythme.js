@@ -1,6 +1,10 @@
 /**
  * campagneRythme.js — LES DEUX RESTES de la grille Campagne (LOT 3a).
  *
+ * (La moyenne mobile porte sur les dernières quinzaines COMPLÈTES : la
+ * quinzaine en cours, à moitié pointée, est exclue de la fenêtre — cf.
+ * quinzainesInfo. Elle reste comptée dans le réalisé cumulé.)
+ *
  * Chargé deux fois (UMD bricolé, comme public/lib/campagneBudgetPivot.js) :
  *   - navigateur, via <script src="lib/campagneRythme.js"> → window.CampagneRythme
  *   - node:test, via require('./campagneRythme.js')        → module.exports
@@ -43,7 +47,7 @@
  * budgétée n'est jamais projetée, même continue.
  *
  * ── CE QUI RESTE INDÉTERMINABLE (« — », jamais 0) ────────────────────────────
- *   - moins de MIN_QUINZAINES_CONSOMMEES quinzaines consommées : pas d'historique ;
+ *   - moins de MIN_QUINZAINES_CONSOMMEES quinzaines COMPLÈTES consommées ;
  *   - nombre de quinzaines restantes inconnu (campagne illisible) ;
  *   - aucun budget sur la cellule, ou superficie inconnue ;
  *   - classe d'opération inconnue, ou récolte.
@@ -69,7 +73,8 @@
    *  et 2 occurrences, soit ±50 %). */
   var FENETRE_PAR_DEFAUT = 4;
 
-  /** Historique minimum avant toute projection. En dessous, une moyenne dit
+  /** Historique minimum avant toute projection, en quinzaines COMPLÈTES
+   *  consommées (cf. `completes` ci-dessous). En dessous, une moyenne dit
    *  surtout quand la campagne a commencé. */
   var MIN_QUINZAINES_CONSOMMEES = 3;
 
@@ -104,9 +109,25 @@
    * `periodes`) est écoulée quand même, et le projeter comme si elle restait à
    * venir gonflerait le reste au rythme.
    *
+   * ── LA QUINZAINE EN COURS N'ENTRE PAS DANS LE RYTHME (`completes`) ──────────
+   * La dernière quinzaine vue est celle qu'on est en train de pointer : elle
+   * n'est remplie qu'à moitié quand on regarde l'écran. La compter dans la
+   * moyenne mobile écrase le rythme (jusqu'à −1/k), et cette sous-estimation est
+   * ensuite MULTIPLIÉE par les quinzaines restantes. L'erreur va toujours dans
+   * le même sens : elle SOUS-projette, donc elle SOUS-ALERTE — inacceptable pour
+   * un indicateur dont l'unique rôle est d'avertir d'un dépassement.
+   * `completes` = ecoulees − 1 : la quinzaine en cours reste comptée dans le
+   * réalisé cumulé et dans les quinzaines écoulées (donc dans `restantes`), elle
+   * est seulement exclue de la FENÊTRE qui mesure le rythme.
+   *
+   * `consommeesCompletes` (et non `consommees`) porte le minimum d'historique :
+   * exiger 3 quinzaines dont la dernière est à moitié pointée reviendrait à
+   * projeter sur 2 quinzaines et demie.
+   *
    * @param {{periodes?: Array<string>, campagne?: string}} args
-   * @returns {{consommees: number, ecoulees: number, total: number|null,
-   *   restantes: number|null, projetable: boolean}}
+   * @returns {{consommees: number, consommeesCompletes: number, ecoulees: number,
+   *   completes: number, total: number|null, restantes: number|null,
+   *   projetable: boolean}}
    */
   function quinzainesInfo(args) {
     var a = args || {};
@@ -118,15 +139,21 @@
       vues[n] = true;
       if (n > ecoulees) ecoulees = n;
     });
+    var completes = Math.max(0, ecoulees - 1);
     var consommees = Object.keys(vues).length;
+    var consommeesCompletes = Object.keys(vues).filter(function (n) {
+      return Number(n) <= completes;
+    }).length;
     var total = totalQuinzaines(a.campagne);
     var restantes = (total !== null && ecoulees > 0) ? Math.max(0, total - ecoulees) : null;
     return {
       consommees: consommees,
+      consommeesCompletes: consommeesCompletes,
       ecoulees: ecoulees,
+      completes: completes,
       total: total,
       restantes: restantes,
-      projetable: consommees >= MIN_QUINZAINES_CONSOMMEES && restantes !== null,
+      projetable: consommeesCompletes >= MIN_QUINZAINES_CONSOMMEES && restantes !== null,
     };
   }
 
@@ -246,8 +273,12 @@
   }
 
   /**
-   * Moyenne mobile des JH sur les `k` dernières quinzaines ÉCOULÉES, avec
-   * k = min(fenetre, ecoulees).
+   * Moyenne mobile des JH sur les `k` dernières quinzaines COMPLÈTES, avec
+   * k = min(fenetre, jusqua).
+   *
+   * `jusqua` = dernière quinzaine INCLUSE dans la fenêtre — jamais la quinzaine
+   * en cours (cf. `completes` dans quinzainesInfo) : à moitié pointée, elle
+   * tirerait la moyenne vers le bas et ferait manquer des dépassements.
    *
    * Le diviseur est k, PAS le nombre de quinzaines effectivement travaillées :
    * une quinzaine sans travail sur cette ligne est un vrai zéro du rythme, pas
@@ -255,20 +286,21 @@
    * la moyenne d'un poste en train de s'arrêter.
    *
    * @param {Array<{periode?: string, jh?: number}>} detailRows
-   * @param {{ecoulees: number, fenetre?: number}} opts
-   * @returns {number|null} null si aucune quinzaine écoulée.
+   * @param {{jusqua?: number, ecoulees?: number, fenetre?: number}} opts
+   *   `ecoulees` reste accepté comme alias historique de `jusqua`.
+   * @returns {number|null} null si aucune quinzaine complète.
    */
   function moyenneMobile(detailRows, opts) {
     var o = opts || {};
-    var ecoulees = Number(o.ecoulees) || 0;
+    var jusqua = Number(o.jusqua !== undefined ? o.jusqua : o.ecoulees) || 0;
     var fenetre = Number(o.fenetre) || FENETRE_PAR_DEFAUT;
-    var k = Math.min(fenetre, ecoulees);
+    var k = Math.min(fenetre, jusqua);
     if (!(k > 0)) return null;
-    var debut = ecoulees - k + 1;
+    var debut = jusqua - k + 1;
     var somme = 0;
     (detailRows || []).forEach(function (r) {
       var n = quinzaineNum(r && r.periode);
-      if (!(n >= debut && n <= ecoulees)) return;
+      if (!(n >= debut && n <= jusqua)) return;
       var jh = Number(r && r.jh);
       if (isFinite(jh)) somme += jh;
     });
@@ -340,7 +372,7 @@
    * @param {Array} args.ops sortie de _cr_opsDeCellule.
    * @param {string} args.familleKey code GB de la ligne (repli de classe).
    * @param {Object} args.classes index de indexClasses.
-   * @param {{restantes: number|null, ecoulees: number, projetable: boolean}} args.quinzaines
+   * @param {{restantes: number|null, completes: number, projetable: boolean}} args.quinzaines
    * @param {number} [args.fenetre]
    * @returns {number|null}
    */
@@ -366,14 +398,14 @@
     if (continues === 0) return resteBudget;                       // tout saisonnier
     if (continues === classes.length) {                            // tout continu
       var m = moyenneMobile((cell && cell.detailRows) || [],
-        { ecoulees: q.ecoulees, fenetre: a.fenetre });
+        { jusqua: q.completes, fenetre: a.fenetre });
       return m === null ? null : m * restantes;
     }
     var ha = Number(cell && cell.ha) || 0;
     var somme = 0;
     for (var i = 0; i < ops.length; i += 1) {
       if (classes[i] === CLASSES.CONTINU) {
-        var mo = moyenneMobile(ops[i].rows, { ecoulees: q.ecoulees, fenetre: a.fenetre });
+        var mo = moyenneMobile(ops[i].rows, { jusqua: q.completes, fenetre: a.fenetre });
         if (mo === null) return null;
         somme += mo * restantes;
         continue;
@@ -406,25 +438,31 @@
    * @param {Array<Object>} args.groupedRows lignes DÉJÀ décorées du budget
    *   (CampagneBudgetPivot.buildBudgetPivot) — l'ordre est conservé à l'identique.
    * @param {Object} args.classes index de indexClasses.
-   * @param {{restantes: number|null, ecoulees: number, projetable: boolean}} args.quinzaines
+   * @param {{restantes: number|null, completes: number, projetable: boolean}} args.quinzaines
    * @param {{familles: Object, operations: Object}} [args.budgetIndex]
    *   CampagneBudgetPivot.indexBudgets — sert les opérations budgétées non travaillées.
    * @param {Object} [args.analytique] AnalytiqueUtils.
    * @param {number} [args.fenetre]
    * @returns {{groupedRows: Array<Object>, perimetre: {famillesBudgetees: number,
-   *   famillesProjetees: number, nonProjetees: Array<string>}}}
+   *   famillesProjetees: number, partiellementProjetees: Array<string>,
+   *   nonProjetees: Array<string>}}}
    */
   function decoreRestes(args) {
     var a = args || {};
     var rows = a.groupedRows || [];
     var budgetees = 0;
     var projetees = 0;
+    var partielles = [];
     var nonProjetees = [];
     var out = rows.map(function (row) {
       if (!row || row.type === 'groupe') return row;
       var pivot = {};
-      var aUnBudget = false;
-      var estProjetee = false;
+      // Comptage PAR CELLULE, pas « au moins une » : une famille budgétée sur 5
+      // parcelles et projetée sur une seule n'est pas « projetée ». La compter
+      // comme telle rendrait la légende optimiste au moment précis où elle doit
+      // avertir que les deux totaux ne se comparent pas.
+      var cellulesBudgetees = 0;
+      var cellulesProjetees = 0;
       Object.keys(row.pivot || {}).forEach(function (p) {
         var cell = row.pivot[p];
         if (!cell) { pivot[p] = cell; return; }
@@ -437,13 +475,14 @@
           quinzaines: a.quinzaines,
           fenetre: a.fenetre,
         });
-        if (resteBudget !== null) aUnBudget = true;
-        if (resteRythme !== null) estProjetee = true;
+        if (resteBudget !== null) cellulesBudgetees += 1;
+        if (resteRythme !== null) cellulesProjetees += 1;
         pivot[p] = _cr_decoreCell(cell, resteBudget, resteRythme);
       });
-      if (row.type === 'famille' && aUnBudget) {
+      if (row.type === 'famille' && cellulesBudgetees > 0) {
         budgetees += 1;
-        if (estProjetee) projetees += 1;
+        if (cellulesProjetees === cellulesBudgetees) projetees += 1;
+        else if (cellulesProjetees > 0) partielles.push(row.label || row.key);
         else nonProjetees.push(row.label || row.key);
       }
       var copie = {};
@@ -456,6 +495,7 @@
       perimetre: {
         famillesBudgetees: budgetees,
         famillesProjetees: projetees,
+        partiellementProjetees: partielles,
         nonProjetees: nonProjetees,
       },
     };
@@ -468,33 +508,52 @@
    * « reste budgété ». Sans cette mention, ça se lit comme une sous-consommation
    * massive alors que ce n'est qu'un périmètre différent.
    *
-   * @param {{famillesBudgetees: number, famillesProjetees: number, nonProjetees: Array<string>}} perimetre
-   * @param {{restantes: number|null, ecoulees: number, consommees: number, projetable: boolean}} q
+   * @param {{famillesBudgetees: number, famillesProjetees: number,
+   *   partiellementProjetees?: Array<string>, nonProjetees: Array<string>}} perimetre
+   * @param {{restantes: number|null, completes: number, consommeesCompletes: number,
+   *   projetable: boolean}} q
    * @param {number} [fenetre]
    * @returns {string}
    */
   function noteRestes(perimetre, q, fenetre) {
     var p = perimetre || {};
     var quinz = q || {};
-    var f = Math.min(Number(fenetre) || FENETRE_PAR_DEFAUT, Number(quinz.ecoulees) || 0);
-    var txt = 'Reste budgété = budget × Ha − réalisé. Reste au rythme = moyenne des '
-      + f + ' dernières quinzaines × ' + (quinz.restantes === null ? '?' : quinz.restantes)
-      + ' quinzaine' + (quinz.restantes > 1 ? 's' : '') + ' restante'
-      + (quinz.restantes > 1 ? 's' : '') + '. ';
+    var base = 'Reste budgété = budget × Ha − réalisé. ';
+    var sfin = 'Le « — » signale une valeur non calculable : aucun budget saisi,'
+      + ' superficie inconnue, ou pas de projection.';
+    // Rien de projeté : on n'ANNONCE PAS une formule pour la nier dans la phrase
+    // suivante — et surtout jamais un « × ? quinzaine restante » quand la durée
+    // de la campagne est illisible.
     if (!quinz.projetable) {
-      return txt + 'Aucune projection : moins de ' + MIN_QUINZAINES_CONSOMMEES
-        + ' quinzaines consommées, ou durée de campagne indéterminable.';
+      var cause = quinz.restantes === null
+        ? 'la durée de la campagne n\'a pas pu être déterminée'
+        : 'moins de ' + MIN_QUINZAINES_CONSOMMEES + ' quinzaines complètes consommées'
+          + ' (la quinzaine en cours ne compte pas, elle n\'est pointée qu\'en partie)';
+      return base + 'Aucun reste au rythme n\'est calculé : ' + cause + '. ' + sfin;
     }
+    var f = Math.min(Number(fenetre) || FENETRE_PAR_DEFAUT, Number(quinz.completes) || 0);
+    var r = Number(quinz.restantes);
+    var txt = base + 'Reste au rythme = moyenne des ' + f + ' dernières quinzaines'
+      + ' complètes × ' + r + ' quinzaine' + (r > 1 ? 's' : '')
+      + ' restante' + (r > 1 ? 's' : '') + '. ';
     txt += 'Projeté sur ' + p.famillesProjetees + ' famille'
       + (p.famillesProjetees > 1 ? 's' : '') + ' budgétée'
       + (p.famillesProjetees > 1 ? 's' : '') + ' sur ' + p.famillesBudgetees + '.';
+    if (p.partiellementProjetees && p.partiellementProjetees.length) {
+      txt += ' Projetée' + (p.partiellementProjetees.length > 1 ? 's' : '')
+        + ' sur une partie des parcelles seulement : '
+        + p.partiellementProjetees.join(', ') + '.';
+    }
     if (p.nonProjetees && p.nonProjetees.length) {
       txt += ' Non projetée' + (p.nonProjetees.length > 1 ? 's' : '') + ' : '
         + p.nonProjetees.join(', ')
-        + ' (récolte jamais projetée, ou opération sans classe de rythme connue) —'
-        + ' les deux totaux ne portent donc pas sur le même nombre de familles.';
+        + ' (récolte jamais projetée, ou opération sans classe de rythme connue).';
     }
-    return txt + ' « — » = aucun budget saisi, superficie inconnue, ou pas de projection.';
+    if ((p.nonProjetees && p.nonProjetees.length)
+      || (p.partiellementProjetees && p.partiellementProjetees.length)) {
+      txt += ' Les deux totaux ne portent donc pas sur le même périmètre.';
+    }
+    return txt + ' ' + sfin;
   }
 
   var __campagneRythmeApi = {

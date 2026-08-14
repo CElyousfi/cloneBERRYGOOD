@@ -11,6 +11,12 @@
  *   node scripts/set-classe-rythme.js            # simulation + rapport
  *   node scripts/set-classe-rythme.js --verbose  # détaille fiche par fiche
  *   node scripts/set-classe-rythme.js --apply    # ÉCRIT (à ne lancer qu'après GO)
+ *   node scripts/set-classe-rythme.js --apply --force   # + les RECLASSEMENTS
+ *
+ * Sans `--force`, seules les fiches SANS classe sont écrites. Une fiche portant
+ * déjà une classe DIFFÉRENTE est listée dans le rapport mais laissée telle
+ * quelle : écraser une classification posée à la main est une décision, pas un
+ * effet de bord d'un import.
  *
  * ── À QUOI SERT CE CHAMP ─────────────────────────────────────────────────────
  * La grille Campagne projette un « reste au rythme » = moyenne des dernières
@@ -146,7 +152,9 @@ async function main() {
   const argv = process.argv.slice(2)
   const apply = argv.indexOf('--apply') >= 0
   const verbose = argv.indexOf('--verbose') >= 0
-  const inconnu = argv.filter((a) => a.startsWith('--') && a !== '--apply' && a !== '--verbose')
+  const force = argv.indexOf('--force') >= 0
+  const connues = ['--apply', '--verbose', '--force']
+  const inconnu = argv.filter((a) => a.startsWith('--') && connues.indexOf(a) < 0)
   if (inconnu.length) {
     console.error('Option inconnue : ' + inconnu.join(', '))
     process.exit(1)
@@ -174,20 +182,34 @@ async function main() {
     orphelines.forEach((k) => console.log('   - ' + k))
   }
   if (plan.ecrasees.length) {
-    console.log('\n⚠️ Ces fiches portent DÉJÀ une classe différente — elles seraient écrasées :')
+    console.log(`\n⚠️ ${plan.ecrasees.length} fiches portent DÉJÀ une classe DIFFÉRENTE de celle`
+      + ' proposée. Une classification posée à la main se change sur décision, pas par'
+      + ' effet de bord d\'un import : elles sont EXCLUES sauf --force.')
     plan.ecrasees.forEach((e) => console.log(`   - ${e.code} ${e.operation} : ${e.actuelle} → ${e.cible}`))
   }
+
+  // Lot par défaut : uniquement les fiches SANS classe. `--force` y ajoute les
+  // reclassements — jamais implicites, jamais silencieux.
+  const aEcrire = force ? plan.aEcrire.concat(plan.ecrasees) : plan.aEcrire
   if (verbose) {
-    console.log('\nDétail :')
-    plan.aEcrire.concat(plan.ecrasees).forEach((e) => {
-      console.log(`   ${e.cible.padEnd(11)} ${e.code} ${e.operation}`)
+    console.log('\nDétail du lot :')
+    aEcrire.forEach((e) => {
+      console.log(`   ${e.cible.padEnd(11)} ${e.code} ${e.operation}`
+        + (e.actuelle ? `   (écrase « ${e.actuelle} »)` : ''))
     })
   }
 
-  const aEcrire = plan.aEcrire.concat(plan.ecrasees)
   if (!apply) {
-    console.log(`\nDRY-RUN — rien n'a été écrit. ${aEcrire.length} fiches seraient mises à jour.`)
+    console.log(`\nDRY-RUN — rien n'a été écrit. ${aEcrire.length} fiches seraient mises à jour`
+      + (force ? ' (dont ' + plan.ecrasees.length + ' reclassements, --force).' : '.'))
+    if (!force && plan.ecrasees.length) {
+      console.log(`  ${plan.ecrasees.length} reclassements EXCLUS — les inclure : ajouter --force.`)
+    }
     console.log('Pour écrire réellement : node scripts/set-classe-rythme.js --apply')
+    return
+  }
+  if (!aEcrire.length) {
+    console.log('\nRien à écrire.')
     return
   }
 
