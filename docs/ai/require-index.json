@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:3c4de0b5bdcf3c39",
+    "sourceFingerprint": "sha256:d1f9bd1dde6dfc04",
     "stats": {
-      "targetFiles": 202,
+      "targetFiles": 203,
       "targetFilesWithDirectTests": 122,
       "targetFilesWithTransitiveTests": 139,
-      "testFilesScanned": 166
+      "testFilesScanned": 167
     }
   },
   "index": {
@@ -1350,6 +1350,10 @@
         "tests/unit/caisseUtils.test.js",
         "tests/unit/compteClientMarcheLocal.test.js"
       ]
+    },
+    "public/lib/campagneBudgetPivot.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/campagneExportUtils.js": {
       "directTests": [
