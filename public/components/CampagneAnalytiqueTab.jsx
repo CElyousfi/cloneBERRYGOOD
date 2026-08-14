@@ -292,6 +292,10 @@
         jh: r.jh || 0,
         cout: r.cout || 0,
         nbOuv: r.nbOuv || 0,
+        // Quinzaine de la ligne : recopiée telle quelle, uniquement pour que la
+        // moyenne mobile du « reste au rythme » (CampagneRythme) la retrouve
+        // dans les `detailRows` des cellules. Le pivot ne s'en sert pas.
+        periode: r.periode,
         operation: r.operation,
         operationGroupe: r.code,
         operationFamille: r.famille,
@@ -1200,6 +1204,23 @@
 
     var Grid = window.PivotAnalytiqueGrid;
     var AU = window.AnalytiqueUtils;
+    var CR = window.CampagneRythme;
+
+    // Avancement de la campagne, lu sur la MÊME réponse que le réalisé affiché
+    // (`periodes` + `campagne` de campagne-analytique-detail) : les quinzaines
+    // restantes ne peuvent donc pas diverger des quinzaines réalisées.
+    var quinzaines = useMemo(function () {
+      if (!CR) return null;
+      return CR.quinzainesInfo({ periodes: data.periodes, campagne: data.campagne });
+    }, [CR, data.periodes, data.campagne]);
+
+    // Classes de rythme du référentiel des tâches, indexées par CODE + libellé
+    // normalisé — la normalisation est celle du pivot (AU.opKey), sinon la
+    // jointure raterait en silence et rien ne serait jamais projeté.
+    var classes = useMemo(function () {
+      if (!CR || !AU) return null;
+      return CR.indexClasses(props.refOperations || [], AU.opKey);
+    }, [CR, AU, props.refOperations]);
 
     var groups = useMemo(function () {
       var rows = CAT_pivotRows(data.rows, sbMap, data.haByRef || {}, {
@@ -1229,9 +1250,26 @@
         : function (t) { return Math.round(t).toLocaleString('fr-MA') + ' DH'; },
     }];
 
-    // Séries Budget / Écart — ajoutées seulement en JH et seulement sur une
-    // culture budgétée (cf. en-tête). Aucun plafonnement de l'écart : un
-    // dépassement s'affiche tel quel, en rouge.
+    /**
+     * Format d'un RESTE : négatif = budget déjà dépassé, affiché tel quel et en
+     * rouge. Aucun plafonnement — un reste ramené à 0 masquerait le
+     * dépassement, qui est précisément ce qu'on vient lire.
+     */
+    function fmtReste(v) {
+      var r = Math.round(v * 10) / 10;
+      var txt = r.toFixed(1);
+      if (!(r < 0)) return txt;
+      return React.createElement('span', { style: { color: C.berry } }, txt);
+    }
+
+    // Séries Budget + LES DEUX RESTES — ajoutées seulement en JH et seulement
+    // sur une culture budgétée (cf. en-tête).
+    //
+    // ⚠️ La série « Écart » (réalisé − budget) du LOT 2c est REMPLACÉE par
+    // « Reste budgété » (budget − réalisé) : c'est le MÊME nombre au signe
+    // près, les afficher tous les deux montrerait deux fois la même chose dans
+    // chaque cellule. Le sens « reste » est celui qu'exige la comparaison avec
+    // le reste au rythme. Revenir en arrière = réinsérer la série `ecartCell`.
     var metricsBudget = metrics.concat([
       {
         key: 'budget',
@@ -1241,38 +1279,41 @@
         display: totalMode ? 'total' : 'perHa',
         format: fmtJh1,
       },
+    ]);
+
+    // Les deux restes ne sont ajoutés que si le module de calcul a répondu :
+    // sinon ces deux séries n'afficheraient que des « — » sur toute la grille.
+    var metricsRestes = metricsBudget.concat([
       {
-        label: 'Écart',
+        key: 'resteBudget',
+        label: 'Reste budg.',
         unit: uniteJh,
-        // Écart = réalisé − budget, en JH total. `null` (aucun budget saisi, ou
-        // Ha inconnu) → cellule « — » : jamais 0, qui se lirait « pile dans le
-        // budget ».
-        get: window.CampagneBudgetPivot && window.CampagneBudgetPivot.ecartCell,
+        // Reste budgété = budget × Ha − réalisé, en JH total (CampagneRythme).
+        // Absent (aucun budget saisi, ou Ha inconnu) → « — » : jamais 0, qui se
+        // lirait « budget épuisé, pile à zéro ».
         basis: 'total',
         display: totalMode ? 'total' : 'perHa',
-        format: function (v) {
-          // Le signe est décidé sur la valeur ARRONDIE, celle qu'on affiche :
-          // un écart de 0,02 JH rendu « +0.0 » en rouge annoncerait un
-          // dépassement que le chiffre affiché contredit.
-          var r = Math.round(v * 10) / 10;
-          var txt = (r > 0 ? '+' : '') + r.toFixed(1);   // « -2.0 » porte son signe
-          // 0.0 = pile dans le budget : ni signe, ni couleur. C'est une valeur
-          // légitime, à ne pas confondre avec « — » (budget non saisi).
-          if (!(r > 0)) return txt;
-          // Dépassement : même code couleur que l'export Excel (rouge).
-          return React.createElement('span', { style: { color: C.berry } }, txt);
-        },
+        format: fmtReste,
+      },
+      {
+        key: 'resteRythme',
+        label: 'Reste rythme',
+        unit: uniteJh,
+        // JAMAIS fusionné avec le précédent : leur divergence est l'alerte de
+        // dépassement projeté. Absent sur la Récolte, sur une opération de
+        // classe inconnue, et tant que 3 quinzaines ne sont pas consommées.
+        basis: 'total',
+        display: totalMode ? 'total' : 'perHa',
+        format: fmtReste,
       },
     ]);
 
-    // Énoncé du périmètre — invisible autrement, et indéductible des chiffres :
-    // sur une ligne partiellement budgétée, « 81 Réalisé | 15 Budget | −3 Écart »
-    // fait conclure à une erreur de calcul si on ignore que les deux dernières
-    // séries ne portent que sur les familles budgétées.
-    var noteBudget = 'Budget et Écart : périmètre budgété uniquement '
-      + '(les familles et parcelles sans budget saisi sont exclues de ces deux '
-      + 'totaux, mais restent comptées dans le Réalisé). « — » = aucun budget '
-      + 'saisi, ou superficie inconnue.';
+    // Repli quand le calcul des restes n'a pas pu tourner (module absent,
+    // avancement de campagne illisible) : le périmètre du budget doit rester
+    // énoncé, il n'est pas déductible des chiffres affichés.
+    var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et '
+      + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans '
+      + 'le Réalisé). « — » = aucun budget saisi, ou superficie inconnue.';
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
     // rendu React (mémoire projet « tab bare global ref »).
@@ -1324,23 +1365,45 @@
             // budget deviné.
             var CBP = window.CampagneBudgetPivot;
             var rules = window.CampagneBudgetTab;
+            var budgetArgs = {
+              parcelles: pivot.parcelles,
+              budgetsByLabel: props.budgetsByLabel || {},
+              opBudgetsByLabel: props.opBudgetsByLabel || {},
+              analytique: AU,
+              budgetRules: rules,
+            };
             var sup = (isJh && CBP && typeof CBP.buildBudgetPivot === 'function' && rules)
-              ? CBP.buildBudgetPivot({
+              ? CBP.buildBudgetPivot(Object.assign({
                   groupedRows: pivot.groupedRows,
-                  parcelles: pivot.parcelles,
-                  budgetsByLabel: props.budgetsByLabel || {},
-                  opBudgetsByLabel: props.opBudgetsByLabel || {},
-                  analytique: AU,
-                  budgetRules: rules,
                   detail: detailMode,
+                }, budgetArgs))
+              : null;
+            // Les deux restes, posés sur les lignes DÉJÀ décorées du budget
+            // (mêmes clés, même ordre — decoreRestes ne réordonne rien).
+            // Module absent → on reste sur budget + écart du lot 2c plutôt que
+            // sur une projection devinée.
+            var res = (sup && sup.hasBudget && CR && quinzaines)
+              ? CR.decoreRestes({
+                  groupedRows: sup.groupedRows,
+                  classes: classes,
+                  quinzaines: quinzaines,
+                  budgetIndex: CBP.indexBudgets(budgetArgs),
+                  analytique: AU,
                 })
               : null;
             return React.createElement(Grid, {
               key: g.culture,
               parcelles: pivot.parcelles,
-              groupedRows: sup ? sup.groupedRows : pivot.groupedRows,
-              metrics: (sup && sup.hasBudget) ? metricsBudget : metrics,
-              note: (sup && sup.hasBudget) ? noteBudget : null,
+              groupedRows: res ? res.groupedRows : (sup ? sup.groupedRows : pivot.groupedRows),
+              metrics: res ? metricsRestes : ((sup && sup.hasBudget) ? metricsBudget : metrics),
+              // Le périmètre est COMPTÉ, pas seulement énoncé : la Récolte pèse
+              // l'essentiel du budget et n'est jamais projetée, donc le total
+              // « reste au rythme » est structurellement bien inférieur au
+              // total « reste budgété » — sans ce compte, ça se lit comme une
+              // sous-consommation massive.
+              note: res
+                ? CR.noteRestes(res.perimetre, quinzaines)
+                : ((sup && sup.hasBudget) ? noteBudgetSeul : null),
               color: g.color,
               title: g.culture,
               icon: g.icon,
@@ -1626,6 +1689,14 @@
     var _opBudgets = useState({});
     var opBudgetsByLabel = _opBudgets[0]; var setOpBudgetsByLabel = _opBudgets[1];
 
+    // Opérations du référentiel des tâches — utilisées UNIQUEMENT pour leur
+    // `classe_rythme` (continu / saisonnier / recolte), qui décide si une
+    // opération se projette. Liste vide ou champ absent = aucune classe connue
+    // → la grille affiche « — » sur le reste au rythme, jamais une projection
+    // devinée.
+    var _refOps = useState([]);
+    var refOperations = _refOps[0]; var setRefOperations = _refOps[1];
+
     // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
     // l'export), et pas seulement au montage : sinon un budget saisi dans le
     // sous-onglet Budget puis exporté sans recharger la page produirait un
@@ -1643,6 +1714,18 @@
         .catch(function () {});
       return function () { cancelled = true; };
     }, [subTab]);
+
+    // Chargé une seule fois : le référentiel des tâches ne bouge pas pendant
+    // une session (contrairement aux budgets, saisissables dans l'onglet voisin).
+    useEffect(function () {
+      fetch('/api/pointage-rh?action=referentiel-taches-list')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || !d.success) return;
+          setRefOperations(d.operations || []);
+        })
+        .catch(function () {});
+    }, []);
 
     useEffect(function () {
       fetch('/api/pointage-rh?action=sb-referentiel-list')
@@ -1841,6 +1924,7 @@
                 sbMap: sbMap,
                 budgetsByLabel: budgetsByLabel,
                 opBudgetsByLabel: opBudgetsByLabel,
+                refOperations: refOperations,
                 metric: metric,
                 setMetric: setMetric,
               })
