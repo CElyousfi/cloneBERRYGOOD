@@ -21,6 +21,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '../..');
 const CR = require(path.join(ROOT, 'public/lib/campagneRythme.js'));
+const plan = require(path.join(ROOT, 'scripts/set-classe-rythme.js'));
 const CBP = require(path.join(ROOT, 'public/lib/campagneBudgetPivot.js'));
 const AU = require(path.join(ROOT, 'public/lib/analytiqueUtils.js'));
 const backend = require(path.join(ROOT, 'functions/lib/campagneBudget/validate.js'));
@@ -386,4 +387,56 @@ test('NON-RÉGRESSION : ni l’ordre des lignes, ni le réalisé, ni le budget n
   assert.deepStrictEqual(apres, avant);
   // Et les lignes SOURCE n'ont pas été mutées.
   assert.strictEqual(sup.groupedRows[1].pivot.P.resteBudget, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// scripts/set-classe-rythme.js — plan d'écriture du référentiel (PUR, dry-run)
+// ---------------------------------------------------------------------------
+//
+// Ce script écrit en PRODUCTION : sa partie décisionnelle est testée ici pour
+// que le dry-run affiche exactement ce qui serait écrit.
+
+const FICHES_REF = [
+  { id: 'a', code: 'GB02', operation: 'Irrigation & fertigation' },
+  { id: 'b', code: 'GB02', operation: 'Installation GAG' },
+  { id: 'c', code: 'GB02', operation: 'Entretien réseau ' },   // espace final, comme en base
+  { id: 'd', code: 'GB08', operation: 'Récolte manuelle (kg)' },
+  { id: 'e', code: 'GB08', operation: 'Caporal récolte' },
+  { id: 'f', code: 'GB05', operation: 'Nettoyage' },
+  { id: 'g', code: 'GB11', operation: 'Nettoyage' },
+];
+
+test('plan — défaut SAISONNIER, GB08 entier en recolte, continues sur liste explicite', () => {
+  const p = plan.planClasses(FICHES_REF);
+  const parId = {};
+  p.aEcrire.forEach((e) => { parId[e.id] = e.cible; });
+  assert.deepStrictEqual(parId, {
+    a: 'continu',
+    b: 'saisonnier',
+    c: 'continu',        // le libellé du référentiel a un espace final : trim par opKey
+    d: 'recolte',
+    e: 'recolte',        // TOUTE la famille Récolte, y compris son encadrement
+    f: 'saisonnier',     // GB05 Nettoyage = entretien de structure
+    g: 'continu',        // GB11 Nettoyage = ménage de ferme, poste permanent
+  });
+  assert.strictEqual(p.ecrasees.length, 0);
+});
+
+test('plan — une classe déjà posée et DIFFÉRENTE est signalée, jamais écrasée en silence', () => {
+  const p = plan.planClasses([
+    { id: 'a', code: 'GB02', operation: 'Irrigation & fertigation', classe_rythme: 'continu' },
+    { id: 'b', code: 'GB09', operation: 'Taille', classe_rythme: 'continu' },
+  ]);
+  assert.deepStrictEqual(p.inchangees.map((e) => e.id), ['a']);
+  assert.deepStrictEqual(p.ecrasees.map((e) => [e.id, e.actuelle, e.cible]),
+    [['b', 'continu', 'saisonnier']]);
+  assert.strictEqual(p.aEcrire.length, 0);
+});
+
+test('plan — une opération continue MAL ORTHOGRAPHIÉE est détectée (sinon jamais projetée)', () => {
+  // Le poste existe dans la liste mais pas dans le référentiel : sans ce
+  // contrôle, il resterait saisonnier sans que rien ne le signale.
+  const orphelines = plan.continuesIntrouvables(FICHES_REF, ['GB02::Irrigation & fertigation',
+    'GB02::Irigation fertigation']);
+  assert.deepStrictEqual(orphelines, ['GB02::IRIGATION FERTIGATION']);
 });
