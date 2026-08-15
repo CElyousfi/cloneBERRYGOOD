@@ -463,3 +463,121 @@ test('saisie — un save sans effet de bord reste un simple « Budget enregistr�
     { type: 'ok', text: 'Budget enregistré' }
   );
 });
+
+// ===========================================================================
+// 5. RENDU DE LA VUE QUINZAINE (CampagneAnalytiqueTab.PivotView)
+// ===========================================================================
+//
+// Même technique que tests/unit/campagneAnalytiquePivot.test.js : dépendances
+// RÉELLES (pivot, budget, culture), états injectés par position.
+
+let pivotStateQueue = [];
+
+function loadPivotTab() {
+  const sandbox = { window: {}, console, document: undefined };
+  sandbox.window.React = {
+    createElement: function (type, props, ...children) {
+      const flat = [];
+      const push = (c) => {
+        if (Array.isArray(c)) c.forEach(push);
+        else if (c != null && c !== false) flat.push(c);
+      };
+      children.forEach(push);
+      const p = Object.assign({}, props || {});
+      if (typeof type === 'function') {
+        if (flat.length) p.children = flat.length === 1 ? flat[0] : flat;
+        return type(p);
+      }
+      return { type, key: p.key, props: p, children: flat };
+    },
+    Fragment: 'Fragment',
+    useState: function (init) {
+      const v = pivotStateQueue.length ? pivotStateQueue.shift() : init;
+      return [v, function () {}];
+    },
+    useEffect: function () {},
+    useMemo: function (fn) { return fn(); },
+  };
+  vm.createContext(sandbox);
+  vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
+  vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
+  vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
+  vm.runInContext(read('public/lib/campagneRythme.js'), sandbox);
+  vm.runInContext(read('public/lib/campagneBudgetQuinzaine.js'), sandbox);
+  vm.runInContext(transform('public/components/CampagneBudgetTab.jsx'), sandbox);
+  vm.runInContext(transform('public/components/PivotAnalytiqueGrid.jsx'), sandbox);
+  vm.runInContext(read('public/components/CampagneAnalytiqueTab.jsx'), sandbox);
+  return sandbox.window.CampagneAnalytiqueTab;
+}
+
+const PivotTab = loadPivotTab();
+
+/** Une parcelle Framboise de 2 Ha, deux quinzaines pointées. */
+const PV_DATA = {
+  campagne: '2026-2027',
+  periodes: ['Quinzaine 03', 'Quinzaine 04'],
+  haByRef: {},
+  rows: [
+    { parcelle: 'F1- S5 MARAVILLA', refParcelle: 'F1S5', ferme: 'F1', periode: 'Quinzaine 03',
+      operation: 'Taille longue', famille: 'Taille', code: 'GB09', jh: 30, cout: 4500, nbOuv: 5 },
+    { parcelle: 'F1- S5 MARAVILLA', refParcelle: 'F1S5', ferme: 'F1', periode: 'Quinzaine 04',
+      operation: 'Taille longue', famille: 'Taille', code: 'GB09', jh: 6, cout: 900, nbOuv: 2 },
+  ],
+};
+const PV_SB = { 'F1- S5 MARAVILLA': { culture_sb: 'Framboise', nom_sb: 'S5 MARAVILLA', ha: 2 } };
+// 4 JH/Ha engagés sur Q04 → 8 JH ; 6 JH réalisés → 75 % consommé.
+const PV_QUINZ = { 'F1- S5 MARAVILLA': { Q04: { Taille: 4 }, Q03: { Taille: 20 } } };
+
+function renderPivot(props, states) {
+  pivotStateQueue = (states || []).slice();
+  return PivotTab.PivotView(Object.assign({
+    data: PV_DATA, sbMap: PV_SB, metric: 'jh', setMetric: function () {},
+    budgetsByLabel: {}, opBudgetsByLabel: {}, quinzainesByLabel: PV_QUINZ,
+    refOperations: [],
+  }, props || {}));
+}
+
+test('vue quinzaine — la bascule est proposée, la vue annuelle reste le défaut', () => {
+  const tree = renderPivot();
+  const txt = textOf(tree);
+  assert.ok(txt.indexOf('Quinzaine') >= 0, 'la bascule Annuel/Quinzaine doit être proposée');
+  // Défaut = annuel : la cellule ne porte pas encore les séries de quinzaine.
+  assert.ok(textOf(section(tree, 'tbody')).indexOf('Engagé quinz.') < 0);
+});
+
+test('vue quinzaine — trois séries : réalisé de la quinzaine, engagé, % consommé', () => {
+  // [totalMode, detailMode, detailCell, vueQuinzaine, quinzaineSel]
+  const tree = renderPivot(null, [false, false, null, true, '']);
+  const cells = bodyCells(tree, 1);   // 0 = bandeau groupe, 1 = ligne famille
+  const cellule = cells[1];
+  // Réalisé de Q04 = 6 JH sur 2 Ha = 3.0 JH/Ha (et NON les 36 JH cumulés).
+  assert.ok(cellule.indexOf('3.0 | Réalisé quinz. JH/Ha') >= 0, cellule);
+  assert.ok(cellule.indexOf('4.0 | Engagé quinz. JH/Ha') >= 0, cellule);
+  assert.ok(cellule.indexOf('75.0 | Consommé %') >= 0, cellule);
+  // Les séries annuelles ne sont PAS empilées par-dessus.
+  assert.ok(cellule.indexOf('Reste rythme') < 0, cellule);
+});
+
+test('vue quinzaine — la légende dit que l\'engagement n\'est pas le budget annuel', () => {
+  const tree = renderPivot(null, [false, false, null, true, '']);
+  assert.match(textOf(tree), /indépendant du budget annuel/);
+});
+
+test('vue quinzaine — une quinzaine PASSÉE reste consultable', () => {
+  // Q03 : 30 JH réalisés sur 2 Ha = 15 JH/Ha, 20 JH/Ha engagés → 75 % aussi,
+  // mais sur des chiffres différents : c'est bien la quinzaine choisie qui est lue.
+  const tree = renderPivot(null, [false, false, null, true, 'Q03']);
+  const cellule = bodyCells(tree, 1)[1];
+  assert.ok(cellule.indexOf('15.0 | Réalisé quinz. JH/Ha') >= 0, cellule);
+  assert.ok(cellule.indexOf('20.0 | Engagé quinz. JH/Ha') >= 0, cellule);
+});
+
+test('vue quinzaine — aucun engagement : pas de bascule, la vue annuelle tient', () => {
+  const tree = renderPivot({ quinzainesByLabel: {} }, [false, false, null, true, '']);
+  const cellule = bodyCells(tree, 1)[1];
+  assert.ok(cellule.indexOf('Engagé quinz.') < 0, cellule);
+  // Repli sur la vue annuelle, série unique : le RÉALISÉ CUMULÉ de la campagne
+  // (36 JH sur 2 Ha), et le libellé de série n'est pas affiché — balisage
+  // historique d'une grille à une seule série.
+  assert.strictEqual(cellule, '18.0 | JH/Ha');
+});

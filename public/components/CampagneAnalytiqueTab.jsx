@@ -1516,17 +1516,18 @@
             // les séries changent. Le budget de quinzaine passe par le MÊME
             // indexeur que le budget annuel (résolution famille → code GB), avec
             // la tranche de la quinzaine affichée : aucune jointure parallèle.
-            var quinz = (enQuinzaine && CBQ)
+            // `rules` (CampagneBudgetTab) porte la règle métier injectée dans
+            // l'indexeur : sans elle, pas d'index — jamais un budget deviné.
+            var quinz = (enQuinzaine && CBQ && rules
+              && CBP && typeof CBP.indexBudgets === 'function')
               ? CBQ.decoreQuinzaine({
                   groupedRows: sup ? sup.groupedRows : pivot.groupedRows,
                   parcelles: pivot.parcelles,
                   num: CBQ.quinzaineNum(quinzaineActive),
-                  budgetIndex: (CBP && typeof CBP.indexBudgets === 'function')
-                    ? CBP.indexBudgets(Object.assign({}, budgetArgs, {
-                        budgetsByLabel: CBQ.trancheQuinzaine(quinzainesByLabel, quinzaineActive),
-                        opBudgetsByLabel: {},
-                      }))
-                    : null,
+                  budgetIndex: CBP.indexBudgets(Object.assign({}, budgetArgs, {
+                    budgetsByLabel: CBQ.trancheQuinzaine(quinzainesByLabel, quinzaineActive),
+                    opBudgetsByLabel: {},
+                  })),
                 })
               : null;
             return React.createElement(Grid, {
