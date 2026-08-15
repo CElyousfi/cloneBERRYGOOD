@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "214/353 fichiers classifiés",
+          "detail": "215/354 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "50/146 modules avec ≥1 test",
+          "detail": "51/147 modules avec ≥1 test",
           "max": 30,
           "score": 10
         }
@@ -64,19 +64,19 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:fdbe6e2775ab0e73",
+    "sourceFingerprint": "sha256:8f89e963275c4b8f",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
-      "coverageScore": 34,
+      "coverageScore": 35,
       "domains": 10,
       "extractedComponents": 24,
       "firestoreCollections": 58,
-      "libHelpers": 31,
+      "libHelpers": 32,
       "monolithSymbols": 120,
       "tabFunctions": 120,
       "unclassifiedFiles": 139,
-      "unitTestFiles": 32
+      "unitTestFiles": 33
     }
   },
   "domains": {
@@ -450,7 +450,7 @@
         "services": []
       },
       "confidence": "medium",
-      "coverageScore": 60,
+      "coverageScore": 64,
       "firestore": {
         "collections": [
           "fonctions",
@@ -465,6 +465,7 @@
           "public/components/QuinzaineRecapCards.jsx"
         ],
         "libs": [
+          "public/lib/campagneBudgetQuinzaine.js",
           "public/lib/paieDataCache.js",
           "public/lib/paieUtils.js",
           "public/lib/primesImportParse.js",
@@ -484,6 +485,7 @@
         "backend": [],
         "unit": [
           "tests/unit/QuinzaineCampagneSelect.test.js",
+          "tests/unit/campagneBudgetQuinzaine.test.js",
           "tests/unit/paieDataCache.test.js",
           "tests/unit/paieUtils.test.js",
           "tests/unit/primesImportParse.test.js",
@@ -2275,6 +2277,10 @@
     "public/lib/campagneBudgetPivot.js": {
       "confidence": "high",
       "domain": "referentiel"
+    },
+    "public/lib/campagneBudgetQuinzaine.js": {
+      "confidence": "high",
+      "domain": "paie"
     },
     "public/lib/campagneExportUtils.js": {
       "confidence": "high",

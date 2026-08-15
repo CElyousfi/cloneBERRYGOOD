@@ -66,6 +66,22 @@
  *   summary  {Function}  (total brut de la ligne) => string. Texte discret du
  *                        bandeau de ligne groupe. Seule la PREMIÈRE série en
  *                        pose un. Absent = pas de mention.
+ *   ratio    {{parts: Function}}  Série RATIO (un pourcentage, typiquement).
+ *                        `parts(cellule) => {num, den}|null`, les DEUX termes
+ *                        exprimés en quantité TOTALE. La valeur affichée est
+ *                        `format(num / den)`.
+ *
+ * ── POURQUOI UNE SÉRIE RATIO NE PEUT PAS ÊTRE UNE SÉRIE ORDINAIRE ───────────
+ * Un pourcentage ne s'additionne pas. Le passer par `get` afficherait la bonne
+ * valeur dans chaque cellule et une SOMME DE POURCENTAGES dans les totaux de
+ * ligne, de colonne et le grand total : « 340 % » sur quatre parcelles à 85 %.
+ * Une moyenne simple serait fausse elle aussi — les parcelles n'ont ni la même
+ * surface ni le même engagement. La seule agrégation juste est de sommer
+ * séparément le numérateur et le dénominateur, PUIS de diviser : c'est ce que
+ * fait `ratio`, et c'est tout ce qu'il fait. `basis` / `display` ne s'y
+ * appliquent pas (un ratio est invariant par changement d'unité) et sont ignorés.
+ * `parts` renvoie `null` quand le ratio n'a pas de sens (dénominateur nul ou
+ * absent) : la cellule affiche « — », jamais 0 %.
  *
  * `basis` et `display` séparés rendent le sens de la conversion EXPLICITE PAR
  * SÉRIE — c'est le point dur : un `_fmt` global divisait par le Ha en supposant
@@ -120,6 +136,49 @@
     if (v === null || v === undefined || v === '') return null;
     var n = Number(v);
     return isFinite(n) ? n : null;
+  }
+
+  /** Série RATIO ? (cf. en-tête : agrégation par somme des deux termes.) */
+  function _pag_isRatio(metric) {
+    return !!(metric && metric.ratio && typeof metric.ratio.parts === 'function');
+  }
+
+  /**
+   * Termes {num, den} d'une série ratio dans une cellule. `null` = ratio sans
+   * objet (pas de dénominateur), donc « — » — jamais 0 %.
+   */
+  function _pag_parts(metric, cell) {
+    if (!cell) return null;
+    var p = metric.ratio.parts(cell);
+    if (!p) return null;
+    var num = Number(p.num);
+    var den = Number(p.den);
+    if (!isFinite(num) || !isFinite(den) || !(den > 0)) return null;
+    return { num: num, den: den };
+  }
+
+  /**
+   * Agrège une série ratio : somme des numérateurs, somme des dénominateurs.
+   * `null` = aucune cellule ne porte de ratio.
+   */
+  function _pag_agregeRatio(metric, cells) {
+    var num = 0;
+    var den = 0;
+    var renseigne = false;
+    cells.forEach(function (cell) {
+      var p = _pag_parts(metric, cell);
+      if (!p) return;
+      renseigne = true;
+      num += p.num;
+      den += p.den;
+    });
+    return renseigne && den > 0 ? { num: num, den: den } : null;
+  }
+
+  /** Rendu d'un couple {num, den} — la division n'a lieu QU'ICI. */
+  function _pag_renderRatio(metric, parts) {
+    if (!parts) return null;
+    return _pag_fmt(metric, parts.num / parts.den);
   }
 
   function _pag_basis(metric) { return metric.basis === 'perHa' ? 'perHa' : 'total'; }
@@ -225,8 +284,12 @@
     var totalHa = parcelles.reduce(function (s, p) { return s + p[1]; }, 0);
 
     /** Total (sommable) d'une série sur toute une ligne. `null` = ligne
-     *  entièrement non renseignée (cf. _pag_agrege). */
+     *  entièrement non renseignée (cf. _pag_agrege). Série ratio → couple
+     *  {num, den} agrégé, jamais un pourcentage sommé. */
     function rowTotal(metric, row) {
+      if (_pag_isRatio(metric)) {
+        return _pag_agregeRatio(metric, parcelles.map(function (p) { return row.pivot[p[0]]; }));
+      }
       return _pag_agrege(metric, parcelles.map(function (p) {
         return { raw: _pag_raw(metric, row.pivot[p[0]]), ha: p[1] };
       }));
@@ -237,6 +300,9 @@
     /** Total d'une série sur une colonne — lignes FAMILLE seules (jamais les
      *  lignes groupe ni opération : elles rejouent les mêmes JH). */
     function colTotal(metric, pKey, ha) {
+      if (_pag_isRatio(metric)) {
+        return _pag_agregeRatio(metric, familles.map(function (r) { return r.pivot[pKey]; }));
+      }
       return _pag_agrege(metric, familles.map(function (r) {
         return { raw: _pag_raw(metric, r.pivot[pKey]), ha: ha };
       }));
@@ -245,9 +311,31 @@
     /** Grand total : somme des totaux de ligne DÉJÀ agrégés (donc en total),
      *  indéterminable seulement si AUCUNE ligne n'est renseignée. */
     function grandTotal(metric) {
+      if (_pag_isRatio(metric)) {
+        // Somme des couples déjà agrégés par ligne : mêmes deux termes, une
+        // seule division tout à la fin.
+        var num = 0;
+        var den = 0;
+        var vu = false;
+        familles.forEach(function (r) {
+          var parts = rowTotal(metric, r);
+          if (!parts) return;
+          vu = true;
+          num += parts.num;
+          den += parts.den;
+        });
+        return vu && den > 0 ? { num: num, den: den } : null;
+      }
       return _pag_agrege({ basis: 'total' }, familles.map(function (r) {
         return { raw: rowTotal(metric, r), ha: 0 };
       }));
+    }
+
+    /** Rendu d'un agrégat, quelle que soit la nature de la série. */
+    function renderAgg(metric, agg, ha) {
+      return _pag_isRatio(metric)
+        ? _pag_renderRatio(metric, agg)
+        : _pag_renderTotal(metric, agg, ha);
     }
 
     // ── Cellule de parcelle (lignes famille et opération) ───────────────────
@@ -280,6 +368,7 @@
         attrs.onMouseLeave = function (e) { e.currentTarget.style.background = ''; };
       }
       return _pag_h('td', attrs, _pag_stack(metrics, function (m) {
+        if (_pag_isRatio(m)) return _pag_renderRatio(m, _pag_parts(m, cell));
         return _pag_renderCell(m, _pag_raw(m, cell), ha);
       }, opts.valueStyle, opts.unitStyle));
     }
@@ -334,7 +423,7 @@
               color: 'var(--gray-600)', background: '#fcfafc', position: 'sticky', right: 0,
               borderLeft: '1px solid #f0e6ef', fontSize: 11 },
           }, _pag_stack(metrics, function (m) {
-            return _pag_renderTotal(m, rowTotal(m, row), totalHa);
+            return renderAgg(m, rowTotal(m, row), totalHa);
           }, undefined, { fontSize: 9, color: 'var(--gray-400)', fontWeight: 400 }))
         );
       }
@@ -362,7 +451,7 @@
           style: { padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: color,
             background: '#fdf4f8', position: 'sticky', right: 0, borderLeft: '1px solid #f0e6ef' },
         }, _pag_stack(metrics, function (m) {
-          return _pag_renderTotal(m, rowTotal(m, row), totalHa);
+          return renderAgg(m, rowTotal(m, row), totalHa);
         }, undefined, { fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 }))
       );
     });
@@ -430,14 +519,14 @@
                   style: { padding: '8px 10px', textAlign: 'center',
                     borderRight: '1px solid var(--gray-100)', color: color },
                 }, _pag_stack(metrics, function (m) {
-                  return _pag_renderTotal(m, colTotal(m, p[0], p[1]), p[1]);
+                  return renderAgg(m, colTotal(m, p[0], p[1]), p[1]);
                 }, undefined, { fontSize: 10, opacity: 0.7 }));
               }),
               _pag_h('td', {
                 style: { padding: '8px 10px', textAlign: 'center', background: color + '28',
                   position: 'sticky', right: 0, color: color },
               }, _pag_stack(metrics, function (m) {
-                return _pag_renderTotal(m, grandTotal(m), totalHa);
+                return renderAgg(m, grandTotal(m), totalHa);
               }, undefined, { fontSize: 10, opacity: 0.7 }))
             )
           )

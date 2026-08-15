@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:9db468443cf9da31",
+    "sourceFingerprint": "sha256:299587dc23f67aeb",
     "stats": {
-      "targetFiles": 204,
-      "targetFilesWithDirectTests": 122,
-      "targetFilesWithTransitiveTests": 139,
-      "testFilesScanned": 168
+      "targetFiles": 206,
+      "targetFilesWithDirectTests": 124,
+      "targetFilesWithTransitiveTests": 141,
+      "testFilesScanned": 169
     }
   },
   "index": {
@@ -135,14 +135,24 @@
         "tests/unit/caisseImport.test.js"
       ]
     },
+    "functions/lib/campagneBudget/culture.js": {
+      "directTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js"
+      ]
+    },
     "functions/lib/campagneBudget/validate.js": {
       "directTests": [
         "functions/lib/campagneBudget/__tests__/validate.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/importBudgetCampagne.test.js"
       ],
       "transitiveTests": [
         "functions/lib/campagneBudget/__tests__/validate.test.js",
+        "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/importBudgetCampagne.test.js"
       ]
@@ -1355,6 +1365,14 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "public/lib/campagneBudgetQuinzaine.js": {
+      "directTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js"
+      ]
+    },
     "public/lib/campagneExportUtils.js": {
       "directTests": [
         "tests/unit/campagneExportUtils.test.js"
@@ -1381,9 +1399,11 @@
     },
     "public/lib/cultureUtils.js": {
       "directTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/cultureUtils.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/cultureUtils.test.js"
       ]
     },

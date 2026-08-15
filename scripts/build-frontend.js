@@ -114,6 +114,18 @@ if (!fs.readFileSync(CAMPAGNE_RYTHME, "utf8").includes("decoreRestes")) {
   process.exit(2);
 }
 
+// 2ter-septies. Sibling lib check — campagneBudgetQuinzaine.js (budget de la
+// quinzaine en cours : engagement court terme et sa consommation).
+const CAMPAGNE_BUDGET_QUINZAINE = path.join(ROOT, "public/lib/campagneBudgetQuinzaine.js");
+if (!fs.existsSync(CAMPAGNE_BUDGET_QUINZAINE)) {
+  console.error("[build-frontend] missing public/lib/campagneBudgetQuinzaine.js");
+  process.exit(2);
+}
+if (!fs.readFileSync(CAMPAGNE_BUDGET_QUINZAINE, "utf8").includes("decoreQuinzaine")) {
+  console.error("[build-frontend] sentinel missing in public/lib/campagneBudgetQuinzaine.js: decoreQuinzaine");
+  process.exit(2);
+}
+
 // 2quater. Components — babelise chaque public/components/*.jsx → *.js (preset-react),
 // puis vérifie une sentinelle par composant connu. Ces fichiers sont chargés en
 // <script> séparés et partagent le scope global (IIFE → un seul global unique).

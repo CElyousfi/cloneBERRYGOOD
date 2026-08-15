@@ -411,6 +411,60 @@
   }
 
   /**
+   * Cultures pour lesquelles un budget de QUINZAINE se saisit. Miroir de
+   * `CULTURES_BUDGET_QUINZAINE` (functions/lib/campagneBudget/validate.js) : le
+   * serveur refuse une écriture forgée sur l'avocatier, l'écran ne fait que ne
+   * pas la proposer. Les deux, jamais l'un sans l'autre.
+   */
+  var CBT_CULTURES_QUINZAINE = ['Framboise', 'Myrtille'];
+
+  /**
+   * Cette parcelle accepte-t-elle un budget de quinzaine ? PURE.
+   *
+   * La culture est résolue par `CultureUtils.resolveCulture` (référentiel SB
+   * prioritaire, repli sur le libellé) — JAMAIS par une regex locale : le repli
+   * résout correctement les 17 libellés réels, dont les 14 qui n'ont pas de
+   * `culture_sb`.
+   *
+   * @param {string} culture culture DÉJÀ résolue.
+   * @returns {boolean} false si la culture est inconnue (fail-closed, comme le
+   *   serveur).
+   */
+  function CBT_quinzaineApplicable(culture) {
+    return CBT_CULTURES_QUINZAINE.indexOf(String(culture || '').trim()) !== -1;
+  }
+
+  /**
+   * Valeurs de quinzaine qui vont être SUPPRIMÉES par l'enregistrement. PURE.
+   *
+   * Une famille qui portait un engagement et dont le champ est maintenant vide
+   * (ou 0) sera effacée en base. C'est légitime — c'est le moyen d'annuler un
+   * engagement — mais jamais anodin : comme pour `familles_neutralisees`, ça
+   * s'annonce AVANT l'écriture et se rapporte APRÈS.
+   *
+   * @param {Object} args
+   * @param {Array<string>} args.familles familles affichées.
+   * @param {Object<string, *>} args.enregistrees valeurs actuellement en base
+   *   pour la quinzaine éditée.
+   * @param {Object<string, *>} args.values saisie courante.
+   * @returns {Array<{famille: string, valeur: number}>}
+   */
+  function CBT_quinzainesSupprimees(args) {
+    var a = args || {};
+    var out = [];
+    (a.familles || []).forEach(function (f) {
+      var avant = CBT_num((a.enregistrees || {})[f]);
+      if (!(avant > 0)) return;
+      if (CBT_num((a.values || {})[f]) > 0) return;
+      out.push({
+        famille: f,
+        valeur: avant
+      });
+    });
+    return out;
+  }
+
+  /**
    * Construit le body de `campagne-budget-save`. PURE.
    *
    * Toutes les familles AFFICHÉES et toutes leurs opérations sont envoyées, y
@@ -433,6 +487,11 @@
    * @param {Object<string, string>} args.values saisie brute niveau famille.
    * @param {Object<string, Object<string, string>>} [args.opValues] saisie brute
    *   niveau opération.
+   * @param {string} [args.quinzaine] clé de la quinzaine éditée ('Q07'). Absente
+   *   = aucun engagement court terme dans ce save (le champ n'est alors PAS
+   *   envoyé : une map vide effacerait la quinzaine en base).
+   * @param {Object<string, string>} [args.quinzValues] saisie brute du budget de
+   *   quinzaine, par famille.
    * @returns {{ok: boolean, error?: string, payload?: Object}}
    */
   function CBT_buildSavePayload(args) {
@@ -489,14 +548,38 @@
       // Famille détaillée par opération → la valeur de famille est neutralisée.
       budgets[f] = somme > 0 ? 0 : vFam;
     }
+    var payload = {
+      campagne: a.campagne,
+      label_bee_one: a.label,
+      budgets: budgets,
+      budgets_operations: budgetsOperations
+    };
+
+    // Budget de QUINZAINE — envoyé seulement quand une quinzaine est éditée, et
+    // seulement pour CELLE-LÀ : le backend est autoritaire sur les quinzaines
+    // qu'il reçoit et conserve les autres. Toutes les familles affichées sont
+    // envoyées, vides comprises (→ 0) : c'est ce qui permet d'annuler un
+    // engagement sans action de suppression dédiée.
+    if (a.quinzaine) {
+      var quinzValues = a.quinzValues || {};
+      var qBudgets = {};
+      for (var k = 0; k < familles.length; k++) {
+        var fq = familles[k];
+        var vq = parseOne(quinzValues[fq]);
+        if (vq === null) {
+          return {
+            ok: false,
+            error: 'Valeur de quinzaine invalide pour « ' + fq + ' »'
+          };
+        }
+        qBudgets[fq] = vq;
+      }
+      payload.budgets_quinzaine = {};
+      payload.budgets_quinzaine[a.quinzaine] = qBudgets;
+    }
     return {
       ok: true,
-      payload: {
-        campagne: a.campagne,
-        label_bee_one: a.label,
-        budgets: budgets,
-        budgets_operations: budgetsOperations
-      }
+      payload: payload
     };
   }
 
@@ -512,7 +595,12 @@
    * pas une erreur) mais porte `purge: true`, que le rendu traduit par une
    * couleur ambre et une icône d'avertissement.
    *
-   * @param {{familles_purgees?: Array<string>, operations_purgees?: Array<string>}
+   * S'y ajoutent les deux effets du budget de QUINZAINE :
+   * `quinzaines_supprimees` (engagements effacés, comparaison avant/après faite
+   * dans la transaction) et `quinzaines_purgees` (familles hors référentiel).
+   *
+   * @param {{familles_purgees?: Array<string>, operations_purgees?: Array<string>,
+   *   quinzaines_purgees?: Array<string>, quinzaines_supprimees?: Array<Object>}
    *   |null|undefined} res réponse API.
    * @returns {{type: string, text: string, purge?: boolean}}
    */
@@ -534,14 +622,32 @@
       var v = CBT_num(n.valeur_precedente);
       return v > 0 ? famille + ' (' + v + ')' : famille;
     }).filter(Boolean);
+    var quinzPurgees = clean(res && res.quinzaines_purgees);
+    // Engagements de quinzaine réellement effacés — la comparaison avant/après
+    // est faite DANS la transaction serveur : seule preuve fiable de ce qui a
+    // disparu (le client ne connaît que ce qu'il croyait envoyer).
+    var quinzSupprimees = (Array.isArray(res && res.quinzaines_supprimees) ? res.quinzaines_supprimees : []).map(function (n) {
+      if (!n || typeof n !== 'object') return '';
+      var famille = String(n.famille == null ? '' : n.famille).trim();
+      var q = String(n.quinzaine == null ? '' : n.quinzaine).trim();
+      if (!famille) return '';
+      var v = CBT_num(n.valeur_precedente);
+      return (q ? q + ' ' : '') + famille + (v > 0 ? ' (' + v + ')' : '');
+    }).filter(Boolean);
     var differee = CBT_num(res && res.purge_differee);
-    if (purgees.length === 0 && opsPurgees.length === 0 && neutralisees.length === 0 && differee <= 0) {
+    if (purgees.length === 0 && opsPurgees.length === 0 && neutralisees.length === 0 && differee <= 0 && quinzPurgees.length === 0 && quinzSupprimees.length === 0) {
       return {
         type: 'ok',
         text: 'Budget enregistré'
       };
     }
     var parts = [];
+    if (quinzSupprimees.length > 0) {
+      parts.push(quinzSupprimees.length + (quinzSupprimees.length > 1 ? ' engagements de quinzaine supprimés : ' : ' engagement de quinzaine supprimé : ') + quinzSupprimees.join(', '));
+    }
+    if (quinzPurgees.length > 0) {
+      parts.push(quinzPurgees.length + (quinzPurgees.length > 1 ? ' engagements de quinzaine obsolètes retirés : ' : ' engagement de quinzaine obsolète retiré : ') + quinzPurgees.join(', '));
+    }
     if (neutralisees.length > 0) {
       parts.push(neutralisees.length + (neutralisees.length > 1 ? ' valeurs de famille remplacées par le détail des opérations : ' : ' valeur de famille remplacée par le détail des opérations : ') + neutralisees.join(', '));
     }
@@ -652,6 +758,32 @@
     var _confirm = useState(null);
     var confirmList = _confirm[0];
     var setConfirmList = _confirm[1];
+    // États du BUDGET DE QUINZAINE — ajoutés APRÈS les précédents à dessein
+    // (l'ordre des useState est l'index de state de React).
+    // Quinzaines de la campagne, DÉRIVÉES des `periodes` de
+    // `campagne-analytique-detail` : jamais un calendrier local, jamais « 24 ».
+    var _quinzOpts = useState([]);
+    var quinzOptions = _quinzOpts[0];
+    var setQuinzOptions = _quinzOpts[1];
+    var _quinzCour = useState('');
+    var quinzCourante = _quinzCour[0];
+    var setQuinzCourante = _quinzCour[1];
+    // '' = suivre la quinzaine en cours ; une valeur = consultation/correction
+    // d'une quinzaine passée.
+    var _quinzSel = useState('');
+    var quinzSel = _quinzSel[0];
+    var setQuinzSel = _quinzSel[1];
+    var _quinzBudgets = useState({});
+    var quinzByLabel = _quinzBudgets[0];
+    var setQuinzByLabel = _quinzBudgets[1];
+    var _quinzValues = useState({});
+    var quinzValues = _quinzValues[0];
+    var setQuinzValues = _quinzValues[1];
+    // Engagements qui vont être effacés — confirmés séparément des
+    // neutralisations de famille, mais dans le même panneau.
+    var _confirmQuinz = useState(null);
+    var confirmQuinz = _confirmQuinz[0];
+    var setConfirmQuinz = _confirmQuinz[1];
     useEffect(function () {
       var cancelled = false;
       setLoading(true);
@@ -664,12 +796,23 @@
         return r.json();
       }), fetch('/api/pointage-rh?action=campagne-budget-list').then(function (r) {
         return r.json();
+      }),
+      // MÊME source que le réalisé affiché sur l'écran Campagne : la liste des
+      // quinzaines et la quinzaine en cours en sont dérivées, elles ne peuvent
+      // donc pas diverger de lui. Réponse mise en cache 30 min côté serveur.
+      // Échec ISOLÉ (`catch` local) : le budget annuel doit rester saisissable
+      // même si cet appel tombe — on perd alors le seul suivi court terme.
+      fetch('/api/pointage-rh?action=campagne-analytique-detail').then(function (r) {
+        return r.json();
+      }).catch(function () {
+        return null;
       })]).then(function (res) {
         if (cancelled) return;
         var parc = res[0];
         var sb = res[1];
         var taches = res[2];
         var buds = res[3];
+        var detail = res[4];
         if (!parc || !parc.success) throw new Error(parc && parc.error || 'Erreur parcelles');
         if (!taches || !taches.success) throw new Error(taches && taches.error || 'Erreur référentiel tâches');
         if (!buds || !buds.success) throw new Error(buds && buds.error || 'Erreur budgets');
@@ -692,6 +835,22 @@
         setBudgetsByLabel(CBT_budgetsByLabel(buds.budgets || []));
         setOpBudgetsByLabel(CBT_operationsByLabel(buds.budgets || []));
         setCampagne(buds.campagne || '');
+        // Budget de quinzaine : mêmes documents, même appel. Les modules purs
+        // sont chargés en <script> séparés — absents (404, déploiement
+        // partiel), l'écran perd la section quinzaine et rien d'autre.
+        var CBQ = window.CampagneBudgetQuinzaine;
+        var CR = window.CampagneRythme;
+        setQuinzByLabel(CBQ ? CBQ.quinzainesByLabel(buds.budgets || []) : {});
+        if (CBQ && CR && detail && detail.success) {
+          setQuinzOptions(CBQ.optionsFromPeriodes(detail.periodes));
+          setQuinzCourante(CBQ.quinzaineCourante(CR.quinzainesInfo({
+            periodes: detail.periodes,
+            campagne: detail.campagne
+          })));
+        } else {
+          setQuinzOptions([]);
+          setQuinzCourante('');
+        }
       }).catch(function (e) {
         if (!cancelled) setErr(e.message);
       }).finally(function () {
@@ -717,9 +876,13 @@
     // confirmer — le panneau affichant les chiffres de la parcelle A pendant que
     // l'écriture portait sur B, dont les valeurs de famille n'ont jamais été
     // confirmées. Même mécanisme via « Rafraîchir » (tick), qui recharge tout.
+    // Le changement de QUINZAINE invalide la confirmation au même titre que le
+    // changement de parcelle : le panneau afficherait les engagements de la
+    // quinzaine A pendant que l'écriture porterait sur la B.
     useEffect(function () {
       setConfirmList(null);
-    }, [selected, tick]);
+      setConfirmQuinz(null);
+    }, [selected, tick, quinzSel]);
 
     // Changement de parcelle (ou de budgets connus) → recharger les champs.
     useEffect(function () {
@@ -745,6 +908,35 @@
       setValues(next);
       setOpValues(nextOps);
     }, [selected, familles, opsByFamille, budgetsByLabel, opBudgetsByLabel]);
+
+    // Quinzaine éditée : la quinzaine en cours par défaut ; un choix explicite
+    // devenu invalide (rechargement, campagne changée) y retombe plutôt que
+    // d'écrire dans une quinzaine que l'écran n'affiche plus.
+    var quinzaineActive = quinzSel && (quinzOptions || []).some(function (o) {
+      return o.key === quinzSel;
+    }) ? quinzSel : quinzCourante;
+
+    // Valeurs enregistrées pour la parcelle et la quinzaine éditées.
+    var quinzEnregistrees = useMemo(function () {
+      var key = String(selected || '').toUpperCase().trim();
+      if (!key || !quinzaineActive) return {};
+      return (quinzByLabel[key] || {})[quinzaineActive] || {};
+    }, [quinzByLabel, selected, quinzaineActive]);
+
+    // Champs de saisie de la quinzaine : rechargés à chaque changement de
+    // parcelle OU de quinzaine (jamais de report implicite d'une quinzaine sur
+    // l'autre — le report est un geste explicite, cf. le bouton dédié).
+    useEffect(function () {
+      if (!selected || !quinzaineActive) {
+        setQuinzValues({});
+        return;
+      }
+      var next = {};
+      familles.forEach(function (f) {
+        next[f] = quinzEnregistrees[f] != null ? String(quinzEnregistrees[f]) : '';
+      });
+      setQuinzValues(next);
+    }, [selected, quinzaineActive, familles, quinzEnregistrees]);
     var options = useMemo(function () {
       return (rows || []).slice().sort(function (a, b) {
         return cbtNom(a.label).localeCompare(cbtNom(b.label));
@@ -760,6 +952,50 @@
       return hit;
     }, [rows, selected]);
     var ha = selectedRow ? cbtHa(selectedRow.label) : 0;
+    var culture = selectedRow ? cbtCulture(selectedRow.culture, selectedRow.label) : '';
+    // Section quinzaine affichée seulement si : module chargé, quinzaine connue,
+    // et culture budgétée (l'avocatier ne l'est pas — refus miroir côté serveur).
+    var quinzaineSaisissable = !!(quinzaineActive && CBT_quinzaineApplicable(culture));
+    // Clé envoyée au backend : '' = aucun engagement dans ce save (le champ n'est
+    // alors pas transmis du tout, cf. CBT_buildSavePayload).
+    var quinzaineAEnvoyer = quinzaineSaisissable ? quinzaineActive : '';
+    var quinzaineLabel = '';
+    (quinzOptions || []).forEach(function (o) {
+      if (o.key === quinzaineActive) quinzaineLabel = o.label;
+    });
+    // Quinzaine précédente RÉELLEMENT présente dans la campagne (jamais num − 1
+    // en aveugle) — source du report en un clic.
+    var quinzPrecedente = function () {
+      var CBQ = window.CampagneBudgetQuinzaine;
+      return CBQ ? CBQ.quinzainePrecedente(quinzaineActive, quinzOptions || []) : '';
+    }();
+    var quinzPrecedenteValeurs = function () {
+      var key = String(selected || '').toUpperCase().trim();
+      if (!key || !quinzPrecedente) return {};
+      return (quinzByLabel[key] || {})[quinzPrecedente] || {};
+    }();
+    var quinzPrecedenteLabel = '';
+    (quinzOptions || []).forEach(function (o) {
+      if (o.key === quinzPrecedente) quinzPrecedenteLabel = o.label;
+    });
+
+    /**
+     * Report des valeurs de la quinzaine précédente dans les champs de la
+     * quinzaine éditée. Sans ce geste, la saisie repart de zéro tous les quinze
+     * jours et l'écran ne sert pas.
+     *
+     * Il ne REMPLIT que les champs — rien n'est écrit tant que « Enregistrer »
+     * n'a pas été cliqué, et les suppressions qui en découleraient passent par la
+     * même confirmation que les autres.
+     */
+    function reporterQuinzainePrecedente() {
+      var next = {};
+      familles.forEach(function (f) {
+        var v = quinzPrecedenteValeurs[f];
+        next[f] = v != null ? String(v) : '';
+      });
+      setQuinzValues(next);
+    }
 
     /**
      * @param {boolean} [confirme] true = l'utilisateur a validé la liste des
@@ -775,13 +1011,22 @@
         values: values,
         opValues: opValues
       });
+      // Engagements de quinzaine qui vont disparaître : même exigence de
+      // confirmation explicite. Ils ne sont visibles nulle part ailleurs une
+      // fois le champ vidé.
+      var quinzMenacees = quinzaineAEnvoyer ? CBT_quinzainesSupprimees({
+        familles: familles,
+        enregistrees: quinzEnregistrees,
+        values: quinzValues
+      }) : [];
       if (!confirme) {
-        if (menacees.length > 0) {
+        if (menacees.length > 0 || quinzMenacees.length > 0) {
           setConfirmList(menacees);
+          setConfirmQuinz(quinzMenacees);
           setMsg(null);
           return;
         }
-      } else if (!CBT_memeNeutralisations(confirmList, menacees)) {
+      } else if (!CBT_memeNeutralisations(confirmList, menacees) || !CBT_memeNeutralisations(confirmQuinz, quinzMenacees)) {
         // Bretelles : on ne se fie pas au seul reset de `confirmList` par les
         // effets. Ce qui a été confirmé doit être EXACTEMENT ce qui va être
         // écrit, sinon on refuse et on re-demande. Ferme aussi tout chemin
@@ -794,13 +1039,16 @@
         return;
       }
       setConfirmList(null);
+      setConfirmQuinz(null);
       var built = CBT_buildSavePayload({
         campagne: campagne,
         label: selected,
         familles: familles,
         opsByFamille: opsByFamille,
         values: values,
-        opValues: opValues
+        opValues: opValues,
+        quinzaine: quinzaineAEnvoyer,
+        quinzValues: quinzValues
       });
       if (!built.ok) {
         setMsg({
@@ -830,6 +1078,17 @@
         setOpBudgetsByLabel(function (prev) {
           var next = Object.assign({}, prev);
           next[savedKey] = d.budgets_operations || {};
+          return next;
+        });
+        // Réponse RELUE en base par le backend : on réaligne l'écran sur ce
+        // qui est persisté, jamais sur ce qu'on croyait envoyer.
+        setQuinzByLabel(function (prev) {
+          var next = Object.assign({}, prev);
+          var CBQ = window.CampagneBudgetQuinzaine;
+          next[savedKey] = CBQ ? CBQ.quinzainesByLabel([{
+            label_bee_one: savedKey,
+            budgets_quinzaine: d.budgets_quinzaine || {}
+          }])[savedKey] || {} : d.budgets_quinzaine || {};
           return next;
         });
         // Message posé APRÈS setBudgetsByLabel : l'effet de reset du message
@@ -883,6 +1142,14 @@
       totalJH += CBT_totalJH(t.total, ha);
     });
     totalJhHa = Math.round(totalJhHa * 100) / 100;
+
+    // Total ENGAGÉ sur la quinzaine éditée. Somme simple des familles : aucune
+    // règle « opérations > famille » ici, l'engagement n'a qu'un seul niveau.
+    var totalQuinzJhHa = 0;
+    familles.forEach(function (f) {
+      totalQuinzJhHa += CBT_num(quinzValues[f]);
+    });
+    totalQuinzJhHa = Math.round(totalQuinzJhHa * 100) / 100;
     function setOpValue(famille, operation, v) {
       setOpValues(function (prev) {
         var next = Object.assign({}, prev);
@@ -987,7 +1254,32 @@
         fontSize: 12,
         color: CBT_C.textSec
       }
-    }, ha > 0 ? ha.toFixed(2) + ' ha' : 'Ha non saisi — voir Parcelles & Référentiel'), React.createElement('button', {
+    }, ha > 0 ? ha.toFixed(2) + ' ha' : 'Ha non saisi — voir Parcelles & Référentiel'),
+    // Sélecteur de QUINZAINE : la quinzaine en cours par défaut, une
+    // quinzaine passée reste consultable et corrigeable. Masqué quand la
+    // parcelle n'est pas budgétable (avocatier) ou qu'aucune quinzaine
+    // n'est connue — proposer un champ qui ne s'enregistrerait nulle part
+    // serait pire que ne rien afficher.
+    selectedRow && quinzaineSaisissable && React.createElement('select', {
+      value: quinzaineActive,
+      onChange: function (e) {
+        setQuinzSel(e.target.value);
+      },
+      title: 'Quinzaine dont on saisit l\'engagement',
+      style: {
+        border: '1px solid ' + CBT_C.border,
+        borderRadius: 8,
+        padding: '7px 10px',
+        fontSize: 12,
+        outline: 'none',
+        background: CBT_C.surface
+      }
+    }, (quinzOptions || []).map(function (o) {
+      return React.createElement('option', {
+        key: o.key,
+        value: o.key
+      }, o.label + (o.key === quinzCourante ? ' (en cours)' : ''));
+    })), React.createElement('button', {
       onClick: function () {
         setTick(function (t) {
           return t + 1;
@@ -1036,7 +1328,19 @@
         ...thStyle,
         textAlign: 'right'
       }
-    }, 'Total JH'))), React.createElement('tbody', null,
+    }, 'Total JH'),
+    // Colonne d'ENGAGEMENT court terme. Volontairement à droite du
+    // budget annuel et non entre ses deux colonnes : les deux ne se
+    // comparent pas terme à terme (l'un couvre la campagne, l'autre
+    // 15 jours) et rien ne doit inviter à les soustraire.
+    quinzaineSaisissable && React.createElement('th', {
+      style: {
+        ...thStyle,
+        textAlign: 'right',
+        color: CBT_C.berry
+      },
+      title: 'Engagement de la quinzaine, indépendant du budget annuel'
+    }, 'Engagé ' + (quinzaineLabel || quinzaineActive) + ' JH / Ha'))), React.createElement('tbody', null,
     // Une ligne « famille » (repliable) + une ligne par opération
     // quand la famille est dépliée. Le tableau reste utilisable avec
     // ~108 opérations parce que tout est replié par défaut.
@@ -1155,7 +1459,36 @@
           fontWeight: 700,
           color: CBT_C.textSec
         }
-      }, CBT_totalJH(tot.total, ha) > 0 ? CBT_totalJH(tot.total, ha).toFixed(2) : '—'))];
+      }, CBT_totalJH(tot.total, ha) > 0 ? CBT_totalJH(tot.total, ha).toFixed(2) : '—'),
+      // Engagement de la quinzaine : saisi au niveau FAMILLE
+      // uniquement — c'est la maille de l'engagement, le détail par
+      // opération reste annuel.
+      quinzaineSaisissable && React.createElement('td', {
+        style: {
+          ...tdStyle,
+          textAlign: 'right'
+        }
+      }, canEdit ? React.createElement('input', {
+        type: 'number',
+        min: 0,
+        step: 0.1,
+        value: quinzValues[f] == null ? '' : quinzValues[f],
+        placeholder: '0',
+        title: 'JH/Ha engagés sur ' + (quinzaineLabel || quinzaineActive),
+        onChange: function (e) {
+          var v = e.target.value;
+          setQuinzValues(function (prev) {
+            var next = Object.assign({}, prev);
+            next[f] = v;
+            return next;
+          });
+        },
+        style: inputStyle
+      }) : React.createElement('span', {
+        style: {
+          fontFamily: 'monospace'
+        }
+      }, quinzValues[f] ? quinzValues[f] : '—')))];
       if (isOpen) {
         ops.forEach(function (op) {
           var vOp = (opValues[f] || {})[op];
@@ -1214,7 +1547,16 @@
               fontFamily: 'monospace',
               color: CBT_C.textTer
             }
-          }, CBT_totalJH(vOp, ha) > 0 ? CBT_totalJH(vOp, ha).toFixed(2) : '—')));
+          }, CBT_totalJH(vOp, ha) > 0 ? CBT_totalJH(vOp, ha).toFixed(2) : '—'),
+          // Pas d'engagement au niveau opération : cellule vide, et
+          // non un champ qui ne s'enregistrerait nulle part.
+          quinzaineSaisissable && React.createElement('td', {
+            style: {
+              ...tdStyle,
+              textAlign: 'right',
+              color: CBT_C.textTer
+            }
+          }, '')));
         });
       }
       return famRows;
@@ -1237,13 +1579,26 @@
         fontWeight: 700,
         fontFamily: 'monospace'
       }
-    }, totalJH > 0 ? totalJH.toFixed(2) : '—')))),
+    }, totalJH > 0 ? totalJH.toFixed(2) : '—'),
+    // Total ENGAGÉ sur la quinzaine. Aucune comparaison n'est
+    // affichée avec le total annuel : leur écart est légitime (un
+    // engagement de 15 jours n'est pas une tranche du budget annuel),
+    // le signaler comme une anomalie serait faux.
+    quinzaineSaisissable && React.createElement('td', {
+      style: {
+        ...tdStyle,
+        textAlign: 'right',
+        fontWeight: 700,
+        fontFamily: 'monospace',
+        color: CBT_C.berry
+      }
+    }, totalQuinzJhHa > 0 ? totalQuinzJhHa.toFixed(2) : '—')))),
     // CONFIRMATION : le save étant global à la parcelle, une famille
     // repliée peut voir sa valeur de famille remplacée sans que rien ne
     // l'ait signalé à l'écran. On liste explicitement les familles
     // concernées AVANT d'écrire, avec la valeur perdue et son
     // remplacement.
-    canEdit && confirmList && confirmList.length > 0 && React.createElement('div', {
+    canEdit && (confirmList && confirmList.length > 0 || confirmQuinz && confirmQuinz.length > 0) && React.createElement('div', {
       style: {
         padding: '12px 14px',
         borderTop: '1px solid ' + CBT_C.border,
@@ -1251,7 +1606,7 @@
         color: CBT_C.amber,
         fontSize: 12
       }
-    }, React.createElement('div', {
+    }, confirmList && confirmList.length > 0 && React.createElement('div', {
       style: {
         fontWeight: 700,
         marginBottom: 6
@@ -1261,7 +1616,7 @@
       style: {
         marginRight: 8
       }
-    }), confirmList.length > 1 ? confirmList.length + ' valeurs de famille vont être remplacées par le détail' + ' de leurs opérations :' : 'Une valeur de famille va être remplacée par le détail de ses opérations :'), React.createElement('ul', {
+    }), confirmList.length > 1 ? confirmList.length + ' valeurs de famille vont être remplacées par le détail' + ' de leurs opérations :' : 'Une valeur de famille va être remplacée par le détail de ses opérations :'), confirmList && confirmList.length > 0 && React.createElement('ul', {
       style: {
         margin: '0 0 10px',
         paddingLeft: 26
@@ -1273,6 +1628,31 @@
           marginBottom: 2
         }
       }, n.famille + ' : ' + n.valeur + ' JH/Ha → ' + n.total + ' JH/Ha');
+    })),
+    // Engagements de quinzaine effacés : même traitement que les
+    // neutralisations — annoncés AVANT l'écriture, avec la valeur perdue.
+    confirmQuinz && confirmQuinz.length > 0 && React.createElement('div', {
+      style: {
+        fontWeight: 700,
+        marginBottom: 6
+      }
+    }, React.createElement('i', {
+      className: 'fa-solid fa-triangle-exclamation',
+      style: {
+        marginRight: 8
+      }
+    }), (confirmQuinz.length > 1 ? confirmQuinz.length + ' engagements de ' : 'Un engagement de ') + (quinzaineLabel || quinzaineActive) + ' vont être supprimés :'), confirmQuinz && confirmQuinz.length > 0 && React.createElement('ul', {
+      style: {
+        margin: '0 0 10px',
+        paddingLeft: 26
+      }
+    }, confirmQuinz.map(function (n) {
+      return React.createElement('li', {
+        key: 'q-' + n.famille,
+        style: {
+          marginBottom: 2
+        }
+      }, n.famille + ' : ' + n.valeur + ' JH/Ha → supprimé');
     })), React.createElement('div', {
       style: {
         display: 'flex',
@@ -1297,6 +1677,7 @@
     }, 'Confirmer et enregistrer'), React.createElement('button', {
       onClick: function () {
         setConfirmList(null);
+        setConfirmQuinz(null);
       },
       style: {
         padding: '6px 16px',
@@ -1334,6 +1715,28 @@
         opacity: saving ? 0.6 : 1
       }
     }, saving ? 'Enregistrement…' : 'Enregistrer'),
+    // REPORT EN UN CLIC : sans lui, 12 valeurs se re-saisissent tous les
+    // quinze jours et l'écran n'est pas utilisé. Il ne fait que REMPLIR
+    // les champs — rien n'est écrit avant « Enregistrer ».
+    canEdit && quinzaineSaisissable && quinzPrecedente && React.createElement('button', {
+      onClick: reporterQuinzainePrecedente,
+      title: 'Recopier les engagements de ' + (quinzPrecedenteLabel || quinzPrecedente) + ' dans les champs de ' + (quinzaineLabel || quinzaineActive) + ' (rien n\'est enregistré avant de cliquer sur Enregistrer)',
+      style: {
+        padding: '7px 14px',
+        borderRadius: 8,
+        border: '1px solid ' + CBT_C.border,
+        background: CBT_C.surface,
+        color: CBT_C.textSec,
+        fontSize: 12,
+        fontWeight: 700,
+        cursor: 'pointer'
+      }
+    }, React.createElement('i', {
+      className: 'fa-solid fa-copy',
+      style: {
+        marginRight: 6
+      }
+    }), 'Reporter ' + (quinzPrecedenteLabel || quinzPrecedente)),
     // Succès, succès-avec-purge, erreur : même niveau visuel (une ligne
     // à côté du bouton). La purge est un succès, mais elle SUPPRIME des
     // données : ambre + icône d'avertissement pour qu'elle se remarque.
@@ -1372,4 +1775,7 @@
   CampagneBudgetTab.famillesNeutralisees = CBT_famillesNeutralisees;
   CampagneBudgetTab.memeNeutralisations = CBT_memeNeutralisations;
   CampagneBudgetTab.totalJH = CBT_totalJH;
+  CampagneBudgetTab.quinzaineApplicable = CBT_quinzaineApplicable;
+  CampagneBudgetTab.quinzainesSupprimees = CBT_quinzainesSupprimees;
+  CampagneBudgetTab.CULTURES_QUINZAINE = CBT_CULTURES_QUINZAINE;
 })();
