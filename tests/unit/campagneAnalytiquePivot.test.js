@@ -448,13 +448,13 @@ test('sous-colonnes — réalisé, budget et % consommé côte à côte (JH par 
 
   // Taille : 40 JH / 2 Ha = 20.0 réalisé pour 15.0 budgétés → 40/30 = 133,3 %
   // consommé. CORINA n'a ni réalisé ni budget en Taille : trois « — ».
-  assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['20.0', '15.0', '133.3']);
+  assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['20.0', '15.0', '133.3 %']);
   assert.deepStrictEqual(sousCellule(rows[2], CORINA_SC), ['—', '—', '—']);
 
   // Récolte : le budget vient des OPÉRATIONS (8), pas du niveau famille (12) →
   // 20 JH pour 16 budgétés = 125,0 %. CORINA est réalisée mais non budgétée :
   // ni budget ni taux, jamais 0 %.
-  assert.deepStrictEqual(sousCellule(rows[4], MARAVILLA_SC), ['10.0', '8.0', '125.0']);
+  assert.deepStrictEqual(sousCellule(rows[4], MARAVILLA_SC), ['10.0', '8.0', '125.0 %']);
   assert.deepStrictEqual(sousCellule(rows[4], CORINA_SC), ['3.0', '—', '—']);
 });
 
@@ -464,7 +464,7 @@ test('sous-colonnes — famille budgétée jamais travaillée : 0 % consommé, p
   // existe (contrairement aux cellules sans budget, qui affichent « — »).
   const rows = bodyRows(tables(renderBudget())[0]);
   assert.deepStrictEqual(sousCellule(rows[1], MARAVILLA_SC), ['—', '—', '—']);
-  assert.deepStrictEqual(sousCellule(rows[1], CORINA_SC), ['0.0', '2.0', '0.0']);
+  assert.deepStrictEqual(sousCellule(rows[1], CORINA_SC), ['0.0', '2.0', '0.0 %']);
 });
 
 test('sous-colonnes — un taux ne se somme pas : totaux pondérés', () => {
@@ -473,12 +473,44 @@ test('sous-colonnes — un taux ne se somme pas : totaux pondérés', () => {
   // juste additionne numérateurs et dénominateurs séparément.
   const foot = cells(footRow(tables(renderBudget())[0]));
   // MARAVILLA : 60 JH réalisés pour 46 budgétés = 130,4 %.
-  assert.deepStrictEqual(foot.slice(1, 4), ['30.0', '23.0', '130.4']);
+  assert.deepStrictEqual(foot.slice(1, 4), ['30.0', '23.0', '130.4 %']);
   // CORINA : seule la Ferti est budgétée (8 JH), jamais travaillée → 0 %.
-  assert.deepStrictEqual(foot.slice(4, 7), ['3.0', '2.0', '0.0']);
+  assert.deepStrictEqual(foot.slice(4, 7), ['3.0', '2.0', '0.0 %']);
   // Grand total : 60 / 54 = 111,1 % — ni la somme ni la moyenne des taux.
   assert.strictEqual(foot[7],
-    '12.0 | Réalisé JH/Ha | 9.0 | Budget JH/Ha | 111.1 | % consommé');
+    '12.0 | Réalisé JH/Ha | 9.0 | Budget JH/Ha | 111.1 % | % consommé');
+});
+
+test('taux — le suffixe « % » et l\'italique aux QUATRE endroits où le taux est rendu', () => {
+  // Sans suffixe, « 51.6 » coincé entre deux colonnes de JH se lit comme un
+  // troisième volume. Le « % » vient du FORMAT de la valeur, pas de `unit` :
+  // c'est ce qui le fait apparaître aussi dans les trois agrégats, là où `unit`
+  // n'aurait touché que les cellules (et aurait donné « % consommé % » dans la
+  // colonne Total).
+  const tree = tables(renderBudget())[0];
+  const rows = bodyRows(tree);
+  const foot = footRow(tree);
+  // Le <span> du taux dans un <td> donné (le seul à porter fontStyle italic).
+  const taux = (tr, i) => walk((tr.children || []).filter((c) => c.type === 'td')[i])
+    .filter((n) => n.type === 'span' && n.props.style && n.props.style.fontStyle === 'italic');
+
+  // 1. cellule ; 2. total de LIGNE (colonne Total, série empilée) ;
+  // 3. total de COLONNE (pied) ; 4. GRAND total (pied, colonne Total).
+  assert.deepStrictEqual(taux(rows[2], 3).map(textOf), ['133.3 %'], 'cellule');
+  assert.deepStrictEqual(taux(rows[2], 7).map(textOf), ['133.3 %'], 'total de ligne');
+  assert.deepStrictEqual(taux(foot, 3).map(textOf), ['130.4 %'], 'total de colonne');
+  assert.deepStrictEqual(taux(foot, 7).map(textOf), ['111.1 %'], 'grand total');
+
+  // L'italique porte sur la VALEUR, jamais sur l'en-tête de sous-colonne.
+  const th = walk(section(tree, 'thead'))
+    .filter((n) => n.type === 'th' && textOf(n) === '% consommé')[0];
+  assert.strictEqual((th.props.style || {}).fontStyle, undefined);
+  // …et le libellé de l'en-tête ne double PAS l'unité (« % consommé % »).
+  assert.strictEqual(textOf(th), '% consommé');
+
+  // Les colonnes de VOLUME restent nues : c'est le contraste qui fait lire.
+  assert.deepStrictEqual(taux(rows[2], 1), []);
+  assert.deepStrictEqual(taux(rows[2], 2), []);
 });
 
 test('sous-colonnes — dépassement (> 100 %) signalé en rouge, sans plafonnement', () => {
@@ -487,7 +519,7 @@ test('sous-colonnes — dépassement (> 100 %) signalé en rouge, sans plafonnem
   const rouges = (tr, i) => walk((tr.children || []).filter((c) => c.type === 'td')[i])
     .filter((n) => n.type === 'span' && n.props.style && n.props.style.color === '#c0392b');
   // Taille sur MARAVILLA : 133,3 % → la sous-colonne du taux est rouge.
-  assert.deepStrictEqual(rouges(rows[2], 3).map(textOf), ['133.3']);
+  assert.deepStrictEqual(rouges(rows[2], 3).map(textOf), ['133.3 %']);
   // …et elle SEULE : réalisé et budget restent neutres.
   assert.deepStrictEqual(rouges(rows[2], 1), []);
   assert.deepStrictEqual(rouges(rows[2], 2), []);
@@ -498,10 +530,10 @@ test('sous-colonnes — dépassement (> 100 %) signalé en rouge, sans plafonnem
 test('sous-colonnes — en mode Total, seul le taux ne bouge pas (il est invariant)', () => {
   const rows = bodyRows(tables(renderBudget(null, [true, false, null]))[0]);
   // Budget en JH/Ha × 2 Ha = 30 JH, réalisé 40 JH — et toujours 133,3 %.
-  assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['40.0', '30.0', '133.3']);
+  assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['40.0', '30.0', '133.3 %']);
   // Pied de tableau : budget à PÉRIMÈTRE BUDGÉTÉ (30 + 16 + 8 = 54 JH).
   assert.strictEqual(cells(footRow(tables(renderBudget(null, [true, false, null]))[0])).pop(),
-    '72.0 | Réalisé JH | 54.0 | Budget JH | 111.1 | % consommé');
+    '72.0 | Réalisé JH | 54.0 | Budget JH | 111.1 % | % consommé');
 });
 
 test('budget — culture sans aucun budget : grille inchangée, une seule série', () => {
@@ -524,7 +556,7 @@ test('budget — mode Détail : le budget descend à la maille opération', () =
     ['M.O Hors récolte', 'Ferti-irrigation', 'Taille', 'Taille longue', 'Taille courte',
       'M.O Récolte', 'Récolte', 'Cueillette']);
   // L'opération budgétée porte son budget, et son taux de consommation.
-  assert.deepStrictEqual(sousCellule(rows[7], MARAVILLA_SC), ['10.0', '8.0', '125.0']);
+  assert.deepStrictEqual(sousCellule(rows[7], MARAVILLA_SC), ['10.0', '8.0', '125.0 %']);
   // …et les opérations d'une famille budgétée AU NIVEAU FAMILLE n'héritent de
   // rien : le budget de Taille reste sur sa ligne famille, il n'est pas
   // réparti au jugé entre « Taille longue » et « Taille courte » — donc aucun
@@ -542,7 +574,7 @@ test('budget — ligne et colonne entièrement non budgétées : totaux « — �
     [true, false, null]
   ))[0]);
   assert.strictEqual(cells(rows[1])[7],
-    '40.0 | Réalisé JH | 30.0 | Budget JH | 133.3 | % consommé');
+    '40.0 | Réalisé JH | 30.0 | Budget JH | 133.3 % | % consommé');
   assert.strictEqual(cells(rows[3])[7],
     '32.0 | Réalisé JH | — | Budget JH | — | % consommé');
 
@@ -551,10 +583,10 @@ test('budget — ligne et colonne entièrement non budgétées : totaux « — �
     [true, false, null]
   ))[0]));
   assert.deepStrictEqual(foot.slice(1, 7), [
-    '60.0', '30.0', '133.3',
+    '60.0', '30.0', '133.3 %',
     '12.0', '—', '—',
   ]);
-  assert.strictEqual(foot[7], '72.0 | Réalisé JH | 30.0 | Budget JH | 133.3 | % consommé');
+  assert.strictEqual(foot[7], '72.0 | Réalisé JH | 30.0 | Budget JH | 133.3 % | % consommé');
 });
 
 test('budget — le PÉRIMÈTRE BUDGÉTÉ reste énoncé sous la grille et sur la colonne Total', () => {
@@ -579,7 +611,7 @@ test('budget — campagneRythme absent : la grille annuelle est inchangée', () 
   const rows = bodyRows(tables(render({
     budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
   }, null, TabSansRythme))[0]);
-  assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['20.0', '15.0', '133.3']);
+  assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['20.0', '15.0', '133.3 %']);
 });
 
 test('budget — une cellule créée par le seul budget n\'ouvre pas de pop-up vide', () => {

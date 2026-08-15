@@ -1319,15 +1319,26 @@
     }];
 
     /**
-     * Format d'un POURCENTAGE consommé. Au-delà de 100 %, le budget est
-     * dépassé : signalé en rouge, JAMAIS plafonné — un taux ramené à 100 %
-     * masquerait précisément ce qu'on vient lire.
+     * Format d'un POURCENTAGE consommé.
+     *
+     * Le suffixe « % » et l'italique sont portés par la VALEUR, jamais par
+     * `unit` : entre deux colonnes de JH, un « 51.6 » nu se lit comme un
+     * troisième volume. Passer par `unit` les afficherait bien dans les
+     * sous-colonnes, mais donnerait « % consommé % » dans la colonne Total
+     * (seule colonne où la grille accole le libellé de série à son unité) et
+     * ne toucherait ni le pied de tableau ni le grand total.
+     * Ici, la grille applique `format` à TOUS les rendus du taux (cellule,
+     * total de ligne, total de colonne, grand total) : un seul endroit à
+     * changer, quatre emplacements couverts.
+     *
+     * Au-delà de 100 %, le budget est dépassé : signalé en rouge, JAMAIS
+     * plafonné — un taux ramené à 100 % masquerait ce qu'on vient lire.
      */
     function fmtPct(v) {
       var pct = Math.round(v * 1000) / 10;
-      var txt = pct.toFixed(1);
-      if (!(pct > 100)) return txt;
-      return React.createElement('span', { style: { color: C.berry } }, txt);
+      var style = { fontStyle: 'italic' };
+      if (pct > 100) style.color = C.berry;
+      return React.createElement('span', { style: style }, pct.toFixed(1) + ' %');
     }
 
     // Séries Budget + % consommé — ajoutées seulement en JH et seulement sur
@@ -1351,9 +1362,8 @@
       },
       {
         label: '% consommé',
-        // Pas d'`unit` : le libellé de la sous-colonne dit déjà « % ». L'y répéter
-        // donnerait « % consommé % » dans la colonne Total, seule colonne où le
-        // libellé de série est accolé à l'unité.
+        // Pas d'`unit` : le « % » est dans la valeur (cf. fmtPct). Le remettre
+        // ici donnerait « % consommé % » dans la colonne Total.
         // Série RATIO : réalisé cumulé / budget, sommés séparément avant
         // division (cf. PivotAnalytiqueGrid, section « ratio »). `basis` et
         // `display` ne s'y appliquent pas : un taux est invariant par
@@ -1402,9 +1412,8 @@
       },
       {
         label: '% consommé',
-        // Pas d'`unit` : le libellé de la sous-colonne dit déjà « % ». L'y répéter
-        // donnerait « % consommé % » dans la colonne Total, seule colonne où le
-        // libellé de série est accolé à l'unité.
+        // Pas d'`unit` : le « % » est dans la valeur (cf. fmtPct). Le remettre
+        // ici donnerait « % consommé % » dans la colonne Total.
         // Série RATIO : les totaux somment numérateur et dénominateur puis
         // divisent. Une série ordinaire afficherait une SOMME de pourcentages
         // en pied de colonne (cf. PivotAnalytiqueGrid, section « ratio »).

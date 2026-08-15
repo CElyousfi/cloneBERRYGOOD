@@ -556,7 +556,7 @@ test('vue quinzaine — trois sous-colonnes : réalisé de la quinzaine, engagé
   const cells = bodyCells(tree, 1);   // 0 = bandeau groupe, 1 = ligne famille
   // Une seule parcelle : sous-colonnes 1..3, puis la colonne Total.
   // Réalisé de Q04 = 6 JH sur 2 Ha = 3.0 JH/Ha (et NON les 36 JH cumulés).
-  assert.deepStrictEqual(cells.slice(1, 4), ['3.0', '4.0', '75.0']);
+  assert.deepStrictEqual(cells.slice(1, 4), ['3.0', '4.0', '75.0 %']);
   // Les libellés de série sont passés en EN-TÊTE, ils ne sont plus répétés dans
   // la cellule — c'est tout l'objet du lot.
   const trs = walk(section(tree, 'thead')).filter((n) => n.type === 'tr');
@@ -573,7 +573,7 @@ test('vue quinzaine — une quinzaine PASSÉE reste consultable', () => {
   // Q03 : 30 JH réalisés sur 2 Ha = 15 JH/Ha, 20 JH/Ha engagés → 75 % aussi,
   // mais sur des chiffres différents : c'est bien la quinzaine choisie qui est lue.
   const tree = renderPivot(null, [false, false, null, true, 'Q03']);
-  assert.deepStrictEqual(bodyCells(tree, 1).slice(1, 4), ['15.0', '20.0', '75.0']);
+  assert.deepStrictEqual(bodyCells(tree, 1).slice(1, 4), ['15.0', '20.0', '75.0 %']);
 });
 
 test('vue quinzaine — aucun engagement : pas de bascule, la vue annuelle tient', () => {

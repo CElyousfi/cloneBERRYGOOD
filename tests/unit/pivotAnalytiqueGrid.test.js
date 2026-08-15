@@ -232,6 +232,45 @@ test('sous-colonnes — une seule série : AUCUN éclatement (rendu historique)'
     ['5.0 | JH/Ha', '5.0 | JH/Ha', '5.0 | JH/Ha']);
 });
 
+test('sous-colonnes — trait de fin de parcelle sur TOUTES les lignes, aucun entre séries', () => {
+  // Éclatée en 3, une parcelle n'est plus repérable sans un trait qui la ferme.
+  // Il reprend le séparateur de la colonne de libellé (2px, couleur de la
+  // culture) ; interrompu sur une seule ligne, l'œil perd la colonne.
+  const TRAIT = '2px solid #8B2252';
+  const tree = render(troisSeries('perHa'), {
+    // Une parcelle sans cellule : son trait doit courir malgré tout.
+    groupedRows: [
+      { type: 'groupe', key: 'G', label: 'GROUPE', pivot: PIVOT },
+      { type: 'famille', key: 'GB09', label: 'Taille',
+        pivot: { P2: { jh: 10, cout: 300, ha: 2, budget: 6 } } },
+      { type: 'operation', key: 'GB09::op', label: 'Taille longue',
+        pivot: { P2: { jh: 10, cout: 300, ha: 2, budget: 6 } } },
+    ],
+  });
+  const trs = walk(section(tree, 'thead')).filter((n) => n.type === 'tr');
+  const bords = (cellules) => cellules.map((c) => c.props.style.borderRight);
+
+  // En-tête niveau 1 : le trait ferme chaque parcelle (colonnes de libellé et
+  // Total exclues — elles ont leur propre séparateur).
+  const niveau1 = (trs[0].children || []).filter((c) => c.type === 'th');
+  assert.deepStrictEqual(bords(niveau1.slice(1, 3)), [TRAIT, TRAIT]);
+  // En-tête niveau 2, ligne famille, ligne opération, pied : même découpe —
+  // trait sur la 3e sous-colonne, rien entre les sous-colonnes d'une parcelle.
+  const attendu = ['none', 'none', TRAIT, 'none', 'none', TRAIT];
+  assert.deepStrictEqual(bords((trs[1].children || []).filter((c) => c.type === 'th')), attendu);
+  assert.deepStrictEqual(bords(tds(bodyRows(tree)[1]).slice(1, 7)), attendu, 'ligne famille');
+  assert.deepStrictEqual(bords(tds(bodyRows(tree)[2]).slice(1, 7)), attendu, 'ligne opération');
+  assert.deepStrictEqual(bords(tds(footRow(tree)).slice(1, 7)), attendu, 'pied');
+});
+
+test('sous-colonnes — une seule série : AUCUN trait de parcelle ajouté (rendu historique)', () => {
+  const tree = render([{ key: 'jh', unit: 'JH', basis: 'total', display: 'total', format: un }]);
+  const th = (walk(section(tree, 'thead')).filter((n) => n.type === 'th'))[1];
+  assert.strictEqual(th.props.style.borderRight, '1px solid var(--gray-100)');
+  assert.strictEqual(tds(bodyRows(tree)[1])[1].props.style.borderRight, '1px solid #f5edf4');
+  assert.strictEqual(tds(footRow(tree))[1].props.style.borderRight, '1px solid var(--gray-100)');
+});
+
 test('sous-colonnes — clic sur la SEULE sous-colonne du réalisé, survol sur toute la cellule', () => {
   const vus = [];
   const tree = render(troisSeries('perHa'), { onCellClick: (c) => vus.push(c) });

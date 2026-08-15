@@ -360,6 +360,22 @@
     var multi = nbMetrics > 1;
     // Nombre RÉEL de colonnes du corps, hors colonne de libellé et hors Total.
     var nbColonnesParcelles = parcelles.length * nbMetrics;
+
+    /**
+     * Trait de FIN DE PARCELLE, posé sur la dernière sous-colonne de chaque
+     * groupe. Repris à l'identique du séparateur qui ferme la colonne de
+     * libellé sur les lignes du corps (`2px solid <couleur de culture>`) :
+     * éclatée en 3, une parcelle n'est plus repérable sans lui.
+     *
+     * Il court sur TOUTES les lignes (les deux niveaux d'en-tête, famille,
+     * opération, pied) : interrompu sur une seule, l'œil perd la colonne.
+     * Entre les sous-colonnes d'une MÊME parcelle, aucun trait — elles se
+     * liraient comme des colonnes indépendantes.
+     */
+    var traitParcelle = '2px solid ' + color;
+    function borderSousColonne(i) {
+      return i === nbMetrics - 1 ? traitParcelle : 'none';
+    }
     var totalHa = parcelles.reduce(function (s, p) {
       return s + p[1];
     }, 0);
@@ -505,14 +521,10 @@
       var actif = !!(cell && onCellClick && _pag_cliquable(cell));
       var debut = 1 + colIndex * nbMetrics; // 1 = la colonne de libellé
       return metrics.map(function (m, i) {
-        var last = i === nbMetrics - 1;
         var st = {
           padding: opts.pad,
           textAlign: 'center',
-          // Seule la DERNIÈRE sous-colonne porte le trait de séparation : entre
-          // deux séries d'une même parcelle, un trait ferait lire deux colonnes
-          // indépendantes.
-          borderRight: last ? '1px solid #f5edf4' : 'none',
+          borderRight: borderSousColonne(i),
           transition: 'background 0.12s'
         };
         if (opts.fontSize) st.fontSize = opts.fontSize;
@@ -793,7 +805,7 @@
           // Une parcelle éclatée n'a pas besoin de 110 px : ce sont
           // ses sous-colonnes qui portent la largeur minimale.
           minWidth: multi ? undefined : 110,
-          borderRight: '1px solid var(--gray-100)'
+          borderRight: multi ? traitParcelle : '1px solid var(--gray-100)'
         }
       }, _pag_h('div', {
         style: {
@@ -841,7 +853,7 @@
             // 3 000 px de large ne se lisent pas non plus.
             minWidth: 70,
             whiteSpace: 'nowrap',
-            borderRight: i === nbMetrics - 1 ? '1px solid var(--gray-100)' : 'none'
+            borderRight: borderSousColonne(i)
           }
         }, _pag_h('div', null, m.label || ''), m.unit ? _pag_h('div', {
           style: {
@@ -893,7 +905,7 @@
             padding: '8px 6px',
             textAlign: 'center',
             color: color,
-            borderRight: i === nbMetrics - 1 ? '1px solid var(--gray-100)' : 'none'
+            borderRight: borderSousColonne(i)
           }
         }, totaux[i] === null ? _pag_dash() : totaux[i]);
       });
