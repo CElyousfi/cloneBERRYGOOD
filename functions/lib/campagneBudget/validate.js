@@ -18,9 +18,26 @@
  *     budgets_operations: {                                 // JH/Ha PAR OPÉRATION
  *       'Ferti-irrigation': { 'GB02::Nettoyage goutteurs': 0.8, 'GB02::Fertigation': 2.7 },
  *     },
+ *     budgets_quinzaine: {                                  // JH/Ha PAR QUINZAINE
+ *       'Q07': { 'Ferti-irrigation': 0.4, 'Taille': 0.2 },  // (niveau FAMILLE)
+ *     },
  *     updated_by: { uid, profileId },
  *     updated_at: serverTimestamp(),
  *   }
+ *
+ * TROISIÈME NIVEAU, ORTHOGONAL AUX DEUX AUTRES (`budgets_quinzaine`, LOT 3b) :
+ * un budget d'ENGAGEMENT COURT TERME, posé au début de chaque quinzaine en
+ * connaissance de la situation réelle. Ce n'est PAS un phasage du budget annuel :
+ *   - aucune contrainte de somme — Σ des quinzaines peut s'écarter du budget
+ *     annuel, et cet écart EST une information (on ne le corrige pas, on ne le
+ *     contraint pas) ;
+ *   - il vit au seul niveau FAMILLE (le détail par opération reste annuel) ;
+ *   - même unité que le reste : JH/Ha ;
+ *   - champ ADDITIF : absent = pas de suivi court terme sur cette parcelle, tous
+ *     les documents déjà écrits restent valides sans aucune migration.
+ * Clé de quinzaine = `Q` + numéro sur 2 chiffres (cf. quinzaineKey), DÉRIVÉE des
+ * `periodes` de `campagne-analytique-detail` — jamais un calendrier en dur, jamais
+ * le libellé d'affichage (« Quinzaine 07 » est une chaîne d'UI, pas une clé).
  *
  * COEXISTENCE DES DEUX NIVEAUX (aucune migration) : `budgets` est CONSERVÉ tel
  * quel. Les documents écrits par le lot précédent (niveau famille uniquement)
@@ -97,6 +114,62 @@ const MAX_FAMILLES = 50
  * sans autoriser un payload arbitraire.
  */
 const MAX_OPERATIONS = 500
+
+/**
+ * Garde-fou : nombre de quinzaines acceptées dans un seul save. Une campagne en
+ * compte 24 (12 mois × 2) ; 60 laisse la marge d'une campagne plus longue sans
+ * autoriser un payload arbitraire. Ce n'est PAS la longueur de la campagne (qui
+ * est dérivée des `periodes`, jamais écrite en dur) — juste un plafond de taille.
+ */
+const MAX_QUINZAINES = 60
+
+/**
+ * Cultures pour lesquelles un budget de quinzaine a un sens. L'avocatier n'est
+ * pas budgété (décision métier) : une écriture forgée sur une de ses parcelles
+ * est REFUSÉE côté serveur, l'écran ne se contente pas de ne pas la proposer.
+ * Fail-closed : une culture non résolue est refusée elle aussi.
+ */
+const CULTURES_BUDGET_QUINZAINE = ['Framboise', 'Myrtille']
+
+/** Clé de quinzaine persistée : `Q` + numéro sur 2 chiffres. */
+const __cb_QKEY_RE = /^Q(\d{1,2})$/i
+/** Libellé d'affichage d'une période (« Quinzaine 07 »). */
+const __cb_QLABEL_RE = /^QUINZAINE\s*0*(\d{1,2})$/
+/** Numéro nu ('7', '07'). */
+const __cb_QNUM_RE = /^0*(\d{1,2})$/
+
+/**
+ * Clé canonique d'une quinzaine : 'Q07'. PURE.
+ *
+ * Accepte les trois formes qui circulent : la clé persistée ('Q07'), le libellé
+ * d'affichage des `periodes` (« Quinzaine 7 ») et le numéro nu (7). La validation
+ * est STRICTE — pas de « dernier nombre de la chaîne » (`quinzaineNum` côté
+ * affichage) : une clé de document Firestore ne se devine pas, et cette fonction
+ * garde une action POST-able à la main.
+ *
+ * @param {*} raw
+ * @returns {string} '' si illisible ou hors 1..99.
+ */
+function quinzaineKey(raw) {
+  if (typeof raw === 'boolean') return ''
+  const s = String(raw == null ? '' : raw).trim().toUpperCase()
+  if (!s) return ''
+  const m = __cb_QKEY_RE.exec(s) || __cb_QLABEL_RE.exec(s) || __cb_QNUM_RE.exec(s)
+  if (!m) return ''
+  const n = parseInt(m[1], 10)
+  if (!isFinite(n) || n < 1 || n > 99) return ''
+  return 'Q' + (n < 10 ? '0' + n : String(n))
+}
+
+/**
+ * Numéro d'une clé de quinzaine. PURE.
+ * @param {*} key
+ * @returns {number} 0 si illisible.
+ */
+function quinzaineNum(key) {
+  const k = quinzaineKey(key)
+  return k ? parseInt(k.slice(1), 10) : 0
+}
 
 /**
  * Part maximale des entrées existantes qu'une purge automatique a le droit de
@@ -426,6 +499,8 @@ function parseBudgetValue(raw) {
  *   ici : c'est mergeBudgets qui décide de la suppression).
  * @property {Object<string, Object<string, number>>} [budgets_operations]
  *   famille → opération → JH/Ha (0 conservés, cf. mergeBudgetsOperations).
+ * @property {Object<string, Object<string, number>>} [budgets_quinzaine]
+ *   'Q07' → famille → JH/Ha (0 conservés, cf. mergeBudgetsQuinzaine).
  */
 
 /**
@@ -449,6 +524,13 @@ function parseBudgetValue(raw) {
  *   triplets (code, famille, opération) du référentiel tâches — requis dès qu'une
  *   opération est saisie (fail-closed).
  * @param {Array<string>} input.labelsConnus labels du référentiel parcelles.
+ * @param {*} [input.budgets_quinzaine] map quinzaine → (famille → JH/Ha).
+ *   Clé acceptée sous ses trois formes (cf. quinzaineKey) ; la sortie est
+ *   TOUJOURS canonique ('Q07').
+ * @param {*} [input.culture] culture RÉSOLUE de la parcelle (lib/campagneBudget/
+ *   culture.js, miroir de public/lib/cultureUtils.js). Exigée dès qu'un budget de
+ *   quinzaine est saisi : l'avocatier n'est pas budgété, et une culture non
+ *   résolue est refusée (fail-closed).
  * @returns {ValidationBudget}
  */
 function validateBudgetSave(input) {
@@ -586,7 +668,66 @@ function validateBudgetSave(input) {
     budgetsOperations[canonFamille] = famBudgets
   }
 
-  if (entries.length === 0 && familleOpsEntries.length === 0) {
+  // Niveau QUINZAINE (engagement court terme, maille FAMILLE).
+  const rawQuinz = src.budgets_quinzaine === undefined ? {} : src.budgets_quinzaine
+  if (rawQuinz === null || typeof rawQuinz !== 'object' || Array.isArray(rawQuinz)) {
+    return { ok: false, error: 'Budgets de quinzaine invalides' }
+  }
+  const quinzEntries = Object.keys(rawQuinz)
+  if (quinzEntries.length > MAX_QUINZAINES) {
+    return { ok: false, error: 'Trop de quinzaines dans un seul enregistrement' }
+  }
+  // AVOCATIER : refus SERVEUR, pas seulement une absence de proposition à
+  // l'écran. La culture est celle résolue par le miroir de CultureUtils —
+  // jamais une regex locale. Culture absente ou non résolue = refus (fail-closed).
+  if (quinzEntries.length > 0) {
+    const culture = String(src.culture == null ? '' : src.culture).trim()
+    if (!culture) {
+      return { ok: false, error: 'Culture de la parcelle indéterminée — budget de quinzaine refusé' }
+    }
+    if (CULTURES_BUDGET_QUINZAINE.indexOf(culture) === -1) {
+      return {
+        ok: false,
+        error: 'Budget de quinzaine non applicable à la culture « ' + culture + ' »',
+      }
+    }
+  }
+  /** @type {Object<string, Object<string, number>>} */
+  const budgetsQuinzaine = {}
+  for (const rawQ of quinzEntries) {
+    const qKey = quinzaineKey(rawQ)
+    if (!qKey) return { ok: false, error: 'Quinzaine invalide : « ' + rawQ + ' »' }
+    if (Object.prototype.hasOwnProperty.call(budgetsQuinzaine, qKey)) {
+      return { ok: false, error: 'Quinzaine en doublon : « ' + qKey + ' »' }
+    }
+    const rawQFam = rawQuinz[rawQ]
+    if (rawQFam === null || typeof rawQFam !== 'object' || Array.isArray(rawQFam)) {
+      return { ok: false, error: 'Budgets de quinzaine invalides (' + qKey + ')' }
+    }
+    const qFamKeys = Object.keys(rawQFam)
+    if (qFamKeys.length > MAX_FAMILLES) {
+      return { ok: false, error: 'Trop de familles dans un seul enregistrement' }
+    }
+    /** @type {Object<string, number>} */
+    const qBudgets = {}
+    for (const rawFamille of qFamKeys) {
+      const canon = familleByKey[String(rawFamille).trim().toUpperCase()]
+      if (!canon) {
+        return { ok: false, error: 'Famille d\'opération inconnue : « ' + rawFamille + ' »' }
+      }
+      if (Object.prototype.hasOwnProperty.call(qBudgets, canon)) {
+        return { ok: false, error: 'Famille en doublon : « ' + canon + ' »' }
+      }
+      const parsedQ = parseBudgetValue(rawQFam[rawFamille])
+      if (!parsedQ.ok) {
+        return { ok: false, error: parsedQ.error + ' (' + qKey + ' — ' + canon + ')' }
+      }
+      qBudgets[canon] = /** @type {number} */ (parsedQ.value)
+    }
+    budgetsQuinzaine[qKey] = qBudgets
+  }
+
+  if (entries.length === 0 && familleOpsEntries.length === 0 && quinzEntries.length === 0) {
     return { ok: false, error: 'Aucun budget à enregistrer' }
   }
 
@@ -597,6 +738,7 @@ function validateBudgetSave(input) {
     label: labelByKey[label],
     budgets,
     budgets_operations: budgetsOperations,
+    budgets_quinzaine: budgetsQuinzaine,
   }
 }
 
@@ -654,6 +796,131 @@ function mergeBudgetsOperations(existing, incoming) {
     const merged = mergeBudgets(out[famille], inc[famille] || {})
     if (Object.keys(merged).length > 0) out[famille] = merged
     else delete out[famille]
+  }
+  return out
+}
+
+/**
+ * Fusionne les budgets DE QUINZAINE. Même sémantique à deux niveaux que
+ * `mergeBudgetsOperations` (dont c'est la structure exacte : map de maps),
+ * appliquée à (quinzaine, famille) : l'entrant est autoritaire sur les couples
+ * qu'il porte, les autres quinzaines déjà en base sont conservées ; une valeur 0
+ * supprime la famille de cette quinzaine ; une quinzaine sans aucune famille est
+ * retirée (jamais de map vide stockée).
+ *
+ * Fonction distincte et NON un simple alias : les deux niveaux ont des règles
+ * métier différentes (le budget annuel par opération ÉCRASE le niveau famille,
+ * cf. familleTotal ; le budget de quinzaine, lui, ne se compose avec rien). Les
+ * garder séparés évite qu'une évolution de l'un s'applique par accident à l'autre.
+ *
+ * @param {Object<string, *>|null|undefined} existing
+ * @param {Object<string, Object<string, number>>} incoming
+ * @returns {Object<string, Object<string, number>>} nouvelle map (aucun argument
+ *   muté). Les clés de quinzaine sont canonisées ('Q07') ; une clé illisible en
+ *   base est écartée plutôt que recopiée telle quelle.
+ */
+function mergeBudgetsQuinzaine(existing, incoming) {
+  /** @type {Object<string, Object<string, number>>} */
+  const out = {}
+  const base = existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}
+  for (const q of Object.keys(base)) {
+    const key = quinzaineKey(q)
+    if (!key) continue
+    const merged = mergeBudgets(base[q], {})
+    if (Object.keys(merged).length > 0) out[key] = merged
+  }
+  const inc = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {}
+  for (const q of Object.keys(inc)) {
+    const key = quinzaineKey(q)
+    if (!key) continue
+    const merged = mergeBudgets(out[key], inc[q] || {})
+    if (Object.keys(merged).length > 0) out[key] = merged
+    else delete out[key]
+  }
+  return out
+}
+
+/**
+ * Retire des budgets de quinzaine les familles absentes du référentiel courant.
+ * Mêmes décisions que `purgeFamillesInconnues` : purge à l'écriture, fail-safe
+ * si le référentiel est vide, et garde-fou proportionnel — compté sur le TOTAL
+ * des entrées toutes quinzaines confondues (une famille supprimée du référentiel
+ * touche toutes les quinzaines d'un coup : la juger quinzaine par quinzaine
+ * ferait passer chaque purge pour un cas isolé et désarmerait le garde-fou).
+ *
+ * @param {Object<string, Object<string, number>>} budgetsQuinzaine
+ * @param {Array<string>|null|undefined} famillesConnues vide/absente = aucune purge.
+ * @returns {{budgets_quinzaine: Object<string, Object<string, number>>,
+ *   purgees: Array<string>, purge_differee: number}} `purgees` = libellés
+ *   « Q07 — Famille ».
+ */
+function purgeQuinzainesInconnues(budgetsQuinzaine, famillesConnues) {
+  const src =
+    budgetsQuinzaine && typeof budgetsQuinzaine === 'object' && !Array.isArray(budgetsQuinzaine)
+      ? budgetsQuinzaine
+      : {}
+  const familles = Array.isArray(famillesConnues) ? famillesConnues : []
+  if (familles.length === 0) {
+    return { budgets_quinzaine: mergeBudgetsQuinzaine(src, {}), purgees: [], purge_differee: 0 }
+  }
+  /** @type {Object<string, boolean>} */
+  const known = {}
+  for (const f of familles) {
+    const k = String(f == null ? '' : f).trim().toUpperCase()
+    if (k) known[k] = true
+  }
+  /** @type {Object<string, Object<string, number>>} */
+  const out = {}
+  /** @type {Array<string>} */
+  const purgees = []
+  let nbTotal = 0
+  for (const q of Object.keys(src)) {
+    const fams = src[q]
+    if (!fams || typeof fams !== 'object' || Array.isArray(fams)) continue
+    /** @type {Object<string, number>} */
+    const kept = {}
+    for (const f of Object.keys(fams)) {
+      nbTotal += 1
+      if (known[String(f).trim().toUpperCase()]) kept[f] = fams[f]
+      else purgees.push(q + ' — ' + f)
+    }
+    if (Object.keys(kept).length > 0) out[q] = kept
+  }
+  if (!purgeAutorisee(purgees.length, nbTotal)) {
+    return {
+      budgets_quinzaine: mergeBudgetsQuinzaine(src, {}),
+      purgees: [],
+      purge_differee: purgees.length,
+    }
+  }
+  return { budgets_quinzaine: out, purgees, purge_differee: 0 }
+}
+
+/**
+ * Valeurs de quinzaine présentes AVANT et absentes APRÈS. PURE.
+ *
+ * Une suppression de saisie ne doit jamais être silencieuse (même règle que
+ * `familles_neutralisees`) : l'écran l'annonce avant l'enregistrement, et ceci
+ * la RAPPORTE après, depuis l'état réellement écrit — pas depuis ce que le
+ * client croyait envoyer.
+ *
+ * @param {Object<string, Object<string, number>>} avant
+ * @param {Object<string, Object<string, number>>} apres
+ * @returns {Array<{quinzaine: string, famille: string, valeur_precedente: number}>}
+ */
+function quinzainesSupprimees(avant, apres) {
+  const a = avant && typeof avant === 'object' ? avant : {}
+  const b = apres && typeof apres === 'object' ? apres : {}
+  /** @type {Array<{quinzaine: string, famille: string, valeur_precedente: number}>} */
+  const out = []
+  for (const q of Object.keys(a)) {
+    const fams = a[q]
+    if (!fams || typeof fams !== 'object') continue
+    const apresFams = (b[q] && typeof b[q] === 'object') ? b[q] : {}
+    for (const f of Object.keys(fams)) {
+      if (apresFams[f] > 0) continue
+      out.push({ quinzaine: q, famille: f, valeur_precedente: fams[f] })
+    }
   }
   return out
 }
@@ -831,6 +1098,11 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
  * `{merge:true}` produirait des chemins `budgets_operations.<famille>.<op>` et
  * ferait survivre toute opération retirée. Le champ est donc listé lui aussi
  * dans `mergeFields`, à la racine et à la racine SEULEMENT.
+ * `budgets_quinzaine` est une TROISIÈME map de maps, exposée exactement au même
+ * piège : listée à la racine, jamais sous la forme `budgets_quinzaine.Q07`, sans
+ * quoi une famille effacée d'une quinzaine — ou une quinzaine entièrement vidée —
+ * survivrait en base. Le test à faux `tx.set` capture `(data, options)` et
+ * vérifie cette liste : c'est le seul filet, l'émulateur n'est pas disponible ici.
  *
  * @param {{get: Function, set: Function}} tx transaction Firestore.
  * @param {Object} docRef référence du document budget.
@@ -841,6 +1113,8 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
  *   (niveau famille).
  * @param {Object<string, Object<string, number>>} [args.budgets_operations]
  *   valeurs validées entrantes (niveau opération).
+ * @param {Object<string, Object<string, number>>} [args.budgets_quinzaine]
+ *   valeurs validées entrantes (niveau quinzaine × famille).
  * @param {Array<string>} [args.famillesConnues] référentiel courant (purge).
  * @param {Array<{code?: *, famille?: *, operation?: *}>} [args.operationsConnues]
  *   référentiel courant des opérations (canonisation des clés + purge).
@@ -849,7 +1123,11 @@ function purgeFamillesInconnues(budgets, famillesConnues) {
  * @param {*} args.serverTimestamp valeur d'horodatage serveur (injectée).
  * @returns {Promise<{budgets: Object<string, number>,
  *   budgets_operations: Object<string, Object<string, number>>,
+ *   budgets_quinzaine: Object<string, Object<string, number>>,
  *   purgees: Array<string>, operations_purgees: Array<string>,
+ *   quinzaines_purgees: Array<string>,
+ *   quinzaines_supprimees: Array<{quinzaine: string, famille: string,
+ *     valeur_precedente: number}>,
  *   familles_neutralisees: Array<{famille: string, valeur_precedente: number}>,
  *   purge_differee: number}>}
  */
@@ -874,6 +1152,14 @@ async function writeBudgetInTransaction(tx, docRef, args) {
     canonicalizeOperationKeys(a.budgets_operations || {}, a.operationsConnues)
   )
   const purgedOps = purgeOperationsInconnues(mergedOps, a.operationsConnues)
+  // Niveau QUINZAINE : indépendant des deux autres (aucune règle de composition
+  // avec le budget annuel, cf. en-tête). `avantQuinz` sert le rapport des
+  // suppressions — comparé à ce qui est RÉELLEMENT écrit, jamais au payload.
+  const avantQuinz = mergeBudgetsQuinzaine(data.budgets_quinzaine || null, {})
+  const purgedQuinz = purgeQuinzainesInconnues(
+    mergeBudgetsQuinzaine(data.budgets_quinzaine || null, a.budgets_quinzaine || {}),
+    a.famillesConnues
+  )
 
   // NEUTRALISATIONS : une valeur de famille qui existait, qui disparaît, et
   // dont la famille porte désormais un détail par opération. C'est une perte de
@@ -898,17 +1184,19 @@ async function writeBudgetInTransaction(tx, docRef, args) {
       label_bee_one: a.label,
       budgets: purged.budgets,
       budgets_operations: purgedOps.budgets_operations,
+      budgets_quinzaine: purgedQuinz.budgets_quinzaine,
       updated_by: { uid: a.uid == null ? null : a.uid, profileId: a.profileId },
       updated_at: a.serverTimestamp,
     },
-    // `budgets` et `budgets_operations` listés → maps remplacées en entier
-    // (cf. commentaire ci-dessus).
+    // `budgets`, `budgets_operations` et `budgets_quinzaine` listés → maps
+    // remplacées en entier (cf. commentaire ci-dessus).
     {
       mergeFields: [
         'campagne',
         'label_bee_one',
         'budgets',
         'budgets_operations',
+        'budgets_quinzaine',
         'updated_by',
         'updated_at',
       ],
@@ -917,10 +1205,14 @@ async function writeBudgetInTransaction(tx, docRef, args) {
   return {
     budgets: purged.budgets,
     budgets_operations: purgedOps.budgets_operations,
+    budgets_quinzaine: purgedQuinz.budgets_quinzaine,
     purgees: purged.purgees,
     operations_purgees: purgedOps.purgees,
+    quinzaines_purgees: purgedQuinz.purgees,
+    quinzaines_supprimees: quinzainesSupprimees(avantQuinz, purgedQuinz.budgets_quinzaine),
     familles_neutralisees: neutralisees,
-    purge_differee: (purged.purge_differee || 0) + (purgedOps.purge_differee || 0),
+    purge_differee: (purged.purge_differee || 0) + (purgedOps.purge_differee || 0)
+      + (purgedQuinz.purge_differee || 0),
   }
 }
 
@@ -928,8 +1220,12 @@ module.exports = {
   MAX_JH_PAR_HA,
   MAX_FAMILLES,
   MAX_OPERATIONS,
+  MAX_QUINZAINES,
   MAX_PURGE_RATIO,
+  CULTURES_BUDGET_QUINZAINE,
   OP_KEY_SEP,
+  quinzaineKey,
+  quinzaineNum,
   purgeAutorisee,
   normCampagne,
   normLabel,
@@ -944,8 +1240,11 @@ module.exports = {
   validateBudgetSave,
   mergeBudgets,
   mergeBudgetsOperations,
+  mergeBudgetsQuinzaine,
+  quinzainesSupprimees,
   familleTotal,
   purgeFamillesInconnues,
   purgeOperationsInconnues,
+  purgeQuinzainesInconnues,
   writeBudgetInTransaction,
 }

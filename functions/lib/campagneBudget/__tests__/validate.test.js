@@ -987,3 +987,264 @@ test('writeBudgetInTransaction — purge les opérations obsolètes et les signa
     'Taille': { [K.hiver]: 1, [K.formation]: 2 },
   })
 })
+
+// =============================================================================
+// BUDGET DE QUINZAINE (LOT 3b) — engagement court terme, maille famille.
+// Orthogonal au budget annuel : AUCUNE contrainte de somme n'est testée ici
+// parce qu'il n'y en a pas, et il ne doit pas y en avoir (l'écart entre la somme
+// des quinzaines et le budget annuel est une information, pas une erreur).
+// =============================================================================
+
+const {
+  MAX_QUINZAINES,
+  CULTURES_BUDGET_QUINZAINE,
+  quinzaineKey,
+  quinzaineNum,
+  mergeBudgetsQuinzaine,
+  purgeQuinzainesInconnues,
+  quinzainesSupprimees,
+} = require('../validate')
+
+// ------------------------------------------------------------- quinzaineKey
+
+test('quinzaineKey — les trois formes qui circulent donnent la MÊME clé', () => {
+  // Clé persistée, libellé d'affichage des `periodes`, numéro nu.
+  assert.strictEqual(quinzaineKey('Q07'), 'Q07')
+  assert.strictEqual(quinzaineKey('Quinzaine 7'), 'Q07')
+  assert.strictEqual(quinzaineKey('Quinzaine 07'), 'Q07')
+  assert.strictEqual(quinzaineKey(' quinzaine  24 '), 'Q24')
+  assert.strictEqual(quinzaineKey(7), 'Q07')
+  assert.strictEqual(quinzaineKey('24'), 'Q24')
+  assert.strictEqual(quinzaineNum('Quinzaine 7'), 7)
+  assert.strictEqual(quinzaineNum('n\'importe quoi'), 0)
+})
+
+test('quinzaineKey — STRICTE : jamais « le dernier nombre de la chaîne »', () => {
+  // Un libellé de campagne finit par un nombre à deux chiffres : une clé de
+  // document ne se devine pas, sinon '2026-2027' deviendrait la quinzaine 27.
+  assert.strictEqual(quinzaineKey('2026-2027'), '')
+  assert.strictEqual(quinzaineKey('Période 3 bis'), '')
+  assert.strictEqual(quinzaineKey('Q0'), '')
+  assert.strictEqual(quinzaineKey('Q100'), '')
+  assert.strictEqual(quinzaineKey(''), '')
+  assert.strictEqual(quinzaineKey(null), '')
+  assert.strictEqual(quinzaineKey(true), '')
+})
+
+// -------------------------------------------------- validateBudgetSave (quinz.)
+
+function baseQ(overrides) {
+  return base(Object.assign({ budgets: {}, culture: 'Framboise' }, overrides || {}))
+}
+
+test('validateBudgetSave — budget de quinzaine : clés canonisées, familles validées', () => {
+  const r = validateBudgetSave(baseQ({
+    budgets_quinzaine: { 'Quinzaine 7': { 'Taille': '1,5' }, 'Q08': { 'Taille': 2 } },
+  }))
+  assert.strictEqual(r.ok, true)
+  assert.deepStrictEqual(r.budgets_quinzaine, {
+    Q07: { 'Taille': 1.5 },
+    Q08: { 'Taille': 2 },
+  })
+})
+
+test('validateBudgetSave — un budget de quinzaine SEUL suffit', () => {
+  // Le save peut ne porter que l'engagement court terme : le budget annuel n'est
+  // pas re-transmis à chaque quinzaine.
+  const r = validateBudgetSave(baseQ({
+    budgets: undefined,
+    budgets_operations: undefined,
+    budgets_quinzaine: { Q07: { 'Taille': 1 } },
+  }))
+  assert.strictEqual(r.ok, true)
+  assert.deepStrictEqual(r.budgets, {})
+})
+
+test('validateBudgetSave — quinzaine illisible, doublon, famille inconnue : refus', () => {
+  assert.match(
+    String(validateBudgetSave(baseQ({ budgets_quinzaine: { 'Semaine 3': { 'Taille': 1 } } })).error),
+    /Quinzaine invalide/
+  )
+  assert.match(
+    String(validateBudgetSave(baseQ({
+      budgets_quinzaine: { 'Q07': { 'Taille': 1 }, 'Quinzaine 7': { 'Taille': 2 } },
+    })).error),
+    /Quinzaine en doublon/
+  )
+  assert.match(
+    String(validateBudgetSave(baseQ({ budgets_quinzaine: { Q07: { 'Inventée': 1 } } })).error),
+    /Famille d'opération inconnue/
+  )
+  assert.match(
+    String(validateBudgetSave(baseQ({ budgets_quinzaine: { Q07: { 'Taille': -1 } } })).error),
+    /négatif/
+  )
+  assert.match(
+    String(validateBudgetSave(baseQ({ budgets_quinzaine: { Q07: [1, 2] } })).error),
+    /Budgets de quinzaine invalides/
+  )
+  assert.match(
+    String(validateBudgetSave(baseQ({ budgets_quinzaine: [] })).error),
+    /Budgets de quinzaine invalides/
+  )
+})
+
+test('validateBudgetSave — plafond de quinzaines par enregistrement', () => {
+  const trop = {}
+  for (let i = 0; i < MAX_QUINZAINES + 1; i += 1) trop['Q' + (i + 1)] = { 'Taille': 1 }
+  assert.match(String(validateBudgetSave(baseQ({ budgets_quinzaine: trop })).error), /Trop de quinzaines/)
+})
+
+// ---------------------------------------------------- gating AVOCATIER (serveur)
+
+test('validateBudgetSave — avocatier : budget de quinzaine REFUSÉ, même forgé', () => {
+  const r = validateBudgetSave(baseQ({
+    culture: 'Avocatier',
+    budgets_quinzaine: { Q07: { 'Taille': 1 } },
+  }))
+  assert.strictEqual(r.ok, false)
+  assert.match(String(r.error), /Avocatier/)
+})
+
+test('validateBudgetSave — culture non résolue : refus fail-closed', () => {
+  const r = validateBudgetSave(baseQ({ culture: '', budgets_quinzaine: { Q07: { 'Taille': 1 } } }))
+  assert.strictEqual(r.ok, false)
+  assert.match(String(r.error), /Culture de la parcelle indéterminée/)
+})
+
+test('validateBudgetSave — le budget ANNUEL reste ouvert à l\'avocatier', () => {
+  // Périmètre du lot : le gating porte sur le budget de quinzaine. Refuser aussi
+  // le budget annuel serait un changement de comportement sur 473 valeurs déjà
+  // en production.
+  const r = validateBudgetSave(base({ culture: 'Avocatier', budgets: { 'Taille': 2 } }))
+  assert.strictEqual(r.ok, true)
+})
+
+test('CULTURES_BUDGET_QUINZAINE — framboise et myrtille, jamais avocatier', () => {
+  assert.deepStrictEqual(CULTURES_BUDGET_QUINZAINE.slice().sort(), ['Framboise', 'Myrtille'])
+})
+
+// ----------------------------------------------------- mergeBudgetsQuinzaine
+
+test('mergeBudgetsQuinzaine — l\'entrant est autoritaire, les AUTRES quinzaines survivent', () => {
+  const existing = { Q07: { 'Taille': 1, 'Ferti-irrigation': 2 }, Q08: { 'Taille': 3 } }
+  const out = mergeBudgetsQuinzaine(existing, { Q07: { 'Taille': 5 } })
+  assert.deepStrictEqual(out, {
+    Q07: { 'Taille': 5, 'Ferti-irrigation': 2 },
+    Q08: { 'Taille': 3 },
+  })
+  // Aucun argument muté.
+  assert.deepStrictEqual(existing.Q07, { 'Taille': 1, 'Ferti-irrigation': 2 })
+})
+
+test('mergeBudgetsQuinzaine — 0 supprime la famille, une quinzaine vidée disparaît', () => {
+  const out = mergeBudgetsQuinzaine({ Q07: { 'Taille': 1 }, Q08: { 'Taille': 2 } },
+    { Q07: { 'Taille': 0 } })
+  assert.deepStrictEqual(out, { Q08: { 'Taille': 2 } })
+})
+
+test('mergeBudgetsQuinzaine — canonise les clés en base, écarte l\'illisible', () => {
+  const out = mergeBudgetsQuinzaine({ 'Quinzaine 7': { 'Taille': 1 }, 'zzz': { 'Taille': 9 } }, {})
+  assert.deepStrictEqual(out, { Q07: { 'Taille': 1 } })
+})
+
+// -------------------------------------------------- purgeQuinzainesInconnues
+
+test('purgeQuinzainesInconnues — retire les familles hors référentiel, les signale', () => {
+  const r = purgeQuinzainesInconnues({
+    Q07: { 'Taille': 1, 'Ferti-irrigation': 2, 'Entretien structure': 1 },
+    Q08: { 'Ancienne': 4 },
+  }, FAMILLES)
+  assert.deepStrictEqual(r.budgets_quinzaine, {
+    Q07: { 'Taille': 1, 'Ferti-irrigation': 2, 'Entretien structure': 1 },
+  })
+  assert.deepStrictEqual(r.purgees, ['Q08 — Ancienne'])
+})
+
+test('purgeQuinzainesInconnues — référentiel vide = aucune purge (fail-safe)', () => {
+  const b = { Q07: { 'X': 1 } }
+  assert.deepStrictEqual(purgeQuinzainesInconnues(b, []).budgets_quinzaine, b)
+  assert.deepStrictEqual(purgeQuinzainesInconnues(b, null).purgees, [])
+})
+
+test('purgeQuinzainesInconnues — garde-fou proportionnel compté sur TOUTES les quinzaines', () => {
+  // Une famille retirée du référentiel touche chaque quinzaine : jugée quinzaine
+  // par quinzaine, chaque purge passerait pour un cas isolé (≤ 1 entrée) et le
+  // garde-fou ne se déclencherait jamais.
+  const src = {
+    Q07: { 'Taille': 1, 'Ancienne': 1 },
+    Q08: { 'Taille': 1, 'Ancienne': 1 },
+    Q09: { 'Taille': 1, 'Ancienne': 1 },
+  }
+  const r = purgeQuinzainesInconnues(src, FAMILLES)
+  assert.deepStrictEqual(r.purgees, [])
+  assert.strictEqual(r.purge_differee, 3)
+  assert.deepStrictEqual(r.budgets_quinzaine, src)
+})
+
+// ------------------------------------------------------- quinzainesSupprimees
+
+test('quinzainesSupprimees — ce qui existait et n\'existe plus, rien d\'autre', () => {
+  const out = quinzainesSupprimees(
+    { Q07: { 'Taille': 2, 'Ferti-irrigation': 1 }, Q08: { 'Taille': 3 } },
+    { Q07: { 'Taille': 2 } }
+  )
+  assert.deepStrictEqual(out, [
+    { quinzaine: 'Q07', famille: 'Ferti-irrigation', valeur_precedente: 1 },
+    { quinzaine: 'Q08', famille: 'Taille', valeur_precedente: 3 },
+  ])
+  assert.deepStrictEqual(quinzainesSupprimees({ Q07: { 'Taille': 1 } }, { Q07: { 'Taille': 1 } }), [])
+})
+
+// -------------------------------------- writeBudgetInTransaction (quinzaine)
+
+test('writeBudgetInTransaction — PIÈGE mergeFields : la racine budgets_quinzaine y est', async () => {
+  // Le cœur du lot. Avec `{merge:true}` (ou un mergeFields nommant
+  // `budgets_quinzaine.Q07`), le masque serait construit sur les FEUILLES : la
+  // famille effacée survivrait en base et l'écran afficherait un succès mensonger.
+  const f = fakeTx({ budgets_quinzaine: { Q07: { 'Taille': 1, 'Ferti-irrigation': 2 } } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
+    budgets_quinzaine: { Q07: { 'Taille': 0 } },
+  }))
+  const call = f.calls[0]
+  assert.notStrictEqual(call.options && call.options.merge, true)
+  assert.ok(call.options.mergeFields.includes('budgets_quinzaine'))
+  // …à la RACINE et à la racine seulement.
+  assert.ok(!call.options.mergeFields.some((p) => String(p).startsWith('budgets_quinzaine.')))
+  assert.deepStrictEqual(call.data.budgets_quinzaine, { Q07: { 'Ferti-irrigation': 2 } })
+  assert.deepStrictEqual(out.budgets_quinzaine, { Q07: { 'Ferti-irrigation': 2 } })
+  // La suppression est RAPPORTÉE, jamais silencieuse.
+  assert.deepStrictEqual(out.quinzaines_supprimees, [
+    { quinzaine: 'Q07', famille: 'Taille', valeur_precedente: 1 },
+  ])
+})
+
+test('writeBudgetInTransaction — vider une quinzaine ENTIÈRE l\'efface réellement', async () => {
+  const f = fakeTx({ budgets_quinzaine: { Q07: { 'Taille': 1 }, Q08: { 'Taille': 2 } } })
+  await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
+    budgets_quinzaine: { Q07: { 'Taille': 0 } },
+  }))
+  assert.deepStrictEqual(f.calls[0].data.budgets_quinzaine, { Q08: { 'Taille': 2 } })
+})
+
+test('writeBudgetInTransaction — document SANS budgets_quinzaine : aucune migration', async () => {
+  // Les 473 valeurs déjà en production vivent dans des documents sans ce champ.
+  // Un save qui n'en porte pas ne doit pas en inventer un, ni toucher au reste.
+  const f = fakeTx({ budgets: { 'Taille': 1 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Ferti-irrigation': 2 } }))
+  assert.deepStrictEqual(f.calls[0].data.budgets_quinzaine, {})
+  assert.deepStrictEqual(f.calls[0].data.budgets, { 'Taille': 1, 'Ferti-irrigation': 2 })
+  assert.deepStrictEqual(out.quinzaines_supprimees, [])
+})
+
+test('writeBudgetInTransaction — quinzaine et budget annuel n\'interfèrent PAS', async () => {
+  const f = fakeTx({ budgets: { 'Taille': 100 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' }, Object.assign({}, WRITE_ARGS, {
+    budgets_quinzaine: { Q07: { 'Taille': 3 } },
+  }))
+  // Somme des quinzaines très inférieure au budget annuel : c'est légitime, rien
+  // n'est rééquilibré ni signalé.
+  assert.deepStrictEqual(out.budgets, { 'Taille': 100 })
+  assert.deepStrictEqual(out.budgets_quinzaine, { Q07: { 'Taille': 3 } })
+})
