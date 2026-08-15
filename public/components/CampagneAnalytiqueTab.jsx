@@ -1029,6 +1029,32 @@
   /* Sous-composant : Vue Pivot analytique (grille partagée)              */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Termes {num, den} du « % consommé » ANNUEL d'une cellule de la grille.
+   * PURE. Mêmes garde-fous que CampagneBudgetQuinzaine.pctPartsCellule, sur les
+   * champs de la vue annuelle : réalisé cumulé (`jh`, un TOTAL) sur budget
+   * (`budget`, saisi en JH/Ha → × Ha pour redevenir un total).
+   *
+   * `null` = taux sans objet (aucun budget saisi, superficie inconnue) : la
+   * cellule affiche « — », JAMAIS 0 % — qui se lirait « rien de consommé ».
+   *
+   * Sert de `ratio.parts` : la grille somme séparément numérateur et
+   * dénominateur avant de diviser. Une série ordinaire afficherait une SOMME DE
+   * POURCENTAGES en total de ligne et en pied de colonne.
+   *
+   * @param {{jh?: number, budget?: number, ha?: number}|null|undefined} cell
+   * @returns {{num: number, den: number}|null}
+   */
+  function CAT_pctPartsAnnuel(cell) {
+    if (!cell) return null;
+    var budget = Number(cell.budget);
+    if (!isFinite(budget) || !(budget > 0)) return null;
+    var ha = Number(cell.ha);
+    if (!isFinite(ha) || !(ha > 0)) return null;
+    var jh = Number(cell.jh);
+    return { num: isFinite(jh) ? jh : 0, den: budget * ha };
+  }
+
   /** Pastille de bascule — même gabarit que les autres bascules de l'écran. */
   function CAT_pillStyle(active) {
     return {
@@ -1176,8 +1202,9 @@
    * Bascules : JH ↔ Coût DH (état partagé avec les autres vues MO, prop
    * `metric`), Ha ↔ Total et Récap ↔ Détail (locaux à la vue).
    *
-   * ── BUDGET ET ÉCART ───────────────────────────────────────────────────────
-   * Deux séries s'ajoutent au réalisé DANS chaque cellule, seulement quand :
+   * ── BUDGET ET % CONSOMMÉ ──────────────────────────────────────────────────
+   * Deux SOUS-COLONNES s'ajoutent au réalisé sous chaque parcelle (Budget et
+   * % consommé), seulement quand :
    *   - la métrique est JH : le budget est saisi en JH/Ha, il n'a aucune
    *     traduction en DH — afficher un « budget » sous un coût serait faux ;
    *   - la culture affichée porte au moins un budget : sinon la grille se
@@ -1226,13 +1253,10 @@
       return CR.quinzainesInfo({ periodes: data.periodes, campagne: data.campagne });
     }, [CR, data.periodes, data.campagne]);
 
-    // Classes de rythme du référentiel des tâches, indexées par CODE + libellé
-    // normalisé — la normalisation est celle du pivot (AU.opKey), sinon la
-    // jointure raterait en silence et rien ne serait jamais projeté.
-    var classes = useMemo(function () {
-      if (!CR || !AU) return null;
-      return CR.indexClasses(props.refOperations || [], AU.opKey);
-    }, [CR, AU, props.refOperations]);
+    // NB : les classes de rythme (CR.indexClasses) ne sont plus indexées ici —
+    // les séries « reste budgété » / « reste au rythme » ont quitté la grille
+    // (cf. metricsBudget). `public/lib/campagneRythme.js` reste chargé et
+    // utilisé pour l'avancement de la campagne ci-dessus.
 
     var groups = useMemo(function () {
       var rows = CAT_pivotRows(data.rows, sbMap, data.haByRef || {}, {
@@ -1295,25 +1319,27 @@
     }];
 
     /**
-     * Format d'un RESTE : négatif = budget déjà dépassé, affiché tel quel et en
-     * rouge. Aucun plafonnement — un reste ramené à 0 masquerait le
-     * dépassement, qui est précisément ce qu'on vient lire.
+     * Format d'un POURCENTAGE consommé. Au-delà de 100 %, le budget est
+     * dépassé : signalé en rouge, JAMAIS plafonné — un taux ramené à 100 %
+     * masquerait précisément ce qu'on vient lire.
      */
-    function fmtReste(v) {
-      var r = Math.round(v * 10) / 10;
-      var txt = r.toFixed(1);
-      if (!(r < 0)) return txt;
+    function fmtPct(v) {
+      var pct = Math.round(v * 1000) / 10;
+      var txt = pct.toFixed(1);
+      if (!(pct > 100)) return txt;
       return React.createElement('span', { style: { color: C.berry } }, txt);
     }
 
-    // Séries Budget + LES DEUX RESTES — ajoutées seulement en JH et seulement
-    // sur une culture budgétée (cf. en-tête).
+    // Séries Budget + % consommé — ajoutées seulement en JH et seulement sur
+    // une culture budgétée (cf. en-tête).
     //
-    // ⚠️ La série « Écart » (réalisé − budget) du LOT 2c est REMPLACÉE par
-    // « Reste budgété » (budget − réalisé) : c'est le MÊME nombre au signe
-    // près, les afficher tous les deux montrerait deux fois la même chose dans
-    // chaque cellule. Le sens « reste » est celui qu'exige la comparaison avec
-    // le reste au rythme. Revenir en arrière = réinsérer la série `ecartCell`.
+    // ⚠️ TROIS SOUS-COLONNES, PAS CINQ. « Reste budgété » et « reste au rythme »
+    // (LOT 3a) ont QUITTÉ la grille : avec 9 parcelles, cinq séries font 45
+    // colonnes, illisibles même en défilant. Le module de calcul
+    // (public/lib/campagneRythme.js) et le champ `classe_rythme` en base sont
+    // CONSERVÉS tels quels — seul leur affichage ici est retiré, leur sort est
+    // une décision séparée. `CampagneRythme` reste d'ailleurs utilisé plus haut
+    // pour l'avancement de la campagne (quinzainesInfo).
     var metricsBudget = metrics.concat([
       {
         key: 'budget',
@@ -1323,51 +1349,37 @@
         display: totalMode ? 'total' : 'perHa',
         format: fmtJh1,
       },
-    ]);
-
-    // Les deux restes ne sont ajoutés que si le module de calcul a répondu :
-    // sinon ces deux séries n'afficheraient que des « — » sur toute la grille.
-    var metricsRestes = metricsBudget.concat([
       {
-        key: 'resteBudget',
-        label: 'Reste budg.',
-        unit: uniteJh,
-        // Reste budgété = budget × Ha − réalisé, en JH total (CampagneRythme).
-        // Absent (aucun budget saisi, ou Ha inconnu) → « — » : jamais 0, qui se
-        // lirait « budget épuisé, pile à zéro ».
-        basis: 'total',
-        display: totalMode ? 'total' : 'perHa',
-        format: fmtReste,
-      },
-      {
-        key: 'resteRythme',
-        label: 'Reste rythme',
-        unit: uniteJh,
-        // JAMAIS fusionné avec le précédent : leur divergence est l'alerte de
-        // dépassement projeté. Absent sur la Récolte, sur une opération de
-        // classe inconnue, et tant que 3 quinzaines ne sont pas consommées.
-        basis: 'total',
-        display: totalMode ? 'total' : 'perHa',
-        format: fmtReste,
+        label: '% consommé',
+        // Pas d'`unit` : le libellé de la sous-colonne dit déjà « % ». L'y répéter
+        // donnerait « % consommé % » dans la colonne Total, seule colonne où le
+        // libellé de série est accolé à l'unité.
+        // Série RATIO : réalisé cumulé / budget, sommés séparément avant
+        // division (cf. PivotAnalytiqueGrid, section « ratio »). `basis` et
+        // `display` ne s'y appliquent pas : un taux est invariant par
+        // changement d'unité, la bascule Ha/Total ne le touche pas.
+        ratio: { parts: CAT_pctPartsAnnuel },
+        format: fmtPct,
       },
     ]);
 
     /**
-     * VUE QUINZAINE — trois séries, jamais empilées sur les quatre de la vue
-     * annuelle (Réalisé, Budget, Reste budg., Reste rythme).
+     * VUE QUINZAINE — les MÊMES trois sous-colonnes que la vue annuelle, mais
+     * sur le périmètre d'une seule quinzaine : réalisé, engagé, % consommé.
      *
-     * ── POURQUOI UNE BASCULE ET NON DEUX SÉRIES DE PLUS ───────────────────────
-     * Six séries dans une cellule de 110 px de large ne se lisent pas, et se
-     * lisent encore moins au téléphone (c'est là que la validation se fait). Mais
-     * la raison n'est pas que cosmétique : les deux vues répondent à DEUX
+     * ── POURQUOI UNE BASCULE ET NON TROIS SOUS-COLONNES DE PLUS ───────────────
+     * Six sous-colonnes par parcelle (18 colonnes pour 3 parcelles, 54 pour 9)
+     * ne se lisent pas, et se lisent encore moins au téléphone (c'est là que la
+     * validation se fait). Mais la raison n'est pas que cosmétique : les deux
+     * vues répondent à DEUX
      * questions différentes, et leurs chiffres ne se comparent pas.
      *   - annuelle  : « où en est la campagne, va-t-on tenir le budget ? »
      *     (cumul depuis juillet, projection jusqu'en juin) ;
      *   - quinzaine : « ce que j'ai engagé il y a 15 jours, l'ai-je consommé ? »
      *     (une seule période, aucun lien de somme avec l'annuel).
-     * Les afficher ensemble inviterait à soustraire un chiffre de quinzaine d'un
-     * reste annuel — l'erreur de lecture qu'on ne pourrait plus rattraper.
-     * La bascule garde chaque vue à trois ou quatre séries et rend le périmètre
+     * Les afficher ensemble inviterait à comparer un chiffre de quinzaine à un
+     * cumul annuel — l'erreur de lecture qu'on ne pourrait plus rattraper.
+     * La bascule garde chaque vue à trois sous-colonnes et rend le périmètre
      * explicite dans la légende.
      */
     var metricsQuinzaine = [
@@ -1389,29 +1401,23 @@
         format: fmtJh1,
       },
       {
-        label: 'Consommé',
-        unit: '%',
+        label: '% consommé',
+        // Pas d'`unit` : le libellé de la sous-colonne dit déjà « % ». L'y répéter
+        // donnerait « % consommé % » dans la colonne Total, seule colonne où le
+        // libellé de série est accolé à l'unité.
         // Série RATIO : les totaux somment numérateur et dénominateur puis
         // divisent. Une série ordinaire afficherait une SOMME de pourcentages
         // en pied de colonne (cf. PivotAnalytiqueGrid, section « ratio »).
         ratio: { parts: CBQ ? CBQ.pctPartsCellule : function () { return null; } },
-        format: function (v) {
-          var pct = Math.round(v * 1000) / 10;
-          var txt = pct.toFixed(1);
-          // Au-delà de 100 %, l'engagement de la quinzaine est dépassé : même
-          // code couleur que les restes négatifs de la vue annuelle.
-          if (!(pct > 100)) return txt;
-          return React.createElement('span', { style: { color: C.berry } }, txt);
-        },
+        format: fmtPct,
       },
     ];
 
-    // Repli quand le calcul des restes n'a pas pu tourner (module absent,
-    // avancement de campagne illisible) : le périmètre du budget doit rester
-    // énoncé, il n'est pas déductible des chiffres affichés.
+    // Périmètre de la vue annuelle : non déductible des chiffres affichés.
     var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et '
       + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans '
-      + 'le Réalisé). « — » = aucun budget saisi, ou superficie inconnue.';
+      + 'le Réalisé). « % consommé » = Réalisé / Budget sur ce seul périmètre. '
+      + '« — » = aucun budget saisi, ou superficie inconnue.';
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
     // rendu React (mémoire projet « tab bare global ref »).
@@ -1499,19 +1505,6 @@
                   detail: detailMode,
                 }, budgetArgs))
               : null;
-            // Les deux restes, posés sur les lignes DÉJÀ décorées du budget
-            // (mêmes clés, même ordre — decoreRestes ne réordonne rien).
-            // Module absent → on reste sur budget + écart du lot 2c plutôt que
-            // sur une projection devinée.
-            var res = (sup && sup.hasBudget && CR && quinzaines)
-              ? CR.decoreRestes({
-                  groupedRows: sup.groupedRows,
-                  classes: classes,
-                  quinzaines: quinzaines,
-                  budgetIndex: CBP.indexBudgets(budgetArgs),
-                  analytique: AU,
-                })
-              : null;
             // VUE QUINZAINE : mêmes lignes, mêmes clés, mêmes colonnes — seules
             // les séries changent. Le budget de quinzaine passe par le MÊME
             // indexeur que le budget annuel (résolution famille → code GB), avec
@@ -1535,21 +1528,18 @@
               parcelles: pivot.parcelles,
               groupedRows: quinz
                 ? quinz.groupedRows
-                : (res ? res.groupedRows : (sup ? sup.groupedRows : pivot.groupedRows)),
+                : (sup ? sup.groupedRows : pivot.groupedRows),
               metrics: quinz
                 ? metricsQuinzaine
-                : (res ? metricsRestes : ((sup && sup.hasBudget) ? metricsBudget : metrics)),
-              // Le périmètre est COMPTÉ, pas seulement énoncé : la Récolte pèse
-              // l'essentiel du budget et n'est jamais projetée, donc le total
-              // « reste au rythme » est structurellement bien inférieur au
-              // total « reste budgété » — sans ce compte, ça se lit comme une
-              // sous-consommation massive.
+                : ((sup && sup.hasBudget) ? metricsBudget : metrics),
+              // Le périmètre du budget n'est PAS déductible des chiffres
+              // affichés (un « % consommé » à 130 % sur une ligne dont la
+              // moitié des familles n'est pas budgétée se lit comme une erreur
+              // de calcul) : il reste énoncé sous la grille.
               note: quinz
                 ? CBQ.noteQuinzaine(quinzaineInfoSel || { key: quinzaineActive },
                     quinzaineActive === quinzaineCourante)
-                : (res
-                  ? CR.noteRestes(res.perimetre, quinzaines)
-                  : ((sup && sup.hasBudget) ? noteBudgetSeul : null)),
+                : ((sup && sup.hasBudget) ? noteBudgetSeul : null),
               color: g.color,
               title: g.culture,
               icon: g.icon,
@@ -2127,6 +2117,7 @@
   CampagneAnalytiqueTab.buildCultureWorkbook = buildCultureWorkbook;
   CampagneAnalytiqueTab.CULTURE_INCONNUE = CAT_CULTURE_INCONNUE;
   CampagneAnalytiqueTab.pivotRows = CAT_pivotRows;
+  CampagneAnalytiqueTab.pctPartsAnnuel = CAT_pctPartsAnnuel;
   CampagneAnalytiqueTab.byCulture = CAT_byCulture;
   CampagneAnalytiqueTab.PivotView = PivotView;
 

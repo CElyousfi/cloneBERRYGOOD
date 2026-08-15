@@ -4,11 +4,17 @@
 //
 // L'iso-comportement du panneau Affectation Analytique est couvert ailleurs
 // (tests/unit/affectationAnalytiqueTable.test.js, écrit AVANT l'extraction).
-// CE fichier couvre ce que la grille sait faire EN PLUS, et qui n'a pas encore
-// d'appelant : plusieurs séries par cellule, et le sens de conversion par série
-// (`basis` = ce que vaut la valeur brute, `display` = ce qu'on affiche). C'est
-// le point dur du chantier : le réalisé est un total par cellule, le budget est
-// déjà en JH/Ha — la conversion s'inverse selon la série.
+// CE fichier couvre ce que la grille sait faire EN PLUS : plusieurs séries, et
+// le sens de conversion par série (`basis` = ce que vaut la valeur brute,
+// `display` = ce qu'on affiche). C'est le point dur du chantier : le réalisé est
+// un total par cellule, le budget est déjà en JH/Ha — la conversion s'inverse
+// selon la série.
+//
+// ⚠️ Depuis le lot « sous-colonnes », plusieurs séries ⇒ une COLONNE par série
+// sous l'en-tête de la parcelle (et non plus un empilement dans une cellule
+// unique). Les assertions ci-dessous lisent donc K <td> par parcelle, dans
+// l'ordre des `metrics` — sauf dans la colonne Total, seule colonne où les
+// séries restent empilées (elle est sticky-right, cf. le composant).
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -74,6 +80,15 @@ function section(tree, tag) { return walk(tree).filter(function (n) { return n.t
 function bodyRows(tree) { return walk(section(tree, 'tbody')).filter(function (n) { return n.type === 'tr'; }); }
 function footRow(tree) { return walk(section(tree, 'tfoot')).filter(function (n) { return n.type === 'tr'; })[0]; }
 function cells(tr) { return (tr.children || []).filter(function (c) { return c && c.type === 'td'; }).map(textOf); }
+function tds(tr) { return (tr.children || []).filter(function (c) { return c && c.type === 'td'; }); }
+/** <th> de l'en-tête, tous niveaux confondus (1er <tr> puis 2e). */
+function headerThs(tree) {
+  return walk(section(tree, 'thead')).filter(function (n) { return n.type === 'th'; });
+}
+/** L'en-tête de la colonne Total, où qu'il soit dans l'arbre. */
+function totalTh(tree) {
+  return headerThs(tree).filter(function (n) { return textOf(n) === 'Total'; })[0];
+}
 
 // ---------------------------------------------------------------- données
 //
@@ -139,35 +154,124 @@ test('metrics — le sens de la conversion est PAR SÉRIE, pas global', () => {
     { key: 'jh', label: 'Réalisé', unit: 'JH/Ha', basis: 'total', display: 'perHa', format: un },
     { key: 'budget', label: 'Budget', unit: 'JH/Ha', basis: 'perHa', display: 'perHa', format: un },
   ]);
-  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1, 3), [
-    '5.0 | Réalisé JH/Ha | 6.0 | Budget JH/Ha',   // 10 JH / 2 Ha, budget brut
-    '5.0 | Réalisé JH/Ha | 4.0 | Budget JH/Ha',   // 20 JH / 4 Ha, budget brut
-  ]);
+  // 2 séries × 2 parcelles = 4 sous-colonnes : réalisé divisé par le Ha,
+  // budget affiché brut, dans les deux colonnes.
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1, 5),
+    ['5.0', '6.0', '5.0', '4.0']);
 });
 
-test('metrics — trois séries réalisé / budget / écart dans une seule cellule', () => {
+test('metrics — trois séries réalisé / budget / écart en sous-colonnes', () => {
   const tree = render(troisSeries('perHa'));
   // P2 : réalisé 5.0, budget 6.0, écart (10 − 6×2) / 2 = −1.0 (sous-consommé).
   // P4 : réalisé 5.0, budget 4.0, écart (20 − 4×4) / 4 = +1.0 (dépassement).
-  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1, 3), [
-    '5.0 | Réalisé JH/Ha | 6.0 | Budget JH/Ha | -1.0 | Écart JH/Ha',
-    '5.0 | Réalisé JH/Ha | 4.0 | Budget JH/Ha | +1.0 | Écart JH/Ha',
-  ]);
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1, 7),
+    ['5.0', '6.0', '-1.0', '5.0', '4.0', '+1.0']);
   // Total de ligne : réalisé 30/6 = 5.0 ; budget (12+16)/6 = 4.67 ; écart 2/6 = 0.3.
-  assert.strictEqual(cells(bodyRows(tree)[1])[3],
+  // Seule colonne où les séries restent EMPILÉES, libellé compris.
+  assert.strictEqual(cells(bodyRows(tree)[1])[7],
     '5.0 | Réalisé JH/Ha | 4.7 | Budget JH/Ha | +0.3 | Écart JH/Ha');
 });
 
 test('metrics — en mode Total les trois séries suivent, sans règle codée en dur', () => {
   const tree = render(troisSeries('total'));
-  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1, 3), [
-    '10.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH',
-    '20.0 | Réalisé JH | 16.0 | Budget JH | +4.0 | Écart JH',
-  ]);
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1, 7),
+    ['10.0', '12.0', '-2.0', '20.0', '16.0', '+4.0']);
   assert.deepStrictEqual(cells(footRow(tree)),
-    ['TOTAL', '10.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH',
-      '20.0 | Réalisé JH | 16.0 | Budget JH | +4.0 | Écart JH',
+    ['TOTAL', '10.0', '12.0', '-2.0', '20.0', '16.0', '+4.0',
       '30.0 | Réalisé JH | 28.0 | Budget JH | +2.0 | Écart JH']);
+});
+
+test('sous-colonnes — en-tête à DEUX niveaux : parcelle puis série', () => {
+  const tree = render(troisSeries('perHa'));
+  const trs = walk(section(tree, 'thead')).filter((n) => n.type === 'tr');
+  assert.strictEqual(trs.length, 2);
+
+  // Niveau 1 : libellé (rowSpan 2), une parcelle par colSpan de 3, Total
+  // (rowSpan 2) — la colonne Total n'est JAMAIS éclatée (sticky-right).
+  const niveau1 = (trs[0].children || []).filter((c) => c.type === 'th');
+  assert.deepStrictEqual(niveau1.map(textOf), ['Opération', 'P2 | 2 Ha', 'P4 | 4 Ha', 'Total']);
+  assert.strictEqual(niveau1[0].props.rowSpan, 2);
+  assert.strictEqual(niveau1[1].props.colSpan, 3);
+  assert.strictEqual(niveau1[2].props.colSpan, 3);
+  assert.strictEqual(niveau1[3].props.rowSpan, 2);
+
+  // Niveau 2 : le `label` de chaque série, une fois par parcelle — et plus
+  // jamais répété dans les cellules.
+  const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th');
+  assert.deepStrictEqual(niveau2.map(textOf), [
+    'Réalisé | JH/Ha', 'Budget | JH/Ha', 'Écart | JH/Ha',
+    'Réalisé | JH/Ha', 'Budget | JH/Ha', 'Écart | JH/Ha',
+  ]);
+  // Les clés doivent distinguer les sous-colonnes d'une même parcelle, sinon
+  // React les collisionne en silence.
+  assert.strictEqual(new Set(niveau2.map((n) => n.key)).size, 6);
+});
+
+test('sous-colonnes — le bandeau de groupe couvre TOUTES les sous-colonnes', () => {
+  // Le piège du lot : `colSpan` est le seul endroit qui dépend du nombre de
+  // colonnes. Laissé à `parcelles.length + 2`, le tableau se désaligne sans
+  // qu'aucune erreur ne soit levée.
+  const trois = tds(bodyRows(render(troisSeries('perHa')))[0]);
+  assert.strictEqual(trois.length, 1);
+  assert.strictEqual(trois[0].props.colSpan, 2 * 3 + 2, '2 parcelles × 3 séries + libellé + Total');
+
+  // Une seule série : le colSpan historique, inchangé.
+  const une = tds(bodyRows(render([{ key: 'jh', unit: 'JH', basis: 'total',
+    display: 'total', format: un }]))[0]);
+  assert.strictEqual(une[0].props.colSpan, 2 + 2);
+});
+
+test('sous-colonnes — une seule série : AUCUN éclatement (rendu historique)', () => {
+  const tree = render([{ key: 'jh', label: 'Réalisé', unit: 'JH/Ha', basis: 'total',
+    display: 'perHa', format: un }]);
+  // Un seul <tr> d'en-tête, un <td> par parcelle, unité dans la cellule.
+  assert.strictEqual(walk(section(tree, 'thead')).filter((n) => n.type === 'tr').length, 1);
+  assert.strictEqual(headerThs(tree).length, 4);
+  assert.strictEqual(tds(bodyRows(tree)[1]).length, 4);
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]).slice(1),
+    ['5.0 | JH/Ha', '5.0 | JH/Ha', '5.0 | JH/Ha']);
+});
+
+test('sous-colonnes — clic sur la SEULE sous-colonne du réalisé, survol sur toute la cellule', () => {
+  const vus = [];
+  const tree = render(troisSeries('perHa'), { onCellClick: (c) => vus.push(c) });
+  const ligne = tds(bodyRows(tree)[1]);
+  // Sous-colonnes de P2 : indices 1, 2, 3 (0 = libellé).
+  assert.strictEqual(typeof ligne[1].props.onClick, 'function');
+  assert.strictEqual(ligne[1].props.style.cursor, 'pointer');
+  // Deux zones cliquables de plus pour le MÊME détail n'apporteraient rien.
+  assert.strictEqual(ligne[2].props.onClick, undefined);
+  assert.strictEqual(ligne[3].props.onClick, undefined);
+  assert.strictEqual(ligne[2].props.style.cursor, undefined);
+  ligne[1].props.onClick();
+  assert.strictEqual(vus.length, 1);
+  assert.strictEqual(vus[0].parcelle, 'P2');
+
+  // Le survol, lui, est porté par les TROIS sous-cellules et les colore toutes
+  // les trois — un survol qui n'en colorerait qu'une ferait lire trois cellules.
+  const faux = [{ style: {} }, { style: {} }, { style: {} }, { style: {} }, { style: {} }];
+  const evt = (i) => ({ currentTarget: { parentNode: { children: faux } } });
+  [1, 2, 3].forEach((i) => {
+    assert.strictEqual(typeof ligne[i].props.onMouseEnter, 'function', 'sous-colonne ' + i);
+    faux.forEach((f) => { f.style.background = ''; });
+    ligne[i].props.onMouseEnter(evt(i));
+    assert.deepStrictEqual(faux.map((f) => f.style.background),
+      ['', '#fdf4f8', '#fdf4f8', '#fdf4f8', '']);
+    ligne[i].props.onMouseLeave(evt(i));
+    assert.deepStrictEqual(faux.map((f) => f.style.background), ['', '', '', '', '']);
+  });
+});
+
+test('sous-colonnes — une cellule ABSENTE occupe quand même ses K colonnes', () => {
+  // Sans ça, les colonnes se décalent d'une ligne à l'autre — et le survol,
+  // qui repère ses voisines par position, colorerait la mauvaise parcelle.
+  const grouped = [{ type: 'famille', key: 'GB09', label: 'Taille',
+    pivot: { P2: { jh: 10, ha: 2, budget: 6 } } }];
+  const ligne = tds(bodyRows(render(troisSeries('perHa'), { groupedRows: grouped }))[0]);
+  assert.strictEqual(ligne.length, 1 + 2 * 3 + 1);
+  ligne.forEach((td) => assert.strictEqual(td.props.colSpan, undefined));
+  assert.deepStrictEqual(cells(bodyRows(render(troisSeries('perHa'),
+    { groupedRows: grouped }))[0]).slice(4, 7), ['—', '—', '—']);
 });
 
 test('metrics — le nom de la série n\'apparaît QUE s\'il y en a plusieurs', () => {
@@ -189,7 +293,7 @@ test('metrics — Ha inconnu : « — » quand la conversion en dépend, valeur 
     { key: 'jh', label: 'Réalisé', unit: 'JH/Ha', basis: 'total', display: 'perHa', format: un },
     { key: 'budget', label: 'Budget', unit: 'JH/Ha', basis: 'perHa', display: 'perHa', format: un },
   ], { parcelles: parcelles, groupedRows: grouped });
-  assert.strictEqual(cells(bodyRows(parHa)[0])[1], '— | Réalisé JH/Ha | 3.0 | Budget JH/Ha');
+  assert.deepStrictEqual(cells(bodyRows(parHa)[0]).slice(1, 3), ['—', '3.0']);
 
   // En Total, c'est l'inverse : le réalisé est brut, le budget n'est pas
   // convertible sans le Ha.
@@ -197,7 +301,7 @@ test('metrics — Ha inconnu : « — » quand la conversion en dépend, valeur 
     { key: 'jh', label: 'Réalisé', unit: 'JH', basis: 'total', display: 'total', format: un },
     { key: 'budget', label: 'Budget', unit: 'JH', basis: 'perHa', display: 'total', format: un },
   ], { parcelles: parcelles, groupedRows: grouped });
-  assert.strictEqual(cells(bodyRows(total)[0])[1], '7.0 | Réalisé JH | — | Budget JH');
+  assert.deepStrictEqual(cells(bodyRows(total)[0]).slice(1, 3), ['7.0', '—']);
 });
 
 test('metrics — valeur ABSENTE : « — », jamais 0 (cas nominal « pas de budget »)', () => {
@@ -216,14 +320,12 @@ test('metrics — valeur ABSENTE : « — », jamais 0 (cas nominal « pas de bu
     { key: 'budget', label: 'Budget', unit: 'JH/Ha', basis: 'perHa', display: 'perHa', format: un },
     { label: 'Écart', unit: 'JH/Ha', get: ecart, basis: 'total', display: 'perHa', format: signe },
   ], { parcelles: parcelles, groupedRows: grouped });
-  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1, 3), [
-    '5.0 | Réalisé JH/Ha | 6.0 | Budget JH/Ha | -1.0 | Écart JH/Ha',
-    '5.0 | Réalisé JH/Ha | — | Budget JH/Ha | — | Écart JH/Ha',
-  ]);
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1, 7),
+    ['5.0', '6.0', '-1.0', '5.0', '—', '—']);
   // Une valeur absente ne pèse rien dans les agrégats : le budget total est
   // celui du PÉRIMÈTRE BUDGÉTÉ (12 JH / 6 Ha = 2.0), et l'écart aussi
   // (−2 JH / 6 Ha = −0.3). Le réalisé, lui, reste complet (30 JH / 6 Ha).
-  assert.strictEqual(cells(bodyRows(tree)[0])[3],
+  assert.strictEqual(cells(bodyRows(tree)[0])[7],
     '5.0 | Réalisé JH/Ha | 2.0 | Budget JH/Ha | -0.3 | Écart JH/Ha');
 });
 
@@ -252,16 +354,16 @@ test('agrégats — ligne et colonne ENTIÈREMENT non budgétées : « — », j
 
   // LIGNE entièrement non budgétée (Récolte) : total de ligne « — » sur budget
   // et écart, mais le réalisé reste complet.
-  assert.strictEqual(cells(bodyRows(tree)[1])[3],
+  assert.strictEqual(cells(bodyRows(tree)[1])[7],
     '20.0 | Réalisé JH | — | Budget JH | — | Écart JH');
   // LIGNE partiellement budgétée (Taille) : périmètre budgété, inchangé.
-  assert.strictEqual(cells(bodyRows(tree)[0])[3],
+  assert.strictEqual(cells(bodyRows(tree)[0])[7],
     '30.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH');
   // COLONNE entièrement non budgétée (P4) : idem au pied de tableau.
   assert.deepStrictEqual(cells(footRow(tree)), [
     'TOTAL',
-    '18.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH',
-    '32.0 | Réalisé JH | — | Budget JH | — | Écart JH',
+    '18.0', '12.0', '-2.0',
+    '32.0', '—', '—',
     '50.0 | Réalisé JH | 12.0 | Budget JH | -2.0 | Écart JH',
   ]);
 });
@@ -320,13 +422,9 @@ test('grille — une cellule sans detailRows n\'est jamais cliquable (pop-up vid
 test('grille — `note` : légende sous la grille et title sur l\'en-tête Total', () => {
   const tree = render(troisSeries('perHa'), { note: 'Périmètre budgété uniquement' });
   assert.ok(textOf(tree).indexOf('Périmètre budgété uniquement') >= 0);
-  const totalTh = walk(section(tree, 'thead')).filter(function (n) { return n.type === 'th'; }).pop();
-  assert.strictEqual(totalTh.props.title, 'Périmètre budgété uniquement');
+  assert.strictEqual(totalTh(tree).props.title, 'Périmètre budgété uniquement');
   // Sans `note`, aucun bruit ajouté (et pas de title vide).
-  const sans = render(troisSeries('perHa'));
-  assert.strictEqual(
-    walk(section(sans, 'thead')).filter(function (n) { return n.type === 'th'; }).pop().props.title,
-    undefined);
+  assert.strictEqual(totalTh(render(troisSeries('perHa'))).props.title, undefined);
 });
 
 test('metrics — une valeur non finie est indéterminable, jamais affichée', () => {
@@ -340,9 +438,9 @@ test('metrics — une valeur non finie est indéterminable, jamais affichée', (
     { label: 'Infini', unit: 'JH', get: function () { return 1 / 0; },
       basis: 'total', display: 'total', format: un },
   ], { parcelles: [['P2', 2]], groupedRows: grouped });
-  assert.strictEqual(cells(bodyRows(tree)[0])[1], '— | Bancal JH | — | Infini JH');
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1, 3), ['—', '—']);
   // Aucune cellule renseignée → le total ne vaut pas 0, il n'existe pas.
-  assert.strictEqual(cells(bodyRows(tree)[0])[2], '— | Bancal JH | — | Infini JH');
+  assert.strictEqual(cells(bodyRows(tree)[0])[3], '— | Bancal JH | — | Infini JH');
 });
 
 test('metrics — le bandeau de groupe ne résume que la PREMIÈRE série', () => {
@@ -377,8 +475,8 @@ test('grille — libellé de parcelle et de première colonne paramétrables', (
     parcelleLabel: function (k) { return 'Parcelle ' + k; },
     firstColumnLabel: 'Poste',
   });
-  const ths = walk(section(tree, 'thead')).filter(function (n) { return n.type === 'th'; });
-  assert.deepStrictEqual(ths.map(textOf),
+  const trs = walk(section(tree, 'thead')).filter(function (n) { return n.type === 'tr'; });
+  assert.deepStrictEqual((trs[0].children || []).filter((c) => c.type === 'th').map(textOf),
     ['Poste', 'Parcelle P2 | 2 Ha', 'Parcelle P4 | 4 Ha', 'Total']);
 });
 

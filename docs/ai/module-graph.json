@@ -27,11 +27,11 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 15,
+        "commits": 16,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 15,
+        "commits": 16,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8d668123d9c38409",
+    "sourceFingerprint": "sha256:4dbcd6ffff87ae89",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -777,7 +777,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 14,
+          "coCommits": 15,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
