@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:e377896b89da0c39 -->
-# Code Map — Modules lib (153)
+<!-- sourceFingerprint: sha256:9bc599787cf38e96 -->
+# Code Map — Modules lib (155)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -22,7 +22,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/caisseImport/excelToISO.js | — | excelToISO |
 | functions/lib/caisseImport/index.js | — | parseWorkbook, buildDrySummary, excelToISO, detectCols, CAISSE_FORMATS, SAMPLE_LIMIT |
 | functions/lib/caisseImport/parsers.js | — | parseDepensesMonthly, parsePaieRecap, parseBahiaSingle |
-| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_PURGE_RATIO, OP_KEY_SEP, purgeAutorisee, normCampagne, normLabel, budgetDocId, opKey, splitOpKey, familleDuCode, indexOperations, canonicalizeOperationKeys, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, writeBudgetInTransaction |
+| functions/lib/campagneBudget/culture.js | — | normCulture, resolveCulture |
+| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_QUINZAINES, MAX_PURGE_RATIO, CULTURES_BUDGET_QUINZAINE, OP_KEY_SEP, quinzaineKey, quinzaineNum, purgeAutorisee, normCampagne, normLabel, budgetDocId, opKey, splitOpKey, familleDuCode, indexOperations, canonicalizeOperationKeys, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, mergeBudgetsQuinzaine, quinzainesSupprimees, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, purgeQuinzainesInconnues, writeBudgetInTransaction |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
@@ -134,6 +135,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
 | public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
+| public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
 | public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
 | public/lib/campagneRythme.js | CampagneRythme | CLASSES, QUINZAINES_PAR_MOIS, FENETRE_PAR_DEFAUT, MIN_QUINZAINES_CONSOMMEES, quinzaineNum, totalQuinzaines, quinzainesInfo, indexClasses, classeOf, classeFamille, resteBudgetCellule, moyenneMobile, resteRythmeCellule, decoreRestes, noteRestes |
 | public/lib/campagneUtils.js | CampagneUtils | campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne |

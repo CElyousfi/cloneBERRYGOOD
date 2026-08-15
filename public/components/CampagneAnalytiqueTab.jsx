@@ -1202,9 +1202,21 @@
     var _detailCell = useState(null);
     var detailCell = _detailCell[0]; var setDetailCell = _detailCell[1];
 
+    // États de la VUE QUINZAINE — ajoutés APRÈS les précédents à dessein :
+    // l'ordre des useState est l'index de state de React, le décaler renumérote
+    // tout (et casse le harnais de test qui injecte les états par position).
+    var _vueQuinzaine = useState(false);
+    var vueQuinzaine = _vueQuinzaine[0]; var setVueQuinzaine = _vueQuinzaine[1];
+    // '' = suivre la quinzaine EN COURS (défaut). Une valeur explicite = l'
+    // utilisateur consulte/corrige une quinzaine passée, et ce choix ne doit pas
+    // sauter au prochain rendu.
+    var _quinzaineSel = useState('');
+    var quinzaineSel = _quinzaineSel[0]; var setQuinzaineSel = _quinzaineSel[1];
+
     var Grid = window.PivotAnalytiqueGrid;
     var AU = window.AnalytiqueUtils;
     var CR = window.CampagneRythme;
+    var CBQ = window.CampagneBudgetQuinzaine;
 
     // Avancement de la campagne, lu sur la MÊME réponse que le réalisé affiché
     // (`periodes` + `campagne` de campagne-analytique-detail) : les quinzaines
@@ -1233,6 +1245,38 @@
     var isJh = metric === 'jh';
     var uniteJh = totalMode ? 'JH' : 'JH/Ha';
     var fmtJh1 = function (v) { return (Math.round(v * 10) / 10).toFixed(1); };
+
+    // Quinzaines de la campagne, DÉRIVÉES des mêmes `periodes` que le réalisé
+    // (jamais un calendrier local, jamais un « 24 » en dur).
+    var quinzaineOptions = useMemo(function () {
+      if (!CBQ) return [];
+      return CBQ.optionsFromPeriodes(data.periodes);
+    }, [CBQ, data.periodes]);
+
+    // Quinzaine EN COURS = dernière vue dans les `periodes` (celle qu'on est en
+    // train de pointer). C'est le défaut du sélecteur.
+    var quinzaineCourante = CBQ && quinzaines ? CBQ.quinzaineCourante(quinzaines) : '';
+    // Un choix explicite disparu des options (rechargement, changement de
+    // campagne) retombe sur la quinzaine en cours plutôt que d'afficher une vue
+    // vide sans explication.
+    var quinzaineActive = (quinzaineSel && quinzaineOptions.some(function (o) {
+      return o.key === quinzaineSel;
+    })) ? quinzaineSel : quinzaineCourante;
+    var quinzaineInfoSel = null;
+    quinzaineOptions.forEach(function (o) { if (o.key === quinzaineActive) quinzaineInfoSel = o; });
+
+    var quinzainesByLabel = props.quinzainesByLabel || {};
+    // Y a-t-il un engagement saisi, quelque part, sur la quinzaine affichée ?
+    // Sinon la bascule ne mènerait qu'à des « — » : on ne la propose pas.
+    var hasQuinzaineBudget = !!(CBQ && quinzaineActive
+      && Object.keys(CBQ.trancheQuinzaine(quinzainesByLabel, quinzaineActive)).some(function (l) {
+        return Object.keys(CBQ.trancheQuinzaine(quinzainesByLabel, quinzaineActive)[l] || {}).length > 0;
+      }));
+    // La vue quinzaine n'a de sens qu'en JH (un engagement est saisi en JH/Ha,
+    // il n'a aucune traduction en DH) et seulement s'il y a un engagement.
+    var quinzaineDispo = !!(CBQ && Grid && isJh && hasQuinzaineBudget);
+    var enQuinzaine = vueQuinzaine && quinzaineDispo;
+
     var metrics = [{
       key: isJh ? 'jh' : 'cout',
       label: isJh ? 'Réalisé' : 'Coût',
@@ -1308,6 +1352,60 @@
       },
     ]);
 
+    /**
+     * VUE QUINZAINE — trois séries, jamais empilées sur les quatre de la vue
+     * annuelle (Réalisé, Budget, Reste budg., Reste rythme).
+     *
+     * ── POURQUOI UNE BASCULE ET NON DEUX SÉRIES DE PLUS ───────────────────────
+     * Six séries dans une cellule de 110 px de large ne se lisent pas, et se
+     * lisent encore moins au téléphone (c'est là que la validation se fait). Mais
+     * la raison n'est pas que cosmétique : les deux vues répondent à DEUX
+     * questions différentes, et leurs chiffres ne se comparent pas.
+     *   - annuelle  : « où en est la campagne, va-t-on tenir le budget ? »
+     *     (cumul depuis juillet, projection jusqu'en juin) ;
+     *   - quinzaine : « ce que j'ai engagé il y a 15 jours, l'ai-je consommé ? »
+     *     (une seule période, aucun lien de somme avec l'annuel).
+     * Les afficher ensemble inviterait à soustraire un chiffre de quinzaine d'un
+     * reste annuel — l'erreur de lecture qu'on ne pourrait plus rattraper.
+     * La bascule garde chaque vue à trois ou quatre séries et rend le périmètre
+     * explicite dans la légende.
+     */
+    var metricsQuinzaine = [
+      {
+        key: 'jhQuinzaine',
+        label: 'Réalisé quinz.',
+        unit: uniteJh,
+        basis: 'total',
+        display: totalMode ? 'total' : 'perHa',
+        format: fmtJh1,
+        summary: function (t) { return Math.round(t).toLocaleString('fr-MA') + ' JH sur la quinzaine'; },
+      },
+      {
+        key: 'budgetQuinzaine',
+        label: 'Engagé quinz.',
+        unit: uniteJh,
+        basis: 'perHa',
+        display: totalMode ? 'total' : 'perHa',
+        format: fmtJh1,
+      },
+      {
+        label: 'Consommé',
+        unit: '%',
+        // Série RATIO : les totaux somment numérateur et dénominateur puis
+        // divisent. Une série ordinaire afficherait une SOMME de pourcentages
+        // en pied de colonne (cf. PivotAnalytiqueGrid, section « ratio »).
+        ratio: { parts: CBQ ? CBQ.pctPartsCellule : function () { return null; } },
+        format: function (v) {
+          var pct = Math.round(v * 1000) / 10;
+          var txt = pct.toFixed(1);
+          // Au-delà de 100 %, l'engagement de la quinzaine est dépassé : même
+          // code couleur que les restes négatifs de la vue annuelle.
+          if (!(pct > 100)) return txt;
+          return React.createElement('span', { style: { color: C.berry } }, txt);
+        },
+      },
+    ];
+
     // Repli quand le calcul des restes n'a pas pu tourner (module absent,
     // avancement de campagne illisible) : le périmètre du budget doit rester
     // énoncé, il n'est pas déductible des chiffres affichés.
@@ -1346,7 +1444,30 @@
           function (v) { setTotalMode(v === 'total'); }, 't-'),
         React.createElement('span', { style: { width: '8px' } }),
         CAT_pills([['recap', 'Récap'], ['detail', 'Détail']], detailMode ? 'detail' : 'recap',
-          function (v) { setDetailMode(v === 'detail'); }, 'd-')
+          function (v) { setDetailMode(v === 'detail'); }, 'd-'),
+        // Bascule ANNUEL ↔ QUINZAINE : proposée seulement quand elle mène
+        // quelque part (JH + au moins un engagement saisi sur la quinzaine
+        // affichée). Sinon elle n'ouvrirait qu'une grille de « — ».
+        quinzaineDispo ? React.createElement(React.Fragment, null,
+          React.createElement('span', { style: { width: '8px' } }),
+          CAT_pills([['annuel', 'Annuel'], ['quinzaine', 'Quinzaine']],
+            enQuinzaine ? 'quinzaine' : 'annuel',
+            function (v) { setVueQuinzaine(v === 'quinzaine'); }, 'q-')
+        ) : null,
+        // Sélecteur de quinzaine : la quinzaine en cours par défaut, mais une
+        // quinzaine passée doit rester consultable (c'est le seul moyen de
+        // relire un engagement tenu ou raté).
+        enQuinzaine ? React.createElement('select', {
+          value: quinzaineActive,
+          onChange: function (e) { setQuinzaineSel(e.target.value); },
+          style: {
+            border: '1px solid var(--gray-200)', borderRadius: '8px',
+            padding: '5px 8px', fontSize: '12px', outline: 'none',
+          },
+        }, quinzaineOptions.map(function (o) {
+          return React.createElement('option', { key: o.key, value: o.key },
+            o.label + (o.key === quinzaineCourante ? ' (en cours)' : ''));
+        })) : null
       ),
       detailCell
         ? React.createElement(CAT_DetailPopup, { cell: detailCell, onClose: function () { setDetailCell(null); } })
@@ -1391,19 +1512,44 @@
                   analytique: AU,
                 })
               : null;
+            // VUE QUINZAINE : mêmes lignes, mêmes clés, mêmes colonnes — seules
+            // les séries changent. Le budget de quinzaine passe par le MÊME
+            // indexeur que le budget annuel (résolution famille → code GB), avec
+            // la tranche de la quinzaine affichée : aucune jointure parallèle.
+            // `rules` (CampagneBudgetTab) porte la règle métier injectée dans
+            // l'indexeur : sans elle, pas d'index — jamais un budget deviné.
+            var quinz = (enQuinzaine && CBQ && rules
+              && CBP && typeof CBP.indexBudgets === 'function')
+              ? CBQ.decoreQuinzaine({
+                  groupedRows: sup ? sup.groupedRows : pivot.groupedRows,
+                  parcelles: pivot.parcelles,
+                  num: CBQ.quinzaineNum(quinzaineActive),
+                  budgetIndex: CBP.indexBudgets(Object.assign({}, budgetArgs, {
+                    budgetsByLabel: CBQ.trancheQuinzaine(quinzainesByLabel, quinzaineActive),
+                    opBudgetsByLabel: {},
+                  })),
+                })
+              : null;
             return React.createElement(Grid, {
               key: g.culture,
               parcelles: pivot.parcelles,
-              groupedRows: res ? res.groupedRows : (sup ? sup.groupedRows : pivot.groupedRows),
-              metrics: res ? metricsRestes : ((sup && sup.hasBudget) ? metricsBudget : metrics),
+              groupedRows: quinz
+                ? quinz.groupedRows
+                : (res ? res.groupedRows : (sup ? sup.groupedRows : pivot.groupedRows)),
+              metrics: quinz
+                ? metricsQuinzaine
+                : (res ? metricsRestes : ((sup && sup.hasBudget) ? metricsBudget : metrics)),
               // Le périmètre est COMPTÉ, pas seulement énoncé : la Récolte pèse
               // l'essentiel du budget et n'est jamais projetée, donc le total
               // « reste au rythme » est structurellement bien inférieur au
               // total « reste budgété » — sans ce compte, ça se lit comme une
               // sous-consommation massive.
-              note: res
-                ? CR.noteRestes(res.perimetre, quinzaines)
-                : ((sup && sup.hasBudget) ? noteBudgetSeul : null),
+              note: quinz
+                ? CBQ.noteQuinzaine(quinzaineInfoSel || { key: quinzaineActive },
+                    quinzaineActive === quinzaineCourante)
+                : (res
+                  ? CR.noteRestes(res.perimetre, quinzaines)
+                  : ((sup && sup.hasBudget) ? noteBudgetSeul : null)),
               color: g.color,
               title: g.culture,
               icon: g.icon,
@@ -1689,6 +1835,12 @@
     var _opBudgets = useState({});
     var opBudgetsByLabel = _opBudgets[0]; var setOpBudgetsByLabel = _opBudgets[1];
 
+    // Budgets DE QUINZAINE (LOT 3b), même source et même fetch : { LABEL_MAJ:
+    // { Q07: { famille: jhParHa } } }. Absent des documents antérieurs → map
+    // vide, aucune migration. Alimente la vue Quinzaine de la grille.
+    var _quinzBudgets = useState({});
+    var quinzainesByLabel = _quinzBudgets[0]; var setQuinzainesByLabel = _quinzBudgets[1];
+
     // Opérations du référentiel des tâches — utilisées UNIQUEMENT pour leur
     // `classe_rythme` (continu / saisonnier / recolte), qui décide si une
     // opération se projette. Liste vide ou champ absent = aucune classe connue
@@ -1710,6 +1862,8 @@
           if (cancelled || !d || !d.success) return;
           setBudgetsByLabel(CAT_budgetsByLabel(d.budgets || []));
           setOpBudgetsByLabel(CAT_opBudgetsByLabel(d.budgets || []));
+          var _cbq = window.CampagneBudgetQuinzaine;
+          setQuinzainesByLabel(_cbq ? _cbq.quinzainesByLabel(d.budgets || []) : {});
         })
         .catch(function () {});
       return function () { cancelled = true; };
@@ -1924,6 +2078,7 @@
                 sbMap: sbMap,
                 budgetsByLabel: budgetsByLabel,
                 opBudgetsByLabel: opBudgetsByLabel,
+                quinzainesByLabel: quinzainesByLabel,
                 refOperations: refOperations,
                 metric: metric,
                 setMetric: setMetric,

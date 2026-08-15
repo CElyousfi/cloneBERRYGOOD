@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:eeff5a0aa8b99de6 -->
-# Code Map — Composants frontend (319)
+<!-- sourceFingerprint: sha256:8060bba2af7e66c0 -->
+# Code Map — Composants frontend (321)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -65,8 +65,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60380 | — |
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1628 | campagne |
-| CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:568 | — |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1774 | campagne |
+| CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:678 | — |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
 | CanevaFinanceQueue | public/app.jsx:60920 | — |
@@ -84,8 +84,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CAT_pillStyle | public/components/CampagneAnalytiqueTab.jsx:1033 | — |
 | CAT_pivotRows | public/components/CampagneAnalytiqueTab.jsx:279 | — |
 | CBT_budgetsByLabel | public/components/CampagneBudgetTab.jsx:261 | — |
-| CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:414 | — |
-| CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:556 | — |
+| CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:470 | — |
+| CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:666 | — |
 | CBT_familleDuCode | public/components/CampagneBudgetTab.jsx:176 | — |
 | CBT_famillesFromOps | public/components/CampagneBudgetTab.jsx:209 | — |
 | CBT_famillesNeutralisees | public/components/CampagneBudgetTab.jsx:351 | — |
@@ -96,9 +96,11 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CBT_operationsByLabel | public/components/CampagneBudgetTab.jsx:279 | — |
 | CBT_opKey | public/components/CampagneBudgetTab.jsx:140 | — |
 | CBT_opsByFamille | public/components/CampagneBudgetTab.jsx:238 | — |
-| CBT_saveMessage | public/components/CampagneBudgetTab.jsx:486 | — |
+| CBT_quinzaineApplicable | public/components/CampagneBudgetTab.jsx:409 | — |
+| CBT_quinzainesSupprimees | public/components/CampagneBudgetTab.jsx:428 | — |
+| CBT_saveMessage | public/components/CampagneBudgetTab.jsx:566 | — |
 | CBT_splitOpKey | public/components/CampagneBudgetTab.jsx:153 | — |
-| CBT_totalJH | public/components/CampagneBudgetTab.jsx:549 | — |
+| CBT_totalJH | public/components/CampagneBudgetTab.jsx:659 | — |
 | ChargementSub | public/app.jsx:24257 | — |
 | ChartSVG | public/app.jsx:41604 | — |
 | ChefAgronomieTab | public/app.jsx:45762 | chef_agronomie |
@@ -114,7 +116,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62005 | coming_soon |
 | ConditionnementSub | public/app.jsx:24300 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1422 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1568 | — |
 | CoutRecolteTab | public/app.jsx:8647 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
@@ -244,7 +246,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PGP_haSb | public/components/ParcellesGroupesPanel.jsx:49 | — |
 | PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:130 | — |
 | PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:90 | — |
-| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:215 | — |
+| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:274 | — |
 | PivotView | public/components/CampagneAnalytiqueTab.jsx:1190 | — |
 | PlanificationTab | public/app.jsx:28967 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |

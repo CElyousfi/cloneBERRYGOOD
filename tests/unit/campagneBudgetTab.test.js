@@ -984,8 +984,11 @@ test('rendu — un changement de parcelle (ou un Rafraîchir) ferme la confirmat
     return spy.sets.some(function (s) { return s.index === S.confirmList && s.value === null; });
   });
   assert.strictEqual(resets.length, 1, 'un effet doit invalider la confirmation');
-  assert.deepStrictEqual(plain(resets[0].deps), ['F5- CASCADE -S13', 0],
-    'invalidée par la parcelle sélectionnée ET par tick (Rafraîchir)');
+  // La QUINZAINE éditée entre dans les dépendances au même titre : le panneau
+  // afficherait sinon les engagements de la quinzaine A pendant que l'écriture
+  // porterait sur la B.
+  assert.deepStrictEqual(plain(resets[0].deps), ['F5- CASCADE -S13', 0, ''],
+    'invalidée par la parcelle sélectionnée, par tick (Rafraîchir) ET par la quinzaine');
 });
 
 test('rendu — une confirmation PÉRIMÉE n\'écrit rien (bretelles)', () => {

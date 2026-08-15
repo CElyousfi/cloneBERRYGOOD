@@ -93,6 +93,9 @@ const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
 // Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
 const campagneBudget = require("./lib/campagneBudget/validate");
+// Miroir backend de public/lib/cultureUtils.js — gating avocatier du budget de
+// quinzaine (le backend ne peut PAS requérir public/, cf. CLAUDE.md).
+const campagneBudgetCulture = require("./lib/campagneBudget/culture");
 const POINTAGE_FERMES = ["F1", "F5", "Avocatier", "BAHIA"];
 
 // SQL — lazy-loaded to avoid loading mssql when USE_MIRROR=true
@@ -4114,6 +4117,13 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       //                          précédent + familles sans détail, ex.
       //                          « Service générale ») ;
       //   `budgets_operations` = JH/Ha au niveau opération (famille → opération).
+      //   `budgets_quinzaine`  = JH/Ha ENGAGÉS sur une quinzaine donnée
+      //                          (quinzaine → famille), LOT 3b. Orthogonal aux
+      //                          deux précédents : aucune contrainte de somme
+      //                          avec le budget annuel, l'écart est une
+      //                          information. Réservé aux cultures budgétées
+      //                          (Framboise/Myrtille) — avocatier refusé côté
+      //                          serveur, pas seulement masqué à l'écran.
       // Total d'une famille = somme de ses opérations si elle en porte, sinon
       // sa valeur de famille (campagneBudget.familleTotal) — jamais les deux.
       // La campagne fait partie de la clé (contrairement à
@@ -4162,6 +4172,10 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               campagneBudget.canonicalizeOperationKeys(d.budgets_operations, operationsConnuesListB),
               {}
             ),
+            // Budget de QUINZAINE (engagement court terme, maille famille).
+            // Champ additif : absent des documents antérieurs → {} (aucune
+            // migration). Les clés sont canonisées en lecture ('Q07').
+            budgets_quinzaine: campagneBudget.mergeBudgetsQuinzaine(d.budgets_quinzaine, {}),
           });
         });
         budgets.sort((a, b) => (a.label_bee_one || "").localeCompare(b.label_bee_one || ""));
@@ -4193,17 +4207,29 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         // Labels AUTORISÉS = référentiel parcelles Smart Berry.
         const refSnapB = await db_firestore.collection("sb_parcelle_referentiel").get();
         const labelsConnusB = [];
+        const sbMapB = {};
         refSnapB.forEach((doc) => {
           const d = doc.data() || {};
           const lbl = (d.label_bee_one || doc.id || "").trim();
           if (lbl) labelsConnusB.push(lbl);
+          if (lbl) sbMapB[lbl.toUpperCase()] = d;
         });
+        // Culture de la parcelle, résolue par le MIROIR de CultureUtils
+        // (lib/campagneBudget/culture.js) : `culture_sb` prioritaire, sinon repli
+        // sur le libellé. Sert UNIQUEMENT le gating avocatier du budget de
+        // quinzaine — le budget annuel, lui, reste ouvert à toutes les cultures
+        // (473 valeurs en production, dont le périmètre n'est pas modifié ici).
+        const cultureB = campagneBudgetCulture.resolveCulture(
+          { label: bodyB.label_bee_one }, sbMapB
+        );
 
         const verdictB = campagneBudget.validateBudgetSave({
           campagne: bodyB.campagne || campagneCourante(),
           label_bee_one: bodyB.label_bee_one,
           budgets: bodyB.budgets,
           budgets_operations: bodyB.budgets_operations,
+          budgets_quinzaine: bodyB.budgets_quinzaine,
+          culture: cultureB,
           famillesConnues: famillesConnuesB,
           operationsConnues: operationsConnuesB,
           labelsConnus: labelsConnusB,
@@ -4226,6 +4252,7 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
             label: verdictB.label,
             budgets: verdictB.budgets,
             budgets_operations: verdictB.budgets_operations,
+            budgets_quinzaine: verdictB.budgets_quinzaine,
             famillesConnues: famillesConnuesB,
             operationsConnues: operationsConnuesB,
             uid: (_authUserB && _authUserB.uid) || null,
@@ -4241,13 +4268,20 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         const afterDataB = (afterB.exists && afterB.data()) || {};
         const persistedB = afterDataB.budgets || {};
         const persistedOpsB = afterDataB.budgets_operations || {};
+        const persistedQuinzB = afterDataB.budgets_quinzaine || {};
 
         return res.json({
           success: true, id: verdictB.docId, campagne: verdictB.campagne,
           label_bee_one: verdictB.label, budgets: persistedB,
           budgets_operations: persistedOpsB,
+          budgets_quinzaine: persistedQuinzB,
           familles_purgees: writeB.purgees,
           operations_purgees: writeB.operations_purgees,
+          quinzaines_purgees: writeB.quinzaines_purgees,
+          // Valeurs de quinzaine réellement disparues (comparaison avant/après
+          // dans la transaction) — une suppression de saisie n'est jamais
+          // silencieuse, même quand elle est demandée.
+          quinzaines_supprimees: writeB.quinzaines_supprimees,
           // Valeurs de famille remplacées par le détail des opérations, et
           // purge reportée faute d'ampleur plausible : deux effets de bord
           // possibles d'un save, remontés pour être AFFICHÉS (jamais silencieux).
