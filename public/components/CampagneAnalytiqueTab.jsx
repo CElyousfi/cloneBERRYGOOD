@@ -1640,6 +1640,11 @@
                   })),
                 })
               : null;
+            // Séries réellement affichées : elles décident AUSSI de la colonne
+            // Total (cf. `showTotal` plus bas), d'où l'extraction en variable.
+            var metricsAffichees = quinz
+              ? metricsQuinzaine
+              : ((sup && sup.hasBudget) ? metricsBudget : metrics);
             // Chaque grille est encapsulée pour porter SON bouton plein écran,
             // posé sur son bandeau de titre (position absolue) : c'est la
             // culture qu'on regarde qu'on veut agrandir, pas « la première ».
@@ -1653,9 +1658,7 @@
               groupedRows: quinz
                 ? quinz.groupedRows
                 : (sup ? sup.groupedRows : pivot.groupedRows),
-              metrics: quinz
-                ? metricsQuinzaine
-                : ((sup && sup.hasBudget) ? metricsBudget : metrics),
+              metrics: metricsAffichees,
               // Le périmètre du budget n'est PAS déductible des chiffres
               // affichés (un « % consommé » à 130 % sur une ligne dont la
               // moitié des familles n'est pas budgétée se lit comme une erreur
@@ -1667,14 +1670,14 @@
               color: g.color,
               title: g.culture,
               icon: g.icon,
-              // ⚠️ La colonne Total est RETIRÉE de cet écran, et de lui seul.
-              // C'était le dernier pavé de texte de la grille : seule colonne
-              // où les séries restent empilées avec leur libellé (« 13.3 /
-              // Budget JH/Ha / 0.0 % / % consommé »), au bout d'un tableau par
-              // ailleurs entièrement en sous-colonnes. Le panneau Affectation
-              // Analytique de l'écran Quinzaine, lui, la GARDE : il ne passe
-              // pas cette prop, dont le défaut est `true`.
-              showTotal: false,
+              // La colonne Total ne revient qu'EN PLEIN ÉCRAN, et seulement à
+              // plusieurs séries — c'est là qu'elle s'éclate en sous-colonnes
+              // lisibles. En mode normal (plusieurs cultures empilées, largeur
+              // contrainte) elle manquerait de place ; à une seule série elle
+              // n'apporterait qu'une colonne de plus à un tableau déjà lisible.
+              // Le panneau Affectation Analytique de l'écran Quinzaine, lui, la
+              // GARDE toujours : il ne passe pas cette prop, défaut `true`.
+              showTotal: enPlein && metricsAffichees.length > 1,
               parcelleLabel: function (k) { return sbNom(k, sbMap); },
               onCellClick: function (c) {
                 setDetailCell(Object.assign({ parcelleLabel: sbNom(c.parcelle, sbMap) }, c));
