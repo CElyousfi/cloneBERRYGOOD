@@ -1169,6 +1169,169 @@
   }
 
   /**
+   * Valeurs qui vont être ÉCRASÉES, parcelle par parcelle, par un fan-out. PURE.
+   *
+   * Compare l'ENREGISTRÉ au payload RÉELLEMENT construit — jamais à la saisie
+   * brute (même discipline que `CBT_memeNeutralisations`) : ce qui est annoncé
+   * doit être ce qui part sur le réseau, sinon la confirmation ment.
+   *
+   * Une valeur absente (ou 0) en base n'est PAS un écrasement : c'est une
+   * création. Seules les valeurs existantes qui changent — y compris celles qui
+   * passent à 0, donc supprimées — sont comptées.
+   *
+   * @param {Object} args
+   * @param {Array<string>} args.labels parcelles cibles (labels bruts).
+   * @param {{budgets?: Object, budgets_operations?: Object}} args.payload body
+   *   construit par CBT_buildFanoutPayload.
+   * @param {Object<string, Object<string, *>>} [args.budgetsByLabel] indexé en
+   *   MAJUSCULES.
+   * @param {Object<string, Object<string, Object<string, *>>>}
+   *   [args.opBudgetsByLabel] indexé en MAJUSCULES.
+   * @returns {Array<{label: string, nb: number, exemples: Array<{champ: string,
+   *   avant: number, apres: number}>}>} uniquement les parcelles porteuses d'au
+   *   moins un écrasement, dans l'ordre des labels. 3 exemples au plus.
+   */
+  function CBT_fanoutEcrasements(args) {
+    var a = args || {};
+    var payload = a.payload || {};
+    var budgets = payload.budgets || {};
+    var ops = payload.budgets_operations || {};
+    var byLabel = a.budgetsByLabel || {};
+    var opsByLabel = a.opBudgetsByLabel || {};
+    var out = [];
+    (a.labels || []).forEach(function (label) {
+      var key = String(label == null ? '' : label).trim().toUpperCase();
+      if (!key) return;
+      var avantFam = byLabel[key] || {};
+      var avantOps = opsByLabel[key] || {};
+      var nb = 0;
+      var exemples = [];
+      function ajoute(champ, avant, apres) {
+        if (!(avant > 0)) return;
+        if (avant === apres) return;
+        nb += 1;
+        if (exemples.length < 3) exemples.push({ champ: champ, avant: avant, apres: apres });
+      }
+      Object.keys(budgets).forEach(function (f) {
+        ajoute(f, CBT_num(avantFam[f]), CBT_num(budgets[f]));
+      });
+      Object.keys(ops).forEach(function (f) {
+        var famAvant = avantOps[f] || {};
+        Object.keys(ops[f] || {}).forEach(function (op) {
+          ajoute(f + ' — ' + CBT_operationLabel(op), CBT_num(famAvant[op]), CBT_num(ops[f][op]));
+        });
+      });
+      if (nb > 0) out.push({ label: label, nb: nb, exemples: exemples });
+    });
+    return out;
+  }
+
+  /**
+   * Deux périmètres de fan-out décrivent-ils EXACTEMENT le même effet ? PURE.
+   *
+   * Même rôle que `CBT_memeNeutralisations` : refuser une confirmation devenue
+   * caduque (cible changée, données rechargées, saisie modifiée entre-temps).
+   *
+   * @param {Array<{label?: *, nb?: *}>|null|undefined} a
+   * @param {Array<{label?: *, nb?: *}>|null|undefined} b
+   * @returns {boolean}
+   */
+  function CBT_memeFanout(a, b) {
+    function cle(list) {
+      return (Array.isArray(list) ? list : [])
+        .map(function (e) {
+          if (!e || typeof e !== 'object') return '';
+          return String(e.label) + '|' + CBT_num(e.nb);
+        })
+        .sort()
+        .join('§');
+    }
+    return cle(a) === cle(b);
+  }
+
+  /**
+   * Message de retour d'un enregistrement en portée MULTIPLE. PURE.
+   *
+   * RÈGLES, dans cet ordre :
+   *   1. `results` absent alors qu'on a demandé plusieurs parcelles → JAMAIS
+   *      vert. C'est la signature du skew de déploiement (les functions partent
+   *      avant le hosting) : un backend antérieur ignore `labels` et n'écrit
+   *      qu'UNE parcelle. On ne sait pas ce qui a été écrit, on le dit.
+   *   2. Au moins un échec → `type:'ko'`. Un succès PARTIEL n'est jamais vert :
+   *      18/23 enregistrées, c'est 5 parcelles dont le budget est faux.
+   *   3. Tout OK avec effets de bord (purges, neutralisations) → succès `purge`
+   *      (ambre), noms tronqués à 3 + « et N autres » pour rester lisible sur un
+   *      téléphone.
+   *
+   * @param {{results?: Array<Object>, echecs?: Array<Object>}|null|undefined} res
+   *   réponse de `campagne-budget-save`.
+   * @param {number} nbDemandes nombre de parcelles cibles demandées.
+   * @param {function(string): string} [nomOf] nom affichable d'une parcelle
+   *   (INJECTÉ — `cbtNom` au call site) ; identité par défaut.
+   * @returns {{type: string, text: string, purge?: boolean}}
+   */
+  function CBT_fanoutMessage(res, nbDemandes, nomOf) {
+    var n = CBT_num(nbDemandes) > 0 ? CBT_num(nbDemandes) : 1;
+    var nom = typeof nomOf === 'function' ? nomOf : function (l) { return String(l); };
+    function liste(labels) {
+      var noms = labels.slice(0, 3).map(nom);
+      return noms.join(', ') + (labels.length > 3 ? ' et ' + (labels.length - 3) + ' autres' : '');
+    }
+    var results = Array.isArray(res && res.results) ? res.results : null;
+    if (!results) {
+      // Réponse d'un backend qui ne connaît pas `labels` : il a écrit UNE
+      // parcelle (celle de `label_bee_one`) et n'a rien dit des autres.
+      return {
+        type: 'ko',
+        text: 'Le serveur n\'a pas traité les ' + n + ' parcelles (version antérieure)'
+          + ' — au plus une a été enregistrée. Rafraîchir avant de réessayer.',
+      };
+    }
+    var oks = results.filter(function (r) { return r && r.ok; });
+    var kos = results.filter(function (r) { return !(r && r.ok); });
+    if (kos.length > 0) {
+      return {
+        type: 'ko',
+        text: oks.length + '/' + n + ' parcelles enregistrées — ' + kos.length + ' en échec : '
+          + liste(kos.map(function (r) { return String((r && r.label_bee_one) || '?'); }))
+          + '. Rafraîchir avant de réessayer.',
+      };
+    }
+    var base = 'Budget enregistré sur ' + oks.length
+      + (oks.length > 1 ? ' parcelles' : ' parcelle');
+    // Effets de bord agrégés : chaque parcelle a son propre rapport serveur, et
+    // une suppression de données ne doit jamais passer inaperçue — même diluée
+    // dans 23 succès.
+    var avecNeutralisation = [];
+    var avecPurge = [];
+    oks.forEach(function (r) {
+      var lbl = String((r && r.label_bee_one) || '');
+      var neutr = Array.isArray(r.familles_neutralisees) ? r.familles_neutralisees : [];
+      if (neutr.length > 0) avecNeutralisation.push(lbl);
+      var purges = (Array.isArray(r.familles_purgees) ? r.familles_purgees.length : 0)
+        + (Array.isArray(r.operations_purgees) ? r.operations_purgees.length : 0)
+        + (Array.isArray(r.quinzaines_purgees) ? r.quinzaines_purgees.length : 0)
+        + (Array.isArray(r.quinzaines_supprimees) ? r.quinzaines_supprimees.length : 0)
+        + CBT_num(r.purge_differee);
+      if (purges > 0) avecPurge.push(lbl);
+    });
+    if (avecNeutralisation.length === 0 && avecPurge.length === 0) {
+      return { type: 'ok', text: base };
+    }
+    var parts = [];
+    if (avecNeutralisation.length > 0) {
+      parts.push('valeur de famille remplacée par le détail des opérations sur '
+        + avecNeutralisation.length + ' parcelle'
+        + (avecNeutralisation.length > 1 ? 's' : '') + ' : ' + liste(avecNeutralisation));
+    }
+    if (avecPurge.length > 0) {
+      parts.push('entrées obsolètes retirées sur ' + avecPurge.length + ' parcelle'
+        + (avecPurge.length > 1 ? 's' : '') + ' : ' + liste(avecPurge));
+    }
+    return { type: 'ok', purge: true, text: base + ' — ' + parts.join(' ; ') };
+  }
+
+  /**
    * Total JH d'une famille = budget JH/Ha × surface de la parcelle. PURE.
    *
    * @param {*} jhParHa
@@ -1636,17 +1799,140 @@
      * @param {boolean} [confirme] true = l'utilisateur a validé la liste des
      *   valeurs de famille qui vont être remplacées.
      */
+    /**
+     * Familles réellement candidates à l'écriture. En portée multiple, seules
+     * les familles TOUCHÉES partent (cf. CBT_buildFanoutPayload) : calculer les
+     * neutralisations sur toutes les familles affichées y produirait de fausses
+     * alertes sur des familles auxquelles personne n'a touché.
+     */
+    function famillesEnJeu() {
+      if (!porteeMulti) return familles;
+      return familles.filter(function (f) { return !!touched[f]; });
+    }
+
+    /**
+     * Enregistrement en portée MULTIPLE (fan-out). Chemin SÉPARÉ du chemin
+     * mono-parcelle : payload partiel (`CBT_buildFanoutPayload`), confirmation
+     * TOUJOURS requise, et remontée par parcelle.
+     *
+     * @param {boolean} [confirme]
+     */
+    function handleSaveFanout(confirme) {
+      var built = CBT_buildFanoutPayload({
+        campagne: campagne, labels: targetLabels, familles: familles,
+        opsByFamille: opsByFamille, values: values, opValues: opValues,
+        touched: touched, divergentes: divergentes, divergentesOps: divergentesOps,
+      });
+      if (!built.ok) {
+        setConfirmFanout(null);
+        setMsg({ type: 'ko', text: built.error });
+        return;
+      }
+      var ecrasements = CBT_fanoutEcrasements({
+        labels: targetLabels, payload: built.payload,
+        budgetsByLabel: budgetsByLabel, opBudgetsByLabel: opBudgetsByLabel,
+      });
+      var menacees = CBT_famillesNeutralisees({
+        familles: famillesEnJeu(), values: values, opValues: opValues,
+      });
+      // Confirmation TOUJOURS requise, même sans écrasement ni neutralisation :
+      // écrire N parcelles d'un seul geste n'est jamais un geste ordinaire.
+      if (!confirme) {
+        setConfirmFanout({ labels: targetLabels, ecrasements: ecrasements });
+        setConfirmList(menacees);
+        setMsg(null);
+        return;
+      }
+      // Bretelles : ce qui a été confirmé doit être EXACTEMENT ce qui va être
+      // écrit — périmètre ET effets.
+      if (!CBT_memeFanout(confirmFanout && confirmFanout.ecrasements, ecrasements)
+        || !CBT_memeNeutralisations(confirmList, menacees)) {
+        setConfirmFanout({ labels: targetLabels, ecrasements: ecrasements });
+        setConfirmList(menacees.length > 0 ? menacees : null);
+        setMsg({
+          type: 'ko',
+          text: 'La saisie a changé depuis la confirmation — vérifiez, puis enregistrez à nouveau.',
+        });
+        return;
+      }
+      var nbDemandes = targetLabels.length;
+      setConfirmFanout(null);
+      setConfirmList(null);
+      setFanoutResults(null);
+      setSaving(true);
+      setMsg(null);
+      fetch('/api/pointage-rh?action=campagne-budget-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(built.payload),
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d || !d.success) throw new Error((d && d.error) || 'Erreur serveur');
+          var results = Array.isArray(d.results) ? d.results : [];
+          var oks = results.filter(function (r) { return r && r.ok && r.label_bee_one; });
+          // RÉALIGNEMENT depuis CHAQUE relecture serveur, jamais depuis ce qu'on
+          // croyait envoyer : une parcelle en échec ne doit pas être affichée
+          // comme si elle avait été écrite.
+          if (oks.length > 0) {
+            setBudgetsByLabel(function (prev) {
+              var next = Object.assign({}, prev);
+              oks.forEach(function (r) {
+                next[String(r.label_bee_one).toUpperCase().trim()] = r.budgets || {};
+              });
+              return next;
+            });
+            setOpBudgetsByLabel(function (prev) {
+              var next = Object.assign({}, prev);
+              oks.forEach(function (r) {
+                next[String(r.label_bee_one).toUpperCase().trim()] = r.budgets_operations || {};
+              });
+              return next;
+            });
+            setQuinzByLabel(function (prev) {
+              var next = Object.assign({}, prev);
+              var CBQ = window.CampagneBudgetQuinzaine;
+              oks.forEach(function (r) {
+                var key = String(r.label_bee_one).toUpperCase().trim();
+                next[key] = CBQ
+                  ? (CBQ.quinzainesByLabel([{
+                    label_bee_one: key, budgets_quinzaine: r.budgets_quinzaine || {},
+                  }])[key] || {})
+                  : (r.budgets_quinzaine || {});
+              });
+              return next;
+            });
+          }
+          // Les familles envoyées ne sont plus « touchées » : sans ce reset, un
+          // second clic renverrait les mêmes familles alors que l'écran affiche
+          // désormais les valeurs relues.
+          setTouched({});
+          // Rapport par parcelle affiché SEULEMENT s'il y a au moins un échec.
+          setFanoutResults(results.some(function (r) { return !(r && r.ok); }) ? results : null);
+          setMsg(CBT_fanoutMessage(d, nbDemandes, cbtNom));
+        })
+        .catch(function (e) {
+          // On ne sait pas ce qui a été écrit : on ne l'invente pas, on le dit et
+          // on relit la base (tick) — le seul état digne de confiance.
+          setMsg({
+            type: 'ko',
+            text: 'Enregistrement interrompu (' + e.message + ') — des parcelles ont'
+              + ' peut-être été enregistrées, état inconnu. L\'écran est rechargé.',
+          });
+          setTick(function (t) { return t + 1; });
+        })
+        .finally(function () { setSaving(false); });
+    }
+
     function handleSave(confirme) {
-      // GARDE STRUCTURELLE — cette fonction est le chemin MONO-PARCELLE : elle
-      // construit son body avec `CBT_buildSavePayload`, qui envoie toutes les
-      // familles affichées et EFFACE celles laissées vides. En portée multiple,
-      // la grille affichée est la grille COMMUNE de N parcelles : ses champs
-      // vides signifient « divergent, ne pas toucher », pas « mettre à 0 ».
-      // L'appeler là ferait donc exactement ce que l'écran promet de ne pas
-      // faire. Tant que le fan-out n'est pas livré, l'unique issue est de ne
-      // rien faire — et ce n'est pas au rendu (bouton retiré, panneau masqué)
-      // de porter seul cette garantie.
-      if (porteeMulti) return;
+      // DISPATCH — deux chemins d'écriture aux sémantiques OPPOSÉES, et cette
+      // fonction est celle du chemin MONO-PARCELLE : elle construit son body avec
+      // `CBT_buildSavePayload`, qui envoie toutes les familles affichées et
+      // EFFACE celles laissées vides. En portée multiple, la grille est la grille
+      // COMMUNE de N parcelles : ses champs vides signifient « divergent, ne pas
+      // toucher », pas « mettre à 0 ». La séparation est structurelle et pas
+      // seulement un `if` de rendu : aucun appelant ne peut se tromper de chemin.
+      if (porteeMulti) { handleSaveFanout(confirme); return; }
       // Le save porte sur TOUTE la parcelle, pas sur la famille éditée : une
       // famille repliée peut être neutralisée sans que rien ne l'ait montré.
       // C'est la seule protection possible pour ce cas — on demande donc une
@@ -1723,8 +2009,12 @@
               : (d.budgets_quinzaine || {});
             return next;
           });
+          // Les champs touchés le sont pour CETTE saisie : après un save réussi,
+          // repartir de zéro (sans effet sur ce chemin, qui envoie tout — mais un
+          // état résiduel n'a aucune raison de survivre à l'écriture).
+          setTouched({});
           // Message posé APRÈS setBudgetsByLabel : l'effet de reset du message
-          // ne dépend que de `selected` (cf. plus haut), la mise à jour des
+          // ne dépend pas de `budgetsByLabel` (cf. plus haut), la mise à jour des
           // budgets ne l'efface donc pas.
           setMsg(CBT_saveMessage(d));
         })
@@ -1756,6 +2046,24 @@
       borderRadius: 9, fontSize: 10.5, fontWeight: 700,
       background: '#fef3c7', color: CBT_C.amber, whiteSpace: 'nowrap',
     };
+
+    /**
+     * Libellé d'une divergence. La conséquence dépend de l'état de la famille :
+     * non touchée, la ligne n'est pas envoyée (donc pas modifiée) ; touchée, la
+     * famille part ENTIÈRE et l'enregistrement sera REFUSÉ tant que ce champ
+     * reste vide (cf. CBT_buildFanoutPayload). Dire l'un dans le cas de l'autre
+     * serait faux.
+     *
+     * @param {{nb: number, min: number, max: number}} d
+     * @param {boolean} toucheeFamille
+     * @returns {string}
+     */
+    function libelleDivergence(d, toucheeFamille) {
+      return d.nb + ' valeurs différentes (' + d.min + ' → ' + d.max + ') — '
+        + (toucheeFamille
+          ? 'à saisir avant d\'enregistrer'
+          : 'non modifiée à l\'enregistrement');
+    }
     var thStyle = {
       textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700,
       color: CBT_C.textSec, borderBottom: '2px solid ' + CBT_C.border,
@@ -2000,7 +2308,11 @@
                 var tot = CBT_familleTotal(f, values, opValues);
                 var calcule = tot.source === 'operations';
                 // Cas MIXTE : total de famille saisi ET opérations renseignées.
-                var ecrase = calcule && CBT_num(values[f]) > 0;
+                // En portée multiple, seules les familles TOUCHÉES sont envoyées :
+                // avertir sur une famille intacte serait une fausse alerte (rien
+                // ne sera remplacé), et une fausse alerte décrédibilise les vraies.
+                var ecrase = calcule && CBT_num(values[f]) > 0
+                  && (!porteeMulti || !!touched[f]);
                 var isOpen = !!openFamilles[f];
                 var famRows = [
                   React.createElement('tr', {
@@ -2052,9 +2364,7 @@
                           className: 'fa-solid fa-triangle-exclamation',
                           style: { marginRight: 5 },
                         }),
-                        divergentes[f].nb + ' valeurs différentes ('
-                          + divergentes[f].min + ' → ' + divergentes[f].max
-                          + ') — non modifiée à l\'enregistrement'
+                        libelleDivergence(divergentes[f], !!touched[f])
                       )
                     ),
                     React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
@@ -2146,9 +2456,7 @@
                             className: 'fa-solid fa-triangle-exclamation',
                             style: { marginRight: 5 },
                           }),
-                          divergentesOps[f][op].nb + ' valeurs différentes ('
-                            + divergentesOps[f][op].min + ' → ' + divergentesOps[f][op].max
-                            + ') — non modifiée à l\'enregistrement'
+                          libelleDivergence(divergentesOps[f][op], !!touched[f])
                         )
                       ),
                       React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
@@ -2202,19 +2510,54 @@
           // l'ait signalé à l'écran. On liste explicitement les familles
           // concernées AVANT d'écrire, avec la valeur perdue et son
           // remplacement.
-          // ⚠️ `!porteeMulti` : ce panneau est celui du chemin MONO-PARCELLE. Le
-          // laisser visible en portée multiple rouvrait une seconde porte
-          // d'écriture (« Confirmer et enregistrer » → handleSave), avec la
-          // grille commune de N parcelles envoyée sur la seule parcelle
-          // sélectionnée. Le panneau de la portée multiple sera un panneau
-          // DISTINCT (confirmFanout), livré avec le fan-out.
-          canEdit && !porteeMulti && ((confirmList && confirmList.length > 0)
-            || (confirmQuinz && confirmQuinz.length > 0)) && React.createElement('div', {
+          // ⚠️ `confirmFanout` DOIT figurer dans cette condition : en portée
+          // multiple la confirmation est toujours requise, même sans
+          // neutralisation ni écrasement. Sans lui, le panneau ne s'afficherait
+          // pas et le bouton « Enregistrer » paraîtrait mort.
+          canEdit && ((confirmList && confirmList.length > 0)
+            || (confirmQuinz && confirmQuinz.length > 0)
+            || confirmFanout) && React.createElement('div', {
             style: {
               padding: '12px 14px', borderTop: '1px solid ' + CBT_C.border,
               background: '#fffbeb', color: CBT_C.amber, fontSize: 12,
             },
           },
+            // PÉRIMÈTRE DU FAN-OUT, listé PAR NOM et jamais réduit à un
+            // compteur. Deux raisons : écrire N parcelles d'un geste mérite
+            // qu'on les regarde une par une ; et le repli de résolution de
+            // culture retombe par défaut sur « Framboise » (normCulture), donc
+            // une parcelle mal classée peut se retrouver dans une cible — seule
+            // la liste nominative permet de le voir avant d'écrire.
+            confirmFanout && React.createElement('div', { style: { fontWeight: 700, marginBottom: 6 } },
+              React.createElement('i', {
+                className: 'fa-solid fa-triangle-exclamation', style: { marginRight: 8 },
+              }),
+              'Enregistrer la même grille sur ' + confirmFanout.labels.length
+                + (confirmFanout.labels.length > 1 ? ' parcelles' : ' parcelle')
+                + (confirmFanout.ecrasements.length > 0
+                  ? ' — ' + confirmFanout.ecrasements.length
+                    + (confirmFanout.ecrasements.length > 1
+                      ? ' ont des valeurs qui seront remplacées :'
+                      : ' a des valeurs qui seront remplacées :')
+                  : ' (aucune valeur existante remplacée) :')
+            ),
+            confirmFanout && React.createElement('ul', { style: { margin: '0 0 10px', paddingLeft: 26 } },
+              confirmFanout.labels.map(function (lbl) {
+                var hit = null;
+                confirmFanout.ecrasements.forEach(function (e) { if (e.label === lbl) hit = e; });
+                return React.createElement('li', { key: 'fo-' + lbl, style: { marginBottom: 2 } },
+                  cbtNom(lbl),
+                  hit && React.createElement('span', { style: { fontWeight: 700 } },
+                    ' — ' + hit.nb + (hit.nb > 1 ? ' valeurs remplacées' : ' valeur remplacée')
+                      + ' : ' + hit.exemples.map(function (x) {
+                        return x.champ + ' ' + x.avant + ' → '
+                          + (x.apres > 0 ? String(x.apres) : '0 (supprimé)');
+                      }).join(', ')
+                      + (hit.nb > hit.exemples.length ? '…' : '')
+                  )
+                );
+              })
+            ),
             confirmList && confirmList.length > 0 && React.createElement('div', { style: { fontWeight: 700, marginBottom: 6 } },
               React.createElement('i', {
                 className: 'fa-solid fa-triangle-exclamation', style: { marginRight: 8 },
@@ -2257,7 +2600,9 @@
                 },
               }, 'Confirmer et enregistrer'),
               React.createElement('button', {
-                onClick: function () { setConfirmList(null); setConfirmQuinz(null); },
+                onClick: function () {
+                  setConfirmList(null); setConfirmQuinz(null); setConfirmFanout(null);
+                },
                 style: {
                   padding: '6px 16px', borderRadius: 8,
                   border: '1px solid ' + CBT_C.border, background: CBT_C.surface,
@@ -2273,13 +2618,9 @@
               borderTop: '1px solid ' + CBT_C.border, flexWrap: 'wrap',
             },
           },
-            // ⚠️ ÉTAT INTERMÉDIAIRE ASSUMÉ : en portée multiple, le bouton est
-            // ABSENT tant que le fan-out n'est pas livré (payload partiel + envoi
-            // multi-labels + confirmation, lots suivants). `handleSave`
-            // n'écrirait aujourd'hui que sur `selected` avec la grille commune de
-            // N parcelles — un budget faux sur une parcelle, et un silence sur
-            // les 22 autres. Mieux vaut pas de bouton qu'un bouton qui ment.
-            canEdit && !porteeMulti && React.createElement('button', {
+            // En portée multiple, ce bouton n'écrit RIEN directement : il ouvre la
+            // confirmation, toujours (cf. handleSaveFanout).
+            canEdit && React.createElement('button', {
               onClick: function () { handleSave(false); },
               disabled: saving,
               style: {
@@ -2328,10 +2669,37 @@
                 : (porteeMulti
                   ? 'Grille commune aux parcelles de la portée : ce qui concorde est'
                     + ' pré-rempli, ce qui diverge reste vide et est signalé.'
-                    + ' L\'enregistrement en portée multiple arrive avec le lot suivant.'
+                    + ' Seules les lignes que vous modifiez sont propagées ; les autres'
+                    + ' restent inchangées sur chaque parcelle.'
                   : 'Déplier une famille pour saisir ses opérations. Le total de famille'
                     + ' devient calculé dès qu\'une opération est budgétée ; sinon il reste'
                     + ' saisissable. Un champ vide (ou 0) supprime la ligne.')
+            )
+          ),
+
+          // RAPPORT PAR PARCELLE — affiché UNIQUEMENT s'il y a au moins un échec.
+          // Un fan-out entièrement réussi n'a pas besoin de 23 lignes de coches ;
+          // un fan-out partiel, si : il faut pouvoir nommer ce qui n'est pas passé.
+          fanoutResults && React.createElement('div', {
+            style: {
+              padding: '10px 14px', borderTop: '1px solid ' + CBT_C.border,
+              background: CBT_C.surface2, fontSize: 12,
+            },
+          },
+            React.createElement('div', {
+              style: { fontWeight: 700, marginBottom: 6, color: CBT_C.textSec },
+            }, 'Résultat par parcelle'),
+            React.createElement('ul', { style: { margin: 0, paddingLeft: 20 } },
+              fanoutResults.map(function (r, i) {
+                var lbl = String((r && r.label_bee_one) || '?');
+                return React.createElement('li', {
+                  key: 'res-' + lbl + '-' + i,
+                  style: { marginBottom: 2, color: r && r.ok ? CBT_C.green : '#dc2626' },
+                },
+                  (r && r.ok ? '✓ ' : '✗ ') + cbtNom(lbl)
+                    + (r && r.ok ? '' : ' — ' + String((r && r.error) || 'échec'))
+                );
+              })
             )
           )
         )
@@ -2356,6 +2724,9 @@
   CampagneBudgetTab.familleTotal = CBT_familleTotal;
   CampagneBudgetTab.famillesNeutralisees = CBT_famillesNeutralisees;
   CampagneBudgetTab.memeNeutralisations = CBT_memeNeutralisations;
+  CampagneBudgetTab.fanoutEcrasements = CBT_fanoutEcrasements;
+  CampagneBudgetTab.memeFanout = CBT_memeFanout;
+  CampagneBudgetTab.fanoutMessage = CBT_fanoutMessage;
   CampagneBudgetTab.totalJH = CBT_totalJH;
   CampagneBudgetTab.quinzaineApplicable = CBT_quinzaineApplicable;
   CampagneBudgetTab.quinzainesSupprimees = CBT_quinzainesSupprimees;

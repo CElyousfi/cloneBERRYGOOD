@@ -35,23 +35,23 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 13,
+        "commits": 14,
         "file": "public/components/CampagneBudgetTab.jsx"
       },
       {
-        "commits": 13,
+        "commits": 14,
         "file": "tests/unit/campagneBudgetTab.test.js"
+      },
+      {
+        "commits": 12,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 12,
         "file": "scripts/build-frontend.js"
       },
       {
-        "commits": 11,
-        "file": "functions/pointageService.js"
-      },
-      {
-        "commits": 9,
+        "commits": 10,
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:6d99db30c040eb2b",
+    "sourceFingerprint": "sha256:f4ed3da25d283e68",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -784,14 +784,14 @@
           "windowDays": 90
         },
         {
-          "coCommits": 13,
+          "coCommits": 14,
           "domain": null,
           "file": "tests/unit/campagneBudgetTab.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 9,
+          "coCommits": 10,
           "domain": null,
           "file": "public/components/CampagneBudgetTab.js",
           "note": "probabilistic",

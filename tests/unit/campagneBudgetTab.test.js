@@ -1578,13 +1578,14 @@ test('rendu — portée Parcelle : le chemin historique est INCHANGÉ', () => {
 });
 
 test('rendu — portée multiple : une confirmation HÉRITÉE de la portée Parcelle n\'écrit rien', () => {
-  // RÉGRESSION VÉCUE : le bouton « Enregistrer » retiré ne suffisait pas. Une
-  // confirmation posée en portée Parcelle survivait au passage en portée Variété
-  // (le panneau vit dans la grille, affichée dès qu'une cible est choisie), et
-  // son « Confirmer et enregistrer » repartait sur `CBT_buildSavePayload` avec la
-  // grille COMMUNE de N parcelles : les lignes DIVERGENTES, vides par
-  // construction, partaient à 0 — donc supprimées par le backend. Exactement ce
-  // que le badge « non modifiée à l'enregistrement » venait de promettre.
+  // RÉGRESSION VÉCUE : une confirmation posée en portée Parcelle survivait au
+  // passage en portée Variété (le panneau vit dans la grille, affichée dès qu'une
+  // cible est choisie), et son « Confirmer et enregistrer » repartait sur
+  // `CBT_buildSavePayload` avec la grille COMMUNE de N parcelles : les lignes
+  // DIVERGENTES, vides par construction, partaient à 0 — donc supprimées.
+  // Verrous : reset par les deps, `touched` remis à zéro (donc les
+  // neutralisations confirmées ne correspondent plus), et surtout le dispatch
+  // structurel de handleSave vers le chemin fan-out.
   const spy = { effects: [], sets: [], fetches: [] };
   const tree = load(statePortee({
     selected: 'S13 - CORINA',
@@ -1593,32 +1594,30 @@ test('rendu — portée multiple : une confirmation HÉRITÉE de la portée Parc
     opValues: { 'Récolte': { 'Cueillette': '12' } },
   }), spy, WIN_PORTEE)({ userRole: 'dg' });
 
-  // Ceinture : le panneau mono-parcelle n'est pas rendu en portée multiple.
-  assert.strictEqual(buttonWith(tree, 'Confirmer et enregistrer'), undefined);
-  assert.ok(!textOf(tree).includes('vont être remplacées'));
-  assert.strictEqual(spy.fetches.length, 0);
+  buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 0, 'aucune écriture sur une confirmation périmée');
+  // Le clic passe par le DISPATCH vers le chemin fan-out — qui n'a rien à
+  // propager, `touched` ayant été remis à zéro par le changement de portée. Le
+  // payload mono-parcelle (celui qui effaçait) n'est même pas construit.
+  const msgs = spy.sets.filter(function (s) { return s.index === S.msg && s.value; });
+  assert.strictEqual(msgs[msgs.length - 1].value.type, 'ko');
+  assert.match(String(msgs[msgs.length - 1].value.text), /Aucune valeur saisie/);
 
-  // Bretelle : même appelé directement, le chemin mono-parcelle ne part pas.
-  // (On le prouve en portée Parcelle : le MÊME état y déclenche bien un fetch.)
+  // Contre-épreuve : le MÊME état en portée Parcelle écrit bien (le chemin
+  // historique n'a pas été cassé au passage).
+  const spy2 = { effects: [], sets: [], fetches: [] };
   const enParcelle = load(statePortee({
     portee: 'parcelle', selected: 'S13 - CORINA',
     confirmList: [{ famille: 'Récolte', valeur: 1800, total: 12 }],
     values: { 'Récolte': '1800' },
     opValues: { 'Récolte': { 'Cueillette': '12' } },
-  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  }), spy2, WIN_PORTEE)({ userRole: 'dg' });
   buttonWith(enParcelle, 'Confirmer et enregistrer').props.onClick();
-  assert.strictEqual(spy.fetches.length, 1, 'le chemin mono-parcelle reste fonctionnel');
-});
-
-test('rendu — portée multiple : AUCUNE écriture possible avant le lot fan-out', () => {
-  // État intermédiaire assumé : `handleSave` n'écrirait que sur `selected` avec
-  // la grille commune de N parcelles. Le bouton est donc absent tant que le
-  // fan-out (payload partiel + envoi multi-labels) n'est pas livré.
-  // ⚠️ À remplacer au lot fan-out par « ne fetch rien avant confirmation ».
-  const tree = load(statePortee({ selected: 'S13 - CORINA' }), undefined, WIN_PORTEE)(
-    { userRole: 'dg' });
-  assert.strictEqual(buttonWith(tree, 'Enregistrer'), undefined);
-  assert.ok(textOf(tree).includes('L\'enregistrement en portée multiple arrive avec le lot suivant.'));
+  assert.strictEqual(spy2.fetches.length, 1, 'le chemin mono-parcelle reste fonctionnel');
+  assert.strictEqual(
+    'labels' in JSON.parse(spy2.fetches[0].init.body), false,
+    'le chemin mono-parcelle n\'envoie JAMAIS labels[]'
+  );
 });
 
 // ------------------------------------------------------- buildFanoutPayload
@@ -1807,6 +1806,265 @@ test('rendu — le suivi des champs touchés est remis à zéro par portée / ci
   assert.strictEqual(resets.length, 1);
   assert.deepStrictEqual(plain(resets[0].deps), ['variete', 'Myrtille||CORINA', 0],
     'invalidé par la portée, la cible ET le rafraîchissement');
+});
+
+// -------------------------------------------------------- fanoutEcrasements
+
+test('fanoutEcrasements — compte ce qui est REMPLACÉ, jamais ce qui est créé', () => {
+  const r = plain(CBT.fanoutEcrasements({
+    labels: ['S13 - CORINA', 'S8 - CORINA', 'S14 - CASCADE'],
+    payload: { budgets: { 'Récolte': 1500 }, budgets_operations: {} },
+    budgetsByLabel: {
+      'S13 - CORINA': { 'Récolte': 1800 },   // 1800 → 1500 : écrasement
+      'S8 - CORINA': {},                     // absent → 1500 : création
+      'S14 - CASCADE': { 'Récolte': 1500 },  // identique : rien
+    },
+  }));
+  assert.deepStrictEqual(r, [{
+    label: 'S13 - CORINA', nb: 1,
+    exemples: [{ champ: 'Récolte', avant: 1800, apres: 1500 }],
+  }]);
+});
+
+test('fanoutEcrasements — une valeur qui passe à 0 est un écrasement (suppression)', () => {
+  const r = plain(CBT.fanoutEcrasements({
+    labels: ['S13 - CORINA'],
+    // Cas de l'invariant des deux niveaux : famille détaillée → famille à 0.
+    payload: {
+      budgets: { 'Taille': 0 },
+      budgets_operations: { 'Taille': { 'GB09::Taille d\'hiver': 4 } },
+    },
+    budgetsByLabel: { 'S13 - CORINA': { 'Taille': 5 } },
+    opBudgetsByLabel: { 'S13 - CORINA': { 'Taille': { 'GB09::Taille d\'hiver': 6 } } },
+  }));
+  assert.strictEqual(r[0].nb, 2);
+  assert.deepStrictEqual(r[0].exemples, [
+    { champ: 'Taille', avant: 5, apres: 0 },
+    { champ: 'Taille — Taille d\'hiver (GB09)', avant: 6, apres: 4 },
+  ]);
+});
+
+test('fanoutEcrasements — 3 exemples au plus, mais le compte reste exact', () => {
+  const r = plain(CBT.fanoutEcrasements({
+    labels: ['P1'],
+    payload: { budgets: { A: 1, B: 1, C: 1, D: 1, E: 1 } },
+    budgetsByLabel: { P1: { A: 9, B: 9, C: 9, D: 9, E: 9 } },
+  }));
+  assert.strictEqual(r[0].nb, 5, 'le compte n\'est pas tronqué…');
+  assert.strictEqual(r[0].exemples.length, 3, '…seuls les exemples le sont');
+  assert.deepStrictEqual(plain(CBT.fanoutEcrasements({})), []);
+});
+
+test('memeFanout — égalité stricte du périmètre, insensible à l\'ordre', () => {
+  const a = [{ label: 'P1', nb: 2 }, { label: 'P2', nb: 1 }];
+  assert.strictEqual(CBT.memeFanout(a, a.slice().reverse()), true);
+  assert.strictEqual(CBT.memeFanout(a, [{ label: 'P1', nb: 3 }, { label: 'P2', nb: 1 }]), false);
+  assert.strictEqual(CBT.memeFanout(a, a.slice(0, 1)), false);
+  assert.strictEqual(CBT.memeFanout(null, []), true);
+  assert.strictEqual(CBT.memeFanout(null, a), false);
+});
+
+// ----------------------------------------------------------- fanoutMessage
+
+/** Réponse serveur : n succès, puis les échecs demandés. */
+function reponseFanout(oks, kos) {
+  return {
+    success: true,
+    results: oks.map(function (l) { return { ok: true, label_bee_one: l }; })
+      .concat((kos || []).map(function (l) {
+        return { ok: false, label_bee_one: l, error: 'Parcelle inconnue' };
+      })),
+  };
+}
+
+test('fanoutMessage — tout enregistré : succès vert avec le compte', () => {
+  const m = plain(CBT.fanoutMessage(reponseFanout(['P1', 'P2', 'P3']), 3));
+  assert.deepStrictEqual(m, { type: 'ok', text: 'Budget enregistré sur 3 parcelles' });
+});
+
+test('fanoutMessage — un succès PARTIEL n\'est JAMAIS vert', () => {
+  // 18/23, c'est 5 parcelles dont le budget est faux : le dire, et nommer.
+  const m = CBT.fanoutMessage(reponseFanout(['P1', 'P2'], ['P3']), 3);
+  assert.strictEqual(m.type, 'ko');
+  assert.match(m.text, /2\/3 parcelles enregistrées — 1 en échec : P3/);
+  assert.match(m.text, /Rafraîchir avant de réessayer/);
+});
+
+test('fanoutMessage — `results` absent avec plusieurs cibles : skew de deploy, pas vert', () => {
+  // Les functions partent avant le hosting : un backend antérieur ignore
+  // `labels` et n'écrit qu'UNE parcelle. On ne sait pas ce qui a été écrit.
+  const m = CBT.fanoutMessage({ success: true, label_bee_one: 'P1', budgets: {} }, 23);
+  assert.strictEqual(m.type, 'ko');
+  assert.match(m.text, /n'a pas traité les 23 parcelles \(version antérieure\)/);
+});
+
+test('fanoutMessage — effets de bord : ambre, noms tronqués à 3, nomOf injecté', () => {
+  const res = {
+    success: true,
+    results: [
+      { ok: true, label_bee_one: 'P1', familles_neutralisees: [{ famille: 'Récolte' }] },
+      { ok: true, label_bee_one: 'P2', familles_neutralisees: [{ famille: 'Récolte' }] },
+      { ok: true, label_bee_one: 'P3', familles_neutralisees: [{ famille: 'Récolte' }] },
+      { ok: true, label_bee_one: 'P4', familles_neutralisees: [{ famille: 'Récolte' }] },
+      { ok: true, label_bee_one: 'P5', familles_purgees: ['Ancienne famille'] },
+    ],
+  };
+  const m = CBT.fanoutMessage(res, 5, function (l) { return 'Parcelle ' + l; });
+  assert.strictEqual(m.type, 'ok');
+  assert.strictEqual(m.purge, true, 'une suppression de données n\'est jamais un vert neutre');
+  assert.match(m.text, /Budget enregistré sur 5 parcelles/);
+  // Lisibilité téléphone : 3 noms puis « et N autres ». `nomOf` est bien utilisé.
+  assert.match(m.text, /Parcelle P1, Parcelle P2, Parcelle P3 et 1 autres/);
+  assert.match(m.text, /entrées obsolètes retirées sur 1 parcelle : Parcelle P5/);
+});
+
+// ------------------------------------------------- rendu : fan-out complet
+
+/** Grille commune touchée sur « Récolte », prête à être propagée. */
+function stateFanout(overrides) {
+  return statePortee(Object.assign({
+    touched: { 'Récolte': true },
+    values: { 'Récolte': '1500' },
+  }, overrides || {}));
+}
+
+test('rendu — portée multiple : « Enregistrer » n\'écrit RIEN, il ouvre la confirmation', () => {
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(stateFanout(), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Enregistrer').props.onClick();
+
+  assert.strictEqual(spy.fetches.length, 0, 'aucun appel réseau avant confirmation');
+  const poses = spy.sets.filter(function (s) { return s.index === S.confirmFanout; });
+  assert.strictEqual(poses.length, 1);
+  assert.deepStrictEqual(plain(poses[0].value.labels), ['S13 - CORINA', 'S8 - CORINA']);
+});
+
+test('rendu — la confirmation liste les parcelles PAR NOM, jamais un compteur seul', () => {
+  // C'est ce qui rend visible une parcelle arrivée dans la cible par le repli de
+  // résolution de culture (normCulture retombe par défaut sur « Framboise »).
+  const txt = textOf(load(stateFanout({
+    confirmFanout: {
+      labels: ['S13 - CORINA', 'S8 - CORINA'],
+      ecrasements: [{
+        label: 'S8 - CORINA', nb: 2,
+        exemples: [{ champ: 'Récolte', avant: 1800, apres: 1500 }],
+      }],
+    },
+  }), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(txt.includes('Enregistrer la même grille sur 2 parcelles'));
+  assert.ok(txt.includes('S13 - CORINA'), 'la parcelle SANS écrasement est listée aussi');
+  assert.ok(txt.includes('S8 - CORINA'));
+  assert.ok(txt.includes('2 valeurs remplacées : Récolte 1800 → 1500'));
+  assert.ok(txt.includes('Confirmer et enregistrer'));
+});
+
+test('rendu — la confirmation le dit quand AUCUNE valeur existante n\'est remplacée', () => {
+  const txt = textOf(load(stateFanout({
+    confirmFanout: { labels: ['S13 - CORINA'], ecrasements: [] },
+  }), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(txt.includes('(aucune valeur existante remplacée)'));
+});
+
+test('rendu — « Confirmer » envoie labels[] + label_bee_one, et le payload PARTIEL', () => {
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(stateFanout({
+    confirmFanout: { labels: ['S13 - CORINA', 'S8 - CORINA'], ecrasements: [] },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
+
+  assert.strictEqual(spy.fetches.length, 1);
+  assert.match(String(spy.fetches[0].url), /action=campagne-budget-save/);
+  const body = JSON.parse(spy.fetches[0].init.body);
+  assert.deepStrictEqual(body.labels, ['S13 - CORINA', 'S8 - CORINA']);
+  // Garde-fou de la fenêtre de skew : un backend antérieur écrit une parcelle
+  // au lieu de crasher.
+  assert.strictEqual(body.label_bee_one, 'S13 - CORINA');
+  // PARTIEL : seule « Récolte » a été touchée, « Taille » n'est pas dans le body.
+  assert.deepStrictEqual(body.budgets, { 'Récolte': 1500 });
+  assert.strictEqual('Taille' in body.budgets, false);
+});
+
+test('rendu — « Confirmer » sur un périmètre PÉRIMÉ n\'écrit rien', () => {
+  // Le périmètre confirmé doit être exactement celui qui part (CBT_memeFanout).
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(stateFanout({
+    confirmFanout: {
+      labels: ['S13 - CORINA'],
+      // Écrasement annoncé qui ne correspond à AUCUNE donnée réelle : le
+      // périmètre a changé depuis la confirmation.
+      ecrasements: [{ label: 'S13 - CORINA', nb: 4, exemples: [] }],
+    },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 0);
+  const msgs = spy.sets.filter(function (s) { return s.index === S.msg && s.value; });
+  assert.match(String(msgs[msgs.length - 1].value.text), /La saisie a changé/);
+});
+
+test('rendu — une famille touchée avec divergence NON résolue : refus AVANT tout réseau', () => {
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(stateFanout({
+    // « Taille » touchée mais laissée vide, alors qu'elle diverge en base.
+    touched: { 'Taille': true },
+    values: {},
+    budgetsByLabel: {
+      'S13 - CORINA': { 'Taille': 5 },
+      'S8 - CORINA': { 'Taille': 9 },
+    },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 0);
+  const msgs = spy.sets.filter(function (s) { return s.index === S.msg && s.value; });
+  assert.match(String(msgs[msgs.length - 1].value.text),
+    /« Taille » a 2 valeurs différentes selon les parcelles/);
+});
+
+test('rendu — le badge de divergence dit la VÉRITÉ selon que la famille est touchée', () => {
+  const budgets = {
+    budgetsByLabel: {
+      'S13 - CORINA': { 'Taille': 5 },
+      'S8 - CORINA': { 'Taille': 9 },
+    },
+  };
+  const intacte = textOf(load(statePortee(budgets), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(intacte.includes('2 valeurs différentes (5 → 9) — non modifiée à l\'enregistrement'));
+  // Touchée : la famille part ENTIÈRE, donc ce champ doit être saisi — sinon
+  // l'enregistrement est refusé. Promettre « non modifiée » serait faux.
+  const touchee = textOf(load(statePortee(Object.assign({
+    touched: { 'Taille': true },
+  }, budgets)), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(touchee.includes('2 valeurs différentes (5 → 9) — à saisir avant d\'enregistrer'));
+});
+
+test('rendu — pas de fausse alerte « remplacée par les opérations » sur une famille intacte', () => {
+  // En portée multiple, une famille non touchée n'est PAS envoyée : annoncer un
+  // remplacement serait une fausse alerte, et une fausse alerte décrédibilise
+  // les vraies.
+  const etat = {
+    familles: ['Taille'],
+    values: { 'Taille': '9' },
+    opValues: { 'Taille': { 'GB09::Taille d\'hiver': '4' } },
+  };
+  const intacte = textOf(load(statePortee(etat), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(!intacte.includes('remplacée par les opérations'));
+  const touchee = textOf(load(statePortee(Object.assign({ touched: { 'Taille': true } }, etat)),
+    undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(touchee.includes('famille 9 → remplacée par les opérations'));
+});
+
+test('rendu — rapport par parcelle : affiché seulement en cas d\'échec, avec les noms', () => {
+  const sansEchec = textOf(load(stateFanout(), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(!sansEchec.includes('Résultat par parcelle'));
+
+  const txt = textOf(load(stateFanout({
+    fanoutResults: [
+      { ok: true, label_bee_one: 'S13 - CORINA' },
+      { ok: false, label_bee_one: 'S8 - CORINA', error: 'Parcelle inconnue' },
+    ],
+  }), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(txt.includes('Résultat par parcelle'));
+  assert.ok(txt.includes('✓ S13 - CORINA'));
+  assert.ok(txt.includes('✗ S8 - CORINA — Parcelle inconnue'));
 });
 
 test('rendu — lecture seule : aucun champ, mais les opérations dépliées restent lisibles', () => {
