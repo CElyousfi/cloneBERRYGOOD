@@ -40,7 +40,8 @@
  *                 « Affectation Analytique » de l'écran Quinzaine (EN
  *                 PRODUCTION) la garde, et son test de non-régression la
  *                 verrouille. `false` la retire ENTIÈREMENT : en-tête, total de
- *                 ligne, grand total du pied. Voir « colSpan » plus bas.
+ *                 ligne, grand total du pied. L'écran Campagne s'en sert pour
+ *                 ne l'afficher qu'en plein écran. Voir « colSpan » plus bas.
  *   onCellClick   {Function}  ({parcelle, operationFamille, ha, detailRows}) =>
  *                 void. Absent = cellules non cliquables (ni curseur, ni survol).
  *                 Une cellule dont `detailRows` est un tableau VIDE ne l'est pas
@@ -67,15 +68,23 @@
  * n'échoue jamais bruyamment : trop court ou trop long, le tableau se décale
  * sans qu'aucune erreur ne soit levée. Sa valeur est
  *   parcelles.length × metrics.length + 1 (colonne de libellé)
- *                                       + 1 SI ET SEULEMENT SI showTotal.
- * Verrouillé dans les deux modes par tests/unit/pivotAnalytiqueGrid.test.js.
+ *                                     + la LARGEUR de la colonne Total, qui
+ *                                       vaut metrics.length en mode
+ *                                       sous-colonnes, 1 en mode historique, 0
+ *                                       sans `showTotal`.
+ * Verrouillé dans les trois cas par tests/unit/pivotAnalytiqueGrid.test.js.
  *
- * ⚠️ ASYMÉTRIE ASSUMÉE — la colonne TOTAL n'est jamais éclatée : elle reste une
- * colonne unique (`rowSpan: 2` dans l'en-tête) où les séries restent EMPILÉES,
- * label compris. Raison : cette colonne est `position: sticky; right: 0`, et
- * plusieurs colonnes collées à droite exigeraient un `right` en pixels par
- * sous-colonne, donc des largeurs fixes — mécanisme absent de cette grille (les
- * largeurs sont laissées au navigateur, seul un `minWidth` est posé).
+ * ── COLONNE TOTAL : ÉCLATÉE EN MULTI, EMPILÉE EN MONO ──────────────────────
+ * Avec PLUSIEURS séries, la colonne Total suit le reste de la grille : une
+ * sous-colonne par série, et elle n'est PAS sticky — plusieurs colonnes collées
+ * à droite exigeraient un `right` en pixels par sous-colonne, donc des largeurs
+ * fixes, mécanisme absent de cette grille (les largeurs sont laissées au
+ * navigateur, seul un `minWidth` est posé). Elle défile donc avec le tableau.
+ * Avec UNE SEULE série, elle reste la colonne unique historique (`rowSpan: 2`,
+ * `position: sticky; right: 0`) — c'est le rendu de l'écran Quinzaine.
+ * Dans les deux cas elle reste STRICTEMENT APRÈS les parcelles : `_pag_paint`
+ * et `parcelleCell` repèrent les sous-colonnes depuis la GAUCHE, en supposant
+ * qu'une seule colonne (le libellé) les précède.
  *
  *   key      {string}    Champ lu dans la cellule du pivot (ex. 'jh', 'cout').
  *   get      {Function}  (cellule) => number|null. Prioritaire sur `key` — c'est
@@ -86,9 +95,8 @@
  *                        PAS confondre avec 0 (cf. _pag_raw).
  *   label    {string}    Nom court de la série. Affiché UNIQUEMENT s'il y a
  *                        plusieurs séries (sinon le balisage divergerait du
- *                        rendu historique) : en-tête de sa sous-colonne, et
- *                        préfixe de l'unité dans la colonne Total (seul endroit
- *                        où les séries restent empilées).
+ *                        rendu historique) : en-tête de sa sous-colonne, sous
+ *                        la parcelle comme sous le Total.
  *   unit     {string}    Unité affichée sous la valeur ('JH/Ha', 'DH emp.', …).
  *   basis    {'total'|'perHa'}  Ce que vaut la valeur BRUTE stockée dans le
  *                        pivot. Le réalisé est un TOTAL par cellule ; le budget
@@ -300,9 +308,10 @@
    * l'extraction. Avec plusieurs, la ligne d'unité porte aussi le nom de la
    * série — sans quoi les valeurs seraient indiscernables.
    *
-   * Depuis l'éclatement en sous-colonnes, le mode empilé ne sert plus QUE dans
-   * la colonne Total (cf. en-tête, « asymétrie assumée ») et dans le rendu
-   * historique à une seule série.
+   * Depuis l'éclatement en sous-colonnes — Total compris — le mode empilé ne
+   * sert plus que dans le rendu historique à une seule série. Le préfixe de
+   * label reste écrit ici parce que le contrat de la fonction, lui, n'a pas
+   * changé : elle empile N séries.
    */
   function _pag_stack(metrics, valueOf, valueStyle, unitStyle) {
     var multi = metrics.length > 1;
@@ -360,9 +369,12 @@
     var multi = nbMetrics > 1;
     // Nombre RÉEL de colonnes du corps, hors colonne de libellé et hors Total.
     var nbColonnesParcelles = parcelles.length * nbMetrics;
-    // Largeur du bandeau de groupe : + 1 pour la colonne de libellé, + 1 de
-    // plus SEULEMENT si la colonne Total est rendue (cf. en-tête de fichier).
-    var colSpanBandeau = nbColonnesParcelles + (showTotal ? 2 : 1);
+    // Largeur de la colonne Total : éclatée en sous-colonnes comme les
+    // parcelles dès qu'il y a plusieurs séries, colonne unique sinon.
+    var largeurTotal = showTotal ? (multi ? nbMetrics : 1) : 0;
+    // Largeur du bandeau de groupe : + 1 pour la colonne de libellé, + la
+    // largeur RÉELLE de la colonne Total (cf. en-tête de fichier).
+    var colSpanBandeau = nbColonnesParcelles + 1 + largeurTotal;
 
     /**
      * DENSITÉ — mode sous-colonnes uniquement.
@@ -469,6 +481,34 @@
         : _pag_renderTotal(metric, agg, ha);
     }
 
+    /**
+     * Cellules de la colonne TOTAL d'une ligne (famille, opération ou pied).
+     * Un seul endroit porte la bascule multi/mono, sinon elle serait écrite
+     * trois fois — et une seule des trois oubliée décalerait le tableau.
+     *
+     * `null` sans colonne Total ; UN <td> empilé et sticky-right en mode
+     * historique ; K <td> éclatés et NON sticky en sous-colonnes (cf. en-tête
+     * de fichier). `rendu(metric)` renvoie la valeur déjà formatée, `null` si
+     * l'agrégat est indéterminable.
+     */
+    function totalCells(rendu, opts) {
+      if (!showTotal) return null;
+      if (!multi) {
+        return _pag_h('td', { style: opts.styleMono },
+          _pag_stack(metrics, function (m) { return rendu(m); }, undefined, opts.unitStyle));
+      }
+      return metrics.map(function (m, i) {
+        var st = { padding: opts.pad, textAlign: 'center',
+          // Le trait qui détache le Total de la dernière parcelle, posé une
+          // seule fois : entre ses sous-colonnes, aucun — elles se liraient
+          // comme des colonnes indépendantes (même règle que les parcelles).
+          borderLeft: i === 0 ? traitParcelle : 'none' };
+        Object.keys(opts.styleMulti).forEach(function (k) { st[k] = opts.styleMulti[k]; });
+        var v = rendu(m);
+        return _pag_h('td', { key: '_total#' + i, style: st }, v === null ? _pag_dash() : v);
+      });
+    }
+
     // ── Cellule de parcelle (lignes famille et opération) ───────────────────
     //
     // Renvoie UN <td> à une seule série (rendu historique), K <td> contigus
@@ -560,8 +600,8 @@
         return _pag_h('tr', { key: row.key },
           _pag_h('td', {
             // ⚠️ Le SEUL endroit qui dépend du nombre de colonnes : oublier le
-            // × nbMetrics — ou le +1 de la colonne Total quand elle existe —
-            // décale tout le tableau, silencieusement.
+            // × nbMetrics — ou la largeur de la colonne Total quand elle existe
+            // — décale tout le tableau, silencieusement.
             colSpan: colSpanBandeau,
             style: { padding: padGroupe, fontWeight: 700, fontSize: 12, background: color,
               color: 'white', letterSpacing: '0.04em', textTransform: 'uppercase',
@@ -595,13 +635,15 @@
               unitStyle: { fontSize: 9, color: 'var(--gray-400)' },
             }, i);
           }),
-          showTotal ? _pag_h('td', {
-            style: { padding: padOperation, textAlign: 'center', fontWeight: 600,
+          totalCells(function (m) { return renderAgg(m, rowTotal(m, row), totalHa); }, {
+            pad: padOperation,
+            styleMono: { padding: padOperation, textAlign: 'center', fontWeight: 600,
               color: 'var(--gray-600)', background: '#fcfafc', position: 'sticky', right: 0,
               borderLeft: '1px solid #f0e6ef', fontSize: 11 },
-          }, _pag_stack(metrics, function (m) {
-            return renderAgg(m, rowTotal(m, row), totalHa);
-          }, undefined, { fontSize: 9, color: 'var(--gray-400)', fontWeight: 400 })) : null
+            styleMulti: { fontWeight: 600, color: 'var(--gray-600)',
+              background: '#fcfafc', fontSize: 11 },
+            unitStyle: { fontSize: 9, color: 'var(--gray-400)', fontWeight: 400 },
+          })
         );
       }
 
@@ -624,12 +666,13 @@
             unitStyle: { fontSize: 10, color: 'var(--gray-400)' },
           }, i);
         }),
-        showTotal ? _pag_h('td', {
-          style: { padding: padFamille, textAlign: 'center', fontWeight: 700, color: color,
+        totalCells(function (m) { return renderAgg(m, rowTotal(m, row), totalHa); }, {
+          pad: padFamille,
+          styleMono: { padding: padFamille, textAlign: 'center', fontWeight: 700, color: color,
             background: '#fdf4f8', position: 'sticky', right: 0, borderLeft: '1px solid #f0e6ef' },
-        }, _pag_stack(metrics, function (m) {
-          return renderAgg(m, rowTotal(m, row), totalHa);
-        }, undefined, { fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 })) : null
+          styleMulti: { fontWeight: 700, color: color, background: '#fdf4f8' },
+          unitStyle: { fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 },
+        })
       );
     });
 
@@ -656,9 +699,8 @@
       _pag_h('div', { style: { overflowX: 'auto' } },
         _pag_h('table', { style: tableStyle },
           // En-tête à DEUX niveaux dès qu'il y a plusieurs séries : parcelle
-          // (colSpan) puis une sous-colonne par série. Les colonnes de libellé
-          // et de Total, elles, restent uniques (rowSpan) — cf. « asymétrie
-          // assumée » en tête de fichier.
+          // (colSpan) puis une sous-colonne par série. Le Total suit la même
+          // découpe ; seule la colonne de libellé reste unique (rowSpan).
           _pag_h('thead', null,
             _pag_h('tr', { key: 'h1', style: { background: 'var(--gray-50)' } },
               _pag_h('th', {
@@ -685,13 +727,26 @@
                     p[1] > 0 ? p[1] + ' Ha' : 'Ha ?')
                 );
               }),
-              showTotal ? _pag_h('th', {
+              // En sous-colonnes, l'en-tête du Total prend la MÊME forme que
+              // celui d'une parcelle : un titre, la surface dessous, et un
+              // colSpan sur ses sous-colonnes. Pas de sticky (cf. en-tête de
+              // fichier) — il défile avec le tableau.
+              showTotal ? (multi ? _pag_h('th', {
                 title: note || undefined,
-                rowSpan: multi ? 2 : undefined,
+                colSpan: nbMetrics,
+                style: { padding: '6px 10px', textAlign: 'center', fontWeight: 700,
+                  color: 'var(--gray-700)', background: 'var(--gray-100)',
+                  borderLeft: traitParcelle },
+              },
+                _pag_h('div', { style: { fontWeight: 700 } }, 'TOTAL'),
+                _pag_h('div', { style: { fontSize: 10, color: 'var(--gray-400)', fontWeight: 400 } },
+                  totalHa > 0 ? (Math.round(totalHa * 100) / 100) + ' Ha' : 'Ha ?')
+              ) : _pag_h('th', {
+                title: note || undefined,
                 style: { padding: '6px 10px', textAlign: 'center', fontWeight: 700,
                   color: 'var(--gray-700)', minWidth: 100, background: 'var(--gray-100)',
                   position: 'sticky', right: 0, zIndex: 1 },
-              }, 'Total') : null
+              }, 'Total')) : null
             ),
             multi ? _pag_h('tr', { key: 'h2', style: { background: 'var(--gray-50)' } },
               parcelles.map(function (p) {
@@ -712,7 +767,23 @@
                     }, m.unit) : null
                   );
                 });
-              })
+              }),
+              // Sous-colonnes du Total : mêmes en-têtes que sous une parcelle,
+              // pour que l'œil les aligne série par série.
+              showTotal ? metrics.map(function (m, i) {
+                return _pag_h('th', {
+                  key: '_total#' + i,
+                  style: { padding: '4px 6px', textAlign: 'center', fontWeight: 600,
+                    fontSize: 10, color: 'var(--gray-500)', minWidth: 70, whiteSpace: 'nowrap',
+                    borderLeft: i === 0 ? traitParcelle : 'none',
+                    borderRight: borderSousColonne(i) },
+                },
+                  _pag_h('div', null, m.label || ''),
+                  m.unit ? _pag_h('div', {
+                    style: { fontSize: 9, color: 'var(--gray-400)', fontWeight: 400 },
+                  }, m.unit) : null
+                );
+              }) : null
             ) : null
           ),
           _pag_h('tbody', null, body),
@@ -742,12 +813,13 @@
                   }, totaux[i] === null ? _pag_dash() : totaux[i]);
                 });
               }),
-              showTotal ? _pag_h('td', {
-                style: { padding: '8px 10px', textAlign: 'center', background: color + '28',
+              totalCells(function (m) { return renderAgg(m, grandTotal(m), totalHa); }, {
+                pad: padPied,
+                styleMono: { padding: '8px 10px', textAlign: 'center', background: color + '28',
                   position: 'sticky', right: 0, color: color },
-              }, _pag_stack(metrics, function (m) {
-                return renderAgg(m, grandTotal(m), totalHa);
-              }, undefined, { fontSize: 10, opacity: 0.7 })) : null
+                styleMulti: { background: color + '28', color: color },
+                unitStyle: { fontSize: 10, opacity: 0.7 },
+              })
             )
           )
         )
