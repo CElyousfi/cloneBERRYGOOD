@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:8060bba2af7e66c0 -->
-# Code Map — Composants frontend (321)
+<!-- sourceFingerprint: sha256:aaf029263d1995bf -->
+# Code Map — Composants frontend (322)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -65,7 +65,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60380 | — |
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1774 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1773 | campagne |
 | CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:678 | — |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
@@ -78,10 +78,11 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaporalSuiviTab | public/app.jsx:29024 | chef_suivi_caporal |
 | CAT_budgetsByLabel | public/components/CampagneAnalytiqueTab.jsx:167 | — |
 | CAT_byCulture | public/components/CampagneAnalytiqueTab.jsx:324 | — |
-| CAT_DetailPopup | public/components/CampagneAnalytiqueTab.jsx:1067 | — |
+| CAT_DetailPopup | public/components/CampagneAnalytiqueTab.jsx:1093 | — |
 | CAT_opBudgetsByLabel | public/components/CampagneAnalytiqueTab.jsx:188 | — |
-| CAT_pills | public/components/CampagneAnalytiqueTab.jsx:1047 | — |
-| CAT_pillStyle | public/components/CampagneAnalytiqueTab.jsx:1033 | — |
+| CAT_pctPartsAnnuel | public/components/CampagneAnalytiqueTab.jsx:1048 | — |
+| CAT_pills | public/components/CampagneAnalytiqueTab.jsx:1073 | — |
+| CAT_pillStyle | public/components/CampagneAnalytiqueTab.jsx:1059 | — |
 | CAT_pivotRows | public/components/CampagneAnalytiqueTab.jsx:279 | — |
 | CBT_budgetsByLabel | public/components/CampagneBudgetTab.jsx:261 | — |
 | CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:470 | — |
@@ -116,7 +117,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62005 | coming_soon |
 | ConditionnementSub | public/app.jsx:24300 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1568 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1567 | — |
 | CoutRecolteTab | public/app.jsx:8647 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
@@ -246,8 +247,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PGP_haSb | public/components/ParcellesGroupesPanel.jsx:49 | — |
 | PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:130 | — |
 | PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:90 | — |
-| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:274 | — |
-| PivotView | public/components/CampagneAnalytiqueTab.jsx:1190 | — |
+| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:328 | — |
+| PivotView | public/components/CampagneAnalytiqueTab.jsx:1217 | — |
 | PlanificationTab | public/app.jsx:28967 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
 | PointageDiversTab | public/app.jsx:24695 | pointage_divers |

@@ -27,11 +27,11 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 15,
+        "commits": 17,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 15,
+        "commits": 17,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8d668123d9c38409",
+    "sourceFingerprint": "sha256:7f6195e2f348aa14",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -777,7 +777,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 14,
+          "coCommits": 16,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -833,6 +833,13 @@
           "windowDays": 90
         },
         {
+          "coCommits": 5,
+          "domain": null,
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 4,
           "domain": null,
           "file": "functions/pointageService.js",
@@ -842,21 +849,28 @@
         {
           "coCommits": 4,
           "domain": null,
-          "file": "scripts/build-frontend.js",
+          "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 4,
           "domain": null,
-          "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "file": "public/components/PivotAnalytiqueGrid.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
+          "file": "public/components/PivotAnalytiqueGrid.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
+          "file": "scripts/build-frontend.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -870,14 +884,21 @@
         {
           "coCommits": 3,
           "domain": null,
-          "file": "public/components/PivotAnalytiqueGrid.js",
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 3,
           "domain": null,
-          "file": "public/components/PivotAnalytiqueGrid.js",
+          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }

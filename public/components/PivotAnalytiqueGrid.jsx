@@ -43,9 +43,25 @@
  *                 contrat historique préservé.)
  *
  * ── Metric ─────────────────────────────────────────────────────────────────
- * Une série = une valeur par cellule. Les séries s'empilent DANS la cellule :
- * c'est ce qui permettra d'afficher réalisé / budget / écart côte à côte sans
- * ré-extraire la grille.
+ * Une série = une valeur par cellule.
+ *
+ * PLUSIEURS SÉRIES ⇒ SOUS-COLONNES (lot « grille sous-colonnes »). Chaque série
+ * devient une COLONNE sous l'en-tête de la parcelle, et son `label` devient
+ * l'en-tête de cette sous-colonne au lieu d'être répété dans chaque cellule.
+ * Empilées, trois séries libellées faisaient de chaque colonne un pavé de texte
+ * (« 20.0 Réalisé JH/Ha 15.0 Budget JH/Ha 75.0 Consommé % » dans 110 px).
+ *
+ * UNE SEULE SÉRIE ⇒ RENDU HISTORIQUE, à l'octet près : un seul <tr> d'en-tête,
+ * un <td> par parcelle, `colSpan` du bandeau de groupe inchangé. C'est le mode
+ * du panneau « Affectation Analytique » de l'écran Quinzaine, EN PRODUCTION, et
+ * c'est tests/unit/affectationAnalytiqueTable.test.js qui le verrouille.
+ *
+ * ⚠️ ASYMÉTRIE ASSUMÉE — la colonne TOTAL n'est jamais éclatée : elle reste une
+ * colonne unique (`rowSpan: 2` dans l'en-tête) où les séries restent EMPILÉES,
+ * label compris. Raison : cette colonne est `position: sticky; right: 0`, et
+ * plusieurs colonnes collées à droite exigeraient un `right` en pixels par
+ * sous-colonne, donc des largeurs fixes — mécanisme absent de cette grille (les
+ * largeurs sont laissées au navigateur, seul un `minWidth` est posé).
  *
  *   key      {string}    Champ lu dans la cellule du pivot (ex. 'jh', 'cout').
  *   get      {Function}  (cellule) => number|null. Prioritaire sur `key` — c'est
@@ -56,7 +72,9 @@
  *                        PAS confondre avec 0 (cf. _pag_raw).
  *   label    {string}    Nom court de la série. Affiché UNIQUEMENT s'il y a
  *                        plusieurs séries (sinon le balisage divergerait du
- *                        rendu historique).
+ *                        rendu historique) : en-tête de sa sous-colonne, et
+ *                        préfixe de l'unité dans la colonne Total (seul endroit
+ *                        où les séries restent empilées).
  *   unit     {string}    Unité affichée sous la valeur ('JH/Ha', 'DH emp.', …).
  *   basis    {'total'|'perHa'}  Ce que vaut la valeur BRUTE stockée dans le
  *                        pivot. Le réalisé est un TOTAL par cellule ; le budget
@@ -136,6 +154,16 @@
     if (v === null || v === undefined || v === '') return null;
     var n = Number(v);
     return isFinite(n) ? n : null;
+  }
+
+  /**
+   * Cellule ouvrable au clic ? Détail EXPLICITEMENT vide → non : une cellule
+   * qui n'existe que parce qu'un BUDGET y est saisi (aucun pointage réalisé)
+   * porte `detailRows: []`, la rendre cliquable ouvrirait une pop-up vide.
+   * `detailRows` ABSENT reste cliquable : le contrat n'a jamais exigé ce champ.
+   */
+  function _pag_cliquable(cell) {
+    return !(Array.isArray(cell.detailRows) && cell.detailRows.length === 0);
   }
 
   /** Série RATIO ? (cf. en-tête : agrégation par somme des deux termes.) */
@@ -256,19 +284,45 @@
    * Empile les séries dans une cellule : une ligne valeur + une ligne unité par
    * série. Avec UNE série, le balisage est exactement celui d'avant
    * l'extraction. Avec plusieurs, la ligne d'unité porte aussi le nom de la
-   * série — sans quoi les trois valeurs seraient indiscernables.
+   * série — sans quoi les valeurs seraient indiscernables.
+   *
+   * Depuis l'éclatement en sous-colonnes, le mode empilé ne sert plus QUE dans
+   * la colonne Total (cf. en-tête, « asymétrie assumée ») et dans le rendu
+   * historique à une seule série.
    */
   function _pag_stack(metrics, valueOf, valueStyle, unitStyle) {
     var multi = metrics.length > 1;
     var out = [];
     metrics.forEach(function (m, i) {
-      var v = valueOf(m);
+      var v = valueOf(m, i);
       out.push(_pag_h('div', { key: 'v' + i, style: valueStyle }, v === null ? _pag_dash() : v));
       var unit = m.unit || '';
       out.push(_pag_h('div', { key: 'u' + i, style: unitStyle },
         multi && m.label ? (unit ? m.label + ' ' + unit : m.label) : unit));
     });
     return out;
+  }
+
+  /**
+   * Survol d'une cellule éclatée en sous-colonnes : colore les K <td> de la
+   * MÊME cellule métier, pas seulement celui qui est sous le curseur — un
+   * survol qui ne colorerait qu'un tiers de la cellule ferait croire à trois
+   * cellules distinctes.
+   *
+   * Les sous-colonnes d'une parcelle sont contiguës et de nombre constant
+   * (jamais de colSpan dans le corps, cf. parcelleCell) : leur position dans la
+   * ligne est donc calculable — `start` = 1 (la colonne de libellé) + index de
+   * la parcelle × K. Inerte hors DOM (harnais de test sans document).
+   */
+  function _pag_paint(e, start, count, bg) {
+    var td = e && e.currentTarget;
+    var tr = td && td.parentNode;
+    var kids = tr && tr.children;
+    if (!kids) return;
+    for (var j = 0; j < count; j += 1) {
+      var c = kids[start + j];
+      if (c && c.style) c.style.background = bg;
+    }
   }
 
   function PivotAnalytiqueGrid(props) {
@@ -280,6 +334,29 @@
     var parcelleLabel = typeof props.parcelleLabel === 'function' ? props.parcelleLabel : null;
     var firstColumnLabel = props.firstColumnLabel || 'Opération';
     var note = props.note || '';
+
+    // Éclatement en sous-colonnes : MÊME test que le mode empilé historique
+    // (`multi` de _pag_stack). Une seule série ⇒ rendu d'avant, intégralement.
+    var nbMetrics = metrics.length;
+    var multi = nbMetrics > 1;
+    // Nombre RÉEL de colonnes du corps, hors colonne de libellé et hors Total.
+    var nbColonnesParcelles = parcelles.length * nbMetrics;
+
+    /**
+     * Trait de FIN DE PARCELLE, posé sur la dernière sous-colonne de chaque
+     * groupe. Repris à l'identique du séparateur qui ferme la colonne de
+     * libellé sur les lignes du corps (`2px solid <couleur de culture>`) :
+     * éclatée en 3, une parcelle n'est plus repérable sans lui.
+     *
+     * Il court sur TOUTES les lignes (les deux niveaux d'en-tête, famille,
+     * opération, pied) : interrompu sur une seule, l'œil perd la colonne.
+     * Entre les sous-colonnes d'une MÊME parcelle, aucun trait — elles se
+     * liraient comme des colonnes indépendantes.
+     */
+    var traitParcelle = '2px solid ' + color;
+    function borderSousColonne(i) {
+      return i === nbMetrics - 1 ? traitParcelle : 'none';
+    }
 
     var totalHa = parcelles.reduce(function (s, p) { return s + p[1]; }, 0);
 
@@ -339,38 +416,81 @@
     }
 
     // ── Cellule de parcelle (lignes famille et opération) ───────────────────
-    function parcelleCell(row, pKey, ha, opts) {
+    //
+    // Renvoie UN <td> à une seule série (rendu historique), K <td> contigus
+    // sinon — un par sous-colonne. Jamais de colSpan ici : c'est ce qui garde
+    // les colonnes alignées d'une ligne à l'autre et rend la position des
+    // sous-cellules calculable (cf. _pag_paint).
+    function parcelleCell(row, pKey, ha, opts, colIndex) {
       var cell = row.pivot[pKey];
-      if (!cell) {
-        return _pag_h('td', {
-          key: pKey,
-          style: { padding: opts.pad, textAlign: 'center', color: 'var(--gray-200)',
-            borderRight: '1px solid #f5edf4', fontSize: opts.emptyFontSize },
-        }, '—');
-      }
-      var style = { padding: opts.pad, textAlign: 'center', borderRight: '1px solid #f5edf4',
-        transition: 'background 0.12s' };
-      if (opts.fontSize) style.fontSize = opts.fontSize;
-      var attrs = { key: pKey, style: style };
-      // Détail EXPLICITEMENT vide → pas de clic. Une cellule qui n'existe que
-      // parce qu'un BUDGET y est saisi (aucun pointage réalisé) porte
-      // `detailRows: []` : la rendre cliquable ouvrirait une pop-up vide.
-      // `detailRows` ABSENT reste cliquable : le contrat n'a jamais exigé ce
-      // champ, l'appelant peut détailler autrement.
-      var cliquable = !(Array.isArray(cell.detailRows) && cell.detailRows.length === 0);
-      if (onCellClick && cliquable) {
-        style.cursor = 'pointer';
-        attrs.title = 'Voir le détail de ' + row.label + ' sur ' + pKey;
-        attrs.onClick = function () {
-          onCellClick({ parcelle: pKey, operationFamille: row.label, ha: ha, detailRows: cell.detailRows });
-        };
-        attrs.onMouseEnter = function (e) { e.currentTarget.style.background = '#fdf4f8'; };
-        attrs.onMouseLeave = function (e) { e.currentTarget.style.background = ''; };
-      }
-      return _pag_h('td', attrs, _pag_stack(metrics, function (m) {
+      var valeurs = metrics.map(function (m) {
+        if (!cell) return null;
         if (_pag_isRatio(m)) return _pag_renderRatio(m, _pag_parts(m, cell));
         return _pag_renderCell(m, _pag_raw(m, cell), ha);
-      }, opts.valueStyle, opts.unitStyle));
+      });
+
+      if (!multi) {
+        if (!cell) {
+          return _pag_h('td', {
+            key: pKey,
+            style: { padding: opts.pad, textAlign: 'center', color: 'var(--gray-200)',
+              borderRight: '1px solid #f5edf4', fontSize: opts.emptyFontSize },
+          }, '—');
+        }
+        var style = { padding: opts.pad, textAlign: 'center', borderRight: '1px solid #f5edf4',
+          transition: 'background 0.12s' };
+        if (opts.fontSize) style.fontSize = opts.fontSize;
+        var attrs = { key: pKey, style: style };
+        // Détail EXPLICITEMENT vide → pas de clic. Une cellule qui n'existe que
+        // parce qu'un BUDGET y est saisi (aucun pointage réalisé) porte
+        // `detailRows: []` : la rendre cliquable ouvrirait une pop-up vide.
+        // `detailRows` ABSENT reste cliquable : le contrat n'a jamais exigé ce
+        // champ, l'appelant peut détailler autrement.
+        if (onCellClick && _pag_cliquable(cell)) {
+          style.cursor = 'pointer';
+          attrs.title = 'Voir le détail de ' + row.label + ' sur ' + pKey;
+          attrs.onClick = function () {
+            onCellClick({ parcelle: pKey, operationFamille: row.label, ha: ha, detailRows: cell.detailRows });
+          };
+          attrs.onMouseEnter = function (e) { e.currentTarget.style.background = '#fdf4f8'; };
+          attrs.onMouseLeave = function (e) { e.currentTarget.style.background = ''; };
+        }
+        return _pag_h('td', attrs, _pag_stack(metrics, function (m, i) { return valeurs[i]; },
+          opts.valueStyle, opts.unitStyle));
+      }
+
+      // Mode sous-colonnes.
+      var actif = !!(cell && onCellClick && _pag_cliquable(cell));
+      var debut = 1 + colIndex * nbMetrics;   // 1 = la colonne de libellé
+      return metrics.map(function (m, i) {
+        var st = {
+          padding: opts.pad, textAlign: 'center',
+          borderRight: borderSousColonne(i),
+          transition: 'background 0.12s',
+        };
+        if (opts.fontSize) st.fontSize = opts.fontSize;
+        if (!cell) st.color = 'var(--gray-200)';
+        var a = { key: pKey + '#' + i, style: st };
+        if (actif) {
+          // UNE SEULE zone cliquable par cellule métier : la sous-colonne de la
+          // série PRIMAIRE (le réalisé). Trois <td> cliquables pour un même
+          // détail tripleraient les cibles sans rien apporter.
+          if (i === 0) {
+            st.cursor = 'pointer';
+            a.title = 'Voir le détail de ' + row.label + ' sur ' + pKey;
+            a.onClick = function () {
+              onCellClick({ parcelle: pKey, operationFamille: row.label, ha: ha, detailRows: cell.detailRows });
+            };
+          }
+          // …mais le SURVOL porte sur toute la cellule, depuis n'importe laquelle
+          // de ses sous-colonnes.
+          a.onMouseEnter = function (e) { _pag_paint(e, debut, nbMetrics, '#fdf4f8'); };
+          a.onMouseLeave = function (e) { _pag_paint(e, debut, nbMetrics, ''); };
+        }
+        var v = valeurs[i];
+        return _pag_h('td', a, _pag_h('div', { style: opts.valueStyle },
+          v === null ? _pag_dash() : v));
+      });
     }
 
     // ── Lignes ─────────────────────────────────────────────────────────────
@@ -385,7 +505,9 @@
           : null;
         return _pag_h('tr', { key: row.key },
           _pag_h('td', {
-            colSpan: parcelles.length + 2,
+            // ⚠️ Le SEUL endroit qui dépend du nombre de colonnes : oublier le
+            // × nbMetrics décale tout le tableau, silencieusement.
+            colSpan: nbColonnesParcelles + 2,
             style: { padding: '8px 14px', fontWeight: 700, fontSize: 12, background: color,
               color: 'white', letterSpacing: '0.04em', textTransform: 'uppercase',
               position: 'sticky', left: 0 },
@@ -411,12 +533,12 @@
             _pag_h('span', { style: { color: 'var(--gray-400)', marginRight: 6 } }, '↳'),
             row.label
           ),
-          parcelles.map(function (p) {
+          parcelles.map(function (p, i) {
             return parcelleCell(row, p[0], p[1], {
               pad: '6px 10px', fontSize: 11, emptyFontSize: 12,
               valueStyle: { fontWeight: 500, color: 'var(--gray-600)' },
               unitStyle: { fontSize: 9, color: 'var(--gray-400)' },
-            });
+            }, i);
           }),
           _pag_h('td', {
             style: { padding: '6px 10px', textAlign: 'center', fontWeight: 600,
@@ -440,12 +562,12 @@
             style: { fontSize: 10, fontWeight: 400, color: 'var(--gray-400)', marginLeft: 6 },
           }, row.key)
         ),
-        parcelles.map(function (p) {
+        parcelles.map(function (p, i) {
           return parcelleCell(row, p[0], p[1], {
             pad: '8px 10px', emptyFontSize: 13,
             valueStyle: { fontWeight: 700, color: 'var(--gray-700)' },
             unitStyle: { fontSize: 10, color: 'var(--gray-400)' },
-          });
+          }, i);
         }),
         _pag_h('td', {
           style: { padding: '8px 10px', textAlign: 'center', fontWeight: 700, color: color,
@@ -478,9 +600,14 @@
       ),
       _pag_h('div', { style: { overflowX: 'auto' } },
         _pag_h('table', { style: { width: '100%', borderCollapse: 'collapse', fontSize: 12 } },
+          // En-tête à DEUX niveaux dès qu'il y a plusieurs séries : parcelle
+          // (colSpan) puis une sous-colonne par série. Les colonnes de libellé
+          // et de Total, elles, restent uniques (rowSpan) — cf. « asymétrie
+          // assumée » en tête de fichier.
           _pag_h('thead', null,
-            _pag_h('tr', { style: { background: 'var(--gray-50)' } },
+            _pag_h('tr', { key: 'h1', style: { background: 'var(--gray-50)' } },
               _pag_h('th', {
+                rowSpan: multi ? 2 : undefined,
                 style: { padding: '8px 12px', textAlign: 'left', fontWeight: 600,
                   color: 'var(--gray-600)', position: 'sticky', left: 0,
                   background: 'var(--gray-50)', minWidth: 160,
@@ -489,8 +616,13 @@
               parcelles.map(function (p) {
                 return _pag_h('th', {
                   key: p[0],
+                  colSpan: multi ? nbMetrics : undefined,
                   style: { padding: '6px 10px', textAlign: 'center', fontWeight: 600,
-                    color: 'var(--gray-600)', minWidth: 110, borderRight: '1px solid var(--gray-100)' },
+                    color: 'var(--gray-600)',
+                    // Une parcelle éclatée n'a pas besoin de 110 px : ce sont
+                    // ses sous-colonnes qui portent la largeur minimale.
+                    minWidth: multi ? undefined : 110,
+                    borderRight: multi ? traitParcelle : '1px solid var(--gray-100)' },
                 },
                   _pag_h('div', { style: { color: color, fontWeight: 700 } },
                     (parcelleLabel ? parcelleLabel(p[0]) : p[0]) || p[0]),
@@ -500,11 +632,33 @@
               }),
               _pag_h('th', {
                 title: note || undefined,
+                rowSpan: multi ? 2 : undefined,
                 style: { padding: '6px 10px', textAlign: 'center', fontWeight: 700,
                   color: 'var(--gray-700)', minWidth: 100, background: 'var(--gray-100)',
                   position: 'sticky', right: 0, zIndex: 1 },
               }, 'Total')
-            )
+            ),
+            multi ? _pag_h('tr', { key: 'h2', style: { background: 'var(--gray-50)' } },
+              parcelles.map(function (p) {
+                return metrics.map(function (m, i) {
+                  return _pag_h('th', {
+                    key: p[0] + '#' + i,
+                    style: { padding: '4px 6px', textAlign: 'center', fontWeight: 600,
+                      fontSize: 10, color: 'var(--gray-500)',
+                      // 27 sous-colonnes (9 parcelles × 3) ne tiennent pas à
+                      // 110 px chacune : le conteneur défile déjà en X, mais
+                      // 3 000 px de large ne se lisent pas non plus.
+                      minWidth: 70, whiteSpace: 'nowrap',
+                      borderRight: borderSousColonne(i) },
+                  },
+                    _pag_h('div', null, m.label || ''),
+                    m.unit ? _pag_h('div', {
+                      style: { fontSize: 9, color: 'var(--gray-400)', fontWeight: 400 },
+                    }, m.unit) : null
+                  );
+                });
+              })
+            ) : null
           ),
           _pag_h('tbody', null, body),
           _pag_h('tfoot', null,
@@ -514,13 +668,24 @@
                   borderRight: '1px solid var(--gray-200)', zIndex: 1, color: color },
               }, 'TOTAL'),
               parcelles.map(function (p) {
-                return _pag_h('td', {
-                  key: p[0],
-                  style: { padding: '8px 10px', textAlign: 'center',
-                    borderRight: '1px solid var(--gray-100)', color: color },
-                }, _pag_stack(metrics, function (m) {
+                var totaux = metrics.map(function (m) {
                   return renderAgg(m, colTotal(m, p[0], p[1]), p[1]);
-                }, undefined, { fontSize: 10, opacity: 0.7 }));
+                });
+                if (!multi) {
+                  return _pag_h('td', {
+                    key: p[0],
+                    style: { padding: '8px 10px', textAlign: 'center',
+                      borderRight: '1px solid var(--gray-100)', color: color },
+                  }, _pag_stack(metrics, function (m, i) { return totaux[i]; },
+                    undefined, { fontSize: 10, opacity: 0.7 }));
+                }
+                return metrics.map(function (m, i) {
+                  return _pag_h('td', {
+                    key: p[0] + '#' + i,
+                    style: { padding: '8px 6px', textAlign: 'center', color: color,
+                      borderRight: borderSousColonne(i) },
+                  }, totaux[i] === null ? _pag_dash() : totaux[i]);
+                });
               }),
               _pag_h('td', {
                 style: { padding: '8px 10px', textAlign: 'center', background: color + '28',

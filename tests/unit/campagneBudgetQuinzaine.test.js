@@ -359,10 +359,15 @@ test('grille ratio — cohabite avec des séries ordinaires sans les perturber',
     RATIO_METRIC,
   ];
   const tree = Grid({ parcelles: PARCELLES, groupedRows: RATIO_ROWS, metrics });
-  const total = bodyCells(tree, 0)[3];
-  // Réalisé 21 JH, engagé 22 JH, 95,5 % — les trois séries dans la même cellule.
+  // 3 séries × 2 parcelles = 6 sous-colonnes, puis la colonne Total (index 7),
+  // seule colonne où les séries restent empilées.
+  const total = bodyCells(tree, 0)[7];
+  // Réalisé 21 JH, engagé 22 JH, 95,5 % — les trois séries du total de ligne.
   assert.ok(total.indexOf('21.0') >= 0 && total.indexOf('22.0') >= 0
     && total.indexOf('95.5') >= 0, total);
+  // Et dans le corps, une sous-colonne par série : le libellé n'est plus répété.
+  assert.deepStrictEqual(bodyCells(tree, 0).slice(1, 7),
+    ['1.0', '2.0', '50.0', '20.0', '20.0', '100.0']);
 });
 
 // ===========================================================================
@@ -545,17 +550,18 @@ test('vue quinzaine — la bascule est proposée, la vue annuelle reste le défa
   assert.ok(textOf(section(tree, 'tbody')).indexOf('Engagé quinz.') < 0);
 });
 
-test('vue quinzaine — trois séries : réalisé de la quinzaine, engagé, % consommé', () => {
+test('vue quinzaine — trois sous-colonnes : réalisé de la quinzaine, engagé, % consommé', () => {
   // [totalMode, detailMode, detailCell, vueQuinzaine, quinzaineSel]
   const tree = renderPivot(null, [false, false, null, true, '']);
   const cells = bodyCells(tree, 1);   // 0 = bandeau groupe, 1 = ligne famille
-  const cellule = cells[1];
+  // Une seule parcelle : sous-colonnes 1..3, puis la colonne Total.
   // Réalisé de Q04 = 6 JH sur 2 Ha = 3.0 JH/Ha (et NON les 36 JH cumulés).
-  assert.ok(cellule.indexOf('3.0 | Réalisé quinz. JH/Ha') >= 0, cellule);
-  assert.ok(cellule.indexOf('4.0 | Engagé quinz. JH/Ha') >= 0, cellule);
-  assert.ok(cellule.indexOf('75.0 | Consommé %') >= 0, cellule);
-  // Les séries annuelles ne sont PAS empilées par-dessus.
-  assert.ok(cellule.indexOf('Reste rythme') < 0, cellule);
+  assert.deepStrictEqual(cells.slice(1, 4), ['3.0', '4.0', '75.0 %']);
+  // Les libellés de série sont passés en EN-TÊTE, ils ne sont plus répétés dans
+  // la cellule — c'est tout l'objet du lot.
+  const trs = walk(section(tree, 'thead')).filter((n) => n.type === 'tr');
+  assert.deepStrictEqual((trs[1].children || []).filter((c) => c.type === 'th').map(textOf),
+    ['Réalisé quinz. | JH/Ha', 'Engagé quinz. | JH/Ha', '% consommé']);
 });
 
 test('vue quinzaine — la légende dit que l\'engagement n\'est pas le budget annuel', () => {
@@ -567,9 +573,7 @@ test('vue quinzaine — une quinzaine PASSÉE reste consultable', () => {
   // Q03 : 30 JH réalisés sur 2 Ha = 15 JH/Ha, 20 JH/Ha engagés → 75 % aussi,
   // mais sur des chiffres différents : c'est bien la quinzaine choisie qui est lue.
   const tree = renderPivot(null, [false, false, null, true, 'Q03']);
-  const cellule = bodyCells(tree, 1)[1];
-  assert.ok(cellule.indexOf('15.0 | Réalisé quinz. JH/Ha') >= 0, cellule);
-  assert.ok(cellule.indexOf('20.0 | Engagé quinz. JH/Ha') >= 0, cellule);
+  assert.deepStrictEqual(bodyCells(tree, 1).slice(1, 4), ['15.0', '20.0', '75.0 %']);
 });
 
 test('vue quinzaine — aucun engagement : pas de bascule, la vue annuelle tient', () => {
