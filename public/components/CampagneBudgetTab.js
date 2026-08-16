@@ -1300,10 +1300,56 @@
   }
 
   /**
-   * Deux périmètres de fan-out décrivent-ils EXACTEMENT le même effet ? PURE.
+   * SIGNATURE du body d'un fan-out : ce qui part, exactement. PURE.
    *
-   * Même rôle que `CBT_memeNeutralisations` : refuser une confirmation devenue
-   * caduque (cible changée, données rechargées, saisie modifiée entre-temps).
+   * C'est le juge de « ce qui a été confirmé est-il ce qui va être écrit ». Il
+   * remplace toute heuristique de « ce qui a assez changé » : au lieu de choisir
+   * quels aspects comparer — et de se tromper — on compare le payload lui-même.
+   * Deux trous réels sont ainsi fermés : une VALEUR corrigée entre la
+   * confirmation et le clic sans que le nombre d'écrasements bouge (le panneau
+   * affichait alors un chiffre faux au moment du clic), et une FAMILLE
+   * supplémentaire touchée entre les deux, absente de la confirmation validée.
+   *
+   * Clés TRIÉES à tous les niveaux : un `JSON.stringify` brut dépend de l'ordre
+   * d'insertion des clés, donc refuserait des payloads identiques (faux refus).
+   * Les labels sont normalisés et triés : la cible fait partie de ce qu'on
+   * confirme.
+   *
+   * @param {{labels?: Array<string>, budgets?: Object<string, *>,
+   *   budgets_operations?: Object<string, Object<string, *>>}|null|undefined}
+   *   payload body construit par CBT_buildFanoutPayload.
+   * @returns {string}
+   */
+  function CBT_signatureFanout(payload) {
+    var p = payload || {};
+    var budgets = p.budgets || {};
+    var ops = p.budgets_operations || {};
+    var labels = (Array.isArray(p.labels) ? p.labels : []).map(function (l) {
+      return String(l == null ? '' : l).trim().toUpperCase();
+    }).sort().join('|');
+    var fam = Object.keys(budgets).sort().map(function (f) {
+      return f + '=' + CBT_num(budgets[f]);
+    }).join(',');
+    var parOp = Object.keys(ops).sort().map(function (f) {
+      var famOps = ops[f] || {};
+      return f + '{' + Object.keys(famOps).sort().map(function (op) {
+        return op + '=' + CBT_num(famOps[op]);
+      }).join(',') + '}';
+    }).join(',');
+    return labels + '§' + fam + '§' + parOp;
+  }
+
+  /**
+   * Deux périmètres de fan-out décrivent-ils le même EFFET ANNONCÉ ? PURE.
+   *
+   * Complément de `CBT_signatureFanout`, pas un substitut : la signature juge ce
+   * qui PART, celui-ci juge ce qui a été AFFICHÉ. Il attrape le cas où le payload
+   * n'a pas bougé mais où la base a été rechargée entre-temps — les écrasements
+   * annoncés ne décrivent alors plus la réalité.
+   *
+   * ⚠️ NE JAMAIS s'en servir seul : il ne compare que le NOMBRE de valeurs
+   * écrasées par parcelle, pas les valeurs (c'est précisément le trou qui a
+   * justifié l'introduction de la signature).
    *
    * @param {Array<{label?: *, nb?: *}>|null|undefined} a
    * @param {Array<{label?: *, nb?: *}>|null|undefined} b
@@ -1346,16 +1392,19 @@
       return String(l);
     };
     function liste(labels) {
-      var noms = labels.slice(0, 3).map(nom);
-      return noms.join(', ') + (labels.length > 3 ? ' et ' + (labels.length - 3) + ' autres' : '');
+      var reste = labels.length - 3;
+      return labels.slice(0, 3).map(nom).join(', ') + (reste > 0 ? ' et ' + reste + (reste > 1 ? ' autres' : ' autre') : '');
     }
     var results = Array.isArray(res && res.results) ? res.results : null;
     if (!results) {
       // Réponse d'un backend qui ne connaît pas `labels` : il a écrit UNE
       // parcelle (celle de `label_bee_one`) et n'a rien dit des autres.
+      // Une seule cible demandée → cette parcelle EST la bonne : le message
+      // historique est exact, prétendre le contraire serait un faux négatif.
+      if (n <= 1) return CBT_saveMessage(res);
       return {
         type: 'ko',
-        text: 'Le serveur n\'a pas traité les ' + n + ' parcelles (version antérieure)' + ' — au plus une a été enregistrée. Rafraîchir avant de réessayer.'
+        text: 'Le serveur n\'a pas traité les ' + n + ' parcelles (version antérieure)' + ' — une seule a été enregistrée. Rafraîchir avant de réessayer.'
       };
     }
     var oks = results.filter(function (r) {
@@ -1986,21 +2035,29 @@
       });
       // Confirmation TOUJOURS requise, même sans écrasement ni neutralisation :
       // écrire N parcelles d'un seul geste n'est jamais un geste ordinaire.
+      var signature = CBT_signatureFanout(built.payload);
       if (!confirme) {
         setConfirmFanout({
           labels: targetLabels,
-          ecrasements: ecrasements
+          ecrasements: ecrasements,
+          signature: signature
         });
         setConfirmList(menacees);
         setMsg(null);
         return;
       }
       // Bretelles : ce qui a été confirmé doit être EXACTEMENT ce qui va être
-      // écrit — périmètre ET effets.
-      if (!CBT_memeFanout(confirmFanout && confirmFanout.ecrasements, ecrasements) || !CBT_memeNeutralisations(confirmList, menacees)) {
+      // écrit. La SIGNATURE du payload est le juge — elle couvre la cible, les
+      // familles envoyées ET leurs valeurs, donc aussi les deux cas qu'une
+      // comparaison d'écrasements laissait passer : une valeur corrigée sans que
+      // le nombre d'écrasements bouge (le panneau est juste sous la grille, les
+      // champs sont à portée de pouce), et une famille ajoutée après coup.
+      // `CBT_memeFanout` reste comme second juge, sur ce qui a été AFFICHÉ.
+      if (signature !== (confirmFanout && confirmFanout.signature) || !CBT_memeFanout(confirmFanout && confirmFanout.ecrasements, ecrasements) || !CBT_memeNeutralisations(confirmList, menacees)) {
         setConfirmFanout({
           labels: targetLabels,
-          ecrasements: ecrasements
+          ecrasements: ecrasements,
+          signature: signature
         });
         setConfirmList(menacees.length > 0 ? menacees : null);
         setMsg({
@@ -2069,6 +2126,16 @@
           return !(r && r.ok);
         }) ? results : null);
         setMsg(CBT_fanoutMessage(d, nbDemandes, cbtNom));
+        // SKEW DE DÉPLOIEMENT (`results` absent alors qu'on visait plusieurs
+        // parcelles) : le backend antérieur A écrit une parcelle, mais on ne
+        // sait pas laquelle porte quoi et le réalignement ci-dessus n'a rien eu
+        // à consommer. On relit la base plutôt que de laisser l'écran mentir
+        // jusqu'au prochain Rafraîchir manuel.
+        if (!Array.isArray(d.results) && nbDemandes > 1) {
+          setTick(function (t) {
+            return t + 1;
+          });
+        }
       }).catch(function (e) {
         // On ne sait pas ce qui a été écrit : on ne l'invente pas, on le dit et
         // on relit la base (tick) — le seul état digne de confiance.
@@ -2204,7 +2271,8 @@
 
     // Libellé de la cible et parcelles sans Ha, pour l'entête de portée.
     var porteeCibleLabel = portee === 'culture' ? cultureSel : varieteBucket ? varieteBucket.label : '';
-    var porteeSansHaNoms = surfaceCible.sansHa.slice(0, 3).map(cbtNom).join(', ') + (surfaceCible.sansHa.length > 3 ? ' et ' + (surfaceCible.sansHa.length - 3) + ' autres' : '');
+    var porteeSansHaReste = surfaceCible.sansHa.length - 3;
+    var porteeSansHaNoms = surfaceCible.sansHa.slice(0, 3).map(cbtNom).join(', ') + (porteeSansHaReste > 0 ? ' et ' + porteeSansHaReste + (porteeSansHaReste > 1 ? ' autres' : ' autre') : '');
     // La grille n'a de sens que si l'enregistrement porterait sur au moins une
     // parcelle. En portée multiple, une cible non choisie donne 0 cible.
     var grilleVisible = porteeMulti ? targetLabels.length > 0 : !!selected;
@@ -3105,6 +3173,7 @@
   CampagneBudgetTab.memeNeutralisations = CBT_memeNeutralisations;
   CampagneBudgetTab.fanoutEcrasements = CBT_fanoutEcrasements;
   CampagneBudgetTab.memeFanout = CBT_memeFanout;
+  CampagneBudgetTab.signatureFanout = CBT_signatureFanout;
   CampagneBudgetTab.fanoutMessage = CBT_fanoutMessage;
   CampagneBudgetTab.totalJH = CBT_totalJH;
   CampagneBudgetTab.quinzaineApplicable = CBT_quinzaineApplicable;

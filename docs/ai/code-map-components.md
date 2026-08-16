@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:947f9d329557899b -->
-# Code Map — Composants frontend (335)
+<!-- sourceFingerprint: sha256:969b72c776444cdc -->
+# Code Map — Composants frontend (336)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -66,7 +66,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseValidationSub | public/app.jsx:60470 | — |
 | CaisseWarnings | public/app.jsx:61059 | — |
 | CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:1900 | campagne |
-| CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:1360 | — |
+| CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:1411 | — |
 | CampagneSegmentTable | public/app.jsx:10912 | — |
 | CampagneTab | public/app.jsx:11013 | — |
 | CanevaFinanceQueue | public/app.jsx:60920 | — |
@@ -88,15 +88,15 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CBT_budgetsByLabel | public/components/CampagneBudgetTab.jsx:261 | — |
 | CBT_buildFanoutPayload | public/components/CampagneBudgetTab.jsx:963 | — |
 | CBT_buildSavePayload | public/components/CampagneBudgetTab.jsx:841 | — |
-| CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:1348 | — |
+| CBT_CultureBadge | public/components/CampagneBudgetTab.jsx:1399 | — |
 | CBT_cultureRow | public/components/CampagneBudgetTab.jsx:459 | — |
 | CBT_familleDuCode | public/components/CampagneBudgetTab.jsx:176 | — |
 | CBT_famillesFromOps | public/components/CampagneBudgetTab.jsx:209 | — |
 | CBT_famillesNeutralisees | public/components/CampagneBudgetTab.jsx:351 | — |
 | CBT_familleTotal | public/components/CampagneBudgetTab.jsx:317 | — |
 | CBT_fanoutEcrasements | public/components/CampagneBudgetTab.jsx:1194 | — |
-| CBT_fanoutMessage | public/components/CampagneBudgetTab.jsx:1273 | — |
-| CBT_memeFanout | public/components/CampagneBudgetTab.jsx:1239 | — |
+| CBT_fanoutMessage | public/components/CampagneBudgetTab.jsx:1320 | — |
+| CBT_memeFanout | public/components/CampagneBudgetTab.jsx:1286 | — |
 | CBT_memeNeutralisations | public/components/CampagneBudgetTab.jsx:376 | — |
 | CBT_normVariete | public/components/CampagneBudgetTab.jsx:512 | — |
 | CBT_num | public/components/CampagneBudgetTab.jsx:295 | — |
@@ -109,10 +109,11 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CBT_quinzaineApplicable | public/components/CampagneBudgetTab.jsx:409 | — |
 | CBT_quinzainesSupprimees | public/components/CampagneBudgetTab.jsx:793 | — |
 | CBT_saveMessage | public/components/CampagneBudgetTab.jsx:1085 | — |
+| CBT_signatureFanout | public/components/CampagneBudgetTab.jsx:1250 | — |
 | CBT_splitOpKey | public/components/CampagneBudgetTab.jsx:153 | — |
 | CBT_surfaceCible | public/components/CampagneBudgetTab.jsx:765 | — |
 | CBT_targetLabels | public/components/CampagneBudgetTab.jsx:628 | — |
-| CBT_totalJH | public/components/CampagneBudgetTab.jsx:1341 | — |
+| CBT_totalJH | public/components/CampagneBudgetTab.jsx:1392 | — |
 | CBT_valeursCommunes | public/components/CampagneBudgetTab.jsx:712 | — |
 | CBT_varieteKey | public/components/CampagneBudgetTab.jsx:534 | — |
 | ChargementSub | public/app.jsx:24257 | — |

@@ -1855,6 +1855,41 @@ test('fanoutEcrasements — 3 exemples au plus, mais le compte reste exact', () 
   assert.deepStrictEqual(plain(CBT.fanoutEcrasements({})), []);
 });
 
+test('signatureFanout — identique à l\'ordre des clés près, différente au moindre écart', () => {
+  const a = CBT.signatureFanout({
+    labels: ['S13 - CORINA', 'S8 - CORINA'],
+    budgets: { 'Récolte': 1500, 'Taille': 0 },
+    budgets_operations: { 'Taille': { 'GB09::B': 2, 'GB09::A': 1 } },
+  });
+  // Mêmes données, ordre d'insertion inverse : un JSON.stringify brut différerait
+  // et provoquerait des refus infondés. La signature trie tout.
+  const b = CBT.signatureFanout({
+    labels: ['S8 - CORINA', 'S13 - CORINA'],
+    budgets: { 'Taille': 0, 'Récolte': 1500 },
+    budgets_operations: { 'Taille': { 'GB09::A': 1, 'GB09::B': 2 } },
+  });
+  assert.strictEqual(a, b);
+  // Une VALEUR qui change change la signature (le trou que `label|nb` laissait).
+  assert.notStrictEqual(a, CBT.signatureFanout({
+    labels: ['S13 - CORINA', 'S8 - CORINA'],
+    budgets: { 'Récolte': 900, 'Taille': 0 },
+    budgets_operations: { 'Taille': { 'GB09::A': 1, 'GB09::B': 2 } },
+  }));
+  // Une FAMILLE ajoutée aussi.
+  assert.notStrictEqual(a, CBT.signatureFanout({
+    labels: ['S13 - CORINA', 'S8 - CORINA'],
+    budgets: { 'Récolte': 1500, 'Taille': 0, 'Nouvelle': 42 },
+    budgets_operations: { 'Taille': { 'GB09::A': 1, 'GB09::B': 2 } },
+  }));
+  // La CIBLE fait partie de ce qu'on confirme.
+  assert.notStrictEqual(a, CBT.signatureFanout({
+    labels: ['S13 - CORINA'],
+    budgets: { 'Récolte': 1500, 'Taille': 0 },
+    budgets_operations: { 'Taille': { 'GB09::A': 1, 'GB09::B': 2 } },
+  }));
+  assert.strictEqual(typeof CBT.signatureFanout(null), 'string');
+});
+
 test('memeFanout — égalité stricte du périmètre, insensible à l\'ordre', () => {
   const a = [{ label: 'P1', nb: 2 }, { label: 'P2', nb: 1 }];
   assert.strictEqual(CBT.memeFanout(a, a.slice().reverse()), true);
@@ -1896,6 +1931,10 @@ test('fanoutMessage — `results` absent avec plusieurs cibles : skew de deploy,
   const m = CBT.fanoutMessage({ success: true, label_bee_one: 'P1', budgets: {} }, 23);
   assert.strictEqual(m.type, 'ko');
   assert.match(m.text, /n'a pas traité les 23 parcelles \(version antérieure\)/);
+  // …MAIS une cible unique (bucket d'une seule parcelle) est bien enregistrée par
+  // un backend antérieur : crier au loup serait un faux négatif.
+  const seule = CBT.fanoutMessage({ success: true, label_bee_one: 'P1' }, 1);
+  assert.deepStrictEqual(plain(seule), { type: 'ok', text: 'Budget enregistré' });
 });
 
 test('fanoutMessage — effets de bord : ambre, noms tronqués à 3, nomOf injecté', () => {
@@ -1913,8 +1952,8 @@ test('fanoutMessage — effets de bord : ambre, noms tronqués à 3, nomOf injec
   assert.strictEqual(m.type, 'ok');
   assert.strictEqual(m.purge, true, 'une suppression de données n\'est jamais un vert neutre');
   assert.match(m.text, /Budget enregistré sur 5 parcelles/);
-  // Lisibilité téléphone : 3 noms puis « et N autres ». `nomOf` est bien utilisé.
-  assert.match(m.text, /Parcelle P1, Parcelle P2, Parcelle P3 et 1 autres/);
+  // Lisibilité téléphone : 3 noms puis « et N autre(s) ». `nomOf` bien utilisé.
+  assert.match(m.text, /Parcelle P1, Parcelle P2, Parcelle P3 et 1 autre\b/);
   assert.match(m.text, /entrées obsolètes retirées sur 1 parcelle : Parcelle P5/);
 });
 
@@ -1966,10 +2005,12 @@ test('rendu — la confirmation le dit quand AUCUNE valeur existante n\'est remp
 });
 
 test('rendu — « Confirmer » envoie labels[] + label_bee_one, et le payload PARTIEL', () => {
+  // La confirmation est POSÉE par le composant (avec sa signature), jamais
+  // fabriquée à la main : c'est le seul chemin qu'un utilisateur peut suivre.
+  const confirme = confirmFanoutPose(stateFanout());
   const spy = { effects: [], sets: [], fetches: [] };
-  const tree = load(stateFanout({
-    confirmFanout: { labels: ['S13 - CORINA', 'S8 - CORINA'], ecrasements: [] },
-  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  const tree = load(stateFanout({ confirmFanout: confirme }), spy, WIN_PORTEE)(
+    { userRole: 'dg' });
   buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
 
   assert.strictEqual(spy.fetches.length, 1);
@@ -1982,6 +2023,92 @@ test('rendu — « Confirmer » envoie labels[] + label_bee_one, et le payload P
   // PARTIEL : seule « Récolte » a été touchée, « Taille » n'est pas dans le body.
   assert.deepStrictEqual(body.budgets, { 'Récolte': 1500 });
   assert.strictEqual('Taille' in body.budgets, false);
+});
+
+/** `confirmFanout` tel que le composant le pose lui-même, pour un état donné. */
+function confirmFanoutPose(state) {
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(state, spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Enregistrer').props.onClick();
+  const poses = spy.sets.filter(function (s) { return s.index === S.confirmFanout; });
+  assert.strictEqual(poses.length, 1, 'la confirmation doit être posée');
+  assert.strictEqual(spy.fetches.length, 0, 'et rien ne doit partir à ce stade');
+  return poses[0].value;
+}
+
+test('rendu — une VALEUR corrigée après la confirmation n\'écrit rien (écrasements identiques)', () => {
+  // TROU RÉEL : le panneau est juste sous la grille, les champs sont à portée de
+  // pouce. On confirme 1500, on corrige à 900, on clique « Confirmer » : le
+  // nombre d'écrasements par parcelle est INCHANGÉ (1 chacune), donc l'ancienne
+  // bretelle (`label|nb`) laissait partir 900 pendant que le panneau affichait
+  // 1500. La signature du payload le refuse.
+  const base = {
+    familles: ['Récolte'], opsByFamille: {},
+    touched: { 'Récolte': true },
+    budgetsByLabel: { 'S13 - CORINA': { 'Récolte': 1800 }, 'S8 - CORINA': { 'Récolte': 1800 } },
+  };
+  const confirme = confirmFanoutPose(statePortee(
+    Object.assign({}, base, { values: { 'Récolte': '1500' } })));
+  // Les écrasements annoncés sont bien les mêmes dans les deux états…
+  assert.strictEqual(confirme.ecrasements.length, 2);
+
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(statePortee(Object.assign({}, base, {
+    values: { 'Récolte': '900' },      // ← corrigé APRÈS la confirmation
+    confirmFanout: confirme,
+  })), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 0, '900 ne doit PAS partir sur les 2 parcelles');
+  const msgs = spy.sets.filter(function (s) { return s.index === S.msg && s.value; });
+  assert.match(String(msgs[msgs.length - 1].value.text), /La saisie a changé/);
+
+  // CONTRE-ÉPREUVE : sans modification, le même clic écrit bien 1500.
+  const spy2 = { effects: [], sets: [], fetches: [] };
+  const inchange = load(statePortee(Object.assign({}, base, {
+    values: { 'Récolte': '1500' }, confirmFanout: confirme,
+  })), spy2, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(inchange, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy2.fetches.length, 1);
+  assert.strictEqual(JSON.parse(spy2.fetches[0].init.body).budgets['Récolte'], 1500);
+});
+
+test('rendu — une FAMILLE ajoutée après la confirmation n\'écrit rien (aucun écrasement)', () => {
+  // Second trou : base vide → `ecrasements: []` avant ET après. L'ancienne
+  // bretelle comparait `[]` à `[]` et laissait passer une famille de plus,
+  // absente de la confirmation qui venait d'être validée.
+  const base = { familles: ['Récolte', 'Taille'], opsByFamille: {}, budgetsByLabel: {} };
+  const confirme = confirmFanoutPose(statePortee(Object.assign({}, base, {
+    touched: { 'Récolte': true }, values: { 'Récolte': '1500' },
+  })));
+  assert.deepStrictEqual(plain(confirme.ecrasements), []);
+
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(statePortee(Object.assign({}, base, {
+    // « Taille » touchée APRÈS la confirmation.
+    touched: { 'Récolte': true, 'Taille': true },
+    values: { 'Récolte': '1500', 'Taille': '42' },
+    confirmFanout: confirme,
+  })), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 0, 'une famille non confirmée ne part pas');
+  const msgs = spy.sets.filter(function (s) { return s.index === S.msg && s.value; });
+  assert.match(String(msgs[msgs.length - 1].value.text), /La saisie a changé/);
+
+  // CONTRE-ÉPREUVE : re-confirmer le nouvel état l'accepte, avec les 2 familles.
+  const confirme2 = confirmFanoutPose(statePortee(Object.assign({}, base, {
+    touched: { 'Récolte': true, 'Taille': true },
+    values: { 'Récolte': '1500', 'Taille': '42' },
+  })));
+  const spy2 = { effects: [], sets: [], fetches: [] };
+  const tree2 = load(statePortee(Object.assign({}, base, {
+    touched: { 'Récolte': true, 'Taille': true },
+    values: { 'Récolte': '1500', 'Taille': '42' },
+    confirmFanout: confirme2,
+  })), spy2, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(tree2, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy2.fetches.length, 1);
+  assert.deepStrictEqual(JSON.parse(spy2.fetches[0].init.body).budgets,
+    { 'Récolte': 1500, 'Taille': 42 });
 });
 
 test('rendu — « Confirmer » sur un périmètre PÉRIMÉ n\'écrit rien', () => {
