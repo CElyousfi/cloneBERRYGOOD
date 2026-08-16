@@ -476,6 +476,289 @@
     return CBT_CULTURES_MASQUEES.indexOf(CBT_cultureRow(row, sbMap)) === -1;
   }
 
+  // ==========================================================================
+  // PORTÉE DE SAISIE (Parcelle / Variété / Culture) — helpers PURS
+  //
+  // Le stockage reste PAR PARCELLE (un document `{campagne}__{LABEL}`) : la
+  // portée n'est qu'un moyen de saisir une grille une fois et de l'écrire sur
+  // les N parcelles cibles. Aucun nouveau niveau de document, aucun héritage.
+  // ==========================================================================
+
+  /** Séparateur de la clé de bucket de variété. */
+  var CBT_VAR_KEY_SEP = '||';
+
+  /**
+   * Normalise une variété : trim, MAJUSCULES, espaces internes réduits à un.
+   *
+   * @param {*} raw
+   * @returns {string} '' si absente.
+   */
+  function CBT_normVariete(raw) {
+    return String(raw == null ? '' : raw).trim().toUpperCase().replace(/\s+/g, ' ');
+  }
+
+  /**
+   * Clé de bucket de variété : `CULTURE||VARIETE`. PURE (`sbMap` injecté).
+   *
+   * Clé COMPOSITE volontairement : chaque bucket est ainsi mono-culture, ce qui
+   * importe parce que la culture porte deux décisions (le masquage de cet écran
+   * et l'applicabilité du budget de quinzaine). Une variété seule pourrait, en
+   * théorie, être partagée par deux cultures et produire un bucket mixte.
+   *
+   * Source de la variété : `row.variete`, déjà servi par `toRow`
+   * (functions/pointageService.js) et jamais consommé par cet écran jusqu'ici —
+   * AUCUN changement serveur n'est nécessaire.
+   *
+   * @param {{label?: string, culture?: string, variete?: string}|null|undefined} row
+   * @param {Object<string, *>} [sbMap] référentiel SB (injecté).
+   * @returns {string} '' si la variété est absente OU si la culture n'a pas pu
+   *   être résolue : un bucket dont une composante est l'absence de donnée n'est
+   *   pas proposable (cf. CBT_porteeOptions).
+   */
+  function CBT_varieteKey(row, sbMap) {
+    var r = row || {};
+    var culture = String(CBT_cultureRow(r, sbMap) || '').trim();
+    var variete = CBT_normVariete(r.variete);
+    if (!culture || !variete) return '';
+    return culture + CBT_VAR_KEY_SEP + variete;
+  }
+
+  /**
+   * Buckets de portée proposables, dérivés des parcelles affichées. PURE.
+   *
+   * `rows` doit être la liste DÉJÀ masquée (`rowsAffichables`). Le filtre est
+   * néanmoins REJOUÉ ici : un bucket de culture masquée ne doit pas exister,
+   * même si l'appelant se trompe de liste. Sur `rowsAffichables` c'est un no-op.
+   *
+   * Le bucket de variété VIDE est EXCLU de `varietes` : un bucket dont la clé
+   * est l'absence de donnée est précisément celui sur lequel on ne veut pas
+   * d'écriture en aveugle. Ces parcelles restent saisissables en portée
+   * Parcelle, et elles comptent normalement dans leur bucket de Culture.
+   *
+   * Déduplication sur le label en MAJUSCULES (même clé que
+   * `window.SB_PARCELLE_REF`) : une parcelle listée deux fois ne compte qu'une.
+   * Tri alphabétique, donc indépendant de l'ordre d'arrivée des lignes.
+   *
+   * @param {Object} args
+   * @param {Array<{label?: string, culture?: string, variete?: string}>} args.rows
+   * @param {Object<string, *>} [args.sbMap] référentiel SB (injecté).
+   * @returns {{varietes: Array<{key: string, label: string, culture: string,
+   *   variete: string, nb: number}>, cultures: Array<{key: string,
+   *   label: string, nb: number}>}}
+   */
+  function CBT_porteeOptions(args) {
+    var a = args || {};
+    var sbMap = a.sbMap;
+    var vues = {};
+    var parVariete = {};
+    var parCulture = {};
+    (a.rows || []).forEach(function (r) {
+      var label = String((r && r.label) || '').trim().toUpperCase();
+      if (!label || vues[label]) return;
+      vues[label] = true;
+      var culture = String(CBT_cultureRow(r, sbMap) || '').trim();
+      if (CBT_CULTURES_MASQUEES.indexOf(culture) !== -1) return;
+      if (culture) {
+        parCulture[culture] = (parCulture[culture] || 0) + 1;
+      }
+      var key = CBT_varieteKey(r, sbMap);
+      if (!key) return;
+      if (!parVariete[key]) {
+        parVariete[key] = { culture: culture, variete: CBT_normVariete(r && r.variete), nb: 0 };
+      }
+      parVariete[key].nb += 1;
+    });
+    var varietes = Object.keys(parVariete).sort().map(function (key) {
+      var b = parVariete[key];
+      return {
+        key: key,
+        label: b.culture + ' / ' + b.variete,
+        culture: b.culture,
+        variete: b.variete,
+        nb: b.nb,
+      };
+    });
+    var cultures = Object.keys(parCulture).sort().map(function (key) {
+      return { key: key, label: key, nb: parCulture[key] };
+    });
+    return { varietes: varietes, cultures: cultures };
+  }
+
+  /**
+   * Labels BEE ONE des parcelles CIBLES d'un enregistrement. PURE.
+   *
+   * Labels rendus BRUTS, dans la forme du référentiel (pas en MAJUSCULES) : le
+   * backend normalise lui-même, mais le label envoyé doit être celui du
+   * référentiel — c'est lui qui identifie le document.
+   *
+   * `rows` doit être la liste DÉJÀ masquée. Le filtre de masquage est REJOUÉ
+   * ici — double garde : l'avocatier ne peut pas entrer dans une cible
+   * d'écriture même si l'appelant se trompe de liste. Sur `rowsAffichables`,
+   * c'est un no-op. La portée Parcelle, elle, ne consulte pas `rows` du tout :
+   * elle écrit sur le label sélectionné, dont le sélecteur est déjà filtré.
+   *
+   * Dédup sur la clé MAJUSCULES ; ordre alphabétique sur cette même clé, donc
+   * déterministe quel que soit l'ordre d'arrivée des lignes.
+   *
+   * @param {Object} args
+   * @param {'parcelle'|'variete'|'culture'} args.portee
+   * @param {Array<{label?: string, culture?: string, variete?: string}>} [args.rows]
+   * @param {string} [args.label] parcelle sélectionnée (portée Parcelle).
+   * @param {string} [args.cible] clé de bucket (`'Myrtille||CORINA'` ou
+   *   `'Myrtille'`), comparée en MAJUSCULES.
+   * @param {Object<string, *>} [args.sbMap] référentiel SB (injecté).
+   * @returns {Array<string>} [] si la portée est inconnue ou la cible absente.
+   */
+  function CBT_targetLabels(args) {
+    var a = args || {};
+    var portee = String(a.portee || '').trim();
+    if (portee === 'parcelle') {
+      var one = String(a.label == null ? '' : a.label).trim();
+      return one ? [one] : [];
+    }
+    if (portee !== 'variete' && portee !== 'culture') return [];
+    var cible = String(a.cible == null ? '' : a.cible).trim().toUpperCase();
+    if (!cible) return [];
+    var sbMap = a.sbMap;
+    var vus = {};
+    (a.rows || []).forEach(function (r) {
+      var label = String((r && r.label) || '').trim();
+      if (!label) return;
+      var culture = String(CBT_cultureRow(r, sbMap) || '').trim();
+      if (CBT_CULTURES_MASQUEES.indexOf(culture) !== -1) return;
+      var clef = portee === 'variete' ? CBT_varieteKey(r, sbMap) : culture;
+      if (!clef || clef.toUpperCase() !== cible) return;
+      var up = label.toUpperCase();
+      if (vus[up]) return;
+      vus[up] = label;
+    });
+    return Object.keys(vus).sort().map(function (up) { return vus[up]; });
+  }
+
+  /**
+   * Valeur COMMUNE d'une liste de nombres. PURE.
+   *
+   * @param {Array<number>} list
+   * @returns {{accord: boolean, valeur: number, nb: number, min: number,
+   *   max: number}} `nb` = nombre de valeurs DISTINCTES. Liste vide → accord sur
+   *   0 (aucune cible : rien à pré-remplir, rien à signaler).
+   */
+  function CBT_accordValeurs(list) {
+    var vals = Array.isArray(list) ? list : [];
+    if (vals.length === 0) return { accord: true, valeur: 0, nb: 0, min: 0, max: 0 };
+    var distinctes = [];
+    var min = vals[0];
+    var max = vals[0];
+    vals.forEach(function (v) {
+      if (distinctes.indexOf(v) === -1) distinctes.push(v);
+      if (v < min) min = v;
+      if (v > max) max = v;
+    });
+    return {
+      accord: distinctes.length === 1,
+      valeur: distinctes.length === 1 ? distinctes[0] : 0,
+      nb: distinctes.length,
+      min: min,
+      max: max,
+    };
+  }
+
+  /**
+   * Valeurs à pré-remplir pour un ensemble de parcelles cibles, et lignes
+   * DIVERGENTES entre elles. PURE.
+   *
+   * RÈGLE CRITIQUE — une cible SANS document compte **0**. « 4 sur deux
+   * parcelles, absent sur la troisième » est une DIVERGENCE, pas un accord.
+   * Sans cette règle, le fan-out réécrirait 4 partout sans jamais le dire :
+   * l'absence de budget est une information, pas un trou à combler en silence.
+   *
+   * ⚠️ PIÈGE — `values[f] === ''` a DEUX causes : soit toutes les cibles sont à
+   * 0 (convention existante du composant : un 0 s'affiche vide), soit elles
+   * divergent. L'entrée dans `divergentes` / `divergentesOps` est le SEUL
+   * porteur de la distinction — l'UI de portée, le payload partiel et le refus
+   * d'enregistrer une famille divergente non résolue en dépendent tous.
+   *
+   * @param {Object} args
+   * @param {Array<string>} args.labels labels des parcelles cibles (bruts).
+   * @param {Array<string>} args.familles familles affichées.
+   * @param {Object<string, Array<string>>} [args.opsByFamille] clés d'opération
+   *   affichées par famille.
+   * @param {Object<string, Object<string, *>>} [args.budgetsByLabel] indexé en
+   *   MAJUSCULES (cf. CBT_budgetsByLabel).
+   * @param {Object<string, Object<string, Object<string, *>>>}
+   *   [args.opBudgetsByLabel] indexé en MAJUSCULES (cf. CBT_operationsByLabel).
+   * @returns {{values: Object<string, string>,
+   *   opValues: Object<string, Object<string, string>>,
+   *   divergentes: Object<string, {nb: number, min: number, max: number}>,
+   *   divergentesOps: Object<string, Object<string, {nb: number, min: number,
+   *   max: number}>>}}
+   */
+  function CBT_valeursCommunes(args) {
+    var a = args || {};
+    var keys = (a.labels || []).map(function (l) {
+      return String(l == null ? '' : l).trim().toUpperCase();
+    }).filter(Boolean);
+    var familles = a.familles || [];
+    var opsByFamille = a.opsByFamille || {};
+    var byLabel = a.budgetsByLabel || {};
+    var opsByLabel = a.opBudgetsByLabel || {};
+    var values = {};
+    var opValues = {};
+    var divergentes = {};
+    var divergentesOps = {};
+    familles.forEach(function (f) {
+      // Une cible sans document → CBT_num(undefined) = 0, donc comptée 0.
+      var acc = CBT_accordValeurs(keys.map(function (k) {
+        return CBT_num((byLabel[k] || {})[f]);
+      }));
+      values[f] = acc.accord && acc.valeur !== 0 ? String(acc.valeur) : '';
+      if (!acc.accord) divergentes[f] = { nb: acc.nb, min: acc.min, max: acc.max };
+      var famOut = {};
+      (opsByFamille[f] || []).forEach(function (op) {
+        var accOp = CBT_accordValeurs(keys.map(function (k) {
+          return CBT_num(((opsByLabel[k] || {})[f] || {})[op]);
+        }));
+        famOut[op] = accOp.accord && accOp.valeur !== 0 ? String(accOp.valeur) : '';
+        if (!accOp.accord) {
+          if (!divergentesOps[f]) divergentesOps[f] = {};
+          divergentesOps[f][op] = { nb: accOp.nb, min: accOp.min, max: accOp.max };
+        }
+      });
+      opValues[f] = famOut;
+    });
+    return {
+      values: values, opValues: opValues,
+      divergentes: divergentes, divergentesOps: divergentesOps,
+    };
+  }
+
+  /**
+   * Surface totale des parcelles cibles. PURE — `haOf` est INJECTÉ (`cbtHa` au
+   * call site), jamais lu depuis `window` ici.
+   *
+   * `Total JH = JH/Ha × Σ ha` est EXACT en portée multiple, et non une
+   * approximation, précisément parce que le fan-out écrit la même valeur de
+   * JH/Ha sur chaque parcelle.
+   *
+   * @param {Array<string>} labels labels des parcelles cibles.
+   * @param {function(string): *} haOf surface d'une parcelle.
+   * @returns {{ha: number, sansHa: Array<string>, nb: number}} `sansHa` = labels
+   *   dont la surface est absente, nulle ou non finie : leur budget est bien
+   *   enregistré, mais leur Total JH n'est pas calculable.
+   */
+  function CBT_surfaceCible(labels, haOf) {
+    var list = Array.isArray(labels) ? labels : [];
+    var fn = typeof haOf === 'function' ? haOf : function () { return 0; };
+    var ha = 0;
+    var sansHa = [];
+    list.forEach(function (l) {
+      var v = parseFloat(String(fn(l)));
+      if (isNaN(v) || !isFinite(v) || !(v > 0)) { sansHa.push(l); return; }
+      ha += v;
+    });
+    return { ha: Math.round(ha * 100) / 100, sansHa: sansHa, nb: list.length };
+  }
+
   /**
    * Valeurs de quinzaine qui vont être SUPPRIMÉES par l'enregistrement. PURE.
    *
@@ -1612,4 +1895,9 @@
   CampagneBudgetTab.cultureRow = CBT_cultureRow;
   CampagneBudgetTab.parcelleAffichable = CBT_parcelleAffichable;
   CampagneBudgetTab.CULTURES_MASQUEES = CBT_CULTURES_MASQUEES;
+  CampagneBudgetTab.varieteKey = CBT_varieteKey;
+  CampagneBudgetTab.porteeOptions = CBT_porteeOptions;
+  CampagneBudgetTab.targetLabels = CBT_targetLabels;
+  CampagneBudgetTab.valeursCommunes = CBT_valeursCommunes;
+  CampagneBudgetTab.surfaceCible = CBT_surfaceCible;
 })();

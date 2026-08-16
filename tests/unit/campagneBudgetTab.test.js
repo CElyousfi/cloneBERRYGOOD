@@ -736,6 +736,233 @@ test('parcelleAffichable — sans CultureUtils chargé, rien n\'est masqué', ()
   assert.strictEqual(CBT.parcelleAffichable(null, null), true);
 });
 
+// ------------------------------------------------------------------- portée
+//
+// Helpers de PORTÉE (Parcelle / Variété / Culture). Le stockage reste par
+// parcelle : la portée ne sert qu'à saisir une grille une fois et à l'écrire
+// sur les N parcelles cibles.
+
+/** Parcelles de campagne, forme de `parcelles-campagne-list` (champ `variete`). */
+const ROWS_PORTEE = [
+  { label: 'S13 - CORINA', culture: 'Myrtille', variete: 'Corina' },
+  { label: 'S8 - CORINA', culture: 'Myrtille', variete: ' corina ' },
+  { label: 'S14 - CASCADE', culture: 'Myrtille', variete: 'Cascade' },
+  { label: 'S12 - MARAVILLA', culture: 'Framboise', variete: 'Maravilla' },
+  // Variété absente : saisissable en portée Parcelle, comptée en Culture, mais
+  // JAMAIS proposée comme bucket de variété.
+  { label: 'S9 - REYNA', culture: 'Framboise', variete: '' },
+];
+
+test('varieteKey — clé composite CULTURE||VARIETE, normalisée', () => {
+  assert.strictEqual(
+    CBT_CU.varieteKey({ label: 'S8 - CORINA', culture: 'Myrtille', variete: ' co  rina ' }, {}),
+    'Myrtille||CO RINA'
+  );
+  // Chaque bucket est mono-culture : c'est la culture qui gate le masquage et
+  // l'applicabilité du budget de quinzaine.
+  assert.strictEqual(
+    CBT_CU.varieteKey({ label: 'S12 - MARAVILLA', culture: 'Framboise', variete: 'Maravilla' }, {}),
+    'Framboise||MARAVILLA'
+  );
+  // Variété absente → pas de bucket.
+  assert.strictEqual(CBT_CU.varieteKey({ label: 'S9', culture: 'Framboise' }, {}), '');
+  assert.strictEqual(CBT_CU.varieteKey(null, null), '');
+});
+
+test('porteeOptions — buckets de variété, variété VIDE exclue mais comptée en culture', () => {
+  const r = plain(CBT_CU.porteeOptions({ rows: ROWS_PORTEE, sbMap: {} }));
+  assert.deepStrictEqual(r.varietes, [
+    { key: 'Framboise||MARAVILLA', label: 'Framboise / MARAVILLA', culture: 'Framboise', variete: 'MARAVILLA', nb: 1 },
+    { key: 'Myrtille||CASCADE', label: 'Myrtille / CASCADE', culture: 'Myrtille', variete: 'CASCADE', nb: 1 },
+    { key: 'Myrtille||CORINA', label: 'Myrtille / CORINA', culture: 'Myrtille', variete: 'CORINA', nb: 2 },
+  ]);
+  // « S9 - REYNA » n'apparaît dans AUCUN bucket de variété…
+  assert.ok(!r.varietes.some(function (v) { return v.variete === ''; }));
+  // …mais compte bien dans sa culture (2 framboises, 3 myrtilles).
+  assert.deepStrictEqual(r.cultures, [
+    { key: 'Framboise', label: 'Framboise', nb: 2 },
+    { key: 'Myrtille', label: 'Myrtille', nb: 3 },
+  ]);
+});
+
+test('porteeOptions — dédup sur le label en MAJUSCULES, ordre indépendant des lignes', () => {
+  const doublon = ROWS_PORTEE.concat([
+    { label: 's13 - corina', culture: 'Myrtille', variete: 'Corina' },
+  ]);
+  const r = plain(CBT_CU.porteeOptions({ rows: doublon.slice().reverse(), sbMap: {} }));
+  const corina = r.varietes.filter(function (v) { return v.key === 'Myrtille||CORINA'; })[0];
+  assert.strictEqual(corina.nb, 2, 'une parcelle listée deux fois ne compte qu\'une');
+  assert.deepStrictEqual(r.cultures.map(function (c) { return c.key; }), ['Framboise', 'Myrtille']);
+  assert.deepStrictEqual(plain(CBT_CU.porteeOptions({})), { varietes: [], cultures: [] });
+});
+
+test('porteeOptions — une culture masquée n\'est jamais un bucket proposable', () => {
+  const r = plain(CBT_CU.porteeOptions({
+    rows: ROWS_PORTEE.concat([{ label: 'F2 ZUTANO', culture: '', variete: 'Zutano' }]),
+    sbMap: {},
+  }));
+  assert.ok(!r.cultures.some(function (c) { return c.key === 'Avocatier'; }));
+  assert.ok(!r.varietes.some(function (v) { return v.culture === 'Avocatier'; }));
+});
+
+test('targetLabels — portée Parcelle : la seule parcelle sélectionnée', () => {
+  assert.deepStrictEqual(
+    plain(CBT_CU.targetLabels({ portee: 'parcelle', label: 'S13 - CORINA', rows: ROWS_PORTEE })),
+    ['S13 - CORINA']
+  );
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({ portee: 'parcelle', label: '' })), []);
+  // Portée inconnue : aucune cible, jamais un repli silencieux sur tout.
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({ portee: 'tout', rows: ROWS_PORTEE })), []);
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({ portee: 'variete', rows: ROWS_PORTEE })), []);
+});
+
+test('targetLabels — portée Variété : le SEUL bucket, labels bruts, ordre déterministe', () => {
+  const attendu = ['S13 - CORINA', 'S8 - CORINA'];
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({
+    portee: 'variete', cible: 'Myrtille||CORINA', rows: ROWS_PORTEE, sbMap: {},
+  })), attendu);
+  // Même résultat quel que soit l'ordre d'arrivée des lignes.
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({
+    portee: 'variete', cible: 'Myrtille||CORINA', rows: ROWS_PORTEE.slice().reverse(), sbMap: {},
+  })), attendu);
+});
+
+test('targetLabels — portée Culture : toute la culture, dédupliquée', () => {
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({
+    portee: 'culture', cible: 'Myrtille',
+    rows: ROWS_PORTEE.concat([{ label: 's13 - corina', culture: 'Myrtille', variete: 'Corina' }]),
+    sbMap: {},
+  })), ['S13 - CORINA', 'S14 - CASCADE', 'S8 - CORINA']);
+  // Une parcelle sans variété entre bien dans la cible de sa culture.
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({
+    portee: 'culture', cible: 'Framboise', rows: ROWS_PORTEE, sbMap: {},
+  })), ['S12 - MARAVILLA', 'S9 - REYNA']);
+});
+
+test('targetLabels — une culture masquée ne peut pas devenir une cible d\'écriture', () => {
+  // Double garde : même si l'appelant passe des lignes NON masquées.
+  assert.deepStrictEqual(plain(CBT_CU.targetLabels({
+    portee: 'culture', cible: 'Avocatier',
+    rows: [{ label: 'F2 ZUTANO', culture: '', variete: 'Zutano' }], sbMap: {},
+  })), []);
+});
+
+// ------------------------------------------------------------ valeursCommunes
+
+const FAMILLES_CIBLE = ['Taille', 'Récolte'];
+const OPS_CIBLE = { 'Taille': ['GB09::Taille d\'hiver'] };
+
+test('valeursCommunes — concordance parfaite : la grille est pré-remplie', () => {
+  const r = plain(CBT_CU.valeursCommunes({
+    labels: ['S13 - CORINA', 'S8 - CORINA'],
+    familles: FAMILLES_CIBLE,
+    opsByFamille: OPS_CIBLE,
+    budgetsByLabel: {
+      'S13 - CORINA': { 'Récolte': 1800 },
+      'S8 - CORINA': { 'Récolte': 1800 },
+    },
+    opBudgetsByLabel: {
+      'S13 - CORINA': { 'Taille': { 'GB09::Taille d\'hiver': 4 } },
+      'S8 - CORINA': { 'Taille': { 'GB09::Taille d\'hiver': 4 } },
+    },
+  }));
+  // Convention existante du composant : un 0 s'affiche vide.
+  assert.deepStrictEqual(r.values, { 'Taille': '', 'Récolte': '1800' });
+  assert.deepStrictEqual(r.opValues, { 'Taille': { 'GB09::Taille d\'hiver': '4' }, 'Récolte': {} });
+  assert.deepStrictEqual(r.divergentes, {});
+  assert.deepStrictEqual(r.divergentesOps, {});
+});
+
+test('valeursCommunes — une cible SANS document est une DIVERGENCE, pas un accord', () => {
+  // LE test anti-effacement silencieux : « 4 sur deux parcelles, absent sur la
+  // troisième » ne doit JAMAIS pré-remplir 4 et réécrire 4 partout sans le dire.
+  const r = plain(CBT_CU.valeursCommunes({
+    labels: ['A', 'B', 'C'],
+    familles: ['Récolte'],
+    budgetsByLabel: { A: { 'Récolte': 4 }, B: { 'Récolte': 4 } },
+  }));
+  assert.strictEqual(r.values['Récolte'], '', 'jamais de pré-remplissage sur une divergence');
+  assert.deepStrictEqual(r.divergentes['Récolte'], { nb: 2, min: 0, max: 4 });
+});
+
+test('valeursCommunes — le champ vide a DEUX causes, seul `divergentes` les sépare', () => {
+  // Tout à 0 (ou absent partout) : vide SANS divergence.
+  const zero = plain(CBT_CU.valeursCommunes({
+    labels: ['A', 'B'], familles: ['Récolte'], budgetsByLabel: {},
+  }));
+  assert.strictEqual(zero.values['Récolte'], '');
+  assert.deepStrictEqual(zero.divergentes, {}, 'aucune divergence : les deux sont à 0');
+  // Aucune cible : rien à pré-remplir, rien à signaler.
+  const vide = plain(CBT_CU.valeursCommunes({ labels: [], familles: ['Récolte'] }));
+  assert.strictEqual(vide.values['Récolte'], '');
+  assert.deepStrictEqual(vide.divergentes, {});
+});
+
+test('valeursCommunes — min/max/nb sur plusieurs valeurs distinctes', () => {
+  const r = plain(CBT_CU.valeursCommunes({
+    labels: ['A', 'B', 'C', 'D'],
+    familles: ['Récolte'],
+    budgetsByLabel: {
+      A: { 'Récolte': 580 }, B: { 'Récolte': 690 },
+      C: { 'Récolte': 690 }, D: { 'Récolte': 600 },
+    },
+  }));
+  assert.deepStrictEqual(r.divergentes['Récolte'], { nb: 3, min: 580, max: 690 });
+});
+
+test('valeursCommunes — une divergence d\'OPÉRATION est indépendante de la famille', () => {
+  const r = plain(CBT_CU.valeursCommunes({
+    labels: ['A', 'B'],
+    familles: FAMILLES_CIBLE,
+    opsByFamille: OPS_CIBLE,
+    // Niveau famille : parfaitement d'accord…
+    budgetsByLabel: { A: { 'Récolte': 1800 }, B: { 'Récolte': 1800 } },
+    // …mais l'opération diverge.
+    opBudgetsByLabel: {
+      A: { 'Taille': { 'GB09::Taille d\'hiver': 4 } },
+      B: { 'Taille': { 'GB09::Taille d\'hiver': 6 } },
+    },
+  }));
+  assert.deepStrictEqual(r.divergentes, {}, 'la famille reste en accord');
+  assert.deepStrictEqual(r.divergentesOps, {
+    'Taille': { 'GB09::Taille d\'hiver': { nb: 2, min: 4, max: 6 } },
+  });
+  assert.strictEqual(r.opValues['Taille']['GB09::Taille d\'hiver'], '');
+});
+
+test('valeursCommunes — labels indexés en MAJUSCULES, casse du label indifférente', () => {
+  const r = plain(CBT_CU.valeursCommunes({
+    labels: [' s13 - corina '],
+    familles: ['Récolte'],
+    budgetsByLabel: { 'S13 - CORINA': { 'Récolte': 12 } },
+  }));
+  assert.strictEqual(r.values['Récolte'], '12');
+});
+
+// -------------------------------------------------------------- surfaceCible
+
+test('surfaceCible — Σ ha, labels sans Ha listés, haOf INJECTÉ', () => {
+  const appels = [];
+  const haOf = function (label) {
+    appels.push(label);
+    return { A: 2.5, B: 1.25, C: 0 }[label];
+  };
+  const r = plain(CBT_CU.surfaceCible(['A', 'B', 'C', 'D'], haOf));
+  assert.deepStrictEqual(r, { ha: 3.75, sansHa: ['C', 'D'], nb: 4 });
+  assert.deepStrictEqual(appels, ['A', 'B', 'C', 'D'], 'la fonction injectée est bien utilisée');
+});
+
+test('surfaceCible — tolère une liste vide et un haOf absent', () => {
+  assert.deepStrictEqual(plain(CBT_CU.surfaceCible([], function () { return 3; })),
+    { ha: 0, sansHa: [], nb: 0 });
+  assert.deepStrictEqual(plain(CBT_CU.surfaceCible(['A'], null)),
+    { ha: 0, sansHa: ['A'], nb: 1 });
+  // Valeur non finie / non numérique → parcelle « sans Ha », jamais un NaN.
+  assert.deepStrictEqual(plain(CBT_CU.surfaceCible(['A', 'B'], function (l) {
+    return l === 'A' ? Infinity : 'abc';
+  })), { ha: 0, sansHa: ['A', 'B'], nb: 2 });
+});
+
 // -------------------------------------------------------------------- rendu
 
 const ROWS = [{ label: 'F5- CASCADE -S13', culture: 'Myrtille' }];
