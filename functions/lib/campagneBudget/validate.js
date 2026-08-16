@@ -109,6 +109,18 @@ const MAX_JH_PAR_HA = 5000
 const MAX_FAMILLES = 50
 
 /**
+ * Garde-fou : nombre de parcelles CIBLES acceptées dans un seul enregistrement
+ * (fan-out par variété ou par culture).
+ *
+ * CALIBRAGE : une culture entière tient dedans — la Myrtille compte ≈ 23
+ * parcelles de campagne, la Framboise moins — et 60 borne le temps mural de la
+ * boucle séquentielle sous le timeout de 120 s de la Cloud Function (chaque
+ * itération = une transaction mono-document + une relecture). Ce n'est pas une
+ * limite métier : c'est un plafond de taille de payload, comme MAX_QUINZAINES.
+ */
+const MAX_FANOUT_LABELS = 60
+
+/**
  * Garde-fou : nombre d'opérations acceptées dans un seul save, toutes familles
  * confondues. Le référentiel d'Omar en compte 108 — on laisse une marge large
  * sans autoriser un payload arbitraire.
@@ -432,6 +444,56 @@ function normCampagne(campagne) {
  */
 function normLabel(label) {
   return String(label == null ? '' : label).trim().toUpperCase()
+}
+
+/**
+ * Normalise la liste des parcelles CIBLES d'un enregistrement en portée
+ * multiple. PURE.
+ *
+ * Dédup sur `normLabel` (la clé du référentiel) : deux écritures sur la même
+ * parcelle dans un seul appel n'auraient pas de sens et la deuxième masquerait
+ * le résultat de la première. Le label RETENU est la forme reçue (trimée) : la
+ * canonisation contre le référentiel est faite ensuite par `validateBudgetSave`,
+ * label par label.
+ *
+ * Ordre TRIÉ sur la clé normalisée, et non l'ordre d'arrivée : le tableau
+ * `results` renvoyé au client devient stable d'un appel à l'autre, donc
+ * comparable et rejouable — un client qui envoie la même cible dans un autre
+ * ordre lit le même rapport.
+ *
+ * Un dépassement du cap est REFUSÉ, jamais tronqué : écrire 60 parcelles sur les
+ * 63 demandées en répondant « succès » serait un mensonge silencieux, et c'est
+ * précisément le genre de succès partiel invisible que cet écran doit exclure.
+ *
+ * @param {*} labels liste brute (body HTTP, jamais fiable).
+ * @param {*} [max] plafond, défaut MAX_FANOUT_LABELS.
+ * @returns {{ok: true, labels: Array<string>}|{ok: false, error: string}}
+ */
+function normFanoutLabels(labels, max) {
+  const capRaw = typeof max === 'number' ? max : MAX_FANOUT_LABELS
+  const cap = isFinite(capRaw) && capRaw > 0 ? Math.floor(capRaw) : MAX_FANOUT_LABELS
+  if (!Array.isArray(labels)) {
+    return { ok: false, error: 'Liste de parcelles invalide' }
+  }
+  /** @type {Object<string, string>} */
+  const parCle = {}
+  for (const raw of labels) {
+    const key = normLabel(raw)
+    if (!key) continue
+    if (Object.prototype.hasOwnProperty.call(parCle, key)) continue
+    parCle[key] = String(raw).trim()
+  }
+  const cles = Object.keys(parCle).sort()
+  if (cles.length === 0) {
+    return { ok: false, error: 'Aucune parcelle cible' }
+  }
+  if (cles.length > cap) {
+    return {
+      ok: false,
+      error: 'Trop de parcelles cibles (' + cles.length + ' > ' + cap + ')',
+    }
+  }
+  return { ok: true, labels: cles.map((k) => parCle[k]) }
 }
 
 /**
@@ -1221,6 +1283,7 @@ module.exports = {
   MAX_FAMILLES,
   MAX_OPERATIONS,
   MAX_QUINZAINES,
+  MAX_FANOUT_LABELS,
   MAX_PURGE_RATIO,
   CULTURES_BUDGET_QUINZAINE,
   OP_KEY_SEP,
@@ -1229,6 +1292,7 @@ module.exports = {
   purgeAutorisee,
   normCampagne,
   normLabel,
+  normFanoutLabels,
   budgetDocId,
   opKey,
   splitOpKey,

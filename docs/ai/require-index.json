@@ -2,7 +2,7 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:299587dc23f67aeb",
+    "sourceFingerprint": "sha256:52c36d848f07bad7",
     "stats": {
       "targetFiles": 206,
       "targetFilesWithDirectTests": 124,
@@ -1400,10 +1400,12 @@
     "public/lib/cultureUtils.js": {
       "directTests": [
         "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/cultureUtils.test.js"
       ],
       "transitiveTests": [
         "tests/unit/campagneBudgetQuinzaine.test.js",
+        "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/cultureUtils.test.js"
       ]
     },

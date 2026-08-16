@@ -4214,79 +4214,147 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           if (lbl) labelsConnusB.push(lbl);
           if (lbl) sbMapB[lbl.toUpperCase()] = d;
         });
-        // Culture de la parcelle, résolue par le MIROIR de CultureUtils
-        // (lib/campagneBudget/culture.js) : `culture_sb` prioritaire, sinon repli
-        // sur le libellé. Sert UNIQUEMENT le gating avocatier du budget de
-        // quinzaine — le budget annuel, lui, reste ouvert à toutes les cultures
-        // (473 valeurs en production, dont le périmètre n'est pas modifié ici).
-        const cultureB = campagneBudgetCulture.resolveCulture(
-          { label: bodyB.label_bee_one }, sbMapB
+        // CIBLES de l'enregistrement. `labels[]` = fan-out (saisie par variété ou
+        // par culture : la même grille JH/Ha écrite sur N parcelles) ; à défaut,
+        // le `label_bee_one` historique. Extension ADDITIVE de l'action : un body
+        // d'un client antérieur emprunte exactement le même chemin.
+        const rawLabelsB = Array.isArray(bodyB.labels) && bodyB.labels.length > 0
+          ? bodyB.labels
+          : [bodyB.label_bee_one];
+        const ciblesB = campagneBudget.normFanoutLabels(
+          rawLabelsB, campagneBudget.MAX_FANOUT_LABELS
         );
-
-        const verdictB = campagneBudget.validateBudgetSave({
-          campagne: bodyB.campagne || campagneCourante(),
-          label_bee_one: bodyB.label_bee_one,
-          budgets: bodyB.budgets,
-          budgets_operations: bodyB.budgets_operations,
-          budgets_quinzaine: bodyB.budgets_quinzaine,
-          culture: cultureB,
-          famillesConnues: famillesConnuesB,
-          operationsConnues: operationsConnuesB,
-          labelsConnus: labelsConnusB,
-        });
-        if (!verdictB.ok) {
-          return res.status(400).json({ success: false, error: verdictB.error });
+        if (!ciblesB.ok) {
+          return res.status(400).json({ success: false, error: ciblesB.error });
         }
 
-        const docRefB = db_firestore.collection("sb_campagne_budget_jh").doc(verdictB.docId);
-        // Transaction : le merge lit l'existant (les familles absentes du body
-        // sont conservées) — sans transaction, deux saves concurrents sur deux
-        // familles différentes en perdraient une. L'écriture elle-même est dans
-        // lib/campagneBudget (writeBudgetInTransaction) : elle utilise
-        // `mergeFields` aux RACINES `budgets` / `budgets_operations` et NON
-        // `{merge:true}`, sans quoi une famille — ou une opération — retirée
-        // survivrait en base (masque de champs construit sur les feuilles).
-        const writeB = await db_firestore.runTransaction((tx) =>
-          campagneBudget.writeBudgetInTransaction(tx, docRefB, {
-            campagne: verdictB.campagne,
-            label: verdictB.label,
-            budgets: verdictB.budgets,
-            budgets_operations: verdictB.budgets_operations,
-            budgets_quinzaine: verdictB.budgets_quinzaine,
+        /**
+         * Enregistre le budget d'UNE parcelle. Ne décide JAMAIS du statut HTTP de
+         * la requête : elle renvoie son verdict, et l'appelant décide au vu de
+         * l'ensemble (un label refusé ne doit pas faire échouer les 22 autres).
+         *
+         * @param {string} label label BEE ONE brut de la cible.
+         * @returns {Promise<Object>} `{ok:true, …réponse historique}` ou
+         *   `{ok:false, label_bee_one, error}`.
+         */
+        async function saveOneBudget(label) {
+          // Culture résolue PAR LABEL (miroir de CultureUtils,
+          // lib/campagneBudget/culture.js : `culture_sb` prioritaire, sinon repli
+          // sur le libellé). Elle ne sert QUE le gating avocatier du budget de
+          // quinzaine, qui reste donc une décision par parcelle — sémantique
+          // strictement inchangée par le fan-out. Le budget annuel, lui, reste
+          // ouvert à toutes les cultures (473 valeurs en production, dont le
+          // périmètre n'est pas modifié ici).
+          const culture1 = campagneBudgetCulture.resolveCulture({ label }, sbMapB);
+          const verdict1 = campagneBudget.validateBudgetSave({
+            campagne: bodyB.campagne || campagneCourante(),
+            label_bee_one: label,
+            budgets: bodyB.budgets,
+            budgets_operations: bodyB.budgets_operations,
+            budgets_quinzaine: bodyB.budgets_quinzaine,
+            culture: culture1,
             famillesConnues: famillesConnuesB,
             operationsConnues: operationsConnuesB,
-            uid: (_authUserB && _authUserB.uid) || null,
-            profileId: _pidB,
-            serverTimestamp: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
-          })
-        );
+            labelsConnus: labelsConnusB,
+          });
+          if (!verdict1.ok) {
+            return { ok: false, label_bee_one: label, error: verdict1.error };
+          }
 
-        // RELECTURE après commit : on renvoie l'état RÉELLEMENT persisté, jamais
-        // le calculé. Un succès affiché par le client doit être prouvé — c'est
-        // exactement ce qui masquait la survie des familles supprimées.
-        const afterB = await docRefB.get();
-        const afterDataB = (afterB.exists && afterB.data()) || {};
-        const persistedB = afterDataB.budgets || {};
-        const persistedOpsB = afterDataB.budgets_operations || {};
-        const persistedQuinzB = afterDataB.budgets_quinzaine || {};
+          const docRef1 = db_firestore.collection("sb_campagne_budget_jh").doc(verdict1.docId);
+          // Transaction : le merge lit l'existant (les familles absentes du body
+          // sont conservées) — sans transaction, deux saves concurrents sur deux
+          // familles différentes en perdraient une. L'écriture elle-même est dans
+          // lib/campagneBudget (writeBudgetInTransaction) : elle utilise
+          // `mergeFields` aux RACINES `budgets` / `budgets_operations` et NON
+          // `{merge:true}`, sans quoi une famille — ou une opération — retirée
+          // survivrait en base (masque de champs construit sur les feuilles).
+          const write1 = await db_firestore.runTransaction((tx) =>
+            campagneBudget.writeBudgetInTransaction(tx, docRef1, {
+              campagne: verdict1.campagne,
+              label: verdict1.label,
+              budgets: verdict1.budgets,
+              budgets_operations: verdict1.budgets_operations,
+              budgets_quinzaine: verdict1.budgets_quinzaine,
+              famillesConnues: famillesConnuesB,
+              operationsConnues: operationsConnuesB,
+              uid: (_authUserB && _authUserB.uid) || null,
+              profileId: _pidB,
+              serverTimestamp: require("firebase-admin").firestore.FieldValue.serverTimestamp(),
+            })
+          );
 
+          // RELECTURE après commit : on renvoie l'état RÉELLEMENT persisté, jamais
+          // le calculé. Un succès affiché par le client doit être prouvé — c'est
+          // exactement ce qui masquait la survie des familles supprimées. Faite
+          // PAR LABEL, y compris en fan-out : le client réaligne son écran sur
+          // chaque relecture, jamais sur ce qu'il croyait envoyer.
+          const after1 = await docRef1.get();
+          const afterData1 = (after1.exists && after1.data()) || {};
+
+          return {
+            ok: true, id: verdict1.docId, campagne: verdict1.campagne,
+            label_bee_one: verdict1.label,
+            budgets: afterData1.budgets || {},
+            budgets_operations: afterData1.budgets_operations || {},
+            budgets_quinzaine: afterData1.budgets_quinzaine || {},
+            familles_purgees: write1.purgees,
+            operations_purgees: write1.operations_purgees,
+            quinzaines_purgees: write1.quinzaines_purgees,
+            // Valeurs de quinzaine réellement disparues (comparaison avant/après
+            // dans la transaction) — une suppression de saisie n'est jamais
+            // silencieuse, même quand elle est demandée.
+            quinzaines_supprimees: write1.quinzaines_supprimees,
+            // Valeurs de famille remplacées par le détail des opérations, et
+            // purge reportée faute d'ampleur plausible : deux effets de bord
+            // possibles d'un save, remontés pour être AFFICHÉS (jamais silencieux).
+            familles_neutralisees: write1.familles_neutralisees,
+            purge_differee: write1.purge_differee,
+          };
+        }
+
+        // Boucle SÉQUENTIELLE (jamais Promise.all) : mémoire bornée, point de
+        // défaillance déterministe, et aucun gain réel à paralléliser N
+        // transactions mono-document. CONTINUE-ON-ERROR : s'arrêter au premier
+        // échec laisserait le MÊME état partiel avec moins d'information.
+        const resultsB = [];
+        const echecsB = [];
+        for (const cible1 of ciblesB.labels) {
+          let r1;
+          try {
+            r1 = await saveOneBudget(cible1);
+          } catch (e1) {
+            r1 = {
+              ok: false, label_bee_one: cible1,
+              error: (e1 && e1.message) || "Erreur serveur",
+            };
+          }
+          resultsB.push(r1);
+          if (!r1.ok) echecsB.push({ label_bee_one: r1.label_bee_one, error: r1.error });
+        }
+
+        const okB = resultsB.filter((r) => r.ok);
+        // ZÉRO écriture → 400, avec l'erreur du premier refus : c'est la réponse
+        // d'aujourd'hui pour un body mono-label.
+        if (okB.length === 0) {
+          return res.status(400).json({
+            success: false, error: echecsB[0].error,
+            results: resultsB, echecs: echecsB, nb_demandees: ciblesB.labels.length,
+          });
+        }
+        // Au moins une écriture → HTTP 200 et `success: true`, c'est la vérité du
+        // système. Les échecs voyagent dans `echecs` et c'est au CLIENT de ne
+        // jamais afficher un succès partiel en vert (cf. CBT_fanoutMessage).
+        // RÉTRO-COMPATIBILITÉ : les champs du premier succès restent à la racine,
+        // donc un body mono-`label_bee_one` produit la réponse d'aujourd'hui aux
+        // champs additifs près, et un client antérieur continue de fonctionner.
+        const { ok: _okIgnoreB, ...premierB } = okB[0];
         return res.json({
-          success: true, id: verdictB.docId, campagne: verdictB.campagne,
-          label_bee_one: verdictB.label, budgets: persistedB,
-          budgets_operations: persistedOpsB,
-          budgets_quinzaine: persistedQuinzB,
-          familles_purgees: writeB.purgees,
-          operations_purgees: writeB.operations_purgees,
-          quinzaines_purgees: writeB.quinzaines_purgees,
-          // Valeurs de quinzaine réellement disparues (comparaison avant/après
-          // dans la transaction) — une suppression de saisie n'est jamais
-          // silencieuse, même quand elle est demandée.
-          quinzaines_supprimees: writeB.quinzaines_supprimees,
-          // Valeurs de famille remplacées par le détail des opérations, et
-          // purge reportée faute d'ampleur plausible : deux effets de bord
-          // possibles d'un save, remontés pour être AFFICHÉS (jamais silencieux).
-          familles_neutralisees: writeB.familles_neutralisees,
-          purge_differee: writeB.purge_differee,
+          success: true,
+          ...premierB,
+          results: resultsB,
+          echecs: echecsB,
+          nb_demandees: ciblesB.labels.length,
         });
       }
 

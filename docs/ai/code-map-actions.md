@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:5457d905deb7bfcb -->
+<!-- sourceFingerprint: sha256:e5f2cce9427def47 -->
 # Code Map — Actions backend (368)
 
 Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et le handler `exports.xxx` qui la sert — à consulter AVANT toute recherche dans functions/index.js.
@@ -11,7 +11,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | analyse-irrigation | functions/index.js:9983 | stockManagement | POST |
 | apply-encaissements | functions/index.js:14747 | caisseManagement | POST |
 | approve-bdc-change | functions/index.js:7036 | stockManagement | POST |
-| assign-campagne-parcelle | functions/pointageService.js:4453 | pointageRH | — |
+| assign-campagne-parcelle | functions/pointageService.js:4521 | pointageRH | — |
 | audit-dqr | functions/emailService.js:3101 | emailAnalysis | — |
 | avance-regulariser | functions/index.js:15600 | caisseManagement | POST |
 | avances-liste | functions/index.js:15577 | caisseManagement | — |
@@ -23,7 +23,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | campagne-budget-save | functions/pointageService.js:4186 | pointageRH | POST |
 | campagne-conso-parcelle | functions/pointageService.js:3735 | pointageRH | — |
 | campagne-mo-variete | functions/pointageService.js:3448 | pointageRH | — |
-| check-primes-quinzaine | functions/pointageService.js:4843 | pointageRH | — |
+| check-primes-quinzaine | functions/pointageService.js:4911 | pointageRH | — |
 | chef-reject-ferme | functions/index.js:5361 | pointageValidation | — |
 | chef-validate-ferme | functions/index.js:5320 | pointageValidation | — |
 | cleanup-broken-expeditions | functions/emailService.js:2857 | emailAnalysis | POST |
@@ -86,7 +86,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | divers-entries-range | functions/index.js:6111 | validation | — |
 | divers-entries-save | functions/index.js:6152 | validation | POST |
 | divers-seed | functions/index.js:5972 | validation | — |
-| emargement-chefs-ferme | functions/pointageService.js:4674 | pointageRH | — |
+| emargement-chefs-ferme | functions/pointageService.js:4742 | pointageRH | — |
 | expedition-detail | functions/emailService.js:2971 | emailAnalysis | — |
 | expeditions | functions/emailService.js:2933 | emailAnalysis | — |
 | farm-todo-add | functions/index.js:13025 | tasks | POST |
@@ -96,7 +96,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | farm-todos | functions/index.js:13018 | tasks | — |
 | fetch | functions/emailService.js:2846 | emailAnalysis | POST |
 | fix-expedition-status | functions/emailService.js:2988 | emailAnalysis | — |
-| force-sync-periode | functions/pointageService.js:4564 | pointageRH | POST |
+| force-sync-periode | functions/pointageService.js:4632 | pointageRH | POST |
 | generate-reco-foliaire | functions/index.js:9305 | stockManagement | POST |
 | generate-verify-token | functions/index.js:16410 | whatsappAdmin | POST |
 | get-actuals | functions/index.js:12657 | budgetService | — |
@@ -207,7 +207,7 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | my-tasks | functions/index.js:12951 | tasks | — |
 | nouveaux-ouvriers | functions/pointageService.js:3064 | pointageRH | — |
 | parcelles-campagne-list | functions/pointageService.js:3888 | pointageRH | — |
-| parcelles-params-list | functions/pointageService.js:4423 | pointageRH | — |
+| parcelles-params-list | functions/pointageService.js:4491 | pointageRH | — |
 | pending-validations | functions/index.js:7116 | stockManagement | — |
 | pending-validations | functions/index.js:7751 | stockManagement | — |
 | pending-validations | functions/index.js:11198 | stockManagement | — |
@@ -236,13 +236,13 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | reanalyze-quality | functions/emailService.js:2873 | emailAnalysis | POST |
 | reassign | functions/index.js:1344 | mappingConsoManagement | — |
 | reassign-analytique-batch | functions/index.js:15342 | caisseManagement | POST |
-| rebuild-pointage-meta | functions/pointageService.js:4647 | pointageRH | POST |
+| rebuild-pointage-meta | functions/pointageService.js:4715 | pointageRH | POST |
 | recolte | functions/index.js:412 | syncProdTrigger | — |
 | recolte | functions/pointageService.js:2401 | pointageRH | — |
 | recolte-equipes | functions/pointageService.js:2948 | pointageRH | — |
-| referentiel-override-ferme | functions/pointageService.js:4524 | pointageRH | POST |
+| referentiel-override-ferme | functions/pointageService.js:4592 | pointageRH | POST |
 | referentiel-taches-list | functions/pointageService.js:2860 | pointageRH | — |
-| referentiel-unresolved | functions/pointageService.js:4500 | pointageRH | GET |
+| referentiel-unresolved | functions/pointageService.js:4568 | pointageRH | GET |
 | refetch-dqr | functions/emailService.js:3349 | emailAnalysis | — |
 | refetch-liquidation | functions/emailService.js:3760 | emailAnalysis | — |
 | refetch-productivity | functions/emailService.js:3640 | emailAnalysis | — |
@@ -273,9 +273,9 @@ Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et
 | save-prime | functions/index.js:15699 | primesManagement | POST |
 | save-season | functions/index.js:12443 | budgetService | POST |
 | save-variete-contexte | functions/index.js:9064 | stockManagement | POST |
-| sb-groupe-delete | functions/pointageService.js:4397 | pointageRH | POST |
-| sb-groupe-save | functions/pointageService.js:4354 | pointageRH | POST |
-| sb-groupes-list | functions/pointageService.js:4306 | pointageRH | — |
+| sb-groupe-delete | functions/pointageService.js:4465 | pointageRH | POST |
+| sb-groupe-save | functions/pointageService.js:4422 | pointageRH | POST |
+| sb-groupes-list | functions/pointageService.js:4374 | pointageRH | — |
 | sb-referentiel-list | functions/pointageService.js:3985 | pointageRH | — |
 | sb-referentiel-save | functions/pointageService.js:3993 | pointageRH | POST |
 | sb-referentiel-seed-ha | functions/pointageService.js:4047 | pointageRH | POST |
