@@ -248,14 +248,14 @@ test('culture — le référentiel SB prime sur la regex du libellé', () => {
   assert.deepStrictEqual(groups[1].rows.map((r) => r.parcelle), ['F5- S9 BLUE']);
 });
 
-// ⚠️ COLONNE TOTAL RETIRÉE DE CET ÉCRAN (et de lui seul, cf. `showTotal` de la
-// grille). Elle était la dernière à empiler les séries avec leurs libellés
-// (« 13.3 | Budget JH/Ha | 0.0 % | % consommé ») au bout d'un tableau par
-// ailleurs entièrement en sous-colonnes. Conséquence sur ces tests : plus
-// aucun TOTAL DE LIGNE ni GRAND TOTAL à lire ici — les totaux de COLONNE
-// (pied de tableau) restent, et le comportement des deux autres est verrouillé
-// côté grille (tests/unit/pivotAnalytiqueGrid.test.js, mode showTotal par
-// défaut) et côté écran Quinzaine (affectationAnalytiqueTable.test.js).
+// ⚠️ COLONNE TOTAL : ABSENTE HORS PLEIN ÉCRAN sur cet écran (cf. `showTotal` de
+// la grille), et absente aussi en plein écran à UNE SEULE série. Elle ne revient
+// qu'en plein écran multi-séries, éclatée en sous-colonnes (bloc « plein écran »
+// en fin de fichier). Conséquence sur les tests ci-dessous, tous rendus hors
+// plein écran : plus aucun TOTAL DE LIGNE ni GRAND TOTAL à lire — les totaux de
+// COLONNE (pied de tableau) restent, et le comportement des deux autres est
+// verrouillé côté grille (tests/unit/pivotAnalytiqueGrid.test.js, mode showTotal
+// par défaut) et côté écran Quinzaine (affectationAnalytiqueTable.test.js).
 
 test('grille — une table par culture, colonnes = parcelles nommées SB avec leur Ha', () => {
   const tree = render();
@@ -264,10 +264,11 @@ test('grille — une table par culture, colonnes = parcelles nommées SB avec le
     ['Opération', 'S5 MARAVILLA | 2 Ha', 'S1 CORINA | 4 Ha']);
 });
 
-test('grille — plus AUCUNE colonne Total sur l\'écran Campagne', () => {
+test('grille — aucune colonne Total HORS plein écran', () => {
   const tree = render();
   tables(tree).forEach((t) => {
     assert.strictEqual(headers(t).indexOf('Total'), -1, 'en-tête');
+    assert.ok(!headers(t).some((h) => /^TOTAL\b/.test(h)), 'en-tête éclaté');
     // Le bandeau de groupe couvre le libellé + les colonnes de parcelles, et
     // RIEN de plus : un +2 hérité décalerait tout le tableau en silence.
     const bandeau = (bodyRows(t)[0].children || []).filter((c) => c.type === 'td');
@@ -740,6 +741,76 @@ test('plein écran — hors plein écran, aucun overlay et toutes les grilles', 
   const tree = render();
   assert.strictEqual(tree.props.style, null);
   assert.strictEqual(tables(tree).length, 2);
+});
+
+// ── Colonne TOTAL : plein écran ET plusieurs séries, jamais autrement ────────
+//
+// Hors plein écran, plusieurs cultures sont empilées sur une largeur contrainte
+// et la colonne manquerait de place. À UNE SEULE série (JH ou Coût seul), elle
+// n'ajouterait qu'une colonne à un tableau déjà lisible. Elle ne revient donc
+// qu'en plein écran multi-séries — et là, éclatée comme le reste de la grille.
+
+/** L'en-tête de niveau 1 de la colonne Total (« TOTAL | <x> Ha »), ou undefined. */
+function theadTotal(table) {
+  return walk(section(table, 'thead'))
+    .filter((n) => n.type === 'th' && /^TOTAL\b/.test(textOf(n)))[0];
+}
+
+test('Total — plein écran à UNE SEULE série : toujours aucune colonne Total', () => {
+  // Framboise sans budget : la grille n'a qu'une série (Réalisé JH/Ha).
+  const table = tables(render(null, [false, false, null, false, '', true, 0]))[0];
+  assert.strictEqual(theadTotal(table), undefined, 'en-tête');
+  assert.strictEqual(headers(table).indexOf('Total'), -1, 'en-tête historique');
+  // Largeur : le libellé + 2 parcelles × 1 série, et rien de plus.
+  const largeur = (bodyRows(table)[1].children || []).filter((c) => c.type === 'td').length;
+  assert.strictEqual(largeur, 3);
+  assert.strictEqual((bodyRows(table)[0].children || [])
+    .filter((c) => c.type === 'td')[0].props.colSpan, largeur);
+});
+
+test('Total — plein écran multi-séries : une sous-colonne par indicateur, à droite', () => {
+  const table = tables(renderBudget(null, [false, false, null, false, '', true, 0]))[0];
+  // En-tête de niveau 1 : la surface totale de la culture (2 + 4 Ha).
+  assert.strictEqual(textOf(theadTotal(table)), 'TOTAL | 6 Ha');
+  assert.strictEqual(theadTotal(table).props.colSpan, 3);
+  // Non sticky : la colonne défile avec le tableau.
+  assert.strictEqual(theadTotal(table).props.style.position, undefined);
+  // Niveau 2 : les mêmes trois séries que sous une parcelle.
+  const trs = walk(section(table, 'thead')).filter((n) => n.type === 'tr');
+  const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
+  assert.strictEqual(niveau2.length, (2 + 1) * 3, '(2 parcelles + Total) × 3 séries');
+  assert.deepStrictEqual(niveau2.slice(6),
+    ['Réalisé | JH/Ha', 'Budget | JH/Ha', '% consommé']);
+
+  // Ligne famille : libellé + 2 parcelles × 3 + les 3 sous-colonnes du Total,
+  // et le bandeau de groupe court sur toute cette largeur.
+  const taille = (bodyRows(table)[2].children || []).filter((c) => c.type === 'td');
+  assert.strictEqual(taille.length, 1 + (2 + 1) * 3);
+  assert.strictEqual((bodyRows(table)[0].children || [])
+    .filter((c) => c.type === 'td')[0].props.colSpan, taille.length);
+  // Aucune sous-colonne collée à droite.
+  taille.slice(7).forEach((td, i) => {
+    assert.strictEqual(td.props.style.position, undefined, 'sous-colonne ' + i);
+  });
+  // Taille : 40 JH réalisés (MARAVILLA seule) et 30 JH budgétés (15 × 2 Ha),
+  // rapportés aux 6 Ha de la CULTURE — c'est le sens d'un total de ligne « par
+  // Ha » : 40/6 = 6.7 et 30/6 = 5.0. Le taux, lui, est invariant : 40/30.
+  assert.deepStrictEqual(cells(bodyRows(table)[2]).slice(7, 10), ['6.7', '5.0', '133.3 %']);
+  // Grand total du pied : 72 JH réalisés / 6 Ha = 12.0 ; budget 30 (Taille)
+  // + 16 (Récolte, budget d'opération) + 8 (Ferti CORINA) = 54 / 6 = 9.0. Le
+  // taux ne compte que le PÉRIMÈTRE BUDGÉTÉ : 60/54 = 111,1 % — la Récolte de
+  // CORINA, réalisée mais non budgétée, ne pèse pas au numérateur.
+  assert.deepStrictEqual(cells(footRow(table)).slice(7, 10), ['12.0', '9.0', '111.1 %']);
+});
+
+test('Total — plein écran multi-séries : la colonne reste APRÈS les parcelles', () => {
+  // `_pag_paint` repère les sous-colonnes d'une cellule depuis la GAUCHE : une
+  // colonne Total glissée avant les parcelles décalerait tout le survol.
+  const table = tables(renderBudget(null, [false, false, null, false, '', true, 0]))[0];
+  // Sous-colonnes de MARAVILLA (indices 1..3) et de CORINA (4..6), inchangées.
+  assert.deepStrictEqual(sousCellule(bodyRows(table)[2], MARAVILLA_SC),
+    ['20.0', '15.0', '133.3 %']);
+  assert.deepStrictEqual(sousCellule(bodyRows(table)[2], CORINA_SC), ['—', '—', '—']);
 });
 
 test('grille — sélection vide : message, jamais une table fantôme', () => {

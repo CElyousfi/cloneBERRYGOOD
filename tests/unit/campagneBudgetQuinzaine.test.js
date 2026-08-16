@@ -359,12 +359,10 @@ test('grille ratio — cohabite avec des séries ordinaires sans les perturber',
     RATIO_METRIC,
   ];
   const tree = Grid({ parcelles: PARCELLES, groupedRows: RATIO_ROWS, metrics });
-  // 3 séries × 2 parcelles = 6 sous-colonnes, puis la colonne Total (index 7),
-  // seule colonne où les séries restent empilées.
-  const total = bodyCells(tree, 0)[7];
+  // 3 séries × 2 parcelles = 6 sous-colonnes, puis la colonne Total — éclatée
+  // elle aussi en une sous-colonne par série (indices 7 à 9).
   // Réalisé 21 JH, engagé 22 JH, 95,5 % — les trois séries du total de ligne.
-  assert.ok(total.indexOf('21.0') >= 0 && total.indexOf('22.0') >= 0
-    && total.indexOf('95.5') >= 0, total);
+  assert.deepStrictEqual(bodyCells(tree, 0).slice(7, 10), ['21.0', '22.0', '95.5']);
   // Et dans le corps, une sous-colonne par série : le libellé n'est plus répété.
   assert.deepStrictEqual(bodyCells(tree, 0).slice(1, 7),
     ['1.0', '2.0', '50.0', '20.0', '20.0', '100.0']);
