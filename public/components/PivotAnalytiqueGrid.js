@@ -33,8 +33,14 @@
  *   firstColumnLabel {string}  En-tête de la 1re colonne (défaut 'Opération').
  *   parcelleLabel {Function}  (cléParcelle) => libellé affiché (défaut : la clé).
  *   note          {string}  Légende discrète sous la grille, reprise en `title`
- *                 sur l'en-tête Total. Sert à énoncer ce que les chiffres ne
- *                 disent pas — typiquement le PÉRIMÈTRE d'une série.
+ *                 sur l'en-tête Total (quand cette colonne existe). Sert à
+ *                 énoncer ce que les chiffres ne disent pas — typiquement le
+ *                 PÉRIMÈTRE d'une série.
+ *   showTotal     {bool}    Colonne Total à droite. Défaut TRUE — le panneau
+ *                 « Affectation Analytique » de l'écran Quinzaine (EN
+ *                 PRODUCTION) la garde, et son test de non-régression la
+ *                 verrouille. `false` la retire ENTIÈREMENT : en-tête, total de
+ *                 ligne, grand total du pied. Voir « colSpan » plus bas.
  *   onCellClick   {Function}  ({parcelle, operationFamille, ha, detailRows}) =>
  *                 void. Absent = cellules non cliquables (ni curseur, ni survol).
  *                 Une cellule dont `detailRows` est un tableau VIDE ne l'est pas
@@ -55,6 +61,14 @@
  * un <td> par parcelle, `colSpan` du bandeau de groupe inchangé. C'est le mode
  * du panneau « Affectation Analytique » de l'écran Quinzaine, EN PRODUCTION, et
  * c'est tests/unit/affectationAnalytiqueTable.test.js qui le verrouille.
+ *
+ * ── colSpan DU BANDEAU DE GROUPE ───────────────────────────────────────────
+ * C'est le SEUL endroit du composant qui dépend du nombre de colonnes, et il
+ * n'échoue jamais bruyamment : trop court ou trop long, le tableau se décale
+ * sans qu'aucune erreur ne soit levée. Sa valeur est
+ *   parcelles.length × metrics.length + 1 (colonne de libellé)
+ *                                       + 1 SI ET SEULEMENT SI showTotal.
+ * Verrouillé dans les deux modes par tests/unit/pivotAnalytiqueGrid.test.js.
  *
  * ⚠️ ASYMÉTRIE ASSUMÉE — la colonne TOTAL n'est jamais éclatée : elle reste une
  * colonne unique (`rowSpan: 2` dans l'en-tête) où les séries restent EMPILÉES,
@@ -353,6 +367,11 @@
     var parcelleLabel = typeof props.parcelleLabel === 'function' ? props.parcelleLabel : null;
     var firstColumnLabel = props.firstColumnLabel || 'Opération';
     var note = props.note || '';
+    // Colonne Total : présente par DÉFAUT (l'écran Quinzaine en dépend). Seul
+    // l'écran Campagne la retire — c'est le dernier endroit où les séries
+    // restaient empilées avec leurs libellés, un pavé de texte au bout d'une
+    // grille par ailleurs en sous-colonnes.
+    var showTotal = props.showTotal !== false;
 
     // Éclatement en sous-colonnes : MÊME test que le mode empilé historique
     // (`multi` de _pag_stack). Une seule série ⇒ rendu d'avant, intégralement.
@@ -360,6 +379,45 @@
     var multi = nbMetrics > 1;
     // Nombre RÉEL de colonnes du corps, hors colonne de libellé et hors Total.
     var nbColonnesParcelles = parcelles.length * nbMetrics;
+    // Largeur du bandeau de groupe : + 1 pour la colonne de libellé, + 1 de
+    // plus SEULEMENT si la colonne Total est rendue (cf. en-tête de fichier).
+    var colSpanBandeau = nbColonnesParcelles + (showTotal ? 2 : 1);
+
+    /**
+     * DENSITÉ — mode sous-colonnes uniquement.
+     *
+     * Éclatée en 3, une grille de 9 parcelles fait 27 colonnes : le tableau
+     * défile déjà en X, et l'espacement d'origine (pensé pour des cellules
+     * empilées de 2 lignes) lui imposait en plus un défilement vertical
+     * permanent. Les sous-colonnes n'affichent qu'UNE ligne par cellule (le
+     * libellé de série est monté en en-tête) : la hauteur d'origine n'a plus
+     * de raison d'être.
+     *
+     * Le padding est réduit sur TOUTES les cellules d'une même ligne, colonne
+     * de libellé comprise : la hauteur d'une ligne <tr> est celle de sa cellule
+     * la PLUS haute — ne resserrer que les cellules de valeur ne gagnerait
+     * rien. En mode une seule série (écran Quinzaine), toutes ces valeurs
+     * restent celles d'avant, à l'octet près.
+     */
+    var padFamille = multi ? '4px 8px' : '8px 10px';
+    var padFamilleLabel = multi ? '4px 12px' : '9px 14px';
+    var padOperation = multi ? '3px 8px' : '6px 10px';
+    var padOperationLabel = multi ? '3px 12px 3px 32px' : '6px 14px 6px 44px';
+    // 12 px à gauche en dense : le bandeau de groupe reste aligné sur le
+    // libellé de famille, qui suit la même réduction.
+    var padGroupe = multi ? '5px 12px' : '8px 14px';
+    var padPied = multi ? '5px 8px' : '8px 10px';
+    var padPiedLabel = multi ? '5px 12px' : '8px 12px';
+    // Interligne : sans lui, la hauteur de ligne reste celle du `line-height`
+    // hérité (~1.5) et le padding réduit ne se voit qu'à moitié. La clé n'est
+    // même pas POSÉE en mode une seule série — le style du <table> de l'écran
+    // Quinzaine reste identique, propriété par propriété.
+    var tableStyle = {
+      width: '100%',
+      borderCollapse: 'collapse',
+      fontSize: 12
+    };
+    if (multi) tableStyle.lineHeight = 1.25;
 
     /**
      * Trait de FIN DE PARCELLE, posé sur la dernière sous-colonne de chaque
@@ -577,10 +635,11 @@
           key: row.key
         }, _pag_h('td', {
           // ⚠️ Le SEUL endroit qui dépend du nombre de colonnes : oublier le
-          // × nbMetrics décale tout le tableau, silencieusement.
-          colSpan: nbColonnesParcelles + 2,
+          // × nbMetrics — ou le +1 de la colonne Total quand elle existe —
+          // décale tout le tableau, silencieusement.
+          colSpan: colSpanBandeau,
           style: {
-            padding: '8px 14px',
+            padding: padGroupe,
             fontWeight: 700,
             fontSize: 12,
             background: color,
@@ -612,7 +671,7 @@
           }
         }, _pag_h('td', {
           style: {
-            padding: '6px 14px 6px 44px',
+            padding: padOperationLabel,
             fontSize: 11,
             fontWeight: 500,
             color: 'var(--gray-600)',
@@ -630,7 +689,7 @@
           }
         }, '↳'), row.label), parcelles.map(function (p, i) {
           return parcelleCell(row, p[0], p[1], {
-            pad: '6px 10px',
+            pad: padOperation,
             fontSize: 11,
             emptyFontSize: 12,
             valueStyle: {
@@ -642,9 +701,9 @@
               color: 'var(--gray-400)'
             }
           }, i);
-        }), _pag_h('td', {
+        }), showTotal ? _pag_h('td', {
           style: {
-            padding: '6px 10px',
+            padding: padOperation,
             textAlign: 'center',
             fontWeight: 600,
             color: 'var(--gray-600)',
@@ -660,7 +719,7 @@
           fontSize: 9,
           color: 'var(--gray-400)',
           fontWeight: 400
-        })));
+        })) : null);
       }
 
       // Ligne famille.
@@ -672,7 +731,7 @@
         }
       }, _pag_h('td', {
         style: {
-          padding: '9px 14px',
+          padding: padFamilleLabel,
           fontWeight: 600,
           color: color,
           position: 'sticky',
@@ -691,7 +750,7 @@
         }
       }, row.key)), parcelles.map(function (p, i) {
         return parcelleCell(row, p[0], p[1], {
-          pad: '8px 10px',
+          pad: padFamille,
           emptyFontSize: 13,
           valueStyle: {
             fontWeight: 700,
@@ -702,9 +761,9 @@
             color: 'var(--gray-400)'
           }
         }, i);
-      }), _pag_h('td', {
+      }), showTotal ? _pag_h('td', {
         style: {
-          padding: '8px 10px',
+          padding: padFamille,
           textAlign: 'center',
           fontWeight: 700,
           color: color,
@@ -719,7 +778,7 @@
         fontSize: 10,
         color: 'var(--gray-400)',
         fontWeight: 400
-      })));
+      })) : null);
     });
     return _pag_h('div', {
       style: {
@@ -764,11 +823,7 @@
         overflowX: 'auto'
       }
     }, _pag_h('table', {
-      style: {
-        width: '100%',
-        borderCollapse: 'collapse',
-        fontSize: 12
-      }
+      style: tableStyle
     },
     // En-tête à DEUX niveaux dès qu'il y a plusieurs séries : parcelle
     // (colSpan) puis une sous-colonne par série. Les colonnes de libellé
@@ -819,7 +874,7 @@
           fontWeight: 400
         }
       }, p[1] > 0 ? p[1] + ' Ha' : 'Ha ?'));
-    }), _pag_h('th', {
+    }), showTotal ? _pag_h('th', {
       title: note || undefined,
       rowSpan: multi ? 2 : undefined,
       style: {
@@ -833,7 +888,7 @@
         right: 0,
         zIndex: 1
       }
-    }, 'Total')), multi ? _pag_h('tr', {
+    }, 'Total') : null), multi ? _pag_h('tr', {
       key: 'h2',
       style: {
         background: 'var(--gray-50)'
@@ -870,7 +925,7 @@
       }
     }, _pag_h('td', {
       style: {
-        padding: '8px 12px',
+        padding: padPiedLabel,
         position: 'sticky',
         left: 0,
         background: color + '18',
@@ -902,14 +957,14 @@
         return _pag_h('td', {
           key: p[0] + '#' + i,
           style: {
-            padding: '8px 6px',
+            padding: padPied,
             textAlign: 'center',
             color: color,
             borderRight: borderSousColonne(i)
           }
         }, totaux[i] === null ? _pag_dash() : totaux[i]);
       });
-    }), _pag_h('td', {
+    }), showTotal ? _pag_h('td', {
       style: {
         padding: '8px 10px',
         textAlign: 'center',
@@ -923,7 +978,7 @@
     }, undefined, {
       fontSize: 10,
       opacity: 0.7
-    })))))),
+    })) : null)))),
     // Légende : le périmètre des séries n'est PAS déductible des chiffres
     // affichés (81 réalisé − 15 budget ≠ −3 d'écart quand une partie des
     // lignes n'est pas budgétée). Sans mention visible, le lecteur conclut à
