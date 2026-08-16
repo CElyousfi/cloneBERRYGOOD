@@ -221,6 +221,118 @@ test('sous-colonnes — le bandeau de groupe couvre TOUTES les sous-colonnes', (
   assert.strictEqual(une[0].props.colSpan, 2 + 2);
 });
 
+test('showTotal:false — la colonne Total disparaît PARTOUT, et le colSpan suit', () => {
+  // Le piège du lot : le bandeau de groupe compte la colonne de libellé ET la
+  // colonne Total. Sans Total, c'est +1 et non +2 — oublié, tout le tableau se
+  // décale sans qu'aucune erreur ne soit levée.
+  const tree = render(troisSeries('perHa'), { showTotal: false });
+
+  // En-tête : plus aucun <th> « Total », ni au niveau 1 ni au niveau 2.
+  const trs = walk(section(tree, 'thead')).filter((n) => n.type === 'tr');
+  assert.deepStrictEqual((trs[0].children || []).filter((c) => c.type === 'th').map(textOf),
+    ['Opération', 'P2 | 2 Ha', 'P4 | 4 Ha']);
+  assert.strictEqual(totalTh(tree), undefined);
+
+  // Corps : libellé + 2 parcelles × 3 séries, et RIEN de plus.
+  assert.deepStrictEqual(cells(bodyRows(tree)[1]),
+    ['Taille | GB09', '5.0', '6.0', '-1.0', '5.0', '4.0', '+1.0']);
+  // Pied : idem, plus de grand total empilé.
+  assert.deepStrictEqual(cells(footRow(tree)),
+    ['TOTAL', '5.0', '6.0', '-1.0', '5.0', '4.0', '+1.0']);
+
+  // colSpan du bandeau : 2 parcelles × 3 séries + la seule colonne de libellé.
+  const bandeau = tds(bodyRows(tree)[0]);
+  assert.strictEqual(bandeau.length, 1);
+  assert.strictEqual(bandeau[0].props.colSpan, 2 * 3 + 1,
+    '2 parcelles × 3 séries + libellé, SANS Total');
+});
+
+test('showTotal — colSpan du bandeau juste dans les DEUX modes, Total ou non', () => {
+  // Table de vérité complète : le colSpan doit valoir exactement le nombre de
+  // <td>/<th> d'une ligne du corps, mode par mode. Un décalage ne lève rien.
+  const colSpanDe = (metrics, showTotal) => tds(bodyRows(render(metrics,
+    { showTotal: showTotal }))[0])[0].props.colSpan;
+  const largeurDe = (metrics, showTotal) => tds(bodyRows(render(metrics,
+    { showTotal: showTotal }))[1]).length;
+  const une = [{ key: 'jh', unit: 'JH', basis: 'total', display: 'total', format: un }];
+
+  [[une, true, 4], [une, false, 3],
+    [troisSeries('perHa'), true, 8], [troisSeries('perHa'), false, 7],
+  ].forEach(([metrics, showTotal, attendu]) => {
+    const cas = (metrics.length === 1 ? '1 série' : '3 séries')
+      + (showTotal ? ' avec Total' : ' sans Total');
+    assert.strictEqual(colSpanDe(metrics, showTotal), attendu, 'colSpan ' + cas);
+    // …et surtout : le colSpan est ÉGAL à la largeur réelle de la ligne.
+    assert.strictEqual(largeurDe(metrics, showTotal), attendu, 'largeur ' + cas);
+  });
+});
+
+test('showTotal — par DÉFAUT la colonne Total reste là (écran Quinzaine)', () => {
+  // Non-régression du panneau Affectation Analytique, qui ne passe pas la prop.
+  const tree = render(troisSeries('perHa'));
+  assert.strictEqual(textOf(totalTh(tree)), 'Total');
+  assert.strictEqual(tds(bodyRows(tree)[0])[0].props.colSpan, 2 * 3 + 2);
+  // `showTotal: true` explicite = même chose.
+  assert.strictEqual(textOf(totalTh(render(troisSeries('perHa'), { showTotal: true }))), 'Total');
+});
+
+test('showTotal:false — la légende `note` reste sous la grille (plus d\'en-tête Total)', () => {
+  // La note énonce le PÉRIMÈTRE des séries : elle ne peut pas disparaître avec
+  // la colonne qui la portait en `title`.
+  const tree = render(troisSeries('perHa'), { showTotal: false, note: 'Périmètre budgété' });
+  assert.ok(textOf(tree).indexOf('Périmètre budgété') >= 0);
+});
+
+test('densité — lignes resserrées en sous-colonnes, INCHANGÉES à une seule série', () => {
+  // La hauteur d'un <tr> est celle de sa cellule la plus haute : le padding doit
+  // être réduit sur la colonne de libellé aussi, sinon rien ne se resserre.
+  const dense = render(troisSeries('perHa'), {
+    groupedRows: [
+      { type: 'groupe', key: 'G', label: 'GROUPE', pivot: PIVOT },
+      { type: 'famille', key: 'GB09', label: 'Taille', pivot: PIVOT },
+      { type: 'operation', key: 'GB09::op', label: 'Taille longue', pivot: PIVOT },
+    ],
+  });
+  const pad = (tr, i) => tds(tr)[i].props.style.padding;
+  assert.strictEqual(pad(bodyRows(dense)[0], 0), '5px 12px', 'bandeau de groupe');
+  assert.strictEqual(pad(bodyRows(dense)[1], 0), '4px 12px', 'libellé famille');
+  assert.strictEqual(pad(bodyRows(dense)[1], 1), '4px 8px', 'cellule famille');
+  assert.strictEqual(pad(bodyRows(dense)[2], 0), '3px 12px 3px 32px', 'libellé opération');
+  assert.strictEqual(pad(bodyRows(dense)[2], 1), '3px 8px', 'cellule opération');
+  assert.strictEqual(pad(footRow(dense), 1), '5px 8px', 'pied');
+  assert.strictEqual(section(dense, 'table').props.style.lineHeight, 1.25);
+
+  // Une seule série (écran Quinzaine) : l'espacement d'origine, à l'octet près,
+  // et pas même une propriété `lineHeight` ajoutée au style du <table>.
+  const large = render([{ key: 'jh', unit: 'JH', basis: 'total', display: 'total', format: un }], {
+    groupedRows: [
+      { type: 'groupe', key: 'G', label: 'GROUPE', pivot: PIVOT },
+      { type: 'famille', key: 'GB09', label: 'Taille', pivot: PIVOT },
+      { type: 'operation', key: 'GB09::op', label: 'Taille longue', pivot: PIVOT },
+    ],
+  });
+  assert.strictEqual(pad(bodyRows(large)[0], 0), '8px 14px');
+  assert.strictEqual(pad(bodyRows(large)[1], 0), '9px 14px');
+  assert.strictEqual(pad(bodyRows(large)[1], 1), '8px 10px');
+  assert.strictEqual(pad(bodyRows(large)[2], 0), '6px 14px 6px 44px');
+  assert.strictEqual(pad(bodyRows(large)[2], 1), '6px 10px');
+  assert.strictEqual(pad(footRow(large), 1), '8px 10px');
+  assert.strictEqual('lineHeight' in section(large, 'table').props.style, false);
+});
+
+test('showTotal:false — le survol peint toujours la BONNE cellule', () => {
+  // _pag_paint repère ses voisines par position depuis la GAUCHE (1 = colonne
+  // de libellé) : la disparition de la dernière colonne ne doit rien décaler.
+  const tree = render(troisSeries('perHa'), { showTotal: false, onCellClick: () => {} });
+  const ligne = tds(bodyRows(tree)[1]);
+  // P4 = sous-colonnes 4, 5, 6.
+  const faux = [];
+  for (let i = 0; i < 7; i += 1) faux.push({ style: { background: '' } });
+  ligne[5].props.onMouseEnter({ currentTarget: { parentNode: { children: faux } } });
+  assert.deepStrictEqual(faux.map((f) => f.style.background),
+    ['', '', '', '', '#fdf4f8', '#fdf4f8', '#fdf4f8']);
+});
+
 test('sous-colonnes — une seule série : AUCUN éclatement (rendu historique)', () => {
   const tree = render([{ key: 'jh', label: 'Réalisé', unit: 'JH/Ha', basis: 'total',
     display: 'perHa', format: un }]);

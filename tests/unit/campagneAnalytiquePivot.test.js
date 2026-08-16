@@ -248,11 +248,39 @@ test('culture — le référentiel SB prime sur la regex du libellé', () => {
   assert.deepStrictEqual(groups[1].rows.map((r) => r.parcelle), ['F5- S9 BLUE']);
 });
 
+// ⚠️ COLONNE TOTAL RETIRÉE DE CET ÉCRAN (et de lui seul, cf. `showTotal` de la
+// grille). Elle était la dernière à empiler les séries avec leurs libellés
+// (« 13.3 | Budget JH/Ha | 0.0 % | % consommé ») au bout d'un tableau par
+// ailleurs entièrement en sous-colonnes. Conséquence sur ces tests : plus
+// aucun TOTAL DE LIGNE ni GRAND TOTAL à lire ici — les totaux de COLONNE
+// (pied de tableau) restent, et le comportement des deux autres est verrouillé
+// côté grille (tests/unit/pivotAnalytiqueGrid.test.js, mode showTotal par
+// défaut) et côté écran Quinzaine (affectationAnalytiqueTable.test.js).
+
 test('grille — une table par culture, colonnes = parcelles nommées SB avec leur Ha', () => {
   const tree = render();
   assert.strictEqual(tables(tree).length, 2, 'Framboise + Myrtille');
   assert.deepStrictEqual(headers(tables(tree)[0]),
-    ['Opération', 'S5 MARAVILLA | 2 Ha', 'S1 CORINA | 4 Ha', 'Total']);
+    ['Opération', 'S5 MARAVILLA | 2 Ha', 'S1 CORINA | 4 Ha']);
+});
+
+test('grille — plus AUCUNE colonne Total sur l\'écran Campagne', () => {
+  const tree = render();
+  tables(tree).forEach((t) => {
+    assert.strictEqual(headers(t).indexOf('Total'), -1, 'en-tête');
+    // Le bandeau de groupe couvre le libellé + les colonnes de parcelles, et
+    // RIEN de plus : un +2 hérité décalerait tout le tableau en silence.
+    const bandeau = (bodyRows(t)[0].children || []).filter((c) => c.type === 'td');
+    assert.strictEqual(bandeau.length, 1);
+    const largeurLigne = (bodyRows(t)[1].children || []).filter((c) => c.type === 'td').length;
+    assert.strictEqual(bandeau[0].props.colSpan, largeurLigne);
+    assert.strictEqual(footRow(t).children.filter((c) => c.type === 'td').length, largeurLigne);
+  });
+  // Framboise : 2 parcelles × 1 série + le libellé.
+  assert.strictEqual(
+    (bodyRows(tables(tree)[0])[0].children || []).filter((c) => c.type === 'td')[0].props.colSpan,
+    3
+  );
 });
 
 test('grille — lignes groupées groupe > famille (code GB)', () => {
@@ -279,8 +307,11 @@ test('recoupement — Récap et Détail affichent le MÊME pied de tableau', () 
     foot([true, true, null], { metric: 'cout' }),
     foot([true, false, null], { metric: 'cout' })
   );
-  // Et cette valeur commune est bien la somme brute, pas un doublon.
-  assert.strictEqual(foot([true, true, null], { metric: 'cout' }).pop(), nb(11400) + ' | DH');
+  // Et ces valeurs communes sont bien les sommes brutes, pas des doublons :
+  // 9 000 DH sur MARAVILLA, 2 400 sur CORINA (11 400 au total, désormais réparti
+  // par colonne — la colonne Total a quitté cet écran).
+  assert.deepStrictEqual(foot([true, true, null], { metric: 'cout' }),
+    ['TOTAL', nb(9000) + ' | DH', nb(2400) + ' | DH']);
 });
 
 test('recoupement — en Total DH, la grille affiche les sommes brutes de l\'API', () => {
@@ -293,7 +324,7 @@ test('recoupement — en Total DH, la grille affiche les sommes brutes de l\'API
   const tree = render({ metric: 'cout' }, [true, false, null]);
   const dh = (v) => v.toLocaleString('fr-MA') + ' | DH';
   assert.deepStrictEqual(cells(footRow(tables(tree)[0])),
-    ['TOTAL', dh(maravilla), dh(corina), dh(maravilla + corina)]);
+    ['TOTAL', dh(maravilla), dh(corina)]);
 
   // Détail par famille sur la même parcelle : Taille 4500+1500, Récolte 3000.
   const rows = bodyRows(tables(tree)[0]);
@@ -307,8 +338,11 @@ test('recoupement — en JH par Ha, chaque cellule est le total divisé par le H
   // cellule VIDE (« — » sans unité), pas un zéro — la grille distingue les deux.
   assert.deepStrictEqual(cells(rows[1]).slice(1, 3), ['20.0 | JH/Ha', '—']);
   assert.deepStrictEqual(cells(rows[3]).slice(1, 3), ['10.0 | JH/Ha', '3.0 | JH/Ha']);
-  // Total général : (60 + 12) JH / 6 Ha = 12.0.
-  assert.strictEqual(cells(footRow(tables(render({ metric: 'jh' }))[0])).pop(), '12.0 | JH/Ha');
+  // Pied de tableau : MARAVILLA 60 JH / 2 Ha = 30.0 ; CORINA 12 / 4 = 3.0.
+  // (Le total général — 72 / 6 = 12.0 — vivait dans la colonne Total, retirée
+  // de cet écran.)
+  assert.deepStrictEqual(cells(footRow(tables(render({ metric: 'jh' }))[0])),
+    ['TOTAL', '30.0 | JH/Ha', '3.0 | JH/Ha']);
 });
 
 test('famille à code GB inconnu — rangée sous AUTRE, et comptée dans le total', () => {
@@ -425,8 +459,8 @@ function renderBudget(props, states) {
 }
 
 // Une cellule métier occupe 3 <td> : [Réalisé, Budget, % consommé]. Indices
-// dans `cells(tr)` : 0 = libellé, 1..3 = MARAVILLA, 4..6 = CORINA, 7 = Total
-// (seule colonne restée EMPILÉE).
+// dans `cells(tr)` : 0 = libellé, 1..3 = MARAVILLA, 4..6 = CORINA. Il n'y a
+// plus rien après : la colonne Total a quitté cet écran.
 const MARAVILLA_SC = [1, 4];
 const CORINA_SC = [4, 7];
 function sousCellule(tr, borne) { return cells(tr).slice(borne[0], borne[1]); }
@@ -441,7 +475,7 @@ test('sous-colonnes — réalisé, budget et % consommé côte à côte (JH par 
   const trs = walk(section(tables(renderBudget())[0], 'thead')).filter((n) => n.type === 'tr');
   assert.strictEqual(trs.length, 2);
   assert.deepStrictEqual((trs[0].children || []).filter((c) => c.type === 'th').map(textOf),
-    ['Opération', 'S5 MARAVILLA | 2 Ha', 'S1 CORINA | 4 Ha', 'Total']);
+    ['Opération', 'S5 MARAVILLA | 2 Ha', 'S1 CORINA | 4 Ha']);
   assert.deepStrictEqual((trs[1].children || []).filter((c) => c.type === 'th').map(textOf),
     ['Réalisé | JH/Ha', 'Budget | JH/Ha', '% consommé',
       'Réalisé | JH/Ha', 'Budget | JH/Ha', '% consommé']);
@@ -476,12 +510,14 @@ test('sous-colonnes — un taux ne se somme pas : totaux pondérés', () => {
   assert.deepStrictEqual(foot.slice(1, 4), ['30.0', '23.0', '130.4 %']);
   // CORINA : seule la Ferti est budgétée (8 JH), jamais travaillée → 0 %.
   assert.deepStrictEqual(foot.slice(4, 7), ['3.0', '2.0', '0.0 %']);
-  // Grand total : 60 / 54 = 111,1 % — ni la somme ni la moyenne des taux.
-  assert.strictEqual(foot[7],
-    '12.0 | Réalisé JH/Ha | 9.0 | Budget JH/Ha | 111.1 % | % consommé');
+  // Le pied s'arrête là : le grand total (60 / 54 = 111,1 %) vivait dans la
+  // colonne Total, retirée de cet écran. La pondération des ratios reste
+  // vérifiée ci-dessus (130,4 % agrège deux lignes) et, pour le grand total,
+  // par tests/unit/pivotAnalytiqueGrid.test.js.
+  assert.strictEqual(foot.length, 7);
 });
 
-test('taux — le suffixe « % » et l\'italique aux QUATRE endroits où le taux est rendu', () => {
+test('taux — le suffixe « % » et l\'italique PARTOUT où le taux est rendu', () => {
   // Sans suffixe, « 51.6 » coincé entre deux colonnes de JH se lit comme un
   // troisième volume. Le « % » vient du FORMAT de la valeur, pas de `unit` :
   // c'est ce qui le fait apparaître aussi dans les trois agrégats, là où `unit`
@@ -494,12 +530,12 @@ test('taux — le suffixe « % » et l\'italique aux QUATRE endroits où le taux
   const taux = (tr, i) => walk((tr.children || []).filter((c) => c.type === 'td')[i])
     .filter((n) => n.type === 'span' && n.props.style && n.props.style.fontStyle === 'italic');
 
-  // 1. cellule ; 2. total de LIGNE (colonne Total, série empilée) ;
-  // 3. total de COLONNE (pied) ; 4. GRAND total (pied, colonne Total).
+  // Les deux endroits qui restent sur cet écran : la cellule et le total de
+  // COLONNE (pied). Le total de ligne et le grand total vivaient dans la
+  // colonne Total, retirée ici — ils restent couverts par
+  // tests/unit/pivotAnalytiqueGrid.test.js.
   assert.deepStrictEqual(taux(rows[2], 3).map(textOf), ['133.3 %'], 'cellule');
-  assert.deepStrictEqual(taux(rows[2], 7).map(textOf), ['133.3 %'], 'total de ligne');
   assert.deepStrictEqual(taux(foot, 3).map(textOf), ['130.4 %'], 'total de colonne');
-  assert.deepStrictEqual(taux(foot, 7).map(textOf), ['111.1 %'], 'grand total');
 
   // L'italique porte sur la VALEUR, jamais sur l'en-tête de sous-colonne.
   const th = walk(section(tree, 'thead'))
@@ -531,16 +567,20 @@ test('sous-colonnes — en mode Total, seul le taux ne bouge pas (il est invaria
   const rows = bodyRows(tables(renderBudget(null, [true, false, null]))[0]);
   // Budget en JH/Ha × 2 Ha = 30 JH, réalisé 40 JH — et toujours 133,3 %.
   assert.deepStrictEqual(sousCellule(rows[2], MARAVILLA_SC), ['40.0', '30.0', '133.3 %']);
-  // Pied de tableau : budget à PÉRIMÈTRE BUDGÉTÉ (30 + 16 + 8 = 54 JH).
-  assert.strictEqual(cells(footRow(tables(renderBudget(null, [true, false, null]))[0])).pop(),
-    '72.0 | Réalisé JH | 54.0 | Budget JH | 111.1 % | % consommé');
+  // Pied de tableau, par colonne : MARAVILLA 60 JH réalisés pour 46 budgétés
+  // (30 en Taille + 16 en Récolte, périmètre budgété) = 130,4 % ; CORINA 12 JH
+  // réalisés, 8 budgétés en Ferti jamais travaillée → 0 %.
+  const foot = cells(footRow(tables(renderBudget(null, [true, false, null]))[0]));
+  assert.deepStrictEqual(foot.slice(1, 7), ['60.0', '46.0', '130.4 %', '12.0', '8.0', '0.0 %']);
 });
 
 test('budget — culture sans aucun budget : grille inchangée, une seule série', () => {
   // Cas nominal de l'avocatier (jamais budgété) : deux lignes de « — » dans
   // chaque cellule n'apprendraient rien à personne.
   const myrtille = bodyRows(tables(renderBudget())[1]);
-  assert.deepStrictEqual(cells(myrtille[1]).slice(1), ['3.0 | JH/Ha', '3.0 | JH/Ha']);
+  // Une seule parcelle, une seule série, et plus de colonne Total : une seule
+  // cellule de valeur, au balisage empilé historique (unité dans la cellule).
+  assert.deepStrictEqual(cells(myrtille[1]).slice(1), ['3.0 | JH/Ha']);
 });
 
 test('budget — métrique Coût DH : aucune série budget (le budget est en JH/Ha)', () => {
@@ -564,40 +604,34 @@ test('budget — mode Détail : le budget descend à la maille opération', () =
   assert.deepStrictEqual(sousCellule(rows[3], MARAVILLA_SC), ['15.0', '—', '—']);
 });
 
-test('budget — ligne et colonne entièrement non budgétées : totaux « — »', () => {
-  // Seule la Taille de MARAVILLA est budgétée. La ligne Récolte (aucune des
-  // deux parcelles) et la colonne CORINA (aucune famille) n'ont donc AUCUN
-  // budget : leurs totaux doivent dire « — », pas « 0.0 » — qui se lirait
+test('budget — colonne entièrement non budgétée : totaux « — », jamais 0.0', () => {
+  // Seule la Taille de MARAVILLA est budgétée. La colonne CORINA (aucune
+  // famille budgétée) doit donc dire « — », pas « 0.0 » — qui se lirait
   // « budget nul, dépassement total » puis « pile dans le budget ».
-  const rows = bodyRows(tables(renderBudget(
-    { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
-    [true, false, null]
-  ))[0]);
-  assert.strictEqual(cells(rows[1])[7],
-    '40.0 | Réalisé JH | 30.0 | Budget JH | 133.3 % | % consommé');
-  assert.strictEqual(cells(rows[3])[7],
-    '32.0 | Réalisé JH | — | Budget JH | — | % consommé');
-
+  // (Le total de LIGNE, même règle, vivait dans la colonne Total retirée ici :
+  // il reste couvert par tests/unit/pivotAnalytiqueGrid.test.js.)
   const foot = cells(footRow(tables(renderBudget(
     { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
     [true, false, null]
   ))[0]));
-  assert.deepStrictEqual(foot.slice(1, 7), [
+  assert.deepStrictEqual(foot, [
+    'TOTAL',
     '60.0', '30.0', '133.3 %',
     '12.0', '—', '—',
   ]);
-  assert.strictEqual(foot[7], '72.0 | Réalisé JH | 30.0 | Budget JH | 133.3 % | % consommé');
 });
 
-test('budget — le PÉRIMÈTRE BUDGÉTÉ reste énoncé sous la grille et sur la colonne Total', () => {
+test('budget — le PÉRIMÈTRE BUDGÉTÉ reste énoncé sous la grille', () => {
   // Un taux de 133 % sur une ligne dont la moitié des familles n'est pas
   // budgétée se lit comme une erreur de calcul si le périmètre n'est pas dit.
+  // Il l'était à deux endroits : la légende sous la grille et le `title` de
+  // l'en-tête Total. Cette colonne ayant quitté l'écran, la LÉGENDE devient le
+  // seul porteur — elle ne peut donc pas disparaître avec elle.
   const tree = renderBudget();
   assert.match(textOf(tree), /périmètre budgété uniquement/);
   assert.match(textOf(tree), /« % consommé » = Réalisé \/ Budget sur ce seul périmètre/);
-  const th = walk(section(tables(tree)[0], 'thead'))
-    .filter((n) => n.type === 'th' && textOf(n) === 'Total')[0];
-  assert.match(th.props.title, /périmètre budgété uniquement/);
+  assert.strictEqual(walk(section(tables(tree)[0], 'thead'))
+    .filter((n) => n.type === 'th' && textOf(n) === 'Total').length, 0);
   // Culture sans budget (Myrtille) : ni légende ni title — rien à expliquer.
   assert.strictEqual(textOf(renderBudget({ cultureFilter: 'Myrtille' }))
     .indexOf('périmètre budgété'), -1);
@@ -630,6 +664,82 @@ test('budget — module non chargé : réalisé seul, jamais de grille cassée',
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
     ['M.O Hors récolte', 'Taille', 'M.O Récolte', 'Récolte']);
   assert.deepStrictEqual(cells(rows[1]).slice(1, 3), ['20.0 | JH/Ha', '—']);
+});
+
+// ---------------------------------------------------------------- plein écran
+//
+// États injectés par POSITION : [totalMode, detailMode, detailCell,
+// vueQuinzaine, quinzaineSel, fullscreen, cultureIdx].
+//
+// L'état vit ICI (et non chez le parent comme dans AffectationAnalytiqueTable) :
+// CampagneAnalytiqueTab ne repasse par ses early-returns qu'au montage, il ne
+// démonte donc pas PivotView en cours d'usage.
+
+/** Boutons portant une icône Font Awesome donnée (fa-expand, fa-chevron-left…). */
+function boutons(tree, icone) {
+  return walk(tree).filter((n) => n.type === 'button'
+    && walk(n).some((c) => c.type === 'i' && (c.props.className || '').indexOf(icone) >= 0));
+}
+
+test('plein écran — un bouton par grille de culture, qui ouvre CETTE culture', () => {
+  const tree = render();
+  const btns = boutons(tree, 'fa-expand');
+  assert.strictEqual(btns.length, 2, 'un bouton par grille (Framboise, Myrtille)');
+  // Hors plein écran, aucun carrousel : les deux grilles sont déjà affichées.
+  assert.strictEqual(boutons(tree, 'fa-chevron-right').length, 0);
+
+  // Clic sur le bouton de la 2e grille : c'est la MYRTILLE qui s'ouvre, pas
+  // « la première culture ».
+  setterCalls = [];
+  btns[1].props.onClick();
+  assert.deepStrictEqual(plain(setterCalls), [1, true], '[setCultureIdx(1), setFullscreen(true)]');
+});
+
+test('plein écran — une seule culture affichée, sur un overlay, avec le carrousel', () => {
+  const tree = render(null, [false, false, null, false, '', true, 1]);
+  assert.strictEqual(tables(tree).length, 1, 'la culture choisie, et elle seule');
+  assert.ok(textOf(tables(tree)[0]).indexOf('S9 BLUE') >= 0, 'Myrtille');
+  // Overlay plein écran.
+  assert.strictEqual(tree.props.style.position, 'fixed');
+  assert.strictEqual(tree.props.style.zIndex, 9999);
+  // Carrousel : deux chevrons + une pastille par culture.
+  assert.strictEqual(boutons(tree, 'fa-chevron-left').length, 1);
+  assert.strictEqual(boutons(tree, 'fa-chevron-right').length, 1);
+  // Le bouton de la grille bascule en « quitter ».
+  assert.strictEqual(boutons(tree, 'fa-expand').length, 0);
+  const sortie = boutons(tree, 'fa-compress');
+  assert.strictEqual(sortie.length, 1);
+  setterCalls = [];
+  sortie[0].props.onClick();
+  assert.deepStrictEqual(plain(setterCalls), [false], 'setFullscreen(false)');
+});
+
+test('plein écran — les chevrons bouclent sur la liste des cultures', () => {
+  // Sur la dernière culture (index 1 sur 2) : « suivant » revient à 0.
+  const derniere = render(null, [false, false, null, false, '', true, 1]);
+  setterCalls = [];
+  boutons(derniere, 'fa-chevron-right')[0].props.onClick();
+  assert.deepStrictEqual(plain(setterCalls), [0]);
+
+  // Sur la première : « précédent » va à la dernière.
+  const premiere = render(null, [false, false, null, false, '', true, 0]);
+  setterCalls = [];
+  boutons(premiere, 'fa-chevron-left')[0].props.onClick();
+  assert.deepStrictEqual(plain(setterCalls), [1]);
+});
+
+test('plein écran — un index hors bornes retombe sur la 1re grille, pas sur du vide', () => {
+  // Cas réel : on ouvre l'Avocatier en plein écran puis le filtre Culture
+  // réduit la liste. Un index périmé afficherait un écran blanc.
+  const tree = render(null, [false, false, null, false, '', true, 7]);
+  assert.strictEqual(tables(tree).length, 1);
+  assert.ok(textOf(tables(tree)[0]).indexOf('S5 MARAVILLA') >= 0, 'Framboise');
+});
+
+test('plein écran — hors plein écran, aucun overlay et toutes les grilles', () => {
+  const tree = render();
+  assert.strictEqual(tree.props.style, null);
+  assert.strictEqual(tables(tree).length, 2);
 });
 
 test('grille — sélection vide : message, jamais une table fantôme', () => {

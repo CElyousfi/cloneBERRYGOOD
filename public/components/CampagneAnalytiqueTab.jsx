@@ -1240,6 +1240,42 @@
     var _quinzaineSel = useState('');
     var quinzaineSel = _quinzaineSel[0]; var setQuinzaineSel = _quinzaineSel[1];
 
+    // ── PLEIN ÉCRAN ────────────────────────────────────────────────────────
+    // Ajoutés EN DERNIER, pour la même raison que les deux précédents : l'ordre
+    // des useState est l'index de state de React, et le harnais de test injecte
+    // les états par position.
+    //
+    // ⚠️ État LOCAL, contrairement à AffectationAnalytiqueTable dont TOUT
+    // l'état vit chez QuinzaineTab : là-bas l'early-return `if (loading)` du
+    // parent démonte le panneau à chaque changement de quinzaine, et un plein
+    // écran qui se referme tout seul serait un bug. Ici le parent
+    // (CampagneAnalytiqueTab) ne repasse plus par ses early-returns une fois
+    // les données chargées — `setLoading(true)` n'est appelé que dans l'effet
+    // de MONTAGE, et aucun changement de filtre/bascule ne le rejoue. PivotView
+    // n'est donc démonté que par une vraie navigation (changement de
+    // sous-onglet ou de vue), où repartir hors plein écran est attendu.
+    var _fullscreen = useState(false);
+    var fullscreen = _fullscreen[0]; var setFullscreen = _fullscreen[1];
+    // Index de la culture affichée EN PLEIN ÉCRAN (le carrousel ‹ › ).
+    var _cultureIdx = useState(0);
+    var cultureIdx = _cultureIdx[0]; var setCultureIdx = _cultureIdx[1];
+
+    // Sortie au clavier + gel du défilement de la page derrière l'overlay :
+    // même mécanisme que l'écran Quinzaine (où il vit chez QuinzaineTab, parce
+    // que le panneau y est démonté trop souvent pour le porter).
+    useEffect(function () {
+      if (typeof document === 'undefined' || !document.body) return undefined;
+      if (!fullscreen) return undefined;
+      var onKey = function (e) { if (e.key === 'Escape') setFullscreen(false); };
+      document.addEventListener('keydown', onKey);
+      var prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return function () {
+        document.removeEventListener('keydown', onKey);
+        document.body.style.overflow = prev;
+      };
+    }, [fullscreen]);
+
     var Grid = window.PivotAnalytiqueGrid;
     var AU = window.AnalytiqueUtils;
     var CR = window.CampagneRythme;
@@ -1448,7 +1484,41 @@
       );
     }
 
-    return React.createElement('div', null,
+    // ── PLEIN ÉCRAN : quelles grilles sont rendues ? ────────────────────────
+    // Une seule à la fois — c'est tout l'intérêt : la grille éclatée en
+    // sous-colonnes a besoin de toute la largeur ET de toute la hauteur. Le
+    // carrousel ‹ › remplace le défilement entre cultures.
+    // Un index devenu hors bornes (filtre culture changé pendant le plein
+    // écran) retombe sur la première grille plutôt que sur un écran blanc.
+    var idxCulture = (cultureIdx >= 0 && cultureIdx < groups.length) ? cultureIdx : 0;
+    var enPlein = !!fullscreen && groups.length > 0;
+    var groupesAffiches = enPlein ? [groups[idxCulture]] : groups;
+
+    /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */
+    function boutonPlein(i) {
+      return React.createElement('button', {
+        onClick: function () {
+          if (enPlein) { setFullscreen(false); return; }
+          setCultureIdx(i);
+          setFullscreen(true);
+        },
+        title: enPlein ? 'Quitter le plein écran' : 'Plein écran',
+        style: {
+          position: 'absolute', top: '8px', right: '10px', zIndex: 2,
+          padding: '4px 10px', borderRadius: '6px', border: '1px solid ' + C.border,
+          background: C.surface, cursor: 'pointer', fontSize: '12px', color: C.textSec,
+        },
+      }, React.createElement('i', { className: enPlein ? 'fa-solid fa-compress' : 'fa-solid fa-expand' }));
+    }
+
+    return React.createElement('div', {
+      // L'overlay porte la barre de bascules ET la grille : en plein écran, on
+      // doit pouvoir basculer Ha/Total ou Récap/Détail sans en ressortir.
+      style: enPlein
+        ? { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+          background: '#fff', overflowY: 'auto', padding: '16px' }
+        : null,
+    },
       React.createElement('div', {
         style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' },
       },
@@ -1487,11 +1557,49 @@
       detailCell
         ? React.createElement(CAT_DetailPopup, { cell: detailCell, onClose: function () { setDetailCell(null); } })
         : null,
+      // Carrousel de cultures — MÊME geste que le panneau Affectation
+      // Analytique de l'écran Quinzaine : deux chevrons qui bouclent, et une
+      // pastille par culture (aux couleurs de la culture) pour y aller
+      // directement. Affiché en plein écran seulement : hors plein écran,
+      // toutes les grilles sont déjà là, naviguer n'aurait aucun sens.
+      (enPlein && groups.length > 1) ? React.createElement('div', {
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '12px', marginBottom: '12px', flexWrap: 'wrap' },
+      },
+        React.createElement('button', {
+          onClick: function () { setCultureIdx((idxCulture - 1 + groups.length) % groups.length); },
+          title: 'Culture précédente',
+          style: { padding: '6px 14px', borderRadius: '8px', border: '1px solid ' + C.border,
+            background: C.surface, cursor: 'pointer', fontSize: '14px' },
+        }, React.createElement('i', { className: 'fa-solid fa-chevron-left' })),
+        groups.map(function (g, i) {
+          return React.createElement('button', {
+            key: g.culture,
+            onClick: function () { setCultureIdx(i); },
+            style: {
+              padding: '5px 14px', borderRadius: '8px',
+              border: '1.5px solid ' + (i === idxCulture ? g.color : C.border),
+              background: i === idxCulture ? g.color : C.surface,
+              color: i === idxCulture ? '#fff' : C.textSec,
+              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+            },
+          },
+            React.createElement('i', { className: 'fa-solid ' + g.icon, style: { marginRight: '5px' } }),
+            g.culture
+          );
+        }),
+        React.createElement('button', {
+          onClick: function () { setCultureIdx((idxCulture + 1) % groups.length); },
+          title: 'Culture suivante',
+          style: { padding: '6px 14px', borderRadius: '8px', border: '1px solid ' + C.border,
+            background: C.surface, cursor: 'pointer', fontSize: '14px' },
+        }, React.createElement('i', { className: 'fa-solid fa-chevron-right' }))
+      ) : null,
       groups.length === 0
         ? React.createElement('div', {
             style: { padding: '40px', textAlign: 'center', color: C.textSec, fontSize: '14px' },
           }, 'Aucune donnée pour cette sélection.')
-        : groups.map(function (g) {
+        : groupesAffiches.map(function (g) {
             var pivot = AU.buildAnalytiquePivotByFamille(g.rows, { detail: detailMode });
             if (!pivot.groupedRows || pivot.groupedRows.length === 0) return null;
             // Superposition du budget : lignes IDENTIQUES (mêmes clés, même
@@ -1532,8 +1640,15 @@
                   })),
                 })
               : null;
-            return React.createElement(Grid, {
+            // Chaque grille est encapsulée pour porter SON bouton plein écran,
+            // posé sur son bandeau de titre (position absolue) : c'est la
+            // culture qu'on regarde qu'on veut agrandir, pas « la première ».
+            return React.createElement('div', {
               key: g.culture,
+              style: { position: 'relative' },
+            },
+              boutonPlein(groups.indexOf(g)),
+              React.createElement(Grid, {
               parcelles: pivot.parcelles,
               groupedRows: quinz
                 ? quinz.groupedRows
@@ -1552,11 +1667,20 @@
               color: g.color,
               title: g.culture,
               icon: g.icon,
+              // ⚠️ La colonne Total est RETIRÉE de cet écran, et de lui seul.
+              // C'était le dernier pavé de texte de la grille : seule colonne
+              // où les séries restent empilées avec leur libellé (« 13.3 /
+              // Budget JH/Ha / 0.0 % / % consommé »), au bout d'un tableau par
+              // ailleurs entièrement en sous-colonnes. Le panneau Affectation
+              // Analytique de l'écran Quinzaine, lui, la GARDE : il ne passe
+              // pas cette prop, dont le défaut est `true`.
+              showTotal: false,
               parcelleLabel: function (k) { return sbNom(k, sbMap); },
               onCellClick: function (c) {
                 setDetailCell(Object.assign({ parcelleLabel: sbNom(c.parcelle, sbMap) }, c));
               },
-            });
+              })
+            );
           })
     );
   }
