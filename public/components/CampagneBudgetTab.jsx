@@ -487,6 +487,22 @@
   /** Séparateur de la clé de bucket de variété. */
   var CBT_VAR_KEY_SEP = '||';
 
+  /** Portées de saisie proposées par l'écran, dans l'ordre d'affichage. */
+  var CBT_PORTEES = [
+    {
+      key: 'parcelle', label: 'Parcelle',
+      aide: 'Saisir le budget d\'une seule parcelle',
+    },
+    {
+      key: 'variete', label: 'Variété',
+      aide: 'Saisir la même grille pour toutes les parcelles d\'une variété',
+    },
+    {
+      key: 'culture', label: 'Culture',
+      aide: 'Saisir la même grille pour toutes les parcelles d\'une culture',
+    },
+  ];
+
   /**
    * Normalise une variété : trim, MAJUSCULES, espaces internes réduits à un.
    *
@@ -1088,6 +1104,28 @@
     // neutralisations de famille, mais dans le même panneau.
     var _confirmQuinz = useState(null);
     var confirmQuinz = _confirmQuinz[0]; var setConfirmQuinz = _confirmQuinz[1];
+    // États de la PORTÉE DE SAISIE — APPENDUS après les précédents à dessein :
+    // l'ordre des useState EST l'index de state de React, et le harnais de test
+    // (tests/unit/campagneBudgetTab.test.js) indexe par position. Insérer un
+    // state au milieu renumérote tout et fait basculer silencieusement les tests
+    // de rendu existants sur les mauvais états.
+    //
+    // `selected` (index 4) n'est PAS réutilisé pour porter la cible multiple :
+    // trois effets en dépendent et la portée Parcelle doit rester bit pour bit
+    // identique à ce qu'elle est aujourd'hui.
+    var _portee = useState('parcelle');
+    var portee = _portee[0]; var setPortee = _portee[1];
+    var _varieteSel = useState('');
+    var varieteSel = _varieteSel[0]; var setVarieteSel = _varieteSel[1];
+    var _cultureSel = useState('');
+    var cultureSel = _cultureSel[0]; var setCultureSel = _cultureSel[1];
+    // Déclarés MAINTENANT pour figer l'ordre des states une fois pour toutes ;
+    // ils ne seront consommés qu'au lot « confirmation et remontée » (fan-out) :
+    // périmètre confirmé avant écriture, et résultat par parcelle après.
+    var _confirmFanout = useState(null);
+    var confirmFanout = _confirmFanout[0]; var setConfirmFanout = _confirmFanout[1];
+    var _fanoutResults = useState(null);
+    var fanoutResults = _fanoutResults[0]; var setFanoutResults = _fanoutResults[1];
 
     useEffect(function () {
       var cancelled = false;
@@ -1160,6 +1198,76 @@
       return function () { cancelled = true; };
     }, [tick]);
 
+    // Parcelles PROPOSABLES à la saisie — dérivé, jamais un filtre sur le state
+    // `rows` : `selectedRow` (plus bas) doit continuer de retrouver une parcelle
+    // masquée, sinon une sélection héritée cesse d'être identifiable (Ha, badge,
+    // culture) au lieu d'être simplement désélectionnée.
+    // Ce dérivé n'est utilisé que là où l'écran peut ÉCRIRE : le sélecteur, les
+    // buckets de portée et les cibles d'enregistrement.
+    // Deps `[rows]` VOLONTAIRES : `window.SB_PARCELLE_REF` est posé dans le MÊME
+    // `.then()` que `setRows` (cf. le chargement ci-dessus), la map est donc
+    // présente dès que ce memo recalcule. Ne pas ajouter de dépendance
+    // supplémentaire ni d'effet séparé qui lirait la map avant qu'elle existe.
+    // Déclaré AVANT les effets de synchronisation des champs : ceux-ci en
+    // dérivent leurs dépendances, et un `var` encore `undefined` au moment où le
+    // tableau de deps est évalué (au rendu) figerait l'effet à jamais.
+    var rowsAffichables = useMemo(function () {
+      var sbMap = window.SB_PARCELLE_REF || {};
+      return (rows || []).filter(function (r) { return CBT_parcelleAffichable(r, sbMap); });
+    }, [rows]);
+
+    var options = useMemo(function () {
+      return (rowsAffichables || []).slice().sort(function (a, b) {
+        return cbtNom(a.label).localeCompare(cbtNom(b.label));
+      });
+    }, [rowsAffichables]);
+
+    // PORTÉE : buckets proposables (variétés et cultures réellement présentes),
+    // jamais une liste figée. Un bucket vide n'existe pas — il n'y a donc rien à
+    // choisir qui ne désigne aucune parcelle.
+    var porteeOpts = useMemo(function () {
+      return CBT_porteeOptions({ rows: rowsAffichables, sbMap: window.SB_PARCELLE_REF || {} });
+    }, [rowsAffichables]);
+
+    var porteeMulti = portee === 'variete' || portee === 'culture';
+    var cible = portee === 'variete' ? varieteSel : (portee === 'culture' ? cultureSel : '');
+
+    // Parcelles réellement visées par un enregistrement. Portée Parcelle : la
+    // seule parcelle sélectionnée — le chemin d'aujourd'hui, inchangé.
+    var targetLabels = useMemo(function () {
+      return CBT_targetLabels({
+        portee: portee, rows: rowsAffichables, label: selected, cible: cible,
+        sbMap: window.SB_PARCELLE_REF || {},
+      });
+    }, [portee, rowsAffichables, selected, cible]);
+
+    // Une parcelle sélectionnée peut cesser d'être proposable (référentiel SB
+    // rechargé, `culture_sb` corrigée en cours de session) : on désélectionne
+    // plutôt que de laisser une saisie ouverte sur une parcelle que le sélecteur
+    // n'affiche plus. Les effets ci-dessous vident alors `values` / `opValues` /
+    // `msg`.
+    useEffect(function () {
+      if (!selected) return;
+      var key = String(selected).toUpperCase().trim();
+      var present = (rowsAffichables || []).some(function (r) {
+        return String((r && r.label) || '').toUpperCase().trim() === key;
+      });
+      if (!present) setSelected('');
+    }, [selected, rowsAffichables]);
+
+    // Une cible de portée multiple peut disparaître elle aussi (rechargement,
+    // dernière parcelle de la variété reclassée) : même traitement, on retombe
+    // sur « aucune cible » plutôt que d'afficher une grille qui n'écrirait nulle
+    // part. Le rendu gère `targetLabels.length === 0` explicitement.
+    useEffect(function () {
+      if (varieteSel && !porteeOpts.varietes.some(function (v) { return v.key === varieteSel; })) {
+        setVarieteSel('');
+      }
+      if (cultureSel && !porteeOpts.cultures.some(function (c) { return c.key === cultureSel; })) {
+        setCultureSel('');
+      }
+    }, [porteeOpts, varieteSel, cultureSel]);
+
     // Le message (succès/erreur) n'est effacé QUE par un changement de parcelle.
     // Effet séparé À DESSEIN : la synchro des champs ci-dessous dépend aussi de
     // `budgetsByLabel`, que le save met à jour — regrouper les deux effaçait
@@ -1183,8 +1291,34 @@
       setConfirmQuinz(null);
     }, [selected, tick, quinzSel]);
 
-    // Changement de parcelle (ou de budgets connus) → recharger les champs.
+    // Valeurs COMMUNES aux parcelles cibles, en portée multiple : ce qui est
+    // identique partout est pré-rempli, ce qui diverge reste vide et est SIGNALÉ.
+    // null en portée Parcelle — c'est la garde qui garantit que le chemin
+    // historique ne change pas d'un octet.
+    var communCibles = useMemo(function () {
+      if (!porteeMulti) return null;
+      return CBT_valeursCommunes({
+        labels: targetLabels, familles: familles, opsByFamille: opsByFamille,
+        budgetsByLabel: budgetsByLabel, opBudgetsByLabel: opBudgetsByLabel,
+      });
+    }, [porteeMulti, targetLabels, familles, opsByFamille, budgetsByLabel, opBudgetsByLabel]);
+
+    // Lignes divergentes entre les parcelles cibles. ⚠️ Un champ vide a DEUX
+    // causes (tout à 0, ou divergence) : ces deux maps sont le SEUL porteur de la
+    // distinction, cf. CBT_valeursCommunes.
+    var divergentes = (communCibles && communCibles.divergentes) || {};
+    var divergentesOps = (communCibles && communCibles.divergentesOps) || {};
+
+    // Changement de parcelle, de portée, de cible (ou de budgets connus) →
+    // recharger les champs. UNE SEULE source de `setValues` / `setOpValues`,
+    // guardée par la portée : deux effets en course sur les mêmes champs
+    // produiraient une grille dont la valeur dépend de l'ordre de résolution.
     useEffect(function () {
+      if (porteeMulti) {
+        setValues(communCibles ? communCibles.values : {});
+        setOpValues(communCibles ? communCibles.opValues : {});
+        return;
+      }
       if (!selected) { setValues({}); setOpValues({}); return; }
       var key = selected.toUpperCase();
       var saved = budgetsByLabel[key] || {};
@@ -1202,7 +1336,8 @@
       });
       setValues(next);
       setOpValues(nextOps);
-    }, [selected, familles, opsByFamille, budgetsByLabel, opBudgetsByLabel]);
+    }, [porteeMulti, communCibles, selected, familles, opsByFamille,
+      budgetsByLabel, opBudgetsByLabel]);
 
     // Quinzaine éditée : la quinzaine en cours par défaut ; un choix explicite
     // devenu invalide (rechargement, campagne changée) y retombe plutôt que
@@ -1230,43 +1365,6 @@
       setQuinzValues(next);
     }, [selected, quinzaineActive, familles, quinzEnregistrees]);
 
-    // Parcelles PROPOSABLES à la saisie — dérivé, jamais un filtre sur le state
-    // `rows` : `selectedRow` (juste dessous) doit continuer de retrouver une
-    // parcelle masquée, sinon une sélection héritée cesse d'être identifiable
-    // (Ha, badge, culture) au lieu d'être simplement désélectionnée.
-    // Ce dérivé n'est utilisé que là où l'écran peut ÉCRIRE (le sélecteur, et
-    // les cibles de portée au lot suivant).
-    // Deps `[rows]` VOLONTAIRES : `window.SB_PARCELLE_REF` est posé dans le MÊME
-    // `.then()` que `setRows` (cf. le chargement ci-dessus), la map est donc
-    // présente dès que ce memo recalcule. Ne pas ajouter de dépendance
-    // supplémentaire ni d'effet séparé qui lirait la map avant qu'elle existe.
-    var rowsAffichables = useMemo(function () {
-      var sbMap = window.SB_PARCELLE_REF || {};
-      return (rows || []).filter(function (r) { return CBT_parcelleAffichable(r, sbMap); });
-    }, [rows]);
-
-    var options = useMemo(function () {
-      return (rowsAffichables || []).slice().sort(function (a, b) {
-        return cbtNom(a.label).localeCompare(cbtNom(b.label));
-      });
-    }, [rowsAffichables]);
-
-    // Une parcelle sélectionnée peut cesser d'être proposable (référentiel SB
-    // rechargé, `culture_sb` corrigée en cours de session) : on désélectionne
-    // plutôt que de laisser une saisie ouverte sur une parcelle que le sélecteur
-    // n'affiche plus. Les effets ci-dessus vident alors `values` / `opValues` /
-    // `msg`. Placé APRÈS eux à dessein : seul l'ordre des `useState` est
-    // signifiant pour React, celui des `useEffect` est libre — et ce dernier a
-    // besoin de `rowsAffichables`, déclaré juste au-dessus.
-    useEffect(function () {
-      if (!selected) return;
-      var key = String(selected).toUpperCase().trim();
-      var present = (rowsAffichables || []).some(function (r) {
-        return String((r && r.label) || '').toUpperCase().trim() === key;
-      });
-      if (!present) setSelected('');
-    }, [selected, rowsAffichables]);
-
     var selectedRow = useMemo(function () {
       var key = String(selected || '').toUpperCase().trim();
       if (!key) return null;
@@ -1277,11 +1375,33 @@
       return hit;
     }, [rows, selected]);
 
-    var ha = selectedRow ? cbtHa(selectedRow.label) : 0;
-    var culture = selectedRow ? cbtCulture(selectedRow.culture, selectedRow.label) : '';
+    // Surface CUMULÉE des parcelles cibles en portée multiple.
+    // `Total JH = JH/Ha × Σ ha` est EXACT, et non une approximation : le fan-out
+    // écrit la MÊME valeur de JH/Ha sur chaque parcelle, donc
+    // Σ(jhHa × ha_i) = jhHa × Σha_i. Ne pas « corriger » ce calcul.
+    // Les parcelles sans Ha reçoivent bien le budget, elles ne contribuent
+    // simplement pas au Total JH — l'entête le dit explicitement.
+    var surfaceCible = useMemo(function () {
+      return CBT_surfaceCible(targetLabels, cbtHa);
+    }, [targetLabels]);
+
+    var ha = porteeMulti ? surfaceCible.ha : (selectedRow ? cbtHa(selectedRow.label) : 0);
+    // Bucket de variété sélectionné (portée Variété) — porte la culture du bucket.
+    var varieteBucket = null;
+    porteeOpts.varietes.forEach(function (v) { if (v.key === varieteSel) varieteBucket = v; });
+    // Culture : dérivée du BUCKET en portée multiple (`selectedRow` y est null).
+    // Sans ça le badge disparaîtrait et CBT_quinzaineApplicable recevrait ''.
+    var culture = porteeMulti
+      ? (portee === 'culture' ? cultureSel : (varieteBucket ? varieteBucket.culture : ''))
+      : (selectedRow ? cbtCulture(selectedRow.culture, selectedRow.label) : '');
     // Section quinzaine affichée seulement si : module chargé, quinzaine connue,
-    // et culture budgétée (l'avocatier ne l'est pas — refus miroir côté serveur).
-    var quinzaineSaisissable = !!(quinzaineActive && CBT_quinzaineApplicable(culture));
+    // culture budgétée (l'avocatier ne l'est pas — refus miroir côté serveur) ET
+    // portée Parcelle. L'engagement est une décision à 15 jours prise parcelle
+    // par parcelle ; comme `CBT_buildSavePayload` n'ajoute `budgets_quinzaine`
+    // que si une quinzaine est éditée, le masquage est le seul choix qui
+    // PRÉSERVE PROUVABLEMENT les engagements déjà en base.
+    var quinzaineSaisissable = !!(quinzaineActive && CBT_quinzaineApplicable(culture))
+      && !porteeMulti;
     // Clé envoyée au backend : '' = aucun engagement dans ce save (le champ n'est
     // alors pas transmis du tout, cf. CBT_buildSavePayload).
     var quinzaineAEnvoyer = quinzaineSaisissable ? quinzaineActive : '';
@@ -1413,10 +1533,29 @@
         .finally(function () { setSaving(false); });
     }
 
+    // Libellé de la cible et parcelles sans Ha, pour l'entête de portée.
+    var porteeCibleLabel = portee === 'culture'
+      ? cultureSel
+      : (varieteBucket ? varieteBucket.label : '');
+    var porteeSansHaNoms = surfaceCible.sansHa.slice(0, 3).map(cbtNom).join(', ')
+      + (surfaceCible.sansHa.length > 3
+        ? ' et ' + (surfaceCible.sansHa.length - 3) + ' autres' : '');
+    // La grille n'a de sens que si l'enregistrement porterait sur au moins une
+    // parcelle. En portée multiple, une cible non choisie donne 0 cible.
+    var grilleVisible = porteeMulti ? targetLabels.length > 0 : !!selected;
+
     var inputStyle = {
       border: '1px solid ' + CBT_C.border, borderRadius: 6, padding: '5px 8px',
       fontSize: 12, outline: 'none', width: 90, textAlign: 'right',
       boxSizing: 'border-box',
+    };
+    // Badge ambre — style PARTAGÉ par l'avertissement de neutralisation de
+    // famille et par le signalement de divergence entre parcelles cibles. Extrait
+    // une fois : deux copies divergeraient à la première retouche visuelle.
+    var badgeAmbre = {
+      display: 'inline-block', marginLeft: 8, padding: '1px 7px',
+      borderRadius: 9, fontSize: 10.5, fontWeight: 700,
+      background: '#fef3c7', color: CBT_C.amber, whiteSpace: 'nowrap',
     };
     var thStyle = {
       textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700,
@@ -1490,7 +1629,35 @@
         React.createElement('div', {
           style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' },
         },
-          React.createElement('select', {
+          // SÉLECTEUR DE PORTÉE. Un budget est en pratique identique pour toutes
+          // les parcelles d'une même variété : le saisir 23 fois est le vrai coût
+          // d'usage de l'écran. Boutons segmentés (et non un <select>) : la cible
+          // est visible d'un coup d'œil et atteignable au doigt — la validation
+          // se fait au téléphone. VISIBLE en lecture seule : consulter le budget
+          // d'une variété est légitime, seul « Enregistrer » disparaît.
+          React.createElement('div', {
+            style: {
+              display: 'flex', border: '1px solid ' + CBT_C.border,
+              borderRadius: 8, overflow: 'hidden',
+            },
+          },
+            CBT_PORTEES.map(function (p, i) {
+              var actif = portee === p.key;
+              return React.createElement('button', {
+                key: p.key,
+                onClick: function () { setPortee(p.key); },
+                title: p.aide,
+                style: {
+                  padding: '9px 14px', border: 'none',
+                  borderLeft: i === 0 ? 'none' : '1px solid ' + CBT_C.border,
+                  background: actif ? CBT_C.berry : CBT_C.surface,
+                  color: actif ? '#fff' : CBT_C.textSec,
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                },
+              }, p.label);
+            })
+          ),
+          portee === 'parcelle' && React.createElement('select', {
             value: selected,
             onChange: function (e) { setSelected(e.target.value); },
             style: {
@@ -1504,10 +1671,40 @@
               return React.createElement('option', { key: r.label, value: r.label }, cbtNom(r.label));
             })
           ),
-          selectedRow && React.createElement(CBT_CultureBadge, {
-            culture: cbtCulture(selectedRow.culture, selectedRow.label),
-          }),
-          selectedRow && React.createElement('span', { style: { fontSize: 12, color: CBT_C.textSec } },
+          // Cible de portée VARIÉTÉ : chaque bucket porte son nombre de
+          // parcelles, pour qu'on sache combien on est en train d'engager.
+          portee === 'variete' && React.createElement('select', {
+            value: varieteSel,
+            onChange: function (e) { setVarieteSel(e.target.value); },
+            style: {
+              border: '1px solid ' + CBT_C.border, borderRadius: 8,
+              padding: '7px 10px', fontSize: 12, outline: 'none',
+              minWidth: 280, background: CBT_C.surface,
+            },
+          },
+            React.createElement('option', { value: '' }, '— Choisir une variété —'),
+            porteeOpts.varietes.map(function (v) {
+              return React.createElement('option', { key: v.key, value: v.key },
+                v.label + ' (' + v.nb + (v.nb > 1 ? ' parcelles)' : ' parcelle)'));
+            })
+          ),
+          portee === 'culture' && React.createElement('select', {
+            value: cultureSel,
+            onChange: function (e) { setCultureSel(e.target.value); },
+            style: {
+              border: '1px solid ' + CBT_C.border, borderRadius: 8,
+              padding: '7px 10px', fontSize: 12, outline: 'none',
+              minWidth: 280, background: CBT_C.surface,
+            },
+          },
+            React.createElement('option', { value: '' }, '— Choisir une culture —'),
+            porteeOpts.cultures.map(function (c) {
+              return React.createElement('option', { key: c.key, value: c.key },
+                c.label + ' (' + c.nb + (c.nb > 1 ? ' parcelles)' : ' parcelle)'));
+            })
+          ),
+          culture && React.createElement(CBT_CultureBadge, { culture: culture }),
+          !porteeMulti && selectedRow && React.createElement('span', { style: { fontSize: 12, color: CBT_C.textSec } },
             ha > 0 ? ha.toFixed(2) + ' ha' : 'Ha non saisi — voir Parcelles & Référentiel'
           ),
           // Sélecteur de QUINZAINE : la quinzaine en cours par défaut, une
@@ -1538,11 +1735,41 @@
           }, React.createElement('i', { className: 'fa-solid fa-rotate' }))
         ),
 
-        !selected && React.createElement('div', {
-          style: { padding: '28px 0', textAlign: 'center', color: CBT_C.textTer, fontSize: 13 },
-        }, 'Sélectionner une parcelle pour saisir son budget.'),
+        // ENTÊTE DE PORTÉE MULTIPLE : combien de parcelles, quelle surface, et ce
+        // que la portée retire (l'engagement de quinzaine). Un champ qui
+        // disparaît sans explication se lit comme un bug.
+        porteeMulti && React.createElement('div', {
+          style: {
+            marginBottom: 16, padding: '10px 12px', borderRadius: 10,
+            background: CBT_C.surface2, border: '1px solid ' + CBT_C.border,
+            fontSize: 12, color: CBT_C.textSec, lineHeight: 1.6,
+          },
+        },
+          React.createElement('div', null,
+            React.createElement('strong', null, 'Portée : ' + (porteeCibleLabel || '—')),
+            targetLabels.length === 0
+              ? ' — aucune parcelle : choisir une cible ci-dessus.'
+              : ' — ' + targetLabels.length
+                + (targetLabels.length > 1 ? ' parcelles' : ' parcelle')
+                + ' — ' + surfaceCible.ha.toFixed(2) + ' ha'
+                + (surfaceCible.sansHa.length > 0
+                  ? ' (' + surfaceCible.sansHa.length + ' sans Ha : ' + porteeSansHaNoms
+                    + ' — leur Total JH n\'est pas compté, leur budget l\'est)'
+                  : '')
+          ),
+          React.createElement('div', { style: { color: CBT_C.textTer } },
+            'Engagement quinzaine : saisie par parcelle uniquement.')
+        ),
 
-        selected && React.createElement('div', {
+        !grilleVisible && React.createElement('div', {
+          style: { padding: '28px 0', textAlign: 'center', color: CBT_C.textTer, fontSize: 13 },
+        }, porteeMulti
+          ? (portee === 'variete'
+            ? 'Choisir une variété pour saisir son budget.'
+            : 'Choisir une culture pour saisir son budget.')
+          : 'Sélectionner une parcelle pour saisir son budget.'),
+
+        grilleVisible && React.createElement('div', {
           style: { background: CBT_C.surface, border: '1px solid ' + CBT_C.border, borderRadius: 12, overflow: 'hidden' },
         },
           React.createElement('table', { style: { width: '100%', borderCollapse: 'collapse' } },
@@ -1607,18 +1834,25 @@
                       // au doigt, or la validation se fait au téléphone), portant
                       // la valeur menacée — sans quoi elle a déjà disparu de
                       // l'écran (la cellule affiche la somme des opérations).
-                      ecrase && React.createElement('span', {
-                        style: {
-                          display: 'inline-block', marginLeft: 8, padding: '1px 7px',
-                          borderRadius: 9, fontSize: 10.5, fontWeight: 700,
-                          background: '#fef3c7', color: CBT_C.amber, whiteSpace: 'nowrap',
-                        },
-                      },
+                      ecrase && React.createElement('span', { style: badgeAmbre },
                         React.createElement('i', {
                           className: 'fa-solid fa-triangle-exclamation',
                           style: { marginRight: 5 },
                         }),
                         'famille ' + CBT_num(values[f]) + ' → remplacée par les opérations'
+                      ),
+                      // DIVERGENCE entre les parcelles cibles (portée multiple) :
+                      // le champ est vide, mais pas parce que rien n'est budgété.
+                      // Annoncée EN TEXTE, jamais dans un seul `title=` : la
+                      // validation se fait au téléphone, un survol n'existe pas.
+                      divergentes[f] && React.createElement('span', { style: badgeAmbre },
+                        React.createElement('i', {
+                          className: 'fa-solid fa-triangle-exclamation',
+                          style: { marginRight: 5 },
+                        }),
+                        divergentes[f].nb + ' valeurs différentes ('
+                          + divergentes[f].min + ' → ' + divergentes[f].max
+                          + ') — non modifiée à l\'enregistrement'
                       )
                     ),
                     React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
@@ -1698,7 +1932,21 @@
                             background: CBT_C.surface2, color: CBT_C.textTer,
                           },
                           title: 'Code référentiel BEE ONE — clé de rapprochement avec le réalisé',
-                        }, opInfo.code)
+                        }, opInfo.code),
+                        // Divergence au niveau OPÉRATION — indépendante de celle
+                        // de la famille (une famille en accord peut porter une
+                        // opération divergente).
+                        (divergentesOps[f] || {})[op] && React.createElement('span', {
+                          style: badgeAmbre,
+                        },
+                          React.createElement('i', {
+                            className: 'fa-solid fa-triangle-exclamation',
+                            style: { marginRight: 5 },
+                          }),
+                          divergentesOps[f][op].nb + ' valeurs différentes ('
+                            + divergentesOps[f][op].min + ' → ' + divergentesOps[f][op].max
+                            + ') — non modifiée à l\'enregistrement'
+                        )
                       ),
                       React.createElement('td', { style: { ...tdStyle, textAlign: 'right' } },
                         canEdit
@@ -1816,7 +2064,13 @@
               borderTop: '1px solid ' + CBT_C.border, flexWrap: 'wrap',
             },
           },
-            canEdit && React.createElement('button', {
+            // ⚠️ ÉTAT INTERMÉDIAIRE ASSUMÉ : en portée multiple, le bouton est
+            // ABSENT tant que le fan-out n'est pas livré (payload partiel + envoi
+            // multi-labels + confirmation, lots suivants). `handleSave`
+            // n'écrirait aujourd'hui que sur `selected` avec la grille commune de
+            // N parcelles — un budget faux sur une parcelle, et un silence sur
+            // les 22 autres. Mieux vaut pas de bouton qu'un bouton qui ment.
+            canEdit && !porteeMulti && React.createElement('button', {
               onClick: function () { handleSave(false); },
               disabled: saving,
               style: {
@@ -1860,11 +2114,15 @@
               msg.text
             ),
             React.createElement('span', { style: { fontSize: 11, color: CBT_C.textTer } },
-              canEdit
-                ? 'Déplier une famille pour saisir ses opérations. Le total de famille'
-                  + ' devient calculé dès qu\'une opération est budgétée ; sinon il reste'
-                  + ' saisissable. Un champ vide (ou 0) supprime la ligne.'
-                : 'Saisie réservée aux profils DG/RH.'
+              !canEdit
+                ? 'Saisie réservée aux profils DG/RH.'
+                : (porteeMulti
+                  ? 'Grille commune aux parcelles de la portée : ce qui concorde est'
+                    + ' pré-rempli, ce qui diverge reste vide et est signalé.'
+                    + ' L\'enregistrement en portée multiple arrive avec le lot suivant.'
+                  : 'Déplier une famille pour saisir ses opérations. Le total de famille'
+                    + ' devient calculé dès qu\'une opération est budgétée ; sinon il reste'
+                    + ' saisissable. Un champ vide (ou 0) supprime la ligne.')
             )
           )
         )

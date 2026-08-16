@@ -53,7 +53,11 @@ function createElement(type, props, ...children) {
  * @param {Array<*>} [stateOverrides] valeurs successives de useState DANS
  *   L'ORDRE DES APPELS : [rows, familles, budgetsByLabel, campagne, selected,
  *   values, loading, err, saving, msg, tick, opsByFamille, opBudgetsByLabel,
- *   opValues, openFamilles]. `undefined` = garder l'initial.
+ *   opValues, openFamilles, confirmList, quinzOptions, quinzCourante, quinzSel,
+ *   quinzByLabel, quinzValues, confirmQuinz, portee, varieteSel, cultureSel,
+ *   confirmFanout, fanoutResults]. `undefined` = garder l'initial.
+ *   ⚠️ Table `S` ci-dessous = source de vérité des index. Tout nouveau
+ *   `useState` du composant est APPENDU à la fin, jamais inséré.
  * @param {Object} [spy]
  * @param {Object} [extraWindow] globales posées dans le faux `window` AVANT le
  *   chargement du composant — `CultureUtils` (module <script> séparé en prod)
@@ -96,6 +100,12 @@ const S = {
   values: 5, loading: 6, err: 7, saving: 8, msg: 9, tick: 10,
   opsByFamille: 11, opBudgetsByLabel: 12, opValues: 13, openFamilles: 14,
   confirmList: 15,
+  // Budget de QUINZAINE.
+  quinzOptions: 16, quinzCourante: 17, quinzSel: 18, quinzByLabel: 19,
+  quinzValues: 20, confirmQuinz: 21,
+  // PORTÉE de saisie. `confirmFanout` / `fanoutResults` sont déclarés dans le
+  // composant pour figer l'ordre, consommés au lot fan-out.
+  portee: 22, varieteSel: 23, cultureSel: 24, confirmFanout: 25, fanoutResults: 26,
 };
 
 /** Aplatit l'arbre rendu en liste de nœuds. */
@@ -1407,6 +1417,169 @@ test('rendu — rapport post-save : les familles neutralisées s\'affichent en a
   assert.strictEqual(walk(tree).filter(function (n) {
     return n.type === 'i' && String(n.props.className).includes('fa-triangle-exclamation');
   }).length, 1);
+});
+
+// ------------------------------------------------- rendu : PORTÉE de saisie
+
+/** `window` de prod pour les tests de portée : modules + helpers globaux. */
+const WIN_PORTEE = {
+  CultureUtils: CULTURE_UTILS,
+  // S13 fait 2 ha, S8 n'a pas de Ha saisi (cas réel du référentiel).
+  sbParcelleHa: function (label) { return label === 'S13 - CORINA' ? 2 : 0; },
+  sbParcelleNom: function (label) { return label; },
+};
+
+/** État de base en portée VARIÉTÉ sur le bucket Myrtille / CORINA. */
+function statePortee(overrides) {
+  const s = [];
+  s[S.rows] = ROWS_PORTEE;
+  s[S.familles] = FAMILLES_CIBLE;
+  s[S.campagne] = '2026-2027';
+  s[S.loading] = false;
+  s[S.opsByFamille] = OPS_CIBLE;
+  s[S.portee] = 'variete';
+  s[S.varieteSel] = 'Myrtille||CORINA';
+  Object.keys(overrides || {}).forEach(function (k) { s[S[k]] = overrides[k]; });
+  return s;
+}
+
+/** Valeurs successives posées par les effets sur un state donné. */
+function effectSets(spy, index) {
+  const out = [];
+  spy.effects.forEach(function (e) {
+    spy.sets.length = 0;
+    try { e.fn(); } catch (err) { /* effets async (fetch stubé) ignorés */ }
+    spy.sets.forEach(function (s) { if (s.index === index) out.push(s.value); });
+  });
+  return out;
+}
+
+test('rendu — le sélecteur de portée est présent, y compris en LECTURE SEULE', () => {
+  // Consulter le budget d'une variété est légitime : seul « Enregistrer » saute.
+  const txt = textOf(load(statePortee({ portee: 'parcelle' }), undefined, WIN_PORTEE)(
+    { userRole: 'chef' }));
+  assert.ok(txt.includes('Parcelle'));
+  assert.ok(txt.includes('Variété'));
+  assert.ok(txt.includes('Culture'));
+  assert.ok(!txt.includes('Enregistrer'));
+});
+
+test('rendu — portée Variété : le select propose les buckets et leur nombre de parcelles', () => {
+  const tree = load(statePortee({ varieteSel: '' }), undefined, WIN_PORTEE)({ userRole: 'dg' });
+  const opts = walk(tree).filter(function (n) { return n.type === 'option'; });
+  assert.deepStrictEqual(opts.map(function (o) { return o.props.value; }),
+    ['', 'Framboise||MARAVILLA', 'Myrtille||CASCADE', 'Myrtille||CORINA']);
+  const txt = textOf(tree);
+  assert.ok(txt.includes('Myrtille / CORINA (2 parcelles)'));
+  assert.ok(txt.includes('Myrtille / CASCADE (1 parcelle)'));
+  // Aucune cible choisie → pas de grille, et une invite explicite.
+  assert.ok(txt.includes('Choisir une variété pour saisir son budget.'));
+  assert.strictEqual(walk(tree).filter(function (n) { return n.type === 'table'; }).length, 0);
+});
+
+test('rendu — entête de portée : nombre de parcelles, surface, parcelles sans Ha', () => {
+  const txt = textOf(load(statePortee(), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(txt.includes('Portée : Myrtille / CORINA'));
+  assert.ok(txt.includes('2 parcelles'));
+  // Σ ha = 2.00 (S8 n'a pas de Ha) — et on DIT ce que ça implique.
+  assert.ok(txt.includes('2.00 ha'));
+  assert.ok(txt.includes('1 sans Ha : S8 - CORINA'));
+  assert.ok(txt.includes('leur Total JH n\'est pas compté, leur budget l\'est'));
+  // Le champ d'engagement disparaît : ne jamais le laisser sans explication.
+  assert.ok(txt.includes('Engagement quinzaine : saisie par parcelle uniquement.'));
+});
+
+test('rendu — portée multiple : ni colonne « Engagé », ni champ de quinzaine', () => {
+  const s = statePortee({
+    quinzOptions: [{ key: 'Q07', label: 'Quinzaine 07' }],
+    quinzCourante: 'Q07',
+  });
+  const multi = load(s, undefined, WIN_PORTEE)({ userRole: 'dg' });
+  assert.ok(!textOf(multi).includes('Engagé'));
+  // …alors que la MÊME campagne en portée Parcelle la propose toujours.
+  const parcelle = statePortee({
+    portee: 'parcelle', selected: 'S13 - CORINA',
+    quinzOptions: [{ key: 'Q07', label: 'Quinzaine 07' }], quinzCourante: 'Q07',
+  });
+  assert.ok(textOf(load(parcelle, undefined, WIN_PORTEE)({ userRole: 'dg' }))
+    .includes('Engagé Quinzaine 07 JH / Ha'));
+});
+
+test('rendu — portée multiple : le badge de culture vient du BUCKET', () => {
+  // `selectedRow` est null en portée multiple : sans dérivation depuis le bucket,
+  // le badge disparaîtrait et le gating quinzaine recevrait ''.
+  const txt = textOf(load(statePortee(), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(txt.includes('Myrtille'));
+  const parCulture = textOf(load(statePortee({ portee: 'culture', cultureSel: 'Framboise' }),
+    undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(parCulture.includes('Portée : Framboise'));
+});
+
+test('rendu — pré-remplissage : UNE seule source de setValues, la valeur commune', () => {
+  const spy = { effects: [], sets: [], fetches: [] };
+  load(statePortee({
+    budgetsByLabel: {
+      'S13 - CORINA': { 'Récolte': 1800 },
+      'S8 - CORINA': { 'Récolte': 1800 },
+    },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+
+  const poses = effectSets(spy, S.values);
+  assert.strictEqual(poses.length, 1, 'deux effets en course sur les mêmes champs = interdit');
+  assert.deepStrictEqual(plain(poses[0]), { 'Taille': '', 'Récolte': '1800' });
+});
+
+test('rendu — divergence entre parcelles cibles : annoncée EN TEXTE sur la ligne', () => {
+  const tree = load(statePortee({
+    budgetsByLabel: {
+      'S13 - CORINA': { 'Récolte': 1800 },
+      'S8 - CORINA': { 'Récolte': 580 },
+    },
+  }), undefined, WIN_PORTEE)({ userRole: 'dg' });
+  const txt = textOf(tree);
+  // Lisible sans survol (validation au téléphone), avec l'amplitude réelle.
+  assert.ok(txt.includes('2 valeurs différentes (580 → 1800) — non modifiée à l\'enregistrement'),
+    'badge texte de divergence attendu');
+  assert.strictEqual(walk(tree).filter(function (n) {
+    return n.type === 'i' && String(n.props.className).includes('fa-triangle-exclamation');
+  }).length, 1);
+});
+
+test('rendu — divergence au niveau OPÉRATION, famille en accord', () => {
+  const txt = textOf(load(statePortee({
+    openFamilles: { 'Taille': true },
+    opBudgetsByLabel: {
+      'S13 - CORINA': { 'Taille': { 'GB09::Taille d\'hiver': 4 } },
+      'S8 - CORINA': { 'Taille': { 'GB09::Taille d\'hiver': 6 } },
+    },
+  }), undefined, WIN_PORTEE)({ userRole: 'dg' }));
+  assert.ok(txt.includes('2 valeurs différentes (4 → 6) — non modifiée à l\'enregistrement'));
+});
+
+test('rendu — portée Parcelle : le chemin historique est INCHANGÉ', () => {
+  // Critère de non-régression du lot : aucun entête de portée, aucun badge de
+  // divergence, l'invite d'origine, et le save part sur la parcelle seule.
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(statePortee({
+    portee: 'parcelle', selected: 'S13 - CORINA', values: { 'Récolte': '1800' },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  const txt = textOf(tree);
+  assert.ok(!txt.includes('Portée : '));
+  assert.ok(!txt.includes('valeurs différentes'));
+  buttonWith(tree, 'Enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 1);
+  assert.strictEqual(JSON.parse(spy.fetches[0].init.body).label_bee_one, 'S13 - CORINA');
+});
+
+test('rendu — portée multiple : AUCUNE écriture possible avant le lot fan-out', () => {
+  // État intermédiaire assumé : `handleSave` n'écrirait que sur `selected` avec
+  // la grille commune de N parcelles. Le bouton est donc absent tant que le
+  // fan-out (payload partiel + envoi multi-labels) n'est pas livré.
+  // ⚠️ À remplacer au lot fan-out par « ne fetch rien avant confirmation ».
+  const tree = load(statePortee({ selected: 'S13 - CORINA' }), undefined, WIN_PORTEE)(
+    { userRole: 'dg' });
+  assert.strictEqual(buttonWith(tree, 'Enregistrer'), undefined);
+  assert.ok(textOf(tree).includes('L\'enregistrement en portée multiple arrive avec le lot suivant.'));
 });
 
 test('rendu — lecture seule : aucun champ, mais les opérations dépliées restent lisibles', () => {
