@@ -54,10 +54,15 @@ function createElement(type, props, ...children) {
  *   L'ORDRE DES APPELS : [rows, familles, budgetsByLabel, campagne, selected,
  *   values, loading, err, saving, msg, tick, opsByFamille, opBudgetsByLabel,
  *   opValues, openFamilles]. `undefined` = garder l'initial.
+ * @param {Object} [spy]
+ * @param {Object} [extraWindow] globales posées dans le faux `window` AVANT le
+ *   chargement du composant — `CultureUtils` (module <script> séparé en prod)
+ *   et `SB_PARCELLE_REF` (référentiel SB). Absents : le composant doit rester
+ *   fonctionnel, c'est le cas par défaut des tests historiques.
  */
-function load(stateOverrides, spy) {
+function load(stateOverrides, spy, extraWindow) {
   const sandbox = {
-    window: {},
+    window: Object.assign({}, extraWindow || {}),
     // `fetch` compté : c'est la preuve qu'un save a — ou n'a pas — été déclenché.
     fetch: function (url, init) {
       if (spy && spy.fetches) spy.fetches.push({ url: url, init: init });
@@ -665,6 +670,72 @@ test('totalJH — JH/Ha × Ha, arrondi 2 décimales, 0 si donnée absente', () =
   assert.strictEqual(CBT.totalJH(2, null), 0);
 });
 
+// ------------------------------------------------------ parcelleAffichable
+//
+// Masquage de l'avocatier : décision d'INTERFACE (aucun gate serveur, aucune
+// purge). Le composant est ici chargé AVEC `window.CultureUtils`, comme en prod
+// (module <script> séparé).
+
+const CULTURE_UTILS = require('../../public/lib/cultureUtils.js');
+const CBT_CU = load(undefined, undefined, { CultureUtils: CULTURE_UTILS });
+
+test('cultureRow — résolue par culture_sb en priorité, repli sur le libellé', () => {
+  // culture_sb (donnée saisie à la main) fait autorité…
+  assert.strictEqual(
+    CBT_CU.cultureRow({ label: 'F2 ZUTANO' }, { 'F2 ZUTANO': { culture_sb: 'Framboise' } }),
+    'Framboise'
+  );
+  // …et à défaut, repli heuristique sur le libellé (jamais normCulture seul).
+  assert.strictEqual(CBT_CU.cultureRow({ label: 'F2 ZUTANO' }, {}), 'Avocatier');
+});
+
+test('parcelleAffichable — masquée par le REPLI sur le libellé (« F2 ZUTANO »)', () => {
+  // Cas réel : 14 des 17 libellés n'ont pas de culture_sb. Sans le repli,
+  // l'avocatier resterait proposé.
+  assert.strictEqual(
+    CBT_CU.parcelleAffichable({ label: 'F2 ZUTANO', culture: '' }, {}),
+    false
+  );
+});
+
+test('parcelleAffichable — masquée par culture_sb, même sur un libellé de framboise', () => {
+  assert.strictEqual(
+    CBT_CU.parcelleAffichable(
+      { label: 'S12 - MARAVILLA', culture: 'Framboise' },
+      { 'S12 - MARAVILLA': { culture_sb: 'Avocatier' } }
+    ),
+    false
+  );
+});
+
+test('parcelleAffichable — culture_sb qui contredit un libellé suspect GAGNE', () => {
+  // La donnée humaine bat l'heuristique : une parcelle nommée « F2 ZUTANO » mais
+  // déclarée Framboise au référentiel reste saisissable.
+  assert.strictEqual(
+    CBT_CU.parcelleAffichable(
+      { label: 'F2 ZUTANO' },
+      { 'F2 ZUTANO': { culture_sb: 'Framboise' } }
+    ),
+    true
+  );
+});
+
+test('parcelleAffichable — culture INCONNUE reste visible (liste d\'exclusion, fail-open)', () => {
+  assert.strictEqual(
+    CBT_CU.parcelleAffichable({ label: 'P9' }, { P9: { culture_sb: 'Pitaya' } }),
+    true
+  );
+  assert.deepStrictEqual(plain(CBT_CU.CULTURES_MASQUEES), ['Avocatier']);
+});
+
+test('parcelleAffichable — sans CultureUtils chargé, rien n\'est masqué', () => {
+  // Le module est un <script> séparé : un 404 ne doit pas faire disparaître des
+  // parcelles de l'écran de saisie.
+  assert.strictEqual(CBT.cultureRow({ label: 'F2 ZUTANO' }, {}), '');
+  assert.strictEqual(CBT.parcelleAffichable({ label: 'F2 ZUTANO' }, {}), true);
+  assert.strictEqual(CBT.parcelleAffichable(null, null), true);
+});
+
 // -------------------------------------------------------------------- rendu
 
 const ROWS = [{ label: 'F5- CASCADE -S13', culture: 'Myrtille' }];
@@ -748,6 +819,58 @@ test('rendu — succès sans purge : icône de succès, aucun avertissement', ()
     }).length,
     1
   );
+});
+
+// --------------------------------------------- rendu : masquage de l'avocatier
+
+/** Parcelles réelles : une myrtille, une framboise, deux avocatier. */
+const ROWS_AVEC_AVOCATIER = [
+  { label: 'F5- CASCADE -S13', culture: 'Myrtille' },
+  { label: 'S12 - MARAVILLA', culture: 'Framboise' },
+  { label: 'F2 ZUTANO', culture: '' },
+  { label: 'F2 HASS', culture: 'Avocat' },
+];
+
+test('rendu — aucune option avocatier dans le sélecteur de parcelle', () => {
+  const s = STATE.slice();
+  s[S.rows] = ROWS_AVEC_AVOCATIER;
+  const tree = load(s, undefined, { CultureUtils: CULTURE_UTILS })({ userRole: 'dg' });
+  const opts = walk(tree).filter(function (n) { return n.type === 'option'; });
+  // 1 placeholder + les 2 seules parcelles budgétables en JH/Ha.
+  assert.strictEqual(opts.length, 3);
+  const valeurs = opts.map(function (n) { return n.props.value; });
+  assert.deepStrictEqual(valeurs, ['', 'F5- CASCADE -S13', 'S12 - MARAVILLA']);
+  const txt = textOf(tree);
+  assert.ok(!txt.includes('ZUTANO'), 'aucune parcelle avocatier proposée');
+  assert.ok(!txt.includes('HASS'));
+});
+
+test('rendu — une sélection devenue non proposable est désélectionnée', () => {
+  // Cas réel : `culture_sb` corrigée en cours de session, ou sélection héritée.
+  const s = STATE.slice();
+  s[S.rows] = ROWS_AVEC_AVOCATIER;
+  s[S.selected] = 'F2 ZUTANO';
+  const spy = { effects: [], sets: [], fetches: [] };
+  load(s, spy, { CultureUtils: CULTURE_UTILS })({ userRole: 'dg' });
+
+  const resets = spy.effects.filter(function (e) {
+    spy.sets.length = 0;
+    try { e.fn(); } catch (err) { /* effets async (fetch stubé) ignorés */ }
+    return spy.sets.some(function (x) { return x.index === S.selected && x.value === ''; });
+  });
+  assert.strictEqual(resets.length, 1, 'un effet doit vider la sélection masquée');
+
+  // …et une parcelle bien proposable n'est JAMAIS désélectionnée.
+  const ok = STATE.slice();
+  ok[S.rows] = ROWS_AVEC_AVOCATIER;
+  const spy2 = { effects: [], sets: [], fetches: [] };
+  load(ok, spy2, { CultureUtils: CULTURE_UTILS })({ userRole: 'dg' });
+  const resets2 = spy2.effects.filter(function (e) {
+    spy2.sets.length = 0;
+    try { e.fn(); } catch (err) { /* idem */ }
+    return spy2.sets.some(function (x) { return x.index === S.selected; });
+  });
+  assert.strictEqual(resets2.length, 0);
 });
 
 test('rendu — sans parcelle sélectionnée, invite au choix et pas de tableau', () => {

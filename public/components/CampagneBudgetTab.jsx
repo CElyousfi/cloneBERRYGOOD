@@ -411,6 +411,72 @@
   }
 
   /**
+   * Cultures MASQUÉES du sélecteur de parcelle de cet écran.
+   *
+   * Décision d'INTERFACE uniquement : l'avocatier n'est pas budgété en JH/Ha
+   * ici, l'écran cesse donc de le proposer. AUCUNE écriture, aucune purge,
+   * aucun gate serveur — les documents avocatier déjà en base (473 valeurs en
+   * prod) restent lisibles par les écrans de suivi, et la réversion tient au
+   * retrait d'un élément de ce tableau.
+   *
+   * ⚠️ Contrairement à `CBT_CULTURES_QUINZAINE`, cette liste n'a **PAS** de
+   * miroir dans `functions/` — c'est VOULU. Une écriture avocatier forgée reste
+   * acceptée par le backend, et c'est le comportement attendu : rien n'est
+   * interdit, c'est seulement retiré de l'offre. Ne pas « corriger la
+   * divergence » en ajoutant un refus serveur, ce serait un changement de
+   * comportement produit (GATED), pas un alignement.
+   *
+   * Liste d'EXCLUSION et non d'inclusion : une culture inconnue reste VISIBLE
+   * (fail-open). Le budget annuel est ouvert à toutes les cultures — à
+   * l'inverse du budget de quinzaine, fail-closed parce que le serveur y refuse
+   * ce qu'il ne connaît pas.
+   */
+  var CBT_CULTURES_MASQUEES = ['Avocatier'];
+
+  /**
+   * Culture RÉSOLUE d'une ligne de parcelle. PURE (`sbMap` TOUJOURS injecté).
+   *
+   * Passe par `CultureUtils.resolveCulture`, et NON `normCulture` : le
+   * `culture_sb` du référentiel Smart Berry est une donnée saisie à la main,
+   * elle fait autorité sur l'heuristique de libellé. Une parcelle mal classée
+   * par le repli se corrige donc dans Paramètres → Parcelles, sans toucher à
+   * cet écran.
+   *
+   * `cbtCulture` (:107) reste inchangé et continue de servir le badge de
+   * culture et le gating quinzaine : ce ticket ne rouvre pas ce comportement.
+   *
+   * REPLI : `public/lib/cultureUtils.js` est chargé en <script> séparé —
+   * absent (404, déploiement partiel), on retombe sur `cbtCulture`, qui renvoie
+   * alors ''. Une culture '' laisse la parcelle VISIBLE (cf.
+   * `CBT_CULTURES_MASQUEES`, fail-open) : une résolution impossible ne doit
+   * JAMAIS faire disparaître des parcelles de l'écran de saisie.
+   *
+   * @param {{label?: string, culture?: string}|null|undefined} row ligne de
+   *   `parcelles-campagne-list`.
+   * @param {Object<string, *>} [sbMap] référentiel SB `{ LABEL: {culture_sb} }`.
+   * @returns {string} culture résolue, '' si aucune résolution n'est possible.
+   */
+  function CBT_cultureRow(row, sbMap) {
+    var r = row || {};
+    var CU = window.CultureUtils;
+    if (CU && typeof CU.resolveCulture === 'function') {
+      return CU.resolveCulture({ label: r.label, culture: r.culture }, sbMap);
+    }
+    return cbtCulture(r.culture, r.label);
+  }
+
+  /**
+   * Cette parcelle est-elle PROPOSABLE à la saisie de budget ? PURE.
+   *
+   * @param {{label?: string, culture?: string}|null|undefined} row
+   * @param {Object<string, *>} [sbMap] référentiel SB (injecté).
+   * @returns {boolean} true par défaut (fail-open, cf. CBT_CULTURES_MASQUEES).
+   */
+  function CBT_parcelleAffichable(row, sbMap) {
+    return CBT_CULTURES_MASQUEES.indexOf(CBT_cultureRow(row, sbMap)) === -1;
+  }
+
+  /**
    * Valeurs de quinzaine qui vont être SUPPRIMÉES par l'enregistrement. PURE.
    *
    * Une famille qui portait un engagement et dont le champ est maintenant vide
@@ -781,6 +847,12 @@
           var famillesParCode = taches.familles_par_code || {};
           setFamilles(CBT_famillesFromOps(taches.operations || [], famillesParCode));
           setOpsByFamille(CBT_opsByFamille(taches.operations || [], famillesParCode));
+          // Les budgets sont indexés TELS QUELS, sans retirer les documents des
+          // cultures masquées : `budgetsByLabel` n'est jamais parcouru, il n'est
+          // lu que PAR LABEL, et tous les labels lus dérivent de
+          // `rowsAffichables` → les documents avocatier sont inertes.
+          // RÉSERVE : le jour où cet écran affichera un total « toutes
+          // parcelles », c'est ICI qu'il faudra filtrer.
           setBudgetsByLabel(CBT_budgetsByLabel(buds.budgets || []));
           setOpBudgetsByLabel(CBT_operationsByLabel(buds.budgets || []));
           setCampagne(buds.campagne || '');
@@ -875,11 +947,42 @@
       setQuinzValues(next);
     }, [selected, quinzaineActive, familles, quinzEnregistrees]);
 
+    // Parcelles PROPOSABLES à la saisie — dérivé, jamais un filtre sur le state
+    // `rows` : `selectedRow` (juste dessous) doit continuer de retrouver une
+    // parcelle masquée, sinon une sélection héritée cesse d'être identifiable
+    // (Ha, badge, culture) au lieu d'être simplement désélectionnée.
+    // Ce dérivé n'est utilisé que là où l'écran peut ÉCRIRE (le sélecteur, et
+    // les cibles de portée au lot suivant).
+    // Deps `[rows]` VOLONTAIRES : `window.SB_PARCELLE_REF` est posé dans le MÊME
+    // `.then()` que `setRows` (cf. le chargement ci-dessus), la map est donc
+    // présente dès que ce memo recalcule. Ne pas ajouter de dépendance
+    // supplémentaire ni d'effet séparé qui lirait la map avant qu'elle existe.
+    var rowsAffichables = useMemo(function () {
+      var sbMap = window.SB_PARCELLE_REF || {};
+      return (rows || []).filter(function (r) { return CBT_parcelleAffichable(r, sbMap); });
+    }, [rows]);
+
     var options = useMemo(function () {
-      return (rows || []).slice().sort(function (a, b) {
+      return (rowsAffichables || []).slice().sort(function (a, b) {
         return cbtNom(a.label).localeCompare(cbtNom(b.label));
       });
-    }, [rows]);
+    }, [rowsAffichables]);
+
+    // Une parcelle sélectionnée peut cesser d'être proposable (référentiel SB
+    // rechargé, `culture_sb` corrigée en cours de session) : on désélectionne
+    // plutôt que de laisser une saisie ouverte sur une parcelle que le sélecteur
+    // n'affiche plus. Les effets ci-dessus vident alors `values` / `opValues` /
+    // `msg`. Placé APRÈS eux à dessein : seul l'ordre des `useState` est
+    // signifiant pour React, celui des `useEffect` est libre — et ce dernier a
+    // besoin de `rowsAffichables`, déclaré juste au-dessus.
+    useEffect(function () {
+      if (!selected) return;
+      var key = String(selected).toUpperCase().trim();
+      var present = (rowsAffichables || []).some(function (r) {
+        return String((r && r.label) || '').toUpperCase().trim() === key;
+      });
+      if (!present) setSelected('');
+    }, [selected, rowsAffichables]);
 
     var selectedRow = useMemo(function () {
       var key = String(selected || '').toUpperCase().trim();
@@ -1506,4 +1609,7 @@
   CampagneBudgetTab.quinzaineApplicable = CBT_quinzaineApplicable;
   CampagneBudgetTab.quinzainesSupprimees = CBT_quinzainesSupprimees;
   CampagneBudgetTab.CULTURES_QUINZAINE = CBT_CULTURES_QUINZAINE;
+  CampagneBudgetTab.cultureRow = CBT_cultureRow;
+  CampagneBudgetTab.parcelleAffichable = CBT_parcelleAffichable;
+  CampagneBudgetTab.CULTURES_MASQUEES = CBT_CULTURES_MASQUEES;
 })();
