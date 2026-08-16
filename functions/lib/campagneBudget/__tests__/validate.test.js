@@ -7,8 +7,10 @@ const assert = require('node:assert')
 const {
   MAX_JH_PAR_HA,
   MAX_OPERATIONS,
+  MAX_FANOUT_LABELS,
   normCampagne,
   normLabel,
+  normFanoutLabels,
   budgetDocId,
   opKey,
   splitOpKey,
@@ -357,6 +359,117 @@ test('writeBudgetInTransaction — supporte un snapshot dont `exists` est une fo
   await writeBudgetInTransaction(tx, { id: 'doc' },
     Object.assign({}, WRITE_ARGS, { budgets: { 'Ferti-irrigation': 1 } }))
   assert.deepStrictEqual(calls[0].data.budgets, { 'Taille': 4, 'Ferti-irrigation': 1 })
+})
+
+// ------------------------------------------------------- normFanoutLabels
+//
+// Portée multiple : la même grille JH/Ha écrite sur N parcelles. Le garde-fou de
+// volumétrie vit ICI, côté serveur, où un payload forgé ne le contourne pas.
+
+test('normFanoutLabels — dédup sur la clé normalisée, ordre déterministe', () => {
+  const r = normFanoutLabels([' f5- cascade -s13 ', 'F1- ROUGE -S01', 'F5- CASCADE -S13'])
+  assert.strictEqual(r.ok, true)
+  // Deux écritures sur la même parcelle dans un seul appel n'ont pas de sens :
+  // la seconde masquerait le résultat de la première.
+  assert.deepStrictEqual(r.labels, ['F1- ROUGE -S01', 'f5- cascade -s13'])
+  // Ordre TRIÉ sur la clé, donc indépendant de l'ordre d'arrivée : le rapport
+  // `results` renvoyé au client est comparable d'un appel à l'autre.
+  const inverse = normFanoutLabels(['F5- CASCADE -S13', 'F1- ROUGE -S01'])
+  assert.deepStrictEqual(inverse.labels, ['F1- ROUGE -S01', 'F5- CASCADE -S13'])
+})
+
+test('normFanoutLabels — liste vide, blanche ou non-tableau : REFUSÉE', () => {
+  assert.strictEqual(normFanoutLabels([]).ok, false)
+  assert.strictEqual(normFanoutLabels(['', '   ', null]).ok, false)
+  assert.strictEqual(normFanoutLabels(null).ok, false)
+  assert.strictEqual(normFanoutLabels('F5').ok, false)
+  assert.match(String(normFanoutLabels([]).error), /Aucune parcelle cible/)
+})
+
+test('normFanoutLabels — dépassement du cap REFUSÉ, jamais tronqué', () => {
+  // Tronquer en répondant « succès » serait un mensonge silencieux : 60 parcelles
+  // écrites sur 63 demandées, sans que personne ne le sache.
+  const trop = []
+  for (let i = 0; i < 61; i++) trop.push('P' + i)
+  const r = normFanoutLabels(trop)
+  assert.strictEqual(r.ok, false)
+  assert.match(String(r.error), /Trop de parcelles cibles \(61 > 60\)/)
+  assert.strictEqual(normFanoutLabels(trop.slice(0, 60)).ok, true)
+  // Cap explicite (et cap absurde → repli sur le défaut).
+  assert.strictEqual(normFanoutLabels(['A', 'B'], 1).ok, false)
+  assert.strictEqual(normFanoutLabels(['A', 'B'], 0).ok, true)
+  assert.strictEqual(MAX_FANOUT_LABELS, 60)
+})
+
+test('normFanoutLabels — une culture entière tient sous le cap', () => {
+  // Calibrage : la Myrtille compte ≈ 23 parcelles de campagne.
+  const myrtille = []
+  for (let i = 0; i < 23; i++) myrtille.push('S' + i + ' - CORINA')
+  assert.strictEqual(normFanoutLabels(myrtille).ok, true)
+})
+
+// --------------------------------- PAYLOAD PARTIEL (portée multiple) : filet
+//
+// Le fan-out client n'envoie QUE les familles TOUCHÉES (CBT_buildFanoutPayload).
+// Toute la promesse « une ligne divergente non retouchée n'est pas modifiée »
+// repose sur la sémantique de merge ci-dessous. Elle est vraie par lecture du
+// code ; ces tests la VERROUILLENT, pour qu'une évolution de mergeBudgets ne la
+// retire pas en silence.
+
+test('payload partiel — une famille absente du body SURVIT intacte', async () => {
+  const f = fakeTx({ budgets: { 'Taille': 5, 'Ferti-irrigation': 1800 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Ferti-irrigation': 1500 } }))
+  // « Taille » n'était pas dans le payload : sa valeur n'est pas touchée.
+  assert.deepStrictEqual(f.calls[0].data.budgets, { 'Taille': 5, 'Ferti-irrigation': 1500 })
+  assert.deepStrictEqual(out.budgets, { 'Taille': 5, 'Ferti-irrigation': 1500 })
+})
+
+test('payload partiel — une famille envoyée à 0 est SUPPRIMÉE (pas conservée)', async () => {
+  // C'est la contrepartie : l'absence ne vaut pas 0. Les deux sémantiques
+  // doivent coexister, sinon le client ne peut plus effacer un budget.
+  const f = fakeTx({ budgets: { 'Taille': 5, 'Ferti-irrigation': 1800 } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 0 } }))
+  assert.deepStrictEqual(out.budgets, { 'Ferti-irrigation': 1800 })
+})
+
+test('payload partiel — aucune `familles_neutralisees` sur une famille non envoyée', async () => {
+  // Sinon le client annoncerait « valeur de famille remplacée par le détail des
+  // opérations » sur une famille à laquelle personne n'a touché — une fausse
+  // alerte qui décrédibilise toutes les autres.
+  const f = fakeTx({
+    budgets: { 'Taille': 5, 'Ferti-irrigation': 1800 },
+    budgets_operations: { 'Taille': { [K.hiver]: 3 } },
+  })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Ferti-irrigation': 1500 } }))
+  // « Taille » porte pourtant valeur de famille ET détail par opération : le seul
+  // fait qu'elle ne soit pas dans le payload doit la laisser hors du rapport.
+  assert.deepStrictEqual(out.familles_neutralisees, [])
+  assert.strictEqual(f.calls[0].data.budgets['Taille'], 5)
+  // …alors que la MÊME base, avec « Taille » envoyée à 0, la signale bien.
+  const f2 = fakeTx({
+    budgets: { 'Taille': 5, 'Ferti-irrigation': 1800 },
+    budgets_operations: { 'Taille': { [K.hiver]: 3 } },
+  })
+  const out2 = await writeBudgetInTransaction(f2.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets: { 'Taille': 0 } }))
+  assert.deepStrictEqual(out2.familles_neutralisees,
+    [{ famille: 'Taille', valeur_precedente: 5 }])
+})
+
+test('payload partiel — une opération absente du body survit, à 0 elle est supprimée', async () => {
+  const f = fakeTx({ budgets_operations: { 'Taille': { [K.hiver]: 3, [K.formation]: 2 } } })
+  const out = await writeBudgetInTransaction(f.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, {
+      budgets_operations: { 'Taille': { [K.formation]: 4 } },
+    }))
+  assert.deepStrictEqual(out.budgets_operations, { 'Taille': { [K.hiver]: 3, [K.formation]: 4 } })
+  const f2 = fakeTx({ budgets_operations: { 'Taille': { [K.hiver]: 3, [K.formation]: 2 } } })
+  const out2 = await writeBudgetInTransaction(f2.tx, { id: 'doc' },
+    Object.assign({}, WRITE_ARGS, { budgets_operations: { 'Taille': { [K.hiver]: 0 } } }))
+  assert.deepStrictEqual(out2.budgets_operations, { 'Taille': { [K.formation]: 2 } })
 })
 
 // =====================================================================

@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:9bc599787cf38e96 -->
+<!-- sourceFingerprint: sha256:3efc2bf4db2e4c65 -->
 # Code Map — Modules lib (155)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -23,7 +23,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/caisseImport/index.js | — | parseWorkbook, buildDrySummary, excelToISO, detectCols, CAISSE_FORMATS, SAMPLE_LIMIT |
 | functions/lib/caisseImport/parsers.js | — | parseDepensesMonthly, parsePaieRecap, parseBahiaSingle |
 | functions/lib/campagneBudget/culture.js | — | normCulture, resolveCulture |
-| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_QUINZAINES, MAX_PURGE_RATIO, CULTURES_BUDGET_QUINZAINE, OP_KEY_SEP, quinzaineKey, quinzaineNum, purgeAutorisee, normCampagne, normLabel, budgetDocId, opKey, splitOpKey, familleDuCode, indexOperations, canonicalizeOperationKeys, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, mergeBudgetsQuinzaine, quinzainesSupprimees, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, purgeQuinzainesInconnues, writeBudgetInTransaction |
+| functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_QUINZAINES, MAX_FANOUT_LABELS, MAX_PURGE_RATIO, CULTURES_BUDGET_QUINZAINE, OP_KEY_SEP, quinzaineKey, quinzaineNum, purgeAutorisee, normCampagne, normLabel, normFanoutLabels, budgetDocId, opKey, splitOpKey, familleDuCode, indexOperations, canonicalizeOperationKeys, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, mergeBudgetsQuinzaine, quinzainesSupprimees, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, purgeQuinzainesInconnues, writeBudgetInTransaction |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
