@@ -1565,14 +1565,15 @@
       });
     }
 
-    // Le message (succès/erreur) n'est effacé QUE par un changement de parcelle.
-    // Effet séparé À DESSEIN : la synchro des champs ci-dessous dépend aussi de
-    // `budgetsByLabel`, que le save met à jour — regrouper les deux effaçait
-    // « Budget enregistré » dans le même rendu (React 18 batche les setState),
-    // l'utilisateur ne voyait jamais un succès, seulement les erreurs.
+    // Le message (succès/erreur) n'est effacé QUE par un changement de PÉRIMÈTRE
+    // de saisie : parcelle, portée, cible. Effet séparé À DESSEIN : la synchro
+    // des champs ci-dessous dépend aussi de `budgetsByLabel`, que le save met à
+    // jour — regrouper les deux effaçait « Budget enregistré » dans le même rendu
+    // (React 18 batche les setState), l'utilisateur ne voyait jamais un succès,
+    // seulement les erreurs. Ne JAMAIS ajouter `budgetsByLabel` ici.
     useEffect(function () {
       setMsg(null);
-    }, [selected]);
+    }, [selected, portee, cible]);
 
     // Une confirmation en attente devient CADUQUE dès que l'état qui l'a
     // produite change. Le panneau vit dans le tableau, sous un sélecteur de
@@ -1583,10 +1584,20 @@
     // Le changement de QUINZAINE invalide la confirmation au même titre que le
     // changement de parcelle : le panneau afficherait les engagements de la
     // quinzaine A pendant que l'écriture porterait sur la B.
+    // Le changement de PORTÉE ou de CIBLE l'invalide pour la même raison, en
+    // pire : une confirmation posée en portée Parcelle survivait au passage en
+    // portée Variété, et son « Confirmer et enregistrer » repartait sur le
+    // chemin mono-parcelle avec la grille COMMUNE de N parcelles — donc à 0 les
+    // lignes divergentes que l'écran venait d'annoncer comme non modifiées.
+    // Ce reset est la CEINTURE ; la bretelle est la garde en tête de handleSave
+    // (et le panneau masqué en portée multiple) : on ne confie pas 23 budgets à
+    // un tableau de dépendances.
     useEffect(function () {
       setConfirmList(null);
       setConfirmQuinz(null);
-    }, [selected, tick, quinzSel]);
+      setConfirmFanout(null);
+      setFanoutResults(null);
+    }, [selected, tick, quinzSel, portee, cible]);
 
     // Valeurs COMMUNES aux parcelles cibles, en portée multiple : ce qui est
     // identique partout est pré-rempli, ce qui diverge reste vide et est SIGNALÉ.
@@ -1751,6 +1762,16 @@
      *   valeurs de famille qui vont être remplacées.
      */
     function handleSave(confirme) {
+      // GARDE STRUCTURELLE — cette fonction est le chemin MONO-PARCELLE : elle
+      // construit son body avec `CBT_buildSavePayload`, qui envoie toutes les
+      // familles affichées et EFFACE celles laissées vides. En portée multiple,
+      // la grille affichée est la grille COMMUNE de N parcelles : ses champs
+      // vides signifient « divergent, ne pas toucher », pas « mettre à 0 ».
+      // L'appeler là ferait donc exactement ce que l'écran promet de ne pas
+      // faire. Tant que le fan-out n'est pas livré, l'unique issue est de ne
+      // rien faire — et ce n'est pas au rendu (bouton retiré, panneau masqué)
+      // de porter seul cette garantie.
+      if (porteeMulti) return;
       // Le save porte sur TOUTE la parcelle, pas sur la famille éditée : une
       // famille repliée peut être neutralisée sans que rien ne l'ait montré.
       // C'est la seule protection possible pour ce cas — on demande donc une
@@ -2482,7 +2503,13 @@
     // l'ait signalé à l'écran. On liste explicitement les familles
     // concernées AVANT d'écrire, avec la valeur perdue et son
     // remplacement.
-    canEdit && (confirmList && confirmList.length > 0 || confirmQuinz && confirmQuinz.length > 0) && React.createElement('div', {
+    // ⚠️ `!porteeMulti` : ce panneau est celui du chemin MONO-PARCELLE. Le
+    // laisser visible en portée multiple rouvrait une seconde porte
+    // d'écriture (« Confirmer et enregistrer » → handleSave), avec la
+    // grille commune de N parcelles envoyée sur la seule parcelle
+    // sélectionnée. Le panneau de la portée multiple sera un panneau
+    // DISTINCT (confirmFanout), livré avec le fan-out.
+    canEdit && !porteeMulti && (confirmList && confirmList.length > 0 || confirmQuinz && confirmQuinz.length > 0) && React.createElement('div', {
       style: {
         padding: '12px 14px',
         borderTop: '1px solid ' + CBT_C.border,

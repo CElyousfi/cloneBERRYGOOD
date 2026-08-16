@@ -1002,10 +1002,12 @@ test('rendu — DG voit le bouton Enregistrer et un champ par famille', () => {
   );
 });
 
-test('rendu — le message de succès n\'est effacé QUE par un changement de parcelle', () => {
+test('rendu — le message de succès n\'est effacé QUE par un changement de périmètre', () => {
   // Régression : l'effet qui remet msg à null dépendait aussi de
   // `budgetsByLabel`, que le save met à jour → « Budget enregistré » était
   // effacé dans le même rendu (React 18 batche) et n'était JAMAIS visible.
+  // Le PÉRIMÈTRE de saisie = parcelle + portée + cible : un message qui parle
+  // d'une parcelle ne doit pas survivre au passage en portée Variété.
   const spy = { effects: [], sets: [] };
   const Comp = load(STATE, spy);
   Comp({ userRole: 'dg' });
@@ -1018,8 +1020,8 @@ test('rendu — le message de succès n\'est effacé QUE par un changement de pa
   assert.strictEqual(msgEffects.length, 1, 'un seul effet doit effacer le message');
   assert.deepStrictEqual(
     plain(msgEffects[0].deps),
-    [STATE[S.selected]],
-    'l\'effet ne doit dépendre QUE de la parcelle sélectionnée'
+    [STATE[S.selected], 'parcelle', ''],
+    'parcelle + portée + cible, et SURTOUT pas budgetsByLabel'
   );
 });
 
@@ -1347,9 +1349,12 @@ test('rendu — un changement de parcelle (ou un Rafraîchir) ferme la confirmat
   assert.strictEqual(resets.length, 1, 'un effet doit invalider la confirmation');
   // La QUINZAINE éditée entre dans les dépendances au même titre : le panneau
   // afficherait sinon les engagements de la quinzaine A pendant que l'écriture
-  // porterait sur la B.
-  assert.deepStrictEqual(plain(resets[0].deps), ['F5- CASCADE -S13', 0, ''],
-    'invalidée par la parcelle sélectionnée, par tick (Rafraîchir) ET par la quinzaine');
+  // porterait sur la B. La PORTÉE et la CIBLE aussi, et pour une raison pire :
+  // une confirmation posée en portée Parcelle qui survivait au passage en portée
+  // Variété écrivait la grille COMMUNE de N parcelles sur la seule parcelle
+  // sélectionnée, en effaçant les lignes divergentes.
+  assert.deepStrictEqual(plain(resets[0].deps), ['F5- CASCADE -S13', 0, '', 'parcelle', ''],
+    'invalidée par la parcelle, tick (Rafraîchir), la quinzaine, la portée ET la cible');
 });
 
 test('rendu — une confirmation PÉRIMÉE n\'écrit rien (bretelles)', () => {
@@ -1570,6 +1575,39 @@ test('rendu — portée Parcelle : le chemin historique est INCHANGÉ', () => {
   buttonWith(tree, 'Enregistrer').props.onClick();
   assert.strictEqual(spy.fetches.length, 1);
   assert.strictEqual(JSON.parse(spy.fetches[0].init.body).label_bee_one, 'S13 - CORINA');
+});
+
+test('rendu — portée multiple : une confirmation HÉRITÉE de la portée Parcelle n\'écrit rien', () => {
+  // RÉGRESSION VÉCUE : le bouton « Enregistrer » retiré ne suffisait pas. Une
+  // confirmation posée en portée Parcelle survivait au passage en portée Variété
+  // (le panneau vit dans la grille, affichée dès qu'une cible est choisie), et
+  // son « Confirmer et enregistrer » repartait sur `CBT_buildSavePayload` avec la
+  // grille COMMUNE de N parcelles : les lignes DIVERGENTES, vides par
+  // construction, partaient à 0 — donc supprimées par le backend. Exactement ce
+  // que le badge « non modifiée à l'enregistrement » venait de promettre.
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(statePortee({
+    selected: 'S13 - CORINA',
+    confirmList: [{ famille: 'Récolte', valeur: 1800, total: 12 }],
+    values: { 'Récolte': '1800' },
+    opValues: { 'Récolte': { 'Cueillette': '12' } },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+
+  // Ceinture : le panneau mono-parcelle n'est pas rendu en portée multiple.
+  assert.strictEqual(buttonWith(tree, 'Confirmer et enregistrer'), undefined);
+  assert.ok(!textOf(tree).includes('vont être remplacées'));
+  assert.strictEqual(spy.fetches.length, 0);
+
+  // Bretelle : même appelé directement, le chemin mono-parcelle ne part pas.
+  // (On le prouve en portée Parcelle : le MÊME état y déclenche bien un fetch.)
+  const enParcelle = load(statePortee({
+    portee: 'parcelle', selected: 'S13 - CORINA',
+    confirmList: [{ famille: 'Récolte', valeur: 1800, total: 12 }],
+    values: { 'Récolte': '1800' },
+    opValues: { 'Récolte': { 'Cueillette': '12' } },
+  }), spy, WIN_PORTEE)({ userRole: 'dg' });
+  buttonWith(enParcelle, 'Confirmer et enregistrer').props.onClick();
+  assert.strictEqual(spy.fetches.length, 1, 'le chemin mono-parcelle reste fonctionnel');
 });
 
 test('rendu — portée multiple : AUCUNE écriture possible avant le lot fan-out', () => {
