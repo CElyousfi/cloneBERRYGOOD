@@ -55,7 +55,7 @@ function createElement(type, props, ...children) {
  *   values, loading, err, saving, msg, tick, opsByFamille, opBudgetsByLabel,
  *   opValues, openFamilles, confirmList, quinzOptions, quinzCourante, quinzSel,
  *   quinzByLabel, quinzValues, confirmQuinz, portee, varieteSel, cultureSel,
- *   confirmFanout, fanoutResults]. `undefined` = garder l'initial.
+ *   confirmFanout, fanoutResults, touched]. `undefined` = garder l'initial.
  *   ⚠️ Table `S` ci-dessous = source de vérité des index. Tout nouveau
  *   `useState` du composant est APPENDU à la fin, jamais inséré.
  * @param {Object} [spy]
@@ -106,6 +106,7 @@ const S = {
   // PORTÉE de saisie. `confirmFanout` / `fanoutResults` sont déclarés dans le
   // composant pour figer l'ordre, consommés au lot fan-out.
   portee: 22, varieteSel: 23, cultureSel: 24, confirmFanout: 25, fanoutResults: 26,
+  touched: 27,
 };
 
 /** Aplatit l'arbre rendu en liste de nœuds. */
@@ -1580,6 +1581,194 @@ test('rendu — portée multiple : AUCUNE écriture possible avant le lot fan-ou
     { userRole: 'dg' });
   assert.strictEqual(buttonWith(tree, 'Enregistrer'), undefined);
   assert.ok(textOf(tree).includes('L\'enregistrement en portée multiple arrive avec le lot suivant.'));
+});
+
+// ------------------------------------------------------- buildFanoutPayload
+//
+// Portée multiple : SEULES les familles touchées sont envoyées. Ce qui n'est pas
+// dans le payload est conservé en base par `mergeBudgets` (backend) — c'est ce
+// qui permet de promettre « une ligne divergente non retouchée n'est pas
+// modifiée ». Sémantique OPPOSÉE à buildSavePayload, qui efface le vide.
+
+const FANOUT_BASE = {
+  campagne: '2026-2027',
+  labels: ['S13 - CORINA', 'S8 - CORINA'],
+  familles: ['Taille', 'Récolte'],
+  opsByFamille: { 'Taille': ['GB09::Taille d\'hiver', 'GB09::Taille de formation'] },
+};
+
+test('buildFanoutPayload — une famille NON touchée est ABSENTE du payload', () => {
+  // LE test du lot : envoyer une famille non saisie l'écraserait à 0 sur les N
+  // parcelles cibles, sans que personne ne l'ait demandé.
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    values: { 'Taille': '', 'Récolte': '1800' },
+    touched: { 'Récolte': true },
+  }));
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(plain(r.payload.budgets), { 'Récolte': 1800 });
+  assert.strictEqual('Taille' in r.payload.budgets, false, 'Taille n\'a pas été touchée');
+  assert.deepStrictEqual(plain(r.payload.budgets_operations), {});
+  assert.deepStrictEqual(plain(r.famillesEnvoyees), ['Récolte']);
+});
+
+test('buildFanoutPayload — une famille touchée part ENTIÈRE, avec toutes ses opérations', () => {
+  // Unité d'envoi = la famille : envoyer un champ isolé rouvrirait le bug de
+  // l'ancienne valeur de famille survivante en base.
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    values: { 'Taille': '' },
+    opValues: { 'Taille': { 'GB09::Taille d\'hiver': '4' } },
+    touched: { 'Taille': true },
+  }));
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(plain(r.payload.budgets_operations), {
+    'Taille': { 'GB09::Taille d\'hiver': 4, 'GB09::Taille de formation': 0 },
+  });
+  // Invariant des deux niveaux, identique à buildSavePayload : famille détaillée
+  // → sa valeur de famille part à 0.
+  assert.deepStrictEqual(plain(r.payload.budgets), { 'Taille': 0 });
+  assert.strictEqual('Récolte' in r.payload.budgets, false);
+});
+
+test('buildFanoutPayload — le payload porte `labels` ET `label_bee_one`, jamais la quinzaine', () => {
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    values: { 'Récolte': '1800' }, touched: { 'Récolte': true },
+  }));
+  // `labels` = fan-out ; `label_bee_one` = garde-fou de la fenêtre de skew de
+  // déploiement (un backend pas encore à jour écrit une parcelle, il ne crashe pas).
+  assert.deepStrictEqual(plain(r.payload.labels), ['S13 - CORINA', 'S8 - CORINA']);
+  assert.strictEqual(r.payload.label_bee_one, 'S13 - CORINA');
+  // L'engagement de quinzaine se saisit parcelle par parcelle : jamais ici.
+  assert.strictEqual('budgets_quinzaine' in r.payload, false);
+});
+
+test('buildFanoutPayload — famille touchée avec une DIVERGENCE non résolue : REFUS', () => {
+  // Sans ce refus, la famille partirait entière et le champ divergent laissé
+  // vide serait envoyé à 0 — la valeur qu'on venait de promettre de ne pas
+  // toucher.
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    familles: ['Récolte'],
+    opsByFamille: {},
+    values: { 'Récolte': '' },
+    touched: { 'Récolte': true },
+    divergentes: { 'Récolte': { nb: 3, min: 580, max: 1800 } },
+  }));
+  assert.strictEqual(r.ok, false);
+  assert.match(String(r.error), /« Récolte » a 3 valeurs différentes selon les parcelles/);
+  assert.match(String(r.error), /saisis cette valeur, ou repasse en portée Parcelle/);
+});
+
+test('buildFanoutPayload — divergence non résolue au niveau OPÉRATION : REFUS situé', () => {
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    values: { 'Taille': '' },
+    opValues: { 'Taille': { 'GB09::Taille de formation': '2' } },
+    touched: { 'Taille': true },
+    divergentesOps: { 'Taille': { 'GB09::Taille d\'hiver': { nb: 2, min: 4, max: 6 } } },
+  }));
+  assert.strictEqual(r.ok, false);
+  // Le message doit désigner LAQUELLE des opérations (code compris).
+  assert.match(String(r.error), /« Taille — Taille d'hiver \(GB09\) » a 2 valeurs différentes/);
+});
+
+test('buildFanoutPayload — une divergence RÉSOLUE (valeur saisie) ne bloque plus', () => {
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    familles: ['Récolte'], opsByFamille: {},
+    values: { 'Récolte': '1500' },
+    touched: { 'Récolte': true },
+    divergentes: { 'Récolte': { nb: 3, min: 580, max: 1800 } },
+  }));
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(plain(r.payload.budgets), { 'Récolte': 1500 });
+});
+
+test('buildFanoutPayload — une divergence de FAMILLE ne bloque pas si le détail est saisi', () => {
+  // La valeur de famille part à 0 de toute façon (invariant des deux niveaux) :
+  // c'est un geste explicite de l'utilisateur, pas un effacement silencieux.
+  const r = CBT.buildFanoutPayload(Object.assign({}, FANOUT_BASE, {
+    values: { 'Taille': '' },
+    opValues: { 'Taille': { 'GB09::Taille d\'hiver': '4', 'GB09::Taille de formation': '1' } },
+    touched: { 'Taille': true },
+    divergentes: { 'Taille': { nb: 2, min: 3, max: 9 } },
+  }));
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.payload.budgets['Taille'], 0);
+});
+
+test('buildFanoutPayload — refuse campagne, cibles ou saisie manquantes, et valeur invalide', () => {
+  const ok = Object.assign({}, FANOUT_BASE, {
+    values: { 'Récolte': '1800' }, touched: { 'Récolte': true },
+  });
+  assert.strictEqual(CBT.buildFanoutPayload(Object.assign({}, ok, { campagne: '' })).ok, false);
+  assert.strictEqual(CBT.buildFanoutPayload(Object.assign({}, ok, { labels: [] })).ok, false);
+  assert.strictEqual(CBT.buildFanoutPayload(Object.assign({}, ok, { labels: ['', '  '] })).ok, false);
+  assert.strictEqual(CBT.buildFanoutPayload(Object.assign({}, ok, { familles: [] })).ok, false);
+  // Rien de touché : il n'y a rien à propager, et surtout rien à effacer.
+  const rien = CBT.buildFanoutPayload(Object.assign({}, ok, { touched: {} }));
+  assert.strictEqual(rien.ok, false);
+  assert.match(String(rien.error), /Aucune valeur saisie/);
+  const bad = CBT.buildFanoutPayload(Object.assign({}, ok, { values: { 'Récolte': 'abc' } }));
+  assert.strictEqual(bad.ok, false);
+  assert.match(String(bad.error), /Valeur invalide pour « Récolte »/);
+  assert.strictEqual(
+    CBT.buildFanoutPayload(Object.assign({}, ok, { values: { 'Récolte': '-2' } })).ok, false);
+});
+
+test('buildFanoutPayload — les deux constructeurs de payload ne disent PAS la même chose', () => {
+  // Garde-fou anti-confusion : sur la MÊME saisie, l'un efface la famille non
+  // saisie (vide → 0), l'autre ne la mentionne pas.
+  const commun = {
+    campagne: '2026-2027', familles: ['Taille', 'Récolte'],
+    values: { 'Taille': '', 'Récolte': '1800' },
+  };
+  const parcelle = CBT.buildSavePayload(Object.assign({ label: 'S13 - CORINA' }, commun));
+  const fanout = CBT.buildFanoutPayload(Object.assign({
+    labels: ['S13 - CORINA'], touched: { 'Récolte': true },
+  }, commun));
+  assert.strictEqual(parcelle.payload.budgets['Taille'], 0, 'portée Parcelle : efface');
+  assert.strictEqual('Taille' in fanout.payload.budgets, false, 'portée multiple : se taît');
+});
+
+// ------------------------------------------------------- rendu : champs touchés
+
+test('rendu — saisir une famille la marque comme TOUCHÉE (unité d\'envoi)', () => {
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(statePortee(), spy, WIN_PORTEE)({ userRole: 'dg' });
+  const inputs = walk(tree).filter(function (n) { return n.type === 'input'; });
+  spy.sets.length = 0;
+  inputs[0].props.onChange({ target: { value: '1800' } });
+  const poses = spy.sets.filter(function (s) { return s.index === S.touched; });
+  assert.strictEqual(poses.length, 1);
+  // Le setter reçoit une fonction de mise à jour : on l'applique pour vérifier.
+  assert.deepStrictEqual(plain(poses[0].value({})), { 'Taille': true });
+});
+
+test('rendu — saisir une OPÉRATION marque SA FAMILLE comme touchée', () => {
+  const spy = { effects: [], sets: [], fetches: [] };
+  const tree = load(statePortee({ openFamilles: { 'Taille': true } }), spy, WIN_PORTEE)(
+    { userRole: 'dg' });
+  const inputs = walk(tree).filter(function (n) { return n.type === 'input'; });
+  spy.sets.length = 0;
+  // Ordre des champs : Taille (famille), son unique opération, puis Récolte.
+  inputs[1].props.onChange({ target: { value: '4' } });
+  const poses = spy.sets.filter(function (s) { return s.index === S.touched; });
+  assert.strictEqual(poses.length, 1);
+  assert.deepStrictEqual(plain(poses[0].value({})), { 'Taille': true });
+});
+
+test('rendu — le suivi des champs touchés est remis à zéro par portée / cible / tick', () => {
+  // Garder « Récolte touchée » après un changement de cible propagerait à la
+  // variété B une saisie faite pour la A.
+  const spy = { effects: [], sets: [], fetches: [] };
+  load(statePortee(), spy, WIN_PORTEE)({ userRole: 'dg' });
+  const resets = spy.effects.filter(function (e) {
+    spy.sets.length = 0;
+    try { e.fn(); } catch (err) { /* effets async ignorés */ }
+    return spy.sets.some(function (s) {
+      return s.index === S.touched && Object.keys(s.value || {}).length === 0;
+    });
+  });
+  assert.strictEqual(resets.length, 1);
+  assert.deepStrictEqual(plain(resets[0].deps), ['variete', 'Myrtille||CORINA', 0],
+    'invalidé par la portée, la cible ET le rafraîchissement');
 });
 
 test('rendu — lecture seule : aucun champ, mais les opérations dépliées restent lisibles', () => {

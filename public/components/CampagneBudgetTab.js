@@ -870,12 +870,18 @@
   }
 
   /**
-   * Construit le body de `campagne-budget-save`. PURE.
+   * Construit le body de `campagne-budget-save` pour la portée PARCELLE. PURE.
    *
    * Toutes les familles AFFICHÉES et toutes leurs opérations sont envoyées, y
    * compris celles laissées vides (→ 0) : c'est ce qui permet d'effacer un
    * budget sans action de suppression dédiée (le backend supprime les entrées
    * à 0).
+   *
+   * ⚠️ NE PAS CONFONDRE avec `CBT_buildFanoutPayload` (portée multiple), qui
+   * n'envoie QUE les familles touchées. Les deux ne sont PAS interchangeables :
+   * celui-ci EFFACE ce qui est vide, l'autre ne parle pas de ce qu'on n'a pas
+   * saisi. Utiliser l'un à la place de l'autre en portée multiple viderait le
+   * budget de N parcelles d'un seul geste.
    *
    * Cohérence des deux niveaux : dès qu'une famille porte au moins une
    * opération budgétée, sa valeur de famille est envoyée à 0. Sans ça,
@@ -985,6 +991,161 @@
     return {
       ok: true,
       payload: payload
+    };
+  }
+
+  /**
+   * Construit le body d'un enregistrement en portée MULTIPLE (variété, culture).
+   * PURE.
+   *
+   * ⚠️ SÉMANTIQUE OPPOSÉE À `CBT_buildSavePayload` (portée Parcelle), et les deux
+   * ne sont PAS interchangeables :
+   *   - `CBT_buildSavePayload` envoie TOUTES les familles affichées, vide → 0,
+   *     donc il EFFACE ce qui n'est pas saisi ;
+   *   - celui-ci n'envoie QUE les familles TOUCHÉES. Les autres ne sont pas dans
+   *     le payload, et `mergeBudgets` (functions/lib/campagneBudget/validate.js)
+   *     les conserve telles quelles en base — c'est la garantie qui permet de
+   *     promettre « une ligne divergente non retouchée n'est pas modifiée ».
+   *
+   * UNITÉ D'ENVOI = LA FAMILLE, pas le champ. Dès qu'un champ d'une famille est
+   * touché, la famille entière part : sa valeur ET toutes ses opérations
+   * affichées. C'est ce qui préserve l'invariant de cohérence des deux niveaux
+   * (une famille détaillée par opération voit sa valeur de famille neutralisée à
+   * 0). Envoyer un champ isolé rouvrirait le bug de l'ancienne valeur de famille
+   * qui survit en base et ressurgit après effacement des opérations.
+   *
+   * COROLLAIRE — une famille touchée qui contient encore un champ DIVERGENT non
+   * résolu fait ÉCHOUER l'enregistrement. Puisque la famille part en entier, ce
+   * champ laissé vide serait envoyé à 0, donc supprimé : exactement la valeur
+   * qu'on venait de promettre de ne pas toucher. Le refus est la seule issue
+   * honnête ; le message dit quoi faire.
+   *
+   * Le budget de QUINZAINE n'est JAMAIS envoyé ici : l'engagement se saisit
+   * parcelle par parcelle (la colonne est masquée en portée multiple).
+   *
+   * @param {Object} args
+   * @param {string} args.campagne
+   * @param {Array<string>} args.labels parcelles cibles (labels BEE ONE bruts).
+   * @param {Array<string>} args.familles familles affichées, dans l'ordre.
+   * @param {Object<string, Array<string>>} [args.opsByFamille] clés d'opération
+   *   affichées par famille, forme `CODE::Libellé`.
+   * @param {Object<string, string>} args.values saisie brute niveau famille.
+   * @param {Object<string, Object<string, string>>} [args.opValues] saisie brute
+   *   niveau opération.
+   * @param {Object<string, *>} [args.touched] familles touchées : `{famille: true}`.
+   *   Clé = FAMILLE, jamais un champ — cf. « unité d'envoi » ci-dessus.
+   * @param {Object<string, *>} [args.divergentes] divergences niveau famille
+   *   (cf. CBT_valeursCommunes).
+   * @param {Object<string, Object<string, *>>} [args.divergentesOps] divergences
+   *   niveau opération.
+   * @returns {{ok: boolean, error?: string, payload?: Object,
+   *   famillesEnvoyees?: Array<string>}}
+   */
+  function CBT_buildFanoutPayload(args) {
+    var a = args || {};
+    if (!a.campagne) return {
+      ok: false,
+      error: 'Campagne inconnue'
+    };
+    var labels = (a.labels || []).filter(function (l) {
+      return String(l == null ? '' : l).trim() !== '';
+    });
+    if (labels.length === 0) return {
+      ok: false,
+      error: 'Aucune parcelle cible'
+    };
+    var familles = a.familles || [];
+    if (familles.length === 0) return {
+      ok: false,
+      error: 'Aucune famille d\'opération'
+    };
+    var values = a.values || {};
+    var opValues = a.opValues || {};
+    var opsByFamille = a.opsByFamille || {};
+    var touched = a.touched || {};
+    var divergentes = a.divergentes || {};
+    var divergentesOps = a.divergentesOps || {};
+
+    /** @returns {number|null} null = saisie invalide. */
+    function parseOne(raw) {
+      if (raw === undefined || raw === null || String(raw).trim() === '') return 0;
+      var n = parseFloat(String(raw).trim().replace(',', '.'));
+      if (isNaN(n) || !isFinite(n) || n < 0) return null;
+      return Math.round(n * 100) / 100;
+    }
+
+    /** Un champ divergent est RÉSOLU dès que l'utilisateur y a mis une valeur. */
+    function vide(raw) {
+      return raw === undefined || raw === null || String(raw).trim() === '';
+    }
+    var touchees = familles.filter(function (f) {
+      return !!touched[f];
+    });
+    if (touchees.length === 0) {
+      return {
+        ok: false,
+        error: 'Aucune valeur saisie — modifier au moins une ligne à propager.'
+      };
+    }
+    var budgets = {};
+    var budgetsOperations = {};
+    for (var i = 0; i < touchees.length; i++) {
+      var f = touchees[i];
+      var ops = opsByFamille[f] || [];
+      var famOps = {};
+      var somme = 0;
+      for (var j = 0; j < ops.length; j++) {
+        var op = ops[j];
+        var rawOp = (opValues[f] || {})[op];
+        if ((divergentesOps[f] || {})[op] && vide(rawOp)) {
+          return {
+            ok: false,
+            error: '« ' + f + ' — ' + CBT_operationLabel(op) + ' » a ' + divergentesOps[f][op].nb + ' valeurs différentes selon les parcelles :' + ' saisis cette valeur, ou repasse en portée Parcelle.'
+          };
+        }
+        var vOp = parseOne(rawOp);
+        if (vOp === null) {
+          return {
+            ok: false,
+            error: 'Valeur invalide pour « ' + f + ' — ' + CBT_operationLabel(op) + ' »'
+          };
+        }
+        famOps[op] = vOp;
+        somme += vOp;
+      }
+      if (ops.length > 0) budgetsOperations[f] = famOps;
+
+      // La valeur de famille n'est menacée que si elle est encore la source du
+      // total : une famille détaillée par opération part de toute façon à 0.
+      if (divergentes[f] && vide(values[f]) && !(somme > 0)) {
+        return {
+          ok: false,
+          error: '« ' + f + ' » a ' + divergentes[f].nb + ' valeurs différentes selon les parcelles :' + ' saisis cette valeur, ou repasse en portée Parcelle.'
+        };
+      }
+      var vFam = parseOne(values[f]);
+      if (vFam === null) return {
+        ok: false,
+        error: 'Valeur invalide pour « ' + f + ' »'
+      };
+      // Même invariant que CBT_buildSavePayload : famille détaillée → 0.
+      budgets[f] = somme > 0 ? 0 : vFam;
+    }
+    return {
+      ok: true,
+      famillesEnvoyees: touchees,
+      payload: {
+        campagne: a.campagne,
+        // `labels` = le fan-out ; `label_bee_one` = garde-fou de la fenêtre de
+        // skew de déploiement (functions d'abord, hosting ensuite) : un backend
+        // pas encore à jour ignore `labels` et écrit UNE parcelle au lieu de
+        // crasher. L'absence de `results` dans sa réponse est ce qui trahit le
+        // cas côté client — jamais un message vert.
+        labels: labels,
+        label_bee_one: labels[0],
+        budgets: budgets,
+        budgets_operations: budgetsOperations
+      }
     };
   }
 
@@ -1216,6 +1377,14 @@
     var _fanoutResults = useState(null);
     var fanoutResults = _fanoutResults[0];
     var setFanoutResults = _fanoutResults[1];
+    // Familles TOUCHÉES depuis le dernier changement de portée / de cible /
+    // rafraîchissement. Clé = FAMILLE et non le champ : c'est l'unité d'envoi du
+    // fan-out (cf. CBT_buildFanoutPayload). Alimenté aussi en portée Parcelle —
+    // c'est sans effet là-bas (CBT_buildSavePayload envoie tout), et une garde
+    // conditionnelle sur un `onChange` serait une source de bug muet.
+    var _touched = useState({});
+    var touched = _touched[0];
+    var setTouched = _touched[1];
     useEffect(function () {
       var cancelled = false;
       setLoading(true);
@@ -1378,6 +1547,23 @@
         setCultureSel('');
       }
     }, [porteeOpts, varieteSel, cultureSel]);
+
+    // Le suivi des champs touchés est LOCAL à une portée et à une cible : garder
+    // « Récolte touchée » après un changement de variété propagerait à la variété
+    // B une saisie faite pour la A. Même raison pour `tick` (tout est relu).
+    useEffect(function () {
+      setTouched({});
+    }, [portee, cible, tick]);
+
+    /** Marque une famille comme touchée — unité d'envoi du fan-out. */
+    function marquerTouchee(famille) {
+      setTouched(function (prev) {
+        if (prev && prev[famille]) return prev;
+        var next = Object.assign({}, prev);
+        next[famille] = true;
+        return next;
+      });
+    }
 
     // Le message (succès/erreur) n'est effacé QUE par un changement de parcelle.
     // Effet séparé À DESSEIN : la synchro des champs ci-dessous dépend aussi de
@@ -1735,6 +1921,9 @@
     });
     totalQuinzJhHa = Math.round(totalQuinzJhHa * 100) / 100;
     function setOpValue(famille, operation, v) {
+      // Toucher une opération touche SA FAMILLE : c'est la famille entière qui
+      // partira (cf. CBT_buildFanoutPayload).
+      marquerTouchee(famille);
       setOpValues(function (prev) {
         var next = Object.assign({}, prev);
         next[famille] = Object.assign({}, next[famille] || {});
@@ -2121,6 +2310,7 @@
         title: 'Budget de la famille, à défaut de détail par opération',
         onChange: function (e) {
           var v = e.target.value;
+          marquerTouchee(f);
           setValues(function (prev) {
             var next = Object.assign({}, prev);
             next[f] = v;
@@ -2472,6 +2662,7 @@
   CampagneBudgetTab.budgetsByLabel = CBT_budgetsByLabel;
   CampagneBudgetTab.operationsByLabel = CBT_operationsByLabel;
   CampagneBudgetTab.buildSavePayload = CBT_buildSavePayload;
+  CampagneBudgetTab.buildFanoutPayload = CBT_buildFanoutPayload;
   CampagneBudgetTab.familleTotal = CBT_familleTotal;
   CampagneBudgetTab.famillesNeutralisees = CBT_famillesNeutralisees;
   CampagneBudgetTab.memeNeutralisations = CBT_memeNeutralisations;
