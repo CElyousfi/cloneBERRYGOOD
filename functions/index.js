@@ -17003,3 +17003,101 @@ exports.rh = functions
 
     return res.status(400).json({ success: false, error: 'Action inconnue ou méthode invalide' });
   });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// campagneRapportHebdo — rapport Campagne (.xlsx) envoyé par WhatsApp tous les
+// lundis à 16h00 (Africa/Casablanca).
+//
+// Ce bloc ne fait QUE le câblage : horaire, matrice de destinataires,
+// dédoublonnage, verdict de succès et orchestration vivent dans
+// lib/campagneRapportHebdo (module pur et testé). Les dépendances réelles
+// (classeur + WhatsApp) sont injectées ici.
+//
+// Périmètre = la culture ENTIÈRE : `fermeFilter = null` à la génération et
+// `ferme = null` à la résolution des destinataires — le chef F1 reçoit toutes
+// les parcelles Framboise, toutes fermes confondues.
+// ─────────────────────────────────────────────────────────────────────────────
+const campagneRapportHebdo = require("./lib/campagneRapportHebdo");
+
+function buildCampagneRapportHebdoDeps() {
+  const { buildCampagneExportXlsx } = require("./pointageService");
+  return {
+    buildWorkbook: (params) => buildCampagneExportXlsx({
+      culture: params.culture,
+      fermeFilter: null,
+      cultureFilter: null,
+    }),
+    resolveRecipientsForProfile: (profileId, ferme) =>
+      whatsappService.resolveRecipientsForProfile(profileId, ferme),
+    uploadMedia: (buffer, mime, fileName) => whatsappService.uploadMedia(buffer, mime, fileName),
+    sendTemplateMessageWithDocument: (to, template, ref, fileName, bodyParams, lang, toName) =>
+      whatsappService.sendTemplateMessageWithDocument(to, template, ref, fileName, bodyParams, lang, toName),
+    sendTemplateMessage: (to, template, bodyParams) =>
+      whatsappService.sendTemplateMessage(to, template, bodyParams),
+    // Numéro de repli pour l'alerte : la panne qui rendrait ce job muet est
+    // justement celle où plus aucun `dg` n'est lisible (Firestore injoignable,
+    // whatsappEnabled retiré). Le repli ne dépend donc PAS de `users` — il vit
+    // dans config/whatsapp.alert_fallback_phone. Absent → alerte in-fine
+    // seulement dans les logs, ce qui est signalé dans le résultat du job.
+    fallbackAlertPhone: async () => {
+      try {
+        const cfg = await whatsappService.getWhatsAppConfig();
+        return (cfg && cfg.alert_fallback_phone) || null;
+      } catch (e) {
+        return null;
+      }
+    },
+    toSingleLine: whatsappService.toSingleLine,
+    now: () => new Date(),
+    logger: (msg, ctx) => console.log(msg, ctx || ""),
+  };
+}
+
+exports.campagneRapportHebdo = functions
+  .region(campagneRapportHebdo.CRON_CONFIG.region)
+  .runWith({
+    timeoutSeconds: campagneRapportHebdo.CRON_CONFIG.timeoutSeconds,
+    memory: campagneRapportHebdo.CRON_CONFIG.memory,
+  })
+  .pubsub.schedule(campagneRapportHebdo.CRON_CONFIG.schedule)
+  .timeZone(campagneRapportHebdo.CRON_CONFIG.timeZone)
+  .onRun(async () => {
+    try {
+      const out = await campagneRapportHebdo.runRapportHebdo(buildCampagneRapportHebdoDeps());
+      console.log("[campagneRapportHebdo]", JSON.stringify({
+        success: out.success,
+        resume: out.resume.texte,
+        alerte: out.alerte,
+      }));
+    } catch (err) {
+      // Le job avale déjà les échecs métier et alerte ; ce catch ne couvre que
+      // l'imprévu (ex. Firestore injoignable) — on le trace, sans faire
+      // retenter Pub/Sub un envoi potentiellement déjà parti.
+      console.error("[campagneRapportHebdo] cron error:", err.message);
+    }
+    return null;
+  });
+
+// Trigger HTTP jumeau — GATÉ (l'URL d'une CF gen1 est publique : ce trigger
+// déclenche des envois réels et sert le classeur complet). Auth Firebase +
+// profil dg/dt (modèle runDailyPhenologyJobNow), et confirmation explicite
+// pour l'envoi (modèle confirm=LIVE) :
+//   ?checkRecipients=1        → aucun envoi, liste résolue par profil
+//   ?dryRun=1                 → génère les classeurs, n'envoie rien
+//   ?dryRun=1&download=<cult> → télécharge le .xlsx (confrontation serveur ↔ navigateur)
+//   ?confirm=SEND             → exécution complète (envois réels)
+//   ?culture=Framboise        → restreint à une culture
+exports.campagneRapportHebdoTrigger = functions
+  .region(campagneRapportHebdo.HTTP_CONFIG.region)
+  .runWith({
+    timeoutSeconds: campagneRapportHebdo.HTTP_CONFIG.timeoutSeconds,
+    memory: campagneRapportHebdo.HTTP_CONFIG.memory,
+  })
+  .https.onRequest(campagneRapportHebdo.buildHttpHandler(Object.assign(
+    buildCampagneRapportHebdoDeps(),
+    {
+      requireAuth,
+      resolveProfile: (authUser) => resolveCallerProfile(authUser),
+      setCors,
+    }
+  )));

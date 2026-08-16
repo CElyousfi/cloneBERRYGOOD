@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:04bb7b15d85b4e3c -->
-# Code Map — Modules lib (161)
+<!-- sourceFingerprint: sha256:f26c98206e1eea6e -->
+# Code Map — Modules lib (165)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -30,6 +30,10 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/campagneExport/cultureUtils.js | — | CULTURES, normCulture, resolveCulture, matchesCulture |
 | functions/lib/campagneExport/index.js | — | campagneExportUtils, cultureUtils, analytiqueUtils, buildCultureWorkbook, buildVarieteView, renderWorkbookBuffer, generateCampagneWorkbook |
 | functions/lib/campagneExport/renderXlsx.js | — | XL, xlFill, styleFullWidth, styleRow, buildExcelWorkbook, renderWorkbookBuffer |
+| functions/lib/campagneRapportHebdo/constants.js | — | CRON_CONFIG, HTTP_CONFIG, AUDIENCE, TEMPLATE_NAME, ALERT_TEMPLATE_NAME, ALERT_PROFILE_ID, XLSX_MIME, TRIGGER_PROFILES, CONFIRM_SEND |
+| functions/lib/campagneRapportHebdo/envois.js | — | buildEnvois, resumeEnvois, nbParcellesFromFeuilles, formatDateLabel, buildBodyParams |
+| functions/lib/campagneRapportHebdo/index.js | — | CRON_CONFIG, HTTP_CONFIG, AUDIENCE, TEMPLATE_NAME, ALERT_TEMPLATE_NAME, ALERT_PROFILE_ID, XLSX_MIME, TRIGGER_PROFILES, CONFIRM_SEND, buildEnvois, resumeEnvois, nbParcellesFromFeuilles, formatDateLabel, buildBodyParams, resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler |
+| functions/lib/campagneRapportHebdo/runJob.js | — | resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler, maskPhone |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |

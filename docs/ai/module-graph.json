@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "216/355 fichiers classifiés",
+          "detail": "219/358 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "52/148 modules avec ≥1 test",
+          "detail": "53/149 modules avec ≥1 test",
           "max": 30,
           "score": 11
         }
@@ -22,10 +22,6 @@
       "total": 62
     },
     "heatmap": [
-      {
-        "commits": 22,
-        "file": "public/app.jsx"
-      },
       {
         "commits": 21,
         "file": "public/components/CampagneAnalytiqueTab.js"
@@ -35,7 +31,11 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 17,
+        "commits": 20,
+        "file": "public/app.jsx"
+      },
+      {
+        "commits": 18,
         "file": "functions/pointageService.js"
       },
       {
@@ -60,15 +60,15 @@
       },
       {
         "commits": 8,
-        "file": "functions/index.js"
+        "file": "functions/lib/campagneBudget/validate.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:2174a264f73adfef",
+    "sourceFingerprint": "sha256:8419eab68dd3c0f0",
     "stats": {
-      "backendModules": 92,
-      "cloudFunctions": 87,
-      "coverageScore": 35,
+      "backendModules": 93,
+      "cloudFunctions": 89,
+      "coverageScore": 36,
       "domains": 10,
       "extractedComponents": 24,
       "firestoreCollections": 58,
@@ -720,11 +720,14 @@
     "referentiel": {
       "backend": {
         "cloudFunctions": [
+          "campagneRapportHebdo",
+          "campagneRapportHebdoTrigger",
           "parcelles"
         ],
         "modules": [
           "campagneBudget",
           "campagneExport",
+          "campagneRapportHebdo",
           "parcelleGroupes"
         ],
         "routes": [
@@ -739,7 +742,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 72,
+      "coverageScore": 74,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -924,6 +927,10 @@
           "functions/lib/campagneBudget/__tests__/validate.test.js",
           "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
           "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+          "functions/lib/campagneRapportHebdo/__tests__/constants.test.js",
+          "functions/lib/campagneRapportHebdo/__tests__/envois.test.js",
+          "functions/lib/campagneRapportHebdo/__tests__/runJob.test.js",
+          "functions/lib/campagneRapportHebdo/__tests__/whatsappDocument.test.js",
           "functions/lib/parcelleGroupes/__tests__/seedHa.test.js",
           "functions/lib/parcelleGroupes/__tests__/split.test.js",
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
@@ -1697,6 +1704,14 @@
       "confidence": "high",
       "domain": "caisse"
     },
+    "functions/index.js#campagneRapportHebdo": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "functions/index.js#campagneRapportHebdoTrigger": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
     "functions/index.js#checkPresenceSyncHealth": {
       "confidence": "high",
       "domain": "pointage"
@@ -2026,6 +2041,10 @@
       "domain": "referentiel"
     },
     "functions/lib/campagneExport": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "functions/lib/campagneRapportHebdo": {
       "confidence": "high",
       "domain": "referentiel"
     },

@@ -7,19 +7,69 @@
  * Variables d'environnement :
  *   WA_TOKEN   (obligatoire) Access Token Meta avec permission whatsapp_business_management
  *   WA_WABA_ID (optionnel)   WABA ID. Défaut: 1435674314903560
+ *   APP_ID     (obligatoire pour --upload-sample) ID de l'app Meta
+ *   WA_SAMPLE_PDF_HANDLE  header_handle d'un PDF   (templates DOCUMENT « PDF »)
+ *   WA_SAMPLE_XLSX_HANDLE header_handle d'un .xlsx (template campagne_rapport_hebdo)
+ *   WA_SAMPLE_IMAGE_HANDLE header_handle d'une image (templates IMAGE)
  *
  * Note: les templates sont créés en statut "PENDING" et doivent être approuvés
  * par Meta (15 min à 24h). Vous pouvez vérifier leur statut sur :
  * https://business.facebook.com/wa/manage/message-templates
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * SOUMISSION DU TEMPLATE `campagne_rapport_hebdo` (header DOCUMENT .xlsx)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Meta EXIGE un `example.header_handle` pour un header média, et ce handle doit
+ * porter le MIME réellement envoyé (ici un .xlsx, pas un PDF). Séquence exacte,
+ * depuis `functions/` :
+ *
+ *   1) Fabriquer un classeur d'échantillon (ExcelJS, déjà une dépendance) :
+ *        node create-whatsapp-templates.js --make-sample-xlsx /tmp/sample.xlsx
+ *
+ *   2) Obtenir le header_handle (Resumable Upload API) :
+ *        APP_ID="<app_id>" WA_TOKEN="EAA..." \
+ *          node create-whatsapp-templates.js --upload-sample /tmp/sample.xlsx
+ *      → imprime le handle (`4::YXBwb...`).
+ *
+ *   3) Soumettre les templates (les existants sont sautés, seul le nouveau part) :
+ *        WA_TOKEN="EAA..." WA_SAMPLE_XLSX_HANDLE="<handle de l'étape 2>" \
+ *          node create-whatsapp-templates.js
+ *
+ * ⚠️ Acte EXTERNE et visible par Meta (+ 1 seule édition par 24 h) : ne rien
+ * soumettre sans GO explicite d'Omar.
  */
 
 const token = process.env.WA_TOKEN;
 const wabaId = process.env.WA_WABA_ID || "1435674314903560";
 
+// --- CLI one-shot : fabrication d'un classeur d'échantillon (pas de token requis)
+const argv = process.argv.slice(2);
+const makeSampleIdx = argv.indexOf("--make-sample-xlsx");
+if (makeSampleIdx !== -1) {
+  const outPath = argv[makeSampleIdx + 1] || "./sample.xlsx";
+  makeSampleXlsx(outPath)
+    .then((p) => { console.log(`✅ Échantillon .xlsx écrit : ${p}`); })
+    .catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
+  return;
+}
+
 if (!token) {
   console.error("ERREUR: variable WA_TOKEN manquante");
   console.error('Usage: WA_TOKEN="EAA..." node create-whatsapp-templates.js');
   process.exit(1);
+}
+
+// --- CLI one-shot : upload d'un échantillon → header_handle (token + APP_ID requis)
+const uploadSampleIdx = argv.indexOf("--upload-sample");
+if (uploadSampleIdx !== -1) {
+  const filePath = argv[uploadSampleIdx + 1];
+  uploadSampleMedia(filePath)
+    .then((handle) => {
+      console.log(`✅ header_handle : ${handle}`);
+      console.log(`   → relancer avec WA_SAMPLE_XLSX_HANDLE="${handle}" (ou _PDF_/_IMAGE_ selon le type)`);
+    })
+    .catch((e) => { console.error(`❌ ${e.message}`); process.exit(1); });
+  return;
 }
 
 const TEMPLATES = [
@@ -116,22 +166,38 @@ const TEMPLATES = [
       "🎯 Estimation Cycle 2\n🍇 Framboise\n• Maravilla Green Cane — 9.37 T/Ha (Budget 72%, Local 12.0%, Export 37.47 T)\n🫐 Myrtille\n• Corina — 3.48 Kg/Pl (Budget 87%, Local 2.8%, Export 28.72 T)",
     ],
   },
+  {
+    // Rapport Campagne hebdomadaire (lundi 16h) — le classeur .xlsx voyage dans
+    // le header DOCUMENT. Template DÉDIÉ : les templates DOCUMENT existants
+    // annoncent un PDF dans leur corps, et Meta ne tolère qu'une édition par
+    // 24 h — les réutiliser serait un aller sans retour.
+    name: "campagne_rapport_hebdo",
+    body: "SmartBerry — Rapport Campagne {{1}} du {{2}}. {{3}} parcelles. Le fichier Excel est en pièce jointe.",
+    examples: ["Framboise", "18/08/2026", "23"],
+    headerType: "DOCUMENT",
+    // Le handle d'échantillon doit être un .xlsx, pas le PDF par défaut.
+    sampleHandleEnv: "WA_SAMPLE_XLSX_HANDLE",
+  },
 ];
 
 async function createTemplate(tpl) {
   const components = [];
   if (tpl.headerType === "DOCUMENT") {
     // Meta requires a sample handle for media headers. Provide one via WA_SAMPLE_PDF_HANDLE
-    // (obtained from the resumable upload API). If absent, submit without — Meta may still
-    // approve UTILITY templates without a sample, otherwise fall back to manual creation.
+    // (obtained from the resumable upload API) — ou via la variable déclarée par le template
+    // lui-même (`sampleHandleEnv`) quand le document n'est pas un PDF (cf. .xlsx du rapport
+    // Campagne : le handle doit porter le MIME réellement envoyé). If absent, submit without —
+    // Meta may still approve UTILITY templates without a sample, otherwise fall back to manual
+    // creation.
     const headerComponent = { type: "HEADER", format: "DOCUMENT" };
-    if (process.env.WA_SAMPLE_PDF_HANDLE) {
-      headerComponent.example = { header_handle: [process.env.WA_SAMPLE_PDF_HANDLE] };
+    const handle = process.env[tpl.sampleHandleEnv || "WA_SAMPLE_PDF_HANDLE"];
+    if (handle) {
+      headerComponent.example = { header_handle: [handle] };
     }
     components.push(headerComponent);
   } else if (tpl.headerType === "IMAGE") {
     // Meta requires a sample handle for media headers. Provide one via WA_SAMPLE_IMAGE_HANDLE
-    // (obtained from the resumable upload API, cf. uploadSampleImage ci-dessous). If absent,
+    // (obtained from the resumable upload API, cf. uploadSampleMedia ci-dessous). If absent,
     // submit without — Meta REJETTERA probablement le template image sans sample ; il faudra
     // alors fournir WA_SAMPLE_IMAGE_HANDLE.
     const headerComponent = { type: "HEADER", format: "IMAGE" };
@@ -187,28 +253,61 @@ async function listExistingTemplates() {
   }
 }
 
+/** MIME par extension, pour l'échantillon uploadé à Meta. */
+const SAMPLE_MIME_BY_EXT = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".pdf": "application/pdf",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
 /**
- * Utilitaire OPTIONNEL — obtient un `header_handle` pour un header IMAGE via la
- * Resumable Upload API de Meta. NON appelé automatiquement dans le flow principal :
- * le handle reste fourni à createTemplate() via la variable d'env WA_SAMPLE_IMAGE_HANDLE.
+ * Fabrique un classeur .xlsx minimal utilisable comme échantillon de header
+ * DOCUMENT. Meta n'en lit que le type — un contenu factice suffit, et on évite
+ * ainsi de faire transiter un vrai rapport d'exploitation.
+ *
+ * Usage : node create-whatsapp-templates.js --make-sample-xlsx /tmp/sample.xlsx
+ *
+ * @param {string} outPath
+ * @returns {Promise<string>} chemin écrit
+ */
+async function makeSampleXlsx(outPath) {
+  const ExcelJS = require("exceljs");
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("Synthèse");
+  ws.addRow(["SmartBerry — échantillon de template WhatsApp"]);
+  ws.addRow(["Parcelle", "JH", "JH / Ha"]);
+  ws.addRow(["EXEMPLE", 12, 3.4]);
+  await wb.xlsx.writeFile(outPath);
+  return outPath;
+}
+
+/**
+ * Utilitaire OPTIONNEL — obtient un `header_handle` pour un header média (IMAGE
+ * ou DOCUMENT : pdf, xlsx) via la Resumable Upload API de Meta. NON appelé
+ * automatiquement dans le flow principal : le handle reste fourni à
+ * createTemplate() via une variable d'env (WA_SAMPLE_IMAGE_HANDLE,
+ * WA_SAMPLE_PDF_HANDLE, WA_SAMPLE_XLSX_HANDLE).
  *
  * Prérequis :
  *   - APP_ID    : ID de l'app Meta (process.env.APP_ID)
  *   - WA_TOKEN  : déjà requis par ce script
- *   - filePath  : chemin local vers une image (jpg/png)
+ *   - filePath  : chemin local vers l'échantillon (jpg/png/pdf/xlsx)
  *
  * Usage manuel (one-shot) :
- *   const handle = await uploadSampleImage('./sample.jpg');
- *   // puis : WA_SAMPLE_IMAGE_HANDLE="<handle>" node create-whatsapp-templates.js
+ *   APP_ID="..." WA_TOKEN="EAA..." node create-whatsapp-templates.js --upload-sample /tmp/sample.xlsx
+ *   // puis : WA_SAMPLE_XLSX_HANDLE="<handle>" node create-whatsapp-templates.js
  *
  * Étapes (cf. https://developers.facebook.com/docs/graph-api/guides/upload) :
  *   1) POST /{APP_ID}/uploads  -> ouvre une session, renvoie un upload id ("upload:...")
  *   2) POST /{sessionId}       avec le fichier en body -> renvoie { h: "<header_handle>" }
  *
  * @param {string} filePath
+ * @param {string} [mimeOverride]
  * @returns {Promise<string>} header_handle
  */
-async function uploadSampleImage(filePath) {
+async function uploadSampleMedia(filePath, mimeOverride) {
   const fs = require("fs");
   const path = require("path");
   const appId = process.env.APP_ID;
@@ -218,7 +317,8 @@ async function uploadSampleImage(filePath) {
   const fileBuffer = fs.readFileSync(filePath);
   const fileLength = fileBuffer.length;
   const ext = path.extname(filePath).toLowerCase();
-  const fileType = ext === ".png" ? "image/png" : "image/jpeg";
+  const fileType = mimeOverride || SAMPLE_MIME_BY_EXT[ext];
+  if (!fileType) throw new Error(`Extension non supportée: ${ext} (attendu: ${Object.keys(SAMPLE_MIME_BY_EXT).join(", ")})`);
 
   // 1) Ouvrir une session d'upload
   const startUrl = `https://graph.facebook.com/v21.0/${appId}/uploads`
