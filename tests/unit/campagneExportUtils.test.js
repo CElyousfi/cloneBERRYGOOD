@@ -19,6 +19,7 @@ const {
   buildParcelleSheetRows,
   buildParcelleSheetAoA,
   parcelleSheetCols,
+  buildParcelleBudgetIndex,
 } = require('../../public/lib/campagneExportUtils.js');
 
 // ============================================================================
@@ -589,7 +590,7 @@ const BUD_PARAMS = {
   budgets: { 'Travaux du sol': 20, 'Récolte': 10, 'Taille': 5 },
 };
 
-test('feuille parcelle — budget porté par TOTAL_FAMILLE, jamais par les OPERATION', () => {
+test('feuille parcelle — sans budget d\'opération, seul TOTAL_FAMILLE est renseigné', () => {
   const rows = buildParcelleSheetRows(BUD_PARAMS);
   rows.filter((r) => r.kind === ROW_KIND.OPERATION).forEach((r) => {
     assert.deepStrictEqual(r.cells.slice(-4), ['', '', '', ''], 'op ' + r.cells[0]);
@@ -691,6 +692,189 @@ test('feuille parcelle — dépassement famille > 100 % non plafonné', () => {
 test('feuille parcelle — AoA identique aux lignes typées (budget compris)', () => {
   const fromRows = buildParcelleSheetRows(BUD_PARAMS).map((r) => r.cells.slice(1));
   const fromAoa = buildParcelleSheetAoA(BUD_PARAMS).map((r) => r.slice(1));
+  assert.deepStrictEqual(fromAoa, fromRows);
+});
+
+// ============================================================================
+// buildParcelleBudgetIndex — budget à la maille OPÉRATION
+// ============================================================================
+//
+// La règle métier (« les opérations écrasent la famille, jamais la somme ») et
+// la résolution du code GB ne sont PAS réimplémentées : elles sont injectées.
+// On rejoue donc les scénarios avec les VRAIS modules de prod — miroir front de
+// `familleTotal` (CampagneBudgetTab) et AnalytiqueUtils — pour qu'une
+// divergence de clé de jointure se voie ici et pas en production.
+
+const AU = require('../../public/lib/analytiqueUtils.js');
+
+/** Miroir FRONT de la règle métier, chargé comme en prod (IIFE + faux window). */
+const RULES = (function () {
+  const fs = require('node:fs');
+  const pathMod = require('node:path');
+  const vm = require('node:vm');
+  const file = pathMod.join(__dirname, '../../public/components/CampagneBudgetTab.jsx');
+  const sandbox = { window: { React: { createElement: function () {} } }, console };
+  vm.createContext(sandbox);
+  vm.runInContext(require('@babel/core').transformSync(fs.readFileSync(file, 'utf8'), {
+    presets: [require.resolve('@babel/preset-react')],
+    filename: file, babelrc: false, configFile: false,
+  }).code, sandbox);
+  return sandbox.window.CampagneBudgetTab;
+})();
+
+/** Lignes de buildVarieteView : Taille 30 JH (GB09), Récolte 15 JH (GB08). */
+const OP_ROWS_GB = [
+  { famille: 'Taille', code: 'GB09', operation: 'Taille longue',
+    byPeriode: { Q01: { jh: 20 } }, total: { jh: 20 } },
+  { famille: 'Taille', code: 'GB09', operation: 'Taille courte',
+    byPeriode: { Q01: { jh: 10 } }, total: { jh: 10 } },
+  { famille: 'Récolte', code: 'GB08', operation: 'Cueillette',
+    byPeriode: { Q01: { jh: 15 } }, total: { jh: 15 } },
+];
+
+/** Params de feuille avec la règle métier + le référentiel INJECTÉS. */
+function opParams(extra) {
+  return Object.assign({
+    nomSb: 'S5 MARAVILLA', ha: 2, culture: 'Framboise', campagne: '2026/2027',
+    periodes: ['Q01'], opRows: OP_ROWS_GB, famillesOrdered: ['Taille', 'Récolte'],
+    budgetRules: RULES, analytique: AU,
+  }, extra || {});
+}
+
+function index(extra) {
+  return buildParcelleBudgetIndex(Object.assign({
+    budgetRules: RULES, analytique: AU,
+  }, extra || {}));
+}
+
+test('index — budget de famille seul : la famille porte le total, les opérations rien', () => {
+  const idx = index({ budgets: { Taille: 12 } });
+  assert.strictEqual(idx.hasRules, true);
+  assert.strictEqual(idx.famille('Taille', 'GB09'), 12);
+  // Famille budgétée EN BLOC : le détail par opération n'existe pas → 0 (vide).
+  assert.strictEqual(idx.operation('GB09', 'Taille longue', 'Taille'), 0);
+});
+
+test('index — budget d\'opération seul : famille = Σ des opérations', () => {
+  const idx = index({
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 7, 'GB09::Taille courte': 3 } },
+  });
+  assert.strictEqual(idx.famille('Taille', 'GB09'), 10);
+  assert.strictEqual(idx.operation('GB09', 'Taille longue', 'Taille'), 7);
+  assert.strictEqual(idx.operation('GB09', 'Taille courte', 'Taille'), 3);
+  // Opération non budgétée → 0, donc 4 cellules vides sur sa ligne.
+  assert.strictEqual(idx.operation('GB09', 'Éclaircissage', 'Taille'), 0);
+});
+
+test('index — les deux niveaux : l\'opération l\'emporte, JAMAIS la somme', () => {
+  const idx = index({
+    budgets: { Taille: 12 },
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 7 } },
+  });
+  assert.strictEqual(idx.famille('Taille', 'GB09'), 7, 'ni 12, ni 19');
+  assert.strictEqual(idx.operation('GB09', 'Taille longue', 'Taille'), 7);
+});
+
+test('index — jointure par code GB quand le nom de famille diffère du référentiel', () => {
+  // Budget saisi sous « Service générale » (référentiel des tâches), lignes de
+  // l'export sous « Services généraux » (libellé BEE ONE) : le pont est le code
+  // GB, jamais une table de correspondance parallèle.
+  const idx = index({
+    budgetsOperations: { 'Service générale': { 'GB11::Gardiennage': 4 } },
+  });
+  assert.strictEqual(idx.famille('Services généraux', 'GB11'), 4);
+  assert.strictEqual(idx.operation('GB11', 'Gardiennage', 'Services généraux'), 4);
+});
+
+test('index — libellé d\'opération normalisé (casse, préfixe numérique, tirets)', () => {
+  const idx = index({
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 6 } },
+  });
+  assert.strictEqual(idx.operation('GB09', '9. TAILLE  LONGUE', 'Taille'), 6);
+});
+
+test('index — sans budgetRules/analytique : repli exact sur le niveau famille', () => {
+  const idx = buildParcelleBudgetIndex({
+    budgets: { Taille: 12 },
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 7 } },
+  });
+  assert.strictEqual(idx.hasRules, false);
+  assert.strictEqual(idx.famille('Taille', 'GB09'), 12, 'comportement historique');
+  assert.strictEqual(idx.operation('GB09', 'Taille longue', 'Taille'), 0);
+});
+
+test('feuille parcelle — budget à la maille opération : lignes OPERATION remplies', () => {
+  const rows = buildParcelleSheetRows(opParams({
+    budgetsOperations: {
+      Taille: { 'GB09::Taille longue': 12, 'GB09::Taille courte': 3 },
+    },
+  }));
+  const ops = rows.filter((r) => r.kind === ROW_KIND.OPERATION);
+  // Taille longue : 12 JH/ha × 2 ha = 24 JH budgétés, 20 réalisés → 83,33 %,
+  // restant 2 JH/ha et 4 JH.
+  assert.deepStrictEqual(ops[0].cells.slice(-4), [12, 0.8333, 2, 4]);
+  // Taille courte : 3 × 2 = 6 JH, 10 réalisés → 166,67 % (dépassement non plafonné).
+  assert.deepStrictEqual(ops[1].cells.slice(-4), [3, 1.6667, -2, -4]);
+  // Cueillette : famille Récolte non budgétée → 4 cellules VIDES (jamais 0).
+  assert.deepStrictEqual(ops[2].cells.slice(-4), ['', '', '', '']);
+  // Total Taille : 15 JH/ha (Σ des opérations), 30 JH sur 30 budgétés → 100 %.
+  const fam = rows.filter((r) => r.kind === ROW_KIND.TOTAL_FAMILLE);
+  assert.deepStrictEqual(fam[0].cells.slice(-4), [15, 1, 0, 0]);
+  assert.deepStrictEqual(fam[1].cells.slice(-4), ['', '', '', ''], 'Récolte non budgétée');
+  // TOTAL GÉNÉRAL — le bug d'origine : `budgets[famille]` brut ne trouvait rien
+  // et vidait les 4 cellules. Périmètre = la seule famille budgétée (Taille).
+  const tot = rows.filter((r) => r.kind === ROW_KIND.TOTAL_GENERAL)[0];
+  assert.deepStrictEqual(tot.cells.slice(-4), [15, 1, 0, 0]);
+  assert.strictEqual(tot.cells[2], 45, 'le volume de JH reste complet');
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.strictEqual(note.cells[0],
+    'Colonnes budget : périmètre des familles budgétées (1/2). Les colonnes JH couvrent l\'ensemble.');
+});
+
+test('feuille parcelle — famille budgétée par opération mais JAMAIS travaillée', () => {
+  // Elle n'a aucune ligne dans la feuille : son budget doit quand même peser au
+  // dénominateur du TOTAL GÉNÉRAL (c'est du reste à consommer, pas du néant).
+  const rows = buildParcelleSheetRows(opParams({
+    budgets: { Taille: 10 },
+    budgetsOperations: { 'Ferti-irrigation': { 'GB02::Fertilisation': 5 } },
+  }));
+  const tot = rows.filter((r) => r.kind === ROW_KIND.TOTAL_GENERAL)[0];
+  // 10 + 5 = 15 JH/ha × 2 ha = 30 JH budgétés ; 30 JH réalisés sur Taille
+  // (Récolte n'est pas budgétée) → 100 %.
+  assert.deepStrictEqual(tot.cells.slice(-4), [15, 1, 0, 0]);
+  const note = rows.filter((r) => r.kind === ROW_KIND.NOTE)[0];
+  assert.strictEqual(note.cells[0],
+    'Colonnes budget : périmètre des familles budgétées (2/3). Les colonnes JH couvrent l\'ensemble.');
+});
+
+test('feuille parcelle — budget d\'opération mais superficie inconnue → tout vide', () => {
+  const rows = buildParcelleSheetRows(opParams({
+    ha: 0,
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 12 } },
+  }));
+  rows.forEach((r) => {
+    if (r.kind === ROW_KIND.COL_HEADER || r.cells.length < 5) return;
+    assert.deepStrictEqual(r.cells.slice(-4), ['', '', '', ''], 'ligne ' + r.cells[0]);
+  });
+});
+
+test('feuille parcelle — budget d\'opération à 0 = pas de budget → ligne vide', () => {
+  const rows = buildParcelleSheetRows(opParams({
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 12, 'GB09::Taille courte': 0 } },
+  }));
+  const ops = rows.filter((r) => r.kind === ROW_KIND.OPERATION);
+  assert.deepStrictEqual(ops[1].cells.slice(-4), ['', '', '', ''], 'Taille courte');
+  // La famille ne retient que les opérations > 0 : 12 JH/ha, pas 12 + 0 « défini ».
+  const fam = rows.filter((r) => r.kind === ROW_KIND.TOTAL_FAMILLE)[0];
+  assert.deepStrictEqual(fam.cells.slice(-4), [12, 1.25, -3, -6]);
+});
+
+test('feuille parcelle — AoA identique aux lignes typées (budget d\'opération compris)', () => {
+  const params = opParams({
+    budgetsOperations: { Taille: { 'GB09::Taille longue': 12 } },
+  });
+  const fromRows = buildParcelleSheetRows(params).map((r) => r.cells.slice(1));
+  const fromAoa = buildParcelleSheetAoA(params).map((r) => r.slice(1));
   assert.deepStrictEqual(fromAoa, fromRows);
 });
 

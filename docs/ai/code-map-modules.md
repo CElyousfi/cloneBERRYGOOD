@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:3efc2bf4db2e4c65 -->
+<!-- sourceFingerprint: sha256:4a585913fea63d0b -->
 # Code Map — Modules lib (155)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -136,7 +136,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
 | public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
-| public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
+| public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
 | public/lib/campagneRythme.js | CampagneRythme | CLASSES, QUINZAINES_PAR_MOIS, FENETRE_PAR_DEFAUT, MIN_QUINZAINES_CONSOMMEES, quinzaineNum, totalQuinzaines, quinzainesInfo, indexClasses, classeOf, classeFamille, resteBudgetCellule, moyenneMobile, resteRythmeCellule, decoreRestes, noteRestes |
 | public/lib/campagneUtils.js | CampagneUtils | campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne |
 | public/lib/cultureUtils.js | CultureUtils | CULTURES, normCulture, resolveCulture, matchesCulture |

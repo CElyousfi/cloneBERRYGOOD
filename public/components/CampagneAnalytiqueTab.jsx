@@ -354,12 +354,18 @@
    *   - `aoa`  = les mêmes lignes aplaties, pour le repli SheetJS puis CSV ;
    *   - `cols` = largeurs de colonnes, honorées par les deux moteurs.
    */
-  function buildCultureWorkbook(culture, data, farmFilter, sbMap, budgetsByLabel) {
+  function buildCultureWorkbook(culture, data, farmFilter, sbMap, budgetsByLabel, opBudgetsByLabel) {
     var CEU = window.CampagneExportUtils;
     var rows = (data && data.rows) || [];
     var periodes = (data && data.periodes) || [];
     var haByRef = (data && data.haByRef) || {};
     var budgets = budgetsByLabel || {};
+    var opBudgets = opBudgetsByLabel || {};
+    // Règle métier du budget + référentiel analytique, INJECTÉS dans les helpers
+    // purs (qui n'ont pas le droit de lire `window`). Modules absents → l'index
+    // dégrade vers le seul niveau famille, exactement comme avant ce lot.
+    var budgetRules = window.CampagneBudgetTab;
+    var analytique = window.AnalytiqueUtils;
 
     // Parcelles de la culture (distinctes, ordre alphabétique du nom SB)
     var seen = {};
@@ -398,16 +404,11 @@
       // Budgets JH/Ha de la parcelle : jointure sur le libellé BEE ONE
       // normalisé, EXACTEMENT comme sbMap/sbHa (trim + majuscules) — toute
       // autre normalisation ferait silencieusement rater la jointure.
-      var budParcelle = budgets[String(label || '').toUpperCase().trim()] || {};
-      synthese.push({
-        nomSb: nom,
-        label: label,
-        ferme: seen[label].ferme,
-        ha: ha,
-        totalJh: totalJh,
-        budgets: budParcelle,
-        jhByFamille: jhByFamille,
-      });
+      var budKey = String(label || '').toUpperCase().trim();
+      var budParcelle = budgets[budKey] || {};
+      // Détail par opération : MÊME clé, même normalisation — une divergence
+      // ici ne lève rien, elle vide simplement les colonnes.
+      var opBudParcelle = opBudgets[budKey] || {};
       var params = {
         nomSb: nom,
         ha: ha,
@@ -417,7 +418,29 @@
         opRows: opRows,
         famillesOrdered: (data && data.famillesOrdered) || [],
         budgets: budParcelle,
+        budgetsOperations: opBudParcelle,
+        budgetRules: budgetRules,
+        analytique: analytique,
       };
+      // La Synthèse reçoit les budgets EFFECTIFS par famille (règle
+      // `familleTotal` appliquée), pas la saisie brute : sinon une parcelle
+      // budgétée à la maille opération sortirait remplie sur sa feuille et vide
+      // sur la Synthèse.
+      var budgetIndex = CEU.buildParcelleBudgetIndex({
+        budgets: budParcelle,
+        budgetsOperations: opBudParcelle,
+        budgetRules: budgetRules,
+        analytique: analytique,
+      });
+      synthese.push({
+        nomSb: nom,
+        label: label,
+        ferme: seen[label].ferme,
+        ha: ha,
+        totalJh: totalJh,
+        budgets: budgetIndex.resolveFamilles(opRows, params.famillesOrdered).scope,
+        jhByFamille: jhByFamille,
+      });
       sheets.push({
         name: CEU.safeSheetName(nom, i + 1, used),
         rows: CEU.buildParcelleSheetRows(params),
@@ -685,9 +708,11 @@
    * si le CDN est injoignable, retombe sur l'export SheetJS (sans styles)
    * plutôt que d'échouer. Retourne toujours une Promise résolue.
    */
-  function exportCulture(culture, data, farmFilter, sbMap, budgetsByLabel) {
+  function exportCulture(culture, data, farmFilter, sbMap, budgetsByLabel, opBudgetsByLabel) {
     if (!window.CampagneExportUtils) return Promise.resolve();
-    var wbData = buildCultureWorkbook(culture, data, farmFilter, sbMap, budgetsByLabel);
+    var wbData = buildCultureWorkbook(
+      culture, data, farmFilter, sbMap, budgetsByLabel, opBudgetsByLabel
+    );
     if (wbData.sheets.length <= 1) {
       window.alert('Aucune parcelle ' + culture + ' dans le périmètre.');
       return Promise.resolve();
@@ -712,6 +737,7 @@
     var cultureFilter = props.cultureFilter;
     var sbMap = props.sbMap || {};
     var budgetsByLabel = props.budgetsByLabel || {};
+    var opBudgetsByLabel = props.opBudgetsByLabel || {};
     var selectedParcelle = props.selectedParcelle;
     var setSelectedParcelle = props.setSelectedParcelle;
     var metric = props.metric;
@@ -782,6 +808,48 @@
       return { byP: byP, total: total };
     }, [opRows, periodes]);
 
+    // ---- Suivi budgétaire : MÊMES helpers purs que la feuille Excel ---------
+    //
+    // Rien n'est recalculé ici. La grille écran et l'export doivent afficher les
+    // MÊMES chiffres : deux implémentations divergeraient au premier changement
+    // de règle. Le composant ne fait qu'INJECTER (règle métier + référentiel) et
+    // formater.
+    //
+    // Le budget n'existe qu'en JH/Ha : en mode « Coût DH » les 5 colonnes ne
+    // sont pas rendues du tout (une conversion en dirhams serait une invention).
+    var CEU = window.CampagneExportUtils;
+    var showBudget = metric === 'jh' && !!(CEU && CEU.buildParcelleBudgetIndex);
+
+    var budgetIndex = useMemo(function () {
+      if (!CEU || typeof CEU.buildParcelleBudgetIndex !== 'function') return null;
+      // MÊME clé de jointure que l'export et que sbMap : toute autre
+      // normalisation raterait tous les budgets, en silence.
+      var key = String(selectedParcelle || '').toUpperCase().trim();
+      return CEU.buildParcelleBudgetIndex({
+        budgets: budgetsByLabel[key] || {},
+        budgetsOperations: opBudgetsByLabel[key] || {},
+        budgetRules: window.CampagneBudgetTab,
+        analytique: window.AnalytiqueUtils,
+      });
+    }, [selectedParcelle, budgetsByLabel, opBudgetsByLabel]);
+
+    // Budgets effectifs par famille + périmètre du TOTAL GÉNÉRAL, résolus en un
+    // passage — exactement l'appel que fait buildParcelleSheetRows.
+    var budgetFamilles = useMemo(function () {
+      if (!budgetIndex) return { parFamille: {}, scope: {} };
+      return budgetIndex.resolveFamilles(opRows, data.famillesOrdered);
+    }, [budgetIndex, opRows, data.famillesOrdered]);
+
+    var budgetScope = useMemo(function () {
+      if (!budgetIndex || !CEU) return null;
+      var jhByFamille = {};
+      opRows.forEach(function (r) {
+        if (!r.famille) return;
+        jhByFamille[r.famille] = (jhByFamille[r.famille] || 0) + (r.total.jh || 0);
+      });
+      return CEU.budgetScope(budgetFamilles.scope, jhByFamille);
+    }, [budgetIndex, budgetFamilles, opRows]);
+
     var thStyle = {
       padding: '8px 10px',
       borderBottom: '2px solid ' + C.border,
@@ -809,6 +877,65 @@
       var v = metric === 'cout' ? cell.cout : cell.jh;
       if (!v || v === 0) return React.createElement('td', { style: tdDashStyle }, '—');
       return React.createElement('td', { style: tdStyle }, metric === 'cout' ? fmtDH(v) : fmtJH(v));
+    }
+
+    /**
+     * Nombre d'une colonne budgétaire. CONSERVE le zéro (contrairement à fmtJH) :
+     * « 0 JH restant » est une information, pas une case vide.
+     */
+    function fmtBudgetNum(v) {
+      return (Math.round(v * 10) / 10).toLocaleString('fr-MA');
+    }
+
+    /**
+     * Les 5 cellules de droite d'une ligne : « Total JH / Ha » puis les 4 du
+     * suivi budgétaire, calculées par les helpers de l'export (CEU.perHa /
+     * CEU.budgetCells) — jamais recodées ici.
+     *
+     * Cellule vide (pas de budget, superficie inconnue) → « — », convention de
+     * la table : jamais 0, jamais 100 %. Au-delà de 100 % consommé, même signal
+     * que l'export : rouge, sans plafonnement.
+     *
+     * `jh` (consommé du PÉRIMÈTRE BUDGÉTÉ) et `jhTotal` (volume exhaustif de la
+     * ligne) diffèrent sur le TOTAL GÉNÉRAL : la colonne « Total JH / Ha » ne
+     * perd aucun JH, les colonnes budgétaires comparent à périmètre égal.
+     *
+     * @param {{budget:*, jh:number, jhTotal?:number, base:Object, keyPrefix:string}} o
+     */
+    function budgetTds(o) {
+      var base = o.base;
+      var jh = o.jh;
+      var jhTotal = o.jhTotal === undefined ? jh : o.jhTotal;
+      var out = [React.createElement('td', {
+        key: o.keyPrefix + '-perha',
+        style: base,
+      }, (function () {
+        var v = CEU.perHa(jhTotal, selectedHa);
+        return v === '' ? '—' : fmtBudgetNum(v);
+      })())];
+      var keyPrefix = o.keyPrefix;
+      CEU.budgetCells(o.budget, selectedHa, jh).forEach(function (c, i) {
+        if (c === '') {
+          out.push(React.createElement('td', {
+            key: keyPrefix + '-b' + i,
+            style: Object.assign({}, base, { color: base.color || C.textSec }),
+          }, '—'));
+          return;
+        }
+        if (i === 1) {
+          var pct = Math.round(c * 1000) / 10;
+          out.push(React.createElement('td', {
+            key: keyPrefix + '-b' + i,
+            style: Object.assign({}, base, pct > 100 ? { color: C.berry } : null),
+          }, fmtBudgetNum(pct) + ' %'));
+          return;
+        }
+        out.push(React.createElement('td', {
+          key: keyPrefix + '-b' + i,
+          style: base,
+        }, fmtBudgetNum(c)));
+      });
+      return out;
     }
 
     return React.createElement('div', null,
@@ -873,7 +1000,9 @@
               // jusqu'au remontage de l'onglet.
               Promise.resolve()
                 .then(function () {
-                  return exportCulture(cult, data, farmFilter, sbMap, budgetsByLabel);
+                  return exportCulture(
+                    cult, data, farmFilter, sbMap, budgetsByLabel, opBudgetsByLabel
+                  );
                 })
                 .catch(function (e) {
                   if (window.console) console.error('[Campagne] Export ' + cult + ' échoué :', e);
@@ -920,7 +1049,15 @@
                     periodes.map(function (p) {
                       return React.createElement('th', { key: p, style: thStyle }, p);
                     }),
-                    React.createElement('th', { style: thStyle }, 'Total')
+                    React.createElement('th', { style: thStyle }, 'Total'),
+                    // Colonnes de suivi budgétaire — libellés repris de l'export
+                    // (source unique : un libellé dupliqué finirait par diverger).
+                    showBudget
+                      ? [React.createElement('th', { key: 'perha', style: thStyle }, 'Total JH / Ha')]
+                          .concat(CEU.BUDGET_HEADER.map(function (h) {
+                            return React.createElement('th', { key: h, style: thStyle }, h);
+                          }))
+                      : null
                   )
                 ),
                 React.createElement('tbody', null,
@@ -946,7 +1083,9 @@
                       style: { background: '#ebeae3' }
                     },
                       React.createElement('td', {
-                        colSpan: periodes.length + 2,
+                        // Libellé + quinzaines + Total (+ les 5 colonnes de
+                        // droite quand elles sont rendues).
+                        colSpan: periodes.length + 2 + (showBudget ? 5 : 0),
                         style: {
                           padding: '6px 10px',
                           fontWeight: 700,
@@ -972,7 +1111,15 @@
                           style: Object.assign({}, tdStyle, { fontWeight: 600 })
                         },
                           metric === 'cout' ? fmtDH(r.total.cout) : fmtJH(r.total.jh)
-                        )
+                        ),
+                        showBudget
+                          ? budgetTds({
+                              budget: budgetIndex.operation(r.code, r.operation, r.famille),
+                              jh: r.total.jh,
+                              base: tdStyle,
+                              keyPrefix: 'op-' + famille + '-' + ri,
+                            })
+                          : null
                       ));
                     });
                     // Ligne total famille
@@ -994,7 +1141,15 @@
                         style: Object.assign({}, tdStyle, { fontWeight: 700 })
                       },
                         metric === 'cout' ? fmtDH(famTotal.total.cout) : fmtJH(famTotal.total.jh)
-                      )
+                      ),
+                      showBudget
+                        ? budgetTds({
+                            budget: budgetFamilles.parFamille[famille],
+                            jh: famTotal.total.jh,
+                            base: Object.assign({}, tdStyle, { fontWeight: 700 }),
+                            keyPrefix: 'famtotal-' + famille,
+                          })
+                        : null
                     ));
                     return elems;
                   }),
@@ -1017,10 +1172,28 @@
                       style: { padding: '8px 10px', fontWeight: 700, fontSize: '13px', color: '#fff', textAlign: 'right' }
                     },
                       metric === 'cout' ? fmtDH(grandTotals.total.cout) : fmtJH(grandTotals.total.jh)
-                    )
+                    ),
+                    // Suivi budgétaire du TOTAL : comparaison à PÉRIMÈTRE ÉGAL
+                    // (budgetScope), identique à la feuille Excel — les JH d'une
+                    // famille non budgétée ne consomment aucun budget.
+                    showBudget && budgetScope
+                      ? budgetTds({
+                          budget: budgetScope.budget,
+                          jh: budgetScope.jh,
+                          jhTotal: grandTotals.total.jh,
+                          base: { padding: '8px 10px', fontWeight: 700, fontSize: '13px', color: '#fff', textAlign: 'right' },
+                          keyPrefix: 'total-general',
+                        })
+                      : null
                   )
                 )
-              )
+              ),
+              // Mention de périmètre — MÊME libellé que sous le tableau Excel.
+              showBudget && budgetScope && budgetScope.nFamilles > 0
+                ? React.createElement('div', {
+                    style: { marginTop: '8px', fontSize: '11px', color: C.textSec, fontStyle: 'italic' }
+                  }, CEU.scopeNote(budgetScope.nBudgetees, budgetScope.nFamilles, 'familles budgétées'))
+                : null
             )
     );
   }
@@ -2215,6 +2388,7 @@
                 cultureFilter: cultureFilter,
                 sbMap: sbMap,
                 budgetsByLabel: budgetsByLabel,
+                opBudgetsByLabel: opBudgetsByLabel,
                 selectedParcelle: selectedParcelle,
                 setSelectedParcelle: setSelectedParcelle,
                 metric: metric,
@@ -2256,5 +2430,6 @@
   CampagneAnalytiqueTab.pctPartsAnnuel = CAT_pctPartsAnnuel;
   CampagneAnalytiqueTab.byCulture = CAT_byCulture;
   CampagneAnalytiqueTab.PivotView = PivotView;
+  CampagneAnalytiqueTab.VarieteView = VarieteView;
 
 })();

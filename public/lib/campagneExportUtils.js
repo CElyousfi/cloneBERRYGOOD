@@ -50,9 +50,14 @@ const __cexp_PERCENT_HEADER = '% Consommé';
 /**
  * En-tête des 4 colonnes de suivi budgétaire, communes aux deux feuilles.
  * Elles ne sont renseignées QUE sur les lignes qui portent un budget :
- * TOTAL_FAMILLE / TOTAL_GENERAL (feuille parcelle) et DATA / TOTAL_GENERAL
- * (feuille Synthèse). Le budget est saisi par parcelle × famille : il n'existe
- * pas à la maille opération, ces cellules y restent donc vides.
+ * OPERATION / TOTAL_FAMILLE / TOTAL_GENERAL (feuille parcelle) et DATA /
+ * TOTAL_GENERAL (feuille Synthèse).
+ *
+ * Le budget est saisi par parcelle × famille ET, depuis la descente au niveau
+ * opération (`budgets_operations`), par parcelle × famille × opération. Une
+ * ligne OPERATION porte donc son budget dès que la famille est budgétée à cette
+ * maille ; sinon (famille budgétée en bloc, ou pas budgétée) ses 4 cellules
+ * restent vides — cf. buildParcelleBudgetIndex.
  */
 const __cexp_BUDGET_HEADER = [
   'Budget par Ha',
@@ -295,6 +300,50 @@ function __cexp_budgetCells(budgetJhParHa, ha, jh) {
 }
 
 /**
+ * Valeur de budget SAISIE → nombre stricto positif, 0 sinon.
+ *
+ * Mêmes conventions que `_cbp_num` (campagneBudgetPivot) : une saisie peut
+ * arriver en chaîne à virgule française, et un 0 (comme une valeur négative ou
+ * illisible) vaut « pas de budget défini » — jamais « budget nul ».
+ *
+ * @param {*} raw
+ * @returns {number} 0 si aucun budget exploitable
+ */
+function __cexp_budgetNum(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return 0;
+  const n = parseFloat(String(raw).trim().replace(',', '.'));
+  if (isNaN(n) || !isFinite(n) || n <= 0) return 0;
+  return n;
+}
+
+/**
+ * Code GB d'une famille BUDGÉTÉE — copie conforme de `_cbp_gbDeFamille`
+ * (campagneBudgetPivot) : priorité au code porté par les clés d'opération
+ * (`CODE::Libellé`), c'est celui qui range le réalisé ; le nom de famille du
+ * référentiel ne sert que de repli.
+ *
+ * @param {string} famille
+ * @param {Object<string, *>} familleOps clés d'opération de cette famille
+ * @param {*} AU AnalytiqueUtils (injecté, jamais lu depuis window ici)
+ * @param {Function} splitOpKey miroir injecté de splitOpKey (backend)
+ * @returns {string} code GB, ou 'AUTRE' si non résolu (même repli que le pivot)
+ */
+function __cexp_gbDeFamille(famille, familleOps, AU, splitOpKey) {
+  const codes = {};
+  Object.keys(familleOps || {}).forEach(function (k) {
+    if (!(__cexp_budgetNum(familleOps[k]) > 0)) return;
+    const c = splitOpKey(k).code;
+    if (c) codes[c] = true;
+  });
+  const uniques = Object.keys(codes);
+  if (uniques.length === 1) {
+    const gb = AU.resolveGbCode(uniques[0], famille);
+    if (gb) return gb;
+  }
+  return AU.resolveGbCode(null, famille) || 'AUTRE';
+}
+
+/**
  * Superficie AFFICHÉE (locale fr, virgule décimale) : '2,40 ha' ou '—'.
  * Utilisée par l'en-tête des feuilles parcelle ET par l'écran Campagne — même
  * format des deux côtés. Ne concerne QUE l'affichage : les cellules de données
@@ -433,6 +482,195 @@ function safeSheetName(nom, index, used) {
   }
   taken[candidate.toLowerCase()] = true;
   return candidate;
+}
+
+/**
+ * INDEX BUDGET d'UNE parcelle — le pont entre les budgets saisis (écran
+ * Campagne › Budget) et les lignes de sa feuille d'export / de sa grille écran.
+ * PURE : aucune globale n'est lue ici, la règle métier et le référentiel
+ * analytique ENTRENT PAR ARGUMENT (même DI que campagneBudgetPivot.indexBudgets).
+ *
+ * ── POURQUOI CET INDEX ───────────────────────────────────────────────────────
+ * Lire `budgets[famille]` en direct — ce que faisait la feuille parcelle —
+ * ignore deux choses :
+ *   1. le budget saisi à la maille OPÉRATION (`budgets_operations`), donc les
+ *      lignes d'opération sortaient vides ET une parcelle budgétée UNIQUEMENT à
+ *      cette maille n'avait aucun total de famille (cas réel d'Omar) ;
+ *   2. la RÈGLE MÉTIER `familleTotal` : « les opérations écrasent la famille,
+ *      JAMAIS la somme des deux ». Elle n'est pas réimplémentée ici, elle est
+ *      injectée (`budgetRules.familleTotal`).
+ *
+ * ── DEUX ESPACES DE NOMS ─────────────────────────────────────────────────────
+ * Le budget est keyé par NOM de famille du référentiel des tâches (« Service
+ * générale »), les lignes de l'export par famille BEE ONE résolue (« Services
+ * généraux ») + code GB. Le pont est `analytique.resolveGbCode`, celui-là même
+ * qui range le réalisé — jamais une table de correspondance parallèle. Le nom
+ * exact reste prioritaire (comportement historique), le code GB n'est qu'un
+ * repli.
+ *
+ * ── DÉGRADATION SÛRE ─────────────────────────────────────────────────────────
+ * Rules ou AnalytiqueUtils absents (<script> non chargé, appelant qui ne les
+ * passe pas) → l'index retombe EXACTEMENT sur le comportement historique :
+ * budget de famille lu en direct, aucune ligne d'opération budgétée. Jamais un
+ * budget deviné.
+ *
+ * @param {Object} args
+ * @param {Object<string, *>} [args.budgets] famille → JH/Ha (niveau famille).
+ * @param {Object<string, Object<string, *>>} [args.budgetsOperations]
+ *   famille → `CODE::Libellé` → JH/Ha (niveau opération).
+ * @param {{familleTotal: Function, splitOpKey: Function}} [args.budgetRules]
+ *   miroir front de functions/lib/campagneBudget/validate.js.
+ * @param {{resolveGbCode: Function, opKey: Function}} [args.analytique]
+ *   AnalytiqueUtils.
+ * @returns {{hasRules: boolean, famille: Function, operation: Function,
+ *   resolveFamilles: Function}}
+ */
+function buildParcelleBudgetIndex(args) {
+  const a = args || {};
+  const budgets = a.budgets || {};
+  const bOps = a.budgetsOperations || {};
+  const rules = a.budgetRules || {};
+  const AU = a.analytique || {};
+
+  const ready = typeof rules.familleTotal === 'function'
+    && typeof rules.splitOpKey === 'function'
+    && typeof AU.resolveGbCode === 'function'
+    && typeof AU.opKey === 'function';
+
+  if (!ready) {
+    // Repli historique : seul le niveau famille existe, lu par son nom exact.
+    return {
+      hasRules: false,
+      famille: function (nom) { return __cexp_budgetNum(budgets[nom]); },
+      operation: function () { return 0; },
+      resolveFamilles: function (opRows, famillesOrdered) {
+        const parFamille = {};
+        __cexp_orderFamilles(opRows, famillesOrdered).forEach(function (f) {
+          parFamille[f] = __cexp_budgetNum(budgets[f]);
+        });
+        return { parFamille: parFamille, scope: budgets };
+      },
+    };
+  }
+
+  /** nom de famille budgétée → { total, source, gb } */
+  const byName = {};
+  /** code GB → noms de familles budgétées qui y résolvent */
+  const byGb = {};
+  /** `GBxx::OPKEY` → JH/Ha budgété (même clé de ligne que le pivot écran) */
+  const byOp = {};
+
+  const noms = {};
+  Object.keys(budgets).forEach(function (f) { noms[f] = true; });
+  Object.keys(bOps).forEach(function (f) { noms[f] = true; });
+  Object.keys(noms).forEach(function (famille) {
+    // RÈGLE MÉTIER, non réimplémentée : opérations > famille, jamais la somme.
+    const t = rules.familleTotal(famille, budgets, bOps);
+    if (!t || !(t.total > 0)) return;
+    const famOps = bOps[famille] || {};
+    const gb = __cexp_gbDeFamille(famille, famOps, AU, rules.splitOpKey);
+    byName[famille] = { total: t.total, source: t.source, gb: gb };
+    if (!byGb[gb]) byGb[gb] = [];
+    byGb[gb].push(famille);
+    // Le détail par opération n'est repris QUE s'il PORTE le total (source
+    // 'operations') : sinon la famille est budgétée en bloc et le détail vaut 0.
+    if (t.source !== 'operations') return;
+    Object.keys(famOps).forEach(function (opk) {
+      const v = __cexp_budgetNum(famOps[opk]);
+      if (!(v > 0)) return;
+      const rowKey = gb + '::' + AU.opKey(rules.splitOpKey(opk).operation);
+      byOp[rowKey] = (byOp[rowKey] || 0) + v;
+    });
+  });
+
+  /** Code GB d'une ligne de l'export (code BEE ONE, repli sur la famille). */
+  function gbDeLigne(code, famille) {
+    return AU.resolveGbCode(code, famille) || 'AUTRE';
+  }
+
+  return {
+    hasRules: true,
+
+    /**
+     * JH/Ha effectif d'une famille de la feuille. Nom exact d'abord, code GB en
+     * repli (deux familles du référentiel qui résolvent vers le MÊME code GB
+     * s'additionnent : elles ne forment qu'une ligne côté réalisé).
+     * @param {string} nom famille telle qu'affichée sur la feuille
+     * @param {*} [code] code GB porté par ses lignes
+     * @returns {number} 0 = pas de budget (→ 4 cellules vides)
+     */
+    famille: function (nom, code) {
+      const direct = byName[nom];
+      if (direct) return direct.total;
+      const gb = AU.resolveGbCode(code, nom);
+      if (!gb || !byGb[gb]) return 0;
+      let s = 0;
+      byGb[gb].forEach(function (f) { s += byName[f].total; });
+      return Math.round(s * 100) / 100;
+    },
+
+    /**
+     * JH/Ha budgété d'une ligne OPÉRATION. Clé = code GB de la ligne + libellé
+     * normalisé (`AU.opKey`) — la MÊME clé que le pivot écran, sinon la jointure
+     * raterait en silence.
+     * @param {*} code      code BEE ONE de la ligne (r.code)
+     * @param {*} operation libellé de l'opération (r.operation)
+     * @param {*} [famille] famille de la ligne, repli de résolution du code GB
+     * @returns {number} 0 = pas de budget à cette maille (→ 4 cellules vides)
+     */
+    operation: function (code, operation, famille) {
+      return byOp[gbDeLigne(code, famille) + '::' + AU.opKey(operation)] || 0;
+    },
+
+    /**
+     * Budgets effectifs des familles d'une feuille, en UN passage — la source
+     * unique du total de famille ET du périmètre du TOTAL GÉNÉRAL, pour que les
+     * deux ne puissent pas diverger.
+     *
+     * `scope` est destiné à __cexp_budgetScope : il porte les familles de la
+     * feuille (clés alignées sur `jhByFamille`) PLUS les familles budgétées
+     * qu'aucune ligne n'a encore consommées — leur budget pèse au dénominateur
+     * avec 0 JH réalisé, c'est bien le reste à consommer.
+     *
+     * Une famille budgétée n'est attribuée QU'UNE FOIS (`consommes`) : sans ça,
+     * deux familles de la feuille résolvant vers le même code GB compteraient
+     * deux fois le même budget dans le TOTAL GÉNÉRAL.
+     *
+     * @param {Array<*>} opRows lignes de buildVarieteView
+     * @param {Array<string>} [famillesOrdered] ordre du référentiel
+     * @returns {{parFamille: Object<string, number>, scope: Object<string, number>}}
+     */
+    resolveFamilles: function (opRows, famillesOrdered) {
+      const codeParFamille = {};
+      (opRows || []).forEach(function (r) {
+        if (!r || !r.famille || !r.code) return;
+        if (!codeParFamille[r.famille]) codeParFamille[r.famille] = r.code;
+      });
+      const parFamille = {};
+      const scope = {};
+      const consommes = {};
+      __cexp_orderFamilles(opRows, famillesOrdered).forEach(function (f) {
+        let total = 0;
+        if (byName[f]) {
+          if (!consommes[f]) { total = byName[f].total; consommes[f] = true; }
+        } else {
+          const gb = AU.resolveGbCode(codeParFamille[f], f);
+          (gb && byGb[gb] ? byGb[gb] : []).forEach(function (nom) {
+            if (consommes[nom]) return;
+            consommes[nom] = true;
+            total += byName[nom].total;
+          });
+        }
+        total = Math.round(total * 100) / 100;
+        parFamille[f] = total;
+        if (total > 0) scope[f] = total;
+      });
+      Object.keys(byName).forEach(function (nom) {
+        if (!consommes[nom]) scope[nom] = byName[nom].total;
+      });
+      return { parFamille: parFamille, scope: scope };
+    },
+  };
 }
 
 /**
@@ -604,7 +842,11 @@ function parcelleSheetCols(nbPeriodes) {
  * — le champ `cout` est volontairement ignoré (export JH uniquement).
  *
  * @param {*} params { nomSb, ha, culture, campagne, periodes, opRows,
- *   famillesOrdered, budgets } — `budgets` = map famille → JH/Ha.
+ *   famillesOrdered, budgets, budgetsOperations, budgetRules, analytique } —
+ *   `budgets` = map famille → JH/Ha ; `budgetsOperations` = map famille →
+ *   `CODE::Libellé` → JH/Ha ; `budgetRules`/`analytique` sont la règle métier et
+ *   le référentiel INJECTÉS (cf. buildParcelleBudgetIndex). Les trois derniers
+ *   sont facultatifs : absents, la feuille sort comme avant leur ajout.
  * @returns {Array<{kind:string, cells:Array<*>}>}
  */
 function buildParcelleSheetRows(params) {
@@ -627,8 +869,17 @@ function buildParcelleSheetRows(params) {
   __cexp_BUDGET_HEADER.forEach(function (h) { header.push(h); });
   rows.push({ kind: ROW_KIND.COL_HEADER, cells: header });
 
-  // Budgets JH/Ha de la parcelle, par famille (écran Campagne › Budget).
-  const budgets = p.budgets || {};
+  // Budgets JH/Ha de la parcelle (écran Campagne › Budget), indexés à la maille
+  // des lignes de la feuille : famille ET opération, règle `familleTotal`
+  // appliquée — jamais la lecture brute de `budgets[famille]`, qui rate les
+  // parcelles budgétées uniquement au niveau opération.
+  const budgetIndex = buildParcelleBudgetIndex({
+    budgets: p.budgets,
+    budgetsOperations: p.budgetsOperations,
+    budgetRules: p.budgetRules,
+    analytique: p.analytique,
+  });
+  const resolved = budgetIndex.resolveFamilles(opRows, p.famillesOrdered);
   // JH réalisés par famille, alimenté au fil des totaux de famille : c'est le
   // numérateur du TOTAL GÉNÉRAL, restreint plus bas aux familles budgétées.
   const jhByFamille = {};
@@ -661,10 +912,11 @@ function buildParcelleSheetRows(params) {
       const tJh = Number((r.total || {}).jh) || 0;
       line.push(__cexp_num(tJh));
       line.push(__cexp_perHa(tJh, ha));
-      // Suivi budgétaire : rien à la maille opération — le budget est saisi
-      // par famille. Cellules présentes mais vides pour garder l'alignement
-      // des colonnes (AoA/CSV inclus).
-      line.push('', '', '', '');
+      // Suivi budgétaire de l'opération : renseigné SEULEMENT si la famille est
+      // budgétée à cette maille (sinon l'index rend 0 → 4 cellules vides, ce qui
+      // garde l'alignement des colonnes, AoA/CSV inclus).
+      __cexp_budgetCells(budgetIndex.operation(r.code, r.operation, r.famille), ha, tJh)
+        .forEach(function (c) { line.push(c); });
       famTotal.jh += tJh;
       grand.jh += tJh;
       rows.push({ kind: ROW_KIND.OPERATION, cells: line });
@@ -674,7 +926,10 @@ function buildParcelleSheetRows(params) {
     periodes.forEach(function (per) { famLine.push(__cexp_num(famTotal.byP[per])); });
     famLine.push(__cexp_num(famTotal.jh));
     famLine.push(__cexp_perHa(famTotal.jh, ha));
-    __cexp_budgetCells(budgets[famille], ha, famTotal.jh)
+    // Budget EFFECTIF de la famille (opérations > famille, cf. familleTotal) —
+    // et non `budgets[famille]`, vide dès que la saisie est descendue au niveau
+    // opération.
+    __cexp_budgetCells(resolved.parFamille[famille], ha, famTotal.jh)
       .forEach(function (c) { famLine.push(c); });
     jhByFamille[famille] = famTotal.jh;
     rows.push({ kind: ROW_KIND.TOTAL_FAMILLE, cells: famLine });
@@ -694,8 +949,11 @@ function buildParcelleSheetRows(params) {
   //    d'une famille non budgétée à ce budget produisait un dépassement
   //    fantôme (30 JH hors budget + 15 JH sur un budget de 20 → 225 % au lieu
   //    de 75 %), irréconciliable avec les lignes TOTAL_FAMILLE visibles.
+  // Le périmètre part des budgets EFFECTIFS (`resolved.scope`) : une parcelle
+  // budgétée à la maille opération n'a pas de `budgets[famille]`, la lire brute
+  // vidait les 4 cellules ET faussait le compteur de la NOTE.
   // La NOTE sous le tableau annonce ce périmètre.
-  const scope = __cexp_budgetScope(budgets, jhByFamille);
+  const scope = __cexp_budgetScope(resolved.scope, jhByFamille);
   __cexp_budgetCells(scope.budget, ha, scope.jh).forEach(function (c) { totalLine.push(c); });
   rows.push({ kind: ROW_KIND.TOTAL_GENERAL, cells: totalLine });
   if (scope.nFamilles > 0) {
@@ -733,6 +991,14 @@ const __cexp_api = {
   SHEET_MAX: __cexp_SHEET_MAX,
   ROW_KIND,
   PERCENT_HEADER: __cexp_PERCENT_HEADER,
+  // Exposés pour la GRILLE ÉCRAN (vue « Par Variété / Quinzaine ») : elle rend
+  // les mêmes 4 colonnes que la feuille Excel et doit les calculer avec les
+  // MÊMES helpers — un libellé ou un ratio dupliqué dans le composant finirait
+  // par diverger de l'export.
+  BUDGET_HEADER: __cexp_BUDGET_HEADER.slice(),
+  scopeNote: __cexp_scopeNote,
+  perHa: __cexp_perHa,
+  buildParcelleBudgetIndex,
   haLabel,
   numFmtFor,
   percentFmtFor: __cexp_percentFmtFor,

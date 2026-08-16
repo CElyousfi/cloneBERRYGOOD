@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 23,
+        "commits": 22,
         "file": "public/app.jsx"
       },
       {
@@ -35,11 +35,11 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 14,
+        "commits": 15,
         "file": "public/components/CampagneBudgetTab.jsx"
       },
       {
-        "commits": 14,
+        "commits": 15,
         "file": "tests/unit/campagneBudgetTab.test.js"
       },
       {
@@ -51,7 +51,7 @@
         "file": "scripts/build-frontend.js"
       },
       {
-        "commits": 10,
+        "commits": 11,
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:39ceba62fa7cb500",
+    "sourceFingerprint": "sha256:fe0db87edd5f8ec5",
     "stats": {
       "backendModules": 91,
       "cloudFunctions": 87,
@@ -784,14 +784,14 @@
           "windowDays": 90
         },
         {
-          "coCommits": 14,
+          "coCommits": 15,
           "domain": null,
           "file": "tests/unit/campagneBudgetTab.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 10,
+          "coCommits": 11,
           "domain": null,
           "file": "public/components/CampagneBudgetTab.js",
           "note": "probabilistic",

@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:52c36d848f07bad7",
+    "sourceFingerprint": "sha256:23fdce6e8f244700",
     "stats": {
       "targetFiles": 206,
       "targetFilesWithDirectTests": 124,
       "targetFilesWithTransitiveTests": 141,
-      "testFilesScanned": 169
+      "testFilesScanned": 170
     }
   },
   "index": {
@@ -1319,10 +1319,12 @@
     },
     "public/lib/analytiqueUtils.js": {
       "directTests": [
-        "tests/unit/analytiqueUtils.test.js"
+        "tests/unit/analytiqueUtils.test.js",
+        "tests/unit/campagneExportUtils.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/analytiqueUtils.test.js"
+        "tests/unit/analytiqueUtils.test.js",
+        "tests/unit/campagneExportUtils.test.js"
       ]
     },
     "public/lib/authResilience.js": {
