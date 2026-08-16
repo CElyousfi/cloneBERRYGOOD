@@ -11,6 +11,14 @@
 // Ces tests asservissent la garantie : chef (_F<x>) et RH (_all) ont TOUJOURS
 // des clés DISTINCTES, et deux fermes distinctes n'entrent jamais en collision.
 // Helper pur — zéro Firestore.
+//
+// ⚠️ PORTÉE — CE FICHIER NE VERROUILLE AUCUN SITE D'APPEL. Il vérifie
+// l'invariant de pointageCacheKey en l'appelant DIRECTEMENT : il reste vert
+// même si un appelant omet une dimension (c'est exactement ce qui s'est passé
+// pour campagne-analytique-detail, dont la clé a longtemps ignoré la culture).
+// Verrouiller un appelant demande un test qui observe la clé réellement passée
+// à withCache — cf. tests/unit/campagne-analytique-cache-key.test.js. Tout
+// nouveau site d'appel sensible mérite le même traitement.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -68,6 +76,67 @@ test('deux fermes distinctes n\'entrent jamais en collision (même base)', () =>
       FERMES.length,
       `collision inter-fermes sur "${base}": ${keys.join(', ')}`
     );
+  }
+});
+
+// ============================================================================
+// Dimension CULTURE — chef_f5 (F5 + culture_filtre='Myrtille')
+// ============================================================================
+//
+// Le périmètre d'un chef n'est pas toujours réductible à une ferme : chef_f5
+// est cloisonné (F5, Myrtille). Deux appelants qui ne diffèrent QUE par la
+// culture doivent donc avoir des clés distinctes, sinon le premier arrivé
+// écrit dans le cache PARTAGÉ un payload que l'autre relira hors de son
+// périmètre pendant tout le TTL (30 min pour campagne-analytique-detail).
+//
+// C'est exactement le scénario ouvert par l'extraction de
+// computeCampagneAnalytiqueDetail : la fonction est désormais appelable en
+// interne (export Excel serveur) avec des paramètres libres — un appel
+// (F5, null) suivi d'une lecture (F5, 'Myrtille') servirait les parcelles
+// Framboise à un chef Myrtille.
+
+/** Bases de clé dont le payload est filtré ferme ET culture. */
+const CULTURE_AWARE_BASES = [
+  'campagne_analytique_detail_v2_2025-07-01',
+];
+
+test('même ferme, culture différente → clés DISTINCTES (anti-fuite chef_f5)', () => {
+  for (const base of CULTURE_AWARE_BASES) {
+    const toutesCultures = pointageCacheKey(base, 'F5', null);
+    const myrtille = pointageCacheKey(base, 'F5', 'Myrtille');
+    const framboise = pointageCacheKey(base, 'F5', 'Framboise');
+    assert.notStrictEqual(myrtille, toutesCultures,
+      `collision culture↔toutes-cultures sur "${base}": ${myrtille}`);
+    assert.notStrictEqual(myrtille, framboise,
+      `collision inter-cultures sur "${base}": ${myrtille}`);
+    assert.strictEqual(new Set([toutesCultures, myrtille, framboise]).size, 3);
+  }
+});
+
+test('la dimension culture n\'écrase pas la dimension ferme', () => {
+  // Les 3 périmètres restent discernables deux à deux : un chef Myrtille de F5
+  // ne doit jamais retomber sur la clé d'un chef Myrtille de F1, ni sur celle
+  // du RH (scope 'all', toutes cultures).
+  const base = CULTURE_AWARE_BASES[0];
+  const keys = [
+    pointageCacheKey(base, null, null),        // RH/DG/Finance
+    pointageCacheKey(base, 'F5', 'Myrtille'),  // chef_f5
+    pointageCacheKey(base, 'F1', 'Myrtille'),
+    pointageCacheKey(base, 'F5', null),
+  ];
+  assert.strictEqual(new Set(keys).size, keys.length, `collision : ${keys.join(', ')}`);
+});
+
+test('culture falsy → clé identique à l\'appel 2-arguments (pas d\'invalidation inutile)', () => {
+  // Les appelants sans dimension culture (RH, chef sans culture_filtre) gardent
+  // EXACTEMENT leur clé actuelle : ajouter le 3e argument n'invalide pas leur
+  // cache. Seul un profil à culture_filtre recalcule une fois à froid.
+  for (const base of [...NOMINATIVE_BASES, ...CULTURE_AWARE_BASES]) {
+    for (const ferme of [null, ...FERMES]) {
+      assert.strictEqual(pointageCacheKey(base, ferme, null), pointageCacheKey(base, ferme));
+      assert.strictEqual(pointageCacheKey(base, ferme, ''), pointageCacheKey(base, ferme));
+      assert.strictEqual(pointageCacheKey(base, ferme, undefined), pointageCacheKey(base, ferme));
+    }
   }
 });
 

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:4a585913fea63d0b -->
-# Code Map — Modules lib (155)
+<!-- sourceFingerprint: sha256:04bb7b15d85b4e3c -->
+# Code Map — Modules lib (161)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -24,6 +24,12 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/caisseImport/parsers.js | — | parseDepensesMonthly, parsePaieRecap, parseBahiaSingle |
 | functions/lib/campagneBudget/culture.js | — | normCulture, resolveCulture |
 | functions/lib/campagneBudget/validate.js | — | MAX_JH_PAR_HA, MAX_FAMILLES, MAX_OPERATIONS, MAX_QUINZAINES, MAX_FANOUT_LABELS, MAX_PURGE_RATIO, CULTURES_BUDGET_QUINZAINE, OP_KEY_SEP, quinzaineKey, quinzaineNum, purgeAutorisee, normCampagne, normLabel, normFanoutLabels, budgetDocId, opKey, splitOpKey, familleDuCode, indexOperations, canonicalizeOperationKeys, operationLabel, parseBudgetValue, validateBudgetSave, mergeBudgets, mergeBudgetsOperations, mergeBudgetsQuinzaine, quinzainesSupprimees, familleTotal, purgeFamillesInconnues, purgeOperationsInconnues, purgeQuinzainesInconnues, writeBudgetInTransaction |
+| functions/lib/campagneExport/analytiqueUtils.js | — | opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille, GB_GROUPE_MAP, GROUPE_ORDER, GB_ORDER |
+| functions/lib/campagneExport/buildWorkbook.js | — | refKey, cultureOf, sbNom, sbHa, buildVarieteView, buildCultureWorkbook |
+| functions/lib/campagneExport/campagneExportUtils.js | — | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
+| functions/lib/campagneExport/cultureUtils.js | — | CULTURES, normCulture, resolveCulture, matchesCulture |
+| functions/lib/campagneExport/index.js | — | campagneExportUtils, cultureUtils, analytiqueUtils, buildCultureWorkbook, buildVarieteView, renderWorkbookBuffer, generateCampagneWorkbook |
+| functions/lib/campagneExport/renderXlsx.js | — | XL, xlFill, styleFullWidth, styleRow, buildExcelWorkbook, renderWorkbookBuffer |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |

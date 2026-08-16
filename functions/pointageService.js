@@ -93,6 +93,9 @@ const parcelleGroupValidate = require("./lib/parcelleGroupes/validate");
 const parcelleGroupSeedHa = require("./lib/parcelleGroupes/seedHa");
 // Budget JH/Ha par parcelle × famille d'opération (validation + merge purs).
 const campagneBudget = require("./lib/campagneBudget/validate");
+// Export Excel « Campagne » côté serveur (structure + rendu ExcelJS) — module
+// pur : aucune lecture Firestore, tout lui est injecté.
+const campagneExport = require("./lib/campagneExport");
 // Miroir backend de public/lib/cultureUtils.js — gating avocatier du budget de
 // quinzaine (le backend ne peut PAS requérir public/, cf. CLAUDE.md).
 const campagneBudgetCulture = require("./lib/campagneBudget/culture");
@@ -1599,6 +1602,278 @@ async function computeRecolteEquipesPayload(nQuinz, fermeFilter = null) {
   });
   return { success: true, periodes, rows };
 }
+
+// =============================================
+// computeCampagneAnalytiqueDetail : calcul COMPLET du payload
+// `campagne-analytique-detail` (granularité parcelle × quinzaine × opération).
+//
+// EXTRAIT du handler HTTP `pointageRH` (même modèle que
+// computeRecolteEquipesPayload) pour être réutilisable EN INTERNE — l'export
+// Excel serveur (functions/lib/campagneExport) consomme le même payload que
+// l'écran, sans repasser par HTTP. Le handler délègue désormais ici : le corps
+// est repris à l'identique, aucune valeur du payload ne change.
+//
+// ⚠️ PÉRIMÈTRE EXPLICITE — dans le handler, le gating chef passait par le SHADOW
+// des fetchers (`getPointageRowsForDate` filtré, cf. « GATING PAIE » dans
+// pointageRH). Une fonction de module ne voit PAS ces shadows : le périmètre est
+// donc reçu en PARAMÈTRES et le filtrage est ré-appliqué ici, avec les MÊMES
+// prédicats (`deriveFerme(...) === fermeFilter` fail-closed sur 'Autre', et
+// `filterMirrorRowsByCulture` pour le chef Myrtille). Tout appelant interne DOIT
+// passer le périmètre de l'utilisateur : l'omettre revient à servir toutes les
+// fermes.
+//
+// 🔒 CLÉ DE CACHE À TROIS DIMENSIONS (base, ferme, culture) — corrigé PAR ce lot.
+// L'inline d'origine ne passait que `fermeFilter` à pointageCacheKey, alors que
+// le payload est filtré ferme ET culture. `withCache` écrit dans un cache
+// Firestore PARTAGÉ (cf. l'avertissement de pointageCacheKey) : deux périmètres
+// qui ne diffèrent que par la culture se retrouvaient donc sur LA MÊME entrée.
+// Tant que le seul appelant était le handler HTTP, le trou restait théorique.
+// L'extraction l'ARME : buildCampagneExportXlsx appelle désormais cette
+// fonction avec des paramètres libres, et un appel LOT B `fermeFilter='F5',
+// cultureFilter=null` écrirait sous la clé `…_F5` un payload TOUTES cultures
+// que le chef Myrtille (F5 + culture_filtre='Myrtille') relirait tel quel
+// pendant 30 min — fuite hors périmètre, persistante et inter-instances.
+// Ajouter la dimension n'est pas un changement de comportement produit : c'est
+// fermer le trou que l'extraction ouvre. Aucun autre site n'utilise cette base
+// de clé (aucun warm path) ; seul un chef Myrtille subit un recalcul à froid,
+// une fois.
+//
+// ⚠️ NE JAMAIS retirer le 3e argument. Le verrou est
+// tests/unit/campagne-analytique-cache-key.test.js, qui espionne la clé
+// RÉELLEMENT passée à withCache depuis CE site d'appel et devient rouge si la
+// dimension culture (ou ferme) disparaît. tests/unit/pointage-cache-key.test.js
+// ne suffit pas : il appelle pointageCacheKey directement et reste vert quoi
+// qu'il arrive ici (vérifié par mutation).
+//
+// @param {string|null} fermeFilter   'F1'|'F5'|'Avocatier'|'BAHIA' ou null (all)
+// @param {string|null} cultureFilter 'Myrtille'|'Framboise' ou null
+async function computeCampagneAnalytiqueDetail(fermeFilter = null, cultureFilter = null) {
+  const today = new Date();
+  const y = today.getFullYear();
+  const startYear = today.getMonth() >= 6 ? y : y - 1;
+  const campagne = {
+    start: `${startYear}-07-01`,
+    end: `${startYear + 1}-06-30`,
+    label: `${startYear}/${startYear + 1}`,
+  };
+
+  // Reconstruction locale du shadow des fetchers (cf. bloc GATING de pointageRH).
+  const keepPointage = fermeFilter
+    ? (r) => deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale, campagneOf(r.DateStr) || undefined) === fermeFilter
+    : () => true;
+  const keepCulture = cultureFilter
+    ? (r) => filterMirrorRowsByCulture([r], cultureFilter).length > 0
+    : () => true;
+  const fetchRowsForDate = (fermeFilter || cultureFilter)
+    ? async (d) => (await getPointageRowsForDate(d)).filter(r => keepPointage(r) && keepCulture(r))
+    : getPointageRowsForDate;
+
+  await warmRefTaches();
+
+  return withCache(
+    // v2 : ajout de `nbOuv` par ligne. Sans bump de clé, une réponse v1
+    // encore en cache (TTL 30 min) servirait des lignes sans `nbOuv` et
+    // la colonne « Ouvriers » de la pop-up afficherait 0 sans erreur.
+    pointageCacheKey(`campagne_analytique_detail_v2_${campagne.start}`, fermeFilter, cultureFilter),
+    30 * 60 * 1000,
+    async () => {
+      const meta = await getPointageMeta();
+      const allPeriodes = (meta?.allPeriodes || []).filter(p => {
+        const dates = (meta?.periodeMap?.[p] || []);
+        return dates.some(d => d >= campagne.start && d <= campagne.end);
+      });
+
+      // Lire toutes les rows miroir de la campagne — granularité parcelle×quinzaine×opération
+      const rows = [];
+
+      for (const periode of allPeriodes) {
+        const dates = (meta?.periodeMap?.[periode] || []).filter(d => d >= campagne.start && d <= campagne.end);
+        for (let i = 0; i < dates.length; i += 10) {
+          const batch = dates.slice(i, i + 10);
+          const batchResults = await Promise.all(batch.map(d => fetchRowsForDate(d)));
+          for (const dayRows of batchResults) {
+            // Grouper par (parcelle, periode, operation, groupe) pour réduire le volume
+            const groups = {};
+            for (const r of dayRows) {
+              const famille = resolveFamily(r.Operation_Groupe, r.Operation_Famille);
+              const key = `${(r.Parcelle_Culturale || '').trim()}|${(r.Ref_parcelle || '').trim()}|${periode}|${(r.Operation || '').trim()}|${(r.Operation_Groupe || '').trim()}`;
+              if (!groups[key]) groups[key] = {
+                parcelle: (r.Parcelle_Culturale || '').trim(),
+                refParcelle: (r.Ref_parcelle || '').trim(),
+                ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
+                periode,
+                operation: (r.Operation || '').trim(),
+                groupe: (_refMap[r.Operation_Groupe] || {}).groupe || '',
+                famille,
+                code: (r.Operation_Groupe || '').trim(),
+                jh: 0,
+                cout: 0,
+                // Matricules DISTINCTS du groupe (jamais un compteur : un
+                // ouvrier pointé deux fois sur la même opération le même
+                // jour ne compte qu'une fois). Remplacé par `nbOuv` avant
+                // le push — un Set sérialiserait en `{}`.
+                workers: new Set(),
+              };
+              groups[key].jh += r.Nombre_Jr || 0;
+              groups[key].cout += r.Cout || 0;
+              if (r.Personnel_Matricule) groups[key].workers.add(r.Personnel_Matricule);
+            }
+            for (const g of Object.values(groups)) {
+              g.nbOuv = g.workers.size;
+              delete g.workers;
+              rows.push(g);
+            }
+          }
+        }
+      }
+
+      // Enrichir avec Ha depuis sb_parcelle_referentiel
+      const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
+      const haByRef = {};
+      refSnap.forEach(doc => {
+        const d = doc.data();
+        if (d.label_bee_one && d.ha) haByRef[d.label_bee_one.trim().toUpperCase()] = d.ha;
+      });
+
+      // Liste triée des périodes présentes
+      const periodeSet = new Set(rows.map(r => r.periode));
+      const periodes = [...periodeSet].sort();
+
+      // Liste des familles depuis référentiel complet
+      const refData = await loadReferentielTaches();
+      const famillesOrdered = [...new Set(refData.ops.map(o => o.famille))];
+
+      return {
+        success: true,
+        campagne: campagne.label,
+        periodes,
+        famillesOrdered,
+        haByRef,
+        rows: rows.filter(r => r.jh > 0 || r.cout > 0),
+      };
+    }
+  );
+}
+exports.computeCampagneAnalytiqueDetail = computeCampagneAnalytiqueDetail;
+
+// =============================================
+// buildCampagneExportXlsx : classeur Excel « Campagne » d'une culture, généré
+// CÔTÉ SERVEUR, à l'identique du fichier produit par le navigateur.
+//
+// Assemble les quatre sources que l'écran assemble côté client :
+//   1. le payload campagne-analytique-detail (computeCampagneAnalytiqueDetail) ;
+//   2. le référentiel parcelle sb_parcelle_referentiel (nom SB, culture, ha) ;
+//   3. les budgets JH/Ha de la campagne (sb_campagne_budget_jh), niveaux
+//      FAMILLE et OPÉRATION ;
+//   4. les surfaces BEE ONE (fetchBrParcelleSupMap) — 2ᵉ niveau de résolution
+//      du `ha`, celui que le navigateur obtient via `parcelles-campagne-list`.
+// Le rendu (structure + mise en forme ExcelJS) vit dans lib/campagneExport,
+// module pur : ce wrapper ne fait QUE les lectures Firestore.
+//
+// ⚠️ PÉRIMÈTRE — fail-closed, comme partout ailleurs : `fermeFilter` et
+// `cultureFilter` sont OBLIGATOIREMENT ceux de l'appelant. Les budgets sont
+// filtrés avec les MÊMES prédicats que l'action campagne-budget-list
+// (deriveFerme fail-closed sur 'Autre' + filterMirrorRowsByCulture).
+//
+// N'expose aucune Cloud Function : appelé en interne (LOT B — envoi WhatsApp).
+//
+// @param {*} params { culture, fermeFilter, cultureFilter, campagne }
+// @returns {Promise<{fileName: string, buffer: Buffer, nbFeuilles: number}>}
+// @throws {Error} culture manquante ou campagne invalide — JAMAIS de classeur
+//   dégradé rendu en silence (cf. la garde en tête de fonction).
+async function buildCampagneExportXlsx(params = {}) {
+  const culture = params.culture;
+  if (!culture) throw new Error("buildCampagneExportXlsx : culture requise");
+  // ⚠️ ÉCHOUER BRUYAMMENT sur une campagne invalide, et le faire AVANT toute
+  // lecture — même traitement que la culture manquante ci-dessus, et même
+  // verdict que l'action HTTP campagne-budget-list, qui répond 400.
+  // Ignorer le cas (ancien `if (campagneB)` autour de la lecture des budgets)
+  // produisait un classeur SANS ERREUR dont les 4 colonnes de budget étaient
+  // vides : c'est le pire mode de défaillance pour un fichier qui part
+  // automatiquement, sans relecture humaine, chez les dirigeants — un rapport
+  // « tout est à zéro » se lit comme une information, pas comme une panne. Le
+  // job planifié du lot suivant doit pouvoir ALERTER plutôt qu'envoyer un
+  // fichier faux.
+  // Le défaut (`campagneCourante()`) est toujours valide : seul un
+  // `params.campagne` explicitement malformé peut lever ici.
+  const campagneB = campagneBudget.normCampagne(params.campagne || campagneCourante());
+  if (!campagneB) {
+    throw new Error(
+      "buildCampagneExportXlsx : campagne invalide (" + String(params.campagne) + ")"
+    );
+  }
+  const fermeFilter = params.fermeFilter || null;
+  const cultureFilter = params.cultureFilter || null;
+
+  const data = await computeCampagneAnalytiqueDetail(fermeFilter, cultureFilter);
+
+  // Référentiel parcelle → { LABEL: { nom_sb, culture_sb, ha } }. Même clé de
+  // jointure que haByRef (label BEE ONE trimé/majuscules).
+  const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
+  const sbMap = {};
+  refSnap.forEach((doc) => {
+    const d = doc.data() || {};
+    const key = String(d.label_bee_one || doc.id || '').trim().toUpperCase();
+    if (!key) return;
+    sbMap[key] = { nom_sb: d.nom_sb || '', culture_sb: d.culture_sb || '', ha: d.ha || 0 };
+  });
+
+  // Surfaces BEE ONE (BR_Parcelle.Sup_Parcelle_Culturale) — 2ᵉ niveau de
+  // résolution du `ha`, exactement celui du navigateur : l'écran le reçoit via
+  // `parcelles-campagne-list` (champ `sup`), qui appelle CE MÊME fetcher. Ses
+  // clés sont des labels trimés ; on les remonte en MAJUSCULES, la clé de
+  // jointure de l'export (cf. buildWorkbook.refKey).
+  // Ne pas le charger revenait à sortir à 0 toute parcelle sans `ha` saisi au
+  // référentiel SB, et avec elle sa colonne « / Ha » ET ses 4 colonnes de
+  // budget — alors que le fichier du navigateur, lui, les remplit.
+  // Résilient par construction (last-known-good persistant si le BDR est down).
+  const supRaw = await fetchBrParcelleSupMap();
+  const supByLabel = {};
+  Object.keys(supRaw || {}).forEach((lbl) => {
+    const key = String(lbl).trim().toUpperCase();
+    if (key && Number(supRaw[lbl]) > 0) supByLabel[key] = Number(supRaw[lbl]);
+  });
+
+  // Budgets JH/Ha de la campagne (défaut : campagne courante) — les DEUX
+  // niveaux, lus et normalisés EXACTEMENT comme l'action campagne-budget-list
+  // qui alimente l'écran (mergeBudgets / canonicalizeOperationKeys +
+  // mergeBudgetsOperations). Ne lire que `budgets` laisserait les 4 colonnes de
+  // suivi budgétaire vides pour toute parcelle budgétée à la maille OPÉRATION —
+  // alors que l'écran, lui, les remplit.
+  // (`campagneB` est validé en tête de fonction — fail-fast, avant toute
+  // lecture : ici il est forcément exploitable.)
+  const budgetsByLabel = {};
+  const opBudgetsByLabel = {};
+  const snapB = await db_firestore.collection('sb_campagne_budget_jh')
+    .where('campagne', '==', campagneB).get();
+  const refListB = await loadReferentielTaches();
+  const operationsConnuesListB = referentielOperationsConnues(refListB);
+  snapB.forEach((doc) => {
+    const d = doc.data() || {};
+    const label = d.label_bee_one || '';
+    if (!label) return;
+    if (fermeFilter && deriveFerme(null, label, campagneB) !== fermeFilter) return;
+    if (cultureFilter
+      && filterMirrorRowsByCulture([{ Parcelle_Culturale: label }], cultureFilter).length === 0) return;
+    const key = String(label).trim().toUpperCase();
+    budgetsByLabel[key] = campagneBudget.mergeBudgets(d.budgets, {});
+    opBudgetsByLabel[key] = campagneBudget.mergeBudgetsOperations(
+      campagneBudget.canonicalizeOperationKeys(d.budgets_operations, operationsConnuesListB),
+      {}
+    );
+  });
+
+  return campagneExport.generateCampagneWorkbook({
+    culture,
+    data,
+    fermeFilter,
+    sbMap,
+    supByLabel,
+    budgetsByLabel,
+    opBudgetsByLabel,
+  });
+}
+exports.buildCampagneExportXlsx = buildCampagneExportXlsx;
 
 // =============================================
 async function warmAllPointageCaches() {
@@ -3632,100 +3907,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // Utilisé par CampagneAnalytiqueTab (Vue "Affectation par Ha" + "Par Variété").
       // NE modifie PAS campagne-mo-variete.
       if (action === "campagne-analytique-detail") {
-        const today = new Date();
-        const y = today.getFullYear();
-        const startYear = today.getMonth() >= 6 ? y : y - 1;
-        const campagne = {
-          start: `${startYear}-07-01`,
-          end: `${startYear + 1}-06-30`,
-          label: `${startYear}/${startYear + 1}`,
-        };
-
-        await warmRefTaches();
-
-        const cached = await withCache(
-          // v2 : ajout de `nbOuv` par ligne. Sans bump de clé, une réponse v1
-          // encore en cache (TTL 30 min) servirait des lignes sans `nbOuv` et
-          // la colonne « Ouvriers » de la pop-up afficherait 0 sans erreur.
-          pointageCacheKey(`campagne_analytique_detail_v2_${campagne.start}`, _fermeFilter),
-          30 * 60 * 1000,
-          async () => {
-            const meta = await getPointageMeta();
-            const allPeriodes = (meta?.allPeriodes || []).filter(p => {
-              const dates = (meta?.periodeMap?.[p] || []);
-              return dates.some(d => d >= campagne.start && d <= campagne.end);
-            });
-
-            // Lire toutes les rows miroir de la campagne — granularité parcelle×quinzaine×opération
-            const rows = [];
-
-            for (const periode of allPeriodes) {
-              const dates = (meta?.periodeMap?.[periode] || []).filter(d => d >= campagne.start && d <= campagne.end);
-              for (let i = 0; i < dates.length; i += 10) {
-                const batch = dates.slice(i, i + 10);
-                const batchResults = await Promise.all(batch.map(d => getPointageRowsForDate(d)));
-                for (const dayRows of batchResults) {
-                  // Grouper par (parcelle, periode, operation, groupe) pour réduire le volume
-                  const groups = {};
-                  for (const r of dayRows) {
-                    const famille = resolveFamily(r.Operation_Groupe, r.Operation_Famille);
-                    const key = `${(r.Parcelle_Culturale || '').trim()}|${(r.Ref_parcelle || '').trim()}|${periode}|${(r.Operation || '').trim()}|${(r.Operation_Groupe || '').trim()}`;
-                    if (!groups[key]) groups[key] = {
-                      parcelle: (r.Parcelle_Culturale || '').trim(),
-                      refParcelle: (r.Ref_parcelle || '').trim(),
-                      ferme: deriveFerme(r.Ref_parcelle, r.Parcelle_Culturale),
-                      periode,
-                      operation: (r.Operation || '').trim(),
-                      groupe: (_refMap[r.Operation_Groupe] || {}).groupe || '',
-                      famille,
-                      code: (r.Operation_Groupe || '').trim(),
-                      jh: 0,
-                      cout: 0,
-                      // Matricules DISTINCTS du groupe (jamais un compteur : un
-                      // ouvrier pointé deux fois sur la même opération le même
-                      // jour ne compte qu'une fois). Remplacé par `nbOuv` avant
-                      // le push — un Set sérialiserait en `{}`.
-                      workers: new Set(),
-                    };
-                    groups[key].jh += r.Nombre_Jr || 0;
-                    groups[key].cout += r.Cout || 0;
-                    if (r.Personnel_Matricule) groups[key].workers.add(r.Personnel_Matricule);
-                  }
-                  for (const g of Object.values(groups)) {
-                    g.nbOuv = g.workers.size;
-                    delete g.workers;
-                    rows.push(g);
-                  }
-                }
-              }
-            }
-
-            // Enrichir avec Ha depuis sb_parcelle_referentiel
-            const refSnap = await db_firestore.collection('sb_parcelle_referentiel').get();
-            const haByRef = {};
-            refSnap.forEach(doc => {
-              const d = doc.data();
-              if (d.label_bee_one && d.ha) haByRef[d.label_bee_one.trim().toUpperCase()] = d.ha;
-            });
-
-            // Liste triée des périodes présentes
-            const periodeSet = new Set(rows.map(r => r.periode));
-            const periodes = [...periodeSet].sort();
-
-            // Liste des familles depuis référentiel complet
-            const refData = await loadReferentielTaches();
-            const famillesOrdered = [...new Set(refData.ops.map(o => o.famille))];
-
-            return {
-              success: true,
-              campagne: campagne.label,
-              periodes,
-              famillesOrdered,
-              haByRef,
-              rows: rows.filter(r => r.jh > 0 || r.cout > 0),
-            };
-          }
-        );
+        // Corps EXTRAIT en computeCampagneAnalytiqueDetail (module level) pour
+        // être réutilisable en interne par l'export Excel serveur. Le périmètre
+        // du gating, jusqu'ici implicite (shadow des fetchers), est passé
+        // EXPLICITEMENT — même filtrage, même fail-closed, même clé de cache.
+        const cached = await computeCampagneAnalytiqueDetail(_fermeFilter, _cultureFilter);
         return res.json(cached);
       }
 

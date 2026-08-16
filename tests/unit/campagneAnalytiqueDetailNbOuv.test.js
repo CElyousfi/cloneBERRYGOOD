@@ -12,6 +12,12 @@
 // EXTRAIT et EXÉCUTÉ dans un vm avec des dépendances stubbées, ce qui prouve le
 // comportement (matricules DISTINCTS, Set non sérialisé) et pas seulement la
 // présence du mot `nbOuv`.
+//
+// ⚠️ CIBLE = `computeCampagneAnalytiqueDetail`, pas le handler HTTP. Depuis le
+// LOT A de l'export serveur, le handler `campagne-analytique-detail` ne fait
+// plus que déléguer à cette fonction de module (réutilisée par
+// buildCampagneExportXlsx). Le corps agrégatif — et donc `nbOuv` et la clé de
+// cache — vit là. Viser le handler laisserait le test vert sur un bloc vide.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -24,11 +30,19 @@ const SRC = fs.readFileSync(
   'utf8'
 );
 
-const ACTION_IDX = SRC.indexOf('if (action === "campagne-analytique-detail") {');
-assert.ok(ACTION_IDX !== -1, 'handler campagne-analytique-detail introuvable');
-const ACTION_END = SRC.indexOf('if (action === "campagne-conso-parcelle") {', ACTION_IDX);
-assert.ok(ACTION_END !== -1, 'borne de fin du handler introuvable');
+const ACTION_IDX = SRC.indexOf('async function computeCampagneAnalytiqueDetail(');
+assert.ok(ACTION_IDX !== -1, 'computeCampagneAnalytiqueDetail introuvable');
+const ACTION_END = SRC.indexOf('exports.computeCampagneAnalytiqueDetail', ACTION_IDX);
+assert.ok(ACTION_END !== -1, 'borne de fin de la fonction introuvable');
 const BLOCK = SRC.slice(ACTION_IDX, ACTION_END);
+
+// Le handler HTTP ne doit garder AUCUN corps agrégatif propre : s'il en
+// reprenait un (copier-coller à la place de la délégation), ce fichier
+// testerait une version morte pendant que la vivante dériverait.
+const HANDLER_IDX = SRC.indexOf('if (action === "campagne-analytique-detail") {');
+assert.ok(HANDLER_IDX !== -1, 'handler campagne-analytique-detail introuvable');
+const HANDLER_END = SRC.indexOf('if (action === "campagne-conso-parcelle") {', HANDLER_IDX);
+const HANDLER_BLOCK = SRC.slice(HANDLER_IDX, HANDLER_END);
 
 /** Le bloc d'agrégation d'une journée, extrait tel quel. */
 function aggregateBlock() {
@@ -100,4 +114,10 @@ test('lignes sans matricule : nbOuv = 0, aucune exception', () => {
 test('la clé de cache est bumpée : une réponse v1 (sans nbOuv) ne peut plus être servie', () => {
   assert.match(BLOCK, /campagne_analytique_detail_v2_/, 'clé de cache non bumpée');
   assert.doesNotMatch(BLOCK, /campagne_analytique_detail_v1_/);
+});
+
+test('le handler HTTP délègue et ne réagrège rien lui-même', () => {
+  assert.match(HANDLER_BLOCK, /computeCampagneAnalytiqueDetail\(_fermeFilter, _cultureFilter\)/);
+  assert.doesNotMatch(HANDLER_BLOCK, /const groups = \{\};/,
+    'le handler a récupéré un corps agrégatif : il doit déléguer');
 });

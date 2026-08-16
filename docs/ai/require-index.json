@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:23fdce6e8f244700",
+    "sourceFingerprint": "sha256:3e5be797d16b705f",
     "stats": {
-      "targetFiles": 206,
-      "targetFilesWithDirectTests": 124,
-      "targetFilesWithTransitiveTests": 141,
-      "testFilesScanned": 170
+      "targetFiles": 212,
+      "targetFilesWithDirectTests": 130,
+      "targetFilesWithTransitiveTests": 148,
+      "testFilesScanned": 175
     }
   },
   "index": {
@@ -146,15 +146,75 @@
     "functions/lib/campagneBudget/validate.js": {
       "directTests": [
         "functions/lib/campagneBudget/__tests__/validate.test.js",
+        "tests/unit/campagne-export-fail-loud.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/importBudgetCampagne.test.js"
       ],
       "transitiveTests": [
         "functions/lib/campagneBudget/__tests__/validate.test.js",
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+        "tests/unit/campagne-export-fail-loud.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/importBudgetCampagne.test.js"
+      ]
+    },
+    "functions/lib/campagneExport/analytiqueUtils.js": {
+      "directTests": [
+        "tests/unit/campagneExportBackend.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+        "tests/unit/campagneExportBackend.test.js"
+      ]
+    },
+    "functions/lib/campagneExport/buildWorkbook.js": {
+      "directTests": [
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js"
+      ]
+    },
+    "functions/lib/campagneExport/campagneExportUtils.js": {
+      "directTests": [
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+        "tests/unit/campagneExportBackend.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+        "tests/unit/campagneExportBackend.test.js"
+      ]
+    },
+    "functions/lib/campagneExport/cultureUtils.js": {
+      "directTests": [
+        "tests/unit/campagneExportBackend.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+        "tests/unit/campagneExportBackend.test.js"
+      ]
+    },
+    "functions/lib/campagneExport/index.js": {
+      "directTests": [
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js"
+      ]
+    },
+    "functions/lib/campagneExport/renderXlsx.js": {
+      "directTests": [],
+      "transitiveTests": [
+        "functions/lib/campagneExport/__tests__/renderXlsx.test.js"
       ]
     },
     "functions/lib/fonctions/fonctionsHistory.js": {
@@ -422,12 +482,14 @@
       "directTests": [
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
         "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/campagne-export-fail-loud.test.js",
         "tests/unit/campagneUtilsBackend.test.js"
       ],
       "transitiveTests": [
         "functions/lib/mappingConso/__tests__/resolver.test.js",
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
         "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/campagne-export-fail-loud.test.js",
         "tests/unit/campagneUtilsBackend.test.js"
       ]
     },
@@ -1110,8 +1172,12 @@
       ]
     },
     "functions/middleware/cache.js": {
-      "directTests": [],
-      "transitiveTests": []
+      "directTests": [
+        "tests/unit/campagne-analytique-cache-key.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/campagne-analytique-cache-key.test.js"
+      ]
     },
     "functions/middleware/cors.js": {
       "directTests": [
@@ -1320,10 +1386,12 @@
     "public/lib/analytiqueUtils.js": {
       "directTests": [
         "tests/unit/analytiqueUtils.test.js",
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ],
       "transitiveTests": [
         "tests/unit/analytiqueUtils.test.js",
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ]
     },
@@ -1377,9 +1445,11 @@
     },
     "public/lib/campagneExportUtils.js": {
       "directTests": [
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ]
     },
@@ -1403,11 +1473,13 @@
       "directTests": [
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/cultureUtils.test.js"
       ],
       "transitiveTests": [
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
+        "tests/unit/campagneExportBackend.test.js",
         "tests/unit/cultureUtils.test.js"
       ]
     },

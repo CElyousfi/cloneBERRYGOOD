@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "215/354 fichiers classifiés",
+          "detail": "216/355 fichiers classifiés",
           "max": 40,
           "score": 24
         },
@@ -14,12 +14,12 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "51/147 modules avec ≥1 test",
+          "detail": "52/148 modules avec ≥1 test",
           "max": 30,
-          "score": 10
+          "score": 11
         }
       },
-      "total": 61
+      "total": 62
     },
     "heatmap": [
       {
@@ -27,12 +27,16 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 20,
+        "commits": 21,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 20,
+        "commits": 21,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
+      },
+      {
+        "commits": 17,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 15,
@@ -41,10 +45,6 @@
       {
         "commits": 15,
         "file": "tests/unit/campagneBudgetTab.test.js"
-      },
-      {
-        "commits": 12,
-        "file": "functions/pointageService.js"
       },
       {
         "commits": 12,
@@ -64,9 +64,9 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:fe0db87edd5f8ec5",
+    "sourceFingerprint": "sha256:2174a264f73adfef",
     "stats": {
-      "backendModules": 91,
+      "backendModules": 92,
       "cloudFunctions": 87,
       "coverageScore": 35,
       "domains": 10,
@@ -724,6 +724,7 @@
         ],
         "modules": [
           "campagneBudget",
+          "campagneExport",
           "parcelleGroupes"
         ],
         "routes": [
@@ -738,7 +739,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 71,
+      "coverageScore": 72,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -777,7 +778,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 19,
+          "coCommits": 20,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -805,6 +806,20 @@
           "windowDays": 90
         },
         {
+          "coCommits": 8,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
+          "file": "public/components/CampagneAnalytiqueTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 7,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
@@ -821,13 +836,6 @@
         {
           "coCommits": 6,
           "domain": null,
-          "file": "public/components/CampagneAnalytiqueTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
           "file": "public/components/PivotAnalytiqueGrid.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -836,13 +844,6 @@
           "coCommits": 6,
           "domain": null,
           "file": "public/components/PivotAnalytiqueGrid.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -921,6 +922,8 @@
       "tests": {
         "backend": [
           "functions/lib/campagneBudget/__tests__/validate.test.js",
+          "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
+          "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
           "functions/lib/parcelleGroupes/__tests__/seedHa.test.js",
           "functions/lib/parcelleGroupes/__tests__/split.test.js",
           "functions/lib/parcelleGroupes/__tests__/validate.test.js"
@@ -2019,6 +2022,10 @@
       "domain": "caisse"
     },
     "functions/lib/campagneBudget": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "functions/lib/campagneExport": {
       "confidence": "high",
       "domain": "referentiel"
     },
