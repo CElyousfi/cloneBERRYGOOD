@@ -4,16 +4,25 @@
  * restoreCaisse.js — Restauration d'un backup produit par purgeCaisse.js.
  *
  * Filet de sécurité de l'opération irréversible de purge. Le script :
- *   1) LIT le fichier docs/BACKUP-purge-caisse-<stamp>.json (ou --file <chemin>).
+ *   1) LIT le fichier de backup, dont le nom dépend du périmètre purgé :
+ *        docs/BACKUP-purge-caisse-<stamp>.json           (mode par défaut)
+ *        docs/BACKUP-purge-comptes-clients-<stamp>.json  (--comptes-clients)
+ *      ou n'importe quel chemin via --file <chemin>.
  *      Fichier absent / JSON invalide / structure incohérente -> STOP, exit 1.
  *   2) RECONSTRUIT les Timestamp Firestore : la sérialisation JSON transforme un
  *      Timestamp en {"_seconds":…,"_nanoseconds":…} ; un set() naïf le réécrirait
  *      en map et corromprait l'historique. La reconstruction est RÉCURSIVE et
  *      traverse maps ET tableaux (ex. le champ `history`, tableau d'objets).
  *   3) CONTRÔLES BLOQUANTS avant tout write : ids uniques, `data` objet, chaque
- *      caisse_id dans purge_caisse_ids du backup, aucun type ∈ {vente,
- *      encaissement} (un backup de purge n'en contient jamais), définitions
- *      cibles existantes.
+ *      caisse_id dans purge_caisse_ids du backup, type conforme aux RÈGLES DU
+ *      BACKUP (cf. ci-dessous), définitions cibles existantes.
+ *      Les règles de type et le périmètre sont lus DANS le fichier, jamais
+ *      depuis des constantes en dur — c'est ce qui permet de restaurer aussi
+ *      bien un backup du mode par défaut (types `vente`/`encaissement`
+ *      interdits) qu'un backup du mode --comptes-clients (type `vente`
+ *      EXIGÉ sur chaque document). Un backup antérieur à l'ajout des
+ *      métadonnées (`perimetre`/`type_attendu`/`types_interdits` absents) est
+ *      traité avec les règles historiques du mode par défaut.
  *   4) RESTAURE les transactions par set() sur les ids d'origine, chunks de 400
  *      (idempotent : un doc déjà présent est réécrit à l'identique).
  *   5) RESTAURE les soldes (solde_initial / solde_actuel) des caisses purgées
@@ -24,7 +33,11 @@
  * Usage :
  *   node functions/scripts/restoreCaisse.js --stamp <nom>
  *        DRY-RUN par défaut : lit, valide, reconstruit, n'écrit RIEN.
+ *        Résout docs/BACKUP-purge-caisse-<stamp>.json (mode par défaut).
+ *   node functions/scripts/restoreCaisse.js --stamp <nom> --comptes-clients
+ *        Résout docs/BACKUP-purge-comptes-clients-<stamp>.json.
  *   node functions/scripts/restoreCaisse.js --file docs/BACKUP-purge-caisse-x.json
+ *        Chemin explicite : le mode est alors déduit du contenu du fichier.
  *   node functions/scripts/restoreCaisse.js --stamp <nom> --apply
  *        Réécrit réellement dans Firestore.
  *
@@ -34,23 +47,45 @@
 const path = require('path');
 const fs = require('fs');
 
-const admin = require('firebase-admin');
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: 'berrygood-farms-dashboard',
-    credential: admin.credential.applicationDefault(),
-  });
+// firebase-admin est chargé PARESSEUSEMENT : les helpers purs (contrôles du
+// backup) doivent rester requérables depuis les tests unitaires de la racine,
+// où le SDK n'est pas installé.
+let _fb = null;
+function fb() {
+  if (!_fb) {
+    const admin = require('firebase-admin');
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        projectId: 'berrygood-farms-dashboard',
+        credential: admin.credential.applicationDefault(),
+      });
+    }
+    _fb = {
+      admin,
+      db: admin.firestore(),
+      Timestamp: admin.firestore.Timestamp,
+      FieldValue: admin.firestore.FieldValue,
+    };
+  }
+  return _fb;
 }
-const db = admin.firestore();
-const { Timestamp, FieldValue } = admin.firestore;
 
 const TRANSACTIONS = 'caisse_transactions';
 const DEFINITIONS = 'caisse_definitions';
-const FORBIDDEN_TYPES = ['vente', 'encaissement'];
+// Règles historiques, appliquées UNIQUEMENT aux backups sans métadonnées de
+// périmètre (produits avant l'ajout du mode --comptes-clients).
+const LEGACY_FORBIDDEN_TYPES = ['vente', 'encaissement'];
 const BATCH_SIZE = 400;
 const STAMP_PATTERN = /^[\w.-]+$/;
 
+// Préfixe de fichier par mode — miroir de purgeCaisse.js.
+const BACKUP_PREFIXES = {
+  'caisses-operationnelles': 'BACKUP-purge-caisse',
+  'comptes-clients': 'BACKUP-purge-comptes-clients',
+};
+
 const APPLY = process.argv.includes('--apply');
+const COMPTES_CLIENTS = process.argv.includes('--comptes-clients');
 
 function argValue(flag) {
   const idx = process.argv.indexOf(flag);
@@ -104,6 +139,7 @@ function reviveTimestamps(value, stats) {
   if (value === null || typeof value !== 'object') return value;
   if (isSerializedTimestamp(value)) {
     stats.timestamps += 1;
+    const { Timestamp } = fb();
     return new Timestamp(value._seconds, value._nanoseconds);
   }
   if (Array.isArray(value)) return value.map((item) => reviveTimestamps(item, stats));
@@ -122,7 +158,10 @@ function resolveBackupPath() {
   if (!STAMP_PATTERN.test(STAMP_ARG)) {
     throw new Error(`STOP : --stamp invalide ("${STAMP_ARG}"). Motif autorisé : ${STAMP_PATTERN}`);
   }
-  return path.join(DOCS_DIR, `BACKUP-purge-caisse-${STAMP_ARG}.json`);
+  const prefix = COMPTES_CLIENTS
+    ? BACKUP_PREFIXES['comptes-clients']
+    : BACKUP_PREFIXES['caisses-operationnelles'];
+  return path.join(DOCS_DIR, `${prefix}-${STAMP_ARG}.json`);
 }
 
 /** Charge et valide la structure du backup. Lève si incohérent. */
@@ -154,11 +193,40 @@ function loadBackup(backupPath) {
   return payload;
 }
 
+/**
+ * Règles de contrôle portées PAR LE BACKUP (périmètre + types), avec repli sur
+ * les règles historiques quand les métadonnées sont absentes (backups produits
+ * avant l'ajout du mode --comptes-clients).
+ */
+function backupRules(payload) {
+  const perimetre =
+    typeof payload.perimetre === 'string' && payload.perimetre
+      ? payload.perimetre
+      : 'caisses-operationnelles';
+  const typeAttendu =
+    typeof payload.type_attendu === 'string' && payload.type_attendu
+      ? normalizeType(payload.type_attendu)
+      : null;
+  const typesInterdits = Array.isArray(payload.types_interdits)
+    ? payload.types_interdits.map(normalizeType)
+    : typeAttendu
+      ? []
+      : LEGACY_FORBIDDEN_TYPES;
+  return {
+    perimetre,
+    typeAttendu,
+    typesInterdits,
+    scope: payload.purge_caisse_ids,
+    metadonnees: typeof payload.perimetre === 'string' && payload.perimetre ? 'backup' : 'héritées',
+  };
+}
+
 /** Contrôles bloquants sur le contenu du backup. Retourne la liste des problèmes. */
 function checkBackup(payload) {
   const problems = [];
   const seen = new Set();
-  const scope = payload.purge_caisse_ids;
+  const rules = backupRules(payload);
+  const scope = rules.scope;
 
   for (const entry of payload.caisse_transactions_a_supprimer) {
     if (!entry || typeof entry.id !== 'string' || !entry.id) {
@@ -177,8 +245,17 @@ function checkBackup(payload) {
       problems.push(`doc ${entry.id} : caisse_id='${caisseId}' hors purge_caisse_ids du backup`);
     }
     const type = normalizeType(entry.data.type);
-    if (FORBIDDEN_TYPES.includes(type)) {
-      problems.push(`doc ${entry.id} : type='${type}' — un backup de purge n’en contient jamais`);
+    if (rules.typeAttendu) {
+      if (type !== rules.typeAttendu) {
+        problems.push(
+          `doc ${entry.id} : type='${type}' ≠ '${rules.typeAttendu}' — ` +
+            `le backup (périmètre ${rules.perimetre}) n’en contient jamais d’autre`
+        );
+      }
+    } else if (rules.typesInterdits.includes(type)) {
+      problems.push(
+        `doc ${entry.id} : type='${type}' — un backup de périmètre ${rules.perimetre} n’en contient jamais`
+      );
     }
   }
 
@@ -217,7 +294,12 @@ function printPlan(byCaisse, stats, payload) {
   }
   console.log(`\n  TOTAL à restaurer : ${totalDocs} doc(s), ${fmt(totalMontant)} MAD`);
   console.log(`  Timestamp reconstruits : ${stats.timestamps}`);
+  const rules = backupRules(payload);
   console.log(`  Backup daté du ${payload.exported_at} (stamp="${payload.stamp}", mode="${payload.mode}")`);
+  console.log(
+    `  Périmètre du backup : ${rules.perimetre} (métadonnées ${rules.metadonnees}) — ` +
+      `${rules.typeAttendu ? `type exigé '${rules.typeAttendu}'` : `types interdits [${rules.typesInterdits.join(', ')}]`}`
+  );
   return totalDocs;
 }
 
@@ -238,9 +320,9 @@ async function restoreTransactions(byCaisse) {
     let written = 0;
     for (let i = 0; i < docs.length; i += BATCH_SIZE) {
       const chunk = docs.slice(i, i + BATCH_SIZE);
-      const batch = db.batch();
+      const batch = fb().db.batch();
       for (const doc of chunk) {
-        batch.set(db.collection(TRANSACTIONS).doc(doc.id), doc.data);
+        batch.set(fb().db.collection(TRANSACTIONS).doc(doc.id), doc.data);
       }
       await batch.commit();
       written += chunk.length;
@@ -254,14 +336,14 @@ async function restoreTransactions(byCaisse) {
 
 async function restoreSoldes(soldesCibles) {
   console.log(`\n[APPLY] Restauration des soldes caisse_definitions…`);
-  const batch = db.batch();
+  const batch = fb().db.batch();
   let ops = 0;
   for (const [caisseId, soldes] of soldesCibles.entries()) {
     // update() : on ne recrée jamais une définition disparue.
-    batch.update(db.collection(DEFINITIONS).doc(caisseId), {
+    batch.update(fb().db.collection(DEFINITIONS).doc(caisseId), {
       solde_initial: soldes.solde_initial,
       solde_actuel: soldes.solde_actuel,
-      updated_at: FieldValue.serverTimestamp(),
+      updated_at: fb().FieldValue.serverTimestamp(),
     });
     ops += 1;
   }
@@ -269,12 +351,21 @@ async function restoreSoldes(soldesCibles) {
   console.log(`  ${ops} caisse_definitions restaurée(s)`);
 }
 
-async function verifyPostWrite(byCaisse, soldesCibles) {
+/**
+ * Vérif post-write. `deps` permet d'injecter un double de Firestore ({db}) :
+ * ce chemin n'est atteint qu'en --apply, il doit rester testable hors ligne.
+ */
+async function verifyPostWrite(byCaisse, soldesCibles, deps) {
   console.log(`\n[VÉRIF POST-WRITE]`);
   const problems = [];
+  const db = deps && deps.db ? deps.db : fb().db;
 
   for (const [caisseId, docs] of [...byCaisse.entries()].sort()) {
-    const snap = await db.collection(TRANSACTIONS).where('caisse_id', '==', caisseId).count().get();
+    const snap = await db
+      .collection(TRANSACTIONS)
+      .where('caisse_id', '==', caisseId)
+      .count()
+      .get();
     const actual = snap.data().count;
     console.log(`  ${caisseId} : ${actual} transaction(s) (attendu ${docs.length})`);
     if (actual !== docs.length) {
@@ -335,7 +426,7 @@ async function main() {
     if (problems.length > 20) console.log(`    … (${problems.length - 20} autre(s))`);
     throw new Error('STOP : backup incohérent. AUCUNE écriture Firestore effectuée.');
   }
-  console.log(`  OK : ids uniques, périmètre conforme, aucun type interdit.`);
+  console.log(`  OK : ids uniques, périmètre conforme, types conformes aux règles du backup.`);
 
   // Soldes cibles = valeurs du backup pour les caisses purgées.
   const defsBackup = new Map(payload.caisse_definitions.map((d) => [d.id, d.data]));
@@ -364,7 +455,7 @@ async function main() {
 
   // Les définitions cibles doivent exister (update() échouerait sinon).
   for (const caisseId of soldesCibles.keys()) {
-    const doc = await db.collection(DEFINITIONS).doc(caisseId).get();
+    const doc = await fb().db.collection(DEFINITIONS).doc(caisseId).get();
     if (!doc.exists) {
       throw new Error(
         `STOP : caisse_definitions "${caisseId}" absente en base. Restauration interrompue ` +
@@ -391,8 +482,17 @@ if (require.main === module) {
       console.error(`\n${err.message || err}`);
       process.exitCode = 1;
     })
-    .finally(() => db.terminate().catch(() => {}));
+    .finally(() => fb().db.terminate().catch(() => {}));
 }
 
 // Helpers purs exposés pour vérification hors ligne (aucun effet de bord).
-module.exports = { isSerializedTimestamp, reviveTimestamps, checkBackup, normalizeType };
+module.exports = {
+  isSerializedTimestamp,
+  reviveTimestamps,
+  checkBackup,
+  backupRules,
+  normalizeType,
+  // Exposée pour être testée avec un double de Firestore : c'est le seul
+  // chemin --apply que ni le dry-run ni les tests de garde-fous n'exercent.
+  verifyPostWrite,
+};
