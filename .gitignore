@@ -88,6 +88,10 @@ node_modules
 /data/declares-IMPORT.xlsx
 /data/declares-parsed.json
 
+# Backups Firestore générés par les scripts one-shot (données financières
+# nominatives — jamais versionnées)
+docs/BACKUP-*.json
+
 # Bruit OS / sauvegardes locales
 .DS_Store
 *.bak
