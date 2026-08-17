@@ -1248,15 +1248,6 @@
         }
         .install-btn:hover { background: var(--green); color: #fff; }
 
-        /* First visit banner */
-        .tutorial-banner { background: linear-gradient(135deg, var(--berry-pale), rgba(139,34,82,0.05)); border: 1.5px solid rgba(139,34,82,0.15); border-radius: 12px; padding: 12px 16px; margin: 12px 16px 0; display: flex; align-items: center; gap: 12px; cursor: pointer; transition: all 0.2s; }
-        .tutorial-banner:hover { border-color: var(--berry); background: var(--berry-pale); }
-        .tutorial-banner .banner-icon { width: 36px; height: 36px; border-radius: 10px; background: var(--berry); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-        .tutorial-banner .banner-text { flex: 1; }
-        .tutorial-banner .banner-text strong { display: block; font-size: 12px; color: var(--berry); }
-        .tutorial-banner .banner-text span { font-size: 11px; color: var(--gray-400); }
-        .tutorial-banner .banner-close { background: none; border: none; color: var(--gray-400); cursor: pointer; font-size: 14px; padding: 4px; }
-
         /* Irrigation Stationnaire */
         .irrigation-points-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 10px 0; }
         .irrigation-point-card { background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; padding: 10px; }
@@ -1371,64 +1362,64 @@
         </div>
     </div>
     <!-- Local-only UI test bypass (no-op except on localhost?testui=1). See public/lib/local-test-bypass.js -->
-    <script src="lib/local-test-bypass.js?v=mswaum5x"></script>
+    <script src="lib/local-test-bypass.js?v=msxn2x6f"></script>
     <!-- Pure auth/version decision helpers — loaded NON-defer so window.AuthResilience
          exists before app.js (deferred) runs its checkVersion IIFE. See public/lib/authResilience.js -->
-    <script src="lib/authResilience.js?v=mswaum5x"></script>
-    <script defer src="lib/caisseUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/encaissementsCanevas.js?v=mswaum5x"></script>
-    <script defer src="lib/growthUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/meteoCalc.js?v=mswaum5x"></script>
-    <script defer src="lib/inflightDedup.js?v=mswaum5x"></script>
-    <script defer src="lib/bdcWorkflow.js?v=mswaum5x"></script>
-    <script defer src="lib/stockMovementGuard.js?v=mswaum5x"></script>
-    <script defer src="lib/paieUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/quinzaineUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/analytiqueUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/paieDataCache.js?v=mswaum5x"></script>
-    <script defer src="lib/primesImportParse.js?v=mswaum5x"></script>
-    <script defer src="lib/primesV2.js?v=mswaum5x"></script>
-    <script defer src="lib/recolteKpiUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/inventaireUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/campagneUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/factureExportUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/useStockLocations.js?v=mswaum5x"></script>
-    <script defer src="lib/scanAttachmentUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/scanClientUpload.js?v=mswaum5x"></script>
-    <script defer src="lib/scanHistoryDisplay.js?v=mswaum5x"></script>
-    <script defer src="lib/bdcReceptionUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/parcelleGroupUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/cultureUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/campagneExportUtils.js?v=mswaum5x"></script>
-    <script defer src="lib/campagneBudgetPivot.js?v=mswaum5x"></script>
-    <script defer src="lib/campagneRythme.js?v=mswaum5x"></script>
-    <script defer src="lib/campagneBudgetQuinzaine.js?v=mswaum5x"></script>
-    <script defer src="components/BugReportButton.js?v=mswaum5x"></script>
-    <script defer src="components/BugReportsAdmin.js?v=mswaum5x"></script>
-    <script defer src="components/PointageValidationPanel.js?v=mswaum5x"></script>
-    <script defer src="components/PointageValidationView.js?v=mswaum5x"></script>
-    <script defer src="components/MagMappingConsoTab.js?v=mswaum5x"></script>
-    <script defer src="components/MagBonsCommandeTab.js?v=mswaum5x"></script>
-    <script defer src="components/MagBdcReceptionTab.js?v=mswaum5x"></script>
-    <script defer src="components/MagBCTab.js?v=mswaum5x"></script>
-    <script defer src="components/ParcellesParamsTab.js?v=mswaum5x"></script>
-    <script defer src="components/PmpDetailPopup.js?v=mswaum5x"></script>
-    <script defer src="components/InventaireMouvementsPopup.js?v=mswaum5x"></script>
-    <script defer src="components/FactureDetailPopup.js?v=mswaum5x"></script>
-    <script defer src="components/ScanAttachmentButton.js?v=mswaum5x"></script>
-    <script defer src="components/ConsoValoriseeTab.js?v=mswaum5x"></script>
-    <script defer src="components/PrimesFixesTab.js?v=mswaum5x"></script>
-    <script defer src="components/ParcellesGroupesPanel.js?v=mswaum5x"></script>
-    <script defer src="components/ParcellesReferentielTab.js?v=mswaum5x"></script>
-    <script defer src="components/CampagneAnalytiqueTab.js?v=mswaum5x"></script>
-    <script defer src="components/MagStockFilesTab.js?v=mswaum5x"></script>
-    <script defer src="components/QuinzaineCampagneSelect.js?v=mswaum5x"></script>
-    <script defer src="components/PivotAnalytiqueGrid.js?v=mswaum5x"></script>
-    <script defer src="components/AffectationAnalytiqueTable.js?v=mswaum5x"></script>
-    <script defer src="components/QuinzaineRecapCards.js?v=mswaum5x"></script>
-    <script defer src="components/CampagneBudgetTab.js?v=mswaum5x"></script>
-    <script defer src="lib/emargementPdf.js?v=mswaum5x"></script>
-    <script defer src="lib/emargementExcel.js?v=mswaum5x"></script>
-    <script defer src="app.js?v=mswaum5x"></script>
+    <script src="lib/authResilience.js?v=msxn2x6f"></script>
+    <script defer src="lib/caisseUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/encaissementsCanevas.js?v=msxn2x6f"></script>
+    <script defer src="lib/growthUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/meteoCalc.js?v=msxn2x6f"></script>
+    <script defer src="lib/inflightDedup.js?v=msxn2x6f"></script>
+    <script defer src="lib/bdcWorkflow.js?v=msxn2x6f"></script>
+    <script defer src="lib/stockMovementGuard.js?v=msxn2x6f"></script>
+    <script defer src="lib/paieUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/quinzaineUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/analytiqueUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/paieDataCache.js?v=msxn2x6f"></script>
+    <script defer src="lib/primesImportParse.js?v=msxn2x6f"></script>
+    <script defer src="lib/primesV2.js?v=msxn2x6f"></script>
+    <script defer src="lib/recolteKpiUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/inventaireUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/campagneUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/factureExportUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/useStockLocations.js?v=msxn2x6f"></script>
+    <script defer src="lib/scanAttachmentUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/scanClientUpload.js?v=msxn2x6f"></script>
+    <script defer src="lib/scanHistoryDisplay.js?v=msxn2x6f"></script>
+    <script defer src="lib/bdcReceptionUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/parcelleGroupUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/cultureUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/campagneExportUtils.js?v=msxn2x6f"></script>
+    <script defer src="lib/campagneBudgetPivot.js?v=msxn2x6f"></script>
+    <script defer src="lib/campagneRythme.js?v=msxn2x6f"></script>
+    <script defer src="lib/campagneBudgetQuinzaine.js?v=msxn2x6f"></script>
+    <script defer src="components/BugReportButton.js?v=msxn2x6f"></script>
+    <script defer src="components/BugReportsAdmin.js?v=msxn2x6f"></script>
+    <script defer src="components/PointageValidationPanel.js?v=msxn2x6f"></script>
+    <script defer src="components/PointageValidationView.js?v=msxn2x6f"></script>
+    <script defer src="components/MagMappingConsoTab.js?v=msxn2x6f"></script>
+    <script defer src="components/MagBonsCommandeTab.js?v=msxn2x6f"></script>
+    <script defer src="components/MagBdcReceptionTab.js?v=msxn2x6f"></script>
+    <script defer src="components/MagBCTab.js?v=msxn2x6f"></script>
+    <script defer src="components/ParcellesParamsTab.js?v=msxn2x6f"></script>
+    <script defer src="components/PmpDetailPopup.js?v=msxn2x6f"></script>
+    <script defer src="components/InventaireMouvementsPopup.js?v=msxn2x6f"></script>
+    <script defer src="components/FactureDetailPopup.js?v=msxn2x6f"></script>
+    <script defer src="components/ScanAttachmentButton.js?v=msxn2x6f"></script>
+    <script defer src="components/ConsoValoriseeTab.js?v=msxn2x6f"></script>
+    <script defer src="components/PrimesFixesTab.js?v=msxn2x6f"></script>
+    <script defer src="components/ParcellesGroupesPanel.js?v=msxn2x6f"></script>
+    <script defer src="components/ParcellesReferentielTab.js?v=msxn2x6f"></script>
+    <script defer src="components/CampagneAnalytiqueTab.js?v=msxn2x6f"></script>
+    <script defer src="components/MagStockFilesTab.js?v=msxn2x6f"></script>
+    <script defer src="components/QuinzaineCampagneSelect.js?v=msxn2x6f"></script>
+    <script defer src="components/PivotAnalytiqueGrid.js?v=msxn2x6f"></script>
+    <script defer src="components/AffectationAnalytiqueTable.js?v=msxn2x6f"></script>
+    <script defer src="components/QuinzaineRecapCards.js?v=msxn2x6f"></script>
+    <script defer src="components/CampagneBudgetTab.js?v=msxn2x6f"></script>
+    <script defer src="lib/emargementPdf.js?v=msxn2x6f"></script>
+    <script defer src="lib/emargementExcel.js?v=msxn2x6f"></script>
+    <script defer src="app.js?v=msxn2x6f"></script>
 </body>
 </html>

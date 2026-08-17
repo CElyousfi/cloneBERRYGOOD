@@ -67156,7 +67156,6 @@ ${rejetHtml}
 
             // Tutorial state
             const [showTutorialMenu, setShowTutorialMenu] = useState(false);
-            const [showTutorialBanner, setShowTutorialBanner] = useState(() => !localStorage.getItem('tutorial_banner_dismissed_' + userProfile.profileId));
             const { startTutorial } = useTutorialEngine(setCurrentTab, setSidebarOpen);
 
             // Alias parcelles — persisté en localStorage
@@ -67914,19 +67913,6 @@ ${rejetHtml}
                                 {pullDist > 0 && (
                                     <div style={{display:'flex', justifyContent:'center', alignItems:'center', height: pullDist * 0.5, overflow:'hidden', transition: pullDist > 60 ? 'none' : 'height 0.2s'}}>
                                         <i className={`fa-solid fa-arrow-rotate-right${pullDist > 60 ? ' fa-spin' : ''}`} style={{fontSize:18, color: pullDist > 60 ? 'var(--berry)' : 'var(--gray-400)', transform:`rotate(${pullDist * 3}deg)`, transition:'color 0.2s'}}></i>
-                                    </div>
-                                )}
-                                {/* Tutorial first-visit banner */}
-                                {showTutorialBanner && getTutorials(currentProfile).length > 0 && (
-                                    <div className="tutorial-banner" onClick={() => { setShowTutorialBanner(false); localStorage.setItem('tutorial_banner_dismissed_' + userProfile.profileId, '1'); setShowTutorialMenu(true); }}>
-                                        <div className="banner-icon"><i className="fa-solid fa-graduation-cap"></i></div>
-                                        <div className="banner-text">
-                                            <strong>Nouveau ici ? Découvrez le guide interactif</strong>
-                                            <span>Des tutoriels pas-à-pas pour apprendre à utiliser l'application</span>
-                                        </div>
-                                        <button className="banner-close" onClick={e => { e.stopPropagation(); setShowTutorialBanner(false); localStorage.setItem('tutorial_banner_dismissed_' + userProfile.profileId, '1'); }}>
-                                            <i className="fa-solid fa-xmark"></i>
-                                        </button>
                                     </div>
                                 )}
                                 <MesTachesWidget currentProfile={currentProfile} />

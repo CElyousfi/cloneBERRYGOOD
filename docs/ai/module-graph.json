@@ -23,6 +23,10 @@
     },
     "heatmap": [
       {
+        "commits": 22,
+        "file": "public/app.jsx"
+      },
+      {
         "commits": 21,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
@@ -31,20 +35,16 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 20,
-        "file": "public/app.jsx"
-      },
-      {
-        "commits": 18,
-        "file": "functions/pointageService.js"
-      },
-      {
         "commits": 15,
         "file": "public/components/CampagneBudgetTab.jsx"
       },
       {
         "commits": 15,
         "file": "tests/unit/campagneBudgetTab.test.js"
+      },
+      {
+        "commits": 13,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 12,
@@ -56,15 +56,15 @@
       },
       {
         "commits": 9,
-        "file": "tests/unit/campagneAnalytiquePivot.test.js"
+        "file": "functions/index.js"
       },
       {
-        "commits": 8,
-        "file": "functions/lib/campagneBudget/validate.js"
+        "commits": 9,
+        "file": "tests/unit/campagneAnalytiquePivot.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:8419eab68dd3c0f0",
+    "sourceFingerprint": "sha256:56f99d374308d2a3",
     "stats": {
       "backendModules": 93,
       "cloudFunctions": 89,
