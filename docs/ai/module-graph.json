@@ -59,12 +59,12 @@
         "file": "scripts/build-frontend.js"
       },
       {
-        "commits": 9,
+        "commits": 10,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:5f21f09584d857e8",
+    "sourceFingerprint": "sha256:d1951ee48e0cd117",
     "stats": {
       "backendModules": 93,
       "cloudFunctions": 91,
