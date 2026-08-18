@@ -2,7 +2,7 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:6bfe4f3c359d4a68",
+    "sourceFingerprint": "sha256:af2ceddc48d9e7d8",
     "stats": {
       "targetFiles": 218,
       "targetFilesWithDirectTests": 133,
@@ -605,6 +605,7 @@
     },
     "functions/lib/meteo/sprayDigest.js": {
       "directTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
         "functions/lib/meteo/__tests__/sprayDigest.test.js"
       ],
       "transitiveTests": [

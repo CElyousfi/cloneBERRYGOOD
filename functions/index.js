@@ -2681,12 +2681,13 @@ exports.meteoSprayDigestTrigger = functions
     const checkRecipients = req.query.checkRecipients === "1" || req.query.checkRecipients === "true";
     const alertesOnly = req.query.alertes === "1" || req.query.alertes === "true";
 
-    // Un ENVOI réel (ni preview ni checkRecipients) part en WhatsApp au DG et
-    // aux chefs : réservé aux profils privilégiés — y compris ?alertes=1, qui
-    // envoie le second message. Rôle résolu côté serveur
-    // depuis users/{uid} (jamais depuis le body/la query), comme les actions
-    // admin de bugReports/userManagement.
-    if (!preview && !checkRecipients) {
+    // INVARIANT : toute combinaison de query qui peut atteindre un
+    // sendTemplateMessage passe par la gate de rôle ci-dessous. La condition
+    // est calculée une seule fois par sprayDigest.isRealSend (testé) — ne PAS
+    // la réinliner : c'est en supposant que ?checkRecipients=1 n'envoyait rien
+    // que ?alertes=1&checkRecipients=1 échappait à la gate.
+    const isRealSend = sprayDigest.isRealSend({ preview, checkRecipients, alertesOnly });
+    if (isRealSend) {
       let callerProfileId = null;
       let callerRole = null;
       try {
@@ -2708,12 +2709,22 @@ exports.meteoSprayDigestTrigger = functions
       }
     }
 
+    // Même convention que dailyProductionReportTrigger : numéros masqués.
+    const maskRecipients = (result) => {
+      if (!result.recipients) return result;
+      const mask = (p) => (p ? p.slice(0, 4) + "***" + p.slice(-3) : null);
+      result.recipients = result.recipients.map((r) => ({ ...r, phone: mask(r.phone) }));
+      return result;
+    };
+
     try {
       // ?alertes=1 : on court-circuite le digest pour ne jouer que les alertes.
       if (alertesOnly) {
         const alertesJob = meteoAlertes.createMeteoAlertesJob(buildMeteoAlertesDeps());
-        const alertesResult = await alertesJob.run(date, { preview });
-        return res.json({ success: true, ...alertesResult, dateRequested: date || null });
+        const alertesResult = await alertesJob.run(date, { preview, checkRecipients });
+        return res.json({
+          success: true, ...maskRecipients(alertesResult), dateRequested: date || null,
+        });
       }
 
       const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
@@ -2727,12 +2738,7 @@ exports.meteoSprayDigestTrigger = functions
         result.alertesTitreParam = apercu.titreParam;
         result.alertesBody = apercu.body;
       }
-      if (result.recipients) {
-        // Même convention que dailyProductionReportTrigger : numéros masqués.
-        const mask = (p) => (p ? p.slice(0, 4) + "***" + p.slice(-3) : null);
-        result.recipients = result.recipients.map((r) => ({ ...r, phone: mask(r.phone) }));
-      }
-      return res.json({ success: true, ...result, dateRequested: date || null });
+      return res.json({ success: true, ...maskRecipients(result), dateRequested: date || null });
     } catch (err) {
       console.error("[meteoSprayDigestTrigger] error:", err);
       return res.status(500).json({ success: false, error: err.message });

@@ -43,14 +43,22 @@ const TEMPLATE_NAME = 'meteo_alerte_7j';
 const COLLECTION = 'meteo_alertes_envoyees';
 
 /**
- * Nombre de jours SUIVANTS couverts par la surveillance. La fenêtre inclut
- * `fromISO` (aujourd'hui) ET les 7 jours suivants : J+7 est donc inclus, J+8
- * exclu — « une alerte prévue dans les 7 prochains jours » se lit du point de
- * vue du lecteur du matin, qui compte à partir de demain.
+ * Borne (en jours après `fromISO`) de la fenêtre de surveillance : un jour est
+ * retenu si `0 <= offset <= FENETRE_JOURS`, donc AUJOURD'HUI inclus.
+ *
+ * En pratique la borne haute n'est jamais atteinte : le package Meteoblue
+ * `basic-day` ne renvoie que 7 jours (J0 → J+6), J+7 n'existe pas dans les
+ * données. `FENETRE_JOURS = 7` est donc défensif — il ne coupe rien
+ * aujourd'hui, et couvrirait J+7 si le package venait à en fournir un.
  */
 const FENETRE_JOURS = 7;
 
-/** Seuils de déclenchement — miroir exact de public/app.jsx. */
+/**
+ * Seuils de déclenchement — mêmes valeurs que le bloc `alertes` de
+ * public/app.jsx. Les LIBELLÉS, eux, sont propres à la notification WhatsApp
+ * (« Forte Pluie », vocabulaire demandé) et ne prétendent pas recopier ceux de
+ * l'écran.
+ */
 const SEUILS = Object.freeze({
   chaleur: 32, // °C, temperature_max
   vent: 25, // km/h, windspeed_max
@@ -66,6 +74,19 @@ const MARGES_AGGRAVATION = Object.freeze({
   chaleur: 2, // °C
   vent: 5, // km/h
   pluie: 5, // mm
+});
+
+/**
+ * Valeur COMPARÉE au seuil, par type. L'écran compare la valeur qu'il affiche,
+ * c'est-à-dire la valeur arrondie (public/app.jsx : `Math.round` pour tMax et
+ * vent, arrondi au dixième pour la pluie). Comparer la valeur brute côté
+ * backend ferait diverger les deux : 31.6 °C ou 24.6 km/h alertent à l'écran
+ * mais pas en WhatsApp. On arrondit donc de la même façon avant de comparer.
+ */
+const VALEUR_COMPAREE = Object.freeze({
+  chaleur: Math.round,
+  vent: Math.round,
+  pluie: function(v) { return v; }, // seuil entier, arrondi au dixième : déjà aligné
 });
 
 /** Libellés affichés, par type. */
@@ -180,7 +201,11 @@ function detecterAlertes(weatherData, opts) {
   /** @type {Array<Alerte>} */
   const alertes = [];
   day.time.forEach(function(raw, i) {
-    const dateISO = String(raw || '').split(' ')[0];
+    // Meteoblue renvoie « YYYY-MM-DD » ou « YYYY-MM-DD HH:mm » ; on accepte
+    // aussi le séparateur ISO `T` : sans ça, un changement de format côté
+    // fournisseur ferait échouer diffJours et éteindrait TOUTES les alertes en
+    // silence.
+    const dateISO = String(raw || '').split(/[ T]/)[0];
     const offset = diffJours(from, dateISO);
     if (offset === null || offset < 0 || offset > jours) return;
     TYPES_ORDRE.forEach(function(type) {
@@ -188,7 +213,7 @@ function detecterAlertes(weatherData, opts) {
       if (!Array.isArray(arr)) return;
       const v = arr[i];
       if (typeof v !== 'number' || !Number.isFinite(v)) return;
-      if (v < SEUILS[type]) return;
+      if (VALEUR_COMPAREE[type](v) < SEUILS[type]) return;
       alertes.push({
         type: /** @type {'chaleur'|'vent'|'pluie'} */ (type),
         label: LABELS[type],
@@ -332,6 +357,13 @@ function createMeteoAlertesJob(deps) {
   if (!deps || typeof deps.getMeteoblue !== 'function' || !deps.whatsapp || !deps.db) {
     throw new TypeError('createMeteoAlertesJob: deps.getMeteoblue, deps.whatsapp et deps.db requis');
   }
+  // Câblage vérifié AU DÉMARRAGE : une dep WhatsApp manquante doit faire échouer
+  // la construction du job, pas le premier envoi du matin en prod.
+  ['sendTemplateMessage', 'resolveRecipientsForProfile', 'toSingleLine'].forEach(function(fn) {
+    if (typeof deps.whatsapp[fn] !== 'function') {
+      throw new TypeError('createMeteoAlertesJob: deps.whatsapp.' + fn + ' requis');
+    }
+  });
   const whatsapp = deps.whatsapp;
   const db = deps.db;
   const now = typeof deps.now === 'function' ? deps.now : function() { return new Date(); };
@@ -361,6 +393,12 @@ function createMeteoAlertesJob(deps) {
 
   /**
    * Supprime les entrées dont le jour est déjà passé.
+   *
+   * ⚠️ `todayISO` DOIT être la date du jour côté serveur, jamais une date
+   * fournie par l'appelant : avec `?date=2099-01-01`, toutes les entrées
+   * seraient périmées et l'état anti-répétition serait vidé (réarmement massif
+   * des alertes déjà envoyées).
+   *
    * @param {Array<{id: string, dateISO: string}>} ids
    * @param {string} todayISO
    * @returns {Promise<number>}
@@ -377,8 +415,40 @@ function createMeteoAlertesJob(deps) {
   }
 
   /**
+   * Résout l'audience (DG + chefs F1/F5) et dédoublonne par numéro : le contenu
+   * est identique pour tous, un même numéro ne doit recevoir qu'une fois.
+   * @returns {Promise<Array<{phone: string, displayName: string, uid: string|null, profileId: string, ferme: string|null}>>}
+   */
+  async function resoudreDestinataires() {
+    const resolved = await Promise.all(AUDIENCE.map(function(a) {
+      return Promise.resolve()
+        .then(function() { return whatsapp.resolveRecipientsForProfile(a.profileId, a.ferme); })
+        .catch(function(err) {
+          console.error('[meteoAlertes] resolve failed for ' + a.profileId + ':', err && err.message);
+          return [];
+        })
+        .then(function(list) { return { audience: a, recipients: list || [] }; });
+    }));
+
+    const byPhone = new Map();
+    resolved.forEach(function(r) {
+      r.recipients.forEach(function(rec) {
+        if (!rec || !rec.phone || byPhone.has(rec.phone)) return;
+        byPhone.set(rec.phone, {
+          phone: rec.phone,
+          displayName: rec.displayName || '',
+          uid: rec.uid || null,
+          profileId: r.audience.profileId,
+          ferme: r.audience.ferme,
+        });
+      });
+    });
+    return Array.from(byPhone.values());
+  }
+
+  /**
    * @param {string} [dateISO]
-   * @param {{preview?: boolean}} [opts]
+   * @param {{preview?: boolean, checkRecipients?: boolean}} [opts]
    */
   async function run(dateISO, opts) {
     const options = opts || {};
@@ -405,8 +475,25 @@ function createMeteoAlertesJob(deps) {
       };
     }
 
+    // Diagnostic sec, calqué sur sprayDigest : on résout l'audience et on
+    // s'arrête. AUCUN envoi, AUCUNE écriture, AUCUNE purge — ce mode est
+    // ouvert à tout utilisateur authentifié par le trigger HTTP, il ne doit
+    // donc avoir strictement aucun effet de bord.
+    if (options.checkRecipients) {
+      const dryRecipients = await resoudreDestinataires();
+      return {
+        checkRecipients: true,
+        dateISO: day,
+        alertes: detectees,
+        recipientsCount: dryRecipients.length,
+        recipients: dryRecipients,
+      };
+    }
+
     const { etat, ids } = await lireEtat();
-    const purged = await purger(ids, day);
+    // Purge indexée sur la date du jour SERVEUR, pas sur `day` (qui peut venir
+    // de ?date= et vider toute la collection d'état — cf. purger()).
+    const purged = await purger(ids, todayCasablancaISO(now()));
 
     const aNotifier = filtrerAlertesANotifier(detectees, etat);
     const skipped = detectees.length - aNotifier.length;
@@ -422,31 +509,7 @@ function createMeteoAlertesJob(deps) {
 
     const message = formatAlertes(aNotifier);
 
-    const resolved = await Promise.all(AUDIENCE.map(function(a) {
-      return Promise.resolve()
-        .then(function() { return whatsapp.resolveRecipientsForProfile(a.profileId, a.ferme); })
-        .catch(function(err) {
-          console.error('[meteoAlertes] resolve failed for ' + a.profileId + ':', err && err.message);
-          return [];
-        })
-        .then(function(list) { return { audience: a, recipients: list || [] }; });
-    }));
-
-    // Contenu identique pour tous → un même numéro ne reçoit qu'une fois.
-    const byPhone = new Map();
-    resolved.forEach(function(r) {
-      r.recipients.forEach(function(rec) {
-        if (!rec || !rec.phone || byPhone.has(rec.phone)) return;
-        byPhone.set(rec.phone, {
-          phone: rec.phone,
-          displayName: rec.displayName || '',
-          uid: rec.uid || null,
-          profileId: r.audience.profileId,
-          ferme: r.audience.ferme,
-        });
-      });
-    });
-    const recipients = Array.from(byPhone.values());
+    const recipients = await resoudreDestinataires();
 
     if (!recipients.length) {
       console.error('[meteoAlertes] AUCUN destinataire résolu (dg/chef_f1/chef_f5) — ' +
@@ -487,6 +550,11 @@ function createMeteoAlertesJob(deps) {
 
     // L'état n'est mémorisé QUE si au moins un humain a reçu l'alerte : écrire
     // après un envoi totalement raté ferait taire l'alerte pour toujours.
+    // ARBITRAGE ASSUMÉ sur l'envoi PARTIEL (1 destinataire sur 2 en échec) :
+    // on écrit quand même l'état et on journalise l'échec en `console.error`.
+    // Ne pas écrire renverrait l'alerte à TOUS chaque matin jusqu'à ce que le
+    // numéro cassé soit réparé — le DG serait spammé pour un problème qui ne
+    // le concerne pas. Comportement figé par test.
     let persisted = 0;
     if (sent > 0) {
       const envoyeAt = now().toISOString();
