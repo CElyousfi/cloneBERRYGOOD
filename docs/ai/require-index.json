@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:3a6f278daa5eebe4",
+    "sourceFingerprint": "sha256:b1203bf3fe0f3886",
     "stats": {
-      "targetFiles": 216,
-      "targetFilesWithDirectTests": 131,
-      "targetFilesWithTransitiveTests": 152,
-      "testFilesScanned": 181
+      "targetFiles": 217,
+      "targetFilesWithDirectTests": 132,
+      "targetFilesWithTransitiveTests": 153,
+      "testFilesScanned": 182
     }
   },
   "index": {
@@ -593,6 +593,14 @@
       ],
       "transitiveTests": [
         "functions/lib/meteo/__tests__/meteoblueProxy.test.js"
+      ]
+    },
+    "functions/lib/meteo/sprayDigest.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/sprayDigest.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/sprayDigest.test.js"
       ]
     },
     "functions/lib/netafim/auth.js": {
