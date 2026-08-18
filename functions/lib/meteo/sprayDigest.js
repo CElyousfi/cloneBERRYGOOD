@@ -10,8 +10,7 @@
  * (getMeteoblueCached + whatsappService) vit dans functions/index.js.
  *
  * La logique de fenêtres est le portage backend de `transformSprayData`
- * (public/app.jsx) restreint à UN jour, avec la garde manquante sur
- * `workHours[idx - 1]`.
+ * (public/app.jsx) restreint à UN jour.
  */
 
 /**
@@ -65,24 +64,68 @@ const AUDIENCE = Object.freeze([
   { profileId: 'chef_f5', ferme: 'F5' },
 ]);
 
+/**
+ * Profils autorisés à déclencher un ENVOI réel via le trigger HTTP (les modes
+ * `preview` et `checkRecipients`, qui n'envoient rien, restent ouverts à tout
+ * utilisateur authentifié). Même convention que pointageService.js
+ * (`['dg', 'rh', 'admin'].includes(profileId)`).
+ */
+const TRIGGER_SEND_ROLES = Object.freeze(['dg', 'dt', 'admin']);
+
 const TEMPLATE_NAME = 'meteo_spray_digest';
 const FALLBACK_TEMPLATE_NAME = 'general_alert';
 
 /**
- * Codes d'erreur Meta déclenchant le repli sur `general_alert` :
- * 132001 = template introuvable / non approuvé, 132018 = format du paramètre
- * rejeté par rapport à l'exemple soumis.
+ * Codes d'erreur Meta déclenchant le repli sur `general_alert` — tous liés au
+ * template ou à ses paramètres, donc rejouables sur un template plus simple :
+ * 131008 = paramètre invalide (le body `{{2}}` est multi-ligne, cf.
+ * whatsappService.toSingleLine), 132001 = template introuvable / non approuvé,
+ * 132007 = template rejeté / non conforme à la policy, 132012 = format du
+ * paramètre non conforme à l'exemple, 132018 = incohérence de paramètres.
  */
-const FALLBACK_ERROR_CODES = ['132001', '132018'];
+const FALLBACK_ERROR_CODES = ['131008', '132001', '132007', '132012', '132018'];
+
+/** Format YYYY-MM-DD au fuseau Africa/Casablanca, indépendant du fuseau process. */
+const CASABLANCA_DATE_FMT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Africa/Casablanca',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
 /**
- * Date du jour (YYYY-MM-DD) au fuseau Africa/Casablanca (UTC+1, pas de DST).
+ * Date du jour (YYYY-MM-DD) au fuseau Africa/Casablanca. Le Maroc est à UTC+1
+ * la majeure partie de l'année MAIS repasse à UTC+0 pendant le Ramadan : on
+ * délègue à Intl plutôt que d'ajouter un offset fixe (un décalage codé en dur
+ * renverrait la date de demain pour un appel entre 23h et minuit en Ramadan).
  * @param {Date} [now]
  * @returns {string}
  */
 function todayCasablancaISO(now) {
   const base = now instanceof Date ? now : new Date();
-  return new Date(base.getTime() + 60 * 60 * 1000).toISOString().slice(0, 10);
+  return CASABLANCA_DATE_FMT.format(base);
+}
+
+/**
+ * Libellé qualitatif du score, aligné sur le badge de l'écran Météo
+ * (public/app.jsx : `score >= 70 ? 'Favorable' : score >= 40 ? 'Partiel' :
+ * 'Défavorable'`). Les seuils DOIVENT rester identiques des deux côtés.
+ * @param {number} score
+ * @returns {string}
+ */
+function scoreLabel(score) {
+  if (score >= 70) return 'Favorable';
+  if (score >= 40) return 'Partiel';
+  return 'Défavorable';
+}
+
+/**
+ * « 20% (Défavorable) » — le pourcentage seul se lit mal sur mobile.
+ * @param {number} score
+ * @returns {string}
+ */
+function formatScore(score) {
+  return score + '% (' + scoreLabel(score) + ')';
 }
 
 /**
@@ -159,8 +202,10 @@ function buildSprayWindows(sprayData, dateISO) {
       return;
     }
     if (start === null) return;
-    // Garde absente côté frontend : `workHours[idx - 1]` est undefined si la
-    // fenêtre ouvre sur la toute première heure ouvrée du tableau.
+    // `start !== null` implique idx >= 1, donc `prev` est défini pour un
+    // tableau d'heures contigu (cas nominal, identique au frontend). Le repli
+    // `e.heure - 1` ne sert que si Meteoblue renvoyait un tableau troué, où
+    // l'heure précédente du tableau n'est pas l'heure précédente de l'horloge.
     const prev = workHours[idx - 1];
     fenetres.push({ de: start, a: (prev ? prev.heure : e.heure - 1) + 1 });
     start = null;
@@ -247,19 +292,19 @@ function formatDigest(input) {
     flat.push('fenêtres de traitement indisponibles');
   } else if (!windows.fenetres.length) {
     lines.push('🚫 Aucun créneau favorable aujourd\'hui');
-    lines.push('Score du jour : ' + windows.score + '% favorable');
+    lines.push('Score du jour : ' + formatScore(windows.score));
     flat.push('aucun créneau favorable aujourd\'hui');
-    flat.push('score ' + windows.score + '% favorable');
+    flat.push('score ' + formatScore(windows.score));
   } else {
     lines.push('✅ *Fenêtres de traitement* :');
     windows.fenetres.forEach(function(f) {
       lines.push('• ' + formatHeure(f.de) + ' - ' + formatHeure(f.a));
     });
-    lines.push('Score du jour : ' + windows.score + '% favorable');
+    lines.push('Score du jour : ' + formatScore(windows.score));
     flat.push('créneaux ' + windows.fenetres.map(function(f) {
       return formatHeure(f.de) + '-' + formatHeure(f.a);
     }).join(', '));
-    flat.push('score ' + windows.score + '% favorable');
+    flat.push('score ' + formatScore(windows.score));
   }
 
   const fallbackText = ('Météo & Traitements ' + dateParam + ' : ' + flat.join(', '))
@@ -434,8 +479,15 @@ function createMeteoDigestJob(deps) {
     });
     const sent = recipients.filter(function(r) { return okByPhone.get(r.phone); }).length;
 
-    console.log('[meteoSprayDigest] ' + day + ': sent=' + sent + '/' + recipients.length +
-      ' fallback=' + fallbackUsed);
+    // Un destinataire non servi = digest non délivré : ça doit remonter en
+    // erreur dans les logs, pas se noyer dans un console.log de routine.
+    const logLine = '[meteoSprayDigest] ' + day + ': sent=' + sent + '/' + recipients.length +
+      ' fallback=' + fallbackUsed;
+    if (sent < recipients.length) {
+      console.error(logLine + ' — ENVOI INCOMPLET');
+    } else {
+      console.log(logLine);
+    }
     return {
       dateISO: day,
       sent: sent,
@@ -455,8 +507,10 @@ module.exports = {
   AUDIENCE,
   TEMPLATE_NAME,
   FALLBACK_TEMPLATE_NAME,
+  TRIGGER_SEND_ROLES,
   todayCasablancaISO,
   formatDateParam,
+  scoreLabel,
   buildSprayWindows,
   buildTempSummary,
   formatDigest,

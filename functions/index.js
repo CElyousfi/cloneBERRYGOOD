@@ -2662,6 +2662,33 @@ exports.meteoSprayDigestTrigger = functions
     const date = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : undefined;
     const preview = req.query.preview === "1" || req.query.preview === "true";
     const checkRecipients = req.query.checkRecipients === "1" || req.query.checkRecipients === "true";
+
+    // Un ENVOI réel (ni preview ni checkRecipients) part en WhatsApp au DG et
+    // aux chefs : réservé aux profils privilégiés. Rôle résolu côté serveur
+    // depuis users/{uid} (jamais depuis le body/la query), comme les actions
+    // admin de bugReports/userManagement.
+    if (!preview && !checkRecipients) {
+      let callerProfileId = null;
+      let callerRole = null;
+      try {
+        const uSnap = await db_firestore.collection("users").doc(authUser.uid).get();
+        if (uSnap.exists) {
+          const u = uSnap.data() || {};
+          callerProfileId = u.profileId || null;
+          callerRole = u.role || null;
+        }
+      } catch (e) {
+        console.warn("[meteoSprayDigestTrigger] résolution profil appelant échouée:", e.message);
+      }
+      const allowed = sprayDigest.TRIGGER_SEND_ROLES.includes(callerProfileId) || callerRole === "admin";
+      if (!allowed) {
+        return res.status(403).json({
+          success: false,
+          error: "Envoi réservé aux profils DG/DT/admin — utilisez ?preview=1 pour visualiser le digest.",
+        });
+      }
+    }
+
     try {
       const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
       const result = await job.run(date, { preview, checkRecipients });

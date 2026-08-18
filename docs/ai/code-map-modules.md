@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:9fbd8be82bc1e5b9 -->
+<!-- sourceFingerprint: sha256:15bdf7846b1e00c6 -->
 # Code Map — Modules lib (166)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -64,7 +64,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/marcheLocalCaisse/index.js | — | TYPE_VENTE_ML, round2, slugifyClient, deriveRecettes, aggregateByClient, grandTotal |
 | functions/lib/marcheLocalCaisse/modeleVierge.js | — | buildModeleAoA, buildModeleWorkbook |
 | functions/lib/meteo/meteoblueProxy.js | — | roundCoord, buildWeatherBasicUrl, buildWeatherAgroUrl, buildSprayUrl, isValidWeatherPayload, isValidSprayPayload, fetchWeather, fetchSpray |
-| functions/lib/meteo/sprayDigest.js | — | CRON_CONFIG, HTTP_CONFIG, COORDS, AUDIENCE, TEMPLATE_NAME, FALLBACK_TEMPLATE_NAME, todayCasablancaISO, formatDateParam, buildSprayWindows, buildTempSummary, formatDigest, createMeteoDigestJob |
+| functions/lib/meteo/sprayDigest.js | — | CRON_CONFIG, HTTP_CONFIG, COORDS, AUDIENCE, TEMPLATE_NAME, FALLBACK_TEMPLATE_NAME, TRIGGER_SEND_ROLES, todayCasablancaISO, formatDateParam, scoreLabel, buildSprayWindows, buildTempSummary, formatDigest, createMeteoDigestJob |
 | functions/lib/netafim/auth.js | — | TOKEN_TTL_SAFETY_MS, FALLBACK_TTL_MS, makeGetAccessToken |
 | functions/lib/netafim/client.js | — | NetafimError, KIND, classify, postJson |
 | functions/lib/netafim/config.js | — | CONFIG_COLLECTION, CONFIG_DOC, CACHE_TTL_MS, DEFAULTS, makeGetConfig |

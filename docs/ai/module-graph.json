@@ -55,7 +55,7 @@
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
-        "commits": 9,
+        "commits": 10,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:a81c75c7bcaf29af",
+    "sourceFingerprint": "sha256:d4053e95e3287f3f",
     "stats": {
       "backendModules": 93,
       "cloudFunctions": 91,
