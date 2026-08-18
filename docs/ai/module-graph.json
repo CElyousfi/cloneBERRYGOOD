@@ -23,7 +23,7 @@
     },
     "heatmap": [
       {
-        "commits": 22,
+        "commits": 21,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:2635dd80ad9529fe",
+    "sourceFingerprint": "sha256:a76acac27c018362",
     "stats": {
       "backendModules": 93,
       "cloudFunctions": 91,
@@ -350,6 +350,7 @@
           "functions/lib/irrigation/__tests__/recommendations.test.js",
           "functions/lib/irrigation/__tests__/scenarios.test.js",
           "functions/lib/irrigation/__tests__/weatherAdjustments.test.js",
+          "functions/lib/meteo/__tests__/meteoAlertes.test.js",
           "functions/lib/meteo/__tests__/meteoblueProxy.test.js",
           "functions/lib/meteo/__tests__/sprayDigest.test.js",
           "functions/lib/netafim/__tests__/auth.test.js",

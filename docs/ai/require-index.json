@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:b1203bf3fe0f3886",
+    "sourceFingerprint": "sha256:6bfe4f3c359d4a68",
     "stats": {
-      "targetFiles": 217,
-      "targetFilesWithDirectTests": 132,
-      "targetFilesWithTransitiveTests": 153,
-      "testFilesScanned": 182
+      "targetFiles": 218,
+      "targetFilesWithDirectTests": 133,
+      "targetFilesWithTransitiveTests": 154,
+      "testFilesScanned": 183
     }
   },
   "index": {
@@ -587,6 +587,14 @@
         "functions/lib/marcheLocalCaisse/__tests__/encaissements.test.js"
       ]
     },
+    "functions/lib/meteo/meteoAlertes.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js"
+      ]
+    },
     "functions/lib/meteo/meteoblueProxy.js": {
       "directTests": [
         "functions/lib/meteo/__tests__/meteoblueProxy.test.js"
@@ -600,6 +608,7 @@
         "functions/lib/meteo/__tests__/sprayDigest.test.js"
       ],
       "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
         "functions/lib/meteo/__tests__/sprayDigest.test.js"
       ]
     },

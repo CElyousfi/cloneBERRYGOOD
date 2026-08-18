@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:0d6aaa3831d30c3c -->
-# Code Map — Modules lib (166)
+<!-- sourceFingerprint: sha256:78c04e7b82f626dd -->
+# Code Map — Modules lib (167)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -63,8 +63,9 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/marcheLocalCaisse/encaissements.js | — | ENCAISSEMENTS_SCHEMA, parseFrNumber, parseDate, parseEncaissements |
 | functions/lib/marcheLocalCaisse/index.js | — | TYPE_VENTE_ML, round2, slugifyClient, deriveRecettes, aggregateByClient, grandTotal |
 | functions/lib/marcheLocalCaisse/modeleVierge.js | — | buildModeleAoA, buildModeleWorkbook |
+| functions/lib/meteo/meteoAlertes.js | — | TEMPLATE_NAME, COLLECTION, FENETRE_JOURS, SEUILS, MARGES_AGGRAVATION, LABELS, detecterAlertes, formatAlertes, filtrerAlertesANotifier, estPerimee, createMeteoAlertesJob |
 | functions/lib/meteo/meteoblueProxy.js | — | roundCoord, buildWeatherBasicUrl, buildWeatherAgroUrl, buildSprayUrl, isValidWeatherPayload, isValidSprayPayload, fetchWeather, fetchSpray |
-| functions/lib/meteo/sprayDigest.js | — | CRON_CONFIG, HTTP_CONFIG, COORDS, AUDIENCE, TEMPLATE_NAME, FALLBACK_TEMPLATE_NAME, TRIGGER_SEND_ROLES, todayCasablancaISO, formatDateParam, scoreLabel, buildSprayWindows, buildTempSummary, formatDigest, createMeteoDigestJob |
+| functions/lib/meteo/sprayDigest.js | — | CRON_CONFIG, HTTP_CONFIG, COORDS, AUDIENCE, TEMPLATE_NAME, FALLBACK_TEMPLATE_NAME, FALLBACK_ERROR_CODES, TRIGGER_SEND_ROLES, shouldFallback, todayCasablancaISO, formatDateParam, scoreLabel, buildSprayWindows, buildTempSummary, formatDigest, createMeteoDigestJob |
 | functions/lib/netafim/auth.js | — | TOKEN_TTL_SAFETY_MS, FALLBACK_TTL_MS, makeGetAccessToken |
 | functions/lib/netafim/client.js | — | NetafimError, KIND, classify, postJson |
 | functions/lib/netafim/config.js | — | CONFIG_COLLECTION, CONFIG_DOC, CACHE_TTL_MS, DEFAULTS, makeGetConfig |
