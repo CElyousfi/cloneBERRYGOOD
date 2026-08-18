@@ -72,6 +72,29 @@ const AUDIENCE = Object.freeze([
  */
 const TRIGGER_SEND_ROLES = Object.freeze(['dg', 'dt', 'admin']);
 
+/**
+ * Une combinaison de paramètres du trigger HTTP déclenche-t-elle un ENVOI RÉEL
+ * (WhatsApp au DG et aux chefs, plus écriture d'état) ?
+ *
+ * INVARIANT : toute combinaison de query qui peut atteindre un
+ * `sendTemplateMessage` renvoie `true` ici, et passe donc par la gate de rôle
+ * `TRIGGER_SEND_ROLES`. Concrètement :
+ * - `preview=1` ne renvoie jamais rien → jamais d'envoi ;
+ * - `checkRecipients=1` est un diagnostic sec, MAIS il n'a cet effet que sur le
+ *   job digest ; le job d'alertes (`alertes=1`) l'honore aussi désormais, et on
+ *   le traite quand même comme un envoi réel par prudence : la gate ne doit pas
+ *   dépendre du comportement interne d'un job.
+ *
+ * @param {{preview?: boolean, checkRecipients?: boolean, alertesOnly?: boolean}} q
+ * @returns {boolean}
+ */
+function isRealSend(q) {
+  const opts = q || {};
+  if (opts.preview) return false;
+  if (opts.alertesOnly) return true;
+  return !opts.checkRecipients;
+}
+
 const TEMPLATE_NAME = 'meteo_spray_digest';
 const FALLBACK_TEMPLATE_NAME = 'general_alert';
 
@@ -507,7 +530,10 @@ module.exports = {
   AUDIENCE,
   TEMPLATE_NAME,
   FALLBACK_TEMPLATE_NAME,
+  FALLBACK_ERROR_CODES,
   TRIGGER_SEND_ROLES,
+  isRealSend,
+  shouldFallback,
   todayCasablancaISO,
   formatDateParam,
   scoreLabel,

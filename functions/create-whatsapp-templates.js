@@ -17,18 +17,37 @@
  * https://business.facebook.com/wa/manage/message-templates
  *
  * ─────────────────────────────────────────────────────────────────────────────
+ * ⚠️ RÈGLES META SUR LE CORPS D'UN TEMPLATE (source de 2 refus le 2026-08-18)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * 1) Un body ne peut NI COMMENCER NI FINIR par une variable.
+ *    « Variables can't be at the start or end of the template. »
+ *    → il faut toujours du texte statique APRÈS le dernier {{n}}
+ *      (ex. une ligne de clôture « Consultez SmartBerry pour le détail. »).
+ * 2) Le body doit contenir ASSEZ DE TEXTE STATIQUE pour son nombre de variables.
+ *    « This template has too many variables for its length. »
+ *    → un body de la forme "Titre {{1}}\n\n{{2}}" est aujourd'hui REFUSÉ.
+ *
+ * ⚠️ Les templates historiques du projet (`production_digest_dg`,
+ * `general_alert`, …) violent la règle 1 et/ou 2 mais ont été APPROUVÉS AVANT
+ * le durcissement de Meta : ils sont conservés tels quels et ne doivent PAS
+ * servir de modèle pour un nouveau template — c'est exactement ce qui a fait
+ * rejeter `meteo_spray_digest` et `meteo_alerte_7j`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
  * SOUMISSION DU TEMPLATE `campagne_rapport_hebdo` (header DOCUMENT .xlsx)
  * ─────────────────────────────────────────────────────────────────────────────
- * Meta EXIGE un `example.header_handle` pour un header média, et ce handle doit
- * porter le MIME réellement envoyé (ici un .xlsx, pas un PDF). Séquence exacte,
- * depuis `functions/` :
+ * Meta EXIGE un `example.header_handle` pour un header média. ⚠️ L'échantillon
+ * uploadé doit être un PDF : Meta refuse un handle .xlsx même quand l'envoi
+ * réel porte un .xlsx (le MIME de l'échantillon n'a pas à correspondre au MIME
+ * réellement envoyé). Séquence exacte, depuis `functions/` :
  *
- *   1) Fabriquer un classeur d'échantillon (ExcelJS, déjà une dépendance) :
- *        node create-whatsapp-templates.js --make-sample-xlsx /tmp/sample.xlsx
+ *   1) Disposer d'un PDF d'échantillon quelconque (/tmp/sample.pdf).
+ *      (`--make-sample-xlsx` reste disponible pour fabriquer un classeur de
+ *      test, mais son handle est REFUSÉ par Meta comme échantillon.)
  *
  *   2) Obtenir le header_handle (Resumable Upload API) :
  *        APP_ID="<app_id>" WA_TOKEN="EAA..." \
- *          node create-whatsapp-templates.js --upload-sample /tmp/sample.xlsx
+ *          node create-whatsapp-templates.js --upload-sample /tmp/sample.pdf
  *      → imprime le handle (`4::YXBwb...`).
  *
  *   3) Soumettre les templates (les existants sont sautés, seul le nouveau part) :
@@ -170,11 +189,30 @@ const TEMPLATES = [
     // Digest météo & traitements (6h) — DG + chef F1 + chef F5. L'exemple DOIT
     // être multi-ligne et riche : c'est son absence qui a fait rejeter le body
     // réel de `production_digest_dg` avec l'erreur #132018.
+    // ⚠️ Le body ne se termine PAS par {{2}} et porte du texte statique
+    // encadrant : cf. « RÈGLES META SUR LE CORPS » en tête de fichier (refus
+    // « Variables can't be at the start or end of the template. »).
     name: "meteo_spray_digest",
-    body: "SmartBerry — Météo & Traitements {{1}}\n\n{{2}}",
+    body: "SmartBerry — Météo & Traitements {{1}}. Voici les conditions du jour et les fenêtres de traitement recommandées :\n\n{{2}}\n\nConsultez SmartBerry pour le détail.",
     examples: [
       "Jeu 14/08",
       "🌡️ Température : 17°C → 29°C\n💨 Vent max : 12 km/h\n🌧️ Pluie : 0 mm\n\n✅ Fenêtres de traitement :\n• 06h00 - 09h00\n• 18h00 - 20h00\nScore du jour : 62% favorable",
+    ],
+  },
+  {
+    // Alertes météo à 7 jours (Forte Chaleur / Vent Fort / Forte Pluie) — même
+    // audience que le digest. Message groupé : {{1}} = période couverte,
+    // {{2}} = corps multi-ligne (une section par alerte). Comme
+    // `meteo_spray_digest`, l'exemple DOIT être multi-ligne et riche : c'est son
+    // absence qui a fait rejeter `production_digest_dg` avec l'erreur #132018.
+    // ⚠️ Texte statique volontairement étoffé et clôture après {{2}} : cf.
+    // « RÈGLES META SUR LE CORPS » en tête de fichier (refus « too many
+    // variables for its length »).
+    name: "meteo_alerte_7j",
+    body: "SmartBerry — Alerte météo pour la période {{1}}. Voici les journées concernées et les seuils dépassés :\n\n{{2}}\n\nConsultez SmartBerry pour le détail et adaptez la planification des traitements.",
+    examples: [
+      "21 → 24/08",
+      "VENDREDI 21 AOÛT — FORTE CHALEUR\n🌡️ 34°C prévus (seuil 32°C)\n\nSAMEDI 22 AOÛT — FORTE PLUIE\n🌧️ 18.4 mm prévus (seuil 10 mm)\n\nLUNDI 24 AOÛT — VENT FORT\n💨 31 km/h prévus (seuil 25 km/h)\n\n⚠️ Reporter les traitements phyto sur ces journées et prévoir les protections adaptées.",
     ],
   },
   {
