@@ -528,3 +528,145 @@ test('plan — une opération continue MAL ORTHOGRAPHIÉE est détectée (sinon 
     'GB02::Irigation fertigation']);
   assert.deepStrictEqual(orphelines, ['GB02::IRIGATION FERTIGATION']);
 });
+
+// ---------------------------------------------------------------------------
+// BUDGET IDÉAL — partEcoulee / decoreIdeal (4e sous-colonne « Affectation par Ha »)
+//
+// Ce que ces tests protègent :
+//   1. la FRONTIÈRE du 1er juillet reste celle de CampagneUtils (source unique) ;
+//   2. le dénominateur est la CONSTANTE 365, pas la durée réelle de l'année ;
+//   3. le repère est BORNÉ : jamais négatif avant le début, jamais > 100 % après
+//      la fin — un « -12 % écoulé » ne veut rien dire à l'écran ;
+//   4. la RÉCOLTE n'en reçoit jamais (son effort n'est pas linéaire) ;
+//   5. la NON-MUTATION : les lignes/cellules sont partagées avec le pivot du
+//      réalisé et sa pop-up de détail — les décorer en place les contaminerait.
+// ---------------------------------------------------------------------------
+
+const CU = require(path.join(ROOT, 'public/lib/campagneUtils.js'));
+
+test('partEcoulee — le 1er juillet, rien n\'est écoulé', () => {
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: '2025-07-01', utils: CU }), 0);
+});
+
+test('partEcoulee — fin décembre ≈ la moitié de la campagne', () => {
+  const p = CR.partEcoulee({ campagne: '2025-2026', today: '2025-12-31', utils: CU });
+  // 183 jours / 365 = 0.5014 — la moitié à 0.15 point près.
+  assert.ok(Math.abs(p - 0.5) < 0.01, 'attendu ≈0.50, reçu ' + p);
+});
+
+test('partEcoulee — le 30 juin, la campagne est ≈ entièrement écoulée', () => {
+  const p = CR.partEcoulee({ campagne: '2025-2026', today: '2026-06-30', utils: CU });
+  // 364 / 365 : la campagne est finie SANS atteindre 1 — le dénominateur est la
+  // constante métier 365, pas la durée réelle (364 jours du 1er juillet au 30 juin).
+  assert.ok(p > 0.99 && p < 1, 'attendu ≈1 sans l\'atteindre, reçu ' + p);
+});
+
+test('partEcoulee — le dénominateur est 365 FIXE, même sur une campagne bissextile', () => {
+  // 2027-2028 contient le 29 février 2028 : du 1er juillet 2027 au 31 décembre
+  // 2027, il s'est écoulé les MÊMES 183 jours que sur une campagne normale.
+  const bissextile = CR.partEcoulee({ campagne: '2027-2028', today: '2027-12-31', utils: CU });
+  const normale = CR.partEcoulee({ campagne: '2025-2026', today: '2025-12-31', utils: CU });
+  assert.strictEqual(bissextile, normale);
+  assert.strictEqual(CR.JOURS_CAMPAGNE, 365);
+});
+
+test('partEcoulee — bornée : avant le début → 0, après la fin → 1', () => {
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: '2025-06-15', utils: CU }), 0);
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: '2027-01-01', utils: CU }), 1);
+});
+
+test('partEcoulee — accepte un Date autant qu\'une chaîne ISO', () => {
+  const parDate = CR.partEcoulee({ campagne: '2025-2026', today: new Date(2025, 11, 31), utils: CU });
+  const parIso = CR.partEcoulee({ campagne: '2025-2026', today: '2025-12-31', utils: CU });
+  assert.strictEqual(parDate, parIso);
+});
+
+test('partEcoulee — indéterminable → null, JAMAIS 0 (0 se lirait « pas commencée »)', () => {
+  assert.strictEqual(CR.partEcoulee({ campagne: '', today: '2025-12-31', utils: CU }), null);
+  assert.strictEqual(CR.partEcoulee({ campagne: 'n/a', today: '2025-12-31', utils: CU }), null);
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025/2026', today: '2025-12-31', utils: CU }), null);
+  assert.strictEqual(CR.partEcoulee({ campagne: undefined, today: '2025-12-31', utils: CU }), null);
+  // CampagneUtils absent (script non chargé) : pas de frontière réécrite ici.
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: '2025-12-31', utils: null }), null);
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: 'pas-une-date', utils: CU }), null);
+});
+
+test('joursEcoules — le N de la légende « N j / 365 »', () => {
+  assert.strictEqual(CR.joursEcoules({ campagne: '2025-2026', today: '2025-07-01', utils: CU }), 0);
+  assert.strictEqual(CR.joursEcoules({ campagne: '2025-2026', today: '2025-12-31', utils: CU }), 183);
+  assert.strictEqual(CR.joursEcoules({ campagne: 'n/a', today: '2025-12-31', utils: CU }), null);
+});
+
+/** Lignes minimales à trois groupes, dont la Récolte. */
+function _rowsIdeal() {
+  return [
+    { type: 'groupe', key: 'M.O Hors récolte', label: 'M.O Hors récolte', pivot: { P1: { jh: 10, ha: 2 } } },
+    { type: 'famille', key: 'GB02', label: 'Ferti', groupeKey: 'M.O Hors récolte',
+      pivot: { P1: { jh: 10, ha: 2 }, P2: { jh: 4, ha: 1 } } },
+    { type: 'operation', key: 'GB02::IRRIGATION', label: 'Irrigation', familleKey: 'GB02',
+      groupeKey: 'M.O Hors récolte', pivot: { P1: { jh: 6, ha: 2 } } },
+    { type: 'famille', key: 'GB08', label: 'Récolte', groupeKey: 'M.O Récolte',
+      pivot: { P1: { jh: 30, ha: 2 } } },
+    { type: 'operation', key: 'GB08::CUEILLETTE', label: 'Cueillette', familleKey: 'GB08',
+      groupeKey: 'M.O Récolte', pivot: { P1: { jh: 30, ha: 2 } } },
+    { type: 'famille', key: 'GB11', label: 'Services', groupeKey: 'M.O Service générale',
+      pivot: { P1: { jh: 3, ha: 2 } } },
+  ];
+}
+
+test('decoreIdeal — pctIdeal sur famille et opération hors récolte, jamais sur la Récolte', () => {
+  const out = CR.decoreIdeal({ groupedRows: _rowsIdeal(), part: 0.5 }).groupedRows;
+  assert.strictEqual(out[1].pivot.P1.pctIdeal, 0.5);
+  assert.strictEqual(out[1].pivot.P2.pctIdeal, 0.5);   // MÊME valeur partout
+  assert.strictEqual(out[2].pivot.P1.pctIdeal, 0.5);
+  assert.strictEqual(out[5].pivot.P1.pctIdeal, 0.5);   // M.O Service générale
+  // Récolte : « — », pas 0 % — son effort n'est pas linéaire.
+  assert.strictEqual(out[3].pivot.P1.pctIdeal, undefined);
+  assert.strictEqual(out[4].pivot.P1.pctIdeal, undefined);
+  // Ligne groupe (bandeau) : la grille n'y affiche que la série primaire.
+  assert.strictEqual(out[0].pivot.P1.pctIdeal, undefined);
+  // Ordre et clés STRICTEMENT conservés (la grille les aligne par position).
+  assert.deepStrictEqual(out.map((r) => r.key), _rowsIdeal().map((r) => r.key));
+  // Le réalisé n'est pas touché.
+  assert.strictEqual(out[1].pivot.P1.jh, 10);
+});
+
+test('decoreIdeal — NE MUTE RIEN (lignes et cellules partagées avec le pivot du réalisé)', () => {
+  const rows = _rowsIdeal();
+  const avant = JSON.parse(JSON.stringify(rows));
+  const cellAvant = rows[1].pivot.P1;
+  const out = CR.decoreIdeal({ groupedRows: rows, part: 0.42 }).groupedRows;
+  assert.deepStrictEqual(rows, avant, 'les lignes d\'entrée ont été mutées');
+  assert.strictEqual(cellAvant.pctIdeal, undefined);
+  assert.notStrictEqual(out[1], rows[1]);
+  assert.notStrictEqual(out[1].pivot.P1, rows[1].pivot.P1);
+  assert.notStrictEqual(out, rows);
+});
+
+test('decoreIdeal — part indéterminable → lignes INCHANGÉES, aucune décoration', () => {
+  const rows = _rowsIdeal();
+  [null, undefined, NaN].forEach((part) => {
+    const out = CR.decoreIdeal({ groupedRows: rows, part }).groupedRows;
+    assert.strictEqual(out, rows);
+    assert.strictEqual(out[1].pivot.P1.pctIdeal, undefined);
+  });
+});
+
+test('decoreIdeal — les groupes exclus sont paramétrables (défaut : la Récolte)', () => {
+  const out = CR.decoreIdeal({
+    groupedRows: _rowsIdeal(), part: 0.5, groupesExclus: ['M.O Service générale'],
+  }).groupedRows;
+  assert.strictEqual(out[3].pivot.P1.pctIdeal, 0.5);        // Récolte décorée…
+  assert.strictEqual(out[5].pivot.P1.pctIdeal, undefined);  // …Services exclus
+});
+
+test('pctIdealParts — série RATIO : den = 1 pour que les totaux restituent la constante', () => {
+  assert.deepStrictEqual(CR.pctIdealParts({ pctIdeal: 0.5 }), { num: 0.5, den: 1 });
+  assert.strictEqual(CR.pctIdealParts({}), null);           // ligne Récolte → « — »
+  assert.strictEqual(CR.pctIdealParts(null), null);
+  // La somme de 3 cellules à 0.5 redonne 0.5, pas 1.5 (c'est TOUT l'intérêt du ratio).
+  const parts = [0.5, 0.5, 0.5].map((v) => CR.pctIdealParts({ pctIdeal: v }));
+  const num = parts.reduce((s, p) => s + p.num, 0);
+  const den = parts.reduce((s, p) => s + p.den, 0);
+  assert.strictEqual(num / den, 0.5);
+});
