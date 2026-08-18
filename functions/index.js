@@ -2614,7 +2614,7 @@ exports.meteoblue = functions
   });
 
 // =============================================
-// METEO SPRAY DIGEST — WhatsApp 7h (DG + chef F1 + chef F5)
+// METEO SPRAY DIGEST — WhatsApp 6h (DG + chef F1 + chef F5)
 // Température du jour + fenêtres de traitement phyto.
 // =============================================
 
