@@ -5,10 +5,17 @@
  * Pluie), envoyées en WhatsApp au DG, au chef F1 et au chef F5 en PLUS du
  * digest quotidien (cf. sprayDigest.js).
  *
- * Les seuils sont ceux déjà appliqués par l'écran Météo du frontend
- * (public/app.jsx, bloc `alertes`) : tMax >= 32 °C, vent >= 25 km/h,
- * précipitations >= 10 mm/jour. Ils DOIVENT rester identiques des deux côtés,
- * sinon le WhatsApp et l'écran se contredisent.
+ * Seuils : tMax >= 35 °C, vent >= 25 km/h, précipitations >= 10 mm/jour.
+ *
+ * ⚠️ SEUILS DUPLIQUÉS, À GARDER ALIGNÉS avec l'écran Météo du frontend
+ * (public/app.jsx, bloc `alertes`) : les deux côtés sont à 35 °C / 25 km/h /
+ * 10 mm depuis le 2026-08-18 (passage de 32 à 35 °C sur la chaleur, décidé par
+ * Omar, appliqué des DEUX côtés le même jour). Un changement d'un seul côté
+ * ferait se contredire l'écran et la notification WhatsApp : toute évolution
+ * doit être répercutée dans public/app.jsx, et inversement.
+ * La duplication est volontaire : le backend ne peut pas require('../public/…')
+ * — Firebase ne déploie que functions/, l'import ferait planter toutes les CF
+ * au chargement.
  *
  * Anti-répétition : chaque couple (type, jour) est mémorisé dans la collection
  * Firestore `meteo_alertes_envoyees` ; l'alerte n'est renvoyée que si elle est
@@ -55,12 +62,12 @@ const FENETRE_JOURS = 7;
 
 /**
  * Seuils de déclenchement — mêmes valeurs que le bloc `alertes` de
- * public/app.jsx. Les LIBELLÉS, eux, sont propres à la notification WhatsApp
- * (« Forte Pluie », vocabulaire demandé) et ne prétendent pas recopier ceux de
- * l'écran.
+ * public/app.jsx (cf. l'en-tête du module : duplication à garder alignée).
+ * Les LIBELLÉS, eux, sont propres à la notification WhatsApp (« Forte Pluie »,
+ * vocabulaire demandé) et ne prétendent pas recopier ceux de l'écran.
  */
 const SEUILS = Object.freeze({
-  chaleur: 32, // °C, temperature_max
+  chaleur: 35, // °C, temperature_max — miroir de public/app.jsx (`p.tMax >= 35`)
   vent: 25, // km/h, windspeed_max
   pluie: 10, // mm/jour, precipitation
 });
@@ -69,9 +76,12 @@ const SEUILS = Object.freeze({
  * Aggravation minimale (dans l'unité du type) pour re-notifier une alerte déjà
  * envoyée. En dessous, la révision de prévision est du bruit de modèle et ne
  * justifie pas de re-notifier les mêmes personnes tous les matins.
+ *
+ * La marge chaleur est à 1 °C (2 °C auparavant) : au-delà de 35 °C, chaque
+ * degré supplémentaire compte, une re-notification est justifiée.
  */
 const MARGES_AGGRAVATION = Object.freeze({
-  chaleur: 2, // °C
+  chaleur: 1, // °C
   vent: 5, // km/h
   pluie: 5, // mm
 });
@@ -169,15 +179,34 @@ function formatJourLong(dateISO) {
 }
 
 /**
+ * Nombre à la française : une décimale au plus, virgule décimale, et pas de
+ * décimale inutile (`33`, pas `33,0`).
+ * @param {number} n
+ * @returns {string}
+ */
+function formatNombreFr(n) {
+  return String(round1(n)).replace('.', ',');
+}
+
+/**
  * Valeur formatée avec son unité, selon le type.
+ *
+ * ⚠️ On affiche la valeur RÉELLE (au dixième), jamais la valeur arrondie
+ * utilisée pour la comparaison au seuil (`VALEUR_COMPAREE`) : arrondir à
+ * l'affichage produisait « 35°C prévus (seuil 35°C) » pour une prévision à
+ * 35,4 °C, ce qui se lit comme un non-événement ou un bug de l'outil (constaté
+ * en prod le 2026-08-18, alors à 32,4 °C pour un seuil de 32 °C). Les seuils
+ * étant entiers, ils restent affichés tels quels.
+ *
  * @param {string} type
  * @param {number} valeur
  * @returns {string}
  */
 function formatValeur(type, valeur) {
-  if (type === 'pluie') return round1(valeur) + ' mm';
-  if (type === 'vent') return Math.round(valeur) + ' km/h';
-  return Math.round(valeur) + '°C';
+  const n = formatNombreFr(valeur);
+  if (type === 'pluie') return n + ' mm';
+  if (type === 'vent') return n + ' km/h';
+  return n + '°C';
 }
 
 /**
