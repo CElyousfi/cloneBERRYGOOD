@@ -43,6 +43,7 @@ const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
 const sprayDigest = require("./lib/meteo/sprayDigest");
+const meteoAlertes = require("./lib/meteo/meteoAlertes");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -2628,6 +2629,11 @@ function buildMeteoSprayDigestDeps() {
   };
 }
 
+/** Dépendances de prod du job d'alertes 7 jours (idem digest + Firestore). */
+function buildMeteoAlertesDeps() {
+  return { ...buildMeteoSprayDigestDeps(), db: db_firestore };
+}
+
 exports.meteoSprayDigest = functions
   .region(sprayDigest.CRON_CONFIG.region)
   .runWith({
@@ -2644,10 +2650,21 @@ exports.meteoSprayDigest = functions
     } catch (err) {
       console.error("[meteoSprayDigest] cron error:", err.message);
     }
+    // Second message : alertes météo à 7 jours. try/catch SÉPARÉ — le digest est
+    // déjà parti à ce stade, une panne du job d'alertes ne doit ni l'annuler ni
+    // faire échouer l'exécution du cron.
+    try {
+      const alertesJob = meteoAlertes.createMeteoAlertesJob(buildMeteoAlertesDeps());
+      const alertesSummary = await alertesJob.run();
+      console.log("[meteoAlertes] cron done", JSON.stringify(alertesSummary));
+    } catch (err) {
+      console.error("[meteoAlertes] cron error (digest non impacté):", err.message);
+    }
     return null;
   });
 
-// Trigger manuel — ?date=YYYY-MM-DD, ?preview=1 (aucun envoi), ?checkRecipients=1.
+// Trigger manuel — ?date=YYYY-MM-DD, ?preview=1 (aucun envoi), ?checkRecipients=1,
+// ?alertes=1 (exécute UNIQUEMENT le job d'alertes 7 jours).
 exports.meteoSprayDigestTrigger = functions
   .region(sprayDigest.HTTP_CONFIG.region)
   .runWith({
@@ -2662,9 +2679,11 @@ exports.meteoSprayDigestTrigger = functions
     const date = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : undefined;
     const preview = req.query.preview === "1" || req.query.preview === "true";
     const checkRecipients = req.query.checkRecipients === "1" || req.query.checkRecipients === "true";
+    const alertesOnly = req.query.alertes === "1" || req.query.alertes === "true";
 
     // Un ENVOI réel (ni preview ni checkRecipients) part en WhatsApp au DG et
-    // aux chefs : réservé aux profils privilégiés. Rôle résolu côté serveur
+    // aux chefs : réservé aux profils privilégiés — y compris ?alertes=1, qui
+    // envoie le second message. Rôle résolu côté serveur
     // depuis users/{uid} (jamais depuis le body/la query), comme les actions
     // admin de bugReports/userManagement.
     if (!preview && !checkRecipients) {
@@ -2690,8 +2709,24 @@ exports.meteoSprayDigestTrigger = functions
     }
 
     try {
+      // ?alertes=1 : on court-circuite le digest pour ne jouer que les alertes.
+      if (alertesOnly) {
+        const alertesJob = meteoAlertes.createMeteoAlertesJob(buildMeteoAlertesDeps());
+        const alertesResult = await alertesJob.run(date, { preview });
+        return res.json({ success: true, ...alertesResult, dateRequested: date || null });
+      }
+
       const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
       const result = await job.run(date, { preview, checkRecipients });
+      // En preview, on joint les alertes détectées : un seul appel suffit à
+      // visualiser les DEUX messages du matin.
+      if (preview) {
+        const alertesJob = meteoAlertes.createMeteoAlertesJob(buildMeteoAlertesDeps());
+        const apercu = await alertesJob.run(date, { preview: true });
+        result.alertes = apercu.alertes;
+        result.alertesTitreParam = apercu.titreParam;
+        result.alertesBody = apercu.body;
+      }
       if (result.recipients) {
         // Même convention que dailyProductionReportTrigger : numéros masqués.
         const mask = (p) => (p ? p.slice(0, 4) + "***" + p.slice(-3) : null);

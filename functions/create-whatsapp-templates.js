@@ -178,6 +178,19 @@ const TEMPLATES = [
     ],
   },
   {
+    // Alertes météo à 7 jours (Forte Chaleur / Vent Fort / Forte Pluie) — même
+    // audience que le digest. Message groupé : {{1}} = période couverte,
+    // {{2}} = corps multi-ligne (une section par alerte). Comme
+    // `meteo_spray_digest`, l'exemple DOIT être multi-ligne et riche : c'est son
+    // absence qui a fait rejeter `production_digest_dg` avec l'erreur #132018.
+    name: "meteo_alerte_7j",
+    body: "SmartBerry — Alerte météo {{1}}\n\n{{2}}",
+    examples: [
+      "21 → 24/08",
+      "VENDREDI 21 AOÛT — FORTE CHALEUR\n🌡️ 34°C prévus (seuil 32°C)\n\nSAMEDI 22 AOÛT — FORTE PLUIE\n🌧️ 18.4 mm prévus (seuil 10 mm)\n\nLUNDI 24 AOÛT — VENT FORT\n💨 31 km/h prévus (seuil 25 km/h)\n\n⚠️ Reporter les traitements phyto sur ces journées et prévoir les protections adaptées.",
+    ],
+  },
+  {
     // Rapport Campagne hebdomadaire (lundi 16h) — le classeur .xlsx voyage dans
     // le header DOCUMENT. Template DÉDIÉ : les templates DOCUMENT existants
     // annoncent un PDF dans leur corps, et Meta ne tolère qu'une édition par
