@@ -167,7 +167,7 @@ const TEMPLATES = [
     ],
   },
   {
-    // Digest météo & traitements (7h) — DG + chef F1 + chef F5. L'exemple DOIT
+    // Digest météo & traitements (6h) — DG + chef F1 + chef F5. L'exemple DOIT
     // être multi-ligne et riche : c'est son absence qui a fait rejeter le body
     // réel de `production_digest_dg` avec l'erreur #132018.
     name: "meteo_spray_digest",

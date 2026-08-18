@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:15bdf7846b1e00c6 -->
+<!-- sourceFingerprint: sha256:0d6aaa3831d30c3c -->
 # Code Map — Modules lib (166)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.

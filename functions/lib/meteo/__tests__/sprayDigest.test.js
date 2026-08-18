@@ -361,8 +361,8 @@ test('run: une source météo en échec → cas dégradé, pas de throw', async 
 
 // ── Config cron ─────────────────────────────────────────────────────────
 
-test('CRON_CONFIG: 07h00 Africa/Casablanca en europe-west1', () => {
-  assert.equal(CRON_CONFIG.schedule, '0 7 * * *');
+test('CRON_CONFIG: 06h00 Africa/Casablanca en europe-west1', () => {
+  assert.equal(CRON_CONFIG.schedule, '0 6 * * *');
   assert.equal(CRON_CONFIG.timeZone, 'Africa/Casablanca');
   assert.equal(CRON_CONFIG.region, 'europe-west1');
 });
@@ -386,7 +386,7 @@ test('todayCasablancaISO: UTC+0 pendant le Ramadan (pas de +1h fictif)', () => {
   assert.equal(todayCasablancaISO(new Date('2026-03-01T23:30:00Z')), '2026-03-01');
 });
 
-test('todayCasablancaISO: heure du cron (07h00 local) → jour courant', () => {
-  assert.equal(todayCasablancaISO(new Date('2026-08-14T06:00:00Z')), '2026-08-14'); // 07h local
-  assert.equal(todayCasablancaISO(new Date('2026-03-01T07:00:00Z')), '2026-03-01'); // 07h local
+test('todayCasablancaISO: heure du cron (06h00 local) → jour courant', () => {
+  assert.equal(todayCasablancaISO(new Date('2026-08-14T05:00:00Z')), '2026-08-14'); // 06h local
+  assert.equal(todayCasablancaISO(new Date('2026-03-01T06:00:00Z')), '2026-03-01'); // 06h local
 });

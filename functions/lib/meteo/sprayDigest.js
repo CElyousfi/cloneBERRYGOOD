@@ -1,7 +1,7 @@
 'use strict';
 // @ts-check
 /**
- * sprayDigest.js — Digest WhatsApp quotidien « Météo & Traitements » (07h00
+ * sprayDigest.js — Digest WhatsApp quotidien « Météo & Traitements » (06h00
  * Africa/Casablanca) : température prévue du jour + fenêtres de traitement
  * phyto, envoyé au DG, au chef F1 (Framboise) et au chef F5 (Myrtille).
  *
@@ -41,7 +41,7 @@ const WORK_HOUR_END = 20;
 const JOURS_COURTS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
 const CRON_CONFIG = Object.freeze({
-  schedule: '0 7 * * *',
+  schedule: '0 6 * * *',
   timeZone: 'Africa/Casablanca',
   region: 'europe-west1',
   timeoutSeconds: 120,

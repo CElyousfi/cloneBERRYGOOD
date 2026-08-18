@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:d7ef3efbaad31148 -->
+<!-- sourceFingerprint: sha256:280b0a8a7bb6c49b -->
 # Code Map — Actions backend (368)
 
 Chaque action `?action=<nom>` des Cloud Functions, avec son emplacement exact et le handler `exports.xxx` qui la sert — à consulter AVANT toute recherche dans functions/index.js.
