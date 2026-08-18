@@ -650,6 +650,11 @@
    * pour que les totaux de ligne / de colonne / le grand total la restituent
    * telle quelle au lieu d'en afficher la somme.
    *
+   * Seules les cellules EXISTANTES sont décorées : aucune n'est créée. Une
+   * ligne sans cellule sur une parcelle (ni réalisé, ni budget) reste vide —
+   * en fabriquer une pour y peindre le repère y ferait apparaître un « 0.0 » de
+   * réalisé, c'est-à-dire une affirmation fausse dans la colonne d'à côté.
+   *
    * `groupesExclus` (défaut : la Récolte) reste « — » : l'effort de récolte
    * suit la maturité des fruits, pas le calendrier. Un repère linéaire y
    * annoncerait un retard permanent jusqu'au pic de production.
