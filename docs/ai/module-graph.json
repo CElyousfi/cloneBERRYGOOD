@@ -4,9 +4,9 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "219/358 fichiers classifiés",
+          "detail": "221/360 fichiers classifiés",
           "max": 40,
-          "score": 24
+          "score": 25
         },
         "domainCompleteness": {
           "detail": "9/10 domaines avec frontend+backend+firestore",
@@ -19,11 +19,11 @@
           "score": 11
         }
       },
-      "total": 62
+      "total": 63
     },
     "heatmap": [
       {
-        "commits": 22,
+        "commits": 23,
         "file": "public/app.jsx"
       },
       {
@@ -55,7 +55,7 @@
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
-        "commits": 9,
+        "commits": 10,
         "file": "functions/index.js"
       },
       {
@@ -64,10 +64,10 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:56f99d374308d2a3",
+    "sourceFingerprint": "sha256:d4053e95e3287f3f",
     "stats": {
       "backendModules": 93,
-      "cloudFunctions": 89,
+      "cloudFunctions": 91,
       "coverageScore": 36,
       "domains": 10,
       "extractedComponents": 24,
@@ -262,6 +262,8 @@
           "agroSummary",
           "dailyPhenologyJob",
           "fertigation",
+          "meteoSprayDigest",
+          "meteoSprayDigestTrigger",
           "meteoblue",
           "netafimSyncDaily",
           "netafimSyncOnce",
@@ -290,6 +292,10 @@
           {
             "functionId": "meteoblue",
             "source": "/api/meteoblue"
+          },
+          {
+            "functionId": "meteoSprayDigestTrigger",
+            "source": "/api/meteo-spray-digest"
           },
           {
             "functionId": "runDailyPhenologyJobNow",
@@ -345,6 +351,7 @@
           "functions/lib/irrigation/__tests__/scenarios.test.js",
           "functions/lib/irrigation/__tests__/weatherAdjustments.test.js",
           "functions/lib/meteo/__tests__/meteoblueProxy.test.js",
+          "functions/lib/meteo/__tests__/sprayDigest.test.js",
           "functions/lib/netafim/__tests__/auth.test.js",
           "functions/lib/netafim/__tests__/client.test.js",
           "functions/lib/netafim/__tests__/dataAccess.test.js",
@@ -1803,6 +1810,14 @@
     "functions/index.js#meetingCR": {
       "confidence": "low",
       "domain": null
+    },
+    "functions/index.js#meteoSprayDigest": {
+      "confidence": "medium",
+      "domain": "agro"
+    },
+    "functions/index.js#meteoSprayDigestTrigger": {
+      "confidence": "medium",
+      "domain": "agro"
     },
     "functions/index.js#meteoblue": {
       "confidence": "medium",
@@ -3330,6 +3345,7 @@
     "/api/indoor-forecast": "indoorForecast",
     "/api/mapping-conso": "mappingConsoManagement",
     "/api/meeting-cr": "meetingCR",
+    "/api/meteo-spray-digest": "meteoSprayDigestTrigger",
     "/api/meteoblue": "meteoblue",
     "/api/notifications": "notifications",
     "/api/ojra": "ojra",

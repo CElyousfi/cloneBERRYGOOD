@@ -167,6 +167,17 @@ const TEMPLATES = [
     ],
   },
   {
+    // Digest météo & traitements (7h) — DG + chef F1 + chef F5. L'exemple DOIT
+    // être multi-ligne et riche : c'est son absence qui a fait rejeter le body
+    // réel de `production_digest_dg` avec l'erreur #132018.
+    name: "meteo_spray_digest",
+    body: "SmartBerry — Météo & Traitements {{1}}\n\n{{2}}",
+    examples: [
+      "Jeu 14/08",
+      "🌡️ Température : 17°C → 29°C\n💨 Vent max : 12 km/h\n🌧️ Pluie : 0 mm\n\n✅ Fenêtres de traitement :\n• 06h00 - 09h00\n• 18h00 - 20h00\nScore du jour : 62% favorable",
+    ],
+  },
+  {
     // Rapport Campagne hebdomadaire (lundi 16h) — le classeur .xlsx voyage dans
     // le header DOCUMENT. Template DÉDIÉ : les templates DOCUMENT existants
     // annoncent un PDF dans leur corps, et Meta ne tolère qu'une édition par

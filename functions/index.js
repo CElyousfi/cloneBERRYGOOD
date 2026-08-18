@@ -42,6 +42,7 @@ const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require(".
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
+const sprayDigest = require("./lib/meteo/sprayDigest");
 
 // =============================================
 // Firestore Mirror — reads from synced collections
@@ -2609,6 +2610,97 @@ exports.meteoblue = functions
     } catch (err) {
       console.error("Erreur Meteoblue:", err);
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+// =============================================
+// METEO SPRAY DIGEST — WhatsApp 7h (DG + chef F1 + chef F5)
+// Température du jour + fenêtres de traitement phyto.
+// =============================================
+
+/** Dépendances de prod du job digest (cache Meteoblue partagé + WhatsApp). */
+function buildMeteoSprayDigestDeps() {
+  return {
+    getMeteoblue: (coords, pkg) =>
+      getMeteoblueCached(coords.lat, coords.lon, coords.altitude, pkg).then((r) => r.data),
+    whatsapp: whatsappService,
+    now: () => new Date(),
+  };
+}
+
+exports.meteoSprayDigest = functions
+  .region(sprayDigest.CRON_CONFIG.region)
+  .runWith({
+    timeoutSeconds: sprayDigest.CRON_CONFIG.timeoutSeconds,
+    memory: sprayDigest.CRON_CONFIG.memorySize,
+  })
+  .pubsub.schedule(sprayDigest.CRON_CONFIG.schedule)
+  .timeZone(sprayDigest.CRON_CONFIG.timeZone)
+  .onRun(async () => {
+    try {
+      const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
+      const summary = await job.run();
+      console.log("[meteoSprayDigest] cron done", JSON.stringify(summary));
+    } catch (err) {
+      console.error("[meteoSprayDigest] cron error:", err.message);
+    }
+    return null;
+  });
+
+// Trigger manuel — ?date=YYYY-MM-DD, ?preview=1 (aucun envoi), ?checkRecipients=1.
+exports.meteoSprayDigestTrigger = functions
+  .region(sprayDigest.HTTP_CONFIG.region)
+  .runWith({
+    timeoutSeconds: sprayDigest.HTTP_CONFIG.timeoutSeconds,
+    memory: sprayDigest.HTTP_CONFIG.memorySize,
+  })
+  .https.onRequest(async (req, res) => {
+    setCors(res, req);
+    if (req.method === "OPTIONS") return res.status(204).send("");
+    const authUser = await requireAuth(req, res);
+    if (!authUser) return;
+    const date = (req.query.date && /^\d{4}-\d{2}-\d{2}$/.test(req.query.date)) ? req.query.date : undefined;
+    const preview = req.query.preview === "1" || req.query.preview === "true";
+    const checkRecipients = req.query.checkRecipients === "1" || req.query.checkRecipients === "true";
+
+    // Un ENVOI réel (ni preview ni checkRecipients) part en WhatsApp au DG et
+    // aux chefs : réservé aux profils privilégiés. Rôle résolu côté serveur
+    // depuis users/{uid} (jamais depuis le body/la query), comme les actions
+    // admin de bugReports/userManagement.
+    if (!preview && !checkRecipients) {
+      let callerProfileId = null;
+      let callerRole = null;
+      try {
+        const uSnap = await db_firestore.collection("users").doc(authUser.uid).get();
+        if (uSnap.exists) {
+          const u = uSnap.data() || {};
+          callerProfileId = u.profileId || null;
+          callerRole = u.role || null;
+        }
+      } catch (e) {
+        console.warn("[meteoSprayDigestTrigger] résolution profil appelant échouée:", e.message);
+      }
+      const allowed = sprayDigest.TRIGGER_SEND_ROLES.includes(callerProfileId) || callerRole === "admin";
+      if (!allowed) {
+        return res.status(403).json({
+          success: false,
+          error: "Envoi réservé aux profils DG/DT/admin — utilisez ?preview=1 pour visualiser le digest.",
+        });
+      }
+    }
+
+    try {
+      const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
+      const result = await job.run(date, { preview, checkRecipients });
+      if (result.recipients) {
+        // Même convention que dailyProductionReportTrigger : numéros masqués.
+        const mask = (p) => (p ? p.slice(0, 4) + "***" + p.slice(-3) : null);
+        result.recipients = result.recipients.map((r) => ({ ...r, phone: mask(r.phone) }));
+      }
+      return res.json({ success: true, ...result, dateRequested: date || null });
+    } catch (err) {
+      console.error("[meteoSprayDigestTrigger] error:", err);
+      return res.status(500).json({ success: false, error: err.message });
     }
   });
 
