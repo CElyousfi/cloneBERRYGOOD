@@ -60,11 +60,22 @@ function plus(n) {
 
 // ── seuils (bornes exactes) ─────────────────────────────────────────────
 
-test('detecterAlertes: chaleur — 31.4 sous le seuil, 32 déclenche', () => {
+test('seuils et marges figés : chaleur 35 °C / marge 1 °C (alignés avec l\'écran)', () => {
+  // Décision Omar du 2026-08-18 : 32 → 35 °C, marge 2 → 1 °C, des DEUX côtés
+  // (public/app.jsx `p.tMax >= 35`). Ce test échoue si un seul côté bouge.
+  assert.equal(SEUILS.chaleur, 35);
+  assert.equal(MARGES_AGGRAVATION.chaleur, 1);
+  assert.equal(SEUILS.vent, 25);
+  assert.equal(SEUILS.pluie, 10);
+  assert.equal(MARGES_AGGRAVATION.vent, 5);
+  assert.equal(MARGES_AGGRAVATION.pluie, 5);
+});
+
+test('detecterAlertes: chaleur — 34.4 sous le seuil, 35 déclenche', () => {
   // La comparaison porte sur la valeur arrondie (cf. écran) : la borne basse
-  // réelle est donc 31.5, pas 32.
-  assert.equal(detecterAlertes(weatherPayload([{ time: DAY, tMax: 31.4 }]), { fromISO: DAY }).length, 0);
-  const a = detecterAlertes(weatherPayload([{ time: DAY, tMax: 32 }]), { fromISO: DAY });
+  // réelle est donc 34.5, pas 35.
+  assert.equal(detecterAlertes(weatherPayload([{ time: DAY, tMax: 34.4 }]), { fromISO: DAY }).length, 0);
+  const a = detecterAlertes(weatherPayload([{ time: DAY, tMax: 35 }]), { fromISO: DAY });
   assert.equal(a.length, 1);
   assert.equal(a[0].type, 'chaleur');
   assert.equal(a[0].label, 'Forte Chaleur');
@@ -88,13 +99,13 @@ test('detecterAlertes: pluie — 9.9 sous le seuil, 10 déclenche', () => {
   assert.equal(a[0].valeur, 10);
 });
 
-test('detecterAlertes: compare la valeur ARRONDIE, comme l\'écran (31.6 °C alerte)', () => {
-  // public/app.jsx affiche Math.round(tMax) : 31.6 → 32 → alerte à l'écran.
-  const a = detecterAlertes(weatherPayload([{ time: DAY, tMax: 31.6 }]), { fromISO: DAY });
+test('detecterAlertes: borne du seuil 35 — 34.4 non, 34.6 oui (valeur ARRONDIE)', () => {
+  // public/app.jsx affiche Math.round(tMax) : 34.6 → 35 → alerte à l'écran.
+  const a = detecterAlertes(weatherPayload([{ time: DAY, tMax: 34.6 }]), { fromISO: DAY });
   assert.equal(a.length, 1);
   assert.equal(a[0].type, 'chaleur');
-  assert.equal(a[0].valeur, 31.6, 'la valeur brute (arrondie au dixième) reste mémorisée');
-  assert.equal(detecterAlertes(weatherPayload([{ time: DAY, tMax: 31.4 }]), { fromISO: DAY }).length, 0);
+  assert.equal(a[0].valeur, 34.6, 'la valeur brute (arrondie au dixième) reste mémorisée');
+  assert.equal(detecterAlertes(weatherPayload([{ time: DAY, tMax: 34.4 }]), { fromISO: DAY }).length, 0);
 });
 
 test('detecterAlertes: vent 24.6 km/h alerte (arrondi à 25), 24.4 non', () => {
@@ -107,7 +118,7 @@ test('detecterAlertes: vent 24.6 km/h alerte (arrondi à 25), 24.4 non', () => {
 
 test('detecterAlertes: accepte le séparateur ISO « T » dans data_day.time', () => {
   const a = detecterAlertes(
-    weatherPayload([{ time: DAY + 'T00:00', tMax: 34 }]), { fromISO: DAY }
+    weatherPayload([{ time: DAY + 'T00:00', tMax: 36 }]), { fromISO: DAY }
   );
   assert.equal(a.length, 1);
   assert.equal(a[0].dateISO, DAY);
@@ -124,7 +135,7 @@ test('detecterAlertes: plusieurs types le même jour, ordre chaleur > vent > plu
 test('detecterAlertes: tri par date croissante', () => {
   const a = detecterAlertes(weatherPayload([
     { time: plus(3), vent: 30 },
-    { time: plus(1), tMax: 33 },
+    { time: plus(1), tMax: 36 },
     { time: plus(2), pluie: 12 },
   ]), { fromISO: DAY });
   assert.deepEqual(a.map((x) => x.dateISO), [plus(1), plus(2), plus(3)]);
@@ -133,7 +144,7 @@ test('detecterAlertes: tri par date croissante', () => {
 test('detecterAlertes: fenêtre — J+7 inclus, J+8 exclu, passé exclu', () => {
   const a = detecterAlertes(weatherPayload([
     { time: plus(-1), tMax: 40 },
-    { time: plus(0), tMax: 33 },
+    { time: plus(0), tMax: 36 },
     { time: plus(7), tMax: 36 },
     { time: plus(8), tMax: 41 },
   ]), { fromISO: DAY });
@@ -153,7 +164,7 @@ test('detecterAlertes: données absentes ou incomplètes → []', () => {
 
 test('formatAlertes: titres en majuscules et jours FR corrects', () => {
   const alertes = detecterAlertes(weatherPayload([
-    { time: plus(0), tMax: 34 },
+    { time: plus(0), tMax: 36 },
     { time: plus(3), vent: 31 },
   ]), { fromISO: DAY });
   const out = formatAlertes(alertes);
@@ -161,17 +172,48 @@ test('formatAlertes: titres en majuscules et jours FR corrects', () => {
   assert.equal(out.titreParam, '21 → 24/08');
   assert.match(out.body, /^VENDREDI 21 AOÛT — FORTE CHALEUR$/m);
   assert.match(out.body, /^LUNDI 24 AOÛT — VENT FORT$/m);
-  assert.match(out.body, /34°C prévus \(seuil 32°C\)/);
+  assert.match(out.body, /36°C prévus \(seuil 35°C\)/);
   assert.match(out.body, /31 km\/h prévus \(seuil 25 km\/h\)/);
   assert.match(out.body, /phyto/);
 });
 
+test('formatAlertes: affiche la valeur RÉELLE, virgule FR, sans décimale nulle', () => {
+  const out = formatAlertes([
+    { type: 'chaleur', label: 'Forte Chaleur', dateISO: DAY, valeur: 35.4, seuil: 35, cle: 'chaleur_' + DAY },
+    { type: 'chaleur', label: 'Forte Chaleur', dateISO: plus(1), valeur: 36.0, seuil: 35, cle: 'chaleur_' + plus(1) },
+    { type: 'vent', label: 'Vent Fort', dateISO: plus(2), valeur: 25.5, seuil: 25, cle: 'vent_' + plus(2) },
+    { type: 'pluie', label: 'Forte Pluie', dateISO: plus(3), valeur: 12.0, seuil: 10, cle: 'pluie_' + plus(3) },
+  ]);
+
+  // 35,4 °C ne doit PAS s'afficher « 35°C prévus (seuil 35°C) » : l'arrondi
+  // sert à comparer au seuil, pas à afficher. (Incident prod du 2026-08-18 :
+  // « 32°C prévus (seuil 32°C) » pour une prévision à 32,4 °C.)
+  assert.match(out.body, /🌡️ 35,4°C prévus \(seuil 35°C\)/);
+  assert.match(out.body, /🌡️ 36°C prévus \(seuil 35°C\)/);
+  assert.equal(out.body.includes('36,0°C'), false);
+  assert.match(out.body, /💨 25,5 km\/h prévus \(seuil 25 km\/h\)/);
+  assert.match(out.body, /🌧️ 12 mm prévus \(seuil 10 mm\)/);
+  assert.equal(out.body.includes('12,0 mm'), false);
+  // Le seuil reste entier, jamais reformaté avec une décimale.
+  assert.equal(/seuil \d+,\d/.test(out.body), false);
+});
+
+test('formatAlertes: fallbackText reprend la valeur réelle et reste mono-ligne', () => {
+  const out = formatAlertes([
+    { type: 'chaleur', label: 'Forte Chaleur', dateISO: DAY, valeur: 35.4, seuil: 35, cle: 'chaleur_' + DAY },
+    { type: 'pluie', label: 'Forte Pluie', dateISO: plus(1), valeur: 12.5, seuil: 10, cle: 'pluie_' + plus(1) },
+  ]);
+  assert.equal(out.fallbackText.includes('\n'), false);
+  assert.match(out.fallbackText, /35,4°C \(seuil 35°C\)/);
+  assert.match(out.fallbackText, /12,5 mm \(seuil 10 mm\)/);
+});
+
 test('formatAlertes: période sur deux mois et jour unique', () => {
-  const unJour = detecterAlertes(weatherPayload([{ time: DAY, tMax: 34 }]), { fromISO: DAY });
+  const unJour = detecterAlertes(weatherPayload([{ time: DAY, tMax: 36 }]), { fromISO: DAY });
   assert.equal(formatAlertes(unJour).titreParam, '21/08');
 
   const across = formatAlertes([
-    { type: 'chaleur', label: 'Forte Chaleur', dateISO: '2026-08-29', valeur: 34, seuil: 32, cle: 'chaleur_2026-08-29' },
+    { type: 'chaleur', label: 'Forte Chaleur', dateISO: '2026-08-29', valeur: 36, seuil: 35, cle: 'chaleur_2026-08-29' },
     { type: 'vent', label: 'Vent Fort', dateISO: '2026-09-02', valeur: 30, seuil: 25, cle: 'vent_2026-09-02' },
   ]);
   assert.equal(across.titreParam, '29/08 → 02/09');
@@ -179,7 +221,7 @@ test('formatAlertes: période sur deux mois et jour unique', () => {
 
 test('formatAlertes: fallbackText tient sur une seule ligne', () => {
   const alertes = detecterAlertes(weatherPayload([
-    { time: plus(0), tMax: 34, pluie: 18 },
+    { time: plus(0), tMax: 36, pluie: 18 },
     { time: plus(2), vent: 31 },
   ]), { fromISO: DAY });
   const out = formatAlertes(alertes);
@@ -195,7 +237,7 @@ test('formatAlertes: aucune alerte → message vide', () => {
 // ── filtrerAlertesANotifier ─────────────────────────────────────────────
 
 const A_CHALEUR = {
-  type: 'chaleur', label: 'Forte Chaleur', dateISO: DAY, valeur: 34, seuil: 32, cle: 'chaleur_' + DAY,
+  type: 'chaleur', label: 'Forte Chaleur', dateISO: DAY, valeur: 36, seuil: 35, cle: 'chaleur_' + DAY,
 };
 
 test('filtrerAlertesANotifier: clé inconnue → renvoyée', () => {
@@ -205,17 +247,17 @@ test('filtrerAlertesANotifier: clé inconnue → renvoyée', () => {
 });
 
 test('filtrerAlertesANotifier: clé connue, valeur identique → non renvoyée', () => {
-  const etat = new Map([[A_CHALEUR.cle, { valeur: 34 }]]);
+  const etat = new Map([[A_CHALEUR.cle, { valeur: 36 }]]);
   assert.deepEqual(filtrerAlertesANotifier([A_CHALEUR], etat), []);
 });
 
 test('filtrerAlertesANotifier: aggravation < marge → non renvoyée', () => {
-  const etat = new Map([[A_CHALEUR.cle, { valeur: 34 - (MARGES_AGGRAVATION.chaleur - 0.1) }]]);
+  const etat = new Map([[A_CHALEUR.cle, { valeur: 36 - (MARGES_AGGRAVATION.chaleur - 0.1) }]]);
   assert.deepEqual(filtrerAlertesANotifier([A_CHALEUR], etat), []);
 });
 
 test('filtrerAlertesANotifier: aggravation == marge → renvoyée', () => {
-  const etat = new Map([[A_CHALEUR.cle, { valeur: 34 - MARGES_AGGRAVATION.chaleur }]]);
+  const etat = new Map([[A_CHALEUR.cle, { valeur: 36 - MARGES_AGGRAVATION.chaleur }]]);
   assert.deepEqual(filtrerAlertesANotifier([A_CHALEUR], etat), [A_CHALEUR]);
 });
 
@@ -305,7 +347,7 @@ function makeDbStub(seed, faults) {
 const nowAtDay = () => new Date('2026-08-21T09:00:00Z');
 
 const WEATHER = weatherPayload([
-  { time: plus(0), tMax: 34 },
+  { time: plus(0), tMax: 36 },
   { time: plus(2), vent: 31 },
 ]);
 const getWeather = async () => WEATHER;
@@ -333,10 +375,30 @@ test('run: envoie aux destinataires dédoublonnés par téléphone et mémorise 
   assert.equal(res.persisted, 2);
 });
 
+test('run: la valeur MÉMORISÉE reste la valeur brute (pas la valeur formatée)', async () => {
+  const whatsapp = makeWhatsappStub({ dg: [DG] });
+  const db = makeDbStub({});
+  const weather = weatherPayload([{ time: plus(0), tMax: 35.4, vent: 25.5 }]);
+  const res = await createMeteoAlertesJob({
+    getMeteoblue: async () => weather, whatsapp, db,
+  }).run(DAY);
+
+  assert.equal(res.sent, 1);
+  const parCle = new Map(db.writes.map((w) => [w.id, w.data]));
+  // L'anti-répétition raisonne sur ces nombres : ni chaîne, ni arrondi entier.
+  assert.equal(parCle.get('chaleur_' + plus(0)).valeur, 35.4);
+  assert.equal(typeof parCle.get('chaleur_' + plus(0)).valeur, 'number');
+  assert.equal(parCle.get('vent_' + plus(0)).valeur, 25.5);
+  assert.equal(typeof parCle.get('vent_' + plus(0)).valeur, 'number');
+  // …tandis que le message, lui, affiche bien la valeur réelle en français.
+  assert.match(whatsapp.sends[0].bodyParams[1], /35,4°C prévus \(seuil 35°C\)/);
+  assert.match(whatsapp.sends[0].bodyParams[1], /25,5 km\/h prévus \(seuil 25 km\/h\)/);
+});
+
 test('run: alerte déjà envoyée → aucun envoi, aucune écriture', async () => {
   const whatsapp = makeWhatsappStub({ dg: [DG] });
   const db = makeDbStub({
-    ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 34, envoye_at: 'x' },
+    ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 36, envoye_at: 'x' },
     ['vent_' + plus(2)]: { type: 'vent', dateISO: plus(2), valeur: 31, envoye_at: 'x' },
   });
   const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db }).run(DAY);
@@ -351,7 +413,7 @@ test('run: alerte déjà envoyée → aucun envoi, aucune écriture', async () =
 test('run: aggravation ≥ marge → alerte renvoyée', async () => {
   const whatsapp = makeWhatsappStub({ dg: [DG] });
   const db = makeDbStub({
-    ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 32, envoye_at: 'x' },
+    ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 35, envoye_at: 'x' },
     ['vent_' + plus(2)]: { type: 'vent', dateISO: plus(2), valeur: 30, envoye_at: 'x' },
   });
   const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db }).run(DAY);
@@ -407,7 +469,7 @@ test('run: repli sur general_alert quand Meta répond 132018', async () => {
 test('run: purge les entrées dont le jour est passé', async () => {
   const whatsapp = makeWhatsappStub({ dg: [DG] });
   const db = makeDbStub({
-    ['chaleur_' + plus(-3)]: { type: 'chaleur', dateISO: plus(-3), valeur: 34, envoye_at: 'x' },
+    ['chaleur_' + plus(-3)]: { type: 'chaleur', dateISO: plus(-3), valeur: 36, envoye_at: 'x' },
     ['vent_' + plus(2)]: { type: 'vent', dateISO: plus(2), valeur: 31, envoye_at: 'x' },
   });
   const res = await createMeteoAlertesJob({
@@ -424,7 +486,7 @@ test('run: la purge suit la date SERVEUR, jamais le paramètre date', async () =
   // basait sur le paramètre → réarmement massif des alertes déjà envoyées.
   const whatsapp = makeWhatsappStub({ dg: [DG] });
   const db = makeDbStub({
-    ['chaleur_' + plus(2)]: { type: 'chaleur', dateISO: plus(2), valeur: 34, envoye_at: 'x' },
+    ['chaleur_' + plus(2)]: { type: 'chaleur', dateISO: plus(2), valeur: 36, envoye_at: 'x' },
     ['vent_' + plus(5)]: { type: 'vent', dateISO: plus(5), valeur: 31, envoye_at: 'x' },
   });
   const res = await createMeteoAlertesJob({
@@ -507,7 +569,7 @@ test('run: checkRecipients n\'envoie rien, n\'écrit rien, ne purge rien', async
     chef_f1: [{ uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' }],
   });
   const db = makeDbStub({
-    ['chaleur_' + plus(-3)]: { type: 'chaleur', dateISO: plus(-3), valeur: 34, envoye_at: 'x' },
+    ['chaleur_' + plus(-3)]: { type: 'chaleur', dateISO: plus(-3), valeur: 36, envoye_at: 'x' },
   });
   const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db, now: nowAtDay })
     .run(DAY, { checkRecipients: true });
@@ -564,7 +626,7 @@ test('run: envoi PARTIEL → état écrit quand même + erreur journalisée', as
 test('run: lecture d\'état en échec → repart d\'un état vide et notifie', async () => {
   const whatsapp = makeWhatsappStub({ dg: [DG] });
   const db = makeDbStub(
-    { ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 34, envoye_at: 'x' } },
+    { ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 36, envoye_at: 'x' } },
     { failGet: true }
   );
   const { result: res, errors } = await captureErrors(() =>

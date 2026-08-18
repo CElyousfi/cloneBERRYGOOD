@@ -1337,7 +1337,12 @@
             }
 
             var alertes = [];
-            if (previsions.some(function(p) { return p.tMax >= 32; })) alertes.push({ type: 'chaleur', niveau: 'danger', icon: 'fa-temperature-high', color: 'var(--red)', titre: 'Alerte Forte Chaleur', message: 'Température max prévue de ' + Math.max.apply(null, previsions.map(function(p){return p.tMax;})) + '°C. Prévoir irrigation supplémentaire et protection des ouvriers.', jours: previsions.filter(function(p){return p.tMax >= 32;}).map(function(p){return p.dateLong;}).join(', ') });
+            // Seuil chaleur 35 °C : ALIGNÉ avec functions/lib/meteo/meteoAlertes.js
+            // (SEUILS.chaleur). Les deux DOIVENT rester identiques, sinon l'écran et
+            // la notification WhatsApp se contredisent. Duplication volontaire : le
+            // backend ne peut pas require('../public/…'), Firebase ne déploie que
+            // functions/ — tout changement ici doit être répercuté là-bas, et inversement.
+            if (previsions.some(function(p) { return p.tMax >= 35; })) alertes.push({ type: 'chaleur', niveau: 'danger', icon: 'fa-temperature-high', color: 'var(--red)', titre: 'Alerte Forte Chaleur', message: 'Température max prévue de ' + Math.max.apply(null, previsions.map(function(p){return p.tMax;})) + '°C. Prévoir irrigation supplémentaire et protection des ouvriers.', jours: previsions.filter(function(p){return p.tMax >= 35;}).map(function(p){return p.dateLong;}).join(', ') });
             if (previsions.some(function(p) { return p.humidity < 40; })) alertes.push({ type: 'humidite', niveau: 'warning', icon: 'fa-droplet-slash', color: 'var(--orange)', titre: 'Humidité Très Basse', message: 'Humidité prévue sous 40%. Risque de stress hydrique. Augmenter irrigation.', jours: previsions.filter(function(p){return p.humidity < 40;}).map(function(p){return p.dateLong;}).join(', ') });
             if (previsions.some(function(p) { return p.tMin <= 8; })) alertes.push({ type: 'gel', niveau: 'danger', icon: 'fa-snowflake', color: 'var(--blue)', titre: 'Risque Température Basse', message: 'Température minimale de ' + Math.min.apply(null, previsions.map(function(p){return p.tMin;})) + '°C prévue. Risque pour framboises et myrtilles.', jours: previsions.filter(function(p){return p.tMin <= 8;}).map(function(p){return p.dateLong;}).join(', ') });
             if (previsions.some(function(p) { return p.vent >= 25; })) alertes.push({ type: 'vent', niveau: 'warning', icon: 'fa-wind', color: '#8E44AD', titre: 'Vent Fort', message: 'Rafales jusqu\'à ' + Math.max.apply(null, previsions.map(function(p){return p.vent;})) + ' km/h. Vérifier fixations tunnels et bâches.', jours: previsions.filter(function(p){return p.vent >= 25;}).map(function(p){return p.dateLong;}).join(', ') });
