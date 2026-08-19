@@ -2379,7 +2379,20 @@
         // Le lecteur doit savoir POURQUOI ce bloc est à part, sinon il
         // le lit comme un oubli du tableau du dessus.
         note: 'Récolte présentée à part : son budget n\'est consommé qu\'en ' + 'saison, le laisser dans le tableau ci-dessus écrasait le TOTAL ' + '(le « % consommé » global tombait à quelques pour cent). Le TOTAL ' + 'du tableau ci-dessus est donc le total HORS récolte.'
-      })) : null);
+      })) : null,
+      // ── PRODUCTION (KG) ─────────────────────────────────────────
+      // Sous les deux grilles, à la même largeur : les kilos et la
+      // vitesse de récolte (kg/JH, kg/DH) qui les relie à l'effort
+      // pointé juste au-dessus. Composant séparé, avec ses propres
+      // hooks : PivotView ne peut pas en accueillir (l'ordre de ses
+      // useState est load-bearing, cf. commentaire en tête).
+      // Garde anti-crash sur le global (mémoire « tab bare global ref »).
+      enPlein && window.CampagneProductionBloc ? React.createElement(window.CampagneProductionBloc, {
+        culture: g.culture,
+        color: g.color,
+        rowsRecolte: partition.recolte,
+        campagne: data.campagne
+      }) : null);
     }));
   }
 

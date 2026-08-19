@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:352db80ba9b17cef",
+    "sourceFingerprint": "sha256:8b2a5dc4d2340078",
     "stats": {
-      "targetFiles": 221,
+      "targetFiles": 224,
       "targetFilesWithDirectTests": 136,
       "targetFilesWithTransitiveTests": 157,
-      "testFilesScanned": 188
+      "testFilesScanned": 189
     }
   },
   "index": {
@@ -1328,6 +1328,14 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "public/components/CampagneProductionBloc.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/CampagneProductionBloc.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/components/ConsoValoriseeTab.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1549,6 +1557,10 @@
         "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ]
+    },
+    "public/lib/campagneProduction.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/campagneRythme.js": {
       "directTests": [],
