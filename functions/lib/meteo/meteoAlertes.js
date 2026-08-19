@@ -578,15 +578,24 @@ function createMeteoAlertesJob(deps) {
 
     const { etat, ids } = await lireEtat();
     // ⚠️ ENVOI RESTREINT (?only=) = envoi de TEST : AUCUNE mutation Firestore,
-    // ni purge ni écriture d'état. L'état est lu (pour ne pas re-notifier ce
-    // qui l'a déjà été), jamais modifié. Écrire ici marquerait l'alerte comme
-    // « déjà envoyée » et la VRAIE alerte du lendemain ne partirait plus aux
-    // chefs F1/F5 — un test rendrait l'alerte muette pour toute l'équipe.
+    // ni purge ni écriture d'état. Écrire marquerait l'alerte comme « déjà
+    // envoyée » et la VRAIE alerte du lendemain ne partirait plus aux chefs
+    // F1/F5 — un test rendrait l'alerte muette pour toute l'équipe.
     // Purge indexée sur la date du jour SERVEUR, pas sur `day` (qui peut venir
     // de ?date= et vider toute la collection d'état — cf. purger()).
     const purged = only ? 0 : await purger(ids, todayCasablancaISO(now()));
 
-    const aNotifier = filtrerAlertesANotifier(detectees, etat);
+    // ⚠️ En mode restreint UNIQUEMENT, le filtre anti-répétition est
+    // court-circuité : un outil de test dont le résultat dépend de si le cron
+    // de 6h est déjà passé est inutilisable (à 10h il répondrait « aucune
+    // alerte » alors que tout fonctionne). Sans risque ici : rien n'est
+    // persisté, la purge est neutralisée, et un seul profil reçoit.
+    // Le chemin du CRON et l'envoi complet manuel gardent le filtrage STRICT —
+    // c'est lui qui évite de notifier les chefs sept matins de suite.
+    const dedupBypassed = !!only;
+    const aNotifier = dedupBypassed
+      ? detectees.slice()
+      : filtrerAlertesANotifier(detectees, etat);
     const skipped = detectees.length - aNotifier.length;
 
     if (!aNotifier.length) {
@@ -595,7 +604,7 @@ function createMeteoAlertesJob(deps) {
       return {
         dateISO: day, alertes: [], sent: 0, skipped: skipped,
         recipientsCount: 0, fallbackUsed: 0, purged: purged,
-        restrictedTo: only,
+        restrictedTo: only, dedupBypassed: dedupBypassed,
       };
     }
 
@@ -609,7 +618,7 @@ function createMeteoAlertesJob(deps) {
       return {
         dateISO: day, alertes: aNotifier, sent: 0, skipped: skipped,
         recipientsCount: 0, fallbackUsed: 0, purged: purged,
-        restrictedTo: only,
+        restrictedTo: only, dedupBypassed: dedupBypassed,
       };
     }
 
@@ -706,7 +715,10 @@ function createMeteoAlertesJob(deps) {
     const logLine = '[meteoAlertes] ' + day + ': alertes=' + aNotifier.length +
       ' sent=' + sent + '/' + recipients.length + ' image=' + imageSent +
       ' fallback=' + fallbackUsed + ' skipped=' + skipped + ' purged=' + purged +
-      (only ? ' [ENVOI RESTREINT À ' + only + ' — état NON mémorisé]' : '');
+      (only
+        ? ' [ENVOI RESTREINT À ' + only +
+          ' — anti-répétition CONTOURNÉ, état NON mémorisé]'
+        : '');
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -725,8 +737,10 @@ function createMeteoAlertesJob(deps) {
       meteogramAvailable: !!mediaId,
       imageSent: imageSent,
       // Trace explicite : un test restreint ne doit pas pouvoir passer pour un
-      // envoi complet en relisant les logs.
+      // envoi complet en relisant les logs — ni son contournement du filtre
+      // anti-répétition passer pour une panne de l'anti-répétition.
       restrictedTo: only,
+      dedupBypassed: dedupBypassed,
     };
   }
 

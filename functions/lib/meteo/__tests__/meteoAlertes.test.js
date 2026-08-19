@@ -1040,3 +1040,131 @@ test('run: checkRecipients + only → diagnostic restreint, sans effet de bord',
   assert.equal(db.writes.length, 0);
   assert.equal(db.deletes.length, 0);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contournement de l'anti-répétition — RÉSERVÉ au mode ?only=
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * État Firestore où les DEUX alertes de WEATHER sont déjà mémorisées à leur
+ * valeur exacte : en temps normal, plus rien ne doit partir.
+ * (clé = `type_dateISO`, cf. detecterAlertes.)
+ */
+function etatDejaEnvoye() {
+  return {
+    ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 36, envoye_at: 'hier' },
+    ['vent_' + plus(2)]: { type: 'vent', dateISO: plus(2), valeur: 31, envoye_at: 'hier' },
+  };
+}
+
+test('anti-répétition: HORS mode only, une alerte déjà mémorisée reste FILTRÉE', () => {
+  // LE test important : c'est lui qui garantit qu'on n'a pas ouvert une brèche
+  // dans l'anti-répétition en facilitant le test. Si celui-ci tombe, les chefs
+  // se font notifier les mêmes alertes tous les matins.
+  const detectees = detecterAlertes(WEATHER, { fromISO: DAY, jours: 7 });
+  assert.equal(detectees.length, 2);
+  const etat = new Map(Object.entries(etatDejaEnvoye()));
+  assert.deepEqual(filtrerAlertesANotifier(detectees, etat), [],
+    'le filtre lui-même n\'a pas bougé');
+});
+
+test('run: HORS mode only, alertes déjà mémorisées → aucun envoi (comportement du cron)', async () => {
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub(etatDejaEnvoye());
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db }).run(DAY);
+
+  assert.equal(res.sent, 0, 'personne n\'est re-notifié');
+  assert.deepEqual(res.alertes, []);
+  assert.equal(res.skipped, 2, 'les 2 alertes sont comptées comme déjà envoyées');
+  assert.equal(res.dedupBypassed, false, 'le filtrage est bien actif');
+  assert.equal(res.restrictedTo, null);
+  assert.equal(whatsapp.sends.length, 0);
+});
+
+test('run: en mode only, une alerte déjà mémorisée est QUAND MÊME envoyée', async () => {
+  // Un mode test doit être déterministe : son résultat ne peut pas dépendre de
+  // si le cron de 6h est déjà passé.
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub(etatDejaEnvoye());
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.equal(res.alertes.length, 2, 'les 2 alertes détectées partent malgré l\'état');
+  assert.equal(res.sent, 1, 'au seul destinataire restreint');
+  assert.equal(res.skipped, 0);
+  assert.equal(res.dedupBypassed, true, 'le contournement est tracé dans le retour');
+  assert.equal(res.restrictedTo, 'dg');
+  assert.equal(whatsapp.sends.length, 1);
+  assert.equal(whatsapp.sends[0].to, DG.phone);
+});
+
+test('run: le contournement ne modifie NI n\'efface l\'état existant', async () => {
+  const seed = etatDejaEnvoye();
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub(seed);
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.equal(res.sent, 1);
+  assert.equal(db.writes.length, 0, 'aucune écriture');
+  assert.equal(db.deletes.length, 0, 'aucune suppression');
+  assert.equal(res.persisted, 0);
+  assert.equal(db.store.size, 2, 'les 2 entrées d\'origine sont intactes');
+  assert.deepEqual(db.store.get('chaleur_' + plus(0)), seed['chaleur_' + plus(0)],
+    'valeur d\'état inchangée');
+});
+
+test('run: après un test en mode only, le cron du lendemain filtre TOUJOURS', async () => {
+  // Bout en bout : le contournement est strictement local à l'appel restreint,
+  // il ne « réarme » rien pour l\'envoi complet suivant.
+  const db = makeDbStub(etatDejaEnvoye());
+  const testDg = makeWhatsappStub(AUDIENCE_3);
+  const resTest = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp: testDg, db })
+    .run(DAY, { only: 'dg' });
+  assert.equal(resTest.sent, 1, 'le test a bien envoyé');
+
+  const cron = makeWhatsappStub(AUDIENCE_3);
+  const resCron = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp: cron, db }).run(DAY);
+
+  assert.equal(resCron.dedupBypassed, false);
+  assert.equal(resCron.sent, 0, 'les chefs ne sont pas spammés à cause du test');
+  assert.equal(cron.sends.length, 0);
+});
+
+test('run: sans état préalable, only et envoi complet détectent les mêmes alertes', async () => {
+  // Le contournement ne doit rien INVENTER : mêmes alertes des deux côtés.
+  const dbA = makeDbStub({});
+  const resOnly = await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp: makeWhatsappStub(AUDIENCE_3), db: dbA,
+  }).run(DAY, { only: 'dg' });
+
+  const dbB = makeDbStub({});
+  const resPlein = await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp: makeWhatsappStub(AUDIENCE_3), db: dbB,
+  }).run(DAY);
+
+  assert.deepEqual(resOnly.alertes.map((a) => a.cle), resPlein.alertes.map((a) => a.cle));
+  assert.equal(resOnly.dedupBypassed, true);
+  assert.equal(resPlein.dedupBypassed, false);
+});
+
+test('run: le log d\'un envoi restreint annonce le contournement, pas une panne', async () => {
+  const { errors } = await captureErrors(async () => {
+    const logs = [];
+    const orig = console.log;
+    console.log = (...a) => { logs.push(a.join(' ')); };
+    try {
+      await createMeteoAlertesJob({
+        getMeteoblue: getWeather, whatsapp: makeWhatsappStub(AUDIENCE_3), db: makeDbStub({}),
+      }).run(DAY, { only: 'dg' });
+    } finally {
+      console.log = orig;
+    }
+    assert.ok(logs.some((l) => /ENVOI RESTREINT À dg/.test(l)), 'restriction annoncée');
+    assert.ok(logs.some((l) => /anti-répétition CONTOURNÉ/.test(l)),
+      'sinon on relira ce log comme une panne de l\'anti-répétition');
+    assert.ok(logs.some((l) => /état NON mémorisé/.test(l)));
+    return null;
+  });
+  assert.equal(errors.length, 0);
+});

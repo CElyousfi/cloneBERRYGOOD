@@ -2706,7 +2706,11 @@ exports.meteoSprayDigest = functions
 //   valeur hors liste blanche → 400.
 //   ⚠️ Côté ALERTES, un envoi restreint n'écrit PAS l'état anti-répétition et
 //   ne purge rien : un test ne doit jamais rendre muette la vraie alerte du
-//   lendemain pour les chefs.
+//   lendemain pour les chefs. Il CONTOURNE aussi le filtre anti-répétition
+//   (réponse : dedupBypassed: true) — sinon un test lancé après le cron de 6h
+//   répondrait « aucune alerte » alors que tout fonctionne. Ce contournement
+//   est strictement local au mode ?only= : le cron et l'envoi complet manuel
+//   gardent le filtrage STRICT.
 exports.meteoSprayDigestTrigger = functions
   .region(sprayDigest.HTTP_CONFIG.region)
   .runWith({
