@@ -2697,7 +2697,16 @@ exports.meteoSprayDigest = functions
   });
 
 // Trigger manuel — ?date=YYYY-MM-DD, ?preview=1 (aucun envoi), ?checkRecipients=1,
-// ?alertes=1 (exécute UNIQUEMENT le job d'alertes 7 jours).
+// ?alertes=1 (exécute UNIQUEMENT le job d'alertes 7 jours),
+// ?only=<profileId> (RESTREINT l'envoi à ce seul profil de l'audience :
+//   dg | chef_f1 | chef_f5 — permet de tester sur un numéro sans réveiller les
+//   chefs). Exemples : ?only=dg, ?alertes=1&only=dg.
+//   ⚠️ ?only= ne contourne AUCUNE gate : c'est un envoi RÉEL, soumis à la même
+//   vérification isRealSend + TRIGGER_SEND_ROLES que l'envoi complet. Une
+//   valeur hors liste blanche → 400.
+//   ⚠️ Côté ALERTES, un envoi restreint n'écrit PAS l'état anti-répétition et
+//   ne purge rien : un test ne doit jamais rendre muette la vraie alerte du
+//   lendemain pour les chefs.
 exports.meteoSprayDigestTrigger = functions
   .region(sprayDigest.HTTP_CONFIG.region)
   .runWith({
@@ -2742,6 +2751,15 @@ exports.meteoSprayDigestTrigger = functions
       }
     }
 
+    // Validé APRÈS la gate de rôle : un appelant non autorisé n'apprend rien de
+    // la liste blanche. Liste blanche stricte (dérivée d'AUDIENCE) — aucun
+    // profil arbitraire venu de la query n'atteint resolveRecipientsForProfile.
+    const onlyParsed = sprayDigest.parseOnlyProfile(req.query.only);
+    if (!onlyParsed.ok) {
+      return res.status(400).json({ success: false, error: onlyParsed.error });
+    }
+    const only = onlyParsed.only;
+
     // Même convention que dailyProductionReportTrigger : numéros masqués.
     const maskRecipients = (result) => {
       if (!result.recipients) return result;
@@ -2754,14 +2772,14 @@ exports.meteoSprayDigestTrigger = functions
       // ?alertes=1 : on court-circuite le digest pour ne jouer que les alertes.
       if (alertesOnly) {
         const alertesJob = meteoAlertes.createMeteoAlertesJob(buildMeteoAlertesDeps());
-        const alertesResult = await alertesJob.run(date, { preview, checkRecipients });
+        const alertesResult = await alertesJob.run(date, { preview, checkRecipients, only });
         return res.json({
           success: true, ...maskRecipients(alertesResult), dateRequested: date || null,
         });
       }
 
       const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
-      const result = await job.run(date, { preview, checkRecipients });
+      const result = await job.run(date, { preview, checkRecipients, only });
       // En preview, on joint les alertes détectées : un seul appel suffit à
       // visualiser les DEUX messages du matin.
       if (preview) {

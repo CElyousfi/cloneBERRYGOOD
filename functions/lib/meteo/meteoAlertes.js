@@ -29,6 +29,7 @@ const {
   COORDS,
   AUDIENCE,
   FALLBACK_TEMPLATE_NAME,
+  audienceFor,
   shouldFallback,
   todayCasablancaISO,
 } = require('./sprayDigest');
@@ -493,10 +494,14 @@ function createMeteoAlertesJob(deps) {
   /**
    * Résout l'audience (DG + chefs F1/F5) et dédoublonne par numéro : le contenu
    * est identique pour tous, un même numéro ne doit recevoir qu'une fois.
+   * @param {Array<{profileId: string, ferme: string|null}>} [audience] Audience à
+   *   résoudre — restreinte par `?only=` le cas échéant. Défaut : audience
+   *   complète.
    * @returns {Promise<Array<{phone: string, displayName: string, uid: string|null, profileId: string, ferme: string|null}>>}
    */
-  async function resoudreDestinataires() {
-    const resolved = await Promise.all(AUDIENCE.map(function(a) {
+  async function resoudreDestinataires(audience) {
+    const cible = audience || AUDIENCE;
+    const resolved = await Promise.all(cible.map(function(a) {
       return Promise.resolve()
         .then(function() { return whatsapp.resolveRecipientsForProfile(a.profileId, a.ferme); })
         .catch(function(err) {
@@ -524,11 +529,15 @@ function createMeteoAlertesJob(deps) {
 
   /**
    * @param {string} [dateISO]
-   * @param {{preview?: boolean, checkRecipients?: boolean}} [opts]
+   * @param {{preview?: boolean, checkRecipients?: boolean, only?: string|null}} [opts]
+   *   `only` restreint l'envoi à CE seul profil de l'audience (test sur un
+   *   numéro sans réveiller les chefs). Aucune gate n'est contournée.
    */
   async function run(dateISO, opts) {
     const options = opts || {};
     const day = dateISO || todayCasablancaISO(now());
+    const only = options.only || null;
+    const audience = audienceFor(only);
 
     const weatherData = await Promise.resolve()
       .then(function() { return deps.getMeteoblue(COORDS, 'weather'); })
@@ -556,20 +565,26 @@ function createMeteoAlertesJob(deps) {
     // ouvert à tout utilisateur authentifié par le trigger HTTP, il ne doit
     // donc avoir strictement aucun effet de bord.
     if (options.checkRecipients) {
-      const dryRecipients = await resoudreDestinataires();
+      const dryRecipients = await resoudreDestinataires(audience);
       return {
         checkRecipients: true,
         dateISO: day,
         alertes: detectees,
         recipientsCount: dryRecipients.length,
         recipients: dryRecipients,
+        restrictedTo: only,
       };
     }
 
     const { etat, ids } = await lireEtat();
+    // ⚠️ ENVOI RESTREINT (?only=) = envoi de TEST : AUCUNE mutation Firestore,
+    // ni purge ni écriture d'état. L'état est lu (pour ne pas re-notifier ce
+    // qui l'a déjà été), jamais modifié. Écrire ici marquerait l'alerte comme
+    // « déjà envoyée » et la VRAIE alerte du lendemain ne partirait plus aux
+    // chefs F1/F5 — un test rendrait l'alerte muette pour toute l'équipe.
     // Purge indexée sur la date du jour SERVEUR, pas sur `day` (qui peut venir
     // de ?date= et vider toute la collection d'état — cf. purger()).
-    const purged = await purger(ids, todayCasablancaISO(now()));
+    const purged = only ? 0 : await purger(ids, todayCasablancaISO(now()));
 
     const aNotifier = filtrerAlertesANotifier(detectees, etat);
     const skipped = detectees.length - aNotifier.length;
@@ -580,12 +595,13 @@ function createMeteoAlertesJob(deps) {
       return {
         dateISO: day, alertes: [], sent: 0, skipped: skipped,
         recipientsCount: 0, fallbackUsed: 0, purged: purged,
+        restrictedTo: only,
       };
     }
 
     const message = formatAlertes(aNotifier);
 
-    const recipients = await resoudreDestinataires();
+    const recipients = await resoudreDestinataires(audience);
 
     if (!recipients.length) {
       console.error('[meteoAlertes] AUCUN destinataire résolu (dg/chef_f1/chef_f5) — ' +
@@ -593,6 +609,7 @@ function createMeteoAlertesJob(deps) {
       return {
         dateISO: day, alertes: aNotifier, sent: 0, skipped: skipped,
         recipientsCount: 0, fallbackUsed: 0, purged: purged,
+        restrictedTo: only,
       };
     }
 
@@ -669,7 +686,7 @@ function createMeteoAlertesJob(deps) {
     // numéro cassé soit réparé — le DG serait spammé pour un problème qui ne
     // le concerne pas. Comportement figé par test.
     let persisted = 0;
-    if (sent > 0) {
+    if (sent > 0 && !only) {
       const envoyeAt = now().toISOString();
       const writes = await Promise.allSettled(aNotifier.map(function(a) {
         return db.collection(COLLECTION).doc(a.cle).set({
@@ -688,7 +705,8 @@ function createMeteoAlertesJob(deps) {
 
     const logLine = '[meteoAlertes] ' + day + ': alertes=' + aNotifier.length +
       ' sent=' + sent + '/' + recipients.length + ' image=' + imageSent +
-      ' fallback=' + fallbackUsed + ' skipped=' + skipped + ' purged=' + purged;
+      ' fallback=' + fallbackUsed + ' skipped=' + skipped + ' purged=' + purged +
+      (only ? ' [ENVOI RESTREINT À ' + only + ' — état NON mémorisé]' : '');
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -706,6 +724,9 @@ function createMeteoAlertesJob(deps) {
       persisted: persisted,
       meteogramAvailable: !!mediaId,
       imageSent: imageSent,
+      // Trace explicite : un test restreint ne doit pas pouvoir passer pour un
+      // envoi complet en relisant les logs.
+      restrictedTo: only,
     };
   }
 

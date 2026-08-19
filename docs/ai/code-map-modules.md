@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:86a83702caf3fff2 -->
+<!-- sourceFingerprint: sha256:d8f676bfe47968f5 -->
 # Code Map — Modules lib (170)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -68,7 +68,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/meteo/meteogram.js | — | METEOGRAM_BASE_URL, PNG_MIME, PNG_SIGNATURE, MIN_PNG_BYTES, DEFAULT_TIMEOUT_MS, DEFAULT_UNITS, buildMeteogramUrl, isValidPng, withTimeout, fetchMeteogram |
 | functions/lib/meteo/renderPng.js | — | PNG_MIME, FONT_PATH, DEFAULT_FONT_FAMILY, DEFAULT_WIDTH, buildResvgOptions, renderSvgToPng |
 | functions/lib/meteo/sprayChart.js | — | WIDTH, HEIGHT, MARGIN, TITLE_H, PANEL_GAP, WORK_HOUR_START, WORK_HOUR_END, AXIS_HOUR_END, BAND_COLORS, LEGEND_OPACITY, THEME, escapeXml, extractHourlyTemperatures, extractSprayHours, buildSprayChartSvg |
-| functions/lib/meteo/sprayDigest.js | — | CRON_CONFIG, HTTP_CONFIG, COORDS, AUDIENCE, TEMPLATE_NAME, IMAGE_TEMPLATE_NAME, CHART_FILENAME, FALLBACK_TEMPLATE_NAME, FALLBACK_ERROR_CODES, TRIGGER_SEND_ROLES, isRealSend, shouldFallback, todayCasablancaISO, formatDateParam, nextDayISO, scoreLabel, formatNombreFr, formatWindDirection, deltaTZone, formatDeltaT, niveauRisqueMaladie, DELTA_T_LABEL, DELTA_T_IDEAL_MIN, DELTA_T_IDEAL_MAX, RISQUE_MALADIE_SEUIL_MODERE, RISQUE_MALADIE_SEUIL_ELEVE, buildSprayWindows, buildTempSummary, formatDigest, createMeteoDigestJob |
+| functions/lib/meteo/sprayDigest.js | — | CRON_CONFIG, HTTP_CONFIG, COORDS, AUDIENCE, TEMPLATE_NAME, IMAGE_TEMPLATE_NAME, CHART_FILENAME, FALLBACK_TEMPLATE_NAME, FALLBACK_ERROR_CODES, TRIGGER_SEND_ROLES, AUDIENCE_PROFILE_IDS, parseOnlyProfile, audienceFor, isRealSend, shouldFallback, todayCasablancaISO, formatDateParam, nextDayISO, scoreLabel, formatNombreFr, formatWindDirection, deltaTZone, formatDeltaT, niveauRisqueMaladie, DELTA_T_LABEL, DELTA_T_IDEAL_MIN, DELTA_T_IDEAL_MAX, RISQUE_MALADIE_SEUIL_MODERE, RISQUE_MALADIE_SEUIL_ELEVE, buildSprayWindows, buildTempSummary, formatDigest, createMeteoDigestJob |
 | functions/lib/netafim/auth.js | — | TOKEN_TTL_SAFETY_MS, FALLBACK_TTL_MS, makeGetAccessToken |
 | functions/lib/netafim/client.js | — | NetafimError, KIND, classify, postJson |
 | functions/lib/netafim/config.js | — | CONFIG_COLLECTION, CONFIG_DOC, CACHE_TTL_MS, DEFAULTS, makeGetConfig |

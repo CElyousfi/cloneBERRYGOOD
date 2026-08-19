@@ -138,6 +138,61 @@ const AUDIENCE = Object.freeze([
 const TRIGGER_SEND_ROLES = Object.freeze(['dg', 'dt', 'admin']);
 
 /**
+ * Liste blanche des profils ciblables par `?only=` — DÉRIVÉE d'AUDIENCE, pas
+ * recopiée : ajouter un destinataire à l'audience le rend ciblable, et rien
+ * d'autre ne l'est jamais.
+ */
+const AUDIENCE_PROFILE_IDS = Object.freeze(AUDIENCE.map(function(a) { return a.profileId; }));
+
+/**
+ * Valide `?only=<profileId>` — restriction de l'envoi à UN seul profil, pour
+ * qu'Omar puisse tester sur son propre numéro sans réveiller les chefs F1/F5.
+ *
+ * ⚠️ `?only=` ne contourne AUCUNE gate : c'est un envoi RÉEL, soumis à
+ * `isRealSend` + `TRIGGER_SEND_ROLES` comme n'importe quel autre. Il RESTREINT
+ * l'audience, il n'ouvre aucun chemin d'envoi parallèle.
+ *
+ * Un profil arbitraire venu de la query ne doit jamais atteindre
+ * `resolveRecipientsForProfile` : seules les valeurs d'AUDIENCE sont acceptées.
+ *
+ * @param {*} raw Valeur brute de la query (absente, string, tableau…).
+ * @returns {{ok: true, only: string|null}|{ok: false, error: string}}
+ */
+function parseOnlyProfile(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, only: null };
+  // Query répétée (?only=a&only=b) → Express rend un tableau : refusé net.
+  if (typeof raw !== 'string') {
+    return { ok: false, error: 'Paramètre only invalide : une seule valeur attendue.' };
+  }
+  const value = raw.trim();
+  if (!value) return { ok: true, only: null };
+  if (AUDIENCE_PROFILE_IDS.indexOf(value) === -1) {
+    return {
+      ok: false,
+      error: 'Paramètre only invalide : "' + value + '". Valeurs acceptées : ' +
+        AUDIENCE_PROFILE_IDS.join(', ') + '.',
+    };
+  }
+  return { ok: true, only: value };
+}
+
+/**
+ * Audience restreinte à `only`, ou audience complète si `only` est absent.
+ *
+ * Défensif : un `only` inconnu (qui n'aurait pas dû passer parseOnlyProfile)
+ * donne une audience VIDE — donc zéro destinataire et zéro envoi. Le pire cas
+ * est un message qui ne part pas, jamais un message qui part à la mauvaise
+ * personne.
+ *
+ * @param {string|null|undefined} only
+ * @returns {Array<{profileId: string, ferme: string|null}>}
+ */
+function audienceFor(only) {
+  if (!only) return AUDIENCE.slice();
+  return AUDIENCE.filter(function(a) { return a.profileId === only; });
+}
+
+/**
  * Une combinaison de paramètres du trigger HTTP déclenche-t-elle un ENVOI RÉEL
  * (WhatsApp au DG et aux chefs, plus écriture d'état) ?
  *
@@ -723,11 +778,16 @@ function createMeteoDigestJob(deps) {
 
   /**
    * @param {string} [dateISO]
-   * @param {{preview?: boolean, checkRecipients?: boolean}} [opts]
+   * @param {{preview?: boolean, checkRecipients?: boolean, only?: string|null}} [opts]
+   *   `only` restreint l'envoi à CE seul profil de l'audience (test sur un
+   *   numéro sans réveiller les chefs). Aucune gate n'est contournée : le
+   *   trigger applique la même vérification de rôle qu'un envoi complet.
    */
   async function run(dateISO, opts) {
     const options = opts || {};
     const day = dateISO || todayCasablancaISO(now());
+    const only = options.only || null;
+    const audience = audienceFor(only);
 
     // Tolérant : une des deux sources peut manquer → cas dégradé, pas de throw.
     const [weatherData, sprayData] = await Promise.all([
@@ -759,7 +819,7 @@ function createMeteoDigestJob(deps) {
       };
     }
 
-    const resolved = await Promise.all(AUDIENCE.map(function(a) {
+    const resolved = await Promise.all(audience.map(function(a) {
       return Promise.resolve()
         .then(function() { return whatsapp.resolveRecipientsForProfile(a.profileId, a.ferme); })
         .catch(function(err) {
@@ -791,6 +851,7 @@ function createMeteoDigestJob(deps) {
         dateISO: day,
         recipientsCount: recipients.length,
         recipients: recipients,
+        restrictedTo: only,
       };
     }
 
@@ -799,10 +860,11 @@ function createMeteoDigestJob(deps) {
         'digest non distribué pour ' + day);
       return {
         dateISO: day, sent: 0, recipientsCount: 0,
-        byProfile: AUDIENCE.map(function(a) {
+        byProfile: audience.map(function(a) {
           return { profileId: a.profileId, ferme: a.ferme, recipientsCount: 0, sent: 0 };
         }),
         fallbackUsed: 0,
+        restrictedTo: only,
       };
     }
 
@@ -870,7 +932,7 @@ function createMeteoDigestJob(deps) {
       if (res.ok && !res.image && res.degraded) degradedToText++;
     });
 
-    const byProfile = AUDIENCE.map(function(a) {
+    const byProfile = audience.map(function(a) {
       const mine = recipients.filter(function(r) { return r.profileId === a.profileId; });
       return {
         profileId: a.profileId,
@@ -884,7 +946,8 @@ function createMeteoDigestJob(deps) {
     // Un destinataire non servi = digest non délivré : ça doit remonter en
     // erreur dans les logs, pas se noyer dans un console.log de routine.
     const logLine = '[meteoSprayDigest] ' + day + ': sent=' + sent + '/' + recipients.length +
-      ' image=' + imageSent + ' texte=' + degradedToText + ' fallback=' + fallbackUsed;
+      ' image=' + imageSent + ' texte=' + degradedToText + ' fallback=' + fallbackUsed +
+      (only ? ' [ENVOI RESTREINT À ' + only + ']' : '');
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -899,6 +962,9 @@ function createMeteoDigestJob(deps) {
       chartAvailable: !!mediaId,
       imageSent: imageSent,
       degradedToText: degradedToText,
+      // Trace explicite : en relisant les logs, un test restreint ne doit pas
+      // pouvoir passer pour un envoi complet.
+      restrictedTo: only,
     };
   }
 
@@ -916,6 +982,9 @@ module.exports = {
   FALLBACK_TEMPLATE_NAME,
   FALLBACK_ERROR_CODES,
   TRIGGER_SEND_ROLES,
+  AUDIENCE_PROFILE_IDS,
+  parseOnlyProfile,
+  audienceFor,
   isRealSend,
   shouldFallback,
   todayCasablancaISO,

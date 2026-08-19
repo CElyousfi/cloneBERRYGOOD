@@ -9,6 +9,10 @@ const {
   IMAGE_TEMPLATE_NAME,
   CHART_FILENAME,
   TRIGGER_SEND_ROLES,
+  isRealSend,
+  AUDIENCE_PROFILE_IDS,
+  parseOnlyProfile,
+  audienceFor,
   buildSprayWindows,
   buildTempSummary,
   formatDigest,
@@ -1008,4 +1012,146 @@ test('template Meta : meteo_spray_digest_img déclaré en IMAGE, corps identique
   assert.ok(!body.trimEnd().endsWith('}}'), 'pas de variable en fin de corps');
   assert.deepEqual(body.match(/\{\{\d\}\}/g), ['{{1}}', '{{2}}'], '2 variables, dans l\'ordre');
   assert.ok(body.replace(/\{\{\d\}\}/g, '').length > 150, 'assez de texte statique');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ?only=<profileId> — envoi restreint à un seul profil (test sans spammer)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('parseOnlyProfile : liste blanche stricte, dérivée d\'AUDIENCE', () => {
+  assert.deepEqual(AUDIENCE_PROFILE_IDS.slice(), ['dg', 'chef_f1', 'chef_f5']);
+  assert.deepEqual(parseOnlyProfile('dg'), { ok: true, only: 'dg' });
+  assert.deepEqual(parseOnlyProfile('chef_f1'), { ok: true, only: 'chef_f1' });
+  assert.deepEqual(parseOnlyProfile('chef_f5'), { ok: true, only: 'chef_f5' });
+  assert.deepEqual(parseOnlyProfile(' dg '), { ok: true, only: 'dg' }, 'espaces tolérés');
+});
+
+test('parseOnlyProfile : absence = audience complète, jamais une erreur', () => {
+  [undefined, null, '', '   '].forEach((v) => {
+    assert.deepEqual(parseOnlyProfile(/** @type {*} */ (v)), { ok: true, only: null },
+      'valeur ' + JSON.stringify(v));
+  });
+});
+
+test('parseOnlyProfile : tout profil hors audience est REFUSÉ', () => {
+  // Aucun profil arbitraire venu de la query ne doit atteindre
+  // resolveRecipientsForProfile.
+  ['inconnu', 'admin', 'rh', 'DG', 'chef_f2', 'dg,chef_f1', '*'].forEach((v) => {
+    const r = parseOnlyProfile(v);
+    assert.equal(r.ok, false, 'valeur ' + v + ' devrait être refusée');
+    assert.match(r.error, /only invalide/);
+  });
+  // ?only=a&only=b → Express rend un tableau : refusé net.
+  const multi = parseOnlyProfile(/** @type {*} */ (['dg', 'chef_f1']));
+  assert.equal(multi.ok, false);
+  assert.match(multi.error, /une seule valeur/);
+});
+
+test('audienceFor : restreint sans jamais inventer de destinataire', () => {
+  assert.equal(audienceFor(null).length, 3, 'sans only : audience complète');
+  assert.deepEqual(audienceFor('dg'), [{ profileId: 'dg', ferme: null }]);
+  assert.deepEqual(audienceFor('chef_f5'), [{ profileId: 'chef_f5', ferme: 'F5' }]);
+  // Défensif : un only inconnu donne ZÉRO destinataire, jamais l'audience
+  // complète — le pire cas est un message qui ne part pas.
+  assert.deepEqual(audienceFor('inconnu'), []);
+});
+
+test('?only= reste soumis à la gate de rôle : ce n\'est PAS un mode preview', () => {
+  // La gate ne connaît que preview/checkRecipients/alertes : un envoi restreint
+  // est un envoi RÉEL et doit donc mordre sur TRIGGER_SEND_ROLES.
+  assert.equal(isRealSend({ preview: false, checkRecipients: false, alertesOnly: false }), true);
+  assert.equal(isRealSend({ preview: false, checkRecipients: false, alertesOnly: true }), true);
+  assert.deepEqual(TRIGGER_SEND_ROLES.slice(), ['dg', 'dt', 'admin'],
+    'un envoi restreint reste réservé à DG/DT/admin');
+});
+
+test('run: only=dg → UN seul profil résolu, les chefs ne sont même pas interrogés', async () => {
+  const whatsapp = makeWhatsappStub({
+    dg: [{ uid: 'u1', displayName: 'DG', phone: '+212600000001' }],
+    chef_f1: [{ uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' }],
+    chef_f5: [{ uid: 'u3', displayName: 'Chef F5', phone: '+212600000003' }],
+  });
+  const job = createMeteoDigestJob({ getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY), whatsapp });
+  const res = await job.run(DAY, { only: 'dg' });
+
+  assert.equal(res.recipientsCount, 1);
+  assert.equal(res.sent, 1);
+  assert.equal(res.restrictedTo, 'dg', 'la restriction est tracée dans le retour');
+  assert.equal(whatsapp.sends.length, 1);
+  assert.equal(whatsapp.sends[0].to, '+212600000001');
+  assert.deepEqual(res.byProfile.map((p) => p.profileId), ['dg'],
+    'aucune ligne pour les chefs : ils n\'ont pas été résolus');
+});
+
+test('run: only absent → comportement strictement inchangé (3 profils, restrictedTo null)', async () => {
+  const whatsapp = makeWhatsappStub({
+    dg: [{ uid: 'u1', displayName: 'DG', phone: '+212600000001' }],
+    chef_f1: [{ uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' }],
+    chef_f5: [{ uid: 'u3', displayName: 'Chef F5', phone: '+212600000003' }],
+  });
+  const job = createMeteoDigestJob({ getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY), whatsapp });
+  const res = await job.run(DAY);
+
+  assert.equal(res.recipientsCount, 3);
+  assert.equal(res.sent, 3);
+  assert.equal(res.restrictedTo, null);
+  assert.deepEqual(res.byProfile.map((p) => p.profileId), ['dg', 'chef_f1', 'chef_f5']);
+});
+
+test('run: only=chef_f5 → seul le chef F5 reçoit, le DG n\'est pas servi', async () => {
+  const whatsapp = makeWhatsappStub({
+    dg: [{ uid: 'u1', displayName: 'DG', phone: '+212600000001' }],
+    chef_f5: [{ uid: 'u3', displayName: 'Chef F5', phone: '+212600000003' }],
+  });
+  const job = createMeteoDigestJob({ getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY), whatsapp });
+  const res = await job.run(DAY, { only: 'chef_f5' });
+
+  assert.equal(whatsapp.sends.length, 1);
+  assert.equal(whatsapp.sends[0].to, '+212600000003');
+  assert.equal(res.restrictedTo, 'chef_f5');
+});
+
+test('run: checkRecipients + only → diagnostic restreint, toujours aucun envoi', async () => {
+  const whatsapp = makeWhatsappStub({
+    dg: [{ uid: 'u1', displayName: 'DG', phone: '+212600000001' }],
+    chef_f1: [{ uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' }],
+  });
+  const job = createMeteoDigestJob({ getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY), whatsapp });
+  const res = await job.run(DAY, { checkRecipients: true, only: 'dg' });
+
+  assert.equal(res.checkRecipients, true);
+  assert.equal(res.recipientsCount, 1);
+  assert.equal(res.restrictedTo, 'dg');
+  assert.equal(whatsapp.sends.length, 0);
+});
+
+test('trigger HTTP : ?only= validé en liste blanche (400), APRÈS la gate de rôle (403)', () => {
+  // Le handler vit dans le monolithe functions/index.js : on verrouille son
+  // câblage au niveau de la source. Une future édition qui supprimerait la
+  // validation, ou qui la placerait avant la gate de rôle, casse ce test.
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'index.js'), 'utf8');
+
+  const bloc = src.slice(src.indexOf('exports.meteoSprayDigestTrigger'));
+  const handler = bloc.slice(0, bloc.indexOf('exports.', 10));
+
+  const iGate = handler.indexOf('TRIGGER_SEND_ROLES');
+  const i403 = handler.indexOf('status(403)');
+  const iParse = handler.indexOf('sprayDigest.parseOnlyProfile(req.query.only)');
+  const i400 = handler.indexOf('status(400)');
+
+  assert.notEqual(iGate, -1, 'la gate de rôle est toujours là');
+  assert.notEqual(iParse, -1, '?only= passe par parseOnlyProfile (liste blanche)');
+  assert.notEqual(i400, -1, 'une valeur hors liste blanche → 400');
+  assert.ok(i403 < iParse, 'gate de rôle AVANT la validation : 403 prime sur 400');
+  assert.ok(iParse < i400, 'le 400 découle bien du parsing de ?only=');
+
+  // `only` est transmis aux DEUX jobs, jamais bricolé sur place.
+  assert.match(handler, /alertesJob\.run\(date, \{ preview, checkRecipients, only \}\)/);
+  assert.match(handler, /job\.run\(date, \{ preview, checkRecipients, only \}\)/);
+
+  // Aucun chemin d'envoi parallèle : un seul appel à chaque job dans le handler.
+  assert.equal((handler.match(/alertesJob\.run\(/g) || []).length, 2,
+    'alertes : un envoi + l\'aperçu joint au preview, rien de plus');
 });
