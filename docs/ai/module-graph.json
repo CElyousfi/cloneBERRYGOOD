@@ -47,10 +47,6 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 12,
-        "file": "scripts/build-frontend.js"
-      },
-      {
         "commits": 11,
         "file": "functions/index.js"
       },
@@ -59,12 +55,16 @@
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
+        "commits": 11,
+        "file": "scripts/build-frontend.js"
+      },
+      {
         "commits": 9,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:0a2dee9d2162222a",
+    "sourceFingerprint": "sha256:6383fc249ee14920",
     "stats": {
       "backendModules": 93,
       "cloudFunctions": 91,
@@ -352,7 +352,11 @@
           "functions/lib/irrigation/__tests__/weatherAdjustments.test.js",
           "functions/lib/meteo/__tests__/meteoAlertes.test.js",
           "functions/lib/meteo/__tests__/meteoblueProxy.test.js",
+          "functions/lib/meteo/__tests__/meteogram.test.js",
+          "functions/lib/meteo/__tests__/renderPng.test.js",
+          "functions/lib/meteo/__tests__/sprayChart.test.js",
           "functions/lib/meteo/__tests__/sprayDigest.test.js",
+          "functions/lib/meteo/__tests__/whatsappImage.test.js",
           "functions/lib/netafim/__tests__/auth.test.js",
           "functions/lib/netafim/__tests__/client.test.js",
           "functions/lib/netafim/__tests__/dataAccess.test.js",
@@ -1013,15 +1017,7 @@
           "MagStockIntrantsTab"
         ]
       },
-      "gitCoupling": [
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/MagStockFilesTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        }
-      ],
+      "gitCoupling": [],
       "label": "Stock & Magasin",
       "tests": {
         "backend": [

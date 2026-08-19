@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:2683921a500773ec",
+    "sourceFingerprint": "sha256:352db80ba9b17cef",
     "stats": {
-      "targetFiles": 220,
-      "targetFilesWithDirectTests": 135,
-      "targetFilesWithTransitiveTests": 156,
-      "testFilesScanned": 187
+      "targetFiles": 221,
+      "targetFilesWithDirectTests": 136,
+      "targetFilesWithTransitiveTests": 157,
+      "testFilesScanned": 188
     }
   },
   "index": {
@@ -601,6 +601,16 @@
       ],
       "transitiveTests": [
         "functions/lib/meteo/__tests__/meteoblueProxy.test.js"
+      ]
+    },
+    "functions/lib/meteo/meteogram.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/meteogram.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/meteogram.test.js"
       ]
     },
     "functions/lib/meteo/renderPng.js": {
