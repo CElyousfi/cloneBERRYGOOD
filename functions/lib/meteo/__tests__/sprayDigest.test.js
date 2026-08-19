@@ -6,6 +6,8 @@ const assert = require('node:assert/strict');
 const {
   CRON_CONFIG,
   TEMPLATE_NAME,
+  IMAGE_TEMPLATE_NAME,
+  CHART_FILENAME,
   TRIGGER_SEND_ROLES,
   buildSprayWindows,
   buildTempSummary,
@@ -631,4 +633,309 @@ test('todayCasablancaISO: UTC+0 pendant le Ramadan (pas de +1h fictif)', () => {
 test('todayCasablancaISO: heure du cron (06h00 local) → jour courant', () => {
   assert.equal(todayCasablancaISO(new Date('2026-08-14T05:00:00Z')), '2026-08-14'); // 06h local
   assert.equal(todayCasablancaISO(new Date('2026-03-01T06:00:00Z')), '2026-03-01'); // 06h local
+});
+
+// ── Graphique : chaîne de repli à trois étages ──────────────────────────
+//
+// L'image est un BONUS ; le corps texte est l'information. Ces tests vérifient
+// qu'aucune panne du graphique (rendu, upload, refus Meta du template image)
+// ne peut faire disparaître le corps — et que chaque dégradation est bruyante.
+
+const { PNG_MIME } = require('../renderPng');
+
+const FAKE_PNG = Buffer.from('\x89PNG-faux-mais-non-vide');
+
+/**
+ * Stub whatsapp AVEC support image. `impl` décide de l'issue de chaque envoi :
+ * ({templateName}) => {success, error}.
+ */
+function makeWhatsappImageStub(recipientsByProfile, impl, uploadImpl) {
+  const base = makeWhatsappStub(recipientsByProfile, impl);
+  const uploads = [];
+  base.uploads = uploads;
+  base.uploadMedia = async (buffer, mimeType, filename) => {
+    uploads.push({ buffer, mimeType, filename });
+    if (uploadImpl) return uploadImpl({ buffer, mimeType, filename });
+    return { id: 'MEDIA-1' };
+  };
+  base.sendTemplateMessageWithImage = async (to, templateName, mediaIdOrRef, bodyParams, lang, toName) => {
+    base.sends.push({ to, templateName, bodyParams, lang, toName, mediaIdOrRef });
+    if (impl) return impl({ to, templateName, bodyParams });
+    return { success: true, waMessageId: 'wamid.img' + base.sends.length };
+  };
+  return base;
+}
+
+/** Capture console.error le temps d'un appel. */
+async function captureErrors(fn) {
+  const original = console.error;
+  const lines = [];
+  console.error = (...args) => lines.push(args.join(' '));
+  try {
+    return { result: await fn(), lines };
+  } finally {
+    console.error = original;
+  }
+}
+
+const RECIPIENTS_2 = {
+  dg: [{ uid: 'u1', displayName: 'DG', phone: '+212600000001' }],
+  chef_f1: [{ uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' }],
+};
+
+test('IMAGE_TEMPLATE_NAME : nom verrouillé, corps identique au template texte', () => {
+  assert.equal(IMAGE_TEMPLATE_NAME, 'meteo_spray_digest_img');
+  assert.equal(TEMPLATE_NAME, 'meteo_spray_digest');
+  assert.equal(CHART_FILENAME, 'meteo-traitements.png');
+});
+
+test('run: chemin nominal — UN seul upload, template image pour tous', async () => {
+  const rendus = [];
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: (svg) => { rendus.push(svg); return FAKE_PNG; },
+  });
+  const res = await job.run(DAY);
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.chartAvailable, true);
+  assert.equal(res.imageSent, 2);
+  assert.equal(res.degradedToText, 0);
+  assert.equal(res.fallbackUsed, 0);
+
+  assert.equal(rendus.length, 1, 'le SVG est construit une seule fois');
+  assert.equal(whatsapp.uploads.length, 1, 'UN upload pour N destinataires');
+  assert.equal(whatsapp.uploads[0].mimeType, PNG_MIME);
+  assert.equal(whatsapp.uploads[0].filename, CHART_FILENAME);
+  assert.ok(whatsapp.uploads[0].buffer.length > 0);
+
+  assert.equal(whatsapp.sends.length, 2);
+  whatsapp.sends.forEach((s) => {
+    assert.equal(s.templateName, IMAGE_TEMPLATE_NAME);
+    assert.equal(s.mediaIdOrRef, 'MEDIA-1', 'le même media_id chez tous');
+    assert.equal(s.bodyParams.length, 2);
+    assert.equal(s.bodyParams[0], 'Ven 14/08');
+    assert.match(s.bodyParams[1], /Fenêtres de traitement/);
+  });
+});
+
+test('run: le SVG rendu porte bien la date, le score et les bandes du jour', async () => {
+  let svg = null;
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp: makeWhatsappImageStub(RECIPIENTS_2),
+    renderChartPng: (s) => { svg = s; return FAKE_PNG; },
+  });
+  await job.run(DAY);
+
+  assert.ok(svg.startsWith('<svg'));
+  assert.ok(svg.includes('Ven 14/08'), 'même libellé de date que le corps texte');
+  assert.ok(/Score du jour : \d+% \(/.test(svg), 'score repris du même calcul que le texte');
+  assert.ok(svg.includes('#2D8B4E'), 'les créneaux favorables 8h/9h apparaissent en vert');
+  assert.doesNotMatch(svg, /NaN|undefined/);
+});
+
+test('run: rendu PNG en échec → digest TEXTE complet, dégradation journalisée', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => { throw new Error('resvg indisponible'); },
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+
+  assert.equal(res.sent, 2, 'le corps texte part quand même');
+  assert.equal(res.chartAvailable, false);
+  assert.equal(res.imageSent, 0);
+  assert.equal(whatsapp.uploads.length, 0, 'aucun upload si le rendu a échoué');
+  whatsapp.sends.forEach((s) => {
+    assert.equal(s.templateName, TEMPLATE_NAME);
+    assert.match(s.bodyParams[1], /Fenêtres de traitement/, 'corps intact');
+  });
+  assert.ok(lines.some((l) => /GRAPHIQUE INDISPONIBLE/.test(l) && /resvg indisponible/.test(l)),
+    'la dégradation doit être bruyante, pas silencieuse');
+});
+
+test('run: upload Meta en échec → digest TEXTE, dégradation journalisée', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2, null,
+    () => ({ error: 'Unsupported file type' }));
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => FAKE_PNG,
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.chartAvailable, false);
+  assert.equal(whatsapp.uploads.length, 1, 'un seul upload tenté, pas un par destinataire');
+  whatsapp.sends.forEach((s) => assert.equal(s.templateName, TEMPLATE_NAME));
+  assert.ok(lines.some((l) => /GRAPHIQUE INDISPONIBLE/.test(l) && /Unsupported file type/.test(l)));
+});
+
+test('run: rendu PNG vide → traité comme un échec, pas comme un succès', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => Buffer.alloc(0),
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+  assert.equal(res.chartAvailable, false);
+  assert.equal(res.sent, 2);
+  assert.ok(lines.some((l) => /rendu PNG vide/.test(l)));
+});
+
+test('run: template image refusé par Meta → repli étage 2 sur le template texte', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2,
+    ({ templateName }) => (templateName === IMAGE_TEMPLATE_NAME
+      ? { success: false, error: '(#132001) Template name does not exist' }
+      : { success: true, waMessageId: 'wamid.texte' }));
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => FAKE_PNG,
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+
+  assert.equal(res.sent, 2, 'personne ne perd le digest');
+  assert.equal(res.chartAvailable, true, 'l\'image était bien prête');
+  assert.equal(res.imageSent, 0);
+  assert.equal(res.degradedToText, 2);
+  assert.equal(res.fallbackUsed, 0, 'general_alert n\'a pas eu à servir');
+  assert.equal(whatsapp.sends.length, 4, '2 tentatives image + 2 envois texte');
+  assert.deepEqual(
+    whatsapp.sends.map((s) => s.templateName).sort(),
+    [IMAGE_TEMPLATE_NAME, IMAGE_TEMPLATE_NAME, TEMPLATE_NAME, TEMPLATE_NAME].sort()
+  );
+  assert.equal(lines.filter((l) => /AVEC IMAGE refusé/.test(l)).length, 2);
+});
+
+test('run: image ET texte refusés → étage 3 general_alert, corps essentiel sauvé', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2,
+    ({ templateName }) => (templateName === 'general_alert'
+      ? { success: true, waMessageId: 'wamid.alert' }
+      : { success: false, error: '(#132018) Template param format mismatch' }));
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => FAKE_PNG,
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.fallbackUsed, 2);
+  assert.equal(res.imageSent, 0);
+  const alertes = whatsapp.sends.filter((s) => s.templateName === 'general_alert');
+  assert.equal(alertes.length, 2);
+  alertes.forEach((s) => {
+    assert.equal(s.bodyParams.length, 1);
+    assert.equal(s.bodyParams[0].includes('\n'), false);
+    assert.match(s.bodyParams[0], /Météo & Traitements/);
+  });
+  assert.ok(lines.some((l) => /AVEC IMAGE refusé/.test(l)));
+  assert.ok(lines.some((l) => /template texte refusé/.test(l)));
+});
+
+test('run: échec image non lié au template (réseau) → repli texte aussi', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2,
+    ({ templateName }) => {
+      if (templateName === IMAGE_TEMPLATE_NAME) throw new Error('socket hang up');
+      return { success: true, waMessageId: 'wamid.texte' };
+    });
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => FAKE_PNG,
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+
+  assert.equal(res.sent, 2, 'une panne réseau sur l\'image ne coûte pas le digest');
+  assert.equal(res.degradedToText, 2);
+  assert.ok(lines.some((l) => /socket hang up/.test(l)));
+});
+
+test('run: whatsappService sans support image → comportement texte inchangé', async () => {
+  // Rétrocompatibilité : le stub historique n'a ni uploadMedia ni
+  // sendTemplateMessageWithImage.
+  const whatsapp = makeWhatsappStub(RECIPIENTS_2);
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => FAKE_PNG,
+  });
+  const { result: res, lines } = await captureErrors(() => job.run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.chartAvailable, false);
+  whatsapp.sends.forEach((s) => assert.equal(s.templateName, TEMPLATE_NAME));
+  assert.ok(lines.some((l) => /sans support image/.test(l)));
+});
+
+test('run: preview et checkRecipients ne rendent ni n\'uploadent rien', async () => {
+  let rendus = 0;
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => { rendus++; return FAKE_PNG; },
+  });
+  await job.run(DAY, { preview: true });
+  await job.run(DAY, { checkRecipients: true });
+  assert.equal(rendus, 0, 'aucun rendu inutile');
+  assert.equal(whatsapp.uploads.length, 0);
+  assert.equal(whatsapp.sends.length, 0);
+});
+
+test('run: aucun destinataire → ni rendu ni upload', async () => {
+  let rendus = 0;
+  const whatsapp = makeWhatsappImageStub({});
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY),
+    whatsapp,
+    renderChartPng: () => { rendus++; return FAKE_PNG; },
+  });
+  const { result: res } = await captureErrors(() => job.run(DAY));
+  assert.equal(res.sent, 0);
+  assert.equal(rendus, 0);
+  assert.equal(whatsapp.uploads.length, 0);
+});
+
+// ── Déclaration du template Meta ────────────────────────────────────────
+//
+// `create-whatsapp-templates.js` est un CLI (il `process.exit` sans WA_TOKEN) :
+// on l'inspecte comme du texte. C'est volontairement grossier, mais ça
+// verrouille le seul invariant qui compte : le job envoie les MÊMES bodyParams
+// aux deux templates et retombe de l'image sur le texte — leurs corps doivent
+// donc être rigoureusement identiques.
+
+test('template Meta : meteo_spray_digest_img déclaré en IMAGE, corps identique au texte', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'create-whatsapp-templates.js'), 'utf8');
+
+  const bodyOf = (name) => {
+    const idx = src.indexOf('name: "' + name + '"');
+    assert.notEqual(idx, -1, 'template ' + name + ' déclaré');
+    const m = /body: "((?:[^"\\]|\\.)*)"/.exec(src.slice(idx, idx + 2000));
+    assert.ok(m, 'body trouvé pour ' + name);
+    return m[1];
+  };
+
+  assert.equal(bodyOf(IMAGE_TEMPLATE_NAME), bodyOf(TEMPLATE_NAME),
+    'corps strictement identiques, sinon le repli image → texte change le message');
+
+  const bloc = src.slice(src.indexOf('name: "' + IMAGE_TEMPLATE_NAME + '"'));
+  assert.match(bloc.slice(0, 400), /headerType: "IMAGE"/);
+
+  // Règles Meta (cf. en-tête du fichier) : ni variable en début ni en fin de
+  // corps, et assez de texte statique pour 2 variables.
+  const body = bodyOf(IMAGE_TEMPLATE_NAME);
+  assert.ok(!body.trimStart().startsWith('{{'), 'pas de variable en début de corps');
+  assert.ok(!body.trimEnd().endsWith('}}'), 'pas de variable en fin de corps');
+  assert.deepEqual(body.match(/\{\{\d\}\}/g), ['{{1}}', '{{2}}'], '2 variables, dans l\'ordre');
+  assert.ok(body.replace(/\{\{\d\}\}/g, '').length > 150, 'assez de texte statique');
 });

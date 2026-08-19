@@ -13,6 +13,9 @@
  * (public/app.jsx) restreint à UN jour.
  */
 
+const sprayChart = require('./sprayChart');
+const renderPng = require('./renderPng');
+
 /**
  * @typedef {Object} SprayWindows
  * @property {Array<{de:number, a:number}>} fenetres Plages horaires favorables
@@ -158,7 +161,12 @@ function isRealSend(q) {
 }
 
 const TEMPLATE_NAME = 'meteo_spray_digest';
+/** Même corps que TEMPLATE_NAME, avec un header IMAGE portant le graphique. */
+const IMAGE_TEMPLATE_NAME = 'meteo_spray_digest_img';
 const FALLBACK_TEMPLATE_NAME = 'general_alert';
+
+/** Nom de fichier du graphique poussé à Meta (purement informatif côté API). */
+const CHART_FILENAME = 'meteo-traitements.png';
 
 /**
  * Codes d'erreur Meta déclenchant le repli sur `general_alert` — tous liés au
@@ -583,13 +591,46 @@ function shouldFallback(outcome) {
 }
 
 /**
+ * Exécute un envoi et le ramène à la forme d'un résultat `Promise.allSettled`,
+ * pour rester compatible avec `shouldFallback` (déjà testé sur cette forme).
+ * @param {() => Promise<*>} fn
+ * @returns {Promise<{status:string, value?:*, reason?:*}>}
+ */
+async function attempt(fn) {
+  try {
+    return { status: 'fulfilled', value: await fn() };
+  } catch (err) {
+    return { status: 'rejected', reason: err };
+  }
+}
+
+/** @param {*} outcome @returns {boolean} */
+function outcomeOk(outcome) {
+  return !!(outcome && outcome.status === 'fulfilled' && outcome.value && outcome.value.success);
+}
+
+/** @param {*} outcome @returns {string} */
+function outcomeError(outcome) {
+  if (!outcome) return '';
+  if (outcome.status === 'rejected') {
+    return String((outcome.reason && outcome.reason.message) || outcome.reason || '');
+  }
+  return String((outcome.value && outcome.value.error) || '');
+}
+
+/**
  * @typedef {Object} MeteoDigestDeps
  * @property {(coords: {lat:number, lon:number, altitude:number}, pkg: string) => Promise<object|null>} getMeteoblue
  * @property {{
  *   resolveRecipientsForProfile: (profileId: string, ferme: string|null) => Promise<Array<object>>,
  *   sendTemplateMessage: (to: string, templateName: string, bodyParams: Array<string>, lang: string|undefined, toName: string|undefined) => Promise<object>,
+ *   sendTemplateMessageWithImage?: (to: string, templateName: string, mediaIdOrRef: *, bodyParams: Array<string>, lang: string|undefined, toName: string|undefined) => Promise<object>,
+ *   uploadMedia?: (buffer: Buffer, mimeType: string, filename: string) => Promise<object>,
  *   toSingleLine: (s: *) => string,
  * }} whatsapp
+ * @property {(svg: string) => Buffer} [renderChartPng] Rendu SVG → PNG. Injecté
+ *   dans les tests pour ne pas dépendre du binaire natif ; par défaut
+ *   `renderPng.renderSvgToPng`.
  * @property {() => Date} [now]
  */
 
@@ -604,6 +645,52 @@ function createMeteoDigestJob(deps) {
   }
   const whatsapp = deps.whatsapp;
   const now = typeof deps.now === 'function' ? deps.now : function() { return new Date(); };
+  const renderChartPng = typeof deps.renderChartPng === 'function'
+    ? deps.renderChartPng
+    : renderPng.renderSvgToPng;
+
+  /**
+   * Fabrique le graphique du jour et le pousse à Meta — UNE seule fois pour
+   * tous les destinataires (le media_id est réutilisable 30 jours).
+   *
+   * Ne lève JAMAIS : le graphique est un bonus, le corps texte est l'essentiel.
+   * Tout échec est journalisé en `console.error` et renvoie `null`, ce qui fait
+   * retomber l'envoi sur le template texte. Un digest qui perdrait
+   * silencieusement son image chaque matin serait un échec invisible.
+   *
+   * @param {string} dateISO
+   * @param {{dateParam: string}} digest
+   * @param {object|null} weatherData
+   * @param {object|null} sprayData
+   * @param {SprayWindows|null} windows
+   * @returns {Promise<string|null>} media_id, ou null si indisponible.
+   */
+  async function prepareChartMedia(dateISO, digest, weatherData, sprayData, windows) {
+    try {
+      if (typeof whatsapp.uploadMedia !== 'function' ||
+          typeof whatsapp.sendTemplateMessageWithImage !== 'function') {
+        throw new Error('whatsappService sans support image (uploadMedia / sendTemplateMessageWithImage)');
+      }
+      const svg = sprayChart.buildSprayChartSvg({
+        dateISO: dateISO,
+        weatherData: weatherData,
+        sprayData: sprayData,
+        dateLabel: digest.dateParam,
+        scoreText: windows ? formatScore(windows.score) : '',
+      });
+      const png = renderChartPng(svg);
+      if (!png || !png.length) throw new Error('rendu PNG vide');
+      const uploaded = await whatsapp.uploadMedia(png, renderPng.PNG_MIME, CHART_FILENAME);
+      if (!uploaded || !uploaded.id) {
+        throw new Error('upload sans media_id' + (uploaded && uploaded.error ? ' (' + uploaded.error + ')' : ''));
+      }
+      return uploaded.id;
+    } catch (err) {
+      console.error('[meteoSprayDigest] GRAPHIQUE INDISPONIBLE pour ' + dateISO +
+        ' → repli sur le digest texte seul : ' + (err && err.message));
+      return null;
+    }
+  }
 
   /**
    * @param {string} [dateISO]
@@ -690,34 +777,69 @@ function createMeteoDigestJob(deps) {
       };
     }
 
-    const outcomes = await Promise.allSettled(recipients.map(function(r) {
-      return whatsapp.sendTemplateMessage(
-        r.phone, TEMPLATE_NAME, [digest.dateParam, digest.body], undefined, r.displayName
-      );
+    // Le graphique est produit et uploadé UNE fois pour tout le monde.
+    const mediaId = await prepareChartMedia(day, digest, weatherData, sprayData, windows);
+
+    const bodyParams = [digest.dateParam, digest.body];
+    let fallbackUsed = 0;
+    let imageSent = 0;
+    let degradedToText = 0;
+    const okByPhone = new Map();
+
+    // Chaîne de repli à trois étages. Le CORPS TEXTE est identique aux étages 1
+    // et 2 : il ne peut être perdu que si les deux templates sont refusés, et
+    // l'étage 3 (general_alert) sauve alors l'essentiel décisionnel.
+    const results = await Promise.all(recipients.map(async function(r) {
+      // ── Étage 1 : template avec image ──────────────────────────────────
+      if (mediaId) {
+        const withImage = await attempt(function() {
+          return whatsapp.sendTemplateMessageWithImage(
+            r.phone, IMAGE_TEMPLATE_NAME, mediaId, bodyParams, undefined, r.displayName
+          );
+        });
+        if (outcomeOk(withImage)) return { phone: r.phone, ok: true, image: true, degraded: false, fallback: false };
+        // Toute erreur (template non encore approuvé, media_id périmé, réseau)
+        // dégrade vers le texte : le corps ne doit jamais dépendre de l'image.
+        console.error('[meteoSprayDigest] envoi AVEC IMAGE refusé pour ' + r.phone +
+          ' → repli sur le template texte : ' + outcomeError(withImage));
+      }
+
+      // ── Étage 2 : template texte historique ────────────────────────────
+      const textOutcome = await attempt(function() {
+        return whatsapp.sendTemplateMessage(
+          r.phone, TEMPLATE_NAME, bodyParams, undefined, r.displayName
+        );
+      });
+      if (outcomeOk(textOutcome)) {
+        return { phone: r.phone, ok: true, image: false, degraded: !!mediaId, fallback: false };
+      }
+      if (!shouldFallback(textOutcome)) {
+        return { phone: r.phone, ok: false, image: false, degraded: !!mediaId, fallback: false };
+      }
+
+      // ── Étage 3 : general_alert (mécanisme existant, une seule reprise) ─
+      console.error('[meteoSprayDigest] template texte refusé pour ' + r.phone +
+        ' → repli sur ' + FALLBACK_TEMPLATE_NAME + ' : ' + outcomeError(textOutcome));
+      const retry = await attempt(function() {
+        return whatsapp.sendTemplateMessage(
+          r.phone, FALLBACK_TEMPLATE_NAME,
+          [whatsapp.toSingleLine(digest.fallbackText)], undefined, r.displayName
+        );
+      });
+      if (!outcomeOk(retry) && retry.status === 'rejected') {
+        console.error('[meteoSprayDigest] fallback send failed:', outcomeError(retry));
+      }
+      return {
+        phone: r.phone, ok: outcomeOk(retry), image: false, degraded: !!mediaId, fallback: true,
+      };
     }));
 
-    let fallbackUsed = 0;
-    const okByPhone = new Map();
-    for (let i = 0; i < recipients.length; i++) {
-      const r = recipients[i];
-      const outcome = outcomes[i];
-      let ok = outcome && outcome.status === 'fulfilled' && outcome.value && !!outcome.value.success;
-      if (!ok && shouldFallback(outcome)) {
-        // Template inconnu / format rejeté → une seule reprise via general_alert.
-        fallbackUsed++;
-        try {
-          const retry = await whatsapp.sendTemplateMessage(
-            r.phone, FALLBACK_TEMPLATE_NAME,
-            [whatsapp.toSingleLine(digest.fallbackText)], undefined, r.displayName
-          );
-          ok = !!(retry && retry.success);
-        } catch (err) {
-          console.error('[meteoSprayDigest] fallback send failed:', err && err.message);
-          ok = false;
-        }
-      }
-      okByPhone.set(r.phone, ok);
-    }
+    results.forEach(function(res) {
+      okByPhone.set(res.phone, res.ok);
+      if (res.fallback) fallbackUsed++;
+      if (res.ok && res.image) imageSent++;
+      if (res.ok && !res.image && res.degraded) degradedToText++;
+    });
 
     const byProfile = AUDIENCE.map(function(a) {
       const mine = recipients.filter(function(r) { return r.profileId === a.profileId; });
@@ -733,7 +855,7 @@ function createMeteoDigestJob(deps) {
     // Un destinataire non servi = digest non délivré : ça doit remonter en
     // erreur dans les logs, pas se noyer dans un console.log de routine.
     const logLine = '[meteoSprayDigest] ' + day + ': sent=' + sent + '/' + recipients.length +
-      ' fallback=' + fallbackUsed;
+      ' image=' + imageSent + ' texte=' + degradedToText + ' fallback=' + fallbackUsed;
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -745,6 +867,9 @@ function createMeteoDigestJob(deps) {
       recipientsCount: recipients.length,
       byProfile: byProfile,
       fallbackUsed: fallbackUsed,
+      chartAvailable: !!mediaId,
+      imageSent: imageSent,
+      degradedToText: degradedToText,
     };
   }
 
@@ -757,6 +882,8 @@ module.exports = {
   COORDS,
   AUDIENCE,
   TEMPLATE_NAME,
+  IMAGE_TEMPLATE_NAME,
+  CHART_FILENAME,
   FALLBACK_TEMPLATE_NAME,
   FALLBACK_ERROR_CODES,
   TRIGGER_SEND_ROLES,

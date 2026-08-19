@@ -200,6 +200,26 @@ const TEMPLATES = [
     ],
   },
   {
+    // Variante IMAGE du digest météo : header IMAGE portant le graphique
+    // horaire (courbe de température sur les bandes AgroSpray, cf.
+    // functions/lib/meteo/sprayChart.js).
+    //
+    // ⚠️ Le BODY doit rester STRICTEMENT IDENTIQUE à celui de
+    // `meteo_spray_digest` (mêmes 2 variables, même ordre) : le job envoie les
+    // mêmes `bodyParams` aux deux templates et retombe de l'un sur l'autre
+    // quand l'image échoue. Toute divergence casserait le repli.
+    // Template DÉDIÉ plutôt qu'une édition de l'existant : Meta ne tolère
+    // qu'une édition par 24 h, et le digest texte doit rester disponible comme
+    // filet de sécurité pendant l'approbation de celui-ci.
+    name: "meteo_spray_digest_img",
+    headerType: "IMAGE",
+    body: "SmartBerry — Météo & Traitements {{1}}. Voici les conditions du jour et les fenêtres de traitement recommandées :\n\n{{2}}\n\nConsultez SmartBerry pour le détail.",
+    examples: [
+      "Jeu 14/08",
+      "🌡️ Température : 17°C → 29°C\n💨 Vent max : 12 km/h\n🌧️ Pluie : 0 mm\n\n✅ Fenêtres de traitement :\n• 06h00 - 09h00\n• 18h00 - 20h00\nScore du jour : 62% favorable",
+    ],
+  },
+  {
     // Alertes météo à 7 jours (Forte Chaleur / Vent Fort / Forte Pluie) — même
     // audience que le digest. Message groupé : {{1}} = période couverte,
     // {{2}} = corps multi-ligne (une section par alerte). Comme
