@@ -1599,56 +1599,8 @@
       return React.createElement('span', { style: style }, pct.toFixed(1) + ' %');
     }
 
-    /**
-     * Format du BUDGET IDÉAL — même gabarit que `fmtPct` (une décimale, « % »
-     * dans la valeur, italique) à UNE différence près : JAMAIS de rouge au-delà
-     * de 100 %.
-     *
-     * Ce n'est pas une consommation mais un REPÈRE de calendrier : à la fin de
-     * la campagne il vaut 100 % par construction, sur toutes les lignes. Le
-     * teinter en rouge, comme le fait `fmtPct` pour un dépassement de budget,
-     * ferait virer la grille entière au rouge en juin sans qu'aucun budget ne
-     * soit dépassé. Il est au contraire rendu en GRIS : c'est la colonne qu'on
-     * lit EN REGARD du % consommé, pas celle qui alerte.
-     */
-    function fmtPctIdeal(v) {
-      var pct = Math.round(v * 1000) / 10;
-      return React.createElement('span', {
-        style: { fontStyle: 'italic', color: C.textSec },
-      }, pct.toFixed(1) + ' %');
-    }
-
-    /**
-     * 4e sous-colonne « Budget idéal » — la part de campagne écoulée.
-     *
-     * ── SÉRIE RATIO, ET PAS UNE SÉRIE ORDINAIRE ─────────────────────────────
-     * La valeur est la MÊME constante dans toutes les cellules. En série
-     * ordinaire (`get`), la grille l'additionnerait : « 350 % » en total de
-     * ligne sur 7 parcelles, autant en pied de colonne et au grand total. En
-     * série `ratio`, numérateur et dénominateur sont sommés séparément puis
-     * divisés (cf. PivotAnalytiqueGrid, section « ratio ») : n × part / n × 1 =
-     * part, la constante est préservée partout. Bonus : `basis`/`display` sont
-     * ignorés sur un ratio, la bascule Par Ha / Total ne la touche donc pas.
-     *
-     * `parts` renvoie `null` sur une cellule sans `pctIdeal` — les lignes de la
-     * Récolte, que `CR.decoreIdeal` laisse volontairement nues : elles
-     * affichent « — », un effort de récolte n'étant pas linéaire.
-     */
-    var metricIdeal = {
-      label: 'Budget idéal',
-      unit: '% écoulé',
-      ratio: {
-        parts: function (cell) {
-          if (!CR || typeof CR.pctIdealParts !== 'function') return null;
-          return CR.pctIdealParts(cell);
-        },
-      },
-      format: fmtPctIdeal,
-    };
-
     // Séries Budget + % consommé — ajoutées seulement en JH et seulement sur
-    // une culture budgétée (cf. en-tête). Une 4e (« Budget idéal ») s'y greffe
-    // EN PLEIN ÉCRAN seulement (cf. `idealDispo` plus bas).
+    // une culture budgétée (cf. en-tête).
     //
     // ⚠️ TROIS SOUS-COLONNES, PAS CINQ. « Reste budgété » et « reste au rythme »
     // (LOT 3a) ont QUITTÉ la grille : avec 9 parcelles, cinq séries font 45
@@ -1764,26 +1716,41 @@
     var enPlein = !!fullscreen && groups.length > 0;
     var groupesAffiches = enPlein ? [groups[idxCulture]] : groups;
 
-    // ── BUDGET IDÉAL : PLEIN ÉCRAN SEULEMENT ───────────────────────────────
-    // Même arbitrage que la colonne Total (cf. `showTotal` plus bas) : une 4e
-    // sous-colonne par parcelle, c'est 36 colonnes pour 9 parcelles. Hors plein
-    // écran, où plusieurs cultures sont empilées dans une largeur contrainte,
-    // elle tasserait les trois colonnes qu'on vient réellement lire.
+    // ── BUDGET IDÉAL : UN REPÈRE DE PAGE, PAS UNE COLONNE ──────────────────
+    // La part de campagne écoulée est la MÊME valeur dans toutes les cellules :
+    // en faire une sous-colonne coûtait une colonne par parcelle pour répéter
+    // un seul chiffre. Elle est donc affichée une fois, en haut à droite, où
+    // elle se lit comme ce qu'elle est — la position du CALENDRIER, à comparer
+    // de tête au « % consommé » de n'importe quelle ligne.
     // Garde anti-crash sur `CR` : une référence à un global absent fait planter
     // TOUT le rendu React (mémoire projet « tab bare global ref »).
-    var idealDispo = !!(enPlein && CR && typeof CR.decoreIdeal === 'function'
-      && partIdeale !== null);
-    // Le « N j / 365 » de la légende vient du MÊME calcul que la colonne (jamais
-    // un second comptage de jours, qui divergerait d'un jour près).
-    var joursIdeal = (idealDispo && typeof CR.joursEcoules === 'function')
+    var joursIdeal = (CR && typeof CR.joursEcoules === 'function')
       ? CR.joursEcoules({ campagne: data.campagne, utils: window.CampagneUtils })
       : null;
-    // Le repère est un CALENDRIER, pas un objectif : sans cette phrase, une
-    // colonne « Budget idéal » se lit comme un budget recalculé au prorata.
-    var noteIdeal = 'Budget idéal = part de la campagne écoulée à ce jour ('
-      + (joursIdeal === null ? 'jours écoulés depuis le 1er juillet' : joursIdeal + ' j')
-      + ' / 365 depuis le 1er juillet) : repère de rythme linéaire, à comparer au '
-      + '% consommé. Non affiché sur la Récolte, dont l\'effort n\'est pas linéaire.';
+    // `null` = indéterminable (campagne illisible, module absent) : on n'affiche
+    // RIEN plutôt qu'un 0 % qui se lirait « campagne pas commencée ».
+    var repereIdeal = (partIdeale === null) ? null : React.createElement('div', {
+      title: joursIdeal === null
+        ? 'Part de la campagne écoulée depuis le 1er juillet.'
+        : joursIdeal + ' jours écoulés depuis le 1er juillet, sur 365. Repère de '
+          + 'rythme linéaire : à comparer au « % consommé » de chaque ligne.',
+      style: {
+        marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: '8px',
+        padding: '5px 14px', borderRadius: '16px',
+        border: '1.5px solid ' + C.border, background: C.surface,
+      },
+    },
+      React.createElement('span', {
+        style: { fontSize: '11px', color: C.textSec, letterSpacing: '0.04em',
+          textTransform: 'uppercase', fontWeight: 600 },
+      }, '% Budget idéal à ce jour'),
+      React.createElement('span', {
+        style: { fontSize: '15px', fontWeight: 700, color: C.berry },
+      }, (Math.round(partIdeale * 1000) / 10).toFixed(1) + ' %'),
+      joursIdeal === null ? null : React.createElement('span', {
+        style: { fontSize: '10px', color: C.textSec },
+      }, joursIdeal + ' j / 365')
+    );
 
     /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */
     function boutonPlein(i) {
@@ -1821,6 +1788,9 @@
         React.createElement('span', { style: { width: '8px' } }),
         CAT_pills([['recap', 'Récap'], ['detail', 'Détail']], detailMode ? 'detail' : 'recap',
           function (v) { setDetailMode(v === 'detail'); }, 'd-'),
+        // Poussé à droite par `marginLeft: auto` : le repère de calendrier
+        // n'est pas une bascule, il ne se range pas avec elles.
+        repereIdeal,
         // Bascule ANNUEL ↔ QUINZAINE : proposée seulement quand elle mène
         // quelque part (JH + au moins un engagement saisi sur la quinzaine
         // affichée). Sinon elle n'ouvrirait qu'une grille de « — ».
@@ -1939,21 +1909,6 @@
             var rowsAffichees = quinz
               ? quinz.groupedRows
               : (sup ? sup.groupedRows : pivot.groupedRows);
-            // BUDGET IDÉAL : uniquement en plein écran, et uniquement greffé sur
-            // les trois sous-colonnes du budget ANNUEL. Jamais en vue Quinzaine
-            // (le repère porte sur l'année, il ne dit rien d'un engagement de 15
-            // jours), jamais sur le réalisé seul (aucun budget à comparer), et
-            // jamais en Coût DH — `metricsBudget` n'existe qu'en JH.
-            var afficheIdeal = idealDispo && !quinz && !!(sup && sup.hasBudget);
-            if (afficheIdeal) {
-              metricsAffichees = metricsAffichees.concat([metricIdeal]);
-              // Décoration PURE : les lignes rendues sont des copies, celles du
-              // pivot du réalisé et de la pop-up de détail restent intactes.
-              rowsAffichees = CR.decoreIdeal({
-                groupedRows: rowsAffichees,
-                part: partIdeale,
-              }).groupedRows;
-            }
             // ── RÉCOLTE À PART ──────────────────────────────────────────
             // En plein écran seulement : hors plein écran, plusieurs cultures
             // sont déjà empilées, un bloc de plus par culture rendrait l'écran
@@ -2002,9 +1957,7 @@
               note: quinz
                 ? CBQ.noteQuinzaine(quinzaineInfoSel || { key: quinzaineActive },
                     quinzaineActive === quinzaineCourante)
-                : ((sup && sup.hasBudget)
-                  ? (afficheIdeal ? noteBudgetSeul + ' ' + noteIdeal : noteBudgetSeul)
-                  : null),
+                : ((sup && sup.hasBudget) ? noteBudgetSeul : null),
               title: aRecolte ? g.culture + ' — hors récolte' : g.culture,
               icon: g.icon,
               })) : null,

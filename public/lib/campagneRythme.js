@@ -17,10 +17,11 @@
  * l'appelant navigateur — l'argument `utils`, s'il est fourni, gagne toujours.
  *
  * ── BUDGET IDÉAL (part de campagne écoulée) ──────────────────────────────────
- * `partEcoulee` / `decoreIdeal` servent la 4e sous-colonne de la grille
- * « Affectation par Ha » : (jour − 1er juillet) / 365, le repère de rythme
- * LINÉAIRE à comparer au % consommé. Il ne s'affiche pas sur la Récolte, dont
- * l'effort suit la maturité des fruits et non le calendrier.
+ * `partEcoulee` / `joursEcoules` servent le repère « % BUDGET IDÉAL À CE JOUR »
+ * affiché en haut de la grille « Affectation par Ha » : (jour − 1er juillet)
+ * / 365, le repère de rythme LINÉAIRE à comparer au % consommé de n'importe
+ * quelle ligne. Repère de PAGE et non colonne : la valeur est la même partout,
+ * une sous-colonne par parcelle n'aurait fait que la répéter.
  *
  * ── DEUX RESTES, JAMAIS UN SEUL ──────────────────────────────────────────────
  *   reste budgété   = budget JH/Ha × Ha − réalisé cumulé
@@ -674,78 +675,6 @@
     return part === null ? null : Math.round(part * JOURS_CAMPAGNE);
   }
 
-  /**
-   * Pose `pctIdeal` (= `part`) sur chaque cellule des lignes famille et
-   * opération. PURE — aucun argument n'est muté (les lignes et leurs cellules
-   * sont partagées avec le pivot du réalisé et sa pop-up de détail).
-   *
-   * La MÊME valeur partout : c'est une constante d'écran, pas une mesure par
-   * cellule. Elle transite par les cellules parce que c'est le seul canal que
-   * la grille lit, et elle est servie en série RATIO (num = pctIdeal, den = 1)
-   * pour que les totaux de ligne / de colonne / le grand total la restituent
-   * telle quelle au lieu d'en afficher la somme.
-   *
-   * Seules les cellules EXISTANTES sont décorées : aucune n'est créée. Une
-   * ligne sans cellule sur une parcelle (ni réalisé, ni budget) reste vide —
-   * en fabriquer une pour y peindre le repère y ferait apparaître un « 0.0 » de
-   * réalisé, c'est-à-dire une affirmation fausse dans la colonne d'à côté.
-   *
-   * `groupesExclus` (défaut : la Récolte) reste « — » : l'effort de récolte
-   * suit la maturité des fruits, pas le calendrier. Un repère linéaire y
-   * annoncerait un retard permanent jusqu'au pic de production.
-   *
-   * @param {Object} args
-   * @param {Array<Object>} args.groupedRows lignes du pivot (ordre conservé).
-   * @param {number|null} args.part sortie de `partEcoulee`. null / non fini →
-   *   lignes rendues INCHANGÉES (aucune décoration, donc « — » partout).
-   * @param {Array<string>} [args.groupesExclus] défaut `['M.O Récolte']`.
-   * @returns {{groupedRows: Array<Object>}}
-   */
-  function decoreIdeal(args) {
-    var a = args || {};
-    var rows = a.groupedRows || [];
-    var part = Number(a.part);
-    if (a.part === null || a.part === undefined || !isFinite(part)) {
-      return { groupedRows: rows };
-    }
-    var exclus = {};
-    (a.groupesExclus || ['M.O Récolte']).forEach(function (g) { exclus[g] = true; });
-
-    var out = rows.map(function (row) {
-      if (!row || row.type === 'groupe') return row;
-      if (exclus[row.groupeKey]) return row;
-      var pivot = {};
-      Object.keys(row.pivot || {}).forEach(function (p) {
-        var cell = row.pivot[p];
-        if (!cell) { pivot[p] = cell; return; }
-        var copie = {};
-        Object.keys(cell).forEach(function (k) { copie[k] = cell[k]; });
-        copie.pctIdeal = part;
-        pivot[p] = copie;
-      });
-      var copieRow = {};
-      Object.keys(row).forEach(function (k) { copieRow[k] = row[k]; });
-      copieRow.pivot = pivot;
-      return copieRow;
-    });
-    return { groupedRows: out };
-  }
-
-  /**
-   * Numérateur / dénominateur du « budget idéal » d'une cellule. PURE.
-   * `den = 1` : la valeur EST déjà un taux, on la fait seulement transiter par
-   * le mécanisme d'agrégation ratio de la grille (somme des num / somme des den
-   * → la constante est préservée dans tous les totaux).
-   * @param {{pctIdeal?: number}|null|undefined} cell
-   * @returns {{num: number, den: number}|null} null = « — » (ligne exclue).
-   */
-  function pctIdealParts(cell) {
-    if (!cell) return null;
-    var v = Number(cell.pctIdeal);
-    if (!isFinite(v)) return null;
-    return { num: v, den: 1 };
-  }
-
   var __campagneRythmeApi = {
     CLASSES: CLASSES,
     JOURS_CAMPAGNE: JOURS_CAMPAGNE,
@@ -765,8 +694,6 @@
     noteRestes: noteRestes,
     partEcoulee: partEcoulee,
     joursEcoules: joursEcoules,
-    decoreIdeal: decoreIdeal,
-    pctIdealParts: pctIdealParts,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = __campagneRythmeApi;
