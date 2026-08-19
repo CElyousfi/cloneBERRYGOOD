@@ -11,7 +11,17 @@
  *
  * Toutes les fonctions sont PURES : rien n'est lu dans le scope global, les
  * modules dont ce calcul a besoin (AnalytiqueUtils pour la normalisation des
- * libellés d'opération) entrent par argument.
+ * libellés d'opération, CampagneUtils pour la frontière du 1er juillet) entrent
+ * par argument. Seule exception, et elle est un REPLI, jamais le chemin des
+ * tests : `partEcoulee` accepte un `window.CampagneUtils` implicite pour
+ * l'appelant navigateur — l'argument `utils`, s'il est fourni, gagne toujours.
+ *
+ * ── BUDGET IDÉAL (part de campagne écoulée) ──────────────────────────────────
+ * `partEcoulee` / `joursEcoules` servent le repère « % BUDGET IDÉAL À CE JOUR »
+ * affiché en haut de la grille « Affectation par Ha » : (jour − 1er juillet)
+ * / 365, le repère de rythme LINÉAIRE à comparer au % consommé de n'importe
+ * quelle ligne. Repère de PAGE et non colonne : la valeur est la même partout,
+ * une sous-colonne par parcelle n'aurait fait que la répéter.
  *
  * ── DEUX RESTES, JAMAIS UN SEUL ──────────────────────────────────────────────
  *   reste budgété   = budget JH/Ha × Ha − réalisé cumulé
@@ -86,13 +96,18 @@
     return isFinite(n) && n > 0 ? n : 0;
   }
 
+  /** Regex TOLÉRANTE au séparateur d'un libellé de campagne : le backend sert
+   *  « 2026/2027 » (functions/pointageService.js), pas « 2026-2027 ». Toute
+   *  lecture de libellé dans ce fichier passe par elle. */
+  var _cr_CAMPAGNE_RE = /^(\d{4})\D+(\d{4})$/;
+
   /**
    * Nombre total de quinzaines d'une campagne, DÉRIVÉ de son libellé
    * (« 2026/2027 » ou « 2026-2027 » → 12 mois → 24 quinzaines).
    * @returns {number|null} null si le libellé n'est pas exploitable.
    */
   function totalQuinzaines(campagne) {
-    var m = /^(\d{4})\D+(\d{4})$/.exec(String(campagne == null ? '' : campagne).trim());
+    var m = _cr_CAMPAGNE_RE.exec(String(campagne == null ? '' : campagne).trim());
     if (!m) return null;
     var mois = (parseInt(m[2], 10) - parseInt(m[1], 10)) * 12;
     if (!(mois > 0)) return null;
@@ -556,8 +571,113 @@
     return txt + ' ' + sfin;
   }
 
+  /**
+   * Dénominateur du « budget idéal », en jours. DÉCISION MÉTIER, pas la durée
+   * réelle de la campagne : une année bissextile en compte 366, et une campagne
+   * juillet→juin peut donc durer 365 ou 366 jours selon l'année de son 29
+   * février. Le repère de rythme est un REPÈRE — le faire varier d'un jour d'une
+   * campagne à l'autre (0.27 point de pourcentage) rendrait deux campagnes
+   * incomparables pour rien. Constante assumée.
+   */
+  var JOURS_CAMPAGNE = 365;
+
+  /** Millisecondes d'une journée (calcul en UTC : aucun décalage d'heure d'été). */
+  var _cr_MS_JOUR = 24 * 60 * 60 * 1000;
+
+  /** Timestamp UTC d'une date 'YYYY-MM-DD' ou d'un Date (composantes LOCALES —
+   *  « aujourd'hui » est le jour vu par l'utilisateur, pas par UTC). NaN si
+   *  illisible. */
+  function _cr_jour(d) {
+    if (d instanceof Date) {
+      if (isNaN(d.getTime())) return NaN;
+      return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    }
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d == null ? '' : d).trim());
+    if (!m) return NaN;
+    return Date.UTC(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+  }
+
+  /**
+   * Normalise le SÉPARATEUR d'un libellé de campagne vers la forme à tiret
+   * attendue par `CampagneUtils` (`/^(\d{4})-(\d{4})$/`, strict).
+   *
+   * Nécessaire parce que le backend sert « 2026/2027 » avec un SLASH
+   * (functions/pointageService.js, `label: `${startYear}/${startYear + 1}``),
+   * alors que `CampagneUtils.debutCampagne` n'accepte que le tiret : sans
+   * normalisation il renvoie null, `partEcoulee` aussi, et la colonne
+   * « Budget idéal » disparaît silencieusement de la grille. C'est exactement
+   * pour la même raison que `totalQuinzaines` lit déjà le libellé avec la regex
+   * tolérante ci-dessus (`_cr_CAMPAGNE_RE`), réutilisée ici à l'identique.
+   *
+   * ⚠️ On ne normalise QUE le séparateur. La règle métier — début de campagne
+   * au 1er juillet — reste chez `CampagneUtils.debutCampagne`, source unique de
+   * vérité : on ne recompose JAMAIS la date ici (`anneeDebut + '-07-01'`), ça
+   * la ferait diverger le jour où la frontière bouge.
+   *
+   * @param {*} campagne libellé brut ('2026/2027', '2026-2027', …).
+   * @returns {string|null} 'AAAA-BBBB', ou null si le libellé est illisible.
+   */
+  function _cr_normCampagne(campagne) {
+    var m = _cr_CAMPAGNE_RE.exec(String(campagne == null ? '' : campagne).trim());
+    if (!m) return null;
+    var debut = parseInt(m[1], 10);
+    if (!isFinite(debut)) return null;
+    return debut + '-' + (debut + 1);
+  }
+
+  /**
+   * Part de la campagne ÉCOULÉE à ce jour, dans [0, 1] — le « budget idéal » :
+   * ce qu'on aurait consommé à ce stade si l'effort était parfaitement linéaire.
+   * C'est un REPÈRE à comparer au % consommé, jamais une prévision.
+   *
+   * Le 1er juillet vient de `CampagneUtils.debutCampagne` : la frontière de
+   * campagne a UNE source de vérité (public/lib/campagneUtils.js), la
+   * réécrire ici la ferait diverger le jour où elle bouge.
+   *
+   * PURE : `CampagneUtils` entre par argument (comme AnalytiqueUtils ailleurs
+   * dans ce fichier), avec un repli sur `window.CampagneUtils` pour l'appelant
+   * navigateur qui ne le passe pas. Absent → `null`.
+   *
+   * `null` = INDÉTERMINABLE, jamais 0 : un 0 se lirait « campagne pas commencée ».
+   *
+   * @param {{campagne?: string, today?: (Date|string), utils?: {debutCampagne: Function}}} args
+   *   `campagne` accepte les DEUX séparateurs ('2026/2027' servi par le
+   *   backend comme '2026-2027') — cf. `_cr_normCampagne`.
+   *   `today` (défaut : maintenant) accepte un `Date` ou 'YYYY-MM-DD' — il DOIT
+   *   rester injectable, sinon le calcul n'est pas testable.
+   * @returns {number|null}
+   */
+  function partEcoulee(args) {
+    var a = args || {};
+    var utils = a.utils
+      || (typeof window !== 'undefined' ? window.CampagneUtils : null);
+    if (!utils || typeof utils.debutCampagne !== 'function') return null;
+    var debut = utils.debutCampagne(_cr_normCampagne(a.campagne));
+    if (!debut) return null;
+    var tDebut = _cr_jour(debut);
+    var tToday = _cr_jour(a.today !== undefined && a.today !== null ? a.today : new Date());
+    if (!isFinite(tDebut) || !isFinite(tToday)) return null;
+    var jours = (tToday - tDebut) / _cr_MS_JOUR;
+    var part = jours / JOURS_CAMPAGNE;
+    if (!isFinite(part)) return null;
+    return Math.min(1, Math.max(0, part));
+  }
+
+  /**
+   * Nombre de jours écoulés depuis le 1er juillet de la campagne (borné à
+   * [0, JOURS_CAMPAGNE]) — sert UNIQUEMENT à énoncer le « N j / 365 » de la
+   * légende. `null` dans les mêmes cas que `partEcoulee`.
+   * @param {{campagne?: string, today?: (Date|string), utils?: Object}} args
+   * @returns {number|null}
+   */
+  function joursEcoules(args) {
+    var part = partEcoulee(args);
+    return part === null ? null : Math.round(part * JOURS_CAMPAGNE);
+  }
+
   var __campagneRythmeApi = {
     CLASSES: CLASSES,
+    JOURS_CAMPAGNE: JOURS_CAMPAGNE,
     QUINZAINES_PAR_MOIS: QUINZAINES_PAR_MOIS,
     FENETRE_PAR_DEFAUT: FENETRE_PAR_DEFAUT,
     MIN_QUINZAINES_CONSOMMEES: MIN_QUINZAINES_CONSOMMEES,
@@ -572,6 +692,8 @@
     resteRythmeCellule: resteRythmeCellule,
     decoreRestes: decoreRestes,
     noteRestes: noteRestes,
+    partEcoulee: partEcoulee,
+    joursEcoules: joursEcoules,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = __campagneRythmeApi;

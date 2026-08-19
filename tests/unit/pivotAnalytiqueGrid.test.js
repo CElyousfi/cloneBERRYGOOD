@@ -687,3 +687,63 @@ test('grille — sans metrics, la série `jh` par défaut évite un rendu vide',
   const tree = render(undefined);
   assert.ok(cells(bodyRows(tree)[1])[1].indexOf('10') === 0);
 });
+
+// ── Totaux DANS le bandeau de section (`chiffresGroupe`) ────────────────────
+// Opt-in : sans la prop, le bandeau reste le `colSpan` unique de l'écran
+// Quinzaine, en production. C'est la première assertion ci-dessous, et c'est la
+// plus importante des trois.
+
+test('bandeau de section — sans la prop, le colSpan d\'origine, intact', () => {
+  const tree = render(troisSeries('perHa'));
+  const bandeau = tds(bodyRows(tree)[0]);
+  assert.strictEqual(bandeau.length, 1, 'une seule cellule, comme avant');
+  // parcelles × séries + libellé + la largeur de la colonne Total (présente par
+  // défaut, c'est le cas de l'écran Quinzaine).
+  assert.strictEqual(bandeau[0].props.colSpan, 2 * 3 + 1 + 3);
+  assert.match(textOf(bandeau[0]), /M\.O HORS RÉCOLTE/);
+});
+
+test('bandeau de section — chiffré, il occupe exactement les colonnes des lignes', () => {
+  const tree = render(troisSeries('perHa'), { chiffresGroupe: true });
+  const bandeau = tds(bodyRows(tree)[0]);
+  const famille = tds(bodyRows(tree)[1]);
+  assert.strictEqual(bandeau[0].props.colSpan, undefined, 'plus de colSpan');
+  assert.strictEqual(bandeau.length, famille.length,
+    'un décalage ici décale TOUT le tableau, silencieusement');
+  // Le résumé textuel de la section survit dans la cellule de libellé.
+  assert.match(textOf(bandeau[0]), /M\.O HORS RÉCOLTE \| 30 JH total/);
+});
+
+test('bandeau de section — ses chiffres sont la somme de SES familles', () => {
+  const tree = render(troisSeries('perHa'), { chiffresGroupe: true, showTotal: true });
+  // Une seule famille sous le bandeau : il doit afficher exactement ses valeurs.
+  // C'est la garantie qu'un bandeau ne peut pas mentir sur les lignes qu'il
+  // coiffe — il est calculé à partir d'elles, jamais depuis `row.pivot`.
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1), cells(bodyRows(tree)[1]).slice(1));
+  // …et il vaut donc aussi le pied, puisqu'il n'y a qu'une section.
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1), cells(footRow(tree)).slice(1));
+});
+
+test('bandeau de section — une famille NON budgétée ne devient pas un budget nul', () => {
+  // Le pivot d'une ligne groupe ne porte NI budget NI pctIdeal : si le bandeau
+  // le lisait au lieu d'agréger ses familles, tout le budget passerait à « — ».
+  const tree = render(troisSeries('perHa'), {
+    chiffresGroupe: true,
+    groupedRows: [
+      { type: 'groupe', key: 'G', label: 'M.O HORS RÉCOLTE', pivot: {} },
+      { type: 'famille', key: 'GB09', label: 'Taille', pivot: PIVOT },
+    ],
+  });
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]).slice(1), cells(bodyRows(tree)[1]).slice(1));
+});
+
+test('bandeau de section — une série ratio y est agrégée num/den, jamais moyennée', () => {
+  const taux = [{ key: 'jh', label: 'Réalisé', unit: 'JH', basis: 'total', display: 'total', format: un },
+    { label: '% consommé', ratio: { parts: function (c) {
+      return c && c.budget ? { num: c.jh, den: c.budget * c.ha } : null;
+    } }, format: function (v) { return (Math.round(v * 1000) / 10).toFixed(1) + ' %'; } }];
+  const tree = render(taux, { chiffresGroupe: true, showTotal: true });
+  // P2 : 10/(6×2) = 83.3 % ; P4 : 20/(4×4) = 125.0 % ; total (10+20)/(12+16) =
+  // 107.1 % — et NON la moyenne des deux taux (104.2 %) ni leur somme.
+  assert.deepStrictEqual(cells(bodyRows(tree)[0]), ['M.O HORS RÉCOLTE', '10.0', '83.3 %', '20.0', '125.0 %', '30.0', '107.1 %']);
+});

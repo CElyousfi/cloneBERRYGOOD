@@ -1440,6 +1440,42 @@
     };
   }
 
+  /**
+   * Sépare les lignes du pivot en DEUX jeux : la Récolte d'un côté, tout le
+   * reste de l'autre. PURE (aucune ligne recopiée ni mutée : on ne fait que
+   * répartir les références).
+   *
+   * Pourquoi sortir la Récolte du tableau : son budget (1 800 JH/Ha sur
+   * certaines parcelles) est consommé à 0 % tant que la saison n'a pas
+   * commencé. Laissé dans la même grille, il écrase le TOTAL — « 14.7 %
+   * consommé » sur une campagne dont l'effort hors récolte est déjà à 60 %. Une
+   * fois la Récolte sortie, le TOTAL du tableau principal EST le total hors
+   * récolte, sans ligne supplémentaire à calculer.
+   *
+   * Le découpage suit l'ordre de lecture : un bandeau `type: 'groupe'` ouvre
+   * une section, les lignes qui suivent lui appartiennent jusqu'au bandeau
+   * suivant. Une ligne orpheline (aucun bandeau avant elle) reste dans le jeu
+   * principal — jamais silencieusement perdue.
+   *
+   * @param {Array<Object>} rows lignes du pivot, dans l'ordre.
+   * @param {string} groupeRecolte nom du groupe Récolte (référentiel).
+   * @returns {{principal: Array<Object>, recolte: Array<Object>}}
+   */
+  function CAT_partitionRecolte(rows, groupeRecolte) {
+    var principal = [];
+    var recolte = [];
+    var cible = principal;
+    (rows || []).forEach(function (r) {
+      if (!r) return;
+      if (r.type === 'groupe') cible = r.key === groupeRecolte ? recolte : principal;
+      cible.push(r);
+    });
+    return {
+      principal: principal,
+      recolte: recolte
+    };
+  }
+
   /** Pastille de bascule — même gabarit que les autres bascules de l'écran. */
   function CAT_pillStyle(active) {
     return {
@@ -1762,6 +1798,10 @@
     }, [fullscreen]);
     var Grid = window.PivotAnalytiqueGrid;
     var AU = window.AnalytiqueUtils;
+    // Nom du groupe Récolte pris dans le RÉFÉRENTIEL (jamais une chaîne
+    // réécrite à la main) : c'est lui qui décide quelles lignes sortent du
+    // tableau principal. Repli sur le libellé connu si le module est absent.
+    var GROUPE_RECOLTE = AU && AU.GB_GROUPE_MAP && AU.GB_GROUPE_MAP.GB08 || 'M.O Récolte';
     var CR = window.CampagneRythme;
     var CBQ = window.CampagneBudgetQuinzaine;
 
@@ -1775,6 +1815,20 @@
         campagne: data.campagne
       });
     }, [CR, data.periodes, data.campagne]);
+
+    // BUDGET IDÉAL — part de la campagne écoulée à ce jour (repère de rythme
+    // LINÉAIRE, à comparer au % consommé). Calculée sur la campagne AFFICHÉE,
+    // pas sur la date du jour seule : consulter une campagne passée doit donner
+    // 100 %, pas la position du calendrier dans la campagne en cours.
+    // `null` = indéterminable (campagne illisible, module absent) → la
+    // sous-colonne n'est pas proposée du tout, jamais un 0 % trompeur.
+    var partIdeale = useMemo(function () {
+      if (!CR || typeof CR.partEcoulee !== 'function') return null;
+      return CR.partEcoulee({
+        campagne: data.campagne,
+        utils: window.CampagneUtils
+      });
+    }, [CR, data.campagne]);
 
     // NB : les classes de rythme (CR.indexClasses) ne sont plus indexées ici —
     // les séries « reste budgété » / « reste au rythme » ont quitté la grille
@@ -1990,6 +2044,53 @@
     var enPlein = !!fullscreen && groups.length > 0;
     var groupesAffiches = enPlein ? [groups[idxCulture]] : groups;
 
+    // ── BUDGET IDÉAL : UN REPÈRE DE PAGE, PAS UNE COLONNE ──────────────────
+    // La part de campagne écoulée est la MÊME valeur dans toutes les cellules :
+    // en faire une sous-colonne coûtait une colonne par parcelle pour répéter
+    // un seul chiffre. Elle est donc affichée une fois, en haut à droite, où
+    // elle se lit comme ce qu'elle est — la position du CALENDRIER, à comparer
+    // de tête au « % consommé » de n'importe quelle ligne.
+    // Garde anti-crash sur `CR` : une référence à un global absent fait planter
+    // TOUT le rendu React (mémoire projet « tab bare global ref »).
+    var joursIdeal = CR && typeof CR.joursEcoules === 'function' ? CR.joursEcoules({
+      campagne: data.campagne,
+      utils: window.CampagneUtils
+    }) : null;
+    // `null` = indéterminable (campagne illisible, module absent) : on n'affiche
+    // RIEN plutôt qu'un 0 % qui se lirait « campagne pas commencée ».
+    var repereIdeal = partIdeale === null ? null : React.createElement('div', {
+      title: joursIdeal === null ? 'Part de la campagne écoulée depuis le 1er juillet.' : joursIdeal + ' jours écoulés depuis le 1er juillet, sur 365. Repère de ' + 'rythme linéaire : à comparer au « % consommé » de chaque ligne.',
+      style: {
+        marginLeft: 'auto',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: '8px',
+        padding: '5px 14px',
+        borderRadius: '16px',
+        border: '1.5px solid ' + C.border,
+        background: C.surface
+      }
+    }, React.createElement('span', {
+      style: {
+        fontSize: '11px',
+        color: C.textSec,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        fontWeight: 600
+      }
+    }, '% Budget idéal à ce jour'), React.createElement('span', {
+      style: {
+        fontSize: '15px',
+        fontWeight: 700,
+        color: C.berry
+      }
+    }, (Math.round(partIdeale * 1000) / 10).toFixed(1) + ' %'), joursIdeal === null ? null : React.createElement('span', {
+      style: {
+        fontSize: '10px',
+        color: C.textSec
+      }
+    }, joursIdeal + ' j / 365'));
+
     /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */
     function boutonPlein(i) {
       return React.createElement('button', {
@@ -2060,6 +2161,9 @@
     }), CAT_pills([['recap', 'Récap'], ['detail', 'Détail']], detailMode ? 'detail' : 'recap', function (v) {
       setDetailMode(v === 'detail');
     }, 'd-'),
+    // Poussé à droite par `marginLeft: auto` : le repère de calendrier
+    // n'est pas une bascule, il ne se range pas avec elles.
+    repereIdeal,
     // Bascule ANNUEL ↔ QUINZAINE : proposée seulement quand elle mène
     // quelque part (JH + au moins un engagement saisi sur la quinzaine
     // affichée). Sinon elle n'ouvrirait qu'une grille de « — ».
@@ -2210,35 +2314,35 @@
       // Séries réellement affichées : elles décident AUSSI de la colonne
       // Total (cf. `showTotal` plus bas), d'où l'extraction en variable.
       var metricsAffichees = quinz ? metricsQuinzaine : sup && sup.hasBudget ? metricsBudget : metrics;
-      // Chaque grille est encapsulée pour porter SON bouton plein écran,
-      // posé sur son bandeau de titre (position absolue) : c'est la
-      // culture qu'on regarde qu'on veut agrandir, pas « la première ».
-      return React.createElement('div', {
-        key: g.culture,
-        style: {
-          position: 'relative'
-        }
-      }, boutonPlein(groups.indexOf(g)), React.createElement(Grid, {
+      var rowsAffichees = quinz ? quinz.groupedRows : sup ? sup.groupedRows : pivot.groupedRows;
+      // ── RÉCOLTE À PART ──────────────────────────────────────────
+      // En plein écran seulement : hors plein écran, plusieurs cultures
+      // sont déjà empilées, un bloc de plus par culture rendrait l'écran
+      // illisible. Les DEUX grilles reçoivent les mêmes `parcelles`, les
+      // mêmes `metrics` et la même largeur : c'est ce qui permet de lire
+      // le bloc Récolte en vis-à-vis du principal, colonne par colonne.
+      var partition = enPlein ? CAT_partitionRecolte(rowsAffichees, GROUPE_RECOLTE) : {
+        principal: rowsAffichees,
+        recolte: []
+      };
+      function _aDesFamilles(rows) {
+        return rows.some(function (r) {
+          return r && r.type === 'famille';
+        });
+      }
+      var aRecolte = _aDesFamilles(partition.recolte);
+      // Une culture qui n'a QUE de la récolte (l'avocatier, la myrtille en
+      // début de campagne) ne doit pas hériter d'un tableau principal vide
+      // au-dessus de son bloc récolte : un tableau sans une seule ligne se
+      // lit comme des données manquantes.
+      var aPrincipal = _aDesFamilles(partition.principal);
+      var propsCommunes = {
         parcelles: pivot.parcelles,
-        groupedRows: quinz ? quinz.groupedRows : sup ? sup.groupedRows : pivot.groupedRows,
         metrics: metricsAffichees,
-        // Le périmètre du budget n'est PAS déductible des chiffres
-        // affichés (un « % consommé » à 130 % sur une ligne dont la
-        // moitié des familles n'est pas budgétée se lit comme une erreur
-        // de calcul) : il reste énoncé sous la grille.
-        note: quinz ? CBQ.noteQuinzaine(quinzaineInfoSel || {
-          key: quinzaineActive
-        }, quinzaineActive === quinzaineCourante) : sup && sup.hasBudget ? noteBudgetSeul : null,
         color: g.color,
-        title: g.culture,
-        icon: g.icon,
-        // La colonne Total ne revient qu'EN PLEIN ÉCRAN, et seulement à
-        // plusieurs séries — c'est là qu'elle s'éclate en sous-colonnes
-        // lisibles. En mode normal (plusieurs cultures empilées, largeur
-        // contrainte) elle manquerait de place ; à une seule série elle
-        // n'apporterait qu'une colonne de plus à un tableau déjà lisible.
-        // Le panneau Affectation Analytique de l'écran Quinzaine, lui, la
-        // GARDE toujours : il ne passe pas cette prop, défaut `true`.
+        // Totaux dans les bandeaux de section : même arbitrage de largeur
+        // que la colonne Total et que la colonne « Budget idéal ».
+        chiffresGroupe: enPlein,
         showTotal: enPlein && metricsAffichees.length > 1,
         parcelleLabel: function (k) {
           return sbNom(k, sbMap);
@@ -2248,7 +2352,34 @@
             parcelleLabel: sbNom(c.parcelle, sbMap)
           }, c));
         }
-      }));
+      };
+      // Chaque grille est encapsulée pour porter SON bouton plein écran,
+      // posé sur son bandeau de titre (position absolue) : c'est la
+      // culture qu'on regarde qu'on veut agrandir, pas « la première ».
+      return React.createElement('div', {
+        key: g.culture,
+        style: {
+          position: 'relative'
+        }
+      }, boutonPlein(groups.indexOf(g)), aPrincipal ? React.createElement(Grid, Object.assign({}, propsCommunes, {
+        groupedRows: partition.principal,
+        // Le périmètre du budget n'est PAS déductible des chiffres
+        // affichés (un « % consommé » à 130 % sur une ligne dont la
+        // moitié des familles n'est pas budgétée se lit comme une erreur
+        // de calcul) : il reste énoncé sous la grille.
+        note: quinz ? CBQ.noteQuinzaine(quinzaineInfoSel || {
+          key: quinzaineActive
+        }, quinzaineActive === quinzaineCourante) : sup && sup.hasBudget ? noteBudgetSeul : null,
+        title: aRecolte ? g.culture + ' — hors récolte' : g.culture,
+        icon: g.icon
+      })) : null, aRecolte ? React.createElement(Grid, Object.assign({}, propsCommunes, {
+        groupedRows: partition.recolte,
+        title: g.culture + ' — récolte',
+        icon: g.icon,
+        // Le lecteur doit savoir POURQUOI ce bloc est à part, sinon il
+        // le lit comme un oubli du tableau du dessus.
+        note: 'Récolte présentée à part : son budget n\'est consommé qu\'en ' + 'saison, le laisser dans le tableau ci-dessus écrasait le TOTAL ' + '(le « % consommé » global tombait à quelques pour cent). Le TOTAL ' + 'du tableau ci-dessus est donc le total HORS récolte.'
+      })) : null);
     }));
   }
 

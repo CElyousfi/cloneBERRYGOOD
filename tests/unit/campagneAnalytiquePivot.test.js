@@ -98,6 +98,12 @@ function loadTab(deps) {
   // testés ici sont précisément ceux de la prod.
   if (withCulture) vm.runInContext(read('public/lib/cultureUtils.js'), sandbox);
   vm.runInContext(read('public/lib/analytiqueUtils.js'), sandbox);
+  // Frontière du 1er juillet (source unique du « budget idéal »). Omissible :
+  // sans ce module, la part de campagne écoulée est INDÉTERMINABLE et la 4e
+  // sous-colonne ne doit pas être proposée — jamais une colonne de « — ».
+  if (!deps || deps.campagneUtils !== false) {
+    vm.runInContext(read('public/lib/campagneUtils.js'), sandbox);
+  }
   if (withBudget) {
     vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
     // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
@@ -123,7 +129,11 @@ const Tab = loadTab();
 // référentiel SB la déclare Framboise — c'est le référentiel qui doit gagner.
 
 const DATA = {
-  campagne: '2026-2027',
+  // Libellé au format EXACT servi par le backend (`${startYear}/${startYear+1}`,
+  // functions/pointageService.js) — avec un SLASH, pas un tiret. Un tiret ici
+  // rendrait la fixture irréaliste : c'est ce qui avait laissé passer en QA une
+  // 4e sous-colonne « Budget idéal » morte en prod (partEcoulee → null).
+  campagne: '2026/2027',
   // Quinzaines de la campagne telles que renvoyées par l'API : elles couvrent
   // TOUTES les parcelles, pas seulement les lignes de ce jeu d'essai — d'où 4
   // quinzaines écoulées (donc 20 restantes) pour des lignes qui n'en occupent
@@ -698,8 +708,11 @@ test('plein écran — un bouton par grille de culture, qui ouvre CETTE culture'
 
 test('plein écran — une seule culture affichée, sur un overlay, avec le carrousel', () => {
   const tree = render(null, [false, false, null, false, '', true, 1]);
+  // La Myrtille de la fixture n'a QUE de la récolte : un seul bloc, le sien —
+  // surtout pas un tableau principal vide au-dessus (cf. `aPrincipal`).
   assert.strictEqual(tables(tree).length, 1, 'la culture choisie, et elle seule');
   assert.ok(textOf(tables(tree)[0]).indexOf('S9 BLUE') >= 0, 'Myrtille');
+  assert.match(textOf(tree), /Myrtille — récolte/);
   // Overlay plein écran.
   assert.strictEqual(tree.props.style.position, 'fixed');
   assert.strictEqual(tree.props.style.zIndex, 9999);
@@ -733,8 +746,13 @@ test('plein écran — un index hors bornes retombe sur la 1re grille, pas sur d
   // Cas réel : on ouvre l'Avocatier en plein écran puis le filtre Culture
   // réduit la liste. Un index périmé afficherait un écran blanc.
   const tree = render(null, [false, false, null, false, '', true, 7]);
-  assert.strictEqual(tables(tree).length, 1);
+  // Framboise : deux blocs depuis que la récolte est sortie du tableau
+  // principal (hors récolte + récolte), et non ceux d'une autre culture.
+  assert.strictEqual(tables(tree).length, 2);
   assert.ok(textOf(tables(tree)[0]).indexOf('S5 MARAVILLA') >= 0, 'Framboise');
+  // La parcelle de Myrtille, elle, n'est nulle part (seul son nom apparaît, sur
+  // la pastille du carrousel).
+  assert.strictEqual(textOf(tables(tree)[0]).indexOf('S9 BLUE'), -1);
 });
 
 test('plein écran — hors plein écran, aucun overlay et toutes les grilles', () => {
@@ -764,9 +782,17 @@ test('Total — plein écran à UNE SEULE série : toujours aucune colonne Total
   // Largeur : le libellé + 2 parcelles × 1 série, et rien de plus.
   const largeur = (bodyRows(table)[1].children || []).filter((c) => c.type === 'td').length;
   assert.strictEqual(largeur, 3);
-  assert.strictEqual((bodyRows(table)[0].children || [])
-    .filter((c) => c.type === 'td')[0].props.colSpan, largeur);
+  // Bandeau de section CHIFFRÉ en plein écran : il n'a plus de colSpan, il
+  // occupe exactement les mêmes colonnes qu'une ligne famille.
+  const bandeau = (bodyRows(table)[0].children || []).filter((c) => c.type === 'td');
+  assert.strictEqual(bandeau[0].props.colSpan, undefined);
+  assert.strictEqual(bandeau.length, largeur, 'bandeau aligné sur les lignes');
 });
+
+// En plein écran s'ajoute la colonne TOTAL — trois séries de plus à droite des
+// parcelles. Le « budget idéal », lui, n'est PAS une colonne : c'est un repère
+// de page (cf. plus bas), la même valeur pour toutes les lignes.
+const TOTAL_SC = [7, 10];
 
 test('Total — plein écran multi-séries : une sous-colonne par indicateur, à droite', () => {
   const table = tables(renderBudget(null, [false, false, null, false, '', true, 0]))[0];
@@ -775,7 +801,7 @@ test('Total — plein écran multi-séries : une sous-colonne par indicateur, à
   assert.strictEqual(theadTotal(table).props.colSpan, 3);
   // Non sticky : la colonne défile avec le tableau.
   assert.strictEqual(theadTotal(table).props.style.position, undefined);
-  // Niveau 2 : les mêmes trois séries que sous une parcelle.
+  // Niveau 2 : les mêmes quatre séries que sous une parcelle.
   const trs = walk(section(table, 'thead')).filter((n) => n.type === 'tr');
   const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
   assert.strictEqual(niveau2.length, (2 + 1) * 3, '(2 parcelles + Total) × 3 séries');
@@ -783,11 +809,12 @@ test('Total — plein écran multi-séries : une sous-colonne par indicateur, à
     ['Réalisé | JH/Ha', 'Budget | JH/Ha', '% consommé']);
 
   // Ligne famille : libellé + 2 parcelles × 3 + les 3 sous-colonnes du Total,
-  // et le bandeau de groupe court sur toute cette largeur.
+  // et le bandeau de groupe occupe exactement les mêmes colonnes.
   const taille = (bodyRows(table)[2].children || []).filter((c) => c.type === 'td');
   assert.strictEqual(taille.length, 1 + (2 + 1) * 3);
-  assert.strictEqual((bodyRows(table)[0].children || [])
-    .filter((c) => c.type === 'td')[0].props.colSpan, taille.length);
+  const bandeau = (bodyRows(table)[0].children || []).filter((c) => c.type === 'td');
+  assert.strictEqual(bandeau[0].props.colSpan, undefined, 'bandeau chiffré');
+  assert.strictEqual(bandeau.length, taille.length);
   // Aucune sous-colonne collée à droite.
   taille.slice(7).forEach((td, i) => {
     assert.strictEqual(td.props.style.position, undefined, 'sous-colonne ' + i);
@@ -796,21 +823,100 @@ test('Total — plein écran multi-séries : une sous-colonne par indicateur, à
   // rapportés aux 6 Ha de la CULTURE — c'est le sens d'un total de ligne « par
   // Ha » : 40/6 = 6.7 et 30/6 = 5.0. Le taux, lui, est invariant : 40/30.
   assert.deepStrictEqual(cells(bodyRows(table)[2]).slice(7, 10), ['6.7', '5.0', '133.3 %']);
-  // Grand total du pied : 72 JH réalisés / 6 Ha = 12.0 ; budget 30 (Taille)
-  // + 16 (Récolte, budget d'opération) + 8 (Ferti CORINA) = 54 / 6 = 9.0. Le
-  // taux ne compte que le PÉRIMÈTRE BUDGÉTÉ : 60/54 = 111,1 % — la Récolte de
-  // CORINA, réalisée mais non budgétée, ne pèse pas au numérateur.
-  assert.deepStrictEqual(cells(footRow(table)).slice(7, 10), ['12.0', '9.0', '111.1 %']);
+  // Grand total du pied — la RÉCOLTE N'Y EST PLUS (elle a son propre bloc en
+  // dessous) : 40 JH réalisés / 6 Ha = 6.7 ; budget 30 (Taille) + 8 (Ferti
+  // CORINA) = 38 / 6 = 6.3 ; taux 40/38 = 105,3 %. C'est tout l'objet de la
+  // séparation : avec la Récolte dedans, ce taux tombait à 111 % d'un budget
+  // gonflé par une saison pas encore commencée.
+  assert.deepStrictEqual(cells(footRow(table)).slice(7, 10), ['6.7', '6.3', '105.3 %']);
+});
+
+test('récolte — un bloc à part, avec les MÊMES colonnes que le tableau principal', () => {
+  const tree = renderBudget(null, [false, false, null, false, '', true, 0]);
+  const grilles = tables(tree);
+  assert.strictEqual(grilles.length, 2, 'hors récolte + récolte');
+  const principal = grilles[0];
+  const recolte = grilles[1];
+  // Le tableau principal ne contient plus une seule ligne de récolte…
+  assert.strictEqual(textOf(principal).indexOf('Récolte'), -1);
+  // …et le bloc du dessous ne contient QUE ça.
+  assert.match(textOf(recolte), /Récolte/);
+  assert.strictEqual(textOf(recolte).indexOf('Taille'), -1);
+  // Mêmes parcelles, mêmes séries : les deux blocs se lisent en vis-à-vis.
+  assert.deepStrictEqual(headers(recolte), headers(principal));
+  // Et le lecteur sait POURQUOI il y a deux blocs (la légende est sous la
+  // table, pas dedans).
+  assert.match(textOf(tree), /Récolte présentée à part/);
+  // Le bandeau de section porte les mêmes chiffres que la seule famille qu'il
+  // coiffe — c'est la garantie qu'un bandeau ne peut pas mentir sur ses lignes.
+  assert.deepStrictEqual(cells(bodyRows(recolte)[0]).slice(1, 5),
+    cells(bodyRows(recolte)[1]).slice(1, 5));
 });
 
 test('Total — plein écran multi-séries : la colonne reste APRÈS les parcelles', () => {
   // `_pag_paint` repère les sous-colonnes d'une cellule depuis la GAUCHE : une
   // colonne Total glissée avant les parcelles décalerait tout le survol.
   const table = tables(renderBudget(null, [false, false, null, false, '', true, 0]))[0];
-  // Sous-colonnes de MARAVILLA (indices 1..3) et de CORINA (4..6), inchangées.
+  // Sous-colonnes de MARAVILLA (1..3) et de CORINA (4..6), inchangées : le
+  // Total vient APRÈS elles, jamais avant.
   assert.deepStrictEqual(sousCellule(bodyRows(table)[2], MARAVILLA_SC),
     ['20.0', '15.0', '133.3 %']);
   assert.deepStrictEqual(sousCellule(bodyRows(table)[2], CORINA_SC), ['—', '—', '—']);
+});
+
+// ------------------------------------------------- BUDGET IDÉAL (repère de page)
+//
+// Part de la campagne écoulée à ce jour. La valeur dépend de la DATE DU JOUR :
+// les tests n'en vérifient que la forme et les invariants, jamais un nombre
+// figé qui périmerait demain.
+
+const PCT = /^\d+\.\d %$/;
+
+test('budget idéal — un repère en haut de page, et AUCUNE colonne', () => {
+  const tree = renderBudget(null, [false, false, null, false, '', true, 0]);
+  // Le libellé et sa valeur, une seule fois dans tout l'écran.
+  assert.match(textOf(tree), /% Budget idéal à ce jour/);
+  const valeurs = textOf(tree).split(' | ').filter((t) => PCT.test(t));
+  assert.ok(valeurs.length > 0, 'une valeur en pourcentage');
+  // …et pas une seule sous-colonne : la grille garde ses trois séries.
+  tables(tree).forEach((table) => {
+    assert.strictEqual(textOf(table).indexOf('Budget idéal'), -1);
+    const trs = walk(section(table, 'thead')).filter((n) => n.type === 'tr');
+    const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
+    assert.strictEqual(niveau2.length, (2 + 1) * 3);
+  });
+});
+
+test('budget idéal — le repère est là AUSSI hors plein écran', () => {
+  // Il ne coûte aucune largeur de colonne : rien ne justifie de le réserver au
+  // plein écran, contrairement à la colonne Total.
+  assert.match(textOf(renderBudget()), /% Budget idéal à ce jour/);
+});
+
+test('budget idéal — le décompte de jours accompagne le pourcentage', () => {
+  const tree = renderBudget(null, [false, false, null, false, '', true, 0]);
+  assert.match(textOf(tree), /\d+ j \/ 365/);
+  // La légende de la grille, elle, ne parle plus que du périmètre budgété.
+  assert.match(textOf(tree), /périmètre budgété uniquement/);
+});
+
+test('budget idéal — campagne illisible : aucun repère, jamais un 0 % trompeur', () => {
+  const tree = renderBudget(
+    { data: Object.assign({}, DATA, { campagne: 'n/a' }) },
+    [false, false, null, false, '', true, 0]
+  );
+  assert.strictEqual(textOf(tree).indexOf('% Budget idéal à ce jour'), -1);
+});
+
+test('budget idéal — CampagneUtils absent : écran inchangé, jamais cassé', () => {
+  // La frontière du 1er juillet n'a qu'UNE source ; sans elle, pas de repère.
+  const TabSansCU = loadTab({ budget: true, campagneUtils: false });
+  const tree = render({
+    budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
+  }, [false, false, null, false, '', true, 0], TabSansCU);
+  assert.strictEqual(textOf(tree).indexOf('% Budget idéal à ce jour'), -1);
+  assert.deepStrictEqual(sousCellule(bodyRows(tables(tree)[0])[2], MARAVILLA_SC),
+    ['20.0', '15.0', '133.3 %']);
 });
 
 test('grille — sélection vide : message, jamais une table fantôme', () => {

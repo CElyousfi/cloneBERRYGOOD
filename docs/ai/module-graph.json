@@ -23,16 +23,16 @@
     },
     "heatmap": [
       {
-        "commits": 21,
-        "file": "public/app.jsx"
-      },
-      {
-        "commits": 21,
+        "commits": 23,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 21,
+        "commits": 22,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
+      },
+      {
+        "commits": 21,
+        "file": "public/app.jsx"
       },
       {
         "commits": 15,
@@ -51,20 +51,20 @@
         "file": "functions/pointageService.js"
       },
       {
+        "commits": 12,
+        "file": "tests/unit/campagneAnalytiquePivot.test.js"
+      },
+      {
         "commits": 11,
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
         "commits": 11,
         "file": "scripts/build-frontend.js"
-      },
-      {
-        "commits": 9,
-        "file": "tests/unit/campagneAnalytiquePivot.test.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:5f21f09584d857e8",
+    "sourceFingerprint": "sha256:982da7ec24c8d892",
     "stats": {
       "backendModules": 93,
       "cloudFunctions": 91,
@@ -793,7 +793,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 20,
+          "coCommits": 21,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -814,7 +814,7 @@
           "windowDays": 90
         },
         {
-          "coCommits": 8,
+          "coCommits": 9,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
@@ -837,28 +837,42 @@
         {
           "coCommits": 7,
           "domain": null,
-          "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 6,
+          "coCommits": 7,
           "domain": null,
           "file": "public/components/PivotAnalytiqueGrid.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 6,
+          "coCommits": 7,
           "domain": null,
           "file": "public/components/PivotAnalytiqueGrid.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
+          "file": "tests/unit/campagneExportUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
+          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 6,
+          "domain": null,
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -884,20 +898,6 @@
           "windowDays": 90
         },
         {
-          "coCommits": 5,
-          "domain": null,
-          "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 5,
-          "domain": null,
-          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
           "coCommits": 4,
           "domain": null,
           "file": "functions/pointageService.js",
@@ -915,6 +915,13 @@
           "coCommits": 3,
           "domain": null,
           "file": "public/components/ParcellesReferentielTab.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
