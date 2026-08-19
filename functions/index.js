@@ -42,6 +42,7 @@ const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require(".
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
+const meteogram = require("./lib/meteo/meteogram");
 const sprayDigest = require("./lib/meteo/sprayDigest");
 const meteoAlertes = require("./lib/meteo/meteoAlertes");
 
@@ -2629,9 +2630,41 @@ function buildMeteoSprayDigestDeps() {
   };
 }
 
-/** Dépendances de prod du job d'alertes 7 jours (idem digest + Firestore). */
+/**
+ * GET binaire, utilisé pour le meteogram (image PNG). Distinct de
+ * meteoblueHttpsGet, qui concatène en STRING et détruirait les octets d'un PNG.
+ * Résout null sur non-2xx ou erreur réseau — jamais de throw.
+ * @param {string} url
+ * @returns {Promise<Buffer|null>}
+ */
+function meteoblueHttpsGetBuffer(url) {
+  return new Promise((resolve) => {
+    const https = require("https");
+    https.get(url, (resp) => {
+      const chunks = [];
+      resp.on("data", (c) => { chunks.push(c); });
+      resp.on("end", () => {
+        if (resp.statusCode >= 200 && resp.statusCode < 300) resolve(Buffer.concat(chunks));
+        else resolve(null);
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+/**
+ * Dépendances de prod du job d'alertes 7 jours : idem digest + Firestore +
+ * le meteogram Meteoblue en header IMAGE. `fetchMeteogram` valide le PNG et
+ * rend null au moindre doute — l'alerte texte part alors quand même.
+ */
 function buildMeteoAlertesDeps() {
-  return { ...buildMeteoSprayDigestDeps(), db: db_firestore };
+  return {
+    ...buildMeteoSprayDigestDeps(),
+    db: db_firestore,
+    fetchMeteogram: (coords) => meteogram.fetchMeteogram(coords, {
+      fetchBuffer: meteoblueHttpsGetBuffer,
+      apiKey: METEOBLUE_API_KEY,
+    }),
+  };
 }
 
 exports.meteoSprayDigest = functions

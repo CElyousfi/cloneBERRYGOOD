@@ -32,6 +32,7 @@ const {
   shouldFallback,
   todayCasablancaISO,
 } = require('./sprayDigest');
+const meteogram = require('./meteogram');
 
 /**
  * @typedef {Object} Alerte
@@ -45,6 +46,16 @@ const {
 
 /** Nom du template Meta dédié (body : titre + corps multi-ligne). */
 const TEMPLATE_NAME = 'meteo_alerte_7j';
+
+/**
+ * Variante à header IMAGE du même template : corps STRICTEMENT identique et
+ * mêmes 2 paramètres dans le même ordre. C'est ce qui rend le repli sur
+ * TEMPLATE_NAME possible sans reformater le message.
+ */
+const IMAGE_TEMPLATE_NAME = 'meteo_alerte_7j_img';
+
+/** Nom de fichier du meteogram poussé à Meta (informatif côté API). */
+const METEOGRAM_FILENAME = 'meteo-7-jours.png';
 
 /** Collection d'état anti-répétition (un document par `cle`). */
 const COLLECTION = 'meteo_alertes_envoyees';
@@ -444,6 +455,42 @@ function createMeteoAlertesJob(deps) {
   }
 
   /**
+   * Récupère le meteogram 7 jours et le pousse à Meta — UNE seule fois pour
+   * tous les destinataires (le media_id est réutilisable 30 jours).
+   *
+   * Ne lève JAMAIS : l'image est un bonus, le TEXTE de l'alerte est
+   * l'essentiel. Tout échec est journalisé en `console.error` (une image qui
+   * disparaîtrait en silence serait un échec invisible) et renvoie `null`, ce
+   * qui fait retomber l'envoi sur le template texte historique.
+   *
+   * @param {string} dateISO Pour le contexte des logs.
+   * @returns {Promise<string|null>} media_id, ou null si indisponible.
+   */
+  async function prepareMeteogramMedia(dateISO) {
+    // Dep absente = câblage volontairement sans image (tests, environnements
+    // sans clé) : chemin texte historique, sans bruit dans les logs d'erreur.
+    if (typeof deps.fetchMeteogram !== 'function') return null;
+    try {
+      if (typeof whatsapp.uploadMedia !== 'function' ||
+          typeof whatsapp.sendTemplateMessageWithImage !== 'function') {
+        throw new Error('whatsappService sans support image (uploadMedia / sendTemplateMessageWithImage)');
+      }
+      const png = await deps.fetchMeteogram(COORDS);
+      // fetchMeteogram rend déjà null sur réseau KO, HTML ou payload creux.
+      if (!png || !png.length) throw new Error('meteogram indisponible ou invalide');
+      const uploaded = await whatsapp.uploadMedia(png, meteogram.PNG_MIME, METEOGRAM_FILENAME);
+      if (!uploaded || !uploaded.id) {
+        throw new Error('upload sans media_id' + (uploaded && uploaded.error ? ' (' + uploaded.error + ')' : ''));
+      }
+      return uploaded.id;
+    } catch (err) {
+      console.error('[meteoAlertes] METEOGRAM INDISPONIBLE pour ' + dateISO +
+        ' → repli sur l\'alerte texte seule : ' + (err && err.message));
+      return null;
+    }
+  }
+
+  /**
    * Résout l'audience (DG + chefs F1/F5) et dédoublonne par numéro : le contenu
    * est identique pour tous, un même numéro ne doit recevoir qu'une fois.
    * @returns {Promise<Array<{phone: string, displayName: string, uid: string|null, profileId: string, ferme: string|null}>>}
@@ -549,16 +596,53 @@ function createMeteoAlertesJob(deps) {
       };
     }
 
-    const outcomes = await Promise.allSettled(recipients.map(function(r) {
+    const bodyParams = [message.titreParam, message.body];
+
+    // Le meteogram est récupéré et uploadé UNE fois pour tout le monde. Il
+    // n'est demandé qu'ici : ni en preview, ni en checkRecipients, ni quand
+    // aucune alerte n'est à notifier — pas d'appel Meteoblue pour rien.
+    const mediaId = await prepareMeteogramMedia(day);
+
+    // ── Chaîne de repli à TROIS étages ────────────────────────────────────
+    // 1. template IMAGE (meteogram en header)
+    // 2. template TEXTE historique (corps identique — rien n'est perdu)
+    // 3. general_alert (mécanisme existant, corps mis à plat)
+    // L'image ne peut donc JAMAIS empêcher une alerte de partir.
+    const imageOk = recipients.map(function() { return false; });
+    let imageSent = 0;
+    if (mediaId) {
+      const imgOutcomes = await Promise.allSettled(recipients.map(function(r) {
+        return whatsapp.sendTemplateMessageWithImage(
+          r.phone, IMAGE_TEMPLATE_NAME, mediaId, bodyParams, undefined, r.displayName
+        );
+      }));
+      imgOutcomes.forEach(function(o, i) {
+        const ok = o.status === 'fulfilled' && o.value && !!o.value.success;
+        imageOk[i] = ok;
+        if (ok) { imageSent++; return; }
+        // Template pas encore approuvé, media_id périmé, réseau… : on dégrade
+        // vers le texte. Le corps ne doit jamais dépendre de l'image.
+        const raison = o.status === 'rejected'
+          ? String((o.reason && o.reason.message) || o.reason || '')
+          : String((o.value && o.value.error) || '');
+        console.error('[meteoAlertes] envoi AVEC IMAGE refusé pour ' + recipients[i].phone +
+          ' → repli sur le template texte : ' + raison);
+      });
+    }
+
+    // Seuls les destinataires non servis par l'image passent par le texte.
+    const restants = recipients.filter(function(r, i) { return !imageOk[i]; });
+
+    const outcomes = await Promise.allSettled(restants.map(function(r) {
       return whatsapp.sendTemplateMessage(
-        r.phone, TEMPLATE_NAME, [message.titreParam, message.body], undefined, r.displayName
+        r.phone, TEMPLATE_NAME, bodyParams, undefined, r.displayName
       );
     }));
 
     let fallbackUsed = 0;
-    let sent = 0;
-    for (let i = 0; i < recipients.length; i++) {
-      const r = recipients[i];
+    let sent = imageSent;
+    for (let i = 0; i < restants.length; i++) {
+      const r = restants[i];
       const outcome = outcomes[i];
       let ok = outcome && outcome.status === 'fulfilled' && outcome.value && !!outcome.value.success;
       if (!ok && shouldFallback(outcome)) {
@@ -603,8 +687,8 @@ function createMeteoAlertesJob(deps) {
     }
 
     const logLine = '[meteoAlertes] ' + day + ': alertes=' + aNotifier.length +
-      ' sent=' + sent + '/' + recipients.length + ' fallback=' + fallbackUsed +
-      ' skipped=' + skipped + ' purged=' + purged;
+      ' sent=' + sent + '/' + recipients.length + ' image=' + imageSent +
+      ' fallback=' + fallbackUsed + ' skipped=' + skipped + ' purged=' + purged;
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -620,6 +704,8 @@ function createMeteoAlertesJob(deps) {
       fallbackUsed: fallbackUsed,
       purged: purged,
       persisted: persisted,
+      meteogramAvailable: !!mediaId,
+      imageSent: imageSent,
     };
   }
 
@@ -628,6 +714,8 @@ function createMeteoAlertesJob(deps) {
 
 module.exports = {
   TEMPLATE_NAME,
+  IMAGE_TEMPLATE_NAME,
+  METEOGRAM_FILENAME,
   COLLECTION,
   FENETRE_JOURS,
   SEUILS,

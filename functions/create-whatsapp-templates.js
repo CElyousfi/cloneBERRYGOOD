@@ -236,6 +236,28 @@ const TEMPLATES = [
     ],
   },
   {
+    // Variante IMAGE des alertes 7 jours : le header porte le METEOGRAM AGRO
+    // fourni tel quel par Meteoblue (740×698, 7 jours : température, pluie,
+    // nuages, spray window, ETo, vent — cf. functions/lib/meteo/meteogram.js).
+    //
+    // ⚠️ Le BODY doit rester STRICTEMENT IDENTIQUE à celui de
+    // `meteo_alerte_7j` (mêmes 2 variables, même ordre) : le job envoie les
+    // mêmes `bodyParams` aux deux templates et retombe de l'un sur l'autre
+    // quand l'image échoue. Toute divergence casserait le repli.
+    // Template DÉDIÉ plutôt qu'une édition de l'existant : Meta ne tolère
+    // qu'une édition par 24 h, et l'alerte texte doit rester disponible comme
+    // filet de sécurité pendant l'approbation de celui-ci.
+    // ⚠️ L'image Meteoblue est sous CC BY-ND : elle part telle quelle, jamais
+    // recadrée ni retouchée.
+    name: "meteo_alerte_7j_img",
+    headerType: "IMAGE",
+    body: "SmartBerry — Alerte météo pour la période {{1}}. Voici les journées concernées et les seuils dépassés :\n\n{{2}}\n\nConsultez SmartBerry pour le détail et adaptez la planification des traitements.",
+    examples: [
+      "21 → 24/08",
+      "VENDREDI 21 AOÛT — FORTE CHALEUR\n🌡️ 34°C prévus (seuil 32°C)\n\nSAMEDI 22 AOÛT — FORTE PLUIE\n🌧️ 18.4 mm prévus (seuil 10 mm)\n\nLUNDI 24 AOÛT — VENT FORT\n💨 31 km/h prévus (seuil 25 km/h)\n\n⚠️ Reporter les traitements phyto sur ces journées et prévoir les protections adaptées.",
+    ],
+  },
+  {
     // Rapport Campagne hebdomadaire (lundi 16h) — le classeur .xlsx voyage dans
     // le header DOCUMENT. Template DÉDIÉ : les templates DOCUMENT existants
     // annoncent un PDF dans leur corps, et Meta ne tolère qu'une édition par
