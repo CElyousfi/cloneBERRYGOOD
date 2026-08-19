@@ -105,8 +105,18 @@ function isValidPng(buf) {
 }
 
 /**
- * Borne la durée d'une promesse. Le timer est `unref`é : il ne doit pas
- * maintenir le process d'une Cloud Function en vie.
+ * Borne la durée d'une promesse.
+ *
+ * ⚠️ Le timer n'est PAS `unref`é — c'était un bug, corrigé après un rouge CI
+ * (PR #275). Un timer `unref`é n'empêche pas la boucle d'événements de se
+ * vider : si le `fetch` injecté ne répond jamais et que rien d'autre ne tient
+ * la boucle, Node conclut qu'il n'y a plus de travail, le timer ne se déclenche
+ * JAMAIS et la promesse rendue ici ne se règle jamais. Le garde-fou censé
+ * borner l'attente était donc lui-même sans garantie.
+ *
+ * Le timer est en revanche nettoyé sur TOUS les chemins de sortie (succès,
+ * erreur, timeout) via `finally` : systématiquement nettoyé, il ne peut pas
+ * retenir le process, et n'a donc aucun besoin d'être `unref`é.
  *
  * @template T
  * @param {Promise<T>} promise
@@ -114,16 +124,15 @@ function isValidPng(buf) {
  * @returns {Promise<T>}
  */
 function withTimeout(promise, ms) {
-  return new Promise(function(resolve, reject) {
-    const timer = setTimeout(function() {
+  /** @type {*} */
+  let timer = null;
+  const garde = new Promise(function(_resolve, reject) {
+    timer = setTimeout(function() {
       reject(new Error('timeout après ' + ms + ' ms'));
     }, ms);
-    if (typeof timer.unref === 'function') timer.unref();
-    Promise.resolve(promise).then(
-      function(v) { clearTimeout(timer); resolve(v); },
-      function(e) { clearTimeout(timer); reject(e); }
-    );
   });
+  return Promise.race([Promise.resolve(promise), garde])
+    .finally(function() { clearTimeout(timer); });
 }
 
 /**

@@ -18,6 +18,7 @@ const {
   DEFAULT_TIMEOUT_MS,
   buildMeteogramUrl,
   isValidPng,
+  withTimeout,
   fetchMeteogram,
 } = require('../meteogram');
 
@@ -146,4 +147,66 @@ test('fetchMeteogram : deps incomplètes = erreur de programmation, pas de silen
   await assert.rejects(
     () => fetchMeteogram(COORDS, /** @type {*} */ ({ fetchBuffer: async () => null })), TypeError);
   await assert.rejects(() => fetchMeteogram(COORDS, /** @type {*} */ (null)), TypeError);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Régression PR #275 — le timeout doit se déclencher même si RIEN d'autre ne
+// tient la boucle d'événements.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('withTimeout : le timer est nettoyé sur TOUS les chemins (succès, erreur, timeout)', async () => {
+  // Un timer non nettoyé retiendrait le process d'une Cloud Function. C'est ce
+  // nettoyage systématique qui rend l'`unref()` inutile — et l'`unref()` était
+  // précisément ce qui rendait le timeout non fiable.
+  const realSet = global.setTimeout;
+  const realClear = global.clearTimeout;
+  let created = 0;
+  let cleared = 0;
+  global.setTimeout = function() { created++; return realSet.apply(null, arguments); };
+  global.clearTimeout = function() { cleared++; return realClear.apply(null, arguments); };
+  try {
+    assert.equal(await withTimeout(Promise.resolve('ok'), 5000), 'ok');
+    await assert.rejects(() => withTimeout(Promise.reject(new Error('boom')), 5000), /boom/);
+    await assert.rejects(() => withTimeout(new Promise(() => {}), 20), /timeout après 20 ms/);
+  } finally {
+    global.setTimeout = realSet;
+    global.clearTimeout = realClear;
+  }
+  assert.ok(created >= 3, 'un timer par appel');
+  assert.equal(cleared, created, 'autant de clearTimeout que de setTimeout');
+});
+
+test('withTimeout : un timer unref\'é rendrait le garde-fou inopérant (régression)', () => {
+  // Preuve du MÉCANISME de la panne CI, en une ligne : une boucle qui n'a plus
+  // qu'un timer unref'é se vide, et le timer ne se déclenche jamais.
+  const { execFileSync } = require('node:child_process');
+  const out = execFileSync(process.execPath, ['-e', [
+    "const t = setTimeout(() => console.log('FIRED'), 10);",
+    't.unref();',
+    'new Promise(() => {});',
+    "process.on('exit', () => console.log('DRAINED'));",
+  ].join('\n')], { encoding: 'utf8' });
+  assert.match(out, /DRAINED/);
+  assert.doesNotMatch(out, /FIRED/,
+    'un timer unref\'é ne se déclenche pas quand la boucle se vide — d\'où le fix');
+});
+
+test('fetchMeteogram : le timeout coupe même dans un process SANS rien d\'autre à faire', () => {
+  // Reproduction exacte du rouge CI (Node 20 : « Promise resolution is still
+  // pending but the event loop has already resolved »), dans un process neuf où
+  // le seul travail en cours est le fetch qui ne répond jamais. Le lancer en
+  // sous-process rend le test indépendant du runner de tests et de sa version.
+  const { execFileSync } = require('node:child_process');
+  const path = require('node:path');
+  const modulePath = path.join(__dirname, '..', 'meteogram.js');
+  const out = execFileSync(process.execPath, ['-e', [
+    'const m = require(' + JSON.stringify(modulePath) + ');',
+    'console.warn = () => {};',
+    'm.fetchMeteogram({ lat: 1, lon: 2, altitude: 3 }, {',
+    '  fetchBuffer: () => new Promise(() => {}),',
+    "  apiKey: 'k', timeoutMs: 30,",
+    "}).then((v) => console.log('SETTLED', JSON.stringify(v)));",
+  ].join('\n')], { encoding: 'utf8', timeout: 10000 });
+  assert.match(out, /SETTLED null/,
+    'la promesse DOIT se régler à null — sans le fix, le process sort sans jamais la régler');
 });
