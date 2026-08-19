@@ -29,9 +29,11 @@ const {
   COORDS,
   AUDIENCE,
   FALLBACK_TEMPLATE_NAME,
+  audienceFor,
   shouldFallback,
   todayCasablancaISO,
 } = require('./sprayDigest');
+const meteogram = require('./meteogram');
 
 /**
  * @typedef {Object} Alerte
@@ -45,6 +47,16 @@ const {
 
 /** Nom du template Meta dédié (body : titre + corps multi-ligne). */
 const TEMPLATE_NAME = 'meteo_alerte_7j';
+
+/**
+ * Variante à header IMAGE du même template : corps STRICTEMENT identique et
+ * mêmes 2 paramètres dans le même ordre. C'est ce qui rend le repli sur
+ * TEMPLATE_NAME possible sans reformater le message.
+ */
+const IMAGE_TEMPLATE_NAME = 'meteo_alerte_7j_img';
+
+/** Nom de fichier du meteogram poussé à Meta (informatif côté API). */
+const METEOGRAM_FILENAME = 'meteo-7-jours.png';
 
 /** Collection d'état anti-répétition (un document par `cle`). */
 const COLLECTION = 'meteo_alertes_envoyees';
@@ -444,12 +456,52 @@ function createMeteoAlertesJob(deps) {
   }
 
   /**
+   * Récupère le meteogram 7 jours et le pousse à Meta — UNE seule fois pour
+   * tous les destinataires (le media_id est réutilisable 30 jours).
+   *
+   * Ne lève JAMAIS : l'image est un bonus, le TEXTE de l'alerte est
+   * l'essentiel. Tout échec est journalisé en `console.error` (une image qui
+   * disparaîtrait en silence serait un échec invisible) et renvoie `null`, ce
+   * qui fait retomber l'envoi sur le template texte historique.
+   *
+   * @param {string} dateISO Pour le contexte des logs.
+   * @returns {Promise<string|null>} media_id, ou null si indisponible.
+   */
+  async function prepareMeteogramMedia(dateISO) {
+    // Dep absente = câblage volontairement sans image (tests, environnements
+    // sans clé) : chemin texte historique, sans bruit dans les logs d'erreur.
+    if (typeof deps.fetchMeteogram !== 'function') return null;
+    try {
+      if (typeof whatsapp.uploadMedia !== 'function' ||
+          typeof whatsapp.sendTemplateMessageWithImage !== 'function') {
+        throw new Error('whatsappService sans support image (uploadMedia / sendTemplateMessageWithImage)');
+      }
+      const png = await deps.fetchMeteogram(COORDS);
+      // fetchMeteogram rend déjà null sur réseau KO, HTML ou payload creux.
+      if (!png || !png.length) throw new Error('meteogram indisponible ou invalide');
+      const uploaded = await whatsapp.uploadMedia(png, meteogram.PNG_MIME, METEOGRAM_FILENAME);
+      if (!uploaded || !uploaded.id) {
+        throw new Error('upload sans media_id' + (uploaded && uploaded.error ? ' (' + uploaded.error + ')' : ''));
+      }
+      return uploaded.id;
+    } catch (err) {
+      console.error('[meteoAlertes] METEOGRAM INDISPONIBLE pour ' + dateISO +
+        ' → repli sur l\'alerte texte seule : ' + (err && err.message));
+      return null;
+    }
+  }
+
+  /**
    * Résout l'audience (DG + chefs F1/F5) et dédoublonne par numéro : le contenu
    * est identique pour tous, un même numéro ne doit recevoir qu'une fois.
+   * @param {Array<{profileId: string, ferme: string|null}>} [audience] Audience à
+   *   résoudre — restreinte par `?only=` le cas échéant. Défaut : audience
+   *   complète.
    * @returns {Promise<Array<{phone: string, displayName: string, uid: string|null, profileId: string, ferme: string|null}>>}
    */
-  async function resoudreDestinataires() {
-    const resolved = await Promise.all(AUDIENCE.map(function(a) {
+  async function resoudreDestinataires(audience) {
+    const cible = audience || AUDIENCE;
+    const resolved = await Promise.all(cible.map(function(a) {
       return Promise.resolve()
         .then(function() { return whatsapp.resolveRecipientsForProfile(a.profileId, a.ferme); })
         .catch(function(err) {
@@ -477,11 +529,15 @@ function createMeteoAlertesJob(deps) {
 
   /**
    * @param {string} [dateISO]
-   * @param {{preview?: boolean, checkRecipients?: boolean}} [opts]
+   * @param {{preview?: boolean, checkRecipients?: boolean, only?: string|null}} [opts]
+   *   `only` restreint l'envoi à CE seul profil de l'audience (test sur un
+   *   numéro sans réveiller les chefs). Aucune gate n'est contournée.
    */
   async function run(dateISO, opts) {
     const options = opts || {};
     const day = dateISO || todayCasablancaISO(now());
+    const only = options.only || null;
+    const audience = audienceFor(only);
 
     const weatherData = await Promise.resolve()
       .then(function() { return deps.getMeteoblue(COORDS, 'weather'); })
@@ -509,22 +565,37 @@ function createMeteoAlertesJob(deps) {
     // ouvert à tout utilisateur authentifié par le trigger HTTP, il ne doit
     // donc avoir strictement aucun effet de bord.
     if (options.checkRecipients) {
-      const dryRecipients = await resoudreDestinataires();
+      const dryRecipients = await resoudreDestinataires(audience);
       return {
         checkRecipients: true,
         dateISO: day,
         alertes: detectees,
         recipientsCount: dryRecipients.length,
         recipients: dryRecipients,
+        restrictedTo: only,
       };
     }
 
     const { etat, ids } = await lireEtat();
+    // ⚠️ ENVOI RESTREINT (?only=) = envoi de TEST : AUCUNE mutation Firestore,
+    // ni purge ni écriture d'état. Écrire marquerait l'alerte comme « déjà
+    // envoyée » et la VRAIE alerte du lendemain ne partirait plus aux chefs
+    // F1/F5 — un test rendrait l'alerte muette pour toute l'équipe.
     // Purge indexée sur la date du jour SERVEUR, pas sur `day` (qui peut venir
     // de ?date= et vider toute la collection d'état — cf. purger()).
-    const purged = await purger(ids, todayCasablancaISO(now()));
+    const purged = only ? 0 : await purger(ids, todayCasablancaISO(now()));
 
-    const aNotifier = filtrerAlertesANotifier(detectees, etat);
+    // ⚠️ En mode restreint UNIQUEMENT, le filtre anti-répétition est
+    // court-circuité : un outil de test dont le résultat dépend de si le cron
+    // de 6h est déjà passé est inutilisable (à 10h il répondrait « aucune
+    // alerte » alors que tout fonctionne). Sans risque ici : rien n'est
+    // persisté, la purge est neutralisée, et un seul profil reçoit.
+    // Le chemin du CRON et l'envoi complet manuel gardent le filtrage STRICT —
+    // c'est lui qui évite de notifier les chefs sept matins de suite.
+    const dedupBypassed = !!only;
+    const aNotifier = dedupBypassed
+      ? detectees.slice()
+      : filtrerAlertesANotifier(detectees, etat);
     const skipped = detectees.length - aNotifier.length;
 
     if (!aNotifier.length) {
@@ -533,12 +604,13 @@ function createMeteoAlertesJob(deps) {
       return {
         dateISO: day, alertes: [], sent: 0, skipped: skipped,
         recipientsCount: 0, fallbackUsed: 0, purged: purged,
+        restrictedTo: only, dedupBypassed: dedupBypassed,
       };
     }
 
     const message = formatAlertes(aNotifier);
 
-    const recipients = await resoudreDestinataires();
+    const recipients = await resoudreDestinataires(audience);
 
     if (!recipients.length) {
       console.error('[meteoAlertes] AUCUN destinataire résolu (dg/chef_f1/chef_f5) — ' +
@@ -546,19 +618,57 @@ function createMeteoAlertesJob(deps) {
       return {
         dateISO: day, alertes: aNotifier, sent: 0, skipped: skipped,
         recipientsCount: 0, fallbackUsed: 0, purged: purged,
+        restrictedTo: only, dedupBypassed: dedupBypassed,
       };
     }
 
-    const outcomes = await Promise.allSettled(recipients.map(function(r) {
+    const bodyParams = [message.titreParam, message.body];
+
+    // Le meteogram est récupéré et uploadé UNE fois pour tout le monde. Il
+    // n'est demandé qu'ici : ni en preview, ni en checkRecipients, ni quand
+    // aucune alerte n'est à notifier — pas d'appel Meteoblue pour rien.
+    const mediaId = await prepareMeteogramMedia(day);
+
+    // ── Chaîne de repli à TROIS étages ────────────────────────────────────
+    // 1. template IMAGE (meteogram en header)
+    // 2. template TEXTE historique (corps identique — rien n'est perdu)
+    // 3. general_alert (mécanisme existant, corps mis à plat)
+    // L'image ne peut donc JAMAIS empêcher une alerte de partir.
+    const imageOk = recipients.map(function() { return false; });
+    let imageSent = 0;
+    if (mediaId) {
+      const imgOutcomes = await Promise.allSettled(recipients.map(function(r) {
+        return whatsapp.sendTemplateMessageWithImage(
+          r.phone, IMAGE_TEMPLATE_NAME, mediaId, bodyParams, undefined, r.displayName
+        );
+      }));
+      imgOutcomes.forEach(function(o, i) {
+        const ok = o.status === 'fulfilled' && o.value && !!o.value.success;
+        imageOk[i] = ok;
+        if (ok) { imageSent++; return; }
+        // Template pas encore approuvé, media_id périmé, réseau… : on dégrade
+        // vers le texte. Le corps ne doit jamais dépendre de l'image.
+        const raison = o.status === 'rejected'
+          ? String((o.reason && o.reason.message) || o.reason || '')
+          : String((o.value && o.value.error) || '');
+        console.error('[meteoAlertes] envoi AVEC IMAGE refusé pour ' + recipients[i].phone +
+          ' → repli sur le template texte : ' + raison);
+      });
+    }
+
+    // Seuls les destinataires non servis par l'image passent par le texte.
+    const restants = recipients.filter(function(r, i) { return !imageOk[i]; });
+
+    const outcomes = await Promise.allSettled(restants.map(function(r) {
       return whatsapp.sendTemplateMessage(
-        r.phone, TEMPLATE_NAME, [message.titreParam, message.body], undefined, r.displayName
+        r.phone, TEMPLATE_NAME, bodyParams, undefined, r.displayName
       );
     }));
 
     let fallbackUsed = 0;
-    let sent = 0;
-    for (let i = 0; i < recipients.length; i++) {
-      const r = recipients[i];
+    let sent = imageSent;
+    for (let i = 0; i < restants.length; i++) {
+      const r = restants[i];
       const outcome = outcomes[i];
       let ok = outcome && outcome.status === 'fulfilled' && outcome.value && !!outcome.value.success;
       if (!ok && shouldFallback(outcome)) {
@@ -585,7 +695,7 @@ function createMeteoAlertesJob(deps) {
     // numéro cassé soit réparé — le DG serait spammé pour un problème qui ne
     // le concerne pas. Comportement figé par test.
     let persisted = 0;
-    if (sent > 0) {
+    if (sent > 0 && !only) {
       const envoyeAt = now().toISOString();
       const writes = await Promise.allSettled(aNotifier.map(function(a) {
         return db.collection(COLLECTION).doc(a.cle).set({
@@ -603,8 +713,12 @@ function createMeteoAlertesJob(deps) {
     }
 
     const logLine = '[meteoAlertes] ' + day + ': alertes=' + aNotifier.length +
-      ' sent=' + sent + '/' + recipients.length + ' fallback=' + fallbackUsed +
-      ' skipped=' + skipped + ' purged=' + purged;
+      ' sent=' + sent + '/' + recipients.length + ' image=' + imageSent +
+      ' fallback=' + fallbackUsed + ' skipped=' + skipped + ' purged=' + purged +
+      (only
+        ? ' [ENVOI RESTREINT À ' + only +
+          ' — anti-répétition CONTOURNÉ, état NON mémorisé]'
+        : '');
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -620,6 +734,13 @@ function createMeteoAlertesJob(deps) {
       fallbackUsed: fallbackUsed,
       purged: purged,
       persisted: persisted,
+      meteogramAvailable: !!mediaId,
+      imageSent: imageSent,
+      // Trace explicite : un test restreint ne doit pas pouvoir passer pour un
+      // envoi complet en relisant les logs — ni son contournement du filtre
+      // anti-répétition passer pour une panne de l'anti-répétition.
+      restrictedTo: only,
+      dedupBypassed: dedupBypassed,
     };
   }
 
@@ -628,6 +749,8 @@ function createMeteoAlertesJob(deps) {
 
 module.exports = {
   TEMPLATE_NAME,
+  IMAGE_TEMPLATE_NAME,
+  METEOGRAM_FILENAME,
   COLLECTION,
   FENETRE_JOURS,
   SEUILS,

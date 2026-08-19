@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:af2ceddc48d9e7d8",
+    "sourceFingerprint": "sha256:352db80ba9b17cef",
     "stats": {
-      "targetFiles": 218,
-      "targetFilesWithDirectTests": 133,
-      "targetFilesWithTransitiveTests": 154,
-      "testFilesScanned": 184
+      "targetFiles": 221,
+      "targetFilesWithDirectTests": 136,
+      "targetFilesWithTransitiveTests": 157,
+      "testFilesScanned": 188
     }
   },
   "index": {
@@ -603,13 +603,51 @@
         "functions/lib/meteo/__tests__/meteoblueProxy.test.js"
       ]
     },
+    "functions/lib/meteo/meteogram.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/meteogram.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/meteogram.test.js"
+      ]
+    },
+    "functions/lib/meteo/renderPng.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/renderPng.test.js",
+        "functions/lib/meteo/__tests__/sprayDigest.test.js",
+        "functions/lib/meteo/__tests__/whatsappImage.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/renderPng.test.js",
+        "functions/lib/meteo/__tests__/sprayChart.test.js",
+        "functions/lib/meteo/__tests__/sprayDigest.test.js",
+        "functions/lib/meteo/__tests__/whatsappImage.test.js"
+      ]
+    },
+    "functions/lib/meteo/sprayChart.js": {
+      "directTests": [
+        "functions/lib/meteo/__tests__/renderPng.test.js",
+        "functions/lib/meteo/__tests__/sprayChart.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/renderPng.test.js",
+        "functions/lib/meteo/__tests__/sprayChart.test.js",
+        "functions/lib/meteo/__tests__/sprayDigest.test.js"
+      ]
+    },
     "functions/lib/meteo/sprayDigest.js": {
       "directTests": [
         "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/sprayChart.test.js",
         "functions/lib/meteo/__tests__/sprayDigest.test.js"
       ],
       "transitiveTests": [
         "functions/lib/meteo/__tests__/meteoAlertes.test.js",
+        "functions/lib/meteo/__tests__/sprayChart.test.js",
         "functions/lib/meteo/__tests__/sprayDigest.test.js"
       ]
     },

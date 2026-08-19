@@ -200,6 +200,26 @@ const TEMPLATES = [
     ],
   },
   {
+    // Variante IMAGE du digest météo : header IMAGE portant le graphique
+    // horaire (courbe de température sur les bandes AgroSpray, cf.
+    // functions/lib/meteo/sprayChart.js).
+    //
+    // ⚠️ Le BODY doit rester STRICTEMENT IDENTIQUE à celui de
+    // `meteo_spray_digest` (mêmes 2 variables, même ordre) : le job envoie les
+    // mêmes `bodyParams` aux deux templates et retombe de l'un sur l'autre
+    // quand l'image échoue. Toute divergence casserait le repli.
+    // Template DÉDIÉ plutôt qu'une édition de l'existant : Meta ne tolère
+    // qu'une édition par 24 h, et le digest texte doit rester disponible comme
+    // filet de sécurité pendant l'approbation de celui-ci.
+    name: "meteo_spray_digest_img",
+    headerType: "IMAGE",
+    body: "SmartBerry — Météo & Traitements {{1}}. Voici les conditions du jour et les fenêtres de traitement recommandées :\n\n{{2}}\n\nConsultez SmartBerry pour le détail.",
+    examples: [
+      "Jeu 14/08",
+      "🌡️ Température : 17°C → 29°C\n💨 Vent max : 12 km/h\n🌧️ Pluie : 0 mm\n\n✅ Fenêtres de traitement :\n• 06h00 - 09h00\n• 18h00 - 20h00\nScore du jour : 62% favorable",
+    ],
+  },
+  {
     // Alertes météo à 7 jours (Forte Chaleur / Vent Fort / Forte Pluie) — même
     // audience que le digest. Message groupé : {{1}} = période couverte,
     // {{2}} = corps multi-ligne (une section par alerte). Comme
@@ -209,6 +229,28 @@ const TEMPLATES = [
     // « RÈGLES META SUR LE CORPS » en tête de fichier (refus « too many
     // variables for its length »).
     name: "meteo_alerte_7j",
+    body: "SmartBerry — Alerte météo pour la période {{1}}. Voici les journées concernées et les seuils dépassés :\n\n{{2}}\n\nConsultez SmartBerry pour le détail et adaptez la planification des traitements.",
+    examples: [
+      "21 → 24/08",
+      "VENDREDI 21 AOÛT — FORTE CHALEUR\n🌡️ 34°C prévus (seuil 32°C)\n\nSAMEDI 22 AOÛT — FORTE PLUIE\n🌧️ 18.4 mm prévus (seuil 10 mm)\n\nLUNDI 24 AOÛT — VENT FORT\n💨 31 km/h prévus (seuil 25 km/h)\n\n⚠️ Reporter les traitements phyto sur ces journées et prévoir les protections adaptées.",
+    ],
+  },
+  {
+    // Variante IMAGE des alertes 7 jours : le header porte le METEOGRAM AGRO
+    // fourni tel quel par Meteoblue (740×698, 7 jours : température, pluie,
+    // nuages, spray window, ETo, vent — cf. functions/lib/meteo/meteogram.js).
+    //
+    // ⚠️ Le BODY doit rester STRICTEMENT IDENTIQUE à celui de
+    // `meteo_alerte_7j` (mêmes 2 variables, même ordre) : le job envoie les
+    // mêmes `bodyParams` aux deux templates et retombe de l'un sur l'autre
+    // quand l'image échoue. Toute divergence casserait le repli.
+    // Template DÉDIÉ plutôt qu'une édition de l'existant : Meta ne tolère
+    // qu'une édition par 24 h, et l'alerte texte doit rester disponible comme
+    // filet de sécurité pendant l'approbation de celui-ci.
+    // ⚠️ L'image Meteoblue est sous CC BY-ND : elle part telle quelle, jamais
+    // recadrée ni retouchée.
+    name: "meteo_alerte_7j_img",
+    headerType: "IMAGE",
     body: "SmartBerry — Alerte météo pour la période {{1}}. Voici les journées concernées et les seuils dépassés :\n\n{{2}}\n\nConsultez SmartBerry pour le détail et adaptez la planification des traitements.",
     examples: [
       "21 → 24/08",

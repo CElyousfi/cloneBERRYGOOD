@@ -42,6 +42,7 @@ const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require(".
 const whatsappService = require("./whatsappService");
 const { filterSentinelRecipients } = require("./lib/sentinel/sentinelRecipients");
 const meteoblueProxy = require("./lib/meteo/meteoblueProxy");
+const meteogram = require("./lib/meteo/meteogram");
 const sprayDigest = require("./lib/meteo/sprayDigest");
 const meteoAlertes = require("./lib/meteo/meteoAlertes");
 
@@ -2629,9 +2630,41 @@ function buildMeteoSprayDigestDeps() {
   };
 }
 
-/** Dépendances de prod du job d'alertes 7 jours (idem digest + Firestore). */
+/**
+ * GET binaire, utilisé pour le meteogram (image PNG). Distinct de
+ * meteoblueHttpsGet, qui concatène en STRING et détruirait les octets d'un PNG.
+ * Résout null sur non-2xx ou erreur réseau — jamais de throw.
+ * @param {string} url
+ * @returns {Promise<Buffer|null>}
+ */
+function meteoblueHttpsGetBuffer(url) {
+  return new Promise((resolve) => {
+    const https = require("https");
+    https.get(url, (resp) => {
+      const chunks = [];
+      resp.on("data", (c) => { chunks.push(c); });
+      resp.on("end", () => {
+        if (resp.statusCode >= 200 && resp.statusCode < 300) resolve(Buffer.concat(chunks));
+        else resolve(null);
+      });
+    }).on("error", () => resolve(null));
+  });
+}
+
+/**
+ * Dépendances de prod du job d'alertes 7 jours : idem digest + Firestore +
+ * le meteogram Meteoblue en header IMAGE. `fetchMeteogram` valide le PNG et
+ * rend null au moindre doute — l'alerte texte part alors quand même.
+ */
 function buildMeteoAlertesDeps() {
-  return { ...buildMeteoSprayDigestDeps(), db: db_firestore };
+  return {
+    ...buildMeteoSprayDigestDeps(),
+    db: db_firestore,
+    fetchMeteogram: (coords) => meteogram.fetchMeteogram(coords, {
+      fetchBuffer: meteoblueHttpsGetBuffer,
+      apiKey: METEOBLUE_API_KEY,
+    }),
+  };
 }
 
 exports.meteoSprayDigest = functions
@@ -2664,7 +2697,20 @@ exports.meteoSprayDigest = functions
   });
 
 // Trigger manuel — ?date=YYYY-MM-DD, ?preview=1 (aucun envoi), ?checkRecipients=1,
-// ?alertes=1 (exécute UNIQUEMENT le job d'alertes 7 jours).
+// ?alertes=1 (exécute UNIQUEMENT le job d'alertes 7 jours),
+// ?only=<profileId> (RESTREINT l'envoi à ce seul profil de l'audience :
+//   dg | chef_f1 | chef_f5 — permet de tester sur un numéro sans réveiller les
+//   chefs). Exemples : ?only=dg, ?alertes=1&only=dg.
+//   ⚠️ ?only= ne contourne AUCUNE gate : c'est un envoi RÉEL, soumis à la même
+//   vérification isRealSend + TRIGGER_SEND_ROLES que l'envoi complet. Une
+//   valeur hors liste blanche → 400.
+//   ⚠️ Côté ALERTES, un envoi restreint n'écrit PAS l'état anti-répétition et
+//   ne purge rien : un test ne doit jamais rendre muette la vraie alerte du
+//   lendemain pour les chefs. Il CONTOURNE aussi le filtre anti-répétition
+//   (réponse : dedupBypassed: true) — sinon un test lancé après le cron de 6h
+//   répondrait « aucune alerte » alors que tout fonctionne. Ce contournement
+//   est strictement local au mode ?only= : le cron et l'envoi complet manuel
+//   gardent le filtrage STRICT.
 exports.meteoSprayDigestTrigger = functions
   .region(sprayDigest.HTTP_CONFIG.region)
   .runWith({
@@ -2709,6 +2755,15 @@ exports.meteoSprayDigestTrigger = functions
       }
     }
 
+    // Validé APRÈS la gate de rôle : un appelant non autorisé n'apprend rien de
+    // la liste blanche. Liste blanche stricte (dérivée d'AUDIENCE) — aucun
+    // profil arbitraire venu de la query n'atteint resolveRecipientsForProfile.
+    const onlyParsed = sprayDigest.parseOnlyProfile(req.query.only);
+    if (!onlyParsed.ok) {
+      return res.status(400).json({ success: false, error: onlyParsed.error });
+    }
+    const only = onlyParsed.only;
+
     // Même convention que dailyProductionReportTrigger : numéros masqués.
     const maskRecipients = (result) => {
       if (!result.recipients) return result;
@@ -2721,14 +2776,14 @@ exports.meteoSprayDigestTrigger = functions
       // ?alertes=1 : on court-circuite le digest pour ne jouer que les alertes.
       if (alertesOnly) {
         const alertesJob = meteoAlertes.createMeteoAlertesJob(buildMeteoAlertesDeps());
-        const alertesResult = await alertesJob.run(date, { preview, checkRecipients });
+        const alertesResult = await alertesJob.run(date, { preview, checkRecipients, only });
         return res.json({
           success: true, ...maskRecipients(alertesResult), dateRequested: date || null,
         });
       }
 
       const job = sprayDigest.createMeteoDigestJob(buildMeteoSprayDigestDeps());
-      const result = await job.run(date, { preview, checkRecipients });
+      const result = await job.run(date, { preview, checkRecipients, only });
       // En preview, on joint les alertes détectées : un seul appel suffit à
       // visualiser les DEUX messages du matin.
       if (preview) {

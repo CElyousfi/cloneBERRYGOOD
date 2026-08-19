@@ -5,6 +5,8 @@ const assert = require('node:assert/strict');
 
 const {
   TEMPLATE_NAME,
+  IMAGE_TEMPLATE_NAME,
+  METEOGRAM_FILENAME,
   COLLECTION,
   SEUILS,
   MARGES_AGGRAVATION,
@@ -650,4 +652,519 @@ test('run: écriture d\'état partiellement en échec → persisted < alertes + 
   assert.equal(res.persisted, 1);
   assert.deepEqual(db.writes.map((w) => w.id), ['chaleur_' + plus(0)]);
   assert.ok(errors.some((e) => e.includes('état partiellement écrit')));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Meteogram 7 jours en header IMAGE — l'image ne doit JAMAIS coûter une alerte
+// ─────────────────────────────────────────────────────────────────────────────
+
+const { PNG_MIME } = require('../meteogram');
+const FAKE_PNG = Buffer.from('\x89PNG-meteogram-de-test');
+
+/** Stub whatsapp AVEC support image (uploadMedia + sendTemplateMessageWithImage). */
+function makeWhatsappImageStub(recipientsByProfile, opts) {
+  const o = opts || {};
+  const base = makeWhatsappStub(recipientsByProfile, o.sendImpl);
+  const uploads = [];
+  const imageSends = [];
+  return Object.assign(base, {
+    uploads,
+    imageSends,
+    async uploadMedia(buffer, mimeType, filename) {
+      uploads.push({ buffer, mimeType, filename });
+      if (o.uploadImpl) return o.uploadImpl();
+      return { id: 'MEDIA-1' };
+    },
+    async sendTemplateMessageWithImage(to, templateName, mediaIdOrRef, bodyParams, lang, toName) {
+      imageSends.push({ to, templateName, mediaIdOrRef, bodyParams, lang, toName });
+      if (o.imageSendImpl) return o.imageSendImpl({ to, bodyParams });
+      return { success: true, waMessageId: 'wamid.img.' + imageSends.length };
+    },
+  });
+}
+
+const RECIPIENTS_2 = {
+  dg: [DG],
+  chef_f1: [{ uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' }],
+};
+
+test('IMAGE_TEMPLATE_NAME : nom verrouillé, distinct du template texte', () => {
+  assert.equal(IMAGE_TEMPLATE_NAME, 'meteo_alerte_7j_img');
+  assert.notEqual(IMAGE_TEMPLATE_NAME, TEMPLATE_NAME);
+  assert.equal(METEOGRAM_FILENAME, 'meteo-7-jours.png');
+});
+
+test('run: étage 1 — UN seul fetch + UN seul upload pour N destinataires', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  let fetches = 0;
+  const res = await createMeteoAlertesJob({
+    getMeteoblue: getWeather,
+    whatsapp,
+    db: makeDbStub({}),
+    fetchMeteogram: async () => { fetches++; return FAKE_PNG; },
+  }).run(DAY);
+
+  assert.equal(fetches, 1, 'le meteogram n\'est récupéré qu\'une fois');
+  assert.equal(whatsapp.uploads.length, 1, 'UN upload pour N destinataires');
+  assert.equal(whatsapp.uploads[0].mimeType, PNG_MIME);
+  assert.equal(whatsapp.uploads[0].filename, METEOGRAM_FILENAME);
+  assert.ok(whatsapp.uploads[0].buffer.equals(FAKE_PNG), 'image transmise telle quelle');
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.imageSent, 2);
+  assert.equal(res.meteogramAvailable, true);
+  assert.equal(res.fallbackUsed, 0);
+  assert.equal(whatsapp.sends.length, 0, 'aucun envoi texte quand l\'image passe');
+  assert.equal(whatsapp.imageSends.length, 2);
+  whatsapp.imageSends.forEach((s) => {
+    assert.equal(s.templateName, IMAGE_TEMPLATE_NAME);
+    assert.equal(s.mediaIdOrRef, 'MEDIA-1', 'le même media_id chez tous');
+    assert.equal(s.bodyParams.length, 2, 'mêmes 2 params que le template texte');
+  });
+  // L'état anti-répétition est mémorisé comme sur le chemin texte.
+  assert.equal(res.persisted, res.alertes.length);
+});
+
+test('run: le corps envoyé avec l\'image est IDENTIQUE à celui du template texte', async () => {
+  const avecImage = makeWhatsappImageStub(RECIPIENTS_2);
+  await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp: avecImage, db: makeDbStub({}),
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY);
+
+  const sansImage = makeWhatsappStub(RECIPIENTS_2);
+  await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp: sansImage, db: makeDbStub({}),
+  }).run(DAY);
+
+  assert.deepEqual(avecImage.imageSends[0].bodyParams, sansImage.sends[0].bodyParams,
+    'un repli d\'un template sur l\'autre ne doit rien changer au message');
+});
+
+test('run: meteogram indisponible → alerte TEXTE complète, dégradation journalisée', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const { result: res, errors } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather,
+    whatsapp,
+    db: makeDbStub({}),
+    fetchMeteogram: async () => null, // réseau KO / HTML / payload creux
+  }).run(DAY));
+
+  assert.equal(res.sent, 2, 'l\'alerte part quand même');
+  assert.equal(res.meteogramAvailable, false);
+  assert.equal(res.imageSent, 0);
+  assert.equal(whatsapp.uploads.length, 0, 'aucun upload sans image valide');
+  assert.equal(whatsapp.sends.length, 2);
+  whatsapp.sends.forEach((s) => assert.equal(s.templateName, TEMPLATE_NAME));
+  assert.ok(errors.some((l) => /METEOGRAM INDISPONIBLE/.test(l)),
+    'la dégradation doit être bruyante, pas silencieuse');
+});
+
+test('run: fetch du meteogram qui throw → alerte texte, jamais de crash du job', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const { result: res, errors } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => { throw new Error('boom réseau'); },
+  }).run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.imageSent, 0);
+  assert.ok(errors.some((l) => /METEOGRAM INDISPONIBLE/.test(l) && /boom réseau/.test(l)));
+});
+
+test('run: upload Meta en échec → alerte texte, dégradation journalisée', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2, {
+    uploadImpl: () => ({ error: 'quota media dépassé' }),
+  });
+  const { result: res, errors } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.meteogramAvailable, false);
+  assert.equal(whatsapp.sends.length, 2, 'tout le monde reçoit le texte');
+  assert.ok(errors.some((l) => /METEOGRAM INDISPONIBLE/.test(l) && /quota media dépassé/.test(l)));
+});
+
+test('run: étage 2 — template image refusé par Meta → repli texte, alerte préservée', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2, {
+    imageSendImpl: () => ({ success: false, error: 'Template name does not exist (132001)' }),
+  });
+  const { result: res, errors } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY));
+
+  assert.equal(res.meteogramAvailable, true, 'l\'upload, lui, a réussi');
+  assert.equal(res.imageSent, 0);
+  assert.equal(res.sent, 2, 'les 2 destinataires sont servis par le texte');
+  assert.equal(whatsapp.sends.length, 2);
+  whatsapp.sends.forEach((s) => assert.equal(s.templateName, TEMPLATE_NAME));
+  assert.ok(errors.some((l) => /envoi AVEC IMAGE refusé/.test(l) && /132001/.test(l)));
+  assert.equal(res.persisted, res.alertes.length, 'état mémorisé : les humains ont bien reçu');
+});
+
+test('run: étage 3 — image ET texte refusés → general_alert, corps essentiel sauvé', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2, {
+    imageSendImpl: () => ({ success: false, error: 'error code 132001' }),
+    sendImpl: ({ templateName }) => (templateName === TEMPLATE_NAME
+      ? { success: false, error: 'error code 132018' }
+      : { success: true, waMessageId: 'wamid.fallback' }),
+  });
+  const { result: res } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY));
+
+  assert.equal(res.sent, 2, 'personne n\'est perdu');
+  assert.equal(res.imageSent, 0);
+  assert.equal(res.fallbackUsed, 2);
+  const derniers = whatsapp.sends.filter((s) => s.templateName === 'general_alert');
+  assert.equal(derniers.length, 2);
+  derniers.forEach((s) => {
+    assert.equal(s.bodyParams.length, 1, 'general_alert : corps mis à plat');
+    assert.ok(/FORTE CHALEUR|VENT FORT/i.test(s.bodyParams[0]), 'l\'essentiel décisionnel survit');
+  });
+});
+
+test('run: échec image PARTIEL — seul le destinataire non servi repasse par le texte', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2, {
+    imageSendImpl: ({ to }) => (to === DG.phone
+      ? { success: true, waMessageId: 'wamid.img' }
+      : { success: false, error: 'media id expired' }),
+  });
+  const { result: res } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY));
+
+  assert.equal(res.imageSent, 1);
+  assert.equal(res.sent, 2, 'les deux sont servis, par des voies différentes');
+  assert.equal(whatsapp.sends.length, 1, 'le DG ne reçoit PAS un doublon en texte');
+  assert.equal(whatsapp.sends[0].to, '+212600000002');
+});
+
+test('run: whatsappService sans support image → comportement texte strictement inchangé', async () => {
+  const whatsapp = makeWhatsappStub(RECIPIENTS_2); // ni uploadMedia ni …WithImage
+  const { result: res, errors } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.imageSent, 0);
+  assert.equal(res.meteogramAvailable, false);
+  assert.ok(errors.some((l) => /sans support image/.test(l)));
+});
+
+test('run: sans dep fetchMeteogram, aucun bruit et aucun upload (câblage texte)', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const { result: res, errors } = await captureErrors(() => createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+  }).run(DAY));
+
+  assert.equal(res.sent, 2);
+  assert.equal(res.meteogramAvailable, false);
+  assert.equal(whatsapp.uploads.length, 0);
+  assert.equal(whatsapp.imageSends.length, 0);
+  assert.equal(errors.length, 0, 'un câblage volontairement sans image n\'est pas une erreur');
+});
+
+test('run: aucune alerte à notifier → AUCUN appel au meteogram', async () => {
+  // Pas d'appel Meteoblue ni d'upload Meta pour une matinée calme.
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  let fetches = 0;
+  const res = await createMeteoAlertesJob({
+    getMeteoblue: async () => weatherPayload([{ time: plus(0), tMax: 20 }]),
+    whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => { fetches++; return FAKE_PNG; },
+  }).run(DAY);
+
+  assert.equal(res.sent, 0);
+  assert.equal(fetches, 0);
+  assert.equal(whatsapp.uploads.length, 0);
+});
+
+test('run: preview et checkRecipients ne récupèrent ni n\'uploadent aucune image', async () => {
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  let fetches = 0;
+  const deps = {
+    getMeteoblue: getWeather, whatsapp, db: makeDbStub({}),
+    fetchMeteogram: async () => { fetches++; return FAKE_PNG; },
+  };
+  await createMeteoAlertesJob(deps).run(DAY, { preview: true });
+  await createMeteoAlertesJob(deps).run(DAY, { checkRecipients: true });
+
+  assert.equal(fetches, 0, 'aucun appel Meteoblue en diagnostic');
+  assert.equal(whatsapp.uploads.length, 0);
+  assert.equal(whatsapp.imageSends.length, 0);
+});
+
+test('template Meta : meteo_alerte_7j_img déclaré en IMAGE, corps identique au texte', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', '..', 'create-whatsapp-templates.js'), 'utf8');
+
+  const bodyOf = (name) => {
+    const idx = src.indexOf('name: "' + name + '"');
+    assert.notEqual(idx, -1, 'template ' + name + ' déclaré');
+    const m = /body: "((?:[^"\\]|\\.)*)"/.exec(src.slice(idx, idx + 2000));
+    assert.ok(m, 'body trouvé pour ' + name);
+    return m[1];
+  };
+
+  assert.equal(bodyOf(IMAGE_TEMPLATE_NAME), bodyOf(TEMPLATE_NAME),
+    'corps strictement identiques, sinon le repli image → texte change le message');
+
+  const bloc = src.slice(src.indexOf('name: "' + IMAGE_TEMPLATE_NAME + '"'));
+  assert.match(bloc.slice(0, 400), /headerType: "IMAGE"/);
+
+  // Règles Meta (cf. en-tête du fichier) : ni variable en début ni en fin de
+  // corps, et assez de texte statique pour 2 variables.
+  const body = bodyOf(IMAGE_TEMPLATE_NAME);
+  assert.ok(!body.trimStart().startsWith('{{'), 'pas de variable en début de corps');
+  assert.ok(!body.trimEnd().endsWith('}}'), 'pas de variable en fin de corps');
+  assert.deepEqual(body.match(/\{\{\d\}\}/g), ['{{1}}', '{{2}}'], '2 variables, dans l\'ordre');
+  assert.ok(body.replace(/\{\{\d\}\}/g, '').length > 150, 'assez de texte statique');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ?only=<profileId> — alerte de test sur un seul numéro
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CHEF_F1 = { uid: 'u2', displayName: 'Chef F1', phone: '+212600000002' };
+const CHEF_F5 = { uid: 'u3', displayName: 'Chef F5', phone: '+212600000003' };
+const AUDIENCE_3 = { dg: [DG], chef_f1: [CHEF_F1], chef_f5: [CHEF_F5] };
+
+test('run: only=dg → seul le DG reçoit, les chefs ne sont pas notifiés', async () => {
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub({});
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.equal(res.recipientsCount, 1);
+  assert.equal(res.sent, 1);
+  assert.equal(res.restrictedTo, 'dg');
+  assert.equal(whatsapp.sends.length, 1);
+  assert.equal(whatsapp.sends[0].to, DG.phone);
+});
+
+test('run: only → AUCUNE écriture d\'état anti-répétition (le point critique)', async () => {
+  // Si un envoi de test marquait les alertes comme « déjà envoyées », la VRAIE
+  // alerte du lendemain ne partirait plus aux chefs F1/F5. Ce test verrouille
+  // ce comportement.
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub({});
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.ok(res.alertes.length > 0, 'des alertes ont bien été détectées et envoyées');
+  assert.equal(res.sent, 1, 'et reçues');
+  assert.equal(db.writes.length, 0, 'AUCUN document d\'état écrit');
+  assert.equal(db.store.size, 0, 'la collection reste vide');
+  assert.equal(res.persisted, 0);
+});
+
+test('run: only → AUCUNE purge de l\'état existant', async () => {
+  // Une entrée périmée (jour passé) serait normalement purgée : un envoi de
+  // test ne doit toucher à rien.
+  const perimee = { type: 'chaleur', dateISO: '2020-01-01', valeur: 40, envoye_at: 'x' };
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub({ chaleur_2020_01_01: perimee });
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.equal(res.purged, 0);
+  assert.equal(db.deletes.length, 0, 'aucune suppression');
+  assert.ok(db.store.has('chaleur_2020_01_01'), 'l\'entrée périmée est intacte');
+  assert.equal(db.writes.length, 0);
+});
+
+test('run: un envoi de test ne rend PAS muette la vraie alerte du lendemain', async () => {
+  // Scénario complet : test sur le DG, puis envoi normal → les chefs reçoivent
+  // toujours, et l'état n'est écrit qu'à l'envoi normal.
+  const db = makeDbStub({});
+  const test1 = makeWhatsappStub(AUDIENCE_3);
+  await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp: test1, db })
+    .run(DAY, { only: 'dg' });
+  assert.equal(db.writes.length, 0);
+
+  const reel = makeWhatsappStub(AUDIENCE_3);
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp: reel, db }).run(DAY);
+
+  assert.equal(res.sent, 3, 'les 3 destinataires sont servis normalement');
+  assert.ok(res.alertes.length > 0, 'les alertes n\'ont PAS été neutralisées par le test');
+  assert.equal(res.persisted, res.alertes.length, 'l\'état n\'est écrit qu\'ici');
+  assert.equal(res.restrictedTo, null);
+});
+
+test('run: only absent → écriture d\'état et purge inchangées', async () => {
+  const perimee = { type: 'chaleur', dateISO: '2020-01-01', valeur: 40, envoye_at: 'x' };
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub({ chaleur_2020_01_01: perimee });
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db }).run(DAY);
+
+  assert.equal(res.restrictedTo, null);
+  assert.equal(res.purged, 1, 'la purge normale a bien lieu');
+  assert.equal(res.persisted, res.alertes.length, 'l\'état normal est bien écrit');
+  assert.equal(res.recipientsCount, 3);
+});
+
+test('run: only + image → le meteogram part aussi, toujours sans écriture d\'état', async () => {
+  const whatsapp = makeWhatsappImageStub(AUDIENCE_3);
+  const db = makeDbStub({});
+  const res = await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp, db,
+    fetchMeteogram: async () => FAKE_PNG,
+  }).run(DAY, { only: 'dg' });
+
+  assert.equal(res.imageSent, 1);
+  assert.equal(whatsapp.imageSends.length, 1);
+  assert.equal(whatsapp.imageSends[0].to, DG.phone);
+  assert.equal(db.writes.length, 0, 'toujours aucune écriture d\'état');
+  assert.equal(res.restrictedTo, 'dg');
+});
+
+test('run: checkRecipients + only → diagnostic restreint, sans effet de bord', async () => {
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub({});
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { checkRecipients: true, only: 'chef_f1' });
+
+  assert.equal(res.recipientsCount, 1);
+  assert.equal(res.recipients[0].phone, CHEF_F1.phone);
+  assert.equal(res.restrictedTo, 'chef_f1');
+  assert.equal(whatsapp.sends.length, 0);
+  assert.equal(db.writes.length, 0);
+  assert.equal(db.deletes.length, 0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contournement de l'anti-répétition — RÉSERVÉ au mode ?only=
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * État Firestore où les DEUX alertes de WEATHER sont déjà mémorisées à leur
+ * valeur exacte : en temps normal, plus rien ne doit partir.
+ * (clé = `type_dateISO`, cf. detecterAlertes.)
+ */
+function etatDejaEnvoye() {
+  return {
+    ['chaleur_' + plus(0)]: { type: 'chaleur', dateISO: plus(0), valeur: 36, envoye_at: 'hier' },
+    ['vent_' + plus(2)]: { type: 'vent', dateISO: plus(2), valeur: 31, envoye_at: 'hier' },
+  };
+}
+
+test('anti-répétition: HORS mode only, une alerte déjà mémorisée reste FILTRÉE', () => {
+  // LE test important : c'est lui qui garantit qu'on n'a pas ouvert une brèche
+  // dans l'anti-répétition en facilitant le test. Si celui-ci tombe, les chefs
+  // se font notifier les mêmes alertes tous les matins.
+  const detectees = detecterAlertes(WEATHER, { fromISO: DAY, jours: 7 });
+  assert.equal(detectees.length, 2);
+  const etat = new Map(Object.entries(etatDejaEnvoye()));
+  assert.deepEqual(filtrerAlertesANotifier(detectees, etat), [],
+    'le filtre lui-même n\'a pas bougé');
+});
+
+test('run: HORS mode only, alertes déjà mémorisées → aucun envoi (comportement du cron)', async () => {
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub(etatDejaEnvoye());
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db }).run(DAY);
+
+  assert.equal(res.sent, 0, 'personne n\'est re-notifié');
+  assert.deepEqual(res.alertes, []);
+  assert.equal(res.skipped, 2, 'les 2 alertes sont comptées comme déjà envoyées');
+  assert.equal(res.dedupBypassed, false, 'le filtrage est bien actif');
+  assert.equal(res.restrictedTo, null);
+  assert.equal(whatsapp.sends.length, 0);
+});
+
+test('run: en mode only, une alerte déjà mémorisée est QUAND MÊME envoyée', async () => {
+  // Un mode test doit être déterministe : son résultat ne peut pas dépendre de
+  // si le cron de 6h est déjà passé.
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub(etatDejaEnvoye());
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.equal(res.alertes.length, 2, 'les 2 alertes détectées partent malgré l\'état');
+  assert.equal(res.sent, 1, 'au seul destinataire restreint');
+  assert.equal(res.skipped, 0);
+  assert.equal(res.dedupBypassed, true, 'le contournement est tracé dans le retour');
+  assert.equal(res.restrictedTo, 'dg');
+  assert.equal(whatsapp.sends.length, 1);
+  assert.equal(whatsapp.sends[0].to, DG.phone);
+});
+
+test('run: le contournement ne modifie NI n\'efface l\'état existant', async () => {
+  const seed = etatDejaEnvoye();
+  const whatsapp = makeWhatsappStub(AUDIENCE_3);
+  const db = makeDbStub(seed);
+  const res = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp, db })
+    .run(DAY, { only: 'dg' });
+
+  assert.equal(res.sent, 1);
+  assert.equal(db.writes.length, 0, 'aucune écriture');
+  assert.equal(db.deletes.length, 0, 'aucune suppression');
+  assert.equal(res.persisted, 0);
+  assert.equal(db.store.size, 2, 'les 2 entrées d\'origine sont intactes');
+  assert.deepEqual(db.store.get('chaleur_' + plus(0)), seed['chaleur_' + plus(0)],
+    'valeur d\'état inchangée');
+});
+
+test('run: après un test en mode only, le cron du lendemain filtre TOUJOURS', async () => {
+  // Bout en bout : le contournement est strictement local à l'appel restreint,
+  // il ne « réarme » rien pour l\'envoi complet suivant.
+  const db = makeDbStub(etatDejaEnvoye());
+  const testDg = makeWhatsappStub(AUDIENCE_3);
+  const resTest = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp: testDg, db })
+    .run(DAY, { only: 'dg' });
+  assert.equal(resTest.sent, 1, 'le test a bien envoyé');
+
+  const cron = makeWhatsappStub(AUDIENCE_3);
+  const resCron = await createMeteoAlertesJob({ getMeteoblue: getWeather, whatsapp: cron, db }).run(DAY);
+
+  assert.equal(resCron.dedupBypassed, false);
+  assert.equal(resCron.sent, 0, 'les chefs ne sont pas spammés à cause du test');
+  assert.equal(cron.sends.length, 0);
+});
+
+test('run: sans état préalable, only et envoi complet détectent les mêmes alertes', async () => {
+  // Le contournement ne doit rien INVENTER : mêmes alertes des deux côtés.
+  const dbA = makeDbStub({});
+  const resOnly = await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp: makeWhatsappStub(AUDIENCE_3), db: dbA,
+  }).run(DAY, { only: 'dg' });
+
+  const dbB = makeDbStub({});
+  const resPlein = await createMeteoAlertesJob({
+    getMeteoblue: getWeather, whatsapp: makeWhatsappStub(AUDIENCE_3), db: dbB,
+  }).run(DAY);
+
+  assert.deepEqual(resOnly.alertes.map((a) => a.cle), resPlein.alertes.map((a) => a.cle));
+  assert.equal(resOnly.dedupBypassed, true);
+  assert.equal(resPlein.dedupBypassed, false);
+});
+
+test('run: le log d\'un envoi restreint annonce le contournement, pas une panne', async () => {
+  const { errors } = await captureErrors(async () => {
+    const logs = [];
+    const orig = console.log;
+    console.log = (...a) => { logs.push(a.join(' ')); };
+    try {
+      await createMeteoAlertesJob({
+        getMeteoblue: getWeather, whatsapp: makeWhatsappStub(AUDIENCE_3), db: makeDbStub({}),
+      }).run(DAY, { only: 'dg' });
+    } finally {
+      console.log = orig;
+    }
+    assert.ok(logs.some((l) => /ENVOI RESTREINT À dg/.test(l)), 'restriction annoncée');
+    assert.ok(logs.some((l) => /anti-répétition CONTOURNÉ/.test(l)),
+      'sinon on relira ce log comme une panne de l\'anti-répétition');
+    assert.ok(logs.some((l) => /état NON mémorisé/.test(l)));
+    return null;
+  });
+  assert.equal(errors.length, 0);
 });

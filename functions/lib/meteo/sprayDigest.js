@@ -13,6 +13,9 @@
  * (public/app.jsx) restreint à UN jour.
  */
 
+const sprayChart = require('./sprayChart');
+const renderPng = require('./renderPng');
+
 /**
  * @typedef {Object} SprayWindows
  * @property {Array<{de:number, a:number}>} fenetres Plages horaires favorables
@@ -31,6 +34,16 @@
  * @property {number|null} ventMax
  * @property {number|null} pluie
  * @property {number|null} pictocode
+ * @property {number|null} ressenti      felttemperature_max (°C)
+ * @property {number|null} rhMin         relativehumidity_min (%)
+ * @property {number|null} rhMax         relativehumidity_max (%)
+ * @property {number|null} ventDir       winddirection (degrés, 0 = Nord)
+ * @property {number|null} deltaTMin     delta_t_min (°C)
+ * @property {number|null} deltaTMax     delta_t_max (°C)
+ * @property {number|null} humectation   leafwetnessindex
+ * @property {number|null} heuresHr90    humiditygreater90_hours (h)
+ * @property {number|null} etoFao        referenceevapotranspiration_fao (mm)
+ * @property {number|null} humiditeSol   soilmoisture_0to10cm_mean (%)
  */
 
 /** Première heure ouvrée prise en compte pour un traitement. */
@@ -39,6 +52,58 @@ const WORK_HOUR_START = 6;
 const WORK_HOUR_END = 20;
 
 const JOURS_COURTS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+/** Secteurs de vent, pas de 45° à partir du Nord (même table que public/app.jsx). */
+const SECTEURS_VENT = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+
+/**
+ * Delta T (°C) = écart température sèche / température humide. C'est
+ * l'indicateur professionnel de pulvérisation : il mesure la vitesse
+ * d'évaporation de la gouttelette entre la buse et la feuille.
+ *
+ * Seuils standards de la profession (bulletins agro, conseils buses) :
+ * - `< 2`   : air trop humide, la gouttelette n'évapore pas → coulure/lessivage ;
+ * - `2 → 8` : plage idéale ;
+ * - `> 8`   : air trop sec, évaporation avant impact → perte de produit et dérive.
+ *
+ * Bornes INCLUSES dans la zone idéale (2 et 8 sont « idéal », 1,9 « trop
+ * humide », 8,1 « trop sec »).
+ */
+const DELTA_T_IDEAL_MIN = 2;
+const DELTA_T_IDEAL_MAX = 8;
+
+/**
+ * ⚠️ Libellé volontairement désambiguïsé : `functions/index.js` expose déjà un
+ * champ `delta_t` qui est l'AMPLITUDE THERMIQUE du jour (tmax − tmin), affiché
+ * « ΔT (°C) » sur l'écran Maturité. Les deux indicateurs n'ont rien en commun ;
+ * un « Delta T » nu dans le digest serait lu comme l'amplitude par un chef.
+ */
+const DELTA_T_LABEL = 'Delta T pulvé';
+
+const DELTA_T_ZONE_HUMIDE = 'trop humide';
+const DELTA_T_ZONE_IDEAL = 'idéal';
+const DELTA_T_ZONE_SEC = 'trop sec';
+
+/**
+ * Barème du risque maladie — ⚠️ À VALIDER PAR OMAR (agronome).
+ *
+ * Aucune référence agronomique n'existe dans le repo pour ces deux champs ; le
+ * barème ci-dessous est donc volontairement CONSERVATEUR (il bascule tôt vers
+ * « Modéré ») et sert de point de départ, pas de vérité agronomique.
+ *
+ * Hypothèse d'unité : `leafwetnessindex` (Meteoblue, agro-day) est traité ici
+ * comme une DURÉE d'humectation foliaire sur la journée, à la même échelle que
+ * `humiditygreater90_hours` (0 → 24). Il est affiché sans unité pour ne pas
+ * affirmer une unité non vérifiée ; seul `humiditygreater90_hours` porte « h ».
+ *
+ * Règle : on retient le PIRE des deux indicateurs (max), car l'humectation
+ * foliaire et l'air saturé favorisent tous deux la germination des spores.
+ * - `>= 8`  → Élevé
+ * - `>= 4`  → Modéré
+ * - sinon   → Faible
+ */
+const RISQUE_MALADIE_SEUIL_ELEVE = 8;
+const RISQUE_MALADIE_SEUIL_MODERE = 4;
 
 const CRON_CONFIG = Object.freeze({
   schedule: '0 6 * * *',
@@ -73,6 +138,61 @@ const AUDIENCE = Object.freeze([
 const TRIGGER_SEND_ROLES = Object.freeze(['dg', 'dt', 'admin']);
 
 /**
+ * Liste blanche des profils ciblables par `?only=` — DÉRIVÉE d'AUDIENCE, pas
+ * recopiée : ajouter un destinataire à l'audience le rend ciblable, et rien
+ * d'autre ne l'est jamais.
+ */
+const AUDIENCE_PROFILE_IDS = Object.freeze(AUDIENCE.map(function(a) { return a.profileId; }));
+
+/**
+ * Valide `?only=<profileId>` — restriction de l'envoi à UN seul profil, pour
+ * qu'Omar puisse tester sur son propre numéro sans réveiller les chefs F1/F5.
+ *
+ * ⚠️ `?only=` ne contourne AUCUNE gate : c'est un envoi RÉEL, soumis à
+ * `isRealSend` + `TRIGGER_SEND_ROLES` comme n'importe quel autre. Il RESTREINT
+ * l'audience, il n'ouvre aucun chemin d'envoi parallèle.
+ *
+ * Un profil arbitraire venu de la query ne doit jamais atteindre
+ * `resolveRecipientsForProfile` : seules les valeurs d'AUDIENCE sont acceptées.
+ *
+ * @param {*} raw Valeur brute de la query (absente, string, tableau…).
+ * @returns {{ok: true, only: string|null}|{ok: false, error: string}}
+ */
+function parseOnlyProfile(raw) {
+  if (raw === undefined || raw === null || raw === '') return { ok: true, only: null };
+  // Query répétée (?only=a&only=b) → Express rend un tableau : refusé net.
+  if (typeof raw !== 'string') {
+    return { ok: false, error: 'Paramètre only invalide : une seule valeur attendue.' };
+  }
+  const value = raw.trim();
+  if (!value) return { ok: true, only: null };
+  if (AUDIENCE_PROFILE_IDS.indexOf(value) === -1) {
+    return {
+      ok: false,
+      error: 'Paramètre only invalide : "' + value + '". Valeurs acceptées : ' +
+        AUDIENCE_PROFILE_IDS.join(', ') + '.',
+    };
+  }
+  return { ok: true, only: value };
+}
+
+/**
+ * Audience restreinte à `only`, ou audience complète si `only` est absent.
+ *
+ * Défensif : un `only` inconnu (qui n'aurait pas dû passer parseOnlyProfile)
+ * donne une audience VIDE — donc zéro destinataire et zéro envoi. Le pire cas
+ * est un message qui ne part pas, jamais un message qui part à la mauvaise
+ * personne.
+ *
+ * @param {string|null|undefined} only
+ * @returns {Array<{profileId: string, ferme: string|null}>}
+ */
+function audienceFor(only) {
+  if (!only) return AUDIENCE.slice();
+  return AUDIENCE.filter(function(a) { return a.profileId === only; });
+}
+
+/**
  * Une combinaison de paramètres du trigger HTTP déclenche-t-elle un ENVOI RÉEL
  * (WhatsApp au DG et aux chefs, plus écriture d'état) ?
  *
@@ -96,7 +216,12 @@ function isRealSend(q) {
 }
 
 const TEMPLATE_NAME = 'meteo_spray_digest';
+/** Même corps que TEMPLATE_NAME, avec un header IMAGE portant le graphique. */
+const IMAGE_TEMPLATE_NAME = 'meteo_spray_digest_img';
 const FALLBACK_TEMPLATE_NAME = 'general_alert';
+
+/** Nom de fichier du graphique poussé à Meta (purement informatif côté API). */
+const CHART_FILENAME = 'meteo-traitements.png';
 
 /**
  * Codes d'erreur Meta déclenchant le repli sur `general_alert` — tous liés au
@@ -167,6 +292,104 @@ function formatHeure(h) {
  */
 function round1(n) {
   return Math.round(n * 10) / 10;
+}
+
+/**
+ * Normalise une valeur en nombre exploitable, ou `null`. Même filtre que le
+ * `pick` de buildTempSummary, appliqué cette fois à l'ENTRÉE de la mise en
+ * forme : `formatDigest` peut recevoir un TempSummary partiel (appel direct,
+ * ancienne fixture), et un `!== null` laissait alors passer `undefined` →
+ * `Math.round(undefined)` → « NaN°C » dans le message WhatsApp.
+ * @param {*} v
+ * @returns {number|null}
+ */
+function num(v) {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Nombre à la française : une décimale au plus, virgule décimale, et pas de
+ * décimale inutile (`3,9`, `10`). Copie locale du helper de meteoAlertes.js —
+ * ce module n'expose pas le sien et le périmètre du ticket interdit d'y toucher.
+ * @param {number} n
+ * @returns {string}
+ */
+function formatNombreFr(n) {
+  return String(round1(n)).replace('.', ',');
+}
+
+/**
+ * Degrés → secteur français (N, NE, E, SE, S, SO, O, NO). Même arrondi au
+ * secteur de 45° que `parseWindDir` (public/app.jsx) : 350° retombe sur N.
+ * @param {number|null|undefined} deg
+ * @returns {string|null} null si la valeur n'est pas un nombre exploitable.
+ */
+function formatWindDirection(deg) {
+  if (typeof deg !== 'number' || !Number.isFinite(deg)) return null;
+  const idx = Math.round(deg / 45);
+  return SECTEURS_VENT[((idx % 8) + 8) % 8];
+}
+
+/**
+ * Zone d'interprétation d'UNE valeur de Delta T.
+ * @param {number} v
+ * @returns {string} 'trop humide' | 'idéal' | 'trop sec'
+ */
+function deltaTZone(v) {
+  if (v < DELTA_T_IDEAL_MIN) return DELTA_T_ZONE_HUMIDE;
+  if (v > DELTA_T_IDEAL_MAX) return DELTA_T_ZONE_SEC;
+  return DELTA_T_ZONE_IDEAL;
+}
+
+/**
+ * Ligne « Delta T » complète, plage + interprétation + cible. Si la journée
+ * traverse deux zones, les deux sont annoncées (`trop humide → idéal`).
+ * @param {number|null} min
+ * @param {number|null} max
+ * @returns {string|null} null si aucune valeur exploitable.
+ */
+function formatDeltaT(min, max) {
+  const cible = ', cible ' + DELTA_T_IDEAL_MIN + '-' + DELTA_T_IDEAL_MAX + ')';
+  if (min !== null && max !== null) {
+    const zones = deltaTZone(min) === deltaTZone(max)
+      ? deltaTZone(min)
+      : deltaTZone(min) + ' → ' + deltaTZone(max);
+    return DELTA_T_LABEL + ' : ' + formatNombreFr(min) + ' → ' + formatNombreFr(max) + ' (' + zones + cible;
+  }
+  const seul = min !== null ? min : max;
+  if (seul === null || seul === undefined) return null;
+  return DELTA_T_LABEL + ' : ' + formatNombreFr(seul) + ' (' + deltaTZone(seul) + cible;
+}
+
+/**
+ * Niveau qualitatif de risque maladie (cf. barème ci-dessus, à valider).
+ * @param {number|null} humectation leafwetnessindex
+ * @param {number|null} heuresHr90  humiditygreater90_hours
+ * @returns {string|null} 'Faible' | 'Modéré' | 'Élevé' — null si rien d'exploitable.
+ */
+function niveauRisqueMaladie(humectation, heuresHr90) {
+  const valeurs = [humectation, heuresHr90].filter(function(v) {
+    return typeof v === 'number' && Number.isFinite(v);
+  });
+  if (!valeurs.length) return null;
+  const pire = Math.max.apply(null, valeurs);
+  if (pire >= RISQUE_MALADIE_SEUIL_ELEVE) return 'Élevé';
+  if (pire >= RISQUE_MALADIE_SEUIL_MODERE) return 'Modéré';
+  return 'Faible';
+}
+
+/**
+ * Lendemain d'une date ISO (YYYY-MM-DD), en arithmétique UTC pure — le
+ * graphique du digest couvre aujourd'hui ET demain.
+ * @param {string} dateISO
+ * @returns {string} '' si l'entrée n'est pas une date ISO.
+ */
+function nextDayISO(dateISO) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateISO || ''));
+  if (!m) return '';
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 /**
@@ -249,7 +472,13 @@ function buildSprayWindows(sprayData, dateISO) {
 }
 
 /**
- * Extrait les valeurs journalières (température, vent, pluie, pictocode).
+ * Extrait les valeurs journalières exploitées par le digest.
+ *
+ * Tous les champs viennent du MÊME package déjà appelé
+ * (`basic-day_agro-day_basic-1h`, cf. meteoblueProxy.buildWeatherBasicUrl) :
+ * aucun appel API supplémentaire. Un champ absent ou non numérique retombe sur
+ * `null` via `pick` et disparaît du message.
+ *
  * @param {object|null|undefined} weatherData Réponse brute du package weather.
  * @param {string} dateISO YYYY-MM-DD
  * @returns {TempSummary|null} null si le jour est absent.
@@ -271,12 +500,34 @@ function buildTempSummary(weatherData, dateISO) {
     ventMax: pick(day.windspeed_max),
     pluie: pick(day.precipitation),
     pictocode: pick(day.pictocode),
+    // Bloc 1 — conditions de pulvérisation
+    ressenti: pick(day.felttemperature_max),
+    rhMin: pick(day.relativehumidity_min),
+    rhMax: pick(day.relativehumidity_max),
+    ventDir: pick(day.winddirection),
+    deltaTMin: pick(day.delta_t_min),
+    deltaTMax: pick(day.delta_t_max),
+    // Bloc 2 — risque maladie
+    humectation: pick(day.leafwetnessindex),
+    heuresHr90: pick(day.humiditygreater90_hours),
+    // Bloc 3 — irrigation
+    etoFao: pick(day.referenceevapotranspiration_fao),
+    // Hypothèse d'unité : pourcentage volumique (les valeurs observées sur ce
+    // point — ex. 10 — excluent une échelle m³/m³ 0-1).
+    humiditeSol: pick(day.soilmoisture_0to10cm_mean),
   };
 }
 
 /**
  * Met en forme le digest : paramètre de date du template, corps multi-ligne
  * (style dailyProductionReport) et repli aplati sur une ligne.
+ *
+ * Le corps est assemblé par SECTIONS, chacune séparée par une ligne vide. Une
+ * section vide (données absentes) n'est pas poussée du tout : pas de ligne
+ * orpheline, pas de double saut de ligne.
+ *
+ * ⚠️ Le corps part en `{{2}}` du template Meta, limité à 1024 caractères par
+ * paramètre (cf. test « corps < 900 caractères »).
  *
  * @param {{dateISO: string, temp: TempSummary|null, windows: SprayWindows|null}} input
  * @returns {{dateParam: string, body: string, fallbackText: string}}
@@ -287,54 +538,108 @@ function formatDigest(input) {
   const windows = input ? input.windows : null;
   const dateParam = formatDateParam(dateISO);
 
-  const lines = [];
+  /** @type {Array<Array<string>>} */
+  const sections = [];
   const flat = [];
 
-  if (temp && (temp.tMin !== null || temp.tMax !== null)) {
-    const tMin = temp.tMin !== null ? Math.round(temp.tMin) + '°C' : '?';
-    const tMax = temp.tMax !== null ? Math.round(temp.tMax) + '°C' : '?';
-    lines.push('🌡️ *Température* : ' + tMin + ' → ' + tMax);
+  // ── Section 1 : conditions de pulvérisation ────────────────────────────
+  const t = temp || {};
+  const tMinV = num(t.tMin);
+  const tMaxV = num(t.tMax);
+  const ventV = num(t.ventMax);
+  const pluieV = num(t.pluie);
+  const rhMin = num(t.rhMin);
+  const rhMax = num(t.rhMax);
+
+  const meteo = [];
+  if (tMinV !== null || tMaxV !== null) {
+    const tMin = tMinV !== null ? Math.round(tMinV) + '°C' : '?';
+    const tMax = tMaxV !== null ? Math.round(tMaxV) + '°C' : '?';
+    const ressentiV = num(t.ressenti);
+    const ressenti = ressentiV !== null ? ' (ressenti ' + Math.round(ressentiV) + '°C)' : '';
+    meteo.push('🌡️ *Température* : ' + tMin + ' → ' + tMax + ressenti);
     flat.push('Température ' + tMin + ' à ' + tMax);
-    if (temp.ventMax !== null) {
-      lines.push('💨 Vent max : ' + Math.round(temp.ventMax) + ' km/h');
-      flat.push('vent max ' + Math.round(temp.ventMax) + ' km/h');
+
+    if (rhMin !== null && rhMax !== null) {
+      meteo.push('💦 Humidité : ' + Math.round(rhMin) + '% → ' + Math.round(rhMax) + '%');
+    } else if (rhMin !== null || rhMax !== null) {
+      meteo.push('💦 Humidité : ' + Math.round(rhMin !== null ? rhMin : rhMax) + '%');
     }
-    if (temp.pluie !== null) {
-      lines.push('🌧️ Pluie : ' + round1(temp.pluie) + ' mm');
-      flat.push('pluie ' + round1(temp.pluie) + ' mm');
+
+    if (ventV !== null) {
+      const dir = formatWindDirection(num(t.ventDir));
+      meteo.push('💨 Vent max : ' + Math.round(ventV) + ' km/h' + (dir ? ' (' + dir + ')' : ''));
+      flat.push('vent max ' + Math.round(ventV) + ' km/h');
     }
+    if (pluieV !== null) {
+      meteo.push('🌧️ Pluie : ' + formatNombreFr(pluieV) + ' mm');
+      flat.push('pluie ' + formatNombreFr(pluieV) + ' mm');
+    }
+    const deltaT = formatDeltaT(num(t.deltaTMin), num(t.deltaTMax));
+    if (deltaT) meteo.push('🎯 ' + deltaT);
   } else {
-    lines.push('🌡️ *Température* : donnée météo indisponible');
+    meteo.push('🌡️ *Température* : donnée météo indisponible');
     flat.push('Température indisponible');
   }
+  sections.push(meteo);
 
-  lines.push('');
-
+  // ── Section 2 : fenêtres de traitement ─────────────────────────────────
+  const fenetres = [];
   if (!windows) {
-    lines.push('⚠️ Fenêtres de traitement indisponibles');
+    fenetres.push('⚠️ Fenêtres de traitement indisponibles');
     flat.push('fenêtres de traitement indisponibles');
   } else if (!windows.fenetres.length) {
-    lines.push('🚫 Aucun créneau favorable aujourd\'hui');
-    lines.push('Score du jour : ' + formatScore(windows.score));
+    fenetres.push('🚫 Aucun créneau favorable aujourd\'hui');
+    fenetres.push('Score du jour : ' + formatScore(windows.score));
     flat.push('aucun créneau favorable aujourd\'hui');
     flat.push('score ' + formatScore(windows.score));
   } else {
-    lines.push('✅ *Fenêtres de traitement* :');
+    fenetres.push('✅ *Fenêtres de traitement* :');
     windows.fenetres.forEach(function(f) {
-      lines.push('• ' + formatHeure(f.de) + ' - ' + formatHeure(f.a));
+      fenetres.push('• ' + formatHeure(f.de) + ' - ' + formatHeure(f.a));
     });
-    lines.push('Score du jour : ' + formatScore(windows.score));
+    fenetres.push('Score du jour : ' + formatScore(windows.score));
     flat.push('créneaux ' + windows.fenetres.map(function(f) {
       return formatHeure(f.de) + '-' + formatHeure(f.a);
     }).join(', '));
     flat.push('score ' + formatScore(windows.score));
   }
+  sections.push(fenetres);
 
+  // ── Section 3 : risque maladie ─────────────────────────────────────────
+  const humectation = num(t.humectation);
+  const heuresHr90 = num(t.heuresHr90);
+  const niveau = niveauRisqueMaladie(humectation, heuresHr90);
+  if (niveau) {
+    const detail = [];
+    if (humectation !== null) detail.push('humectation ' + formatNombreFr(humectation));
+    if (heuresHr90 !== null) detail.push('HR>90% ' + formatNombreFr(heuresHr90) + ' h');
+    sections.push([
+      '🍄 *Risque maladie* : ' + niveau,
+      '(' + detail.join(' · ') + ')',
+    ]);
+  }
+
+  // ── Section 4 : irrigation ─────────────────────────────────────────────
+  const etoFao = num(t.etoFao);
+  const humiditeSol = num(t.humiditeSol);
+  const irrigation = [];
+  if (etoFao !== null) irrigation.push('ETo ' + formatNombreFr(etoFao) + ' mm');
+  if (humiditeSol !== null) irrigation.push('humidité sol ' + formatNombreFr(humiditeSol) + '%');
+  if (irrigation.length) {
+    sections.push(['💧 *Irrigation* : ' + irrigation.join(' · ')]);
+  }
+
+  // Le fallback `general_alert` n'a QU'UN paramètre single-line : y déverser les
+  // 4 sections le rendrait illisible sur mobile. On y garde donc l'essentiel
+  // décisionnel (température, vent, pluie, créneaux, score) — inchangé par ce
+  // ticket ; les indicateurs agronomiques ne survivent qu'au template complet.
   const fallbackText = ('Météo & Traitements ' + dateParam + ' : ' + flat.join(', '))
     .replace(/\s+/g, ' ')
     .trim();
 
-  return { dateParam: dateParam, body: lines.join('\n'), fallbackText: fallbackText };
+  const body = sections.map(function(s) { return s.join('\n'); }).join('\n\n');
+  return { dateParam: dateParam, body: body, fallbackText: fallbackText };
 }
 
 /**
@@ -355,13 +660,46 @@ function shouldFallback(outcome) {
 }
 
 /**
+ * Exécute un envoi et le ramène à la forme d'un résultat `Promise.allSettled`,
+ * pour rester compatible avec `shouldFallback` (déjà testé sur cette forme).
+ * @param {() => Promise<*>} fn
+ * @returns {Promise<{status:string, value?:*, reason?:*}>}
+ */
+async function attempt(fn) {
+  try {
+    return { status: 'fulfilled', value: await fn() };
+  } catch (err) {
+    return { status: 'rejected', reason: err };
+  }
+}
+
+/** @param {*} outcome @returns {boolean} */
+function outcomeOk(outcome) {
+  return !!(outcome && outcome.status === 'fulfilled' && outcome.value && outcome.value.success);
+}
+
+/** @param {*} outcome @returns {string} */
+function outcomeError(outcome) {
+  if (!outcome) return '';
+  if (outcome.status === 'rejected') {
+    return String((outcome.reason && outcome.reason.message) || outcome.reason || '');
+  }
+  return String((outcome.value && outcome.value.error) || '');
+}
+
+/**
  * @typedef {Object} MeteoDigestDeps
  * @property {(coords: {lat:number, lon:number, altitude:number}, pkg: string) => Promise<object|null>} getMeteoblue
  * @property {{
  *   resolveRecipientsForProfile: (profileId: string, ferme: string|null) => Promise<Array<object>>,
  *   sendTemplateMessage: (to: string, templateName: string, bodyParams: Array<string>, lang: string|undefined, toName: string|undefined) => Promise<object>,
+ *   sendTemplateMessageWithImage?: (to: string, templateName: string, mediaIdOrRef: *, bodyParams: Array<string>, lang: string|undefined, toName: string|undefined) => Promise<object>,
+ *   uploadMedia?: (buffer: Buffer, mimeType: string, filename: string) => Promise<object>,
  *   toSingleLine: (s: *) => string,
  * }} whatsapp
+ * @property {(svg: string) => Buffer} [renderChartPng] Rendu SVG → PNG. Injecté
+ *   dans les tests pour ne pas dépendre du binaire natif ; par défaut
+ *   `renderPng.renderSvgToPng`.
  * @property {() => Date} [now]
  */
 
@@ -376,14 +714,80 @@ function createMeteoDigestJob(deps) {
   }
   const whatsapp = deps.whatsapp;
   const now = typeof deps.now === 'function' ? deps.now : function() { return new Date(); };
+  const renderChartPng = typeof deps.renderChartPng === 'function'
+    ? deps.renderChartPng
+    : renderPng.renderSvgToPng;
+
+  /**
+   * Fabrique le graphique du jour et le pousse à Meta — UNE seule fois pour
+   * tous les destinataires (le media_id est réutilisable 30 jours).
+   *
+   * Ne lève JAMAIS : le graphique est un bonus, le corps texte est l'essentiel.
+   * Tout échec est journalisé en `console.error` et renvoie `null`, ce qui fait
+   * retomber l'envoi sur le template texte. Un digest qui perdrait
+   * silencieusement son image chaque matin serait un échec invisible.
+   *
+   * @param {string} dateISO
+   * @param {{dateParam: string}} digest
+   * @param {object|null} weatherData
+   * @param {object|null} sprayData
+   * @param {SprayWindows|null} windows
+   * @returns {Promise<string|null>} media_id, ou null si indisponible.
+   */
+  async function prepareChartMedia(dateISO, digest, weatherData, sprayData, windows) {
+    try {
+      if (typeof whatsapp.uploadMedia !== 'function' ||
+          typeof whatsapp.sendTemplateMessageWithImage !== 'function') {
+        throw new Error('whatsappService sans support image (uploadMedia / sendTemplateMessageWithImage)');
+      }
+      // Deux panneaux : aujourd'hui (score déjà calculé pour le texte) et
+      // demain (recalculé ici — le corps du message, lui, ne parle que du jour
+      // même, cf. formatDigest ; seule l'image anticipe le lendemain).
+      const demainISO = nextDayISO(dateISO);
+      const days = [{
+        dateISO: dateISO,
+        dateLabel: digest.dateParam,
+        scoreText: windows ? formatScore(windows.score) : '',
+      }];
+      if (demainISO) {
+        const demainWindows = buildSprayWindows(sprayData, demainISO);
+        days.push({
+          dateISO: demainISO,
+          dateLabel: formatDateParam(demainISO),
+          scoreText: demainWindows ? formatScore(demainWindows.score) : '',
+        });
+      }
+      const svg = sprayChart.buildSprayChartSvg({
+        days: days,
+        weatherData: weatherData,
+        sprayData: sprayData,
+      });
+      const png = renderChartPng(svg);
+      if (!png || !png.length) throw new Error('rendu PNG vide');
+      const uploaded = await whatsapp.uploadMedia(png, renderPng.PNG_MIME, CHART_FILENAME);
+      if (!uploaded || !uploaded.id) {
+        throw new Error('upload sans media_id' + (uploaded && uploaded.error ? ' (' + uploaded.error + ')' : ''));
+      }
+      return uploaded.id;
+    } catch (err) {
+      console.error('[meteoSprayDigest] GRAPHIQUE INDISPONIBLE pour ' + dateISO +
+        ' → repli sur le digest texte seul : ' + (err && err.message));
+      return null;
+    }
+  }
 
   /**
    * @param {string} [dateISO]
-   * @param {{preview?: boolean, checkRecipients?: boolean}} [opts]
+   * @param {{preview?: boolean, checkRecipients?: boolean, only?: string|null}} [opts]
+   *   `only` restreint l'envoi à CE seul profil de l'audience (test sur un
+   *   numéro sans réveiller les chefs). Aucune gate n'est contournée : le
+   *   trigger applique la même vérification de rôle qu'un envoi complet.
    */
   async function run(dateISO, opts) {
     const options = opts || {};
     const day = dateISO || todayCasablancaISO(now());
+    const only = options.only || null;
+    const audience = audienceFor(only);
 
     // Tolérant : une des deux sources peut manquer → cas dégradé, pas de throw.
     const [weatherData, sprayData] = await Promise.all([
@@ -415,7 +819,7 @@ function createMeteoDigestJob(deps) {
       };
     }
 
-    const resolved = await Promise.all(AUDIENCE.map(function(a) {
+    const resolved = await Promise.all(audience.map(function(a) {
       return Promise.resolve()
         .then(function() { return whatsapp.resolveRecipientsForProfile(a.profileId, a.ferme); })
         .catch(function(err) {
@@ -447,6 +851,7 @@ function createMeteoDigestJob(deps) {
         dateISO: day,
         recipientsCount: recipients.length,
         recipients: recipients,
+        restrictedTo: only,
       };
     }
 
@@ -455,43 +860,79 @@ function createMeteoDigestJob(deps) {
         'digest non distribué pour ' + day);
       return {
         dateISO: day, sent: 0, recipientsCount: 0,
-        byProfile: AUDIENCE.map(function(a) {
+        byProfile: audience.map(function(a) {
           return { profileId: a.profileId, ferme: a.ferme, recipientsCount: 0, sent: 0 };
         }),
         fallbackUsed: 0,
+        restrictedTo: only,
       };
     }
 
-    const outcomes = await Promise.allSettled(recipients.map(function(r) {
-      return whatsapp.sendTemplateMessage(
-        r.phone, TEMPLATE_NAME, [digest.dateParam, digest.body], undefined, r.displayName
-      );
+    // Le graphique est produit et uploadé UNE fois pour tout le monde.
+    const mediaId = await prepareChartMedia(day, digest, weatherData, sprayData, windows);
+
+    const bodyParams = [digest.dateParam, digest.body];
+    let fallbackUsed = 0;
+    let imageSent = 0;
+    let degradedToText = 0;
+    const okByPhone = new Map();
+
+    // Chaîne de repli à trois étages. Le CORPS TEXTE est identique aux étages 1
+    // et 2 : il ne peut être perdu que si les deux templates sont refusés, et
+    // l'étage 3 (general_alert) sauve alors l'essentiel décisionnel.
+    const results = await Promise.all(recipients.map(async function(r) {
+      // ── Étage 1 : template avec image ──────────────────────────────────
+      if (mediaId) {
+        const withImage = await attempt(function() {
+          return whatsapp.sendTemplateMessageWithImage(
+            r.phone, IMAGE_TEMPLATE_NAME, mediaId, bodyParams, undefined, r.displayName
+          );
+        });
+        if (outcomeOk(withImage)) return { phone: r.phone, ok: true, image: true, degraded: false, fallback: false };
+        // Toute erreur (template non encore approuvé, media_id périmé, réseau)
+        // dégrade vers le texte : le corps ne doit jamais dépendre de l'image.
+        console.error('[meteoSprayDigest] envoi AVEC IMAGE refusé pour ' + r.phone +
+          ' → repli sur le template texte : ' + outcomeError(withImage));
+      }
+
+      // ── Étage 2 : template texte historique ────────────────────────────
+      const textOutcome = await attempt(function() {
+        return whatsapp.sendTemplateMessage(
+          r.phone, TEMPLATE_NAME, bodyParams, undefined, r.displayName
+        );
+      });
+      if (outcomeOk(textOutcome)) {
+        return { phone: r.phone, ok: true, image: false, degraded: !!mediaId, fallback: false };
+      }
+      if (!shouldFallback(textOutcome)) {
+        return { phone: r.phone, ok: false, image: false, degraded: !!mediaId, fallback: false };
+      }
+
+      // ── Étage 3 : general_alert (mécanisme existant, une seule reprise) ─
+      console.error('[meteoSprayDigest] template texte refusé pour ' + r.phone +
+        ' → repli sur ' + FALLBACK_TEMPLATE_NAME + ' : ' + outcomeError(textOutcome));
+      const retry = await attempt(function() {
+        return whatsapp.sendTemplateMessage(
+          r.phone, FALLBACK_TEMPLATE_NAME,
+          [whatsapp.toSingleLine(digest.fallbackText)], undefined, r.displayName
+        );
+      });
+      if (!outcomeOk(retry) && retry.status === 'rejected') {
+        console.error('[meteoSprayDigest] fallback send failed:', outcomeError(retry));
+      }
+      return {
+        phone: r.phone, ok: outcomeOk(retry), image: false, degraded: !!mediaId, fallback: true,
+      };
     }));
 
-    let fallbackUsed = 0;
-    const okByPhone = new Map();
-    for (let i = 0; i < recipients.length; i++) {
-      const r = recipients[i];
-      const outcome = outcomes[i];
-      let ok = outcome && outcome.status === 'fulfilled' && outcome.value && !!outcome.value.success;
-      if (!ok && shouldFallback(outcome)) {
-        // Template inconnu / format rejeté → une seule reprise via general_alert.
-        fallbackUsed++;
-        try {
-          const retry = await whatsapp.sendTemplateMessage(
-            r.phone, FALLBACK_TEMPLATE_NAME,
-            [whatsapp.toSingleLine(digest.fallbackText)], undefined, r.displayName
-          );
-          ok = !!(retry && retry.success);
-        } catch (err) {
-          console.error('[meteoSprayDigest] fallback send failed:', err && err.message);
-          ok = false;
-        }
-      }
-      okByPhone.set(r.phone, ok);
-    }
+    results.forEach(function(res) {
+      okByPhone.set(res.phone, res.ok);
+      if (res.fallback) fallbackUsed++;
+      if (res.ok && res.image) imageSent++;
+      if (res.ok && !res.image && res.degraded) degradedToText++;
+    });
 
-    const byProfile = AUDIENCE.map(function(a) {
+    const byProfile = audience.map(function(a) {
       const mine = recipients.filter(function(r) { return r.profileId === a.profileId; });
       return {
         profileId: a.profileId,
@@ -505,7 +946,8 @@ function createMeteoDigestJob(deps) {
     // Un destinataire non servi = digest non délivré : ça doit remonter en
     // erreur dans les logs, pas se noyer dans un console.log de routine.
     const logLine = '[meteoSprayDigest] ' + day + ': sent=' + sent + '/' + recipients.length +
-      ' fallback=' + fallbackUsed;
+      ' image=' + imageSent + ' texte=' + degradedToText + ' fallback=' + fallbackUsed +
+      (only ? ' [ENVOI RESTREINT À ' + only + ']' : '');
     if (sent < recipients.length) {
       console.error(logLine + ' — ENVOI INCOMPLET');
     } else {
@@ -517,6 +959,12 @@ function createMeteoDigestJob(deps) {
       recipientsCount: recipients.length,
       byProfile: byProfile,
       fallbackUsed: fallbackUsed,
+      chartAvailable: !!mediaId,
+      imageSent: imageSent,
+      degradedToText: degradedToText,
+      // Trace explicite : en relisant les logs, un test restreint ne doit pas
+      // pouvoir passer pour un envoi complet.
+      restrictedTo: only,
     };
   }
 
@@ -529,14 +977,30 @@ module.exports = {
   COORDS,
   AUDIENCE,
   TEMPLATE_NAME,
+  IMAGE_TEMPLATE_NAME,
+  CHART_FILENAME,
   FALLBACK_TEMPLATE_NAME,
   FALLBACK_ERROR_CODES,
   TRIGGER_SEND_ROLES,
+  AUDIENCE_PROFILE_IDS,
+  parseOnlyProfile,
+  audienceFor,
   isRealSend,
   shouldFallback,
   todayCasablancaISO,
   formatDateParam,
+  nextDayISO,
   scoreLabel,
+  formatNombreFr,
+  formatWindDirection,
+  deltaTZone,
+  formatDeltaT,
+  niveauRisqueMaladie,
+  DELTA_T_LABEL,
+  DELTA_T_IDEAL_MIN,
+  DELTA_T_IDEAL_MAX,
+  RISQUE_MALADIE_SEUIL_MODERE,
+  RISQUE_MALADIE_SEUIL_ELEVE,
   buildSprayWindows,
   buildTempSummary,
   formatDigest,
