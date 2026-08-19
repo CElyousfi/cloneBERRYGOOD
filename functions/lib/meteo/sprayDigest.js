@@ -324,6 +324,20 @@ function niveauRisqueMaladie(humectation, heuresHr90) {
 }
 
 /**
+ * Lendemain d'une date ISO (YYYY-MM-DD), en arithmétique UTC pure — le
+ * graphique du digest couvre aujourd'hui ET demain.
+ * @param {string} dateISO
+ * @returns {string} '' si l'entrée n'est pas une date ISO.
+ */
+function nextDayISO(dateISO) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateISO || ''));
+  if (!m) return '';
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * « Jeu 14/08 » depuis une date ISO. Parsing manuel (pas de `new Date(iso)`)
  * pour rester indépendant du fuseau du process.
  * @param {string} dateISO
@@ -671,12 +685,27 @@ function createMeteoDigestJob(deps) {
           typeof whatsapp.sendTemplateMessageWithImage !== 'function') {
         throw new Error('whatsappService sans support image (uploadMedia / sendTemplateMessageWithImage)');
       }
-      const svg = sprayChart.buildSprayChartSvg({
+      // Deux panneaux : aujourd'hui (score déjà calculé pour le texte) et
+      // demain (recalculé ici — le corps du message, lui, ne parle que du jour
+      // même, cf. formatDigest ; seule l'image anticipe le lendemain).
+      const demainISO = nextDayISO(dateISO);
+      const days = [{
         dateISO: dateISO,
-        weatherData: weatherData,
-        sprayData: sprayData,
         dateLabel: digest.dateParam,
         scoreText: windows ? formatScore(windows.score) : '',
+      }];
+      if (demainISO) {
+        const demainWindows = buildSprayWindows(sprayData, demainISO);
+        days.push({
+          dateISO: demainISO,
+          dateLabel: formatDateParam(demainISO),
+          scoreText: demainWindows ? formatScore(demainWindows.score) : '',
+        });
+      }
+      const svg = sprayChart.buildSprayChartSvg({
+        days: days,
+        weatherData: weatherData,
+        sprayData: sprayData,
       });
       const png = renderChartPng(svg);
       if (!png || !png.length) throw new Error('rendu PNG vide');
@@ -891,6 +920,7 @@ module.exports = {
   shouldFallback,
   todayCasablancaISO,
   formatDateParam,
+  nextDayISO,
   scoreLabel,
   formatNombreFr,
   formatWindDirection,

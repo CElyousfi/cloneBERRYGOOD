@@ -13,6 +13,7 @@ const {
   buildTempSummary,
   formatDigest,
   formatDateParam,
+  nextDayISO,
   scoreLabel,
   formatWindDirection,
   deltaTZone,
@@ -732,8 +733,77 @@ test('run: le SVG rendu porte bien la date, le score et les bandes du jour', asy
 
   assert.ok(svg.startsWith('<svg'));
   assert.ok(svg.includes('Ven 14/08'), 'même libellé de date que le corps texte');
-  assert.ok(/Score du jour : \d+% \(/.test(svg), 'score repris du même calcul que le texte');
+  assert.ok(/Score : \d+% \(/.test(svg), 'score repris du même calcul que le texte');
   assert.ok(svg.includes('#2D8B4E'), 'les créneaux favorables 8h/9h apparaissent en vert');
+  assert.doesNotMatch(svg, /NaN|undefined/);
+});
+
+test('nextDayISO : lendemain correct, y compris fin de mois et année bissextile', () => {
+  assert.equal(nextDayISO('2026-08-14'), '2026-08-15');
+  assert.equal(nextDayISO('2026-08-31'), '2026-09-01');
+  assert.equal(nextDayISO('2026-12-31'), '2027-01-01');
+  assert.equal(nextDayISO('2024-02-28'), '2024-02-29', 'année bissextile');
+  assert.equal(nextDayISO('2026-02-28'), '2026-03-01');
+  assert.equal(nextDayISO('pas une date'), '');
+  assert.equal(nextDayISO(undefined), '');
+});
+
+test('run: le graphique couvre AUJOURD\'HUI ET DEMAIN, avec le score de chacun', async () => {
+  // Demain volontairement plus favorable qu'aujourd'hui : les deux scores
+  // doivent apparaître, calculés séparément.
+  const demain = nextDayISO(DAY);
+  const weather2j = weatherPayload([
+    { time: DAY, tMin: 17, tMax: 29, vent: 12, pluie: 0, picto: 1 },
+    { time: demain, tMin: 19, tMax: 33, vent: 8, pluie: 0, picto: 1 },
+  ]);
+  const spray2j = {
+    data_1h: {
+      time: SPRAY.data_1h.time.concat(
+        sprayPayload(workDay(1), demain).data_1h.time
+      ),
+      spraywindow: SPRAY.data_1h.spraywindow.concat(
+        sprayPayload(workDay(1), demain).data_1h.spraywindow
+      ),
+    },
+  };
+
+  let svg = null;
+  const whatsapp = makeWhatsappImageStub(RECIPIENTS_2);
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(weather2j, spray2j),
+    whatsapp,
+    renderChartPng: (s) => { svg = s; return FAKE_PNG; },
+  });
+  const res = await job.run(DAY);
+
+  assert.equal(res.imageSent, 2);
+  assert.ok(svg.includes('>Ven 14/08</text>'), 'panneau du jour');
+  assert.ok(svg.includes('>Sam 15/08</text>'), 'panneau de demain');
+  // Aujourd'hui : 2 créneaux favorables sur 15 → 13%. Demain : 15/15 → 100%.
+  assert.ok(svg.includes('Score : 13% (Défavorable)'), 'score du jour');
+  assert.ok(svg.includes('Score : 100% (Favorable)'), 'score de demain');
+  assert.doesNotMatch(svg, /NaN|undefined/);
+  // Le CORPS TEXTE, lui, ne parle toujours que du jour même : le graphique
+  // anticipe, le message non (aucun changement de contrat côté texte).
+  whatsapp.sends.forEach((snd) => {
+    assert.equal(snd.bodyParams[0], 'Ven 14/08');
+    assert.ok(!/15\/08/.test(snd.bodyParams[1]), 'le corps ne parle pas de demain');
+  });
+});
+
+test('run: sans données pour demain, le graphique part quand même avec le seul panneau du jour', async () => {
+  let svg = null;
+  const job = createMeteoDigestJob({
+    getMeteoblue: makeGetMeteoblue(WEATHER, SPRAY), // aucune heure pour J+1
+    whatsapp: makeWhatsappImageStub(RECIPIENTS_2),
+    renderChartPng: (s) => { svg = s; return FAKE_PNG; },
+  });
+  const res = await job.run(DAY);
+
+  assert.equal(res.chartAvailable, true, 'un demain vide ne doit pas annuler l\'image');
+  assert.equal(res.imageSent, 2);
+  assert.ok(svg.includes('>Sam 15/08</text>'), 'le panneau de demain reste étiqueté');
+  assert.ok(svg.includes('Température horaire indisponible'));
   assert.doesNotMatch(svg, /NaN|undefined/);
 });
 

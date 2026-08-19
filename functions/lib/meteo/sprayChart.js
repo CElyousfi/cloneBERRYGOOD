@@ -9,9 +9,16 @@
  *
  * Le dessin reprend la sémantique de deux blocs de l'écran Météo
  * (`public/app.jsx`) :
- * - la courbe de température horaire du panneau « Prévision extérieure »
- *   (mêmes viewBox 900×360 et mêmes marges) ;
- * - la timeline AgroSpray 6h-20h (mêmes couleurs et mêmes opacités par niveau).
+ * - la courbe de température horaire du panneau « Prévision extérieure » ;
+ * - la timeline AgroSpray 6h-20h (mêmes couleurs par niveau).
+ *
+ * ── Deux journées côte à côte ───────────────────────────────────────────────
+ * Le graphique porte AUJOURD'HUI puis DEMAIN sur la même image, dans deux
+ * panneaux séparés par une gouttière et un trait vertical. Chaque panneau est
+ * cadré 6h → 21h et porte son propre libellé de jour et son propre score.
+ * L'axe des °C est COMMUN aux deux journées (une seule échelle, graduée à
+ * gauche) : deux échelles indépendantes feraient paraître une journée à 18 °C
+ * aussi chaude qu'une journée à 32 °C.
  *
  * ── Convention d'axe (importante) ───────────────────────────────────────────
  * L'axe X couvre les heures 6 → 21. Ce n'est pas une coquille : `spraywindow`
@@ -24,10 +31,15 @@
  * est posé sur l'abscisse de `h`, pas au centre de la bande.
  */
 
-/** Géométrie — identique au graphique « Prévision extérieure » de l'écran. */
-const WIDTH = 900;
-const HEIGHT = 360;
-const MARGIN = Object.freeze({ t: 24, b: 36, l: 78, r: 96 });
+/** Géométrie — élargie pour loger deux journées côte à côte. */
+const WIDTH = 1200;
+const HEIGHT = 400;
+/** `t` couvre le bandeau de titre ET le bandeau d'en-tête de chaque panneau. */
+const MARGIN = Object.freeze({ t: 48, b: 36, l: 78, r: 20 });
+/** Hauteur du bandeau de titre global (titre + légende). */
+const TITLE_H = 24;
+/** Gouttière entre les deux panneaux — porte le trait de séparation. */
+const PANEL_GAP = 34;
 
 /** Première heure ouvrée affichée (cf. sprayDigest.WORK_HOUR_START). */
 const WORK_HOUR_START = 6;
@@ -36,12 +48,25 @@ const WORK_HOUR_END = 20;
 /** Borne droite de l'axe : fin du créneau de la dernière heure ouvrée. */
 const AXIS_HOUR_END = WORK_HOUR_END + 1;
 
-/** Couleurs des bandes AgroSpray — identiques à la timeline de public/app.jsx. */
+/**
+ * Couleurs des bandes AgroSpray — TEINTES identiques à la timeline de
+ * public/app.jsx. Les OPACITÉS, elles, sont nettement plus basses que celles de
+ * l'écran (0.8 / 0.6 / 0.4) : sur le PNG WhatsApp, à pleine opacité, le bloc
+ * rouge écrasait la courbe de température, qui est pourtant l'information
+ * principale. Ces valeurs gardent les bandes lisibles en fond tout en laissant
+ * la courbe au premier plan.
+ */
 const BAND_COLORS = Object.freeze({
-  1: { fill: '#2D8B4E', opacity: 0.8, label: 'Favorable' },
-  2: { fill: '#F39C12', opacity: 0.6, label: 'Modéré' },
-  0: { fill: '#E74C3C', opacity: 0.4, label: 'Défavorable' },
+  1: { fill: '#2D8B4E', opacity: 0.3, label: 'Favorable' },
+  2: { fill: '#F39C12', opacity: 0.24, label: 'Modéré' },
+  0: { fill: '#E74C3C', opacity: 0.2, label: 'Défavorable' },
 });
+
+/**
+ * Opacité des pastilles de légende. Volontairement DÉCOUPLÉE de celle des
+ * bandes : un carré de 10 px à 0.2 d'opacité sur fond noir est invisible.
+ */
+const LEGEND_OPACITY = 0.9;
 
 /** Palette sombre (lisibilité WhatsApp, choix produit d'Omar). */
 const THEME = Object.freeze({
@@ -170,16 +195,45 @@ function textEl(x, y, content, opt) {
 }
 
 /**
- * @typedef {Object} SprayChartInput
- * @property {string} dateISO      Jour tracé (YYYY-MM-DD).
- * @property {object|null} [weatherData] Package weather brut (`data_1h`).
- * @property {object|null} [sprayData]   Package spray brut (`data_1h`).
- * @property {string} [dateLabel]  Libellé lisible (ex. « Jeu 14/08 »).
- * @property {string} [scoreText]  Score déjà mis en forme (ex. « 62% (Partiel) »).
+ * @typedef {Object} SprayChartDay
+ * @property {string} dateISO     Jour tracé (YYYY-MM-DD).
+ * @property {string} [dateLabel] Libellé lisible (ex. « Jeu 14/08 »).
+ * @property {string} [scoreText] Score déjà mis en forme (ex. « 62% (Partiel) »).
  */
 
 /**
- * Construit le SVG du graphique horaire du jour.
+ * @typedef {Object} SprayChartInput
+ * @property {Array<SprayChartDay>} [days] Journées à tracer, de gauche à
+ *   droite (aujourd'hui puis demain). 1 ou 2 panneaux.
+ * @property {object|null} [weatherData] Package weather brut (`data_1h`),
+ *   couvrant les deux journées (Meteoblue renvoie 7 jours).
+ * @property {object|null} [sprayData]   Package spray brut (`data_1h`).
+ * @property {string} [dateISO]   Forme mono-journée (rétro-compatible).
+ * @property {string} [dateLabel] Idem.
+ * @property {string} [scoreText] Idem.
+ */
+
+/**
+ * Normalise l'entrée en une liste de journées non vide.
+ * @param {SprayChartInput} cfg
+ * @returns {Array<SprayChartDay>}
+ */
+function normalizeDays(cfg) {
+  const list = Array.isArray(cfg.days) && cfg.days.length
+    ? cfg.days
+    : [{ dateISO: cfg.dateISO, dateLabel: cfg.dateLabel, scoreText: cfg.scoreText }];
+  return list.slice(0, 2).map(function(d) {
+    const day = d || {};
+    return {
+      dateISO: String(day.dateISO || ''),
+      dateLabel: String(day.dateLabel || day.dateISO || '—'),
+      scoreText: day.scoreText ? String(day.scoreText) : '',
+    };
+  });
+}
+
+/**
+ * Construit le SVG du graphique horaire (aujourd'hui + demain).
  *
  * Ne lève jamais : une entrée vide produit un graphique valide portant un
  * message d'indisponibilité (le digest doit partir même sans données horaires).
@@ -189,19 +243,30 @@ function textEl(x, y, content, opt) {
  */
 function buildSprayChartSvg(input) {
   const cfg = input || /** @type {SprayChartInput} */ ({});
-  const dateISO = String(cfg.dateISO || '');
-  const temps = extractHourlyTemperatures(cfg.weatherData, dateISO);
-  const bands = extractSprayHours(cfg.sprayData, dateISO);
+  const days = normalizeDays(cfg);
+
+  const series = days.map(function(day) {
+    return {
+      day: day,
+      temps: extractHourlyTemperatures(cfg.weatherData, day.dateISO),
+      bands: extractSprayHours(cfg.sprayData, day.dateISO),
+    };
+  });
 
   const innerW = WIDTH - MARGIN.l - MARGIN.r;
   const innerH = HEIGHT - MARGIN.t - MARGIN.b;
+  const panelW = (innerW - PANEL_GAP * (series.length - 1)) / series.length;
   const hourSpan = AXIS_HOUR_END - WORK_HOUR_START;
-  const cellW = innerW / hourSpan;
-  /** Abscisse d'une heure (bornes de bande ET points de courbe). */
-  const xAt = function(hour) { return MARGIN.l + (hour - WORK_HOUR_START) * cellW; };
+  const cellW = panelW / hourSpan;
+  /** Abscisse gauche du panneau `i`. */
+  const panelX = function(i) { return MARGIN.l + i * (panelW + PANEL_GAP); };
+  /** Abscisse d'une heure DANS le panneau `i` (bornes de bande et points). */
+  const xAt = function(i, hour) { return panelX(i) + (hour - WORK_HOUR_START) * cellW; };
 
-  // Axe des °C : cadré sur les données, avec une amplitude plancher.
-  const values = temps.map(function(p) { return p.temp; });
+  // Axe des °C : COMMUN aux deux journées, cadré sur l'union des valeurs.
+  const values = series.reduce(function(acc, s) {
+    return acc.concat(s.temps.map(function(p) { return p.temp; }));
+  }, /** @type {Array<number>} */ ([]));
   const rawMin = values.length ? Math.min.apply(null, values) : 0;
   const rawMax = values.length ? Math.max.apply(null, values) : 0;
   let tLo = Math.floor(rawMin - 1);
@@ -222,87 +287,118 @@ function buildSprayChartSvg(input) {
     '" viewBox="0 0 ' + WIDTH + ' ' + HEIGHT + '">');
   parts.push('<rect x="0" y="0" width="' + WIDTH + '" height="' + HEIGHT + '" fill="' + THEME.bg + '"/>');
 
-  // ── Bandeau titre : date à gauche, légende au centre, score à droite ──────
-  parts.push('<rect x="0" y="0" width="' + WIDTH + '" height="' + MARGIN.t + '" fill="' + THEME.band + '"/>');
-  parts.push(textEl(10, 16, 'Météo & Traitements — ' + (cfg.dateLabel || dateISO || '—'),
-    { size: 12, weight: 700 }));
-  if (cfg.scoreText) {
-    parts.push(textEl(WIDTH - 10, 16, 'Score du jour : ' + cfg.scoreText,
-      { size: 12, weight: 700, anchor: 'end' }));
-  }
-  let legendX = 372;
+  // ── Bandeau titre : intitulé à gauche, légende à droite ───────────────────
+  parts.push('<rect x="0" y="0" width="' + WIDTH + '" height="' + TITLE_H + '" fill="' + THEME.band + '"/>');
+  parts.push(textEl(10, 16, 'Météo & Traitements', { size: 12, weight: 700 }));
+  let legendX = WIDTH - 330;
   [1, 2, 0].forEach(function(level) {
     const b = BAND_COLORS[level];
     parts.push('<rect x="' + coord(legendX) + '" y="7" width="10" height="10" rx="2" fill="' + b.fill +
-      '" fill-opacity="' + b.opacity + '"/>');
+      '" fill-opacity="' + LEGEND_OPACITY + '"/>');
     parts.push(textEl(legendX + 14, 16, b.label, { size: 10, fill: THEME.muted }));
     legendX += 14 + b.label.length * 6 + 14;
   });
 
-  // ── Bandes AgroSpray en fond : une par créneau horaire ────────────────────
-  bands.forEach(function(b) {
-    const style = BAND_COLORS[b.value];
-    if (!style) return;
-    parts.push('<rect x="' + coord(xAt(b.hour)) + '" y="' + coord(MARGIN.t) +
-      '" width="' + coord(cellW) + '" height="' + coord(innerH) +
-      '" fill="' + style.fill + '" fill-opacity="' + style.opacity + '"/>');
-  });
-
-  // ── Grille horizontale + graduations °C ───────────────────────────────────
-  for (let i = 0; i <= 4; i++) {
-    const y = MARGIN.t + innerH * (i / 4);
-    const v = tHi - (tHi - tLo) * (i / 4);
-    parts.push('<line x1="' + coord(MARGIN.l) + '" y1="' + coord(y) + '" x2="' + coord(WIDTH - MARGIN.r) +
-      '" y2="' + coord(y) + '" stroke="' + THEME.grid + '" stroke-width="1"/>');
-    parts.push(textEl(MARGIN.l - 8, y + 4, Math.round(v) + '°', { size: 11, fill: THEME.muted, anchor: 'end' }));
-  }
-  parts.push('<line x1="' + coord(MARGIN.l) + '" y1="' + coord(MARGIN.t + innerH) +
-    '" x2="' + coord(WIDTH - MARGIN.r) + '" y2="' + coord(MARGIN.t + innerH) +
-    '" stroke="' + THEME.axis + '" stroke-width="1"/>');
-
-  // ── Graduations horaires, toutes les 2 h ──────────────────────────────────
-  for (let h = WORK_HOUR_START; h <= AXIS_HOUR_END; h += 2) {
-    parts.push('<line x1="' + coord(xAt(h)) + '" y1="' + coord(MARGIN.t) + '" x2="' + coord(xAt(h)) +
-      '" y2="' + coord(MARGIN.t + innerH) + '" stroke="' + THEME.grid + '" stroke-width="1"/>');
-    parts.push(textEl(xAt(h), HEIGHT - 14, String(h) + 'h',
-      { size: 11, fill: THEME.muted, anchor: 'middle' }));
-  }
-  // Unité de l'axe, à la verticale dans la marge gauche (comme l'écran). Posée
-  // à plat au-dessus des graduations, elle chevauchait le bandeau de titre.
+  // ── Unité de l'axe des °C, à la verticale dans la marge gauche ────────────
   const unitY = MARGIN.t + innerH / 2;
   parts.push('<text x="' + coord(MARGIN.l - 40) + '" y="' + coord(unitY) +
     '" font-size="11" fill="' + THEME.temp + '" text-anchor="middle" font-weight="700"' +
     ' transform="rotate(-90 ' + coord(MARGIN.l - 40) + ' ' + coord(unitY) + ')">°C</text>');
 
-  // ── Courbe de température ─────────────────────────────────────────────────
-  if (temps.length >= 2) {
-    const d = temps.map(function(p, i) {
-      return (i === 0 ? 'M' : 'L') + coord(xAt(p.hour)) + ',' + coord(yAt(p.temp));
-    }).join(' ');
-    parts.push('<path d="' + d + '" fill="none" stroke="' + THEME.temp +
-      '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>');
+  // ── Graduations °C : étiquetées UNE seule fois, à gauche du 1er panneau ───
+  for (let i = 0; i <= 4; i++) {
+    const y = MARGIN.t + innerH * (i / 4);
+    const v = tHi - (tHi - tLo) * (i / 4);
+    parts.push(textEl(MARGIN.l - 8, y + 4, Math.round(v) + '°',
+      { size: 11, fill: THEME.muted, anchor: 'end' }));
   }
 
-  // ── Annotations min / max ─────────────────────────────────────────────────
-  if (temps.length) {
-    const minPt = temps.reduce(function(a, b) { return b.temp < a.temp ? b : a; }, temps[0]);
-    const maxPt = temps.reduce(function(a, b) { return b.temp > a.temp ? b : a; }, temps[0]);
-    [
-      { pt: maxPt, dy: -12, label: 'max ' + Math.round(maxPt.temp) + '°C' },
-      { pt: minPt, dy: 18, label: 'min ' + Math.round(minPt.temp) + '°C' },
-    ].forEach(function(a) {
-      const x = xAt(a.pt.hour);
-      parts.push('<circle cx="' + coord(x) + '" cy="' + coord(yAt(a.pt.temp)) +
-        '" r="4" fill="' + THEME.temp + '" stroke="' + THEME.bg + '" stroke-width="1.5"/>');
-      // Ancrage rabattu près des bords pour que le libellé reste dans le cadre.
-      const anchor = x < MARGIN.l + 40 ? 'start' : (x > WIDTH - MARGIN.r - 40 ? 'end' : 'middle');
-      parts.push(textEl(x, yAt(a.pt.temp) + a.dy, a.label,
-        { size: 11, fill: THEME.text, weight: 700, anchor: anchor }));
+  series.forEach(function(s, idx) {
+    const x0 = panelX(idx);
+    const x1 = x0 + panelW;
+
+    // ── En-tête du panneau : nom du jour à gauche, score à droite ───────────
+    parts.push('<rect x="' + coord(x0) + '" y="' + coord(TITLE_H) + '" width="' + coord(panelW) +
+      '" height="' + coord(MARGIN.t - TITLE_H) + '" fill="' + THEME.band + '"/>');
+    parts.push(textEl(x0 + 6, TITLE_H + 16, s.day.dateLabel, { size: 13, weight: 700 }));
+    if (s.day.scoreText) {
+      parts.push(textEl(x1 - 6, TITLE_H + 16, 'Score : ' + s.day.scoreText,
+        { size: 12, weight: 700, anchor: 'end' }));
+    }
+
+    // ── Bandes AgroSpray en fond : une par créneau horaire ─────────────────
+    s.bands.forEach(function(b) {
+      const style = BAND_COLORS[b.value];
+      if (!style) return;
+      parts.push('<rect x="' + coord(xAt(idx, b.hour)) + '" y="' + coord(MARGIN.t) +
+        '" width="' + coord(cellW) + '" height="' + coord(innerH) +
+        '" fill="' + style.fill + '" fill-opacity="' + style.opacity + '"/>');
     });
-  } else {
-    parts.push(textEl(MARGIN.l + innerW / 2, MARGIN.t + innerH / 2,
-      'Température horaire indisponible', { size: 14, fill: THEME.muted, anchor: 'middle', weight: 700 }));
-  }
+
+    // ── Grille horizontale, bornée au panneau ──────────────────────────────
+    for (let i = 0; i <= 4; i++) {
+      const y = MARGIN.t + innerH * (i / 4);
+      parts.push('<line x1="' + coord(x0) + '" y1="' + coord(y) + '" x2="' + coord(x1) +
+        '" y2="' + coord(y) + '" stroke="' + THEME.grid + '" stroke-width="1"/>');
+    }
+    parts.push('<line x1="' + coord(x0) + '" y1="' + coord(MARGIN.t + innerH) +
+      '" x2="' + coord(x1) + '" y2="' + coord(MARGIN.t + innerH) +
+      '" stroke="' + THEME.axis + '" stroke-width="1"/>');
+
+    // ── Graduations horaires, toutes les 2 h ───────────────────────────────
+    for (let h = WORK_HOUR_START; h <= AXIS_HOUR_END; h += 2) {
+      parts.push('<line x1="' + coord(xAt(idx, h)) + '" y1="' + coord(MARGIN.t) +
+        '" x2="' + coord(xAt(idx, h)) + '" y2="' + coord(MARGIN.t + innerH) +
+        '" stroke="' + THEME.grid + '" stroke-width="1"/>');
+      parts.push(textEl(xAt(idx, h), HEIGHT - 14, String(h) + 'h',
+        { size: 11, fill: THEME.muted, anchor: 'middle' }));
+    }
+
+    // ── Courbe de température ──────────────────────────────────────────────
+    if (s.temps.length >= 2) {
+      const d = s.temps.map(function(p, i) {
+        return (i === 0 ? 'M' : 'L') + coord(xAt(idx, p.hour)) + ',' + coord(yAt(p.temp));
+      }).join(' ');
+      parts.push('<path d="' + d + '" fill="none" stroke="' + THEME.temp +
+        '" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>');
+    }
+
+    // ── Annotations min / max ──────────────────────────────────────────────
+    if (s.temps.length) {
+      const minPt = s.temps.reduce(function(a, b) { return b.temp < a.temp ? b : a; }, s.temps[0]);
+      const maxPt = s.temps.reduce(function(a, b) { return b.temp > a.temp ? b : a; }, s.temps[0]);
+      [
+        { pt: maxPt, dy: -12, label: 'max ' + Math.round(maxPt.temp) + '°C' },
+        { pt: minPt, dy: 18, label: 'min ' + Math.round(minPt.temp) + '°C' },
+      ].forEach(function(a) {
+        const x = xAt(idx, a.pt.hour);
+        parts.push('<circle cx="' + coord(x) + '" cy="' + coord(yAt(a.pt.temp)) +
+          '" r="4" fill="' + THEME.temp + '" stroke="' + THEME.bg + '" stroke-width="1.5"/>');
+        // Ancrage rabattu près des bords DU PANNEAU pour rester dans le cadre.
+        const anchor = x < x0 + 40 ? 'start' : (x > x1 - 40 ? 'end' : 'middle');
+        // Idem verticalement : un minimum atteint en bas d'échelle poussait son
+        // libellé sous l'axe, à cheval sur les graduations horaires.
+        const labelY = Math.min(
+          Math.max(yAt(a.pt.temp) + a.dy, MARGIN.t + 12),
+          MARGIN.t + innerH - 5
+        );
+        parts.push(textEl(x, labelY, a.label,
+          { size: 11, fill: THEME.text, weight: 700, anchor: anchor }));
+      });
+    } else {
+      parts.push(textEl(x0 + panelW / 2, MARGIN.t + innerH / 2,
+        'Température horaire indisponible',
+        { size: 14, fill: THEME.muted, anchor: 'middle', weight: 700 }));
+    }
+
+    // ── Séparation nette entre les deux journées ───────────────────────────
+    if (idx < series.length - 1) {
+      const sepX = x1 + PANEL_GAP / 2;
+      parts.push('<line x1="' + coord(sepX) + '" y1="' + coord(TITLE_H) +
+        '" x2="' + coord(sepX) + '" y2="' + coord(HEIGHT - MARGIN.b + 6) +
+        '" stroke="' + THEME.axis + '" stroke-width="2"/>');
+    }
+  });
 
   parts.push('</svg>');
   return parts.join('');
@@ -312,10 +408,13 @@ module.exports = {
   WIDTH,
   HEIGHT,
   MARGIN,
+  TITLE_H,
+  PANEL_GAP,
   WORK_HOUR_START,
   WORK_HOUR_END,
   AXIS_HOUR_END,
   BAND_COLORS,
+  LEGEND_OPACITY,
   THEME,
   escapeXml,
   extractHourlyTemperatures,
