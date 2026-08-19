@@ -369,6 +369,99 @@ async function sendTemplateMessageWithDocument(to, templateName, mediaIdOrRef, f
 }
 
 /**
+ * Send a template message with an IMAGE header referencing either an uploaded
+ * media_id or a public link. Business-initiated equivalent of sendImageMessage
+ * (which only works inside the 24h session window). The template must be
+ * registered with a header of format IMAGE.
+ *
+ * Copie conforme de sendTemplateMessageWithDocument à deux écarts près :
+ *  - le paramètre de header est `{ type: "image", image: … }` ;
+ *  - PAS de `filename` : Meta rejette ce champ sur un header IMAGE.
+ *
+ * @param {string} to - E.164 phone
+ * @param {string} templateName
+ * @param {string|object} mediaIdOrRef - Either a media_id string, or { mediaId } / { link }.
+ * @param {Array<string>} [bodyParams]
+ * @param {string} [lang]
+ * @param {string} [toName]
+ */
+async function sendTemplateMessageWithImage(to, templateName, mediaIdOrRef, bodyParams = [], lang, toName) {
+  const config = await getWhatsAppConfig();
+  if (!config || !config.enabled) {
+    return { success: false, error: "WhatsApp non configuré ou désactivé" };
+  }
+
+  const phone = formatPhoneE164(to);
+  if (!phone) return { success: false, error: "Numéro invalide: " + to };
+
+  // Normalize the image reference: accept legacy string media_id or { mediaId | link }.
+  let imgRef;
+  if (typeof mediaIdOrRef === "string") {
+    imgRef = { id: mediaIdOrRef };
+  } else if (mediaIdOrRef && mediaIdOrRef.mediaId) {
+    imgRef = { id: mediaIdOrRef.mediaId };
+  } else if (mediaIdOrRef && mediaIdOrRef.link) {
+    imgRef = { link: mediaIdOrRef.link };
+  } else {
+    return { success: false, error: "Référence image manquante (mediaId ou link)" };
+  }
+
+  const language = lang || config.default_language || "fr";
+  const components = [
+    {
+      type: "header",
+      parameters: [{ type: "image", image: imgRef }],
+    },
+  ];
+  if (bodyParams.length > 0) {
+    const sanitized = bodyParams.map(text => {
+      const str = String(text ?? "").trim();
+      return { type: "text", text: str || "—" };
+    });
+    components.push({ type: "body", parameters: sanitized });
+  }
+
+  const payload = {
+    messaging_product: "whatsapp",
+    to: phone,
+    type: "template",
+    template: {
+      name: templateName,
+      language: { code: language },
+      components,
+    },
+  };
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v21.0/${config.phone_number_id}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${config.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+    const data = await response.json();
+    if (!response.ok) {
+      const errMsg = data.error?.message || JSON.stringify(data);
+      console.error(`WhatsApp img-template send failed [${templateName}] to ${phone}:`, errMsg);
+      await logMessage(phone, templateName, null, "failed", errMsg, null, bodyParams, toName);
+      return { success: false, error: errMsg };
+    }
+    const waMessageId = data.messages?.[0]?.id || null;
+    await logMessage(phone, templateName, null, "sent", null, waMessageId, bodyParams, toName);
+    return { success: true, waMessageId };
+  } catch (err) {
+    console.error(`WhatsApp img-template send error [${templateName}] to ${phone}:`, err.message);
+    await logMessage(phone, templateName, null, "failed", err.message, null, null, toName);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Download media by mediaId via Graph API (2-step: resolve URL, then GET bytes).
  * Returns { buffer, mimeType, sha256 } or { error }.
  */
@@ -510,6 +603,7 @@ module.exports = {
   sendDocumentMessage,
   uploadMedia,
   sendTemplateMessageWithDocument,
+  sendTemplateMessageWithImage,
   downloadMedia,
   resolveRecipientsForProfile,
   logMessage,
