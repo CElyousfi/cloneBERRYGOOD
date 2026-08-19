@@ -197,6 +197,19 @@ test('AUCUN NaN / undefined / null dans le SVG produit', () => {
   });
 });
 
+test('graduations °C entières : aucune ligne étiquetée à un demi-degré près', () => {
+  // Amplitude brute 19 → 29 = 10, non divisible par les 4 intervalles de la
+  // grille : sans correction, la 2e ligne vaut 26,5° et s'afficherait « 27° ».
+  const svg = buildSprayChartSvg({ dateISO: DAY, weatherData: weatherPackage({ 6: 20, 12: 28, 20: 22 }) });
+  const labels = (svg.match(/>(-?\d+)°<\/text>/g) || []).map((m) => Number(/(-?\d+)/.exec(m)[1]));
+  assert.equal(labels.length, 5, '5 graduations');
+  const pas = labels[0] - labels[1];
+  labels.forEach((v, i) => {
+    if (i > 0) assert.equal(labels[i - 1] - v, pas, 'pas constant et entier');
+  });
+  assert.ok(Number.isInteger(pas) && pas > 0);
+});
+
 test('journée plate : amplitude d\'axe plancher, pas de division par zéro', () => {
   const svg = buildSprayChartSvg({ dateISO: DAY, weatherData: weatherPackage({ 6: 20, 7: 20, 8: 20 }) });
   assert.doesNotMatch(svg, /NaN/);

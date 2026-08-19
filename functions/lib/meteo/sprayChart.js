@@ -211,6 +211,10 @@ function buildSprayChartSvg(input) {
     tLo = Math.floor(mid - MIN_TEMP_SPAN / 2);
     tHi = tLo + MIN_TEMP_SPAN;
   }
+  // Amplitude ramenée à un multiple de 4 (le nombre d'intervalles de la
+  // grille) : sinon les 5 graduations tombent sur des demi-degrés et sont
+  // affichées arrondies — une ligne étiquetée « 27° » valant en réalité 26,5°.
+  tHi += (4 - ((tHi - tLo) % 4)) % 4;
   const yAt = function(v) { return MARGIN.t + innerH * (1 - (v - tLo) / (tHi - tLo)); };
 
   const parts = [];
@@ -263,7 +267,12 @@ function buildSprayChartSvg(input) {
     parts.push(textEl(xAt(h), HEIGHT - 14, String(h) + 'h',
       { size: 11, fill: THEME.muted, anchor: 'middle' }));
   }
-  parts.push(textEl(MARGIN.l - 8, MARGIN.t - 6, '°C', { size: 10, fill: THEME.temp, anchor: 'end', weight: 700 }));
+  // Unité de l'axe, à la verticale dans la marge gauche (comme l'écran). Posée
+  // à plat au-dessus des graduations, elle chevauchait le bandeau de titre.
+  const unitY = MARGIN.t + innerH / 2;
+  parts.push('<text x="' + coord(MARGIN.l - 40) + '" y="' + coord(unitY) +
+    '" font-size="11" fill="' + THEME.temp + '" text-anchor="middle" font-weight="700"' +
+    ' transform="rotate(-90 ' + coord(MARGIN.l - 40) + ' ' + coord(unitY) + ')">°C</text>');
 
   // ── Courbe de température ─────────────────────────────────────────────────
   if (temps.length >= 2) {
