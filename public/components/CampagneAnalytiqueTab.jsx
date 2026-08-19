@@ -1228,6 +1228,39 @@
     return { num: isFinite(jh) ? jh : 0, den: budget * ha };
   }
 
+  /**
+   * Sépare les lignes du pivot en DEUX jeux : la Récolte d'un côté, tout le
+   * reste de l'autre. PURE (aucune ligne recopiée ni mutée : on ne fait que
+   * répartir les références).
+   *
+   * Pourquoi sortir la Récolte du tableau : son budget (1 800 JH/Ha sur
+   * certaines parcelles) est consommé à 0 % tant que la saison n'a pas
+   * commencé. Laissé dans la même grille, il écrase le TOTAL — « 14.7 %
+   * consommé » sur une campagne dont l'effort hors récolte est déjà à 60 %. Une
+   * fois la Récolte sortie, le TOTAL du tableau principal EST le total hors
+   * récolte, sans ligne supplémentaire à calculer.
+   *
+   * Le découpage suit l'ordre de lecture : un bandeau `type: 'groupe'` ouvre
+   * une section, les lignes qui suivent lui appartiennent jusqu'au bandeau
+   * suivant. Une ligne orpheline (aucun bandeau avant elle) reste dans le jeu
+   * principal — jamais silencieusement perdue.
+   *
+   * @param {Array<Object>} rows lignes du pivot, dans l'ordre.
+   * @param {string} groupeRecolte nom du groupe Récolte (référentiel).
+   * @returns {{principal: Array<Object>, recolte: Array<Object>}}
+   */
+  function CAT_partitionRecolte(rows, groupeRecolte) {
+    var principal = [];
+    var recolte = [];
+    var cible = principal;
+    (rows || []).forEach(function (r) {
+      if (!r) return;
+      if (r.type === 'groupe') cible = (r.key === groupeRecolte) ? recolte : principal;
+      cible.push(r);
+    });
+    return { principal: principal, recolte: recolte };
+  }
+
   /** Pastille de bascule — même gabarit que les autres bascules de l'écran. */
   function CAT_pillStyle(active) {
     return {
@@ -1451,6 +1484,11 @@
 
     var Grid = window.PivotAnalytiqueGrid;
     var AU = window.AnalytiqueUtils;
+    // Nom du groupe Récolte pris dans le RÉFÉRENTIEL (jamais une chaîne
+    // réécrite à la main) : c'est lui qui décide quelles lignes sortent du
+    // tableau principal. Repli sur le libellé connu si le module est absent.
+    var GROUPE_RECOLTE = (AU && AU.GB_GROUPE_MAP && AU.GB_GROUPE_MAP.GB08) || 'M.O Récolte';
+
     var CR = window.CampagneRythme;
     var CBQ = window.CampagneBudgetQuinzaine;
 
@@ -1916,6 +1954,37 @@
                 part: partIdeale,
               }).groupedRows;
             }
+            // ── RÉCOLTE À PART ──────────────────────────────────────────
+            // En plein écran seulement : hors plein écran, plusieurs cultures
+            // sont déjà empilées, un bloc de plus par culture rendrait l'écran
+            // illisible. Les DEUX grilles reçoivent les mêmes `parcelles`, les
+            // mêmes `metrics` et la même largeur : c'est ce qui permet de lire
+            // le bloc Récolte en vis-à-vis du principal, colonne par colonne.
+            var partition = enPlein
+              ? CAT_partitionRecolte(rowsAffichees, GROUPE_RECOLTE)
+              : { principal: rowsAffichees, recolte: [] };
+            function _aDesFamilles(rows) {
+              return rows.some(function (r) { return r && r.type === 'famille'; });
+            }
+            var aRecolte = _aDesFamilles(partition.recolte);
+            // Une culture qui n'a QUE de la récolte (l'avocatier, la myrtille en
+            // début de campagne) ne doit pas hériter d'un tableau principal vide
+            // au-dessus de son bloc récolte : un tableau sans une seule ligne se
+            // lit comme des données manquantes.
+            var aPrincipal = _aDesFamilles(partition.principal);
+            var propsCommunes = {
+              parcelles: pivot.parcelles,
+              metrics: metricsAffichees,
+              color: g.color,
+              // Totaux dans les bandeaux de section : même arbitrage de largeur
+              // que la colonne Total et que la colonne « Budget idéal ».
+              chiffresGroupe: enPlein,
+              showTotal: enPlein && metricsAffichees.length > 1,
+              parcelleLabel: function (k) { return sbNom(k, sbMap); },
+              onCellClick: function (c) {
+                setDetailCell(Object.assign({ parcelleLabel: sbNom(c.parcelle, sbMap) }, c));
+              },
+            };
             // Chaque grille est encapsulée pour porter SON bouton plein écran,
             // posé sur son bandeau de titre (position absolue) : c'est la
             // culture qu'on regarde qu'on veut agrandir, pas « la première ».
@@ -1924,10 +1993,8 @@
               style: { position: 'relative' },
             },
               boutonPlein(groups.indexOf(g)),
-              React.createElement(Grid, {
-              parcelles: pivot.parcelles,
-              groupedRows: rowsAffichees,
-              metrics: metricsAffichees,
+              aPrincipal ? React.createElement(Grid, Object.assign({}, propsCommunes, {
+              groupedRows: partition.principal,
               // Le périmètre du budget n'est PAS déductible des chiffres
               // affichés (un « % consommé » à 130 % sur une ligne dont la
               // moitié des familles n'est pas budgétée se lit comme une erreur
@@ -1938,22 +2005,20 @@
                 : ((sup && sup.hasBudget)
                   ? (afficheIdeal ? noteBudgetSeul + ' ' + noteIdeal : noteBudgetSeul)
                   : null),
-              color: g.color,
-              title: g.culture,
+              title: aRecolte ? g.culture + ' — hors récolte' : g.culture,
               icon: g.icon,
-              // La colonne Total ne revient qu'EN PLEIN ÉCRAN, et seulement à
-              // plusieurs séries — c'est là qu'elle s'éclate en sous-colonnes
-              // lisibles. En mode normal (plusieurs cultures empilées, largeur
-              // contrainte) elle manquerait de place ; à une seule série elle
-              // n'apporterait qu'une colonne de plus à un tableau déjà lisible.
-              // Le panneau Affectation Analytique de l'écran Quinzaine, lui, la
-              // GARDE toujours : il ne passe pas cette prop, défaut `true`.
-              showTotal: enPlein && metricsAffichees.length > 1,
-              parcelleLabel: function (k) { return sbNom(k, sbMap); },
-              onCellClick: function (c) {
-                setDetailCell(Object.assign({ parcelleLabel: sbNom(c.parcelle, sbMap) }, c));
-              },
-              })
+              })) : null,
+              aRecolte ? React.createElement(Grid, Object.assign({}, propsCommunes, {
+                groupedRows: partition.recolte,
+                title: g.culture + ' — récolte',
+                icon: g.icon,
+                // Le lecteur doit savoir POURQUOI ce bloc est à part, sinon il
+                // le lit comme un oubli du tableau du dessus.
+                note: 'Récolte présentée à part : son budget n\'est consommé qu\'en '
+                  + 'saison, le laisser dans le tableau ci-dessus écrasait le TOTAL '
+                  + '(le « % consommé » global tombait à quelques pour cent). Le TOTAL '
+                  + 'du tableau ci-dessus est donc le total HORS récolte.',
+              })) : null
             );
           })
     );

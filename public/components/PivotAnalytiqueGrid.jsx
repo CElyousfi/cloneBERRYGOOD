@@ -42,6 +42,14 @@
  *                 verrouille. `false` la retire ENTIÈREMENT : en-tête, total de
  *                 ligne, grand total du pied. L'écran Campagne s'en sert pour
  *                 ne l'afficher qu'en plein écran. Voir « colSpan » plus bas.
+ *   chiffresGroupe {bool}   Totaux DANS le bandeau de section (défaut FALSE :
+ *                 bandeau `colSpan` d'origine, celui de l'écran Quinzaine en
+ *                 production). À true, la ligne `type: 'groupe'` prend la même
+ *                 structure de colonnes qu'une ligne famille et affiche les
+ *                 totaux de SA section — agrégés depuis ses lignes famille, donc
+ *                 égaux par construction à la somme des lignes affichées dessous
+ *                 (le `pivot` de la ligne groupe, lui, ne porte ni budget ni
+ *                 `pctIdeal` : le lire donnerait des « — »).
  *   onCellClick   {Function}  ({parcelle, operationFamille, ha, detailRows}) =>
  *                 void. Absent = cellules non cliquables (ni curseur, ni survol).
  *                 Une cellule dont `detailRows` est un tableau VIDE ne l'est pas
@@ -362,6 +370,11 @@
     // restaient empilées avec leurs libellés, un pavé de texte au bout d'une
     // grille par ailleurs en sous-colonnes.
     var showTotal = props.showTotal !== false;
+    // Totaux DANS le bandeau de section : opt-in, défaut inactif. Le panneau
+    // Affectation Analytique de l'écran Quinzaine (EN PRODUCTION) ne le passe
+    // pas et garde son bandeau `colSpan` d'origine, à l'octet près — c'est
+    // tests/unit/affectationAnalytiqueTable.test.js qui le verrouille.
+    var chiffresGroupe = props.chiffresGroupe === true;
 
     // Éclatement en sous-colonnes : MÊME test que le mode empilé historique
     // (`multi` de _pag_stack). Une seule série ⇒ rendu d'avant, intégralement.
@@ -440,27 +453,58 @@
 
     var familles = groupedRows.filter(function (r) { return r.type === 'famille'; });
 
+    /**
+     * Familles de CHAQUE section, dans l'ordre de lecture : un bandeau ouvre une
+     * section, les lignes famille qui suivent lui appartiennent jusqu'au bandeau
+     * suivant (même découpage que campagneBudgetPivot.js). Les lignes opération
+     * en sont exclues : elles rejouent les JH de leur famille, les compter
+     * doublerait le total de la section.
+     */
+    var famillesParGroupe = {};
+    var _sectionCourante = null;
+    groupedRows.forEach(function (r) {
+      if (!r) return;
+      if (r.type === 'groupe') {
+        _sectionCourante = famillesParGroupe[r.key] || (famillesParGroupe[r.key] = []);
+        return;
+      }
+      if (r.type === 'famille' && _sectionCourante) _sectionCourante.push(r);
+    });
+
+    /** Total d'une série sur une colonne, pour un SOUS-ENSEMBLE de familles.
+     *  Sert au pied (toutes les familles) comme au bandeau de section (les
+     *  seules familles de la section) : un seul calcul, donc un bandeau qui ne
+     *  peut pas diverger de la somme des lignes qu'il coiffe. */
+    function colTotalDe(liste, metric, pKey, ha) {
+      if (_pag_isRatio(metric)) {
+        return _pag_agregeRatio(metric, liste.map(function (r) { return r.pivot[pKey]; }));
+      }
+      return _pag_agrege(metric, liste.map(function (r) {
+        return { raw: _pag_raw(metric, r.pivot[pKey]), ha: ha };
+      }));
+    }
+
     /** Total d'une série sur une colonne — lignes FAMILLE seules (jamais les
      *  lignes groupe ni opération : elles rejouent les mêmes JH). */
     function colTotal(metric, pKey, ha) {
-      if (_pag_isRatio(metric)) {
-        return _pag_agregeRatio(metric, familles.map(function (r) { return r.pivot[pKey]; }));
-      }
-      return _pag_agrege(metric, familles.map(function (r) {
-        return { raw: _pag_raw(metric, r.pivot[pKey]), ha: ha };
-      }));
+      return colTotalDe(familles, metric, pKey, ha);
     }
 
     /** Grand total : somme des totaux de ligne DÉJÀ agrégés (donc en total),
      *  indéterminable seulement si AUCUNE ligne n'est renseignée. */
     function grandTotal(metric) {
+      return grandTotalDe(familles, metric);
+    }
+
+    /** Grand total d'un SOUS-ENSEMBLE de familles (pied complet ou section). */
+    function grandTotalDe(liste, metric) {
       if (_pag_isRatio(metric)) {
         // Somme des couples déjà agrégés par ligne : mêmes deux termes, une
         // seule division tout à la fin.
         var num = 0;
         var den = 0;
         var vu = false;
-        familles.forEach(function (r) {
+        liste.forEach(function (r) {
           var parts = rowTotal(metric, r);
           if (!parts) return;
           vu = true;
@@ -469,7 +513,7 @@
         });
         return vu && den > 0 ? { num: num, den: den } : null;
       }
-      return _pag_agrege({ basis: 'total' }, familles.map(function (r) {
+      return _pag_agrege({ basis: 'total' }, liste.map(function (r) {
         return { raw: rowTotal(metric, r), ha: 0 };
       }));
     }
@@ -597,21 +641,68 @@
         var resume = (totalGroupe !== null && typeof primaire.summary === 'function')
           ? primaire.summary(totalGroupe)
           : null;
-        return _pag_h('tr', { key: row.key },
-          _pag_h('td', {
-            // ⚠️ Le SEUL endroit qui dépend du nombre de colonnes : oublier le
-            // × nbMetrics — ou la largeur de la colonne Total quand elle existe
-            // — décale tout le tableau, silencieusement.
-            colSpan: colSpanBandeau,
-            style: { padding: padGroupe, fontWeight: 700, fontSize: 12, background: color,
-              color: 'white', letterSpacing: '0.04em', textTransform: 'uppercase',
-              position: 'sticky', left: 0 },
-          },
-            row.label,
-            resume === null ? null : _pag_h('span', {
-              style: { fontWeight: 400, fontSize: 10, opacity: 0.75, marginLeft: 8 },
-            }, resume)
-          )
+        // Libellé de section — commun aux deux rendus. En bandeau CHIFFRÉ il ne
+        // porte plus le colSpan : il n'occupe que la colonne de libellé, comme
+        // sur une ligne famille, sinon les colonnes se décalent.
+        var libelleGroupe = _pag_h('td', {
+          // ⚠️ Le SEUL endroit qui dépend du nombre de colonnes : oublier le
+          // × nbMetrics — ou la largeur de la colonne Total quand elle existe
+          // — décale tout le tableau, silencieusement.
+          colSpan: chiffresGroupe ? undefined : colSpanBandeau,
+          style: { padding: padGroupe, fontWeight: 700, fontSize: 12, background: color,
+            color: 'white', letterSpacing: '0.04em', textTransform: 'uppercase',
+            position: 'sticky', left: 0 },
+        },
+          row.label,
+          resume === null ? null : _pag_h('span', {
+            style: { fontWeight: 400, fontSize: 10, opacity: 0.75, marginLeft: 8 },
+          }, resume)
+        );
+
+        if (!chiffresGroupe) return _pag_h('tr', { key: row.key }, libelleGroupe);
+
+        // ── Bandeau CHIFFRÉ : la section devient un pied de tableau local ────
+        // Les totaux sont agrégés depuis les lignes FAMILLE de la section, pas
+        // lus dans `row.pivot` : (a) le chiffre affiché est ainsi, par
+        // construction, la somme des lignes visibles dessous ; (b) le pivot du
+        // groupe ne porte NI budget (buildBudgetPivot ne budgète que les
+        // familles) NI `pctIdeal` (decoreIdeal saute les lignes groupe) — le
+        // lire afficherait « — » sur trois séries sur quatre.
+        var famillesSection = famillesParGroupe[row.key] || [];
+        var styleValeurGroupe = { color: 'white', fontWeight: 700 };
+        var styleUniteGroupe = { fontSize: 10, color: 'white', opacity: 0.7 };
+        return _pag_h('tr', { key: row.key, style: { background: color } },
+          libelleGroupe,
+          parcelles.map(function (p) {
+            var valeurs = metrics.map(function (m) {
+              return renderAgg(m, colTotalDe(famillesSection, m, p[0], p[1]), p[1]);
+            });
+            if (!multi) {
+              return _pag_h('td', {
+                key: p[0],
+                style: { padding: padGroupe, textAlign: 'center', background: color,
+                  color: 'white', borderRight: '1px solid ' + color },
+              }, _pag_stack(metrics, function (m, i) { return valeurs[i]; },
+                styleValeurGroupe, styleUniteGroupe));
+            }
+            return metrics.map(function (m, i) {
+              return _pag_h('td', {
+                key: p[0] + '#' + i,
+                style: { padding: padGroupe, textAlign: 'center', background: color,
+                  color: 'white', fontWeight: 700,
+                  borderRight: i === nbMetrics - 1 ? '2px solid #fff' : 'none' },
+              }, valeurs[i] === null ? _pag_dash() : valeurs[i]);
+            });
+          }),
+          totalCells(function (m) {
+            return renderAgg(m, grandTotalDe(famillesSection, m), totalHa);
+          }, {
+            pad: padGroupe,
+            styleMono: { padding: padGroupe, textAlign: 'center', background: color,
+              color: 'white', fontWeight: 700, position: 'sticky', right: 0 },
+            styleMulti: { background: color, color: 'white', fontWeight: 700 },
+            unitStyle: styleUniteGroupe,
+          })
         );
       }
 

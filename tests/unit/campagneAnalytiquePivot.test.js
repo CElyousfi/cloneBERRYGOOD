@@ -708,8 +708,11 @@ test('plein écran — un bouton par grille de culture, qui ouvre CETTE culture'
 
 test('plein écran — une seule culture affichée, sur un overlay, avec le carrousel', () => {
   const tree = render(null, [false, false, null, false, '', true, 1]);
+  // La Myrtille de la fixture n'a QUE de la récolte : un seul bloc, le sien —
+  // surtout pas un tableau principal vide au-dessus (cf. `aPrincipal`).
   assert.strictEqual(tables(tree).length, 1, 'la culture choisie, et elle seule');
   assert.ok(textOf(tables(tree)[0]).indexOf('S9 BLUE') >= 0, 'Myrtille');
+  assert.match(textOf(tree), /Myrtille — récolte/);
   // Overlay plein écran.
   assert.strictEqual(tree.props.style.position, 'fixed');
   assert.strictEqual(tree.props.style.zIndex, 9999);
@@ -743,8 +746,13 @@ test('plein écran — un index hors bornes retombe sur la 1re grille, pas sur d
   // Cas réel : on ouvre l'Avocatier en plein écran puis le filtre Culture
   // réduit la liste. Un index périmé afficherait un écran blanc.
   const tree = render(null, [false, false, null, false, '', true, 7]);
-  assert.strictEqual(tables(tree).length, 1);
+  // Framboise : deux blocs depuis que la récolte est sortie du tableau
+  // principal (hors récolte + récolte), et non ceux d'une autre culture.
+  assert.strictEqual(tables(tree).length, 2);
   assert.ok(textOf(tables(tree)[0]).indexOf('S5 MARAVILLA') >= 0, 'Framboise');
+  // La parcelle de Myrtille, elle, n'est nulle part (seul son nom apparaît, sur
+  // la pastille du carrousel).
+  assert.strictEqual(textOf(tables(tree)[0]).indexOf('S9 BLUE'), -1);
 });
 
 test('plein écran — hors plein écran, aucun overlay et toutes les grilles', () => {
@@ -774,8 +782,11 @@ test('Total — plein écran à UNE SEULE série : toujours aucune colonne Total
   // Largeur : le libellé + 2 parcelles × 1 série, et rien de plus.
   const largeur = (bodyRows(table)[1].children || []).filter((c) => c.type === 'td').length;
   assert.strictEqual(largeur, 3);
-  assert.strictEqual((bodyRows(table)[0].children || [])
-    .filter((c) => c.type === 'td')[0].props.colSpan, largeur);
+  // Bandeau de section CHIFFRÉ en plein écran : il n'a plus de colSpan, il
+  // occupe exactement les mêmes colonnes qu'une ligne famille.
+  const bandeau = (bodyRows(table)[0].children || []).filter((c) => c.type === 'td');
+  assert.strictEqual(bandeau[0].props.colSpan, undefined);
+  assert.strictEqual(bandeau.length, largeur, 'bandeau aligné sur les lignes');
 });
 
 // En PLEIN ÉCRAN, une 4e sous-colonne s'ajoute aux trois : « Budget idéal »
@@ -803,8 +814,9 @@ test('Total — plein écran multi-séries : une sous-colonne par indicateur, à
   // et le bandeau de groupe court sur toute cette largeur.
   const taille = (bodyRows(table)[2].children || []).filter((c) => c.type === 'td');
   assert.strictEqual(taille.length, 1 + (2 + 1) * 4);
-  assert.strictEqual((bodyRows(table)[0].children || [])
-    .filter((c) => c.type === 'td')[0].props.colSpan, taille.length);
+  const bandeau4 = (bodyRows(table)[0].children || []).filter((c) => c.type === 'td');
+  assert.strictEqual(bandeau4[0].props.colSpan, undefined, 'bandeau chiffré');
+  assert.strictEqual(bandeau4.length, taille.length);
   // Aucune sous-colonne collée à droite.
   taille.slice(9).forEach((td, i) => {
     assert.strictEqual(td.props.style.position, undefined, 'sous-colonne ' + i);
@@ -813,11 +825,34 @@ test('Total — plein écran multi-séries : une sous-colonne par indicateur, à
   // rapportés aux 6 Ha de la CULTURE — c'est le sens d'un total de ligne « par
   // Ha » : 40/6 = 6.7 et 30/6 = 5.0. Le taux, lui, est invariant : 40/30.
   assert.deepStrictEqual(cells(bodyRows(table)[2]).slice(9, 12), ['6.7', '5.0', '133.3 %']);
-  // Grand total du pied : 72 JH réalisés / 6 Ha = 12.0 ; budget 30 (Taille)
-  // + 16 (Récolte, budget d'opération) + 8 (Ferti CORINA) = 54 / 6 = 9.0. Le
-  // taux ne compte que le PÉRIMÈTRE BUDGÉTÉ : 60/54 = 111,1 % — la Récolte de
-  // CORINA, réalisée mais non budgétée, ne pèse pas au numérateur.
-  assert.deepStrictEqual(cells(footRow(table)).slice(9, 12), ['12.0', '9.0', '111.1 %']);
+  // Grand total du pied — la RÉCOLTE N'Y EST PLUS (elle a son propre bloc en
+  // dessous) : 40 JH réalisés / 6 Ha = 6.7 ; budget 30 (Taille) + 8 (Ferti
+  // CORINA) = 38 / 6 = 6.3 ; taux 40/38 = 105,3 %. C'est tout l'objet de la
+  // séparation : avec la Récolte dedans, ce taux tombait à 111 % d'un budget
+  // gonflé par une saison pas encore commencée.
+  assert.deepStrictEqual(cells(footRow(table)).slice(9, 12), ['6.7', '6.3', '105.3 %']);
+});
+
+test('récolte — un bloc à part, avec les MÊMES colonnes que le tableau principal', () => {
+  const tree = renderBudget(null, [false, false, null, false, '', true, 0]);
+  const grilles = tables(tree);
+  assert.strictEqual(grilles.length, 2, 'hors récolte + récolte');
+  const principal = grilles[0];
+  const recolte = grilles[1];
+  // Le tableau principal ne contient plus une seule ligne de récolte…
+  assert.strictEqual(textOf(principal).indexOf('Récolte'), -1);
+  // …et le bloc du dessous ne contient QUE ça.
+  assert.match(textOf(recolte), /Récolte/);
+  assert.strictEqual(textOf(recolte).indexOf('Taille'), -1);
+  // Mêmes parcelles, mêmes séries : les deux blocs se lisent en vis-à-vis.
+  assert.deepStrictEqual(headers(recolte), headers(principal));
+  // Et le lecteur sait POURQUOI il y a deux blocs (la légende est sous la
+  // table, pas dedans).
+  assert.match(textOf(tree), /Récolte présentée à part/);
+  // Le bandeau de section porte les mêmes chiffres que la seule famille qu'il
+  // coiffe — c'est la garantie qu'un bandeau ne peut pas mentir sur ses lignes.
+  assert.deepStrictEqual(cells(bodyRows(recolte)[0]).slice(1, 5),
+    cells(bodyRows(recolte)[1]).slice(1, 5));
 });
 
 test('Total — plein écran multi-séries : la colonne reste APRÈS les parcelles', () => {
@@ -863,8 +898,9 @@ test('budget idéal — 4e sous-colonne en plein écran, la même valeur dans to
 });
 
 test('budget idéal — jamais sur la Récolte, dont l\'effort n\'est pas linéaire', () => {
-  const table = tables(renderBudget(null, [false, false, null, false, '', true, 0]))[0];
-  const recolte = cells(bodyRows(table)[4]);
+  // La Récolte a son propre bloc : c'est la 2e grille qu'on interroge.
+  const table = tables(renderBudget(null, [false, false, null, false, '', true, 0]))[1];
+  const recolte = cells(bodyRows(table)[1]);
   assert.strictEqual(recolte[MARAVILLA_SC4[1] - 1], '—');
   assert.strictEqual(recolte[CORINA_SC4[1] - 1], '—');
   assert.strictEqual(recolte[TOTAL_SC4[1] - 1], '—');
