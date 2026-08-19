@@ -129,7 +129,11 @@ const Tab = loadTab();
 // référentiel SB la déclare Framboise — c'est le référentiel qui doit gagner.
 
 const DATA = {
-  campagne: '2026-2027',
+  // Libellé au format EXACT servi par le backend (`${startYear}/${startYear+1}`,
+  // functions/pointageService.js) — avec un SLASH, pas un tiret. Un tiret ici
+  // rendrait la fixture irréaliste : c'est ce qui avait laissé passer en QA une
+  // 4e sous-colonne « Budget idéal » morte en prod (partEcoulee → null).
+  campagne: '2026/2027',
   // Quinzaines de la campagne telles que renvoyées par l'API : elles couvrent
   // TOUTES les parcelles, pas seulement les lignes de ce jeu d'essai — d'où 4
   // quinzaines écoulées (donc 20 restantes) pour des lignes qui n'en occupent

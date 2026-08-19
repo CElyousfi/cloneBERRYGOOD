@@ -95,13 +95,18 @@
     return isFinite(n) && n > 0 ? n : 0;
   }
 
+  /** Regex TOLÉRANTE au séparateur d'un libellé de campagne : le backend sert
+   *  « 2026/2027 » (functions/pointageService.js), pas « 2026-2027 ». Toute
+   *  lecture de libellé dans ce fichier passe par elle. */
+  var _cr_CAMPAGNE_RE = /^(\d{4})\D+(\d{4})$/;
+
   /**
    * Nombre total de quinzaines d'une campagne, DÉRIVÉ de son libellé
    * (« 2026/2027 » ou « 2026-2027 » → 12 mois → 24 quinzaines).
    * @returns {number|null} null si le libellé n'est pas exploitable.
    */
   function totalQuinzaines(campagne) {
-    var m = /^(\d{4})\D+(\d{4})$/.exec(String(campagne == null ? '' : campagne).trim());
+    var m = _cr_CAMPAGNE_RE.exec(String(campagne == null ? '' : campagne).trim());
     if (!m) return null;
     var mois = (parseInt(m[2], 10) - parseInt(m[1], 10)) * 12;
     if (!(mois > 0)) return null;
@@ -592,6 +597,34 @@
   }
 
   /**
+   * Normalise le SÉPARATEUR d'un libellé de campagne vers la forme à tiret
+   * attendue par `CampagneUtils` (`/^(\d{4})-(\d{4})$/`, strict).
+   *
+   * Nécessaire parce que le backend sert « 2026/2027 » avec un SLASH
+   * (functions/pointageService.js, `label: `${startYear}/${startYear + 1}``),
+   * alors que `CampagneUtils.debutCampagne` n'accepte que le tiret : sans
+   * normalisation il renvoie null, `partEcoulee` aussi, et la colonne
+   * « Budget idéal » disparaît silencieusement de la grille. C'est exactement
+   * pour la même raison que `totalQuinzaines` lit déjà le libellé avec la regex
+   * tolérante ci-dessus (`_cr_CAMPAGNE_RE`), réutilisée ici à l'identique.
+   *
+   * ⚠️ On ne normalise QUE le séparateur. La règle métier — début de campagne
+   * au 1er juillet — reste chez `CampagneUtils.debutCampagne`, source unique de
+   * vérité : on ne recompose JAMAIS la date ici (`anneeDebut + '-07-01'`), ça
+   * la ferait diverger le jour où la frontière bouge.
+   *
+   * @param {*} campagne libellé brut ('2026/2027', '2026-2027', …).
+   * @returns {string|null} 'AAAA-BBBB', ou null si le libellé est illisible.
+   */
+  function _cr_normCampagne(campagne) {
+    var m = _cr_CAMPAGNE_RE.exec(String(campagne == null ? '' : campagne).trim());
+    if (!m) return null;
+    var debut = parseInt(m[1], 10);
+    if (!isFinite(debut)) return null;
+    return debut + '-' + (debut + 1);
+  }
+
+  /**
    * Part de la campagne ÉCOULÉE à ce jour, dans [0, 1] — le « budget idéal » :
    * ce qu'on aurait consommé à ce stade si l'effort était parfaitement linéaire.
    * C'est un REPÈRE à comparer au % consommé, jamais une prévision.
@@ -607,6 +640,8 @@
    * `null` = INDÉTERMINABLE, jamais 0 : un 0 se lirait « campagne pas commencée ».
    *
    * @param {{campagne?: string, today?: (Date|string), utils?: {debutCampagne: Function}}} args
+   *   `campagne` accepte les DEUX séparateurs ('2026/2027' servi par le
+   *   backend comme '2026-2027') — cf. `_cr_normCampagne`.
    *   `today` (défaut : maintenant) accepte un `Date` ou 'YYYY-MM-DD' — il DOIT
    *   rester injectable, sinon le calcul n'est pas testable.
    * @returns {number|null}
@@ -616,7 +651,7 @@
     var utils = a.utils
       || (typeof window !== 'undefined' ? window.CampagneUtils : null);
     if (!utils || typeof utils.debutCampagne !== 'function') return null;
-    var debut = utils.debutCampagne(a.campagne);
+    var debut = utils.debutCampagne(_cr_normCampagne(a.campagne));
     if (!debut) return null;
     var tDebut = _cr_jour(debut);
     var tToday = _cr_jour(a.today !== undefined && a.today !== null ? a.today : new Date());

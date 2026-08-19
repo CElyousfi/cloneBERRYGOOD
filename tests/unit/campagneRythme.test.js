@@ -581,10 +581,23 @@ test('partEcoulee — accepte un Date autant qu\'une chaîne ISO', () => {
   assert.strictEqual(parDate, parIso);
 });
 
+test('partEcoulee — le libellé À SLASH du backend vaut celui à tiret', () => {
+  // RÉGRESSION (colonne « Budget idéal » absente en preview) : le backend sert
+  // `2026/2027` (functions/pointageService.js), CampagneUtils.debutCampagne
+  // n'accepte que le tiret → partEcoulee renvoyait null → la 4e sous-colonne
+  // n'était jamais concaténée. C'est le format de la PROD qu'on teste ici.
+  const slash = CR.partEcoulee({ campagne: '2025/2026', today: '2025-12-31', utils: CU });
+  const tiret = CR.partEcoulee({ campagne: '2025-2026', today: '2025-12-31', utils: CU });
+  assert.strictEqual(slash, tiret);
+  assert.ok(slash !== null, 'le format servi par le backend doit être exploitable');
+});
+
 test('partEcoulee — indéterminable → null, JAMAIS 0 (0 se lirait « pas commencée »)', () => {
   assert.strictEqual(CR.partEcoulee({ campagne: '', today: '2025-12-31', utils: CU }), null);
   assert.strictEqual(CR.partEcoulee({ campagne: 'n/a', today: '2025-12-31', utils: CU }), null);
-  assert.strictEqual(CR.partEcoulee({ campagne: '2025/2026', today: '2025-12-31', utils: CU }), null);
+  assert.strictEqual(CR.partEcoulee({ campagne: 'abc', today: '2025-12-31', utils: CU }), null);
+  // Une seule année : impossible de savoir de quelle campagne on parle.
+  assert.strictEqual(CR.partEcoulee({ campagne: '2025', today: '2025-12-31', utils: CU }), null);
   assert.strictEqual(CR.partEcoulee({ campagne: undefined, today: '2025-12-31', utils: CU }), null);
   // CampagneUtils absent (script non chargé) : pas de frontière réécrite ici.
   assert.strictEqual(CR.partEcoulee({ campagne: '2025-2026', today: '2025-12-31', utils: null }), null);
@@ -595,6 +608,14 @@ test('joursEcoules — le N de la légende « N j / 365 »', () => {
   assert.strictEqual(CR.joursEcoules({ campagne: '2025-2026', today: '2025-07-01', utils: CU }), 0);
   assert.strictEqual(CR.joursEcoules({ campagne: '2025-2026', today: '2025-12-31', utils: CU }), 183);
   assert.strictEqual(CR.joursEcoules({ campagne: 'n/a', today: '2025-12-31', utils: CU }), null);
+});
+
+test('joursEcoules — même normalisation que partEcoulee (légende « N j / 365 » juste)', () => {
+  // La légende doit annoncer 183 j sur le libellé RÉEL du backend, pas retomber
+  // sur un repli générique faute d'avoir su lire le séparateur.
+  assert.strictEqual(CR.joursEcoules({ campagne: '2025/2026', today: '2025-12-31', utils: CU }), 183);
+  assert.strictEqual(CR.joursEcoules({ campagne: '2025', today: '2025-12-31', utils: CU }), null);
+  assert.strictEqual(CR.joursEcoules({ campagne: '', today: '2025-12-31', utils: CU }), null);
 });
 
 /** Lignes minimales à trois groupes, dont la Récolte. */
