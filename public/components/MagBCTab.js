@@ -93,6 +93,10 @@
       courante: [],
       precedente: []
     });
+    // Référentiel Smart Berry (sb_parcelle_referentiel), clé = label BEE ONE
+    // en MAJUSCULES. Source de vérité pour le NOM et la CULTURE affichés :
+    // une parcelle renommée côté RH doit apparaître sous son nom SB partout.
+    const [sbRefMap, setSbRefMap] = useState(() => window.SB_PARCELLE_REF || {});
     // Groupes de parcelles = raccourci de saisie (parcelle combinée). Le
     // backend éclate la ligne en N parcelles RÉELLES au prorata des Ha.
     const [parcelleGroupes, setParcelleGroupes] = useState([]);
@@ -205,6 +209,19 @@
       }).catch(() => {});
     }, []);
     useEffect(() => {
+      // Référentiel SB : chargé ici (et pas seulement via window.SB_PARCELLE_REF
+      // posé au boot d'app.jsx) pour garantir un re-rendu quand il arrive.
+      fetch('/api/pointage-rh?action=sb-referentiel-list').then(r => r.json()).then(j => {
+        if (!j.success) return;
+        const map = {};
+        (j.parcelles || []).forEach(p => {
+          map[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p;
+        });
+        window.SB_PARCELLE_REF = map;
+        setSbRefMap(map);
+      }).catch(() => {});
+    }, []);
+    useEffect(() => {
       // Groupes de parcelles (lecture ouverte à tout profil authentifié).
       // `valide: false` = un membre n'a plus de Ha SB → groupe non
       // proposé à la saisie (le backend le refuserait de toute façon).
@@ -298,16 +315,30 @@
     const bcCampagnesDispo = [...(refParcelles.courante.length > 0 ? [bcCampagneToday] : []), ...(refParcelles.precedente.length > 0 ? [campagnePrecedente] : [])];
     if (!bcCampagnesDispo.length) bcCampagnesDispo.push(bcCampagneToday);
     const refForCampagne = bcCampagne === bcCampagneToday ? refParcelles.courante : refParcelles.precedente;
+    const sbMap = sbRefMap;
+    // Nom affiché d'une parcelle = nom_sb du référentiel RH s'il existe,
+    // sinon le libellé BEE ONE. La VALEUR envoyée au backend reste toujours
+    // le libellé BEE ONE (clé de jointure stock / analytique).
+    const sbEntryOf = label => sbMap[(label || '').toUpperCase().trim()];
+    const parcelleNom = label => {
+      const e = sbEntryOf(label);
+      return e && e.nom_sb ? e.nom_sb : label || '';
+    };
+    // Culture affichée = culture_sb du référentiel si définie, sinon la culture BEE ONE.
+    const parcelleCulture = (label, fallback) => {
+      const e = sbEntryOf(label);
+      return e && e.culture_sb ? e.culture_sb : fallback || '';
+    };
     // Culture/ferme d'un libellé de parcelle, quelle que soit la source du select.
     const metaForParcelle = label => {
       const ref = refForCampagne.find(p => p.label === label);
       if (ref) return {
-        culture: ref.culture || '',
+        culture: parcelleCulture(label, ref.culture),
         ferme: ref.ferme || ''
       };
       const parc = parcelles.find(p => p.Parcelle_Physique === label);
       return {
-        culture: parc?.Culture || '',
+        culture: parcelleCulture(label, parc?.Culture),
         ferme: parc?.Ferme || ''
       };
     };
@@ -320,7 +351,6 @@
     // --- Filtre Culture (global au bon) -------------------------------
     // Référentiel Smart Berry lu AU RENDU : sbLoad() est asynchrone au boot
     // d'app.jsx, un useState initial figerait un objet vide.
-    const sbMap = window.SB_PARCELLE_REF || {};
     // Défensif : lib absente → on ne filtre rien (comportement actuel).
     const cultureOk = (parcelle, filtre) => {
       const CU = window.CultureUtils;
@@ -399,7 +429,7 @@
           ...items[idx],
           parcelle: val,
           parcelle_ref: ref.ref || '',
-          culture: ref.culture || '',
+          culture: parcelleCulture(val, ref.culture),
           ferme: ref.ferme || '',
           groupe_id: ''
         };
@@ -409,7 +439,7 @@
           ...items[idx],
           parcelle: val,
           parcelle_ref: '',
-          culture: parc?.Culture || '',
+          culture: parcelleCulture(val, parc?.Culture),
           ferme: parc?.Ferme || '',
           groupe_id: ''
         };
@@ -544,12 +574,12 @@
       if (filterSource === 'saisie' && isImportBC(bc)) return false;
       if (!query) return true;
       const q = query.toLowerCase();
-      return (bc.numero || '').toLowerCase().includes(q) || (bc.items || []).some(i => (i.article || '').toLowerCase().includes(q) || (i.parcelle || '').toLowerCase().includes(q)) || (bc.ferme || '').toLowerCase().includes(q);
+      return (bc.numero || '').toLowerCase().includes(q) || (bc.items || []).some(i => (i.article || '').toLowerCase().includes(q) || (i.parcelle || '').toLowerCase().includes(q) || parcelleNom(i.parcelle).toLowerCase().includes(q)) || (bc.ferme || '').toLowerCase().includes(q);
     };
     const sortValueBC = (bc, field) => {
       if (field === 'numero') return bc.numero || '';
       if (field === 'date') return bc.date || '';
-      if (field === 'parcelles') return [...new Set((bc.items || []).map(i => i.parcelle).filter(Boolean))].join(',');
+      if (field === 'parcelles') return [...new Set((bc.items || []).map(i => parcelleNom(i.parcelle)).filter(Boolean))].join(',');
       if (field === 'fermes') return [...new Set((bc.items || []).map(i => i.ferme).filter(Boolean))].join(',') || bc.ferme || '';
       if (field === 'cree_par') return bc.created_by?.name || '';
       return '';
@@ -592,7 +622,7 @@
           aoa.push([bc.numero || '', bc.date || '', lieuDepart, bc.ferme || '', '', '', '', '', '', creePar]);
         } else {
           items.forEach(i => {
-            aoa.push([bc.numero || '', bc.date || '', lieuDepart, i.ferme || bc.ferme || '', i.parcelle || '', i.article || '', i.quantite != null ? i.quantite : '', i.unite || '', i.culture || '', creePar]);
+            aoa.push([bc.numero || '', bc.date || '', lieuDepart, i.ferme || bc.ferme || '', parcelleNom(i.parcelle) || '', i.article || '', i.quantite != null ? i.quantite : '', i.unite || '', i.culture || '', creePar]);
           });
         }
       });
@@ -791,7 +821,7 @@
             fontWeight: 600,
             fontSize: 12
           }
-        }, item ? item.parcelle || bc.parcelle || '—' : bc.parcelle || '—'), /*#__PURE__*/React.createElement("td", {
+        }, parcelleNom(item ? item.parcelle || bc.parcelle : bc.parcelle) || '—'), /*#__PURE__*/React.createElement("td", {
           style: {
             fontSize: 12
           }
@@ -1137,10 +1167,10 @@
       }, refForCampagneCulture.map(p => /*#__PURE__*/React.createElement("option", {
         key: 'ref-' + p.label,
         value: p.label
-      }, p.label)))) : filteredParcellesCulture.map(p => /*#__PURE__*/React.createElement("option", {
+      }, parcelleNom(p.label))))) : filteredParcellesCulture.map(p => /*#__PURE__*/React.createElement("option", {
         key: p.Parcelle_Physique,
         value: p.Parcelle_Physique
-      }, p.Parcelle_Physique, " \u2014 ", p.Culture || '?'))), it.ferme && /*#__PURE__*/React.createElement("div", {
+      }, parcelleNom(p.Parcelle_Physique), " \u2014 ", parcelleCulture(p.Parcelle_Physique, p.Culture) || '?'))), it.ferme && /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 10,
           color: '#888',
@@ -1623,7 +1653,7 @@
         style: {
           padding: '6px 8px'
         }
-      }, i.parcelle || '—'), hasCulture && /*#__PURE__*/React.createElement("td", {
+      }, parcelleNom(i.parcelle) || '—'), hasCulture && /*#__PURE__*/React.createElement("td", {
         style: {
           padding: '6px 8px'
         }
