@@ -12,6 +12,10 @@ const {
   formatDigest,
   formatDateParam,
   scoreLabel,
+  formatWindDirection,
+  deltaTZone,
+  formatDeltaT,
+  niveauRisqueMaladie,
   todayCasablancaISO,
   createMeteoDigestJob,
 } = require('../sprayDigest');
@@ -130,9 +134,26 @@ function weatherPayload(days) {
       windspeed_max: days.map((d) => d.vent),
       precipitation: days.map((d) => d.pluie),
       pictocode: days.map((d) => d.picto),
+      felttemperature_max: days.map((d) => d.ressenti),
+      relativehumidity_min: days.map((d) => d.rhMin),
+      relativehumidity_max: days.map((d) => d.rhMax),
+      winddirection: days.map((d) => d.ventDir),
+      delta_t_min: days.map((d) => d.deltaTMin),
+      delta_t_max: days.map((d) => d.deltaTMax),
+      leafwetnessindex: days.map((d) => d.humectation),
+      humiditygreater90_hours: days.map((d) => d.heuresHr90),
+      referenceevapotranspiration_fao: days.map((d) => d.etoFao),
+      soilmoisture_0to10cm_mean: days.map((d) => d.humiditeSol),
     },
   };
 }
+
+/** Champs agronomiques nuls — état attendu quand le package ne les renvoie pas. */
+const AGRO_NULL = {
+  ressenti: null, rhMin: null, rhMax: null, ventDir: null,
+  deltaTMin: null, deltaTMax: null, humectation: null, heuresHr90: null,
+  etoFao: null, humiditeSol: null,
+};
 
 test('buildTempSummary: jour présent', () => {
   const data = weatherPayload([
@@ -140,8 +161,104 @@ test('buildTempSummary: jour présent', () => {
     { time: DAY, tMin: 17.4, tMax: 29.1, vent: 12, pluie: 0, picto: 1 },
   ]);
   assert.deepEqual(buildTempSummary(data, DAY), {
-    tMin: 17.4, tMax: 29.1, ventMax: 12, pluie: 0, pictocode: 1,
+    tMin: 17.4, tMax: 29.1, ventMax: 12, pluie: 0, pictocode: 1, ...AGRO_NULL,
   });
+});
+
+test('buildTempSummary: champs agronomiques présents', () => {
+  const data = weatherPayload([{
+    time: DAY, tMin: 21, tMax: 28, vent: 4.06, pluie: 0, picto: 1,
+    ressenti: 29.3, rhMin: 62, rhMax: 94, ventDir: 270,
+    deltaTMin: 0.8, deltaTMax: 2.9, humectation: 0, heuresHr90: 0.17,
+    etoFao: 3.85, humiditeSol: 10,
+  }]);
+  assert.deepEqual(buildTempSummary(data, DAY), {
+    tMin: 21, tMax: 28, ventMax: 4.06, pluie: 0, pictocode: 1,
+    ressenti: 29.3, rhMin: 62, rhMax: 94, ventDir: 270,
+    deltaTMin: 0.8, deltaTMax: 2.9, humectation: 0, heuresHr90: 0.17,
+    etoFao: 3.85, humiditeSol: 10,
+  });
+});
+
+test('buildTempSummary: valeurs non numériques → null (jamais NaN/undefined)', () => {
+  const data = weatherPayload([{
+    time: DAY, tMin: 21, tMax: 28, vent: 4, pluie: 0, picto: 1,
+    ressenti: null, rhMin: 'n/a', rhMax: undefined, ventDir: NaN,
+    deltaTMin: '2', deltaTMax: {}, humectation: false, heuresHr90: [],
+    etoFao: Infinity, humiditeSol: '',
+  }]);
+  const out = buildTempSummary(data, DAY);
+  Object.keys(AGRO_NULL).forEach((k) => assert.equal(out[k], null, k + ' doit être null'));
+});
+
+test('buildTempSummary: colonnes agronomiques absentes du payload → null', () => {
+  const data = {
+    data_day: { time: [DAY], temperature_min: [21], temperature_max: [28] },
+  };
+  const out = buildTempSummary(data, DAY);
+  Object.keys(AGRO_NULL).forEach((k) => assert.equal(out[k], null, k + ' doit être null'));
+});
+
+// ── Helpers agronomiques ────────────────────────────────────────────────
+
+test('formatWindDirection: secteurs français et bornes du secteur', () => {
+  assert.equal(formatWindDirection(0), 'N');
+  assert.equal(formatWindDirection(45), 'NE');
+  assert.equal(formatWindDirection(90), 'E');
+  assert.equal(formatWindDirection(135), 'SE');
+  assert.equal(formatWindDirection(180), 'S');
+  assert.equal(formatWindDirection(225), 'SO');
+  assert.equal(formatWindDirection(270), 'O');
+  assert.equal(formatWindDirection(315), 'NO');
+  // Bornes : 350° retombe sur N (repli modulo), 359 aussi.
+  assert.equal(formatWindDirection(350), 'N');
+  assert.equal(formatWindDirection(359), 'N');
+  assert.equal(formatWindDirection(360), 'N');
+  assert.equal(formatWindDirection(22), 'N');
+  assert.equal(formatWindDirection(23), 'NE');
+});
+
+test('formatWindDirection: valeur absente ou non numérique → null', () => {
+  assert.equal(formatWindDirection(null), null);
+  assert.equal(formatWindDirection(undefined), null);
+  assert.equal(formatWindDirection(NaN), null);
+  assert.equal(formatWindDirection('270'), null);
+});
+
+test('deltaTZone: trois zones et bornes exactes (1,9 / 2 / 8 / 8,1)', () => {
+  assert.equal(deltaTZone(0), 'trop humide');
+  assert.equal(deltaTZone(1.9), 'trop humide');
+  assert.equal(deltaTZone(2), 'idéal');
+  assert.equal(deltaTZone(5), 'idéal');
+  assert.equal(deltaTZone(8), 'idéal');
+  assert.equal(deltaTZone(8.1), 'trop sec');
+  assert.equal(deltaTZone(14), 'trop sec');
+});
+
+test('formatDeltaT: plage traversant deux zones, plage homogène, valeur seule', () => {
+  assert.equal(formatDeltaT(0.8, 2.9), 'Delta T : 0,8 → 2,9 (trop humide → idéal, cible 2-8)');
+  assert.equal(formatDeltaT(3, 6.5), 'Delta T : 3 → 6,5 (idéal, cible 2-8)');
+  assert.equal(formatDeltaT(9, 12), 'Delta T : 9 → 12 (trop sec, cible 2-8)');
+  assert.equal(formatDeltaT(null, 5.4), 'Delta T : 5,4 (idéal, cible 2-8)');
+  assert.equal(formatDeltaT(1.2, null), 'Delta T : 1,2 (trop humide, cible 2-8)');
+  assert.equal(formatDeltaT(null, null), null);
+});
+
+test('niveauRisqueMaladie: barème aux bornes (4 / 8), pire des deux indicateurs', () => {
+  assert.equal(niveauRisqueMaladie(0, 0.17), 'Faible');
+  assert.equal(niveauRisqueMaladie(3.9, 3.9), 'Faible');
+  assert.equal(niveauRisqueMaladie(4, 0), 'Modéré');
+  assert.equal(niveauRisqueMaladie(0, 4), 'Modéré');
+  assert.equal(niveauRisqueMaladie(7.9, 7.9), 'Modéré');
+  assert.equal(niveauRisqueMaladie(8, 0), 'Élevé');
+  assert.equal(niveauRisqueMaladie(0, 8), 'Élevé');
+  assert.equal(niveauRisqueMaladie(24, 24), 'Élevé');
+});
+
+test('niveauRisqueMaladie: un seul indicateur suffit, aucun → null', () => {
+  assert.equal(niveauRisqueMaladie(9, null), 'Élevé');
+  assert.equal(niveauRisqueMaladie(null, 1), 'Faible');
+  assert.equal(niveauRisqueMaladie(null, null), null);
 });
 
 test('buildTempSummary: jour absent ou données vides → null', () => {
@@ -154,6 +271,14 @@ test('buildTempSummary: jour absent ou données vides → null', () => {
 // ── formatDigest ────────────────────────────────────────────────────────
 
 const TEMP = { tMin: 17, tMax: 29, ventMax: 12, pluie: 0, pictocode: 1 };
+
+/** Journée « tout renseigné » — valeurs réelles du 2026-08-19 sur le site F1/F5. */
+const TEMP_COMPLET = {
+  tMin: 21, tMax: 28, ventMax: 4.06, pluie: 0, pictocode: 1,
+  ressenti: 29.3, rhMin: 62, rhMax: 94, ventDir: 270,
+  deltaTMin: 0.8, deltaTMax: 2.9, humectation: 0, heuresHr90: 0.17,
+  etoFao: 3.85, humiditeSol: 10,
+};
 
 test('formatDateParam: jour court FR + JJ/MM', () => {
   assert.equal(formatDateParam(DAY), 'Ven 14/08');
@@ -220,6 +345,111 @@ test('formatDigest: fallbackText tient sur une seule ligne', () => {
   assert.match(out.fallbackText, /Ven 14\/08/);
   assert.match(out.fallbackText, /08h00-10h00/);
   assert.equal(out.dateParam, 'Ven 14/08');
+});
+
+test('formatDigest: journée complète → 4 sections agronomiques rendues', () => {
+  const windows = buildSprayWindows(
+    sprayPayload(workDay(0, { 6: 1, 7: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1, 16: 1, 17: 1, 18: 1, 19: 1, 20: 1 })),
+    DAY
+  );
+  const out = formatDigest({ dateISO: DAY, temp: TEMP_COMPLET, windows });
+  assert.match(out.body, /🌡️ \*Température\* : 21°C → 28°C \(ressenti 29°C\)/);
+  assert.match(out.body, /💦 Humidité : 62% → 94%/);
+  assert.match(out.body, /💨 Vent max : 4 km\/h \(O\)/);
+  assert.match(out.body, /🌧️ Pluie : 0 mm/);
+  assert.match(out.body, /🎯 Delta T : 0,8 → 2,9 \(trop humide → idéal, cible 2-8\)/);
+  assert.match(out.body, /🍄 \*Risque maladie\* : Faible/);
+  assert.match(out.body, /\(humectation 0 · HR>90% 0,2 h\)/);
+  assert.match(out.body, /💧 \*Irrigation\* : ETo 3,9 mm · humidité sol 10%/);
+});
+
+test('formatDigest: aucun undefined / NaN / ligne vide orpheline', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(0, { 8: 1, 9: 1 })), DAY);
+  [TEMP, TEMP_COMPLET, null, {}, { tMin: 21, tMax: 28 }].forEach((temp) => {
+    [windows, null].forEach((w) => {
+      const out = formatDigest({ dateISO: DAY, temp, windows: w });
+      assert.doesNotMatch(out.body, /undefined|NaN|null/);
+      assert.doesNotMatch(out.fallbackText, /undefined|NaN|null/);
+      // Pas de double saut de ligne surnuméraire ni de ligne vide en bord.
+      assert.doesNotMatch(out.body, /\n\n\n/);
+      assert.equal(out.body.startsWith('\n'), false);
+      assert.equal(out.body.endsWith('\n'), false);
+    });
+  });
+});
+
+test('formatDigest: bloc maladie/irrigation absent quand la donnée manque', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(1)), DAY);
+  const out = formatDigest({ dateISO: DAY, temp: TEMP, windows });
+  assert.doesNotMatch(out.body, /Risque maladie/);
+  assert.doesNotMatch(out.body, /Irrigation/);
+  assert.doesNotMatch(out.body, /Delta T/);
+  assert.doesNotMatch(out.body, /Humidité/);
+  assert.doesNotMatch(out.body, /ressenti/);
+});
+
+test('formatDigest: un seul indicateur d\'irrigation → pas de séparateur orphelin', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(1)), DAY);
+  const etoSeul = { ...TEMP, etoFao: 3.85 };
+  assert.match(formatDigest({ dateISO: DAY, temp: etoSeul, windows }).body,
+    /💧 \*Irrigation\* : ETo 3,9 mm\n?$/);
+  const solSeul = { ...TEMP, humiditeSol: 12.5 };
+  assert.match(formatDigest({ dateISO: DAY, temp: solSeul, windows }).body,
+    /💧 \*Irrigation\* : humidité sol 12,5%$/);
+});
+
+test('formatDigest: un seul indicateur de risque → détail sans séparateur orphelin', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(1)), DAY);
+  assert.match(formatDigest({ dateISO: DAY, temp: { ...TEMP, humectation: 12 }, windows }).body,
+    /🍄 \*Risque maladie\* : Élevé\n\(humectation 12\)/);
+  assert.match(formatDigest({ dateISO: DAY, temp: { ...TEMP, heuresHr90: 5 }, windows }).body,
+    /🍄 \*Risque maladie\* : Modéré\n\(HR>90% 5 h\)/);
+});
+
+test('formatDigest: humidité partielle → une seule borne affichée', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(1)), DAY);
+  assert.match(formatDigest({ dateISO: DAY, temp: { ...TEMP, rhMin: 62 }, windows }).body,
+    /💦 Humidité : 62%$/m);
+  assert.match(formatDigest({ dateISO: DAY, temp: { ...TEMP, rhMax: 94 }, windows }).body,
+    /💦 Humidité : 94%$/m);
+});
+
+test('formatDigest: vent sans direction → pas de parenthèse vide', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(1)), DAY);
+  const out = formatDigest({ dateISO: DAY, temp: { ...TEMP, ventDir: null }, windows });
+  assert.match(out.body, /💨 Vent max : 12 km\/h$/m);
+});
+
+test('formatDigest: corps < 900 caractères sur le pire cas (limite Meta 1024)', () => {
+  // Pire cas réaliste : toutes les données présentes, valeurs les plus larges
+  // possibles, et le maximum de fenêtres (une heure sur deux favorable → 8
+  // plages listées sur la journée ouvrée).
+  const pire = {
+    tMin: -12.7, tMax: 48.6, ventMax: 128.4, pluie: 188.8, pictocode: 1,
+    ressenti: -18.4, rhMin: 100, rhMax: 100, ventDir: 225,
+    deltaTMin: 18.8, deltaTMax: 28.8, humectation: 24, heuresHr90: 23.8,
+    etoFao: 18.8, humiditeSol: 100,
+  };
+  const byHour = workDay(0);
+  for (let h = 6; h <= 20; h += 2) byHour[h] = 1;
+  const windows = buildSprayWindows(sprayPayload(byHour), DAY);
+  assert.equal(windows.fenetres.length, 8);
+  const out = formatDigest({ dateISO: DAY, temp: pire, windows });
+  assert.ok(out.body.length < 900,
+    'corps de ' + out.body.length + ' caractères, marge Meta dépassée:\n' + out.body);
+  assert.ok(out.dateParam.length < 1024);
+});
+
+test('formatDigest: fallbackText reste single-line même avec tout le contenu', () => {
+  const windows = buildSprayWindows(sprayPayload(workDay(0, { 8: 1, 9: 1 })), DAY);
+  const out = formatDigest({ dateISO: DAY, temp: TEMP_COMPLET, windows });
+  assert.equal(out.fallbackText.includes('\n'), false);
+  // L'essentiel décisionnel y reste : température, créneaux, score.
+  assert.match(out.fallbackText, /Température 21°C à 28°C/);
+  assert.match(out.fallbackText, /08h00-10h00/);
+  assert.match(out.fallbackText, /score /);
+  // Les indicateurs agronomiques n'y sont volontairement PAS (lisibilité).
+  assert.doesNotMatch(out.fallbackText, /Delta T|humectation|ETo/);
 });
 
 // ── createMeteoDigestJob.run ────────────────────────────────────────────

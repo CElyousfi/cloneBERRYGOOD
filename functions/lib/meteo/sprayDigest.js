@@ -31,6 +31,16 @@
  * @property {number|null} ventMax
  * @property {number|null} pluie
  * @property {number|null} pictocode
+ * @property {number|null} ressenti      felttemperature_max (°C)
+ * @property {number|null} rhMin         relativehumidity_min (%)
+ * @property {number|null} rhMax         relativehumidity_max (%)
+ * @property {number|null} ventDir       winddirection (degrés, 0 = Nord)
+ * @property {number|null} deltaTMin     delta_t_min (°C)
+ * @property {number|null} deltaTMax     delta_t_max (°C)
+ * @property {number|null} humectation   leafwetnessindex
+ * @property {number|null} heuresHr90    humiditygreater90_hours (h)
+ * @property {number|null} etoFao        referenceevapotranspiration_fao (mm)
+ * @property {number|null} humiditeSol   soilmoisture_0to10cm_mean (%)
  */
 
 /** Première heure ouvrée prise en compte pour un traitement. */
@@ -39,6 +49,50 @@ const WORK_HOUR_START = 6;
 const WORK_HOUR_END = 20;
 
 const JOURS_COURTS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+/** Secteurs de vent, pas de 45° à partir du Nord (même table que public/app.jsx). */
+const SECTEURS_VENT = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+
+/**
+ * Delta T (°C) = écart température sèche / température humide. C'est
+ * l'indicateur professionnel de pulvérisation : il mesure la vitesse
+ * d'évaporation de la gouttelette entre la buse et la feuille.
+ *
+ * Seuils standards de la profession (bulletins agro, conseils buses) :
+ * - `< 2`   : air trop humide, la gouttelette n'évapore pas → coulure/lessivage ;
+ * - `2 → 8` : plage idéale ;
+ * - `> 8`   : air trop sec, évaporation avant impact → perte de produit et dérive.
+ *
+ * Bornes INCLUSES dans la zone idéale (2 et 8 sont « idéal », 1,9 « trop
+ * humide », 8,1 « trop sec »).
+ */
+const DELTA_T_IDEAL_MIN = 2;
+const DELTA_T_IDEAL_MAX = 8;
+
+const DELTA_T_ZONE_HUMIDE = 'trop humide';
+const DELTA_T_ZONE_IDEAL = 'idéal';
+const DELTA_T_ZONE_SEC = 'trop sec';
+
+/**
+ * Barème du risque maladie — ⚠️ À VALIDER PAR OMAR (agronome).
+ *
+ * Aucune référence agronomique n'existe dans le repo pour ces deux champs ; le
+ * barème ci-dessous est donc volontairement CONSERVATEUR (il bascule tôt vers
+ * « Modéré ») et sert de point de départ, pas de vérité agronomique.
+ *
+ * Hypothèse d'unité : `leafwetnessindex` (Meteoblue, agro-day) est traité ici
+ * comme une DURÉE d'humectation foliaire sur la journée, à la même échelle que
+ * `humiditygreater90_hours` (0 → 24). Il est affiché sans unité pour ne pas
+ * affirmer une unité non vérifiée ; seul `humiditygreater90_hours` porte « h ».
+ *
+ * Règle : on retient le PIRE des deux indicateurs (max), car l'humectation
+ * foliaire et l'air saturé favorisent tous deux la germination des spores.
+ * - `>= 8`  → Élevé
+ * - `>= 4`  → Modéré
+ * - sinon   → Faible
+ */
+const RISQUE_MALADIE_SEUIL_ELEVE = 8;
+const RISQUE_MALADIE_SEUIL_MODERE = 4;
 
 const CRON_CONFIG = Object.freeze({
   schedule: '0 6 * * *',
@@ -170,6 +224,90 @@ function round1(n) {
 }
 
 /**
+ * Normalise une valeur en nombre exploitable, ou `null`. Même filtre que le
+ * `pick` de buildTempSummary, appliqué cette fois à l'ENTRÉE de la mise en
+ * forme : `formatDigest` peut recevoir un TempSummary partiel (appel direct,
+ * ancienne fixture), et un `!== null` laissait alors passer `undefined` →
+ * `Math.round(undefined)` → « NaN°C » dans le message WhatsApp.
+ * @param {*} v
+ * @returns {number|null}
+ */
+function num(v) {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Nombre à la française : une décimale au plus, virgule décimale, et pas de
+ * décimale inutile (`3,9`, `10`). Copie locale du helper de meteoAlertes.js —
+ * ce module n'expose pas le sien et le périmètre du ticket interdit d'y toucher.
+ * @param {number} n
+ * @returns {string}
+ */
+function formatNombreFr(n) {
+  return String(round1(n)).replace('.', ',');
+}
+
+/**
+ * Degrés → secteur français (N, NE, E, SE, S, SO, O, NO). Même arrondi au
+ * secteur de 45° que `parseWindDir` (public/app.jsx) : 350° retombe sur N.
+ * @param {number|null|undefined} deg
+ * @returns {string|null} null si la valeur n'est pas un nombre exploitable.
+ */
+function formatWindDirection(deg) {
+  if (typeof deg !== 'number' || !Number.isFinite(deg)) return null;
+  const idx = Math.round(deg / 45);
+  return SECTEURS_VENT[((idx % 8) + 8) % 8];
+}
+
+/**
+ * Zone d'interprétation d'UNE valeur de Delta T.
+ * @param {number} v
+ * @returns {string} 'trop humide' | 'idéal' | 'trop sec'
+ */
+function deltaTZone(v) {
+  if (v < DELTA_T_IDEAL_MIN) return DELTA_T_ZONE_HUMIDE;
+  if (v > DELTA_T_IDEAL_MAX) return DELTA_T_ZONE_SEC;
+  return DELTA_T_ZONE_IDEAL;
+}
+
+/**
+ * Ligne « Delta T » complète, plage + interprétation + cible. Si la journée
+ * traverse deux zones, les deux sont annoncées (`trop humide → idéal`).
+ * @param {number|null} min
+ * @param {number|null} max
+ * @returns {string|null} null si aucune valeur exploitable.
+ */
+function formatDeltaT(min, max) {
+  const cible = ', cible ' + DELTA_T_IDEAL_MIN + '-' + DELTA_T_IDEAL_MAX + ')';
+  if (min !== null && max !== null) {
+    const zones = deltaTZone(min) === deltaTZone(max)
+      ? deltaTZone(min)
+      : deltaTZone(min) + ' → ' + deltaTZone(max);
+    return 'Delta T : ' + formatNombreFr(min) + ' → ' + formatNombreFr(max) + ' (' + zones + cible;
+  }
+  const seul = min !== null ? min : max;
+  if (seul === null || seul === undefined) return null;
+  return 'Delta T : ' + formatNombreFr(seul) + ' (' + deltaTZone(seul) + cible;
+}
+
+/**
+ * Niveau qualitatif de risque maladie (cf. barème ci-dessus, à valider).
+ * @param {number|null} humectation leafwetnessindex
+ * @param {number|null} heuresHr90  humiditygreater90_hours
+ * @returns {string|null} 'Faible' | 'Modéré' | 'Élevé' — null si rien d'exploitable.
+ */
+function niveauRisqueMaladie(humectation, heuresHr90) {
+  const valeurs = [humectation, heuresHr90].filter(function(v) {
+    return typeof v === 'number' && Number.isFinite(v);
+  });
+  if (!valeurs.length) return null;
+  const pire = Math.max.apply(null, valeurs);
+  if (pire >= RISQUE_MALADIE_SEUIL_ELEVE) return 'Élevé';
+  if (pire >= RISQUE_MALADIE_SEUIL_MODERE) return 'Modéré';
+  return 'Faible';
+}
+
+/**
  * « Jeu 14/08 » depuis une date ISO. Parsing manuel (pas de `new Date(iso)`)
  * pour rester indépendant du fuseau du process.
  * @param {string} dateISO
@@ -249,7 +387,13 @@ function buildSprayWindows(sprayData, dateISO) {
 }
 
 /**
- * Extrait les valeurs journalières (température, vent, pluie, pictocode).
+ * Extrait les valeurs journalières exploitées par le digest.
+ *
+ * Tous les champs viennent du MÊME package déjà appelé
+ * (`basic-day_agro-day_basic-1h`, cf. meteoblueProxy.buildWeatherBasicUrl) :
+ * aucun appel API supplémentaire. Un champ absent ou non numérique retombe sur
+ * `null` via `pick` et disparaît du message.
+ *
  * @param {object|null|undefined} weatherData Réponse brute du package weather.
  * @param {string} dateISO YYYY-MM-DD
  * @returns {TempSummary|null} null si le jour est absent.
@@ -271,12 +415,34 @@ function buildTempSummary(weatherData, dateISO) {
     ventMax: pick(day.windspeed_max),
     pluie: pick(day.precipitation),
     pictocode: pick(day.pictocode),
+    // Bloc 1 — conditions de pulvérisation
+    ressenti: pick(day.felttemperature_max),
+    rhMin: pick(day.relativehumidity_min),
+    rhMax: pick(day.relativehumidity_max),
+    ventDir: pick(day.winddirection),
+    deltaTMin: pick(day.delta_t_min),
+    deltaTMax: pick(day.delta_t_max),
+    // Bloc 2 — risque maladie
+    humectation: pick(day.leafwetnessindex),
+    heuresHr90: pick(day.humiditygreater90_hours),
+    // Bloc 3 — irrigation
+    etoFao: pick(day.referenceevapotranspiration_fao),
+    // Hypothèse d'unité : pourcentage volumique (les valeurs observées sur ce
+    // point — ex. 10 — excluent une échelle m³/m³ 0-1).
+    humiditeSol: pick(day.soilmoisture_0to10cm_mean),
   };
 }
 
 /**
  * Met en forme le digest : paramètre de date du template, corps multi-ligne
  * (style dailyProductionReport) et repli aplati sur une ligne.
+ *
+ * Le corps est assemblé par SECTIONS, chacune séparée par une ligne vide. Une
+ * section vide (données absentes) n'est pas poussée du tout : pas de ligne
+ * orpheline, pas de double saut de ligne.
+ *
+ * ⚠️ Le corps part en `{{2}}` du template Meta, limité à 1024 caractères par
+ * paramètre (cf. test « corps < 900 caractères »).
  *
  * @param {{dateISO: string, temp: TempSummary|null, windows: SprayWindows|null}} input
  * @returns {{dateParam: string, body: string, fallbackText: string}}
@@ -287,54 +453,108 @@ function formatDigest(input) {
   const windows = input ? input.windows : null;
   const dateParam = formatDateParam(dateISO);
 
-  const lines = [];
+  /** @type {Array<Array<string>>} */
+  const sections = [];
   const flat = [];
 
-  if (temp && (temp.tMin !== null || temp.tMax !== null)) {
-    const tMin = temp.tMin !== null ? Math.round(temp.tMin) + '°C' : '?';
-    const tMax = temp.tMax !== null ? Math.round(temp.tMax) + '°C' : '?';
-    lines.push('🌡️ *Température* : ' + tMin + ' → ' + tMax);
+  // ── Section 1 : conditions de pulvérisation ────────────────────────────
+  const t = temp || {};
+  const tMinV = num(t.tMin);
+  const tMaxV = num(t.tMax);
+  const ventV = num(t.ventMax);
+  const pluieV = num(t.pluie);
+  const rhMin = num(t.rhMin);
+  const rhMax = num(t.rhMax);
+
+  const meteo = [];
+  if (tMinV !== null || tMaxV !== null) {
+    const tMin = tMinV !== null ? Math.round(tMinV) + '°C' : '?';
+    const tMax = tMaxV !== null ? Math.round(tMaxV) + '°C' : '?';
+    const ressentiV = num(t.ressenti);
+    const ressenti = ressentiV !== null ? ' (ressenti ' + Math.round(ressentiV) + '°C)' : '';
+    meteo.push('🌡️ *Température* : ' + tMin + ' → ' + tMax + ressenti);
     flat.push('Température ' + tMin + ' à ' + tMax);
-    if (temp.ventMax !== null) {
-      lines.push('💨 Vent max : ' + Math.round(temp.ventMax) + ' km/h');
-      flat.push('vent max ' + Math.round(temp.ventMax) + ' km/h');
+
+    if (rhMin !== null && rhMax !== null) {
+      meteo.push('💦 Humidité : ' + Math.round(rhMin) + '% → ' + Math.round(rhMax) + '%');
+    } else if (rhMin !== null || rhMax !== null) {
+      meteo.push('💦 Humidité : ' + Math.round(rhMin !== null ? rhMin : rhMax) + '%');
     }
-    if (temp.pluie !== null) {
-      lines.push('🌧️ Pluie : ' + round1(temp.pluie) + ' mm');
-      flat.push('pluie ' + round1(temp.pluie) + ' mm');
+
+    if (ventV !== null) {
+      const dir = formatWindDirection(num(t.ventDir));
+      meteo.push('💨 Vent max : ' + Math.round(ventV) + ' km/h' + (dir ? ' (' + dir + ')' : ''));
+      flat.push('vent max ' + Math.round(ventV) + ' km/h');
     }
+    if (pluieV !== null) {
+      meteo.push('🌧️ Pluie : ' + formatNombreFr(pluieV) + ' mm');
+      flat.push('pluie ' + formatNombreFr(pluieV) + ' mm');
+    }
+    const deltaT = formatDeltaT(num(t.deltaTMin), num(t.deltaTMax));
+    if (deltaT) meteo.push('🎯 ' + deltaT);
   } else {
-    lines.push('🌡️ *Température* : donnée météo indisponible');
+    meteo.push('🌡️ *Température* : donnée météo indisponible');
     flat.push('Température indisponible');
   }
+  sections.push(meteo);
 
-  lines.push('');
-
+  // ── Section 2 : fenêtres de traitement ─────────────────────────────────
+  const fenetres = [];
   if (!windows) {
-    lines.push('⚠️ Fenêtres de traitement indisponibles');
+    fenetres.push('⚠️ Fenêtres de traitement indisponibles');
     flat.push('fenêtres de traitement indisponibles');
   } else if (!windows.fenetres.length) {
-    lines.push('🚫 Aucun créneau favorable aujourd\'hui');
-    lines.push('Score du jour : ' + formatScore(windows.score));
+    fenetres.push('🚫 Aucun créneau favorable aujourd\'hui');
+    fenetres.push('Score du jour : ' + formatScore(windows.score));
     flat.push('aucun créneau favorable aujourd\'hui');
     flat.push('score ' + formatScore(windows.score));
   } else {
-    lines.push('✅ *Fenêtres de traitement* :');
+    fenetres.push('✅ *Fenêtres de traitement* :');
     windows.fenetres.forEach(function(f) {
-      lines.push('• ' + formatHeure(f.de) + ' - ' + formatHeure(f.a));
+      fenetres.push('• ' + formatHeure(f.de) + ' - ' + formatHeure(f.a));
     });
-    lines.push('Score du jour : ' + formatScore(windows.score));
+    fenetres.push('Score du jour : ' + formatScore(windows.score));
     flat.push('créneaux ' + windows.fenetres.map(function(f) {
       return formatHeure(f.de) + '-' + formatHeure(f.a);
     }).join(', '));
     flat.push('score ' + formatScore(windows.score));
   }
+  sections.push(fenetres);
 
+  // ── Section 3 : risque maladie ─────────────────────────────────────────
+  const humectation = num(t.humectation);
+  const heuresHr90 = num(t.heuresHr90);
+  const niveau = niveauRisqueMaladie(humectation, heuresHr90);
+  if (niveau) {
+    const detail = [];
+    if (humectation !== null) detail.push('humectation ' + formatNombreFr(humectation));
+    if (heuresHr90 !== null) detail.push('HR>90% ' + formatNombreFr(heuresHr90) + ' h');
+    sections.push([
+      '🍄 *Risque maladie* : ' + niveau,
+      '(' + detail.join(' · ') + ')',
+    ]);
+  }
+
+  // ── Section 4 : irrigation ─────────────────────────────────────────────
+  const etoFao = num(t.etoFao);
+  const humiditeSol = num(t.humiditeSol);
+  const irrigation = [];
+  if (etoFao !== null) irrigation.push('ETo ' + formatNombreFr(etoFao) + ' mm');
+  if (humiditeSol !== null) irrigation.push('humidité sol ' + formatNombreFr(humiditeSol) + '%');
+  if (irrigation.length) {
+    sections.push(['💧 *Irrigation* : ' + irrigation.join(' · ')]);
+  }
+
+  // Le fallback `general_alert` n'a QU'UN paramètre single-line : y déverser les
+  // 4 sections le rendrait illisible sur mobile. On y garde donc l'essentiel
+  // décisionnel (température, vent, pluie, créneaux, score) — inchangé par ce
+  // ticket ; les indicateurs agronomiques ne survivent qu'au template complet.
   const fallbackText = ('Météo & Traitements ' + dateParam + ' : ' + flat.join(', '))
     .replace(/\s+/g, ' ')
     .trim();
 
-  return { dateParam: dateParam, body: lines.join('\n'), fallbackText: fallbackText };
+  const body = sections.map(function(s) { return s.join('\n'); }).join('\n\n');
+  return { dateParam: dateParam, body: body, fallbackText: fallbackText };
 }
 
 /**
@@ -537,6 +757,15 @@ module.exports = {
   todayCasablancaISO,
   formatDateParam,
   scoreLabel,
+  formatNombreFr,
+  formatWindDirection,
+  deltaTZone,
+  formatDeltaT,
+  niveauRisqueMaladie,
+  DELTA_T_IDEAL_MIN,
+  DELTA_T_IDEAL_MAX,
+  RISQUE_MALADIE_SEUIL_MODERE,
+  RISQUE_MALADIE_SEUIL_ELEVE,
   buildSprayWindows,
   buildTempSummary,
   formatDigest,
