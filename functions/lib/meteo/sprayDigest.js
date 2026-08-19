@@ -69,6 +69,14 @@ const SECTEURS_VENT = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
 const DELTA_T_IDEAL_MIN = 2;
 const DELTA_T_IDEAL_MAX = 8;
 
+/**
+ * ⚠️ Libellé volontairement désambiguïsé : `functions/index.js` expose déjà un
+ * champ `delta_t` qui est l'AMPLITUDE THERMIQUE du jour (tmax − tmin), affiché
+ * « ΔT (°C) » sur l'écran Maturité. Les deux indicateurs n'ont rien en commun ;
+ * un « Delta T » nu dans le digest serait lu comme l'amplitude par un chef.
+ */
+const DELTA_T_LABEL = 'Delta T pulvé';
+
 const DELTA_T_ZONE_HUMIDE = 'trop humide';
 const DELTA_T_ZONE_IDEAL = 'idéal';
 const DELTA_T_ZONE_SEC = 'trop sec';
@@ -283,11 +291,11 @@ function formatDeltaT(min, max) {
     const zones = deltaTZone(min) === deltaTZone(max)
       ? deltaTZone(min)
       : deltaTZone(min) + ' → ' + deltaTZone(max);
-    return 'Delta T : ' + formatNombreFr(min) + ' → ' + formatNombreFr(max) + ' (' + zones + cible;
+    return DELTA_T_LABEL + ' : ' + formatNombreFr(min) + ' → ' + formatNombreFr(max) + ' (' + zones + cible;
   }
   const seul = min !== null ? min : max;
   if (seul === null || seul === undefined) return null;
-  return 'Delta T : ' + formatNombreFr(seul) + ' (' + deltaTZone(seul) + cible;
+  return DELTA_T_LABEL + ' : ' + formatNombreFr(seul) + ' (' + deltaTZone(seul) + cible;
 }
 
 /**
@@ -762,6 +770,7 @@ module.exports = {
   deltaTZone,
   formatDeltaT,
   niveauRisqueMaladie,
+  DELTA_T_LABEL,
   DELTA_T_IDEAL_MIN,
   DELTA_T_IDEAL_MAX,
   RISQUE_MALADIE_SEUIL_MODERE,

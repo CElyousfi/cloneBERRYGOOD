@@ -15,6 +15,7 @@ const {
   formatWindDirection,
   deltaTZone,
   formatDeltaT,
+  DELTA_T_LABEL,
   niveauRisqueMaladie,
   todayCasablancaISO,
   createMeteoDigestJob,
@@ -236,12 +237,23 @@ test('deltaTZone: trois zones et bornes exactes (1,9 / 2 / 8 / 8,1)', () => {
 });
 
 test('formatDeltaT: plage traversant deux zones, plage homogène, valeur seule', () => {
-  assert.equal(formatDeltaT(0.8, 2.9), 'Delta T : 0,8 → 2,9 (trop humide → idéal, cible 2-8)');
-  assert.equal(formatDeltaT(3, 6.5), 'Delta T : 3 → 6,5 (idéal, cible 2-8)');
-  assert.equal(formatDeltaT(9, 12), 'Delta T : 9 → 12 (trop sec, cible 2-8)');
-  assert.equal(formatDeltaT(null, 5.4), 'Delta T : 5,4 (idéal, cible 2-8)');
-  assert.equal(formatDeltaT(1.2, null), 'Delta T : 1,2 (trop humide, cible 2-8)');
+  assert.equal(formatDeltaT(0.8, 2.9), 'Delta T pulvé : 0,8 → 2,9 (trop humide → idéal, cible 2-8)');
+  assert.equal(formatDeltaT(3, 6.5), 'Delta T pulvé : 3 → 6,5 (idéal, cible 2-8)');
+  assert.equal(formatDeltaT(9, 12), 'Delta T pulvé : 9 → 12 (trop sec, cible 2-8)');
+  assert.equal(formatDeltaT(null, 5.4), 'Delta T pulvé : 5,4 (idéal, cible 2-8)');
+  assert.equal(formatDeltaT(1.2, null), 'Delta T pulvé : 1,2 (trop humide, cible 2-8)');
   assert.equal(formatDeltaT(null, null), null);
+});
+
+// `functions/index.js` expose un `delta_t` = amplitude thermique (tmax − tmin),
+// affiché « ΔT (°C) » sur l'écran Maturité. Le digest parle d'un TOUT AUTRE
+// indicateur (psychrométrique, pulvérisation) : le libellé doit lever le doute.
+test('formatDeltaT: libellé désambiguïsé vs le ΔT amplitude thermique de Maturité', () => {
+  const ligne = formatDeltaT(3, 6.5);
+  assert.equal(DELTA_T_LABEL, 'Delta T pulvé');
+  assert.ok(ligne.startsWith(DELTA_T_LABEL + ' : '));
+  assert.doesNotMatch(ligne, /ΔT/, 'le sigle ΔT est réservé à l\'amplitude thermique');
+  assert.doesNotMatch(ligne, /Delta T :/, 'plus de « Delta T » nu, confondable avec l\'amplitude');
 });
 
 test('niveauRisqueMaladie: barème aux bornes (4 / 8), pire des deux indicateurs', () => {
@@ -357,7 +369,7 @@ test('formatDigest: journée complète → 4 sections agronomiques rendues', () 
   assert.match(out.body, /💦 Humidité : 62% → 94%/);
   assert.match(out.body, /💨 Vent max : 4 km\/h \(O\)/);
   assert.match(out.body, /🌧️ Pluie : 0 mm/);
-  assert.match(out.body, /🎯 Delta T : 0,8 → 2,9 \(trop humide → idéal, cible 2-8\)/);
+  assert.match(out.body, /🎯 Delta T pulvé : 0,8 → 2,9 \(trop humide → idéal, cible 2-8\)/);
   assert.match(out.body, /🍄 \*Risque maladie\* : Faible/);
   assert.match(out.body, /\(humectation 0 · HR>90% 0,2 h\)/);
   assert.match(out.body, /💧 \*Irrigation\* : ETo 3,9 mm · humidité sol 10%/);
