@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "223/362 fichiers classifiés",
+          "detail": "224/363 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "55/151 modules avec ≥1 test",
+          "detail": "56/152 modules avec ≥1 test",
           "max": 30,
           "score": 11
         }
@@ -23,15 +23,15 @@
     },
     "heatmap": [
       {
-        "commits": 34,
+        "commits": 35,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 33,
+        "commits": 34,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 20,
+        "commits": 21,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
@@ -64,19 +64,19 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:0bad68ee41628c87",
+    "sourceFingerprint": "sha256:0dd54578406bd7fc",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
-      "coverageScore": 36,
+      "coverageScore": 37,
       "domains": 10,
       "extractedComponents": 24,
       "firestoreCollections": 58,
-      "libHelpers": 33,
+      "libHelpers": 34,
       "monolithSymbols": 120,
       "tabFunctions": 120,
       "unclassifiedFiles": 139,
-      "unitTestFiles": 34
+      "unitTestFiles": 35
     }
   },
   "domains": {
@@ -407,7 +407,7 @@
         "services": []
       },
       "confidence": "high",
-      "coverageScore": 75,
+      "coverageScore": 80,
       "firestore": {
         "collections": [
           "caisse_definitions",
@@ -418,6 +418,7 @@
         "components": [],
         "libs": [
           "public/lib/caisseUtils.js",
+          "public/lib/campagneRapprochement.js",
           "public/lib/encaissementsCanevas.js"
         ],
         "tabs": [
@@ -435,6 +436,7 @@
         ],
         "unit": [
           "tests/unit/caisseUtils.test.js",
+          "tests/unit/campagneRapprochement.test.js",
           "tests/unit/encaissementsCanevas.test.js"
         ]
       }
@@ -799,14 +801,14 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 32,
+          "coCommits": 33,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 17,
+          "coCommits": 18,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
@@ -921,6 +923,20 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -2414,6 +2430,10 @@
     "public/lib/campagneProduction.js": {
       "confidence": "high",
       "domain": "recolte"
+    },
+    "public/lib/campagneRapprochement.js": {
+      "confidence": "high",
+      "domain": "caisse"
     },
     "public/lib/campagneRythme.js": {
       "confidence": "high",

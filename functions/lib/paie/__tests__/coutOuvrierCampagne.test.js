@@ -297,3 +297,29 @@ test('facteurCharge — combien coûte réellement un dirham de salaire de base'
   // pour un coût complet, ce qui est l'erreur qu'on corrige.
   assert.strictEqual(campagne({ registre: {}, quinzaines: [] }).facteurCharge, null);
 });
+
+test('parQuinzaine — le détail se recompose quinzaine par quinzaine', () => {
+  // C'est ce détail qui rend le rapprochement avec l'écran Quinzaine
+  // vérifiable sans ressaisir un chiffre à la main.
+  const out = campagne({
+    registre: { AB1: { declare: true } },
+    quinzaines: [
+      quinzaine('Quinzaine 01', '2026-07-15', { AB1: ouvrier(['2026-07-01', '2026-07-02']) }),
+      quinzaine('Quinzaine 02', '2026-07-31', { AB1: ouvrier(['2026-07-20']) }),
+    ],
+  });
+  assert.deepStrictEqual(out.parQuinzaine.map((q) => q.periode),
+    ['Quinzaine 01', 'Quinzaine 02']);
+  assert.deepStrictEqual(out.parQuinzaine.map((q) => q.jours), [2, 1]);
+  // La somme des quinzaines EST le total : sans ça, le rapprochement compare
+  // deux chiffres qui ne parlent pas du même périmètre.
+  const somme = out.parQuinzaine.reduce((s, q) => s + q.coutTotal, 0);
+  assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(out.coutTotal * 1e6) / 1e6);
+  const sommeBase = out.parQuinzaine.reduce((s, q) => s + q.base, 0);
+  assert.strictEqual(Math.round(sommeBase * 1e6) / 1e6, Math.round(out.detail.base * 1e6) / 1e6);
+  // Et chaque quinzaine se recompose elle aussi.
+  out.parQuinzaine.forEach((q) => {
+    assert.strictEqual(Math.round((q.base + q.primes + q.charges) * 1e6) / 1e6,
+      Math.round(q.coutTotal * 1e6) / 1e6, q.periode);
+  });
+});

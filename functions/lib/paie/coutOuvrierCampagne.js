@@ -263,7 +263,7 @@ function paieOuvrierQuinzaine(args) {
  * @param {Array<Object>} args.equipesTransport équipes de transport.
  * @returns {{coutMoyenJour: number|null, facteurCharge: number|null,
  *   coutTotal: number, jours: number, ouvriers: number, quinzaines: number,
- *   partDeclares: number|null, detail: Object}}
+ *   partDeclares: number|null, detail: Object, parQuinzaine: Array<Object>}}
  */
 function coutOuvrierCampagne(args) {
   const a = args || {};
@@ -284,8 +284,14 @@ function coutOuvrierCampagne(args) {
     traitement: 0, conditionnement: 0, chargement: 0, feries: 0,
   };
 
+  // Détail PAR QUINZAINE : c'est lui qui rend le rapprochement avec l'écran
+  // Quinzaine vérifiable, quinzaine par quinzaine, sans ressaisir un chiffre.
+  const parQuinzaine = [];
+
   quinzaines.forEach((q) => {
     const parOuvrier = (q && q.parOuvrier) || {};
+    const cumulQ = { periode: (q && q.periode) || '', jours: 0, base: 0,
+      primes: 0, charges: 0, coutTotal: 0 };
     Object.keys(parOuvrier).forEach((mat) => {
       const e = parOuvrier[mat];
       const joursTravailles = e.jours instanceof Set ? e.jours.size : Number(e.jours) || 0;
@@ -328,8 +334,16 @@ function coutOuvrierCampagne(args) {
       ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement', 'feries']
         .forEach((k) => { detail[k] += Number(primesOuvrier[k]) || 0; });
 
+      cumulQ.jours += joursTravailles;
+      cumulQ.base += Number(e.base) || 0;
+      cumulQ.primes += paie.primesNonSoumises + (Number(primesOuvrier.feries) || 0)
+        + paie.primeFonction + paie.primeAnciennete + paie.heuresSup;
+      cumulQ.charges += paie.chargesPatronales + paie.cotisationsSalariales;
+      cumulQ.coutTotal += paie.total;
+
       joursCumules[mat] = (joursCumules[mat] || 0) + joursTravailles;
     });
+    parQuinzaine.push(cumulQ);
   });
 
   return {
@@ -347,6 +361,7 @@ function coutOuvrierCampagne(args) {
     ouvriers: matriculesVus.size,
     quinzaines: quinzaines.length,
     detail,
+    parQuinzaine,
     partDeclares: jours > 0 ? joursDeclares / jours : null,
   };
 }

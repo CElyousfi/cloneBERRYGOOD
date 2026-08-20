@@ -2394,6 +2394,192 @@
       }];
     }
 
+    /**
+     * PANNEAU DE RAPPROCHEMENT — écran Quinzaine ↔ écran Campagne.
+     *
+     * Deux chemins additionnent la même main d'œuvre : la grille agrège le
+     * pointage PAR PARCELLE (une ligne dont la parcelle ou la culture ne se
+     * résout pas n'y entre pas), le coût ouvrier part du pointage BRUT. Leur
+     * écart mesure donc exactement ce que la grille NE VOIT PAS — un trou qui
+     * ne se signale jamais tout seul, parce qu'un total plus petit reste un
+     * total plausible.
+     *
+     * Affiché sous les grilles, toutes cultures confondues : c'est un contrôle
+     * de couverture, pas une lecture par culture.
+     */
+    function panneauRapprochement() {
+      var CRap = window.CampagneRapprochement;
+      var pq = props.coutOuvrier && props.coutOuvrier.parQuinzaine;
+      if (!CRap || typeof CRap.rapprocher !== 'function' || !pq || !pq.length) return null;
+      var rap = CRap.rapprocher({
+        parQuinzaine: pq,
+        rows: data.rows
+      });
+      if (!rap.lignes.length) return null;
+      var dh = function (v) {
+        return Math.round(v).toLocaleString('fr-MA');
+      };
+      var pct = function (v) {
+        return v === null ? '—' : (Math.round(v * 1000) / 10).toFixed(1) + ' %';
+      };
+      // Seuil de tolérance : sous 0,5 %, l'écart relève de l'arrondi et du
+      // décalage de synchronisation, pas d'un trou de périmètre.
+      var alerte = function (v) {
+        return v !== null && Math.abs(v) >= 0.005;
+      };
+      var th = {
+        padding: '6px 10px',
+        textAlign: 'right',
+        fontSize: '10px',
+        color: C.textSec,
+        fontWeight: 600,
+        borderBottom: '1px solid ' + C.border
+      };
+      var thL = Object.assign({}, th, {
+        textAlign: 'left'
+      });
+      var td = {
+        padding: '6px 10px',
+        textAlign: 'right',
+        fontSize: '12px'
+      };
+      var tdL = Object.assign({}, td, {
+        textAlign: 'left',
+        fontWeight: 600
+      });
+      return React.createElement('div', {
+        style: {
+          marginBottom: '20px',
+          background: C.surface,
+          borderRadius: '12px',
+          border: '1px solid ' + C.border,
+          overflow: 'hidden'
+        }
+      }, React.createElement('div', {
+        style: {
+          padding: '10px 16px',
+          background: C.surface2,
+          borderBottom: '1px solid ' + C.border,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          flexWrap: 'wrap'
+        }
+      }, React.createElement('i', {
+        className: 'fa-solid fa-scale-balanced',
+        style: {
+          color: C.textSec,
+          fontSize: '13px'
+        }
+      }), React.createElement('span', {
+        style: {
+          fontSize: '13px',
+          fontWeight: 700
+        }
+      }, 'Rapprochement pointage ↔ grille'), React.createElement('span', {
+        style: {
+          fontSize: '11px',
+          color: alerte(rap.ecartPct) ? '#c0392b' : C.textSec,
+          fontWeight: alerte(rap.ecartPct) ? 700 : 400
+        }
+      }, 'écart total ' + dh(rap.ecart) + ' DH (' + pct(rap.ecartPct) + ')')), React.createElement('div', {
+        style: {
+          overflowX: 'auto'
+        }
+      }, React.createElement('table', {
+        style: {
+          width: '100%',
+          borderCollapse: 'collapse',
+          fontSize: '12px'
+        }
+      }, React.createElement('thead', null, React.createElement('tr', {
+        style: {
+          background: C.surface2
+        }
+      }, React.createElement('th', {
+        style: thL
+      }, 'Quinzaine'), React.createElement('th', {
+        style: th
+      }, 'JH'), React.createElement('th', {
+        style: th,
+        title: 'Salaire de base agrégé par parcelle, tel que la grille ci-dessus l\'additionne.'
+      }, 'Grille'), React.createElement('th', {
+        style: th,
+        title: 'Salaire de base du pointage BRUT, sans passer par la parcelle.'
+      }, 'Pointage'), React.createElement('th', {
+        style: th
+      }, 'Écart'), React.createElement('th', {
+        style: th
+      }, '%'), React.createElement('th', {
+        style: th,
+        title: 'Coût CHARGÉ de la quinzaine : base + primes + charges. À comparer au total de l\'écran Quinzaine, dont il faut retrancher le pointage divers.'
+      }, 'Coût chargé'))), React.createElement('tbody', null, rap.lignes.map(function (l, i) {
+        return React.createElement('tr', {
+          key: l.periode,
+          style: {
+            background: i % 2 ? C.surface2 : C.surface,
+            borderBottom: '1px solid var(--gray-100)'
+          }
+        }, React.createElement('td', {
+          style: tdL
+        }, l.periode), React.createElement('td', {
+          style: Object.assign({}, td, {
+            color: C.textSec
+          })
+        }, (Math.round(l.jours * 10) / 10).toLocaleString('fr-MA')), React.createElement('td', {
+          style: td
+        }, dh(l.grille)), React.createElement('td', {
+          style: td
+        }, dh(l.pointage)), React.createElement('td', {
+          style: Object.assign({}, td, {
+            color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
+            fontWeight: alerte(l.ecartPct) ? 700 : 400
+          })
+        }, dh(l.ecart)), React.createElement('td', {
+          style: Object.assign({}, td, {
+            color: alerte(l.ecartPct) ? '#c0392b' : C.textSec
+          })
+        }, pct(l.ecartPct)), React.createElement('td', {
+          style: Object.assign({}, td, {
+            fontWeight: 700
+          })
+        }, dh(l.coutCharge)));
+      })), React.createElement('tfoot', null, React.createElement('tr', {
+        style: {
+          background: C.surface2,
+          fontWeight: 700
+        }
+      }, React.createElement('td', {
+        style: tdL
+      }, 'TOTAL'), React.createElement('td', {
+        style: td
+      }, ''), React.createElement('td', {
+        style: td
+      }, dh(rap.totalGrille)), React.createElement('td', {
+        style: td
+      }, dh(rap.totalPointage)), React.createElement('td', {
+        style: td
+      }, dh(rap.ecart)), React.createElement('td', {
+        style: td
+      }, pct(rap.ecartPct)), React.createElement('td', {
+        style: td
+      }, dh(rap.lignes.reduce(function (s, l) {
+        return s + l.coutCharge;
+      }, 0))))))), React.createElement('div', {
+        style: {
+          padding: '6px 14px 10px',
+          fontSize: '10px',
+          color: C.textSec,
+          borderTop: '1px solid var(--gray-100)'
+        }
+      }, React.createElement('i', {
+        className: 'fa-solid fa-circle-info',
+        style: {
+          marginRight: '6px'
+        }
+      }), 'La grille agrège le pointage PAR PARCELLE : une ligne dont la parcelle ' + 'ou la culture ne se résout pas n\'y entre pas. Le « Pointage » part ' + 'des lignes brutes. L\'écart mesure donc ce que la grille ne voit pas ' + '— à zéro, elle couvre tout. Le « Coût chargé » se compare au total de ' + 'l\'écran Quinzaine, duquel il faut retrancher le pointage divers ' + '(sous-traitants), hors périmètre des deux chemins.'));
+    }
+
     /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */
     function boutonPlein(i) {
       return React.createElement('button', {
@@ -2577,7 +2763,10 @@
       }
     }, React.createElement('i', {
       className: 'fa-solid fa-chevron-right'
-    }))) : null, groups.length === 0 ? React.createElement('div', {
+    }))) : null,
+    // Contrôle de couverture, affiché sous les grilles — jamais en plein
+    // écran, où l'on vient lire une culture, pas auditer un périmètre.
+    enPlein ? null : panneauRapprochement(), groups.length === 0 ? React.createElement('div', {
       style: {
         padding: '40px',
         textAlign: 'center',

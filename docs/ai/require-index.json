@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:17579e5ba980e9ac",
+    "sourceFingerprint": "sha256:bbb508d47148f20c",
     "stats": {
-      "targetFiles": 224,
+      "targetFiles": 225,
       "targetFilesWithDirectTests": 136,
       "targetFilesWithTransitiveTests": 157,
-      "testFilesScanned": 191
+      "testFilesScanned": 192
     }
   },
   "index": {
@@ -1559,6 +1559,10 @@
       ]
     },
     "public/lib/campagneProduction.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/lib/campagneRapprochement.js": {
       "directTests": [],
       "transitiveTests": []
     },
