@@ -2526,6 +2526,9 @@
         // contenu et les colonnes ne tombent plus en face. Vrai dans
         // toutes les vues, y compris en Coût DH où il n'y a qu'une série.
         largeursFixes: true,
+        // …et elles coulissent ensemble : deux tableaux de mêmes colonnes
+        // qui défilent séparément font lire une parcelle pour une autre.
+        scrollGroup: 'campagne-' + g.culture,
         showTotal: enPlein && metricsAffichees.length > 1,
         parcelleLabel: function (k) {
           return sbNom(k, sbMap);

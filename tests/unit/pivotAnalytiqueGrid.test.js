@@ -778,3 +778,18 @@ test('largeurs — avec la prop, mêmes largeurs à UNE ou PLUSIEURS séries', (
   assert.strictEqual(tableMulti.props.style.minWidth, 200 + 2 * (3 * 78));
   assert.strictEqual(tableMono.props.style.minWidth, 200 + 2 * 110);
 });
+
+test('défilement — deux grilles d\'un même groupe coulissent ensemble', () => {
+  const tree = render(troisSeries('perHa'), { largeursFixes: true, scrollGroup: 'g1' });
+  // Le conteneur de défilement porte le groupe et écoute le scroll.
+  const conteneur = walk(tree).filter((n) => n.props && n.props['data-scroll-group'] === 'g1');
+  assert.strictEqual(conteneur.length, 1);
+  assert.strictEqual(typeof conteneur[0].props.onScroll, 'function');
+  // Sans la prop : aucun groupe, aucun écouteur — c'est le cas de l'écran
+  // Quinzaine, dont le défilement reste indépendant.
+  const sansGroupe = render(troisSeries('perHa'));
+  const div = walk(sansGroupe).filter((n) => n.type === 'div'
+    && n.props && n.props.style && n.props.style.overflowX === 'auto')[0];
+  assert.strictEqual(div.props['data-scroll-group'], undefined);
+  assert.strictEqual(div.props.onScroll, undefined);
+});

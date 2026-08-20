@@ -50,6 +50,10 @@
  *                 égaux par construction à la somme des lignes affichées dessous
  *                 (le `pivot` de la ligne groupe, lui, ne porte ni budget ni
  *                 `pctIdeal` : le lire donnerait des « — »).
+ *   scrollGroup   {string}  Deux grilles qui partagent cette valeur défilent
+ *                 horizontalement ENSEMBLE. Avec `largeursFixes`, l'ensemble se
+ *                 lit comme un seul tableau coupé par un espace. Absent =
+ *                 défilement indépendant (le cas de l'écran Quinzaine).
  *   largeursFixes {bool}  Largeurs de colonnes déterministes (défaut FALSE :
  *                 dimensionnement automatique, celui de l'écran Quinzaine en
  *                 production). À true, DEUX grilles empilées qui portent les
@@ -368,6 +372,30 @@
     }
   }
 
+  /**
+   * Défilement horizontal SOLIDAIRE de plusieurs grilles.
+   *
+   * L'écran Campagne empile deux tableaux qui portent les MÊMES parcelles (hors
+   * récolte / récolte) : les faire défiler séparément revient à lire deux
+   * colonnes différentes en croyant lire la même. Avec des largeurs
+   * déterministes des deux côtés, les synchroniser revient à un seul tableau
+   * avec un espace au milieu.
+   *
+   * Le garde-fou est le `scrollLeft` déjà à la bonne valeur : sans lui, chaque
+   * écriture rejouerait un `scroll` sur l'autre conteneur, qui réécrirait le
+   * premier — une boucle qui bloque le défilement à la main.
+   * Inerte hors DOM (harnais de test sans `document`).
+   */
+  function _pag_syncScroll(e, groupe) {
+    var src = e && e.currentTarget;
+    if (!src || typeof document === 'undefined' || !document.querySelectorAll) return;
+    var cibles = document.querySelectorAll('[data-scroll-group="' + groupe + '"]');
+    for (var i = 0; i < cibles.length; i += 1) {
+      var c = cibles[i];
+      if (c !== src && c.scrollLeft !== src.scrollLeft) c.scrollLeft = src.scrollLeft;
+    }
+  }
+
   function PivotAnalytiqueGrid(props) {
     var parcelles = props.parcelles || [];
     var groupedRows = props.groupedRows || [];
@@ -398,6 +426,9 @@
     // Largeurs de colonnes déterministes (cf. plus bas). Défaut FALSE : le
     // panneau Quinzaine, en production, garde son dimensionnement automatique.
     var largeursFixes = props.largeursFixes === true;
+    // Identifiant de groupe de défilement : deux grilles qui le partagent
+    // coulissent ensemble. Absent = défilement indépendant (écran Quinzaine).
+    var scrollGroup = props.scrollGroup || '';
 
     // Éclatement en sous-colonnes : MÊME test que le mode empilé historique
     // (`multi` de _pag_stack). Une seule série ⇒ rendu d'avant, intégralement.
@@ -843,7 +874,12 @@
           totalHa > 0 ? ' · ' + totalHa.toFixed(2) + ' Ha total' : ''
         )
       ),
-      _pag_h('div', { style: { overflowX: 'auto' } },
+      _pag_h('div', {
+        style: { overflowX: 'auto' },
+        // Défilement SOLIDAIRE entre grilles d'un même groupe (cf. en-tête).
+        'data-scroll-group': scrollGroup || undefined,
+        onScroll: scrollGroup ? function (e) { _pag_syncScroll(e, scrollGroup); } : undefined,
+      },
         _pag_h('table', { style: tableStyle },
           // En-tête à DEUX niveaux dès qu'il y a plusieurs séries : parcelle
           // (colSpan) puis une sous-colonne par série. Le Total suit la même
