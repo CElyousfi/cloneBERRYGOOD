@@ -1066,3 +1066,61 @@ test('rendement — en Coût DH, l\'indicateur devient DH / kg (pas la cadence)'
   // un 0 (ni gratuit, ni infiniment cher).
   assert.strictEqual(ligne[2], '—');
 });
+
+// ─────────────────────────────────── COÛT OUVRIER CHARGÉ (budget en dirhams)
+//
+// Le budget est saisi en JH/Ha. En Coût DH il est valorisé au coût CHARGÉ d'une
+// journée d'ouvrier (brut + CNSS patronale + transport), servi par l'action
+// backend `campagne-cout-ouvrier`.
+
+const COUT_OUVRIER = {
+  success: true, campagne: '2026/2027', coutMoyenJour: 200, jours: 1200,
+  ouvriers: 80, quinzaines: 3, coutTotal: 240000, partDeclares: 0.75,
+  detail: { brut: 190000, chargesPatronales: 36000, transport: 14000 },
+};
+
+test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', () => {
+  const grilles = tables(renderBudget(
+    { metric: 'cout', coutOuvrier: COUT_OUVRIER }, [true, false, null]
+  ));
+  const trs = walk(section(grilles[0], 'thead')).filter((n) => n.type === 'tr');
+  const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
+  assert.deepStrictEqual(niveau2.slice(0, 3), ['Coût | DH', 'Budget | DH', '% consommé']);
+
+  // Taille sur MARAVILLA : 15 JH/Ha budgétés × 2 Ha = 30 JH, valorisés à
+  // 200 DH/jour = 6 000 DH. Réalisé 6 000 DH → 100,0 % consommé.
+  const taille = cells(bodyRows(grilles[0])[2]);
+  assert.deepStrictEqual(taille.slice(1, 4), [nb(6000), nb(6000), '100.0 %']);
+});
+
+test('coût ouvrier — indisponible : aucun budget en DH, jamais un budget nul', () => {
+  // Un budget à 0 afficherait « dépassement infini » sur chaque ligne.
+  [null, { success: true, coutMoyenJour: null }, { success: true, coutMoyenJour: 0 }]
+    .forEach((cout) => {
+      const table = tables(renderBudget({ metric: 'cout', coutOuvrier: cout }, [true, false, null]))[0];
+      const trs = walk(section(table, 'thead')).filter((n) => n.type === 'tr');
+      assert.strictEqual(trs.length, 1, 'une seule ligne d\'en-tête = une seule série');
+      assert.strictEqual(textOf(table).indexOf('Budget'), -1);
+    });
+});
+
+test('coût ouvrier — le repère de page annonce le chiffre et son détail', () => {
+  const tree = renderBudget({ metric: 'cout', coutOuvrier: COUT_OUVRIER }, [true, false, null]);
+  assert.match(textOf(tree), /Coût ouvrier chargé/);
+  assert.match(textOf(tree), new RegExp(nb(200) + ' DH'));
+  // Le détail est en infobulle : afficher un coût sans permettre de le
+  // contester, c'est demander de le croire sur parole.
+  const badge = walk(tree).filter((n) => n.props && typeof n.props.title === 'string'
+    && n.props.title.indexOf('CNSS patronale') >= 0);
+  assert.strictEqual(badge.length, 1);
+  assert.match(badge[0].props.title, /journées pointées/);
+  assert.match(badge[0].props.title, /Hors pointage divers/);
+});
+
+test('coût ouvrier — en JH, le budget reste en JH (aucune valorisation)', () => {
+  const table = tables(renderBudget({ coutOuvrier: COUT_OUVRIER }))[0];
+  const trs = walk(section(table, 'thead')).filter((n) => n.type === 'tr');
+  const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
+  assert.deepStrictEqual(niveau2.slice(0, 3),
+    ['Réalisé | JH/Ha', 'Budget | JH/Ha', '% consommé']);
+});

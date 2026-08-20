@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "222/361 fichiers classifiés",
+          "detail": "223/362 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "54/150 modules avec ≥1 test",
+          "detail": "55/151 modules avec ≥1 test",
           "max": 30,
           "score": 11
         }
@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 30,
+        "commits": 31,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 29,
+        "commits": 30,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -60,13 +60,13 @@
       },
       {
         "commits": 11,
-        "file": "scripts/build-frontend.js"
+        "file": "public/components/PivotAnalytiqueGrid.jsx"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:5bc8b3c215b5e173",
+    "sourceFingerprint": "sha256:20b42ceb6d0f20af",
     "stats": {
-      "backendModules": 93,
+      "backendModules": 94,
       "cloudFunctions": 91,
       "coverageScore": 36,
       "domains": 10,
@@ -447,6 +447,7 @@
         ],
         "modules": [
           "fonctions",
+          "paie",
           "primes"
         ],
         "routes": [
@@ -462,7 +463,7 @@
         "services": []
       },
       "confidence": "medium",
-      "coverageScore": 64,
+      "coverageScore": 67,
       "firestore": {
         "collections": [
           "fonctions",
@@ -494,7 +495,10 @@
       "gitCoupling": [],
       "label": "Paie & RH",
       "tests": {
-        "backend": [],
+        "backend": [
+          "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
+          "functions/lib/paie/__tests__/paieUtils.parite.test.js"
+        ],
         "unit": [
           "tests/unit/QuinzaineCampagneSelect.test.js",
           "tests/unit/campagneBudgetQuinzaine.test.js",
@@ -795,7 +799,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 28,
+          "coCommits": 29,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -823,14 +827,21 @@
           "windowDays": 90
         },
         {
-          "coCommits": 9,
+          "coCommits": 10,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 9,
+          "coCommits": 10,
+          "domain": null,
+          "file": "public/components/PivotAnalytiqueGrid.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 10,
           "domain": null,
           "file": "public/components/PivotAnalytiqueGrid.js",
           "note": "probabilistic",
@@ -839,7 +850,7 @@
         {
           "coCommits": 9,
           "domain": null,
-          "file": "public/components/PivotAnalytiqueGrid.js",
+          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -875,13 +886,6 @@
           "coCommits": 7,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 7,
-          "domain": null,
-          "file": "tests/unit/pivotAnalytiqueGrid.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -2111,6 +2115,10 @@
     "functions/lib/netafim": {
       "confidence": "high",
       "domain": "agro"
+    },
+    "functions/lib/paie": {
+      "confidence": "medium",
+      "domain": "paie"
     },
     "functions/lib/parcelleGroupes": {
       "confidence": "high",

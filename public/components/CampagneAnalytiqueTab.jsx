@@ -1599,8 +1599,50 @@
       return React.createElement('span', { style: style }, pct.toFixed(1) + ' %');
     }
 
-    // Séries Budget + % consommé — ajoutées seulement en JH et seulement sur
-    // une culture budgétée (cf. en-tête).
+    // Coût CHARGÉ d'une journée d'ouvrier, servi par l'action backend
+    // `campagne-cout-ouvrier` (brut + CNSS patronale des déclarés + transport,
+    // moyenné sur la campagne). `null` = indisponible : le budget en DH n'est
+    // alors pas proposé du tout — surtout pas un budget nul, qui afficherait un
+    // dépassement infini sur chaque ligne.
+    var coutJour = (props.coutOuvrier && Number(props.coutOuvrier.coutMoyenJour) > 0)
+      ? Number(props.coutOuvrier.coutMoyenJour)
+      : null;
+
+    /**
+     * Le BUDGET est saisi en JH/Ha. En Coût DH, on le valorise au coût chargé
+     * d'une journée : `budget DH/Ha = budget JH/Ha × coût ouvrier DH/jour`.
+     *
+     * Cette conversion est portée par la SÉRIE (via `get`), et pas par une
+     * transformation des cellules : la grille applique ensuite ses propres
+     * règles `basis`/`display` (× Ha en mode Total), et le « % consommé »
+     * réutilise le même chemin. Convertir les cellules en amont obligerait à
+     * refaire ces deux règles à la main, et à les maintenir en double.
+     */
+    function budgetDhCell(cell) {
+      if (!cell || coutJour === null) return null;
+      var b = Number(cell.budget);
+      return (isFinite(b) && b > 0) ? b * coutJour : null;
+    }
+
+    /**
+     * Termes du « % consommé » en dirhams : coût réalisé / budget valorisé.
+     * Même forme que `CAT_pctPartsAnnuel` (série RATIO, cf. plus haut) — les
+     * deux termes en quantité TOTALE, jamais un pourcentage sommé.
+     */
+    function pctPartsDh(cell) {
+      if (!cell || coutJour === null) return null;
+      var b = Number(cell.budget);
+      if (!isFinite(b) || !(b > 0)) return null;
+      var ha = Number(cell.ha);
+      if (!isFinite(ha) || !(ha > 0)) return null;
+      var cout = Number(cell.cout);
+      return { num: isFinite(cout) ? cout : 0, den: b * coutJour * ha };
+    }
+
+    var fmtDh0 = function (v) { return Math.round(v).toLocaleString('fr-MA'); };
+
+    // Séries Budget + % consommé — sur une culture budgétée (cf. en-tête), en JH
+    // comme en Coût DH (le budget y est valorisé au coût ouvrier chargé).
     //
     // ⚠️ TROIS SOUS-COLONNES, PAS CINQ. « Reste budgété » et « reste au rythme »
     // (LOT 3a) ont QUITTÉ la grille : avec 9 parcelles, cinq séries font 45
@@ -1610,13 +1652,21 @@
     // une décision séparée. `CampagneRythme` reste d'ailleurs utilisé plus haut
     // pour l'avancement de la campagne (quinzainesInfo).
     var metricsBudget = metrics.concat([
-      {
+      isJh ? {
         key: 'budget',
         label: 'Budget',
         unit: uniteJh,
         basis: 'perHa',
         display: totalMode ? 'total' : 'perHa',
         format: fmtJh1,
+      } : {
+        // Budget VALORISÉ : la même série, exprimée au coût chargé du jour.
+        get: budgetDhCell,
+        label: 'Budget',
+        unit: totalMode ? 'DH' : 'DH/Ha',
+        basis: 'perHa',
+        display: totalMode ? 'total' : 'perHa',
+        format: fmtDh0,
       },
       {
         label: '% consommé',
@@ -1626,7 +1676,7 @@
         // division (cf. PivotAnalytiqueGrid, section « ratio »). `basis` et
         // `display` ne s'y appliquent pas : un taux est invariant par
         // changement d'unité, la bascule Ha/Total ne le touche pas.
-        ratio: { parts: CAT_pctPartsAnnuel },
+        ratio: { parts: isJh ? CAT_pctPartsAnnuel : pctPartsDh },
         format: fmtPct,
       },
     ]);
@@ -1729,13 +1779,62 @@
       : null;
     // `null` = indéterminable (campagne illisible, module absent) : on n'affiche
     // RIEN plutôt qu'un 0 % qui se lirait « campagne pas commencée ».
+    /**
+     * Repère « COÛT OUVRIER — DH / jour », à côté du budget idéal.
+     *
+     * C'est le CHIFFRE QUI VALORISE la grille en Coût DH : sans lui, aucun
+     * budget en dirhams. L'afficher, c'est permettre de le contester — d'où le
+     * détail complet en infobulle (brut, charges patronales, transport, nombre
+     * de journées et d'ouvriers), et non un nombre tombé du ciel.
+     *
+     * Absent tant que le calcul n'a pas répondu, ou qu'aucune journée n'est
+     * pointée : « pas de donnée » n'est pas « coût nul ».
+     */
+    var repereCout = (coutJour === null) ? null : (function () {
+      var d = props.coutOuvrier || {};
+      var det = d.detail || {};
+      var part = (typeof d.partDeclares === 'number')
+        ? Math.round(d.partDeclares * 100) + ' % de journées déclarées'
+        : null;
+      var aide = 'Coût CHARGÉ d\'une journée d\'ouvrier, moyenné sur la campagne '
+        + (d.campagne || '') + ' : brut (SMAG + ancienneté + prime de fonction + '
+        + 'heures sup) + CNSS patronale des déclarés + prime de transport, '
+        + 'divisé par les journées pointées.\n'
+        + 'Brut ' + fmtDh0(det.brut || 0) + ' DH · charges patronales '
+        + fmtDh0(det.chargesPatronales || 0) + ' DH · transport '
+        + fmtDh0(det.transport || 0) + ' DH\n'
+        + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0) + ' ouvriers, '
+        + (d.quinzaines || 0) + ' quinzaines'
+        + (part ? ' · ' + part : '')
+        + '\nHors pointage divers (sous-traitants).';
+      return React.createElement('div', {
+        title: aide,
+        style: {
+          display: 'flex', alignItems: 'baseline', gap: '8px',
+          padding: '5px 14px', borderRadius: '16px',
+          border: '1.5px solid ' + C.border, background: C.surface,
+        },
+      },
+        React.createElement('span', {
+          style: { fontSize: '11px', color: C.textSec, letterSpacing: '0.04em',
+            textTransform: 'uppercase', fontWeight: 600 },
+        }, 'Coût ouvrier chargé'),
+        React.createElement('span', {
+          style: { fontSize: '15px', fontWeight: 700, color: C.berry },
+        }, fmtDh0(coutJour) + ' DH'),
+        React.createElement('span', {
+          style: { fontSize: '10px', color: C.textSec },
+        }, '/ jour')
+      );
+    }());
+
     var repereIdeal = (partIdeale === null) ? null : React.createElement('div', {
       title: joursIdeal === null
         ? 'Part de la campagne écoulée depuis le 1er juillet.'
         : joursIdeal + ' jours écoulés depuis le 1er juillet, sur 365. Repère de '
           + 'rythme linéaire : à comparer au « % consommé » de chaque ligne.',
       style: {
-        marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: '8px',
+        display: 'flex', alignItems: 'baseline', gap: '8px',
         padding: '5px 14px', borderRadius: '16px',
         border: '1.5px solid ' + C.border, background: C.surface,
       },
@@ -1953,9 +2052,12 @@
         React.createElement('span', { style: { width: '8px' } }),
         CAT_pills([['recap', 'Récap'], ['detail', 'Détail']], detailMode ? 'detail' : 'recap',
           function (v) { setDetailMode(v === 'detail'); }, 'd-'),
-        // Poussé à droite par `marginLeft: auto` : le repère de calendrier
-        // n'est pas une bascule, il ne se range pas avec elles.
-        repereIdeal,
+        // Poussés à droite par `marginLeft: auto` : les repères ne sont pas des
+        // bascules, ils ne se rangent pas avec elles.
+        (repereCout || repereIdeal) ? React.createElement('div', {
+          style: { marginLeft: 'auto', display: 'flex', alignItems: 'center',
+            gap: '8px', flexWrap: 'wrap' },
+        }, repereCout, repereIdeal) : null,
         // Bascule ANNUEL ↔ QUINZAINE : proposée seulement quand elle mène
         // quelque part (JH + au moins un engagement saisi sur la quinzaine
         // affichée). Sinon elle n'ouvrirait qu'une grille de « — ».
@@ -2076,13 +2178,13 @@
               : null;
             // Séries réellement affichées : elles décident AUSSI de la colonne
             // Total (cf. `showTotal` plus bas), d'où l'extraction en variable.
-            // Les SOUS-COLONNES de budget restent réservées au JH : un budget
-            // saisi en JH/Ha n'a aucune traduction en dirhams tant que le coût
-            // ouvrier chargé n'est pas calculé. Les LIGNES budgétées, elles,
-            // sont servies dans les deux métriques (cf. `sup` plus haut).
+            // Sous-colonnes de budget : en JH toujours, en Coût DH seulement
+            // quand le coût ouvrier chargé est connu (sinon le budget n'a pas
+            // de traduction en dirhams, et un budget nul afficherait un
+            // dépassement infini sur chaque ligne).
             var metricsAffichees = quinz
               ? metricsQuinzaine
-              : ((isJh && sup && sup.hasBudget) ? metricsBudget : metrics);
+              : (((isJh || coutJour !== null) && sup && sup.hasBudget) ? metricsBudget : metrics);
             var rowsAffichees = quinz
               ? quinz.groupedRows
               : (sup ? sup.groupedRows : pivot.groupedRows);
@@ -2473,6 +2575,26 @@
       return function () { cancelled = true; };
     }, []);
 
+    // COÛT OUVRIER CHARGÉ (DH par journée pointée, moyenné sur la campagne) —
+    // brut + CNSS patronale des déclarés + prime de transport. C'est ce qui
+    // permet de valoriser en dirhams un budget saisi en JH/Ha.
+    // `null` = indisponible (action en erreur, ou aucune journée pointée) : le
+    // budget en DH n'est alors PAS affiché, jamais un budget nul.
+    var _coutOuvrier = useState(null);
+    var coutOuvrier = _coutOuvrier[0]; var setCoutOuvrier = _coutOuvrier[1];
+
+    useEffect(function () {
+      var cancelled = false;
+      fetch('/api/pointage-rh?action=campagne-cout-ouvrier')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (cancelled || !d || !d.success) return;
+          setCoutOuvrier(d);
+        })
+        .catch(function () { /* indisponible → pas de budget en DH, cf. plus bas */ });
+      return function () { cancelled = true; };
+    }, []);
+
     // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
     // l'export), et pas seulement au montage : sinon un budget saisi dans le
     // sous-onglet Budget puis exporté sans recharger la page produirait un
@@ -2705,6 +2827,7 @@
                 quinzainesByLabel: quinzainesByLabel,
                 refOperations: refOperations,
                 bons: bons,
+                coutOuvrier: coutOuvrier,
                 metric: metric,
                 setMetric: setMetric,
               })

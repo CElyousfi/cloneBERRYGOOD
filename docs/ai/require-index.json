@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:e12a217e4658dfda",
+    "sourceFingerprint": "sha256:17579e5ba980e9ac",
     "stats": {
-      "targetFiles": 222,
+      "targetFiles": 224,
       "targetFilesWithDirectTests": 136,
       "targetFilesWithTransitiveTests": 157,
-      "testFilesScanned": 189
+      "testFilesScanned": 191
     }
   },
   "index": {
@@ -744,6 +744,14 @@
       ]
     },
     "functions/lib/netafim/types.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/paie/coutOuvrierCampagne.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/paie/paieUtils.js": {
       "directTests": [],
       "transitiveTests": []
     },

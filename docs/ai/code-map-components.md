@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:ac9d34927c0fa2ff -->
+<!-- sourceFingerprint: sha256:5fcd40e443491efa -->
 # Code Map — Composants frontend (337)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -65,7 +65,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60385 | — |
 | CaisseValidationSub | public/app.jsx:60475 | — |
 | CaisseWarnings | public/app.jsx:61064 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:2379 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:2481 | campagne |
 | CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:1411 | — |
 | CampagneSegmentTable | public/app.jsx:10917 | — |
 | CampagneTab | public/app.jsx:11018 | — |
@@ -132,7 +132,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62010 | coming_soon |
 | ConditionnementSub | public/app.jsx:24305 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:2173 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:2275 | — |
 | CoutRecolteTab | public/app.jsx:8652 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
