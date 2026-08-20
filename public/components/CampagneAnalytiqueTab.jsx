@@ -1838,8 +1838,8 @@
       };
       var aide = 'Coût CHARGÉ d\'une journée d\'ouvrier, moyenné sur la campagne '
         + (d.campagne || '') + '.'
-        + '\nSalaire soumis à cotisation :'
-        + ligne('base BEE ONE', det.base)
+        + '\nSalaire soumis à cotisation (barème Smart Berry) :'
+        + ligne('salaire de base', det.salaire)
         + ligne('prime de fonction', det.primeFonction)
         + ligne('ancienneté', det.primeAnciennete)
         + ligne('heures sup', det.heuresSup)
@@ -1858,7 +1858,12 @@
         + '\n\n' + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0)
         + ' ouvriers, ' + (d.quinzaines || 0) + ' quinzaines'
         + (part ? ' · ' + part : '')
-        + '\nHors pointage divers (sous-traitants).';
+        + '\nHors pointage divers (sous-traitants).'
+        + (Number(det.baseBeeOne) > 0
+          ? '\nTémoin : ' + fmtDh0(det.baseBeeOne) + ' DH de coût BEE ONE sur la '
+            + 'même période — BEE ONE ne fournit que les journées, le salaire '
+            + 'vient du barème Smart Berry.'
+          : '');
       return React.createElement('div', {
         title: aide,
         style: {

@@ -23,19 +23,19 @@
     },
     "heatmap": [
       {
-        "commits": 35,
+        "commits": 36,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 34,
+        "commits": 35,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 21,
+        "commits": 22,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 19,
+        "commits": 18,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:0dd54578406bd7fc",
+    "sourceFingerprint": "sha256:8b6e978b4242f0c2",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -801,14 +801,14 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 33,
+          "coCommits": 34,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 18,
+          "coCommits": 19,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
@@ -908,6 +908,20 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -923,20 +937,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         },

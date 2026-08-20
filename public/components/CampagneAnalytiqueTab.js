@@ -2156,10 +2156,10 @@
       var ligne = function (label, v) {
         return Number(v) > 0 ? '\n· ' + label + ' ' + fmtDh0(v) + ' DH' : '';
       };
-      var aide = 'Coût CHARGÉ d\'une journée d\'ouvrier, moyenné sur la campagne ' + (d.campagne || '') + '.' + '\nSalaire soumis à cotisation :' + ligne('base BEE ONE', det.base) + ligne('prime de fonction', det.primeFonction) + ligne('ancienneté', det.primeAnciennete) + ligne('heures sup', det.heuresSup) + ligne('jours fériés', det.feries) + '\nCharges sociales (déclarés) :' + ligne('patronales', det.chargesPatronales)
+      var aide = 'Coût CHARGÉ d\'une journée d\'ouvrier, moyenné sur la campagne ' + (d.campagne || '') + '.' + '\nSalaire soumis à cotisation (barème Smart Berry) :' + ligne('salaire de base', det.salaire) + ligne('prime de fonction', det.primeFonction) + ligne('ancienneté', det.primeAnciennete) + ligne('heures sup', det.heuresSup) + ligne('jours fériés', det.feries) + '\nCharges sociales (déclarés) :' + ligne('patronales', det.chargesPatronales)
       // Part salariale : l'ouvrier étant payé sur le brut SANS retenue, ce que
       // la loi prélèverait sur son salaire est versé par la société.
-      + ligne('CNSS + AMO salariales', det.cotisationsSalariales) + '\nPrimes de terrain (hors assiette) :' + ligne('transport', det.transport) + ligne('récolte', det.recolte) + ligne('traitement', det.traitement) + ligne('conditionnement', det.conditionnement) + ligne('chargement', det.chargement) + '\n\n' + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0) + ' ouvriers, ' + (d.quinzaines || 0) + ' quinzaines' + (part ? ' · ' + part : '') + '\nHors pointage divers (sous-traitants).';
+      + ligne('CNSS + AMO salariales', det.cotisationsSalariales) + '\nPrimes de terrain (hors assiette) :' + ligne('transport', det.transport) + ligne('récolte', det.recolte) + ligne('traitement', det.traitement) + ligne('conditionnement', det.conditionnement) + ligne('chargement', det.chargement) + '\n\n' + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0) + ' ouvriers, ' + (d.quinzaines || 0) + ' quinzaines' + (part ? ' · ' + part : '') + '\nHors pointage divers (sous-traitants).' + (Number(det.baseBeeOne) > 0 ? '\nTémoin : ' + fmtDh0(det.baseBeeOne) + ' DH de coût BEE ONE sur la ' + 'même période — BEE ONE ne fournit que les journées, le salaire ' + 'vient du barème Smart Berry.' : '');
       return React.createElement('div', {
         title: aide,
         style: {

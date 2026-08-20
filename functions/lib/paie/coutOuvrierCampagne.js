@@ -19,9 +19,11 @@
  *     ancienneté ni prime de fonction ;
  *   - l'écran Paie calculait brut + CNSS, sans aucune prime de terrain.
  *
- *   base            = Σ Cout BEE ONE          (le coût réellement enregistré,
- *                     et non un SMAG recalculé : c'est la MÊME source que les
- *                     DH/Ha de la grille, donc aucun écart inexplicable)
+ *   salaire         = SMAG daté × jours       (BEE ONE ne fournit QUE les
+ *                     JOURNÉES ; le salaire sort du barème Smart Berry, celui
+ *                     des fiches de paie réellement éditées — décision d'Omar,
+ *                     2026-08-20. Le `Cout` BEE ONE reste suivi à part, comme
+ *                     témoin du rapprochement et pour le facteur de charge.)
  *   primeFonction   = registre × jours
  *   primeAnciennete = (base + primeFonction) × palier %      [déclarés]
  *   heuresSup       = HS_25/50/100 valorisées au taux horaire
@@ -56,7 +58,7 @@
  */
 'use strict';
 
-const { PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, resolveSmagForDate } = require('./paieUtils.js');
+const { PAIE_BAREMES_DEFAULT, computeWorkerPaie } = require('./paieUtils.js');
 
 /**
  * Préfixe d'équipe de transport d'un matricule. Repris À L'IDENTIQUE de
@@ -174,8 +176,7 @@ function primeRecolte(kg, variete, date) {
  * aucune autre valeur de l'écran.
  *
  * @param {Object} args
- * @param {number} args.base salaire de base BEE ONE de la quinzaine.
- * @param {number} args.jours journées pointées.
+ * @param {number} args.jours journées pointées (BEE ONE ne sert QU'À ÇA).
  * @param {boolean} args.declare ouvrier déclaré (CNSS + ancienneté).
  * @param {number} args.anciennete jours pointés cumulés, pour le palier.
  * @param {number} args.primeFonctionJour prime de fonction journalière.
@@ -187,45 +188,46 @@ function primeRecolte(kg, variete, date) {
  * @param {string} args.dateISO date de résolution du SMAG (fin de quinzaine).
  * @returns {{brutSoumis: number, chargesPatronales: number, cotisationsSalariales: number,
  *   primesNonSoumises: number, primeAnciennete: number, primeFonction: number,
- *   heuresSup: number, total: number}}
+ *   heuresSup: number, salaireBase: number, total: number}}
  */
 function paieOuvrierQuinzaine(args) {
   const a = args || {};
   const b = Object.assign({}, PAIE_BAREMES_DEFAULT, a.baremes || {});
   const jours = Number(a.jours) || 0;
-  const base = Number(a.base) || 0;
   const declare = !!a.declare;
   const primes = a.primes || {};
   const hs = a.hs || {};
 
-  const primeFonction = (Number(a.primeFonctionJour) || 0) * jours;
-  const baseAnciennete = base + primeFonction;
-  // Ancienneté : réservée aux déclarés, comme dans le modèle de paie.
-  const palier = declare
-    ? trouverPalierAnciennete(Number(a.anciennete) || 0, b.paliers)
-    : { pourcentage: 0 };
-  const primeAnciennete = baseAnciennete * ((palier.pourcentage || 0) / 100);
-
-  // Heures sup valorisées au taux horaire du SMAG daté — même règle que
-  // `paieUtils.computeWorkerPaie`, déclarés comme non déclarés.
-  const smag = resolveSmagForDate(b, a.dateISO || '');
-  const hParJour = Number(b.heuresNormalesParJour) || 8;
-  const tauxHoraire = hParJour > 0 ? smag.smagBrutJournalier / hParJour : 0;
-  const heuresSup = ((Number(hs.hs25) || 0) * 1.25
-    + (Number(hs.hs50) || 0) * 1.5
-    + (Number(hs.hs100) || 0) * 2) * tauxHoraire;
+  // SALAIRE : calculé par le modèle Smart Berry, PAS repris de BEE ONE.
+  // BEE ONE ne fournit que les JOURNÉES ; le salaire, lui, sort du barème
+  // maison (SMAG daté + prime de fonction + ancienneté + heures sup), qui est
+  // celui des fiches de paie réellement éditées. Décision d'Omar (2026-08-20).
+  // Les primes de terrain sont passées à zéro ici : elles sont ajoutées plus
+  // bas, hors assiette, pour garder la maîtrise de ce qui cotise.
+  const paie = computeWorkerPaie({
+    declare,
+    joursTravailles: jours,
+    anciennete: Number(a.anciennete) || 0,
+    baremes: b,
+    dateISO: a.dateISO || '',
+    primeFonctionJour: Number(a.primeFonctionJour) || 0,
+    primeTransport: 0,
+    primeRecolte: 0,
+    hs25: hs.hs25,
+    hs50: hs.hs50,
+    hs100: hs.hs100,
+  });
 
   // Les jours fériés entrent dans le SALAIRE (donc dans l'assiette), les autres
   // primes non — c'est le découpage du modèle de paie en production.
   const feries = Number(primes.feries) || 0;
-  const brutSoumis = baseAnciennete + primeAnciennete + heuresSup + feries;
+  const brutSoumis = paie.brut + feries;
+  // Charges recalculées sur l'assiette COMPLÈTE (fériés compris) : celles que
+  // rend `computeWorkerPaie` ne les connaissent pas.
   const chargesPatronales = declare ? brutSoumis * (b.tauxChargesPatronales || 0) : 0;
-  // COTISATIONS SALARIALES (CNSS 4,48 % + AMO 2,26 %) — comptées comme un COÛT
-  // ENTREPRISE, et ce n'est pas un doublon : le modèle de paie validé en 2026-06
-  // paie l'ouvrier sur le SMAG **brut**, SANS aucune retenue. Ce que la loi
-  // prélèverait sur son salaire, la société le verse en plus. Décision d'Omar
-  // (2026-08-20). Réservé aux déclarés, comme la part patronale : un ouvrier non
-  // déclaré ne cotise nulle part.
+  // Part SALARIALE comptée comme un coût entreprise : l'ouvrier est payé sur le
+  // brut SANS retenue (cf. paieUtils), donc ce que la loi prélèverait sur son
+  // salaire, la société le verse en plus.
   const cotisationsSalariales = declare ? brutSoumis * (b.tauxCotisationsSalariales || 0) : 0;
 
   const primesNonSoumises = (Number(primes.transport) || 0)
@@ -239,9 +241,11 @@ function paieOuvrierQuinzaine(args) {
     chargesPatronales,
     cotisationsSalariales,
     primesNonSoumises,
-    primeAnciennete,
-    primeFonction,
-    heuresSup,
+    primeAnciennete: paie.primeAnciennete,
+    primeFonction: paie.primeFonction,
+    heuresSup: (paie.heuresSup && paie.heuresSup.montant) || 0,
+    // Salaire de base seul (SMAG × jours), pour que le détail se recompose.
+    salaireBase: paie.smagBaseTotal,
     total: brutSoumis + chargesPatronales + cotisationsSalariales + primesNonSoumises,
   };
 }
@@ -279,7 +283,7 @@ function coutOuvrierCampagne(args) {
   let jours = 0;
   let joursDeclares = 0;
   const detail = {
-    base: 0, primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
+    salaire: 0, baseBeeOne: 0, primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
     chargesPatronales: 0, cotisationsSalariales: 0, transport: 0, recolte: 0,
     traitement: 0, conditionnement: 0, chargement: 0, feries: 0,
   };
@@ -291,7 +295,7 @@ function coutOuvrierCampagne(args) {
   quinzaines.forEach((q) => {
     const parOuvrier = (q && q.parOuvrier) || {};
     const cumulQ = { periode: (q && q.periode) || '', jours: 0, base: 0,
-      primes: 0, charges: 0, coutTotal: 0 };
+      salaire: 0, primes: 0, charges: 0, coutTotal: 0 };
     Object.keys(parOuvrier).forEach((mat) => {
       const e = parOuvrier[mat];
       const joursTravailles = e.jours instanceof Set ? e.jours.size : Number(e.jours) || 0;
@@ -309,7 +313,6 @@ function coutOuvrierCampagne(args) {
       });
 
       const paie = paieOuvrierQuinzaine({
-        base: e.base,
         jours: joursTravailles,
         declare,
         anciennete,
@@ -325,7 +328,11 @@ function coutOuvrierCampagne(args) {
       jours += joursTravailles;
       if (declare) joursDeclares += joursTravailles;
 
-      detail.base += Number(e.base) || 0;
+      // `baseBeeOne` n'entre PAS dans le coût : c'est le témoin qui sert au
+      // facteur de charge (la grille Campagne affiche ce coût-là) et au
+      // rapprochement. Le coût, lui, est calculé par le modèle Smart Berry.
+      detail.baseBeeOne += Number(e.base) || 0;
+      detail.salaire += paie.salaireBase;
       detail.primeFonction += paie.primeFonction;
       detail.primeAnciennete += paie.primeAnciennete;
       detail.heuresSup += paie.heuresSup;
@@ -336,8 +343,11 @@ function coutOuvrierCampagne(args) {
 
       cumulQ.jours += joursTravailles;
       cumulQ.base += Number(e.base) || 0;
+      cumulQ.salaire += paie.salaireBase;
       cumulQ.primes += paie.primesNonSoumises + (Number(primesOuvrier.feries) || 0)
         + paie.primeFonction + paie.primeAnciennete + paie.heuresSup;
+      // `base` reste le témoin BEE ONE (rapprochement), `salaire` le calcul
+      // Smart Berry : les deux se lisent côte à côte dans le panneau.
       cumulQ.charges += paie.chargesPatronales + paie.cotisationsSalariales;
       cumulQ.coutTotal += paie.total;
 
@@ -355,7 +365,7 @@ function coutOuvrierCampagne(args) {
     // chargé, et le « % consommé » est sous-estimé d'un quart.
     // `null` sans base : un facteur de 1 ferait passer un coût nu pour un coût
     // complet, ce qui est précisément l'erreur qu'on corrige.
-    facteurCharge: detail.base > 0 ? coutTotal / detail.base : null,
+    facteurCharge: detail.baseBeeOne > 0 ? coutTotal / detail.baseBeeOne : null,
     coutTotal,
     jours,
     ouvriers: matriculesVus.size,

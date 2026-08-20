@@ -7,8 +7,9 @@
  * traitement, conditionnement, chargement), hors assiette.
  *
  * Ce que ces tests protègent, dans l'ordre d'importance :
- *  1. la BASE vient de BEE ONE, pas d'un SMAG recalculé — sinon le badge diverge
- *     des DH/Ha de la grille sans qu'on sache lequel croire ;
+ *  1. le SALAIRE est calculé par le modèle Smart Berry (SMAG daté), BEE ONE ne
+ *     fournissant que les JOURNÉES. Le `Cout` BEE ONE reste suivi à part, comme
+ *     témoin du rapprochement et pour le facteur de charge ;
  *  2. les CHARGES ne portent QUE sur les déclarés, et QUE sur l'assiette
  *     (jamais sur les primes de terrain) — part patronale ET part salariale,
  *     cette dernière étant un coût entreprise puisqu'elle n'est pas retenue ;
@@ -84,20 +85,21 @@ test('cumuleJournee — une journée par ouvrier, base et heures sup sommées', 
   assert.deepStrictEqual(Object.keys(acc), ['AB1']);
 });
 
-test('paie — la BASE vient de BEE ONE, jamais d\'un SMAG recalculé', () => {
-  // Deux journées facturées 120 DH par BEE ONE (heures supplémentaires déjà
-  // intégrées côté ERP, prime de poste…) doivent coûter 240 de base, pas
-  // 2 × 97,44. Recalculer la base ferait diverger le badge des DH/Ha de la
-  // grille, qui viennent eux aussi du Cout BEE ONE.
+test('paie — le SALAIRE vient du barème Smart Berry, BEE ONE ne donne que les jours', () => {
+  // BEE ONE facture ces deux journées 240 DH ; Smart Berry, lui, les paie au
+  // SMAG daté (2 × 97,44). C'est le barème maison qui fait foi — celui des
+  // fiches de paie réellement éditées. Le `Cout` BEE ONE reste suivi à part.
   const out = campagne({
     registre: { ZZ9: { declare: false } },
     quinzaines: [quinzaine('Q01', '2026-07-15', {
       ZZ9: { jours: new Set(['2026-07-01', '2026-07-02']), hs25: 0, hs50: 0, hs100: 0, base: 240 },
     })],
   });
-  assert.strictEqual(out.detail.base, 240);
-  assert.strictEqual(out.coutTotal, 240, 'non déclaré, hors équipe : aucun ajout');
-  assert.strictEqual(out.coutMoyenJour, 120);
+  assert.strictEqual(out.detail.baseBeeOne, 240, 'témoin BEE ONE conservé');
+  assert.strictEqual(Math.round(out.detail.salaire * 100) / 100, 194.88, '2 × SMAG');
+  assert.strictEqual(Math.round(out.coutTotal * 100) / 100, 194.88,
+    'non déclaré, hors équipe : aucun ajout');
+  assert.strictEqual(Math.round(out.coutMoyenJour * 100) / 100, 97.44);
 });
 
 test('paie — charges patronales : seulement les déclarés, seulement l\'assiette', () => {
@@ -133,7 +135,7 @@ test('paie — le coût réel d\'une journée type, terme par terme', () => {
     quinzaines: [quinzaine('Q01', '2026-07-15', { AB1: ouvrier(['2026-07-01']) })],
   });
   const r = (v) => Math.round(v * 100) / 100;
-  assert.strictEqual(r(out.detail.base), 97.44);
+  assert.strictEqual(r(out.detail.salaire), 97.44);
   assert.strictEqual(r(out.detail.chargesPatronales), 18.77);
   assert.strictEqual(r(out.detail.cotisationsSalariales), 6.57);
   assert.strictEqual(r(out.detail.transport), 20);
@@ -254,7 +256,7 @@ test('coût — le détail se recompose exactement dans le total', () => {
     })],
   });
   const d = out.detail;
-  const somme = d.base + d.primeFonction + d.primeAnciennete + d.heuresSup
+  const somme = d.salaire + d.primeFonction + d.primeAnciennete + d.heuresSup
     + d.feries + d.chargesPatronales + d.cotisationsSalariales
     + d.transport + d.recolte + d.traitement + d.conditionnement + d.chargement;
   assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(out.coutTotal * 1e6) / 1e6);
@@ -290,8 +292,9 @@ test('facteurCharge — combien coûte réellement un dirham de salaire de base'
     registre: { AB1: { declare: true } },
     quinzaines: [quinzaine('Q01', '2026-07-15', { AB1: ouvrier(['2026-07-01']) })],
   });
+  // Rapporté au Cout BEE ONE, puisque c'est LUI que la grille Campagne affiche.
   assert.strictEqual(Math.round(out.facteurCharge * 1000) / 1000,
-    Math.round((out.coutTotal / out.detail.base) * 1000) / 1000);
+    Math.round((out.coutTotal / out.detail.baseBeeOne) * 1000) / 1000);
   assert.ok(out.facteurCharge > 1.4 && out.facteurCharge < 1.5);
   // Sans base : `null` et non 1 — un facteur neutre ferait passer un coût nu
   // pour un coût complet, ce qui est l'erreur qu'on corrige.
@@ -316,10 +319,12 @@ test('parQuinzaine — le détail se recompose quinzaine par quinzaine', () => {
   const somme = out.parQuinzaine.reduce((s, q) => s + q.coutTotal, 0);
   assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(out.coutTotal * 1e6) / 1e6);
   const sommeBase = out.parQuinzaine.reduce((s, q) => s + q.base, 0);
-  assert.strictEqual(Math.round(sommeBase * 1e6) / 1e6, Math.round(out.detail.base * 1e6) / 1e6);
-  // Et chaque quinzaine se recompose elle aussi.
+  assert.strictEqual(Math.round(sommeBase * 1e6) / 1e6,
+    Math.round(out.detail.baseBeeOne * 1e6) / 1e6);
+  // Et chaque quinzaine se recompose elle aussi — sur le SALAIRE calculé, pas
+  // sur le témoin BEE ONE.
   out.parQuinzaine.forEach((q) => {
-    assert.strictEqual(Math.round((q.base + q.primes + q.charges) * 1e6) / 1e6,
+    assert.strictEqual(Math.round((q.salaire + q.primes + q.charges) * 1e6) / 1e6,
       Math.round(q.coutTotal * 1e6) / 1e6, q.periode);
   });
 });
