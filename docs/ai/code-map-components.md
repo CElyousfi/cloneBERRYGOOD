@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:0dd18ddc719a9b83 -->
+<!-- sourceFingerprint: sha256:0298353861377eef -->
 # Code Map — Composants frontend (337)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -234,7 +234,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MOReferentielView | public/components/ParcellesReferentielTab.jsx:426 | — |
 | MSF_Dropzone | public/components/MagStockFilesTab.jsx:164 | — |
 | NewVersionToast | public/app.jsx:66883 | — |
-| NotificationPopup | public/app.jsx:67354 | — |
+| NotificationPopup | public/app.jsx:67366 | — |
 | PaieTab | public/app.jsx:26028 | paie |
 | Panel | public/app.jsx:3006 | — |
 | ParametresTab | public/app.jsx:27174 | parametres |

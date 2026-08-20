@@ -2855,8 +2855,20 @@ const resp=await fetch(url);const json=await resp.json();if(!json.success)return
 if(METEO_PROFILES.includes(profileId)){try{const now=Date.now();let meteoResult=meteoCacheRef.current;if(!meteoResult.data||now-meteoResult.ts>10*60*1000){const fermeKey=ferme||'F1';const apiData=await fetchMeteoblueData(fermeKey);if(apiData){const parsed=transformMeteoblueData(apiData,fermeKey);meteoCacheRef.current={data:parsed,ts:now};meteoResult=meteoCacheRef.current;}}if(meteoResult.data&&meteoResult.data.alertes&&meteoResult.data.alertes.length>0){if(!categories.meteo)categories.meteo=[];meteoResult.data.alertes.forEach(a=>{categories.meteo.push({key:'meteo_'+a.type,label:a.titre,count:1,icon:a.icon,color:a.color.startsWith('var(')?a.color==='var(--red)'?'#e74c3c':a.color==='var(--orange)'?'#f39c12':a.color==='var(--blue)'?'#3498db':'#6c757d':a.color,tab:'dashboard',details:[{text:a.message,urgent:a.niveau==='danger'}]});});}}catch(e){console.warn('Meteo notification error:',e);}}// Filtrer les notifs marquées "ignorées" par cet user (badge ne compte que les non-dismissées).
 const dismissed=readNotifDismissed(profileId);notifDismissedRef.current=dismissed;Object.keys(categories).forEach(catKey=>{if(Array.isArray(categories[catKey])){categories[catKey]=categories[catKey].filter(item=>!dismissed.has(notifDismissId(item)));}});// Flatten all items for backward compatibility
 const allItems=[...(categories.validations||[]),...(categories.taches||[]),...(categories.meteo||[]),...(categories.alertes||[])];const totalCount=allItems.reduce((s,i)=>s+i.count,0);setNotifData({categories,items:allItems,profileId,profileLabel:p?.label||profileId});setNotifCount(totalCount);if(showPopup&&allItems.length>0)setNotifPopup(true);}catch(e){console.warn('Notification fetch error:',e);}},[]);// Fetch notifications on profile switch + auto-refresh every 60s
-React.useEffect(()=>{// Fetch immédiat au changement de profil (avec popup)
-const t=setTimeout(()=>fetchNotifications(currentProfile,true),500);// Polling toutes les 60s (sans popup, juste badge)
+React.useEffect(()=>{// Fetch immédiat au changement de profil — SANS pop-up.
+//
+// La pop-up s'ouvrait toute seule ici, en overlay plein écran
+// (position fixed, inset 0, zIndex 9999). Elle capte donc TOUS
+// les clics de la page. Au retour d'une autre fenêtre, l'effet
+// rejouait et elle se réaffichait : l'application paraissait
+// GELÉE, et il fallait recharger pour s'en sortir. Diagnostic
+// confirmé par Omar (2026-08-20), qui a demandé sa désactivation.
+//
+// Rien n'est perdu : le badge de la cloche continue de compter
+// les notifications, et un clic dessus ouvre la même pop-up. La
+// différence est qu'elle s'ouvre désormais à la demande, jamais
+// par surprise par-dessus ce qu'on est en train de lire.
+const t=setTimeout(()=>fetchNotifications(currentProfile,false),500);// Polling toutes les 60s (sans popup, juste badge)
 const interval=setInterval(()=>{fetchNotifications(currentProfile,false);},60000);// Expose pour que les tabs enfants puissent rafraîchir après une action
 window._refreshNotifications=()=>fetchNotifications(currentProfile,false);return()=>{clearTimeout(t);clearInterval(interval);delete window._refreshNotifications;};},[currentProfile,fetchNotifications]);// Notification Popup Component
 const SECTION_CONFIG=[{key:'validations',label:'Validations',icon:'fa-check-circle',color:'#e67e22'},{key:'taches',label:'Tâches',icon:'fa-list-check',color:'#3498db'},{key:'meteo',label:'Météo',icon:'fa-cloud-sun',color:'#8e44ad'},{key:'alertes',label:'Alertes',icon:'fa-triangle-exclamation',color:'#e74c3c'}];const NotificationPopup=()=>{if(!notifPopup||!notifData||notifData.items.length===0)return null;const profileColors={achats:['#8B2252','#b83280'],dg:['#1e3a5f','#1d4ed8'],finance:['#0d6efd','#198754'],chef_f1:['#e67e22','#f39c12'],chef_f5:['#e67e22','#f39c12'],chef_avo:['#e67e22','#f39c12'],rh:['#2c3e50','#34495e'],caporal_f1:['#16a085','#1abc9c'],caporal_f5:['#16a085','#1abc9c'],caporal_avo:['#16a085','#1abc9c'],qualite:['#8e44ad','#9b59b6'],magasinier:['#d35400','#e67e22'],agronomie:['#27ae60','#2ecc71'],dt:['#2c3e50','#1a5276']};const[c1,c2]=profileColors[notifData.profileId]||['#6c757d','#495057'];const cats=notifData.categories||{};const firstTab=notifData.items[0]?.tab;// « Tout ignorer » : marque toutes les notifs affichées comme dismissées pour cet user.
