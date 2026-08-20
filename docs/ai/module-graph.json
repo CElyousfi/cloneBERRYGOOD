@@ -23,15 +23,15 @@
     },
     "heatmap": [
       {
-        "commits": 37,
+        "commits": 38,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 36,
+        "commits": 37,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 23,
+        "commits": 24,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:36e2445edf84b14f",
+    "sourceFingerprint": "sha256:5798eba4f275c8da",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -801,14 +801,14 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 35,
+          "coCommits": 36,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 20,
+          "coCommits": 21,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
