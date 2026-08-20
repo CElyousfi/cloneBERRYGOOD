@@ -1810,8 +1810,11 @@
         + ligne('ancienneté', det.primeAnciennete)
         + ligne('heures sup', det.heuresSup)
         + ligne('jours fériés', det.feries)
-        + '\nCharges patronales (déclarés) :'
-        + ligne('CNSS', det.chargesPatronales)
+        + '\nCharges sociales (déclarés) :'
+        + ligne('patronales', det.chargesPatronales)
+        // Part salariale : l'ouvrier étant payé sur le brut SANS retenue, ce que
+        // la loi prélèverait sur son salaire est versé par la société.
+        + ligne('CNSS + AMO salariales', det.cotisationsSalariales)
         + '\nPrimes de terrain (hors assiette) :'
         + ligne('transport', det.transport)
         + ligne('récolte', det.recolte)
