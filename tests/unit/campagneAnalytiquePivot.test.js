@@ -1060,14 +1060,16 @@ test('rendement — en Coût DH, l\'indicateur devient DH / kg (pas la cadence)'
   // Une cadence en kg/JH sous une colonne de dirhams n'a aucun sens : en Coût
   // DH, la question n'est plus « à quelle vitesse récolte-t-on ? » mais
   // « combien nous coûte ce kilo ? ».
-  const grilles = tables(render({ metric: 'cout', bons: BONS_RECOLTE }));
+  // Le coût de récolte vient des JH valorisées au coût ouvrier, pas du `Cout`
+  // BEE ONE : 20 JH sur MARAVILLA × 200 DH = 4 000 DH pour 360 kg = 11,11 DH/kg.
+  const grilles = tables(render({ metric: 'cout', bons: BONS_RECOLTE,
+    coutOuvrier: COUT_OUVRIER }));
   const piedRows = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr');
   assert.strictEqual(piedRows.length, 2);
   assert.strictEqual(cells(piedRows[0])[0], 'TOTAL RÉCOLTE');
   const ligne = cells(piedRows[1]);
   assert.strictEqual(ligne[0], 'DH / kg');
-  // MARAVILLA : 3 000 DH de récolte pour 360 kg rattachés = 8,33 DH/kg.
-  assert.strictEqual(ligne[1], '8,33');
+  assert.strictEqual(ligne[1], '11,11');
   // CORINA : de la récolte (2 400 DH) mais aucun kilo rattaché → « — », jamais
   // un 0 (ni gratuit, ni infiniment cher).
   assert.strictEqual(ligne[2], '—');
@@ -1083,7 +1085,8 @@ const COUT_OUVRIER = {
   success: true, campagne: '2026/2027', coutMoyenJour: 200, jours: 1200,
   ouvriers: 80, quinzaines: 3, coutTotal: 240000, partDeclares: 0.75,
   detail: {
-    base: 118000, primeFonction: 9000, primeAnciennete: 5000, heuresSup: 2000,
+    salaire: 118000, baseBeeOne: 115000, primeFonction: 9000,
+    primeAnciennete: 5000, heuresSup: 2000,
     feries: 3000, chargesPatronales: 26000, cotisationsSalariales: 9100,
     transport: 36000, recolte: 30000, traitement: 4000,
     conditionnement: 4000, chargement: 3000,
@@ -1103,19 +1106,18 @@ test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', 
   // BEE ONE, et le libellé doit le dire.
   assert.deepStrictEqual(niveau2.slice(0, 3), ['Coût chargé | DH', 'Budget | DH', '% consommé']);
 
-  // Taille sur MARAVILLA : budget 15 JH/Ha × 2 Ha × 200 DH = 6 000 DH.
-  // Réalisé BEE ONE 6 000 DH, MAJORÉ du facteur de charge (×2,034) = 12 203.
-  // Le taux passe donc à 203,4 % — et c'est le point : sans majoration il
-  // affichait 100 % alors que la dépense réelle double le budget.
-  const facteur = COUT_OUVRIER.facteurCharge;
+  // Taille sur MARAVILLA : 40 JH réalisées × 200 DH = 8 000 DH ; budget
+  // 15 JH/Ha × 2 Ha × 200 DH = 6 000 DH → 133,3 % consommé.
+  // Le réalisé vient des JOURNÉES, jamais du `Cout` BEE ONE, dont le calcul de
+  // paie n'est pas fiable.
   const taille = cells(bodyRows(grilles[0])[2]);
-  assert.deepStrictEqual(taille.slice(1, 3), [nb(Math.round(6000 * facteur)), nb(6000)]);
-  assert.strictEqual(taille[3], (Math.round(facteur * 1000) / 10).toFixed(1) + ' %');
+  assert.deepStrictEqual(taille.slice(1, 4), [nb(8000), nb(6000), '133.3 %']);
 
-  // Le taux en DH doit valoir celui en JH : même effort, même budget.
+  // Et ce taux est EXACTEMENT celui affiché en JH : même volume, même
+  // constante. Deux vues du même écran ne peuvent plus se contredire.
   const enJh = cells(bodyRows(tables(renderBudget({ coutOuvrier: COUT_OUVRIER },
     [true, false, null]))[0])[2]);
-  assert.notStrictEqual(enJh[3], undefined);
+  assert.strictEqual(taille[3], enJh[3]);
 });
 
 test('coût ouvrier — indisponible : aucun budget en DH, jamais un budget nul', () => {
@@ -1141,7 +1143,7 @@ test('coût ouvrier — le repère de page annonce le chiffre et son détail', (
   const aide = badge[0].props.title;
   // Chaque terme de la formule validée est nommé, dans l'ordre : un coût moyen
   // sans sa décomposition ne se conteste pas, il se croit.
-  ['base BEE ONE', 'prime de fonction', 'ancienneté', 'heures sup', 'jours fériés',
+  ['salaire de base', 'prime de fonction', 'ancienneté', 'heures sup', 'jours fériés',
     'patronales', 'CNSS + AMO salariales', 'transport', 'récolte', 'traitement',
     'conditionnement', 'chargement']
     .forEach((terme) => assert.ok(aide.indexOf(terme) >= 0, 'terme manquant : ' + terme));
