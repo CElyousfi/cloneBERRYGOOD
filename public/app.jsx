@@ -11101,6 +11101,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [selectedPeriode, setSelectedPeriode] = useState('');
             const [transportDetail, setTransportDetail] = useState([]);
             const [transportExtras, setTransportExtras] = useState({});
+            // Coût ouvrier CHARGÉ (salaire Smart Berry + primes de terrain +
+            // charges patronales ET salariales), servi par quinzaine. Même
+            // source que le repère de l'écran Campagne : un seul calcul, donc
+            // deux écrans qui ne peuvent pas afficher deux coûts différents.
+            const [coutOuvrierCampagne, setCoutOuvrierCampagne] = useState(null);
             const [recolteEquipeRows, setRecolteEquipeRows] = useState([]);
             const [transportPopup, setTransportPopup] = useState(null);
             const [analytiqueData, setAnalytiqueData] = useState([]);
@@ -11446,6 +11451,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     }
                     if (d.success) setAnalytiqueData(d.rows || []);
                 }).catch(function(e) { console.warn('quinzaine-analytique:', e); });
+
+                // Coût ouvrier chargé — un seul appel pour toute la campagne
+                // (l'action est cachée 30 min côté serveur), la quinzaine
+                // affichée est ensuite retrouvée dans `parQuinzaine`.
+                fetch('/api/pointage-rh?action=campagne-cout-ouvrier')
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) { if (d && d.success) setCoutOuvrierCampagne(d); })
+                    .catch(function() { /* indisponible → tuiles masquées */ });
                 fetchFn(`/api/pointage-rh?action=quinzaine-repos${pq}`)
                     .then(d => { if (d.success) setReposData(d); })
                     .catch(e => console.warn('quinzaine-repos:', e));
@@ -11912,6 +11925,49 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             popup={{ current: quinzPopupKey, setCurrent: setQuinzPopupKey }}
                         />
                     </div>
+
+                    {/* COÛT OUVRIER CHARGÉ de la quinzaine affichée.
+                        Salaire Smart Berry (BEE ONE ne fournit que les journées)
+                        + primes de terrain + charges patronales ET salariales.
+                        Même calcul que le repère de l'écran Campagne : un seul
+                        chemin, donc deux écrans qui ne peuvent pas afficher deux
+                        coûts différents pour la même quinzaine. */}
+                    {(() => {
+                        var _co = coutOuvrierCampagne;
+                        if (!_co || !Array.isArray(_co.parQuinzaine)) return null;
+                        var _per = (apiData && apiData.periode) || selectedPeriode || '';
+                        var _q = _co.parQuinzaine.filter(function(x) { return x && x.periode === _per; })[0];
+                        // Quinzaine absente du calcul (hors campagne courante) →
+                        // rien plutôt qu'un zéro, qui se lirait « coût nul ».
+                        if (!_q || !(_q.jh > 0)) return null;
+                        var _parJh = _q.coutTotal / _q.jh;
+                        return (
+                            <div style={{display:'flex',alignItems:'stretch',gap:12,marginTop:16,marginBottom:4,flexWrap:'wrap'}}>
+                                <div style={{border:'2px solid var(--berry)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--berry-pale)',minWidth:220}}>
+                                    <span style={{fontSize:12,fontWeight:700,color:'var(--berry)',letterSpacing:0.3}}>
+                                        Coût chargé ouvrier — TOTAL
+                                    </span>
+                                    <span style={{fontSize:20,fontWeight:800,color:'var(--berry)'}}>
+                                        {Math.round(_q.coutTotal).toLocaleString('fr-FR')} DH
+                                    </span>
+                                    <span style={{fontSize:11,color:'var(--gray-500)'}}>
+                                        salaire + primes + charges, hors pointage divers
+                                    </span>
+                                </div>
+                                <div style={{border:'2px solid var(--berry)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'#fff',minWidth:200}}>
+                                    <span style={{fontSize:12,fontWeight:700,color:'var(--berry)',letterSpacing:0.3}}>
+                                        Coût chargé ouvrier / JH
+                                    </span>
+                                    <span style={{fontSize:20,fontWeight:800,color:'var(--berry)'}}>
+                                        {Math.round(_parJh).toLocaleString('fr-FR')} DH
+                                    </span>
+                                    <span style={{fontSize:11,color:'var(--gray-500)'}}>
+                                        sur {Math.round(_q.jh).toLocaleString('fr-FR')} JH pointées
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {_globalMOCharges && _globalMOCharges.cntDecl > 0 && (
                         <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16,marginBottom:4}}>

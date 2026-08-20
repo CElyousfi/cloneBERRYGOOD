@@ -1082,7 +1082,7 @@ test('rendement — en Coût DH, l\'indicateur devient DH / kg (pas la cadence)'
 // backend `campagne-cout-ouvrier`.
 
 const COUT_OUVRIER = {
-  success: true, campagne: '2026/2027', coutMoyenJour: 200, jours: 1200,
+  success: true, campagne: '2026/2027', coutMoyenJour: 200, jours: 1200, jh: 1200,
   ouvriers: 80, quinzaines: 3, coutTotal: 240000, partDeclares: 0.75,
   detail: {
     salaire: 118000, baseBeeOne: 115000, primeFonction: 9000,
@@ -1147,7 +1147,11 @@ test('coût ouvrier — le repère de page annonce le chiffre et son détail', (
     'patronales', 'CNSS + AMO salariales', 'transport', 'récolte', 'traitement',
     'conditionnement', 'chargement']
     .forEach((terme) => assert.ok(aide.indexOf(terme) >= 0, 'terme manquant : ' + terme));
-  assert.match(aide, /journées pointées/);
+  // Les DEUX unités sont nommées : les JH (le dénominateur, qui valorise les
+  // budgets) et les journées calendaires (l'assiette du salaire). Les
+  // confondre, c'est se tromper de plusieurs pour cent sans le voir.
+  assert.match(aide, /JH \(au sens BEE ONE/);
+  assert.match(aide, /journées calendaires pointées/);
   assert.match(aide, /Hors pointage divers/);
   // Un terme à zéro ne s'affiche pas : une ligne « récolte 0 DH » hors saison
   // ferait croire à une prime perdue.
