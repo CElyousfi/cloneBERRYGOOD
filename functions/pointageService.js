@@ -3241,14 +3241,34 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
       // ------ TRANSPORT: all workers per day for transport cost calculation ------
       if (action === "transport") {
-        // Clé ferme-aware : les rows nominatives (matricule/nom) dépendent de _fermeFilter.
-        const cached = await withCache(pointageCacheKey("pointage_transport", _fermeFilter), 0, async () => {
+        // QUINZAINE DEMANDÉE (facultative) : l'écran Quinzaine peut consulter
+        // n'importe quelle période, or ce payload ne chargeait que les DEUX plus
+        // récentes. Au-delà, ses blocs Transport / Autres primes / Jours fériés
+        // se vidaient — pendant que les KPI du haut, servis par l'action
+        // `quinzaine` (qui charge la période demandée, elle), restaient justes.
+        // Symptôme : « les totaux ont disparu sur Q1 et Q2, pas sur Q3 et Q4 ».
+        // On charge donc « les 2 récentes + celle demandée » : le coût reste de
+        // 2 à 3 quinzaines par appel, et toute quinzaine redevient consultable.
+        const periodeDemandee = (req.query.periode || "").trim();
+        // Clé ferme-aware : les rows nominatives (matricule/nom) dépendent de
+        // _fermeFilter. Et clé PAR PÉRIODE demandée : deux quinzaines
+        // différentes ne peuvent pas partager une entrée de cache.
+        const _tCacheKey = pointageCacheKey("pointage_transport", _fermeFilter)
+          + (periodeDemandee ? `_${periodeDemandee}` : "");
+        const cached = await withCache(_tCacheKey, 0, async () => {
         if (USE_MIRROR) {
           const meta = await getPointageMeta();
           const periodes = meta?.periodes || [];
           const periodeCampagne = (meta && meta.periodeCampagne) || {};
-          // Only load current + previous periode (not ALL dates)
+          // Les 2 plus récentes, plus celle qu'on consulte si elle est ailleurs.
+          // `allPeriodes` (et non `periodes`) : une quinzaine archivée n'est plus
+          // dans le miroir courant, la demander doit rester sans effet plutôt
+          // que de charger la mauvaise.
           const targetPeriodes = periodes.slice(0, 2);
+          if (periodeDemandee && periodes.includes(periodeDemandee)
+            && !targetPeriodes.includes(periodeDemandee)) {
+            targetPeriodes.push(periodeDemandee);
+          }
           const allRows = [];
           for (const p of targetPeriodes) {
             const pRows = await getPointageRowsForPeriode(p);
