@@ -1049,3 +1049,20 @@ test('récolte — son bloc est là AUSSI hors plein écran et en Coût DH', () 
     assert.strictEqual(cells(footRow(grilles[1]))[0], 'TOTAL RÉCOLTE');
   });
 });
+
+test('rendement — en Coût DH, l\'indicateur devient DH / kg (pas la cadence)', () => {
+  // Une cadence en kg/JH sous une colonne de dirhams n'a aucun sens : en Coût
+  // DH, la question n'est plus « à quelle vitesse récolte-t-on ? » mais
+  // « combien nous coûte ce kilo ? ».
+  const grilles = tables(render({ metric: 'cout', bons: BONS_RECOLTE }));
+  const piedRows = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr');
+  assert.strictEqual(piedRows.length, 2);
+  assert.strictEqual(cells(piedRows[0])[0], 'TOTAL RÉCOLTE');
+  const ligne = cells(piedRows[1]);
+  assert.strictEqual(ligne[0], 'DH / kg');
+  // MARAVILLA : 3 000 DH de récolte pour 360 kg rattachés = 8,33 DH/kg.
+  assert.strictEqual(ligne[1], '8,33');
+  // CORINA : de la récolte (2 400 DH) mais aucun kilo rattaché → « — », jamais
+  // un 0 (ni gratuit, ni infiniment cher).
+  assert.strictEqual(ligne[2], '—');
+});

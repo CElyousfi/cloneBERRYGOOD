@@ -2127,6 +2127,13 @@
      * ramasse vite. Réutiliser `fmtPct` ici afficherait une alerte rouge sur la
      * meilleure nouvelle de l'écran.
      */
+    /** Un montant en DH par kilo : deux décimales, comme un prix. */
+    function fmtDh2(v) {
+      return (Math.round(v * 100) / 100).toLocaleString('fr-MA', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
     function fmtPctCadence(v) {
       var pct = Math.round(v * 1000) / 10;
       var style = {
@@ -2139,8 +2146,9 @@
     }
 
     /**
-     * Ligne « Kg / JH » du pied du bloc récolte : la CADENCE de récolte, en
-     * regard de son barème (18 kg/JH framboise, 30 kg/JH myrtille).
+     * Ligne de RENDEMENT en pied du bloc récolte, dans l'unité de la métrique
+     * affichée : « Kg / JH » en JH (la cadence, barème 18 framboise / 30
+     * myrtille), « DH / kg » en Coût DH (le coût au kilo, barème 7,50 / 4,50).
      *
      * Ce n'est ni une série ni une ligne famille : c'est un RAPPORT entre deux
      * grandeurs de nature différente (des kilos, des journées), qu'aucun total
@@ -2156,7 +2164,7 @@
      * est servie au niveau CULTURE, dans la colonne TOTAL — jamais un prorata
      * inventé sur les parcelles.
      */
-    function lignesKgParJh(culture, rowsRecolte, parcellesGrille) {
+    function lignesRendementRecolte(culture, rowsRecolte, parcellesGrille) {
       var CP = window.CampagneProduction;
       if (!CP || typeof CP.kgParParcelle !== 'function' || !props.bons) return [];
       var bareme = (CP.BAREME_KG_PAR_JH || {})[culture];
@@ -2188,7 +2196,45 @@
           if (isFinite(j)) jhParParcelle[p] = (jhParParcelle[p] || 0) + j;
         });
       });
-      var jhTotal = CP.effortRecolte(rowsRecolte).jh;
+      var effort = CP.effortRecolte(rowsRecolte);
+      var jhTotal = effort.jh;
+
+      // ── EN COÛT DH, L'INDICATEUR N'EST PAS LE MÊME ────────────────────────
+      // La cadence (kg/JH) répond à « à quelle vitesse récolte-t-on ? », le
+      // coût au kilo à « combien nous coûte ce kilo ? ». Afficher une cadence
+      // sous une colonne de dirhams n'aurait aucun sens, et le SENS DU TAUX
+      // s'inverse avec elle : dépasser le barème de cadence est une bonne
+      // nouvelle, dépasser le coût au kilo une mauvaise.
+      if (!isJh) {
+        var baremeDh = (CP.BAREME_DH_PAR_KG || {})[culture];
+        if (!(baremeDh > 0)) return [];
+        var coutParParcelle = {};
+        (rowsRecolte || []).forEach(function (row) {
+          if (!row || row.type !== 'famille') return;
+          Object.keys(row.pivot || {}).forEach(function (p) {
+            var c = Number((row.pivot[p] || {}).cout);
+            if (isFinite(c)) coutParParcelle[p] = (coutParParcelle[p] || 0) + c;
+          });
+        });
+        var trioDh = function (coutVal, kgVal) {
+          // Pas de kilo rattaché → pas de coût au kilo. Un « 0 » y serait faux
+          // dans les deux sens : ni gratuit, ni infiniment cher.
+          if (!(kgVal > 0)) return [null, fmtDh2(baremeDh), null];
+          var dhKg = coutVal / kgVal;
+          return [fmtDh2(dhKg), fmtDh2(baremeDh), fmtPct(dhKg / baremeDh)];
+        };
+        var valeursDh = {};
+        cles.forEach(function (c) {
+          valeursDh[c] = trioDh(coutParParcelle[c] || 0, kg.parParcelle[c] || 0);
+        });
+        return [{
+          key: 'dh-par-kg',
+          label: 'DH / kg',
+          aide: 'Coût de récolte au kilo sur la campagne, en regard du barème de ' + baremeDh + ' DH/kg pour la ' + culture.toLowerCase() + '. Au-delà de 100 %, le kilo coûte plus cher que prévu. Par parcelle,' + ' la valeur n\'apparaît que là où le bon d\'apport porte sa parcelle.',
+          valeurs: valeursDh,
+          total: trioDh(effort.cout, kgCulture)
+        }];
+      }
       function trio(kgVal, jhVal) {
         // Deux « — » distincts, et aucun 0.0 :
         //  - pas de JH de récolte → la cadence n'existe pas encore ;
@@ -2511,7 +2557,7 @@
         // Un second « TOTAL » sous celui du tableau du dessus se lirait
         // comme le total général de l'écran.
         labelPied: 'TOTAL RÉCOLTE',
-        piedsSupplementaires: lignesKgParJh(g.culture, partition.recolte, pivot.parcelles),
+        piedsSupplementaires: lignesRendementRecolte(g.culture, partition.recolte, pivot.parcelles),
         // Le lecteur doit savoir POURQUOI ce bloc est à part, sinon il
         // le lit comme un oubli du tableau du dessus.
         note: 'Récolte présentée à part : son budget n\'est consommé qu\'en ' + 'saison, le laisser dans le tableau ci-dessus écrasait le TOTAL ' + '(le « % consommé » global tombait à quelques pour cent). Le TOTAL ' + 'du tableau ci-dessus est donc le total HORS récolte.'
