@@ -6,6 +6,16 @@
  * Extraits de scripts/import-stock-caneva.js — aucune dépendance Firestore/IO.
  * `resolveArticle` prend désormais la map en paramètre (pas d'état module mutable),
  * pour rester réentrant dans une Cloud Function « chaude ».
+ *
+ * ⚠️ RÈGLE DE TYPAGE DES LIEUX (buildLieu) — DUPLIQUÉE EN 3 ENDROITS.
+ * Règle : seules les FERMES du groupe (F1..F6, BAHIA) sont des 'magasin' ;
+ * tout le reste (fournisseur, prestataire, décharge, client) reste 'externe'.
+ * Toute modification doit être répercutée dans LES TROIS :
+ *   - functions/lib/stockCaneva/mappings.js   (ce fichier — chemin Cloud Function)
+ *   - scripts/import-stock-caneva.js          (buildLieu — copie script)
+ *   - scripts/reconstruct-stock.js            (lieuFromCode)
+ * Pas encore factorisé : scripts/ est hors du périmètre de déploiement de
+ * functions/, la mutualisation mérite son propre ticket.
  */
 
 const IMPORT_SOURCE = 'CANEVA_STOCK_BGF'

@@ -14,6 +14,16 @@
  *   node ../scripts/reconstruct-stock.js report      -> soldes actuels + négatifs
  *
  * GARDE-FOUS : backup vérifié (read-back == source) avant toute purge ; sinon ABORT.
+ *
+ * ⚠️ RÈGLE DE TYPAGE DES LIEUX — DUPLIQUÉE EN 3 ENDROITS.
+ * Règle : seules les FERMES du groupe (F1..F6, BAHIA) sont des 'magasin' ;
+ * tout le reste (fournisseur, prestataire, décharge, client) reste 'externe'.
+ * Toute modification doit être répercutée dans LES TROIS :
+ *   - functions/lib/stockCaneva/mappings.js   (buildLieu — chemin Cloud Function)
+ *   - scripts/import-stock-caneva.js          (buildLieu — copie script)
+ *   - scripts/reconstruct-stock.js            (lieuFromCode — ce fichier)
+ * Pas encore factorisé : scripts/ est hors du périmètre de déploiement de
+ * functions/, la mutualisation mérite son propre ticket.
  */
 'use strict';
 
@@ -47,7 +57,11 @@ function magId(code) {
 function lieuFromCode(code) {
   const c = (code == null ? '' : String(code)).trim();
   if (!c) return null;
-  if (/^el\s*bahia$/i.test(c) || /bahia/i.test(c)) return { type: 'externe', id: 'BAHIA' };
+  // BAHIA est une FERME du groupe → magasin (cf. docs/spec-magasin-bahia.md).
+  // Les tiers (DRISS TIMAC, décharge, client…) restent 'externe' : c'est la
+  // variante restrictive retenue dans functions/lib/stockCaneva. Ne PAS
+  // généraliser au fallback ci-dessous.
+  if (/^el\s*bahia$/i.test(c) || /bahia/i.test(c)) return { type: 'magasin', id: 'BAHIA' };
   if (/timac/i.test(c)) return { type: 'externe', id: 'DRISS TIMAC' };
   const mg = magId(c);
   if (mg) return { type: 'magasin', id: mg };
