@@ -21,8 +21,11 @@
  * is skipped cleanly and the rest of the pipeline runs normally.
  *
  * ⚠️ RÈGLE DE TYPAGE DES LIEUX — DUPLIQUÉE EN 3 ENDROITS.
- * Règle : seules les FERMES du groupe (F1..F6, BAHIA) sont des 'magasin' ;
- * tout le reste (fournisseur, prestataire, décharge, client) reste 'externe'.
+ * Règle : seules les FERMES du groupe (F1..F6, BAHIA) sont des 'magasin'. Sur
+ * les BONS DE SORTIE, tout le reste (fournisseur, prestataire, décharge,
+ * client) reste 'externe'. ⚠️ Asymétrie pré-existante, hors périmètre : les
+ * TRANSFERTS utilisent buildLieu nu, une destination non-ferme y devient donc
+ * 'parcelle'.
  * Toute modification doit être répercutée dans LES TROIS :
  *   - functions/lib/stockCaneva/mappings.js   (buildLieu — chemin Cloud Function)
  *   - scripts/import-stock-caneva.js          (buildLieu — ce fichier)
