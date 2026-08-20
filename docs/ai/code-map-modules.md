@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:5a34045681d8a6c8 -->
-# Code Map — Modules lib (174)
+<!-- sourceFingerprint: sha256:c5ac2f162ac65662 -->
+# Code Map — Modules lib (175)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -178,5 +178,6 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/scanAttachmentUtils.js | ScanAttachmentUtils | ENTITY_MAP, ALLOWED_EXTENSIONS, isValidEntityType, collectionForEntity, folderForEntity, extOf, mimeFromFilename, sanitizeFilename, buildScanPath, isScanPathForEntity, validateUploadAttachmentParams |
 | public/lib/scanClientUpload.js | ScanClientUpload | isStorageAvailable, uploadDirect, recordAttachment, uploadAndRecord, getAttachmentUrl |
 | public/lib/scanHistoryDisplay.js | ScanHistoryDisplay | scanFournisseurLabel, scanTtc, scanBdcMatche |
+| public/lib/stockDestinations.js | StockDestinations | resolveDestinationOptions, SD_HORS_CONFIG_SUFFIX |
 | public/lib/stockMovementGuard.js | StockMovementGuard | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
 | public/lib/useStockLocations.js | useStockLocations | magasins, stations, parcelles, loading |
