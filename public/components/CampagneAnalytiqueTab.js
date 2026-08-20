@@ -2091,7 +2091,7 @@
     }];
 
     // Périmètre de la vue annuelle : non déductible des chiffres affichés.
-    var noteCoutCharge = isJh || coutJour === null ? '' : ' Coût CHARGÉ : les journées pointées valorisées au coût ouvrier réel (' + fmtDh0(coutJour) + ' DH/jour — salaire Smart Berry, primes et charges ' + 'comprises). BEE ONE ne fournit que les journées : son propre calcul de ' + 'paie n\'est pas repris. Réalisé et budget étant valorisés de la même ' + 'façon, le « % consommé » est identique à celui affiché en JH.';
+    var noteCoutCharge = isJh || coutJour === null ? '' : ' Coût CHARGÉ : les journées pointées valorisées au coût ouvrier réel (' + fmtDh0(coutJour) + ' DH/JH — salaire Smart Berry, primes et charges ' + 'comprises). BEE ONE ne fournit que les journées : son propre calcul de ' + 'paie n\'est pas repris. Réalisé et budget étant valorisés de la même ' + 'façon, le « % consommé » est identique à celui affiché en JH.';
     var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et ' + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans ' + 'le Réalisé). « % consommé » = Réalisé / Budget sur ce seul périmètre. ' + '« — » = aucun budget saisi, ou superficie inconnue.' + noteCoutCharge;
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
@@ -2164,10 +2164,10 @@
       var ligne = function (label, v) {
         return Number(v) > 0 ? '\n· ' + label + ' ' + fmtDh0(v) + ' DH' : '';
       };
-      var aide = 'Coût CHARGÉ d\'une journée d\'ouvrier, moyenné sur la campagne ' + (d.campagne || '') + '.' + '\nSalaire soumis à cotisation (barème Smart Berry) :' + ligne('salaire de base', det.salaire) + ligne('prime de fonction', det.primeFonction) + ligne('ancienneté', det.primeAnciennete) + ligne('heures sup', det.heuresSup) + ligne('jours fériés', det.feries) + '\nCharges sociales (déclarés) :' + ligne('patronales', det.chargesPatronales)
+      var aide = 'Coût CHARGÉ d\'une journée-homme (JH), moyenné sur la campagne ' + (d.campagne || '') + '.' + '\nSalaire soumis à cotisation (barème Smart Berry) :' + ligne('salaire de base', det.salaire) + ligne('prime de fonction', det.primeFonction) + ligne('ancienneté', det.primeAnciennete) + ligne('heures sup', det.heuresSup) + ligne('jours fériés', det.feries) + '\nCharges sociales (déclarés) :' + ligne('patronales', det.chargesPatronales)
       // Part salariale : l'ouvrier étant payé sur le brut SANS retenue, ce que
       // la loi prélèverait sur son salaire est versé par la société.
-      + ligne('CNSS + AMO salariales', det.cotisationsSalariales) + '\nPrimes de terrain (hors assiette) :' + ligne('transport', det.transport) + ligne('récolte', det.recolte) + ligne('traitement', det.traitement) + ligne('conditionnement', det.conditionnement) + ligne('chargement', det.chargement) + '\n\n' + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0) + ' ouvriers, ' + (d.quinzaines || 0) + ' quinzaines' + (part ? ' · ' + part : '') + '\nHors pointage divers (sous-traitants).' + (Number(det.baseBeeOne) > 0 ? '\nTémoin : ' + fmtDh0(det.baseBeeOne) + ' DH de coût BEE ONE sur la ' + 'même période — BEE ONE ne fournit que les journées, le salaire ' + 'vient du barème Smart Berry.' : '');
+      + ligne('CNSS + AMO salariales', det.cotisationsSalariales) + '\nPrimes de terrain (hors assiette) :' + ligne('transport', det.transport) + ligne('récolte', det.recolte) + ligne('traitement', det.traitement) + ligne('conditionnement', det.conditionnement) + ligne('chargement', det.chargement) + '\n\n' + fmtDh0(d.jh || 0) + ' JH (au sens BEE ONE, `Nombre_Jr`) — ' + 'c\'est le dénominateur, celui qui valorise les budgets exprimés en JH.' + '\n' + fmtDh0(d.jours || 0) + ' journées calendaires pointées, sur ' + 'lesquelles se calcule le salaire (un ouvrier pointé trois fois le ' + 'même jour touche un jour).' + '\n' + (d.ouvriers || 0) + ' ouvriers, ' + (d.quinzaines || 0) + ' quinzaines' + (part ? ' · ' + part : '') + '\nHors pointage divers (sous-traitants).' + (Number(det.baseBeeOne) > 0 ? '\nTémoin : ' + fmtDh0(det.baseBeeOne) + ' DH de coût BEE ONE sur la ' + 'même période — BEE ONE ne fournit que les journées, le salaire ' + 'vient du barème Smart Berry.' : '');
       return React.createElement('div', {
         title: aide,
         style: {
@@ -2198,7 +2198,7 @@
           fontSize: '10px',
           color: C.textSec
         }
-      }, '/ jour'));
+      }, '/ JH'));
     }();
     var repereIdeal = partIdeale === null ? null : React.createElement('div', {
       title: joursIdeal === null ? 'Part de la campagne écoulée depuis le 1er juillet.' : joursIdeal + ' jours écoulés depuis le 1er juillet, sur 365. Repère de ' + 'rythme linéaire : à comparer au « % consommé » de chaque ligne.',

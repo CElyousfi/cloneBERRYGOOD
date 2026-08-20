@@ -43,7 +43,11 @@ function quinzaine(periode, dateFin, parOuvrier) {
 /** Ouvrier d'une quinzaine : N journées de base BEE ONE, sans HS ni prime. */
 function ouvrier(jours, extra) {
   return Object.assign({
-    jours: new Set(jours), hs25: 0, hs50: 0, hs100: 0,
+    jours: new Set(jours),
+    // Par défaut 1 JH par journée calendaire — le cas courant. Les tests qui
+    // veulent des demi-journées surchargent `jh`.
+    jh: jours.length,
+    hs25: 0, hs50: 0, hs100: 0,
     base: BASE_JOUR * jours.length,
   }, extra || {});
 }
@@ -92,7 +96,8 @@ test('paie — le SALAIRE vient du barème Smart Berry, BEE ONE ne donne que les
   const out = campagne({
     registre: { ZZ9: { declare: false } },
     quinzaines: [quinzaine('Q01', '2026-07-15', {
-      ZZ9: { jours: new Set(['2026-07-01', '2026-07-02']), hs25: 0, hs50: 0, hs100: 0, base: 240 },
+      ZZ9: { jours: new Set(['2026-07-01', '2026-07-02']), jh: 2,
+        hs25: 0, hs50: 0, hs100: 0, base: 240 },
     })],
   });
   assert.strictEqual(out.detail.baseBeeOne, 240, 'témoin BEE ONE conservé');
@@ -327,4 +332,37 @@ test('parQuinzaine — le détail se recompose quinzaine par quinzaine', () => {
     assert.strictEqual(Math.round((q.salaire + q.primes + q.charges) * 1e6) / 1e6,
       Math.round(q.coutTotal * 1e6) / 1e6, q.periode);
   });
+});
+
+test('unité — le coût moyen se divise par les JH, pas par les journées', () => {
+  // Le piège : `Nombre_Jr` (les JH de BEE ONE) n'est PAS le nombre de journées
+  // calendaires. Il peut être fractionnaire (demi-journée) ou dépasser 1
+  // (heures converties). Le salaire se calcule sur les JOURNÉES — une fiche de
+  // paie paie des jours — mais ce coût sert à valoriser des budgets en JH.
+  // Diviser par les journées donnait un coût trop bas de plusieurs pour cent,
+  // et toute la grille Campagne s'en trouvait sous-valorisée.
+  const out = campagne({
+    registre: { AB1: { declare: false } },
+    quinzaines: [quinzaine('Q01', '2026-07-15', {
+      // 2 journées calendaires, mais seulement 1,5 JH (une demi-journée).
+      AB1: ouvrier(['2026-07-01', '2026-07-02'], { jh: 1.5 }),
+    })],
+  });
+  assert.strictEqual(out.jours, 2, 'la paie compte 2 journées');
+  assert.strictEqual(out.jh, 1.5, '…mais BEE ONE ne compte que 1,5 JH');
+  assert.strictEqual(out.coutMoyenJour, out.coutTotal / 1.5);
+  // Et surtout : valoriser les JH au coût moyen doit REDONNER le coût total.
+  // C'est l'invariant qui garantit que la grille Campagne ne ment pas.
+  assert.strictEqual(Math.round(out.jh * out.coutMoyenJour * 1e6) / 1e6,
+    Math.round(out.coutTotal * 1e6) / 1e6);
+});
+
+test('unité — sans JH, pas de coût moyen (jamais une division par les journées)', () => {
+  const out = campagne({
+    registre: { AB1: { declare: false } },
+    quinzaines: [quinzaine('Q01', '2026-07-15', {
+      AB1: ouvrier(['2026-07-01'], { jh: 0 }),
+    })],
+  });
+  assert.strictEqual(out.coutMoyenJour, null);
 });

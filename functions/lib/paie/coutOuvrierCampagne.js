@@ -36,7 +36,13 @@
  *   + traitement / conditionnement / chargement (10 DH par jour-ouvrier)
  *   + jours fériés
  *
- *   coût ouvrier DH/jour = Σ coût total / Σ journées pointées
+ *   coût ouvrier DH/JH   = Σ coût total / Σ JH (`Nombre_Jr`)
+ *
+ * ⚠️ Le dénominateur est en JH, PAS en journées calendaires. Le salaire, lui,
+ * se calcule sur les journées (une fiche de paie paie des jours). Mais ce
+ * chiffre sert à valoriser des budgets exprimés en JH : mélanger les deux
+ * unités fausse toute la grille — avec des demi-journées, elles diffèrent de
+ * plusieurs pour cent.
  *
  * L'assiette de cotisation n'est pas réinventée ici : c'est celle du modèle de
  * paie déjà en production (`paieUtils`), primes de terrain exclues.
@@ -110,7 +116,7 @@ function primeTransport(matricule, equipes) {
  * de lignes (un ouvrier pointé sur trois parcelles le même jour a travaillé un
  * jour, pas trois). Les heures sup, elles, se somment ligne à ligne.
  *
- * @param {Object} acc accumulateur { [matricule]: {jours: Set, hs25, hs50, hs100, base} }
+ * @param {Object} acc accumulateur { [matricule]: {jours: Set, jh, hs25, hs50, hs100, base} }
  * @param {Array<Object>} rows lignes de `sql_mirror_pointage/{date}`
  * @param {string} date 'YYYY-MM-DD'
  */
@@ -119,9 +125,19 @@ function cumuleJournee(acc, rows, date) {
     if (!r) return;
     const mat = String(r.Personnel_Matricule || '').trim();
     if (!mat) return;
-    if (!acc[mat]) acc[mat] = { jours: new Set(), hs25: 0, hs50: 0, hs100: 0, base: 0 };
+    if (!acc[mat]) acc[mat] = { jours: new Set(), jh: 0, hs25: 0, hs50: 0, hs100: 0, base: 0 };
     const e = acc[mat];
+    // DEUX unités, et il faut les deux :
+    //  - `jours` = journées CALENDAIRES distinctes. C'est ce que paie la fiche
+    //    de paie : un ouvrier pointé trois fois le même jour touche un jour.
+    //  - `jh` = `Nombre_Jr`, la quantité de journées-homme de BEE ONE. Elle peut
+    //    être fractionnaire (demi-journée) ou dépasser 1 (heures converties).
+    //    C'est l'unité de TOUT le reste de l'application — la grille Campagne,
+    //    les budgets, les JH affichés partout.
+    // Le SALAIRE se calcule sur les journées, mais le COÛT PAR JH doit se
+    // diviser par les JH : c'est lui qui sert à valoriser un budget en JH.
     e.jours.add(date);
+    e.jh += Number(r.Nombre_Jr) || 0;
     e.hs25 += Number(r.HS_25) || 0;
     e.hs50 += Number(r.HS_50) || 0;
     e.hs100 += Number(r.HS_100) || 0;
@@ -265,7 +281,7 @@ function paieOuvrierQuinzaine(args) {
  * @param {Object<string, Object>} args.registre matricule → fiche.
  * @param {Object} args.baremes barèmes de paie.
  * @param {Array<Object>} args.equipesTransport équipes de transport.
- * @returns {{coutMoyenJour: number|null, facteurCharge: number|null,
+ * @returns {{coutMoyenJour: number|null, jh: number, facteurCharge: number|null,
  *   coutTotal: number, jours: number, ouvriers: number, quinzaines: number,
  *   partDeclares: number|null, detail: Object, parQuinzaine: Array<Object>}}
  */
@@ -281,6 +297,7 @@ function coutOuvrierCampagne(args) {
 
   let coutTotal = 0;
   let jours = 0;
+  let jhTotal = 0;
   let joursDeclares = 0;
   const detail = {
     salaire: 0, baseBeeOne: 0, primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
@@ -294,7 +311,7 @@ function coutOuvrierCampagne(args) {
 
   quinzaines.forEach((q) => {
     const parOuvrier = (q && q.parOuvrier) || {};
-    const cumulQ = { periode: (q && q.periode) || '', jours: 0, base: 0,
+    const cumulQ = { periode: (q && q.periode) || '', jours: 0, jh: 0, base: 0,
       salaire: 0, primes: 0, charges: 0, coutTotal: 0 };
     Object.keys(parOuvrier).forEach((mat) => {
       const e = parOuvrier[mat];
@@ -326,6 +343,7 @@ function coutOuvrierCampagne(args) {
 
       coutTotal += paie.total;
       jours += joursTravailles;
+      jhTotal += Number(e.jh) || 0;
       if (declare) joursDeclares += joursTravailles;
 
       // `baseBeeOne` n'entre PAS dans le coût : c'est le témoin qui sert au
@@ -342,6 +360,7 @@ function coutOuvrierCampagne(args) {
         .forEach((k) => { detail[k] += Number(primesOuvrier[k]) || 0; });
 
       cumulQ.jours += joursTravailles;
+      cumulQ.jh += Number(e.jh) || 0;
       cumulQ.base += Number(e.base) || 0;
       cumulQ.salaire += paie.salaireBase;
       cumulQ.primes += paie.primesNonSoumises + (Number(primesOuvrier.feries) || 0)
@@ -357,7 +376,15 @@ function coutOuvrierCampagne(args) {
   });
 
   return {
-    coutMoyenJour: jours > 0 ? coutTotal / jours : null,
+    // Coût par JH — et NON par journée calendaire. Ce chiffre sert à valoriser
+    // des budgets exprimés en JH : le diviser par autre chose que des JH
+    // fausserait toute la grille Campagne. Avec des demi-journées, les deux
+    // dénominateurs diffèrent de plusieurs pour cent.
+    coutMoyenJour: jhTotal > 0 ? coutTotal / jhTotal : null,
+    // Journées calendaires distinctes, conservées : c'est l'assiette de la
+    // paie (un ouvrier pointé trois fois le même jour touche un jour) et le
+    // rapport entre les deux se lit dans l'infobulle.
+    jh: jhTotal,
     // FACTEUR DE CHARGE : combien coûte réellement un dirham de salaire de base.
     // C'est lui qui rend comparables les deux côtés de la grille Campagne — le
     // réalisé y vient du `Cout` BEE ONE (base nue), le budget est valorisé au
