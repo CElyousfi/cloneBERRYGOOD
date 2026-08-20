@@ -67325,8 +67325,20 @@ ${rejetHtml}
 
             // Fetch notifications on profile switch + auto-refresh every 60s
             React.useEffect(() => {
-                // Fetch immédiat au changement de profil (avec popup)
-                const t = setTimeout(() => fetchNotifications(currentProfile, true), 500);
+                // Fetch immédiat au changement de profil — SANS pop-up.
+                //
+                // La pop-up s'ouvrait toute seule ici, en overlay plein écran
+                // (position fixed, inset 0, zIndex 9999). Elle capte donc TOUS
+                // les clics de la page. Au retour d'une autre fenêtre, l'effet
+                // rejouait et elle se réaffichait : l'application paraissait
+                // GELÉE, et il fallait recharger pour s'en sortir. Diagnostic
+                // confirmé par Omar (2026-08-20), qui a demandé sa désactivation.
+                //
+                // Rien n'est perdu : le badge de la cloche continue de compter
+                // les notifications, et un clic dessus ouvre la même pop-up. La
+                // différence est qu'elle s'ouvre désormais à la demande, jamais
+                // par surprise par-dessus ce qu'on est en train de lire.
+                const t = setTimeout(() => fetchNotifications(currentProfile, false), 500);
                 // Polling toutes les 60s (sans popup, juste badge)
                 const interval = setInterval(() => {
                     fetchNotifications(currentProfile, false);
