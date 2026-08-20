@@ -110,6 +110,12 @@ function loadTab(deps) {
   if (!deps || deps.production !== false) {
     vm.runInContext(read('public/lib/campagneProduction.js'), sandbox);
   }
+  // Rapprochement pointage ↔ grille. Omissible : sans ce module, le panneau de
+  // contrôle ne doit pas s'afficher (et surtout pas afficher un écart nul, qui
+  // se lirait « tout est rapproché »).
+  if (!deps || deps.rapprochement !== false) {
+    vm.runInContext(read('public/lib/campagneRapprochement.js'), sandbox);
+  }
   if (withBudget) {
     vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
     // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
@@ -1156,4 +1162,38 @@ test('coût ouvrier — en JH, le budget reste en JH (aucune valorisation)', () 
   const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
   assert.deepStrictEqual(niveau2.slice(0, 3),
     ['Réalisé | JH/Ha', 'Budget | JH/Ha', '% consommé']);
+});
+
+test('rapprochement — le panneau affiche l\'écart entre pointage et grille', () => {
+  // Contrôle de couverture : la grille agrège PAR PARCELLE, le coût ouvrier
+  // part du pointage brut. L'écart mesure ce que la grille ne voit pas.
+  const cout = Object.assign({}, COUT_OUVRIER, {
+    parQuinzaine: [
+      { periode: 'Quinzaine 01', jours: 100, base: 10000, primes: 3000, charges: 2000, coutTotal: 15000 },
+    ],
+  });
+  const tree = render({ coutOuvrier: cout });
+  assert.match(textOf(tree), /Rapprochement pointage ↔ grille/);
+  assert.match(textOf(tree), /Quinzaine 01/);
+  // Le pointage annonce 10 000 de base ; la grille (fixture) en montre bien
+  // moins → l'écart doit être affiché, pas masqué.
+  assert.match(textOf(tree), /écart total/);
+});
+
+test('rapprochement — absent en plein écran, et sans données de coût', () => {
+  // En plein écran on vient lire une culture, pas auditer un périmètre.
+  const plein = render({ coutOuvrier: Object.assign({}, COUT_OUVRIER, {
+    parQuinzaine: [{ periode: 'Q01', jours: 1, base: 100, primes: 0, charges: 0, coutTotal: 100 }],
+  }) }, [false, false, null, false, '', true, 0]);
+  assert.strictEqual(textOf(plein).indexOf('Rapprochement pointage'), -1);
+  // Et sans détail par quinzaine, aucun panneau : rien à rapprocher.
+  assert.strictEqual(textOf(render({ coutOuvrier: COUT_OUVRIER }))
+    .indexOf('Rapprochement pointage'), -1);
+  // Module absent : pas de panneau non plus. Un écart affiché à zéro faute de
+  // calcul se lirait « tout est rapproché » — le pire des messages.
+  const TabSansRap = loadTab({ rapprochement: false });
+  const sansRap = render({ coutOuvrier: Object.assign({}, COUT_OUVRIER, {
+    parQuinzaine: [{ periode: 'Q01', jours: 1, base: 100, primes: 0, charges: 0, coutTotal: 100 }],
+  }) }, null, TabSansRap);
+  assert.strictEqual(textOf(sansRap).indexOf('Rapprochement pointage'), -1);
 });
