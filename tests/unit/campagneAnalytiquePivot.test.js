@@ -628,11 +628,18 @@ test('budget — culture sans aucun budget : grille inchangée, une seule série
 
 test('budget — métrique Coût DH : aucune série budget (le budget est en JH/Ha)', () => {
   const grilles = tables(renderBudget({ metric: 'cout' }, [true, false, null]));
+  // MÊMES LIGNES qu'en JH — y compris les familles budgétées jamais
+  // travaillées (Ferti). C'est ce qui fait exister le bloc récolte en Coût DH :
+  // sans elles, une récolte pas encore commencée n'a aucune ligne, et son
+  // tableau disparaissait alors qu'il est là en JH.
   assert.deepStrictEqual(bodyRows(grilles[0]).map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Taille']);
+    ['M.O Hors récolte', 'Ferti-irrigation', 'Taille']);
   assert.deepStrictEqual(bodyRows(grilles[1]).map((r) => textOf(r).split(' | ')[0]),
     ['M.O Récolte', 'Récolte']);
-  assert.strictEqual(cells(bodyRows(grilles[0])[1])[1], nb(6000) + ' | DH');
+  assert.strictEqual(cells(bodyRows(grilles[0])[2])[1], nb(6000) + ' | DH');
+  // …mais AUCUNE sous-colonne de budget : un budget saisi en JH/Ha n'a pas de
+  // traduction en dirhams. Une seule valeur par cellule.
+  assert.strictEqual(cells(bodyRows(grilles[0])[2]).length, 3, 'libellé + 2 parcelles');
 });
 
 test('budget — mode Détail : le budget descend à la maille opération', () => {

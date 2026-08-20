@@ -2413,7 +2413,15 @@
         analytique: AU,
         budgetRules: rules
       };
-      var sup = isJh && CBP && typeof CBP.buildBudgetPivot === 'function' && rules ? CBP.buildBudgetPivot(Object.assign({
+      // Superposition du budget construite dans LES DEUX métriques, alors
+      // que les sous-colonnes de budget, elles, restent réservées au JH.
+      // Ce ne sont pas les mêmes choses : la superposition ajoute les
+      // LIGNES budgétées mais jamais travaillées, et en Coût DH la Récolte
+      // n'en a pas d'autre (son réalisé est nul tant que la saison n'a pas
+      // commencé, et le backend ne sert que les lignes ayant du réalisé).
+      // Sans elle, le bloc récolte disparaissait purement et simplement en
+      // Coût DH — alors qu'il est là en JH.
+      var sup = CBP && typeof CBP.buildBudgetPivot === 'function' && rules ? CBP.buildBudgetPivot(Object.assign({
         groupedRows: pivot.groupedRows,
         detail: detailMode
       }, budgetArgs)) : null;
@@ -2434,7 +2442,11 @@
       }) : null;
       // Séries réellement affichées : elles décident AUSSI de la colonne
       // Total (cf. `showTotal` plus bas), d'où l'extraction en variable.
-      var metricsAffichees = quinz ? metricsQuinzaine : sup && sup.hasBudget ? metricsBudget : metrics;
+      // Les SOUS-COLONNES de budget restent réservées au JH : un budget
+      // saisi en JH/Ha n'a aucune traduction en dirhams tant que le coût
+      // ouvrier chargé n'est pas calculé. Les LIGNES budgétées, elles,
+      // sont servies dans les deux métriques (cf. `sup` plus haut).
+      var metricsAffichees = quinz ? metricsQuinzaine : isJh && sup && sup.hasBudget ? metricsBudget : metrics;
       var rowsAffichees = quinz ? quinz.groupedRows : sup ? sup.groupedRows : pivot.groupedRows;
       // ── RÉCOLTE À PART ──────────────────────────────────────────
       // Partout, plein écran ou non : la récolte sortie du tableau change
