@@ -104,6 +104,12 @@ function loadTab(deps) {
   if (!deps || deps.campagneUtils !== false) {
     vm.runInContext(read('public/lib/campagneUtils.js'), sandbox);
   }
+  // Kilos (ligne « Kg / JH » du bloc récolte). Omissible : sans ce module, la
+  // grille doit rendre son pied habituel, sans ligne de cadence — un <script>
+  // manquant ne fait pas tomber la récolte.
+  if (!deps || deps.production !== false) {
+    vm.runInContext(read('public/lib/campagneProduction.js'), sandbox);
+  }
   if (withBudget) {
     vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
     // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
@@ -267,9 +273,11 @@ test('culture — le référentiel SB prime sur la regex du libellé', () => {
 // verrouillé côté grille (tests/unit/pivotAnalytiqueGrid.test.js, mode showTotal
 // par défaut) et côté écran Quinzaine (affectationAnalytiqueTable.test.js).
 
-test('grille — une table par culture, colonnes = parcelles nommées SB avec leur Ha', () => {
+test('grille — une table par bloc, colonnes = parcelles nommées SB avec leur Ha', () => {
   const tree = render();
-  assert.strictEqual(tables(tree).length, 2, 'Framboise + Myrtille');
+  // Framboise = hors récolte + récolte ; Myrtille n'a que de la récolte, donc
+  // un seul bloc (pas de tableau principal vide au-dessus).
+  assert.strictEqual(tables(tree).length, 3, 'Framboise ×2 + Myrtille');
   assert.deepStrictEqual(headers(tables(tree)[0]),
     ['Opération', 'S5 MARAVILLA | 2 Ha', 'S1 CORINA | 4 Ha']);
 });
@@ -295,17 +303,23 @@ test('grille — aucune colonne Total HORS plein écran', () => {
 });
 
 test('grille — lignes groupées groupe > famille (code GB)', () => {
-  const rows = bodyRows(tables(render())[0]);
+  const grilles = tables(render());
+  const rows = bodyRows(grilles[0]);
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Taille', 'M.O Récolte', 'Récolte']);
+    ['M.O Hors récolte', 'Taille']);
+  // La récolte n'a pas disparu : elle a son bloc, sous le tableau principal.
+  assert.deepStrictEqual(bodyRows(grilles[1]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Récolte', 'Récolte']);
   // La ligne famille porte son code GB à côté du libellé.
   assert.ok(textOf(rows[1]).indexOf('GB09') >= 0);
 });
 
 test('grille — mode Détail : les opérations fines s\'insèrent SOUS leur famille', () => {
-  const rows = bodyRows(tables(render(null, [false, true, null]))[0]);
-  assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Taille', 'Taille longue', 'Taille courte', 'M.O Récolte', 'Récolte', 'Cueillette']);
+  const grilles = tables(render(null, [false, true, null]));
+  assert.deepStrictEqual(bodyRows(grilles[0]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Hors récolte', 'Taille', 'Taille longue', 'Taille courte']);
+  assert.deepStrictEqual(bodyRows(grilles[1]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Récolte', 'Récolte', 'Cueillette']);
 });
 
 test('recoupement — Récap et Détail affichent le MÊME pied de tableau', () => {
@@ -318,11 +332,16 @@ test('recoupement — Récap et Détail affichent le MÊME pied de tableau', () 
     foot([true, true, null], { metric: 'cout' }),
     foot([true, false, null], { metric: 'cout' })
   );
-  // Et ces valeurs communes sont bien les sommes brutes, pas des doublons :
-  // 9 000 DH sur MARAVILLA, 2 400 sur CORINA (11 400 au total, désormais réparti
-  // par colonne — la colonne Total a quitté cet écran).
+  // Et ces valeurs communes sont bien les sommes brutes, pas des doublons.
+  // Le tableau principal est HORS RÉCOLTE : sur MARAVILLA il reste la Taille
+  // (4 500 + 1 500 = 6 000 DH), la Récolte (3 000) est passée dans son bloc ;
+  // CORINA n'a que de la récolte, sa colonne est donc vide ici.
   assert.deepStrictEqual(foot([true, true, null], { metric: 'cout' }),
-    ['TOTAL', nb(9000) + ' | DH', nb(2400) + ' | DH']);
+    ['TOTAL', nb(6000) + ' | DH', '— | DH']);
+  // …et la récolte se retrouve, intacte, dans le second bloc.
+  const footRecolte = (states) => cells(footRow(tables(render({ metric: 'cout' }, states))[1]));
+  assert.deepStrictEqual(footRecolte([true, false, null]),
+    ['TOTAL RÉCOLTE', nb(3000) + ' | DH', nb(2400) + ' | DH']);
 });
 
 test('recoupement — en Total DH, la grille affiche les sommes brutes de l\'API', () => {
@@ -334,26 +353,31 @@ test('recoupement — en Total DH, la grille affiche les sommes brutes de l\'API
 
   const tree = render({ metric: 'cout' }, [true, false, null]);
   const dh = (v) => v.toLocaleString('fr-MA') + ' | DH';
-  assert.deepStrictEqual(cells(footRow(tables(tree)[0])),
-    ['TOTAL', dh(maravilla), dh(corina)]);
+  // Les deux blocs REUNIS redonnent les totaux de l'API, colonne par colonne :
+  // MARAVILLA 6 000 (hors récolte) + 3 000 (récolte) = 9 000 ; CORINA 0 + 2 400.
+  assert.deepStrictEqual(cells(footRow(tables(tree)[0])), ['TOTAL', dh(6000), '— | DH']);
+  assert.deepStrictEqual(cells(footRow(tables(tree)[1])),
+    ['TOTAL RÉCOLTE', dh(3000), dh(corina)]);
 
-  // Détail par famille sur la même parcelle : Taille 4500+1500, Récolte 3000.
-  const rows = bodyRows(tables(tree)[0]);
-  assert.strictEqual(cells(rows[1])[1], dh(6000));
-  assert.strictEqual(cells(rows[3])[1], dh(3000));
+  // Détail par famille : Taille 4500+1500 dans le principal, Récolte 3000 dans
+  // son bloc.
+  assert.strictEqual(cells(bodyRows(tables(tree)[0])[1])[1], dh(6000));
+  assert.strictEqual(cells(bodyRows(tables(tree)[1])[1])[1], dh(3000));
 });
 
 test('recoupement — en JH par Ha, chaque cellule est le total divisé par le Ha', () => {
-  const rows = bodyRows(tables(render({ metric: 'jh' }))[0]);
+  const grilles = tables(render({ metric: 'jh' }));
   // Taille sur MARAVILLA : (30 + 10) JH / 2 Ha = 20.0. Pas de Taille sur CORINA :
   // cellule VIDE (« — » sans unité), pas un zéro — la grille distingue les deux.
-  assert.deepStrictEqual(cells(rows[1]).slice(1, 3), ['20.0 | JH/Ha', '—']);
-  assert.deepStrictEqual(cells(rows[3]).slice(1, 3), ['10.0 | JH/Ha', '3.0 | JH/Ha']);
-  // Pied de tableau : MARAVILLA 60 JH / 2 Ha = 30.0 ; CORINA 12 / 4 = 3.0.
-  // (Le total général — 72 / 6 = 12.0 — vivait dans la colonne Total, retirée
-  // de cet écran.)
-  assert.deepStrictEqual(cells(footRow(tables(render({ metric: 'jh' }))[0])),
-    ['TOTAL', '30.0 | JH/Ha', '3.0 | JH/Ha']);
+  assert.deepStrictEqual(cells(bodyRows(grilles[0])[1]).slice(1, 3), ['20.0 | JH/Ha', '—']);
+  // Récolte, dans son bloc : 20 JH / 2 Ha = 10.0 et 12 / 4 = 3.0.
+  assert.deepStrictEqual(cells(bodyRows(grilles[1])[1]).slice(1, 3),
+    ['10.0 | JH/Ha', '3.0 | JH/Ha']);
+  // Pied du tableau principal : MARAVILLA 40 JH / 2 Ha = 20.0 (la récolte est
+  // sortie) ; CORINA n'a rien hors récolte.
+  assert.deepStrictEqual(cells(footRow(grilles[0])), ['TOTAL', '20.0 | JH/Ha', '— | JH/Ha']);
+  assert.deepStrictEqual(cells(footRow(grilles[1])),
+    ['TOTAL RÉCOLTE', '10.0 | JH/Ha', '3.0 | JH/Ha']);
 });
 
 test('famille à code GB inconnu — rangée sous AUTRE, et comptée dans le total', () => {
@@ -477,9 +501,13 @@ const CORINA_SC = [4, 7];
 function sousCellule(tr, borne) { return cells(tr).slice(borne[0], borne[1]); }
 
 test('sous-colonnes — réalisé, budget et % consommé côte à côte (JH par Ha)', () => {
-  const rows = bodyRows(tables(renderBudget())[0]);
+  const grilles = tables(renderBudget());
+  const rows = bodyRows(grilles[0]);
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Ferti-irrigation', 'Taille', 'M.O Récolte', 'Récolte']);
+    ['M.O Hors récolte', 'Ferti-irrigation', 'Taille']);
+  const rowsRecolte = bodyRows(grilles[1]);
+  assert.deepStrictEqual(rowsRecolte.map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Récolte', 'Récolte']);
 
   // En-tête à deux niveaux : la parcelle couvre ses 3 sous-colonnes, dont les
   // libellés ne sont plus répétés dans chaque cellule.
@@ -499,8 +527,8 @@ test('sous-colonnes — réalisé, budget et % consommé côte à côte (JH par 
   // Récolte : le budget vient des OPÉRATIONS (8), pas du niveau famille (12) →
   // 20 JH pour 16 budgétés = 125,0 %. CORINA est réalisée mais non budgétée :
   // ni budget ni taux, jamais 0 %.
-  assert.deepStrictEqual(sousCellule(rows[4], MARAVILLA_SC), ['10.0', '8.0', '125.0 %']);
-  assert.deepStrictEqual(sousCellule(rows[4], CORINA_SC), ['3.0', '—', '—']);
+  assert.deepStrictEqual(sousCellule(rowsRecolte[1], MARAVILLA_SC), ['10.0', '8.0', '125.0 %']);
+  assert.deepStrictEqual(sousCellule(rowsRecolte[1], CORINA_SC), ['3.0', '—', '—']);
 });
 
 test('sous-colonnes — famille budgétée jamais travaillée : 0 % consommé, pas « — »', () => {
@@ -517,10 +545,11 @@ test('sous-colonnes — un taux ne se somme pas : totaux pondérés', () => {
   // la ligne Taille + Récolte, et une moyenne simple 129,2 %. Le seul total
   // juste additionne numérateurs et dénominateurs séparément.
   const foot = cells(footRow(tables(renderBudget())[0]));
-  // MARAVILLA : 60 JH réalisés pour 46 budgétés = 130,4 %.
-  assert.deepStrictEqual(foot.slice(1, 4), ['30.0', '23.0', '130.4 %']);
+  // Tableau principal, HORS récolte. MARAVILLA : 40 JH réalisés (Taille) pour
+  // 30 budgétés = 133,3 % — soit 20.0 et 15.0 rapportés aux 2 Ha.
+  assert.deepStrictEqual(foot.slice(1, 4), ['20.0', '15.0', '133.3 %']);
   // CORINA : seule la Ferti est budgétée (8 JH), jamais travaillée → 0 %.
-  assert.deepStrictEqual(foot.slice(4, 7), ['3.0', '2.0', '0.0 %']);
+  assert.deepStrictEqual(foot.slice(4, 7), ['0.0', '2.0', '0.0 %']);
   // Le pied s'arrête là : le grand total (60 / 54 = 111,1 %) vivait dans la
   // colonne Total, retirée de cet écran. La pondération des ratios reste
   // vérifiée ci-dessus (130,4 % agrège deux lignes) et, pour le grand total,
@@ -546,7 +575,7 @@ test('taux — le suffixe « % » et l\'italique PARTOUT où le taux est rendu',
   // colonne Total, retirée ici — ils restent couverts par
   // tests/unit/pivotAnalytiqueGrid.test.js.
   assert.deepStrictEqual(taux(rows[2], 3).map(textOf), ['133.3 %'], 'cellule');
-  assert.deepStrictEqual(taux(foot, 3).map(textOf), ['130.4 %'], 'total de colonne');
+  assert.deepStrictEqual(taux(foot, 3).map(textOf), ['133.3 %'], 'total de colonne');
 
   // L'italique porte sur la VALEUR, jamais sur l'en-tête de sous-colonne.
   const th = walk(section(tree, 'thead'))
@@ -582,32 +611,47 @@ test('sous-colonnes — en mode Total, seul le taux ne bouge pas (il est invaria
   // (30 en Taille + 16 en Récolte, périmètre budgété) = 130,4 % ; CORINA 12 JH
   // réalisés, 8 budgétés en Ferti jamais travaillée → 0 %.
   const foot = cells(footRow(tables(renderBudget(null, [true, false, null]))[0]));
-  assert.deepStrictEqual(foot.slice(1, 7), ['60.0', '46.0', '130.4 %', '12.0', '8.0', '0.0 %']);
+  // Hors récolte : MARAVILLA 40 JH pour 30 budgétés ; CORINA rien de réalisé,
+  // 8 JH budgétés en Ferti.
+  assert.deepStrictEqual(foot.slice(1, 7), ['40.0', '30.0', '133.3 %', '0.0', '8.0', '0.0 %']);
 });
 
 test('budget — culture sans aucun budget : grille inchangée, une seule série', () => {
   // Cas nominal de l'avocatier (jamais budgété) : deux lignes de « — » dans
   // chaque cellule n'apprendraient rien à personne.
-  const myrtille = bodyRows(tables(renderBudget())[1]);
+  // Myrtille : que de la récolte, donc un seul bloc — le 3e (Framboise en a 2).
+  const myrtille = bodyRows(tables(renderBudget())[2]);
   // Une seule parcelle, une seule série, et plus de colonne Total : une seule
   // cellule de valeur, au balisage empilé historique (unité dans la cellule).
   assert.deepStrictEqual(cells(myrtille[1]).slice(1), ['3.0 | JH/Ha']);
 });
 
 test('budget — métrique Coût DH : aucune série budget (le budget est en JH/Ha)', () => {
-  const rows = bodyRows(tables(renderBudget({ metric: 'cout' }, [true, false, null]))[0]);
-  assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Taille', 'M.O Récolte', 'Récolte']);
-  assert.strictEqual(cells(rows[1])[1], nb(6000) + ' | DH');
+  const grilles = tables(renderBudget({ metric: 'cout' }, [true, false, null]));
+  // MÊMES LIGNES qu'en JH — y compris les familles budgétées jamais
+  // travaillées (Ferti). C'est ce qui fait exister le bloc récolte en Coût DH :
+  // sans elles, une récolte pas encore commencée n'a aucune ligne, et son
+  // tableau disparaissait alors qu'il est là en JH.
+  assert.deepStrictEqual(bodyRows(grilles[0]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Hors récolte', 'Ferti-irrigation', 'Taille']);
+  assert.deepStrictEqual(bodyRows(grilles[1]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Récolte', 'Récolte']);
+  assert.strictEqual(cells(bodyRows(grilles[0])[2])[1], nb(6000) + ' | DH');
+  // …mais AUCUNE sous-colonne de budget : un budget saisi en JH/Ha n'a pas de
+  // traduction en dirhams. Une seule valeur par cellule.
+  assert.strictEqual(cells(bodyRows(grilles[0])[2]).length, 3, 'libellé + 2 parcelles');
 });
 
 test('budget — mode Détail : le budget descend à la maille opération', () => {
-  const rows = bodyRows(tables(renderBudget(null, [false, true, null]))[0]);
+  const grilles = tables(renderBudget(null, [false, true, null]));
+  const rows = bodyRows(grilles[0]);
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Ferti-irrigation', 'Taille', 'Taille longue', 'Taille courte',
-      'M.O Récolte', 'Récolte', 'Cueillette']);
+    ['M.O Hors récolte', 'Ferti-irrigation', 'Taille', 'Taille longue', 'Taille courte']);
+  const rowsRecolte = bodyRows(grilles[1]);
+  assert.deepStrictEqual(rowsRecolte.map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Récolte', 'Récolte', 'Cueillette']);
   // L'opération budgétée porte son budget, et son taux de consommation.
-  assert.deepStrictEqual(sousCellule(rows[7], MARAVILLA_SC), ['10.0', '8.0', '125.0 %']);
+  assert.deepStrictEqual(sousCellule(rowsRecolte[2], MARAVILLA_SC), ['10.0', '8.0', '125.0 %']);
   // …et les opérations d'une famille budgétée AU NIVEAU FAMILLE n'héritent de
   // rien : le budget de Taille reste sur sa ligne famille, il n'est pas
   // réparti au jugé entre « Taille longue » et « Taille courte » — donc aucun
@@ -625,10 +669,12 @@ test('budget — colonne entièrement non budgétée : totaux « — », jamais 
     { budgetsByLabel: { 'F1- S5 MARAVILLA': { 'Taille': 15 } }, opBudgetsByLabel: {} },
     [true, false, null]
   ))[0]));
+  // Tableau principal, hors récolte : MARAVILLA 40 JH pour 30 budgétés ;
+  // CORINA n'a rien hors récolte et rien de budgété → trois « — ».
   assert.deepStrictEqual(foot, [
     'TOTAL',
-    '60.0', '30.0', '133.3 %',
-    '12.0', '—', '—',
+    '40.0', '30.0', '133.3 %',
+    '—', '—', '—',
   ]);
 });
 
@@ -671,10 +717,14 @@ test('budget — une cellule créée par le seul budget n\'ouvre pas de pop-up v
 
 test('budget — module non chargé : réalisé seul, jamais de grille cassée', () => {
   // `Tab` est chargé SANS campagneBudgetPivot ni CampagneBudgetTab.
-  const rows = bodyRows(tables(render({ budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS }))[0]);
-  assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ')[0]),
-    ['M.O Hors récolte', 'Taille', 'M.O Récolte', 'Récolte']);
-  assert.deepStrictEqual(cells(rows[1]).slice(1, 3), ['20.0 | JH/Ha', '—']);
+  const grilles = tables(render({ budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS }));
+  assert.deepStrictEqual(bodyRows(grilles[0]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Hors récolte', 'Taille']);
+  // La récolte reste servie dans son bloc : dégrader le budget ne doit pas
+  // faire disparaître des lignes de réalisé.
+  assert.deepStrictEqual(bodyRows(grilles[1]).map((r) => textOf(r).split(' | ')[0]),
+    ['M.O Récolte', 'Récolte']);
+  assert.deepStrictEqual(cells(bodyRows(grilles[0])[1]).slice(1, 3), ['20.0 | JH/Ha', '—']);
 });
 
 // ---------------------------------------------------------------- plein écran
@@ -758,7 +808,9 @@ test('plein écran — un index hors bornes retombe sur la 1re grille, pas sur d
 test('plein écran — hors plein écran, aucun overlay et toutes les grilles', () => {
   const tree = render();
   assert.strictEqual(tree.props.style, null);
-  assert.strictEqual(tables(tree).length, 2);
+  // Framboise (hors récolte + récolte) + Myrtille (récolte seule) : la récolte
+  // est visible hors plein écran aussi.
+  assert.strictEqual(tables(tree).length, 3);
 });
 
 // ── Colonne TOTAL : plein écran ET plusieurs séries, jamais autrement ────────
@@ -923,4 +975,94 @@ test('grille — sélection vide : message, jamais une table fantôme', () => {
   const tree = render({ cultureFilter: 'Avocatier' });
   assert.strictEqual(tables(tree).length, 0);
   assert.ok(textOf(tree).indexOf('Aucune donnée pour cette sélection.') >= 0);
+});
+
+// ------------------------------------------------- CADENCE DE RÉCOLTE (Kg/JH)
+//
+// Ligne de pied du bloc récolte : des kilos rapportés à des journées-homme. Ce
+// n'est ni une série (la grille les agrège) ni une ligne famille (elle entrerait
+// dans le total) — d'où `piedsSupplementaires`.
+
+const BONS_RECOLTE = [
+  // « Parcelle / Bloc » du bon = intitulé de la colonne (cas réel, cf.
+  // campagneProduction.test.js). 360 kg pour 20 JH de récolte = 18.0 kg/JH,
+  // soit EXACTEMENT le barème framboise → 100 %.
+  { poidsLot: 360, dateISO: '2026-07-15', typeVente: 'Export', designation: 'F1- S5 MARAVILLA' },
+];
+
+test('cadence — Kg/JH en pied du bloc récolte, en regard du barème de la culture', () => {
+  const grilles = tables(renderBudget({ bons: BONS_RECOLTE }));
+  const piedRows = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr');
+  assert.strictEqual(piedRows.length, 2, 'TOTAL RÉCOLTE + la cadence');
+  assert.strictEqual(cells(piedRows[0])[0], 'TOTAL RÉCOLTE',
+    'un second « TOTAL » se lirait comme le total général de l\'écran');
+  const cadence = cells(piedRows[1]);
+  assert.strictEqual(cadence[0], 'Kg / JH');
+  // MARAVILLA : 360 kg / 20 JH = 18.0, barème framboise 18.0 → 100,0 %.
+  assert.deepStrictEqual(cadence.slice(1, 4), ['18.0', '18.0', '100.0 %']);
+  // CORINA : de la récolte pointée (12 JH) mais aucun kilo rattaché → le barème
+  // reste affiché, la cadence non. Un 0.0 accuserait l'équipe d'un défaut de
+  // rattachement des bons.
+  assert.deepStrictEqual(cadence.slice(4, 7), ['—', '18.0', '—']);
+});
+
+test('cadence — au-delà du barème, le taux n\'est PAS une alerte', () => {
+  // Le « % consommé » d'un budget vire au rouge au-delà de 100 % : on a dépensé
+  // plus que prévu. Ici c'est l'inverse — dépasser le barème, c'est récolter
+  // plus vite. Le rouge y serait un contresens.
+  const grilles = tables(renderBudget({
+    bons: [Object.assign({}, BONS_RECOLTE[0], { poidsLot: 400 })],
+  }));
+  const cadence = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr')[1];
+  const spans = walk(cadence).filter((n) => n.type === 'span' && n.props.style);
+  const rouges = spans.filter((n) => n.props.style.color === '#c0392b');
+  assert.strictEqual(rouges.length, 0, 'jamais de rouge sur une bonne nouvelle');
+  // 400 / 20 = 20 kg/JH pour un barème de 18 → 111,1 %, en vert.
+  const verts = spans.filter((n) => n.props.style.color === '#2e7d32').map(textOf);
+  assert.ok(verts.indexOf('111.1 %') >= 0, 'cadence au-dessus du barème, en vert');
+});
+
+test('cadence — aucun bon : le pied du bloc récolte reste seul', () => {
+  // Début de campagne (le cas d'aujourd'hui) : pas de kilos, donc pas de ligne
+  // de cadence inventée sous le total.
+  const grilles = tables(renderBudget({ bons: [] }));
+  const piedRows = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr');
+  assert.strictEqual(piedRows.length, 2, 'la ligne existe, avec le barème…');
+  assert.deepStrictEqual(cells(piedRows[1]).slice(1, 4), ['—', '18.0', '—']);
+  // …et sans le module de calcul, elle disparaît purement et simplement.
+  const TabSansProd = loadTab({ production: false, budget: true });
+  const sansProd = tables(render({
+    bons: [], budgetsByLabel: BUDGETS, opBudgetsByLabel: OP_BUDGETS, refOperations: REF_OPS,
+  }, null, TabSansProd))[1];
+  assert.strictEqual(
+    walk(section(sansProd, 'tfoot')).filter((n) => n.type === 'tr').length, 1);
+});
+
+test('récolte — son bloc est là AUSSI hors plein écran et en Coût DH', () => {
+  // Sortir la récolte change le sens du TOTAL (il devient le total HORS
+  // récolte) : ce sens ne peut dépendre ni du bouton plein écran, ni de la
+  // bascule JH / Coût DH.
+  [{}, { metric: 'cout' }].forEach((props) => {
+    const grilles = tables(render(props));
+    assert.strictEqual(grilles.length, 3, JSON.stringify(props));
+    assert.match(textOf(grilles[1]), /Récolte/);
+    assert.strictEqual(cells(footRow(grilles[1]))[0], 'TOTAL RÉCOLTE');
+  });
+});
+
+test('rendement — en Coût DH, l\'indicateur devient DH / kg (pas la cadence)', () => {
+  // Une cadence en kg/JH sous une colonne de dirhams n'a aucun sens : en Coût
+  // DH, la question n'est plus « à quelle vitesse récolte-t-on ? » mais
+  // « combien nous coûte ce kilo ? ».
+  const grilles = tables(render({ metric: 'cout', bons: BONS_RECOLTE }));
+  const piedRows = walk(section(grilles[1], 'tfoot')).filter((n) => n.type === 'tr');
+  assert.strictEqual(piedRows.length, 2);
+  assert.strictEqual(cells(piedRows[0])[0], 'TOTAL RÉCOLTE');
+  const ligne = cells(piedRows[1]);
+  assert.strictEqual(ligne[0], 'DH / kg');
+  // MARAVILLA : 3 000 DH de récolte pour 360 kg rattachés = 8,33 DH/kg.
+  assert.strictEqual(ligne[1], '8,33');
+  // CORINA : de la récolte (2 400 DH) mais aucun kilo rattaché → « — », jamais
+  // un 0 (ni gratuit, ni infiniment cher).
+  assert.strictEqual(ligne[2], '—');
 });

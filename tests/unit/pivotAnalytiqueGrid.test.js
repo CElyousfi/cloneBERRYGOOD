@@ -747,3 +747,49 @@ test('bandeau de section — une série ratio y est agrégée num/den, jamais mo
   // 107.1 % — et NON la moyenne des deux taux (104.2 %) ni leur somme.
   assert.deepStrictEqual(cells(bodyRows(tree)[0]), ['M.O HORS RÉCOLTE', '10.0', '83.3 %', '20.0', '125.0 %', '30.0', '107.1 %']);
 });
+
+// ── Largeurs déterministes (`largeursFixes`) ────────────────────────────────
+// L'écran Campagne empile DEUX grilles par culture (hors récolte / récolte) :
+// sans largeurs déclarées, chacune se dimensionne sur son propre contenu et les
+// colonnes ne tombent plus en face. Opt-in : le panneau Quinzaine, en
+// production, garde son dimensionnement automatique.
+
+function thLibelle(tree) { return walk(section(tree, 'thead')).filter((n) => n.type === 'th')[0]; }
+
+test('largeurs — sans la prop, aucune largeur déclarée (rendu Quinzaine intact)', () => {
+  const tree = render(troisSeries('perHa'));
+  const table = walk(tree).filter((n) => n.type === 'table')[0];
+  assert.strictEqual((table.props.style || {}).tableLayout, undefined);
+  assert.strictEqual((table.props.style || {}).minWidth, undefined);
+  assert.strictEqual((thLibelle(tree).props.style || {}).width, undefined);
+});
+
+test('largeurs — avec la prop, mêmes largeurs à UNE ou PLUSIEURS séries', () => {
+  // C'est tout l'objet : la grille du haut est en 3 séries, celle du bas peut
+  // n'en avoir qu'une (Coût DH) — leur colonne de libellé doit rester la même.
+  const multi = render(troisSeries('perHa'), { largeursFixes: true, showTotal: false });
+  const mono = render([troisSeries('perHa')[0]], { largeursFixes: true, showTotal: false });
+  const tableMulti = walk(multi).filter((n) => n.type === 'table')[0];
+  const tableMono = walk(mono).filter((n) => n.type === 'table')[0];
+  assert.strictEqual(tableMulti.props.style.tableLayout, 'fixed');
+  assert.strictEqual(tableMono.props.style.tableLayout, 'fixed', 'AUSSI en série unique');
+  assert.strictEqual(thLibelle(multi).props.style.width, thLibelle(mono).props.style.width);
+  // La largeur totale suit le nombre de colonnes de parcelles, pas le contenu.
+  assert.strictEqual(tableMulti.props.style.minWidth, 200 + 2 * (3 * 78));
+  assert.strictEqual(tableMono.props.style.minWidth, 200 + 2 * 110);
+});
+
+test('défilement — deux grilles d\'un même groupe coulissent ensemble', () => {
+  const tree = render(troisSeries('perHa'), { largeursFixes: true, scrollGroup: 'g1' });
+  // Le conteneur de défilement porte le groupe et écoute le scroll.
+  const conteneur = walk(tree).filter((n) => n.props && n.props['data-scroll-group'] === 'g1');
+  assert.strictEqual(conteneur.length, 1);
+  assert.strictEqual(typeof conteneur[0].props.onScroll, 'function');
+  // Sans la prop : aucun groupe, aucun écouteur — c'est le cas de l'écran
+  // Quinzaine, dont le défilement reste indépendant.
+  const sansGroupe = render(troisSeries('perHa'));
+  const div = walk(sansGroupe).filter((n) => n.type === 'div'
+    && n.props && n.props.style && n.props.style.overflowX === 'auto')[0];
+  assert.strictEqual(div.props['data-scroll-group'], undefined);
+  assert.strictEqual(div.props.onScroll, undefined);
+});
