@@ -261,9 +261,9 @@ function paieOuvrierQuinzaine(args) {
  * @param {Object<string, Object>} args.registre matricule → fiche.
  * @param {Object} args.baremes barèmes de paie.
  * @param {Array<Object>} args.equipesTransport équipes de transport.
- * @returns {{coutMoyenJour: number|null, coutTotal: number, jours: number,
- *   ouvriers: number, quinzaines: number, partDeclares: number|null,
- *   detail: Object}}
+ * @returns {{coutMoyenJour: number|null, facteurCharge: number|null,
+ *   coutTotal: number, jours: number, ouvriers: number, quinzaines: number,
+ *   partDeclares: number|null, detail: Object}}
  */
 function coutOuvrierCampagne(args) {
   const a = args || {};
@@ -334,6 +334,14 @@ function coutOuvrierCampagne(args) {
 
   return {
     coutMoyenJour: jours > 0 ? coutTotal / jours : null,
+    // FACTEUR DE CHARGE : combien coûte réellement un dirham de salaire de base.
+    // C'est lui qui rend comparables les deux côtés de la grille Campagne — le
+    // réalisé y vient du `Cout` BEE ONE (base nue), le budget est valorisé au
+    // coût chargé. Sans facteur, on compare une dépense hors charges à un budget
+    // chargé, et le « % consommé » est sous-estimé d'un quart.
+    // `null` sans base : un facteur de 1 ferait passer un coût nu pour un coût
+    // complet, ce qui est précisément l'erreur qu'on corrige.
+    facteurCharge: detail.base > 0 ? coutTotal / detail.base : null,
     coutTotal,
     jours,
     ouvriers: matriculesVus.size,

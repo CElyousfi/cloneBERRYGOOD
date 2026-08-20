@@ -281,3 +281,19 @@ test('primeRecolte — myrtille : seuil par variété, et le changement Cascade'
   assert.strictEqual(M.primeRecolte(30, 'Cascade', '2026-04-24'), 12.5);
   assert.strictEqual(M.primeRecolte(30, 'Cascade', '2026-04-25'), 0);
 });
+
+test('facteurCharge — combien coûte réellement un dirham de salaire de base', () => {
+  // C'est lui qui rend comparables les deux côtés de la grille Campagne : le
+  // réalisé y vient du Cout BEE ONE (base nue), le budget est valorisé au coût
+  // chargé. Journée type déclarée : 142,77 pour 97,44 de base → ×1,465.
+  const out = campagne({
+    registre: { AB1: { declare: true } },
+    quinzaines: [quinzaine('Q01', '2026-07-15', { AB1: ouvrier(['2026-07-01']) })],
+  });
+  assert.strictEqual(Math.round(out.facteurCharge * 1000) / 1000,
+    Math.round((out.coutTotal / out.detail.base) * 1000) / 1000);
+  assert.ok(out.facteurCharge > 1.4 && out.facteurCharge < 1.5);
+  // Sans base : `null` et non 1 — un facteur neutre ferait passer un coût nu
+  // pour un coût complet, ce qui est l'erreur qu'on corrige.
+  assert.strictEqual(campagne({ registre: {}, quinzaines: [] }).facteurCharge, null);
+});
