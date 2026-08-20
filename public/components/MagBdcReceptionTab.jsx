@@ -37,6 +37,7 @@
     // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
     // mieux qu'une réception BAHIA imputée silencieusement à F1.
     const resolveDest = window.StockDestinations.resolveDestinationOptions;
+    const resolveReceptionDest = window.StockDestinations.resolveReceptionDestination;
     const [bdcList, setBdcList] = useState([]);
     const [receptions, setReceptions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -274,12 +275,14 @@
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>N° BL Fournisseur</label>
                                 <input value={blForm.numero_bl_fournisseur} onChange={e => setBlForm({...blForm, numero_bl_fournisseur: e.target.value})} placeholder="Réf BL" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                             {(() => {
-                                // Options dérivées de la valeur COURANTE du select (et non de
-                                // selectedBdc.ferme) : useStockLocations rend d'abord le fallback
-                                // puis la vraie config, un re-render ne doit jamais retirer
-                                // l'option correspondant à blForm.magasin.
-                                const dest = resolveDest(MAGASINS, blForm.magasin || selectedBdc.ferme);
-                                const showWarning = dest.warning && (dest.options.find(o => o.value === blForm.magasin) || {}).horsConfig;
+                                // Options = union { config stock } ∪ { ferme du BDC } ∪ { valeur
+                                // courante } : blForm.magasin correspond toujours à une <option>
+                                // rendue (y compris après la bascule fallback → vraie config de
+                                // useStockLocations), et basculer sur F1 ne retire pas l'option
+                                // BAHIA — sinon on ne peut plus y revenir sans rouvrir le BDC.
+                                // Le warning est déjà porté par la valeur SÉLECTIONNÉE.
+                                const dest = resolveReceptionDest(MAGASINS, selectedBdc.ferme, blForm.magasin);
+                                const showWarning = !!dest.warning;
                                 return (
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination</label>
                                 <select value={blForm.magasin} onChange={e => setBlForm({...blForm, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid ' + (showWarning ? '#b45309' : '#ddd'),fontSize:13}}>

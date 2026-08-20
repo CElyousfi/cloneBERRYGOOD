@@ -94,12 +94,59 @@ function resolveDestinationOptions(magasins, fermeBdc) {
   };
 }
 
+/**
+ * État complet du select « Magasin destination » d'une réception BDC, où
+ * DEUX valeurs comptent : la ferme du BDC (destination naturelle) et la valeur
+ * actuellement sélectionnée (le magasinier a pu en changer).
+ *
+ * Les options sont l'UNION { config stock } ∪ { ferme du BDC } ∪ { valeur
+ * courante } : basculer de BAHIA vers F1 ne doit PAS faire disparaître l'option
+ * BAHIA, sinon on ne peut plus y revenir sans rouvrir le BDC.
+ *
+ * `warning` est déjà porté par la valeur SÉLECTIONNÉE : il vaut null dès que le
+ * magasinier a choisi un magasin déclaré dans la config, même si la ferme du
+ * BDC, elle, ne l'est pas.
+ *
+ * @param {string[]|null|undefined} magasins
+ * @param {string|null|undefined} fermeBdc
+ * @param {string|null|undefined} [valeurCourante]
+ * @returns {{options: Array<{value: string, label: string, horsConfig: boolean}>, selected: string, warning: string|null}}
+ */
+function resolveReceptionDestination(magasins, fermeBdc, valeurCourante) {
+  var base = resolveDestinationOptions(magasins, fermeBdc);
+  var courante = (valeurCourante === null || valeurCourante === undefined) ? '' : String(valeurCourante).trim();
+  if (!courante) return base;
+
+  var baseValues = base.options.map(function (o) { return o.value; });
+  var withCurrent = resolveDestinationOptions(baseValues, courante);
+
+  // Le 2e passage repart de simples valeurs : il perd les libellés « hors
+  // config » posés au 1er. On les réinjecte.
+  var flagged = {};
+  base.options.concat(withCurrent.options).forEach(function (o) {
+    if (o.horsConfig) flagged[o.value] = o;
+  });
+  var options = withCurrent.options.map(function (o) { return flagged[o.value] || o; });
+
+  var selectedOpt = null;
+  for (var i = 0; i < options.length; i++) {
+    if (SD_key(options[i].value) === SD_key(courante)) { selectedOpt = options[i]; break; }
+  }
+
+  return {
+    options: options,
+    selected: selectedOpt ? selectedOpt.value : withCurrent.selected,
+    warning: (selectedOpt && selectedOpt.horsConfig) ? (withCurrent.warning || base.warning) : null,
+  };
+}
+
 // ============================================================================
 // UMD-style export (browser global + CommonJS pour node:test)
 // ============================================================================
 
 var SD_api = {
   resolveDestinationOptions: resolveDestinationOptions,
+  resolveReceptionDestination: resolveReceptionDestination,
   SD_HORS_CONFIG_SUFFIX: SD_HORS_CONFIG_SUFFIX,
 };
 

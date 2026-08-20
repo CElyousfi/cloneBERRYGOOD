@@ -8,7 +8,11 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { resolveDestinationOptions, SD_HORS_CONFIG_SUFFIX } = require('../../public/lib/stockDestinations.js');
+const {
+  resolveDestinationOptions,
+  resolveReceptionDestination,
+  SD_HORS_CONFIG_SUFFIX,
+} = require('../../public/lib/stockDestinations.js');
 
 const CONFIG = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
 
@@ -108,5 +112,92 @@ test('cas dégénéré : aucune destination du tout → options vides ET selecte
     assert.equal(r.warning, null);
     // Invariant volontairement NON tenu ici : il n'y a rien à sélectionner.
     assert.equal(r.options.some(o => o.value === r.selected), false);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// resolveReceptionDestination — état du select de la réception BDC, où la ferme
+// du BDC ET la valeur courante comptent.
+// ---------------------------------------------------------------------------
+
+test('réception BDC — scénario complet : BAHIA → F1 → retour BAHIA', () => {
+  const ferme = 'BAHIA';
+
+  // 1. À l'ouverture : la ferme hors config est proposée, sélectionnée, avertie.
+  const ouverture = resolveReceptionDestination(CONFIG, ferme, ferme);
+  assert.equal(ouverture.selected, 'BAHIA');
+  assert.equal(ouverture.options[0].horsConfig, true);
+  assert.ok(ouverture.warning);
+  assert.ok(ouverture.options.some(o => o.value === ouverture.selected));
+
+  // 2. Le magasinier bascule sur F1 : BAHIA RESTE proposée (il doit pouvoir y
+  //    revenir sans rouvrir le BDC), le warning disparaît.
+  const versF1 = resolveReceptionDestination(CONFIG, ferme, 'F1');
+  assert.equal(versF1.selected, 'F1');
+  assert.equal(versF1.warning, null);
+  assert.ok(versF1.options.some(o => o.value === 'BAHIA'), 'BAHIA doit rester proposée');
+  assert.ok(versF1.options.some(o => o.value === 'F1'));
+  assert.equal(versF1.options.find(o => o.value === 'BAHIA').label, 'BAHIA' + SD_HORS_CONFIG_SUFFIX);
+  assert.ok(versF1.options.some(o => o.value === versF1.selected));
+
+  // 3. Retour sur la ferme du BDC : le warning revient.
+  const retour = resolveReceptionDestination(CONFIG, ferme, 'BAHIA');
+  assert.equal(retour.selected, 'BAHIA');
+  assert.ok(retour.warning);
+  assert.deepEqual(retour.options.map(o => o.value).sort(), ouverture.options.map(o => o.value).sort());
+});
+
+test('réception BDC — la liste d\'options ne dépend pas de la valeur courante', () => {
+  const vals = (d) => d.options.map(o => o.value).sort().join(',');
+  const a = resolveReceptionDestination(CONFIG, 'BAHIA', 'BAHIA');
+  const b = resolveReceptionDestination(CONFIG, 'BAHIA', 'F3');
+  const c = resolveReceptionDestination(CONFIG, 'BAHIA', 'F6');
+  assert.equal(vals(a), vals(b));
+  assert.equal(vals(b), vals(c));
+});
+
+test('réception BDC — bascule fallback → config réelle : la valeur courante reste une option', () => {
+  // useStockLocations rend d'abord ['F1','F2','F5','F6'] puis la vraie config.
+  // Le magasinier a pu sélectionner F2 pendant le fallback ; si la config
+  // réelle ne contenait pas F2, l'option doit malgré tout rester rendue.
+  const apres = resolveReceptionDestination(['F1', 'F5'], 'BAHIA', 'F2');
+  assert.equal(apres.selected, 'F2');
+  assert.ok(apres.options.some(o => o.value === 'F2'));
+  assert.ok(apres.options.some(o => o.value === 'BAHIA'), 'la ferme du BDC reste proposée');
+  assert.ok(apres.warning, 'F2 hors config → averti');
+});
+
+test('réception BDC — ferme du BDC déclarée dans la config : aucun warning, aucune option en trop', () => {
+  const d = resolveReceptionDestination(CONFIG, 'F5', 'F1');
+  assert.deepEqual(d.options.map(o => o.value), CONFIG);
+  assert.equal(d.selected, 'F1');
+  assert.equal(d.warning, null);
+});
+
+test('réception BDC — valeur courante vide → équivaut à resolveDestinationOptions(magasins, ferme)', () => {
+  for (const vide of ['', null, undefined]) {
+    const d = resolveReceptionDestination(CONFIG, 'BAHIA', vide);
+    assert.deepEqual(d, resolveDestinationOptions(CONFIG, 'BAHIA'));
+  }
+});
+
+test('réception BDC — comparaison insensible à la casse sur la valeur courante', () => {
+  const d = resolveReceptionDestination(CONFIG, 'BAHIA', 'f1');
+  assert.equal(d.selected, 'F1', 'aligné sur la valeur de l\'option, pas sur la casse saisie');
+  assert.equal(d.warning, null);
+  assert.ok(d.options.some(o => o.value === d.selected));
+  assert.equal(d.options.filter(o => o.value.toUpperCase() === 'F1').length, 1, 'pas de doublon');
+});
+
+test('réception BDC — selected est toujours une option rendue (invariant du select contrôlé)', () => {
+  const cases = [
+    [CONFIG, 'BAHIA', 'BAHIA'], [CONFIG, 'BAHIA', 'F1'], [CONFIG, 'F1', 'F6'],
+    [['F1', 'F5'], 'BAHIA', 'F2'], [[], 'BAHIA', 'BAHIA'], [[], 'BAHIA', 'F9'],
+    [CONFIG, '', 'F2'], [CONFIG, null, 'BAHIA'],
+  ];
+  for (const [mags, ferme, courante] of cases) {
+    const d = resolveReceptionDestination(mags, ferme, courante);
+    assert.ok(d.options.length > 0, JSON.stringify([mags, ferme, courante]));
+    assert.ok(d.options.some(o => o.value === d.selected), JSON.stringify([mags, ferme, courante]));
   }
 });
