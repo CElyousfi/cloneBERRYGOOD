@@ -28,6 +28,10 @@ const {
   getConsommationRows,
 } = require("./firestoreDataService");
 
+// Coût CHARGÉ d'une journée d'ouvrier (CNSS patronale + transport compris) —
+// calcul PUR, testé sans émulateur. Cf. l'action `campagne-cout-ouvrier`.
+const coutOuvrier = require("./lib/paie/coutOuvrierCampagne.js");
+
 // Aliases bruts (non filtrés) des fetchers de lignes, pour le gating chef
 // dans pointageRH : les wrappers filtrés shadowent les noms non préfixés,
 // tandis que le reste du fichier continue d'utiliser les fetchers d'origine.
@@ -3912,6 +3916,116 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         // du gating, jusqu'ici implicite (shadow des fetchers), est passé
         // EXPLICITEMENT — même filtrage, même fail-closed, même clé de cache.
         const cached = await computeCampagneAnalytiqueDetail(_fermeFilter, _cultureFilter);
+        return res.json(cached);
+      }
+
+      // ------ CAMPAGNE-COUT-OUVRIER : coût CHARGÉ d'une journée d'ouvrier ------
+      //
+      // Le `Cout` de BR_Pointage, affiché partout ailleurs, est le BRUT BEE ONE :
+      // ni CNSS patronale, ni prime de transport. Cette action rend le coût RÉEL
+      // d'une journée pour l'entreprise, moyenné sur la campagne, pour valoriser
+      // en dirhams un budget saisi en JH.
+      //
+      // Cette fonction ne fait que de l'I/O : le calcul vit dans le module pur
+      // functions/lib/paie/coutOuvrierCampagne.js, testé sans émulateur.
+      //
+      // ⚠️ Le modèle de paie (paieUtils) est DUPLIQUÉ dans functions/lib/paie/ :
+      // Firebase ne déploie que `functions/`, un require vers public/ ferait
+      // crasher toutes les CF au load. La divergence est attrapée par
+      // functions/lib/paie/__tests__/paieUtils.parite.test.js.
+      if (action === "campagne-cout-ouvrier") {
+        const today = new Date();
+        const y = today.getFullYear();
+        const startYear = today.getMonth() >= 6 ? y : y - 1;
+        const campagne = {
+          start: `${startYear}-07-01`,
+          end: `${startYear + 1}-06-30`,
+          label: `${startYear}/${startYear + 1}`,
+        };
+
+        // Le coût moyen d'un ouvrier ne dépend NI de la ferme NI de la culture :
+        // c'est une moyenne d'entreprise. La clé de cache est donc globale — la
+        // ferme du demandeur ne change pas le résultat (contrairement aux
+        // payloads nominatifs, cloisonnés eux).
+        //
+        // GATING : l'action passe par le contrôle d'accès commun de
+        // /api/pointage-rh (authentification + profil autorisé) ; elle n'est PAS
+        // exemptée. Ce qu'elle rend est un AGRÉGAT — un coût moyen, un nombre de
+        // journées, un effectif — sans aucune donnée nominative, et il alimente
+        // la valorisation en dirhams de l'écran Campagne, que ces mêmes profils
+        // voient déjà (la grille y affiche des DH/Ha par parcelle).
+        const cached = await withCache(
+          `campagne_cout_ouvrier_v1_${campagne.start}`,
+          30 * 60 * 1000,
+          async () => {
+            const meta = await getPointageMeta();
+            const periodeMap = (meta && meta.periodeMap) || {};
+
+            // Quinzaines de la campagne, DANS L'ORDRE : l'ancienneté se cumule
+            // de l'une à l'autre, les traiter en désordre la fausserait.
+            const periodes = Object.keys(periodeMap)
+              .map((p) => ({
+                periode: p,
+                dates: (periodeMap[p] || [])
+                  .filter((d) => d >= campagne.start && d <= campagne.end)
+                  .sort(),
+              }))
+              .filter((q) => q.dates.length > 0)
+              .sort((a, b) => (a.dates[0] < b.dates[0] ? -1 : 1));
+
+            if (periodes.length === 0) {
+              return {
+                success: true, campagne: campagne.label, coutMoyenJour: null,
+                jours: 0, ouvriers: 0, quinzaines: 0, coutTotal: 0,
+              };
+            }
+
+            // 1) Pointage : une lecture par journée de la campagne.
+            const quinzaines = [];
+            const tousMatricules = new Set();
+            for (const q of periodes) {
+              const snaps = await Promise.all(q.dates.map((d) =>
+                db_firestore.collection('sql_mirror_pointage').doc(d).get()));
+              const parOuvrier = {};
+              snaps.forEach((snap, i) => {
+                if (!snap.exists) return;
+                coutOuvrier.cumuleJournee(parOuvrier, snap.data().rows || [], q.dates[i]);
+              });
+              Object.keys(parOuvrier).forEach((m) => tousMatricules.add(m));
+              quinzaines.push({
+                periode: q.periode,
+                dateFin: q.dates[q.dates.length - 1],
+                parOuvrier,
+              });
+            }
+
+            // 2) Registre ouvriers (déclaré, ancienneté, prime de fonction).
+            const mats = Array.from(tousMatricules);
+            const registre = {};
+            const LOT = 20;
+            for (let i = 0; i < mats.length; i += LOT) {
+              const chunk = mats.slice(i, i + LOT);
+              const snaps = await Promise.all(chunk.map((m) =>
+                db_firestore.collection('ouvriers_registry').doc(m).get()));
+              snaps.forEach((snap, j) => { if (snap.exists) registre[chunk[j]] = snap.data(); });
+            }
+
+            // 3) Barèmes de paie et primes de transport. Absents → le module
+            //    pur retombe sur les barèmes par défaut / une prime nulle : le
+            //    chiffre reste calculable, il est simplement moins juste.
+            const [baremesSnap, transportSnap] = await Promise.all([
+              db_firestore.collection('app_settings').doc('paie_baremes').get(),
+              db_firestore.collection('rh_config').doc('transport_primes').get(),
+            ]);
+            const baremes = baremesSnap.exists ? baremesSnap.data() : {};
+            const equipesTransport = (transportSnap.exists && transportSnap.data().equipes) || [];
+
+            const out = coutOuvrier.coutOuvrierCampagne({
+              quinzaines, registre, baremes, equipesTransport,
+            });
+            return Object.assign({ success: true, campagne: campagne.label }, out);
+          }
+        );
         return res.json(cached);
       }
 
