@@ -33,6 +33,18 @@
   }) {
     // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
     const MAGASINS = window.useStockLocations().magasins;
+    // Réconcilie la config stock avec la ferme du BDC : une ferme non déclarée
+    // (ex. BAHIA) doit rester sélectionnable, sinon le select contrôlé se
+    // désynchronise silencieusement et le stock part au mauvais magasin.
+    const resolveDest = (window.StockDestinations || {}).resolveDestinationOptions || (mags => ({
+      options: (mags || []).map(m => ({
+        value: m,
+        label: m,
+        horsConfig: false
+      })),
+      selected: (mags || [])[0] || '',
+      warning: null
+    }));
     const [bdcList, setBdcList] = useState([]);
     const [receptions, setReceptions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -43,14 +55,14 @@
     const [blForm, setBlForm] = useState({
       date_reception: '',
       numero_bl_fournisseur: '',
-      magasin: 'F1',
+      magasin: MAGASINS[0] || '',
       items: []
     });
     const [blFormError, setBlFormError] = useState(null);
     const [freeForm, setFreeForm] = useState({
       date: '',
       ref_bl_fournisseur: '',
-      magasin: 'F1',
+      magasin: MAGASINS[0] || '',
       motif: '',
       motif_autre: '',
       fournisseur_nom: '',
@@ -118,7 +130,7 @@
       setBlForm({
         date_reception: new Date().toISOString().split('T')[0],
         numero_bl_fournisseur: '',
-        magasin: bdc.ferme || 'F1',
+        magasin: resolveDest(MAGASINS, bdc.ferme).selected,
         items: []
       });
       setBlFormError(null);
@@ -383,7 +395,7 @@
         setFreeForm({
           date: new Date().toISOString().split('T')[0],
           ref_bl_fournisseur: '',
-          magasin: 'F1',
+          magasin: MAGASINS[0] || '',
           motif: '',
           motif_autre: '',
           fournisseur_nom: '',
@@ -575,30 +587,48 @@
         border: '1px solid #ddd',
         fontSize: 13
       }
-    })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
-      style: {
-        fontSize: 12,
-        fontWeight: 600,
-        display: 'block',
-        marginBottom: 4
-      }
-    }, "Magasin destination"), /*#__PURE__*/React.createElement("select", {
-      value: blForm.magasin,
-      onChange: e => setBlForm({
-        ...blForm,
-        magasin: e.target.value
-      }),
-      style: {
-        width: '100%',
-        padding: '8px 12px',
-        borderRadius: 8,
-        border: '1px solid #ddd',
-        fontSize: 13
-      }
-    }, MAGASINS.map(m => /*#__PURE__*/React.createElement("option", {
-      key: m,
-      value: m
-    }, m))))), /*#__PURE__*/React.createElement("div", {
+    })), (() => {
+      // Options = config stock + la ferme du BDC si elle n'y figure pas
+      // (sinon aucune <option> ne correspond à la valeur du state).
+      const dest = resolveDest(MAGASINS, selectedBdc.ferme);
+      const showWarning = dest.warning && (dest.options.find(o => o.value === blForm.magasin) || {}).horsConfig;
+      return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
+        style: {
+          fontSize: 12,
+          fontWeight: 600,
+          display: 'block',
+          marginBottom: 4
+        }
+      }, "Magasin destination"), /*#__PURE__*/React.createElement("select", {
+        value: blForm.magasin,
+        onChange: e => setBlForm({
+          ...blForm,
+          magasin: e.target.value
+        }),
+        style: {
+          width: '100%',
+          padding: '8px 12px',
+          borderRadius: 8,
+          border: '1px solid ' + (showWarning ? '#b45309' : '#ddd'),
+          fontSize: 13
+        }
+      }, dest.options.map(o => /*#__PURE__*/React.createElement("option", {
+        key: o.value,
+        value: o.value
+      }, o.label))), showWarning && /*#__PURE__*/React.createElement("div", {
+        style: {
+          marginTop: 4,
+          fontSize: 11,
+          color: '#b45309',
+          lineHeight: 1.4
+        }
+      }, /*#__PURE__*/React.createElement("i", {
+        className: "fa-solid fa-triangle-exclamation",
+        style: {
+          marginRight: 4
+        }
+      }), dest.warning));
+    })()), /*#__PURE__*/React.createElement("div", {
       style: {
         marginBottom: 16
       }

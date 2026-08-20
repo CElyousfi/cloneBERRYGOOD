@@ -31,6 +31,11 @@
   function MagBdcReceptionTab({ currentProfile, profileData }) {
     // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
     const MAGASINS = window.useStockLocations().magasins;
+    // Réconcilie la config stock avec la ferme du BDC : une ferme non déclarée
+    // (ex. BAHIA) doit rester sélectionnable, sinon le select contrôlé se
+    // désynchronise silencieusement et le stock part au mauvais magasin.
+    const resolveDest = (window.StockDestinations || {}).resolveDestinationOptions
+        || ((mags) => ({ options: (mags || []).map(m => ({ value: m, label: m, horsConfig: false })), selected: (mags || [])[0] || '', warning: null }));
     const [bdcList, setBdcList] = useState([]);
     const [receptions, setReceptions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -38,9 +43,9 @@
     const [selectedBdc, setSelectedBdc] = useState(null);
     const [showForm, setShowForm] = useState(false);
     const [showFreeForm, setShowFreeForm] = useState(false);
-    const [blForm, setBlForm] = useState({ date_reception: '', numero_bl_fournisseur: '', magasin: 'F1', items: [] });
+    const [blForm, setBlForm] = useState({ date_reception: '', numero_bl_fournisseur: '', magasin: MAGASINS[0] || '', items: [] });
     const [blFormError, setBlFormError] = useState(null);
-    const [freeForm, setFreeForm] = useState({ date: '', ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null });
+    const [freeForm, setFreeForm] = useState({ date: '', ref_bl_fournisseur: '', magasin: MAGASINS[0] || '', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null });
     const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
     const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
     const [articles, setArticles] = useState([]);
@@ -82,7 +87,7 @@
     const openBdcForBl = (bdc) => {
         if (bdc.delivery_status === 'complet') { alert('Ce BDC est déjà entièrement réceptionné.'); return; }
         setSelectedBdc(bdc);
-        setBlForm({ date_reception: new Date().toISOString().split('T')[0], numero_bl_fournisseur: '', magasin: bdc.ferme || 'F1', items: [] });
+        setBlForm({ date_reception: new Date().toISOString().split('T')[0], numero_bl_fournisseur: '', magasin: resolveDest(MAGASINS, bdc.ferme).selected, items: [] });
         setBlFormError(null);
         setBlScanFile(null); setBlScanPreview(null);
         setShowForm(true);
@@ -206,7 +211,7 @@
                 <h3 style={{margin:0}}><i className="fa-solid fa-clipboard-check" style={{marginRight:8,color:'var(--berry)'}}></i>BDC à réceptionner</h3>
                 <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
                     <input type="search" placeholder="Rechercher (n°, fournisseur, article…)" value={bdcQuery} onChange={e => setBdcQuery(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,minWidth:240}} />
-                    <button onClick={() => { setFreeForm({ date: new Date().toISOString().split('T')[0], ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null }); setShowFreeForm(true); }}
+                    <button onClick={() => { setFreeForm({ date: new Date().toISOString().split('T')[0], ref_bl_fournisseur: '', magasin: MAGASINS[0] || '', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null }); setShowFreeForm(true); }}
                         style={{background:'var(--blue)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                         <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Réception libre
                     </button>
@@ -267,10 +272,24 @@
                                 <input type="date" value={blForm.date_reception} onChange={e => setBlForm({...blForm, date_reception: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>N° BL Fournisseur</label>
                                 <input value={blForm.numero_bl_fournisseur} onChange={e => setBlForm({...blForm, numero_bl_fournisseur: e.target.value})} placeholder="Réf BL" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                            {(() => {
+                                // Options = config stock + la ferme du BDC si elle n'y figure pas
+                                // (sinon aucune <option> ne correspond à la valeur du state).
+                                const dest = resolveDest(MAGASINS, selectedBdc.ferme);
+                                const showWarning = dest.warning && (dest.options.find(o => o.value === blForm.magasin) || {}).horsConfig;
+                                return (
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination</label>
-                                <select value={blForm.magasin} onChange={e => setBlForm({...blForm, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                    {MAGASINS.map(m => <option key={m} value={m}>{m}</option>)}
-                                </select></div>
+                                <select value={blForm.magasin} onChange={e => setBlForm({...blForm, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid ' + (showWarning ? '#b45309' : '#ddd'),fontSize:13}}>
+                                    {dest.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                                {showWarning && (
+                                    <div style={{marginTop:4,fontSize:11,color:'#b45309',lineHeight:1.4}}>
+                                        <i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{dest.warning}
+                                    </div>
+                                )}
+                            </div>
+                                );
+                            })()}
                         </div>
                         <div style={{marginBottom:16}}>
                             <label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}><i className="fa-solid fa-paperclip" style={{marginRight:4}}></i>Scanner le BL fournisseur</label>

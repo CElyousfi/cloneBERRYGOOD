@@ -50058,7 +50058,12 @@ ${rejetHtml}
             const UNITES_BR = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
             const MOTIFS_RECEPTION = ['Livraison urgente', 'Don', 'Retour client', 'Échantillon', 'Régularisation stock'];
 
-            const emptyForm = { date: '', ref_bl_fournisseur: '', magasin: 'F1', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null };
+            // Garde-fou destination : une valeur hors config stock (ex. BAHIA sur un bon
+            // en cours d'édition) reste proposée dans le select, avec avertissement —
+            // sinon le select contrôlé se désynchronise sans rien dire au magasinier.
+            const resolveDestBR = (window.StockDestinations || {}).resolveDestinationOptions
+                || ((mags) => ({ options: (mags || []).map(m => ({ value: m, label: m, horsConfig: false })), selected: (mags || [])[0] || '', warning: null }));
+            const emptyForm = { date: '', ref_bl_fournisseur: '', magasin: MAGASINS_BR[0] || '', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null };
             const [showForm, setShowForm] = useState(false);
             const [form, setForm] = useState(emptyForm);
             const [submitting, setSubmitting] = useState(false);
@@ -50386,10 +50391,18 @@ ${rejetHtml}
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Date</label>
                                         <input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
+                                    {(() => {
+                                        const destBR = resolveDestBR(MAGASINS_BR, form.magasin);
+                                        const warnBR = destBR.warning && (destBR.options.find(o => o.value === form.magasin) || {}).horsConfig;
+                                        return (
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination *</label>
-                                        <select value={form.magasin} onChange={e => setForm({...form, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
-                                            {MAGASINS_BR.map(m => <option key={m} value={m}>{m}</option>)}
-                                        </select></div>
+                                        <select value={form.magasin} onChange={e => setForm({...form, magasin: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid ' + (warnBR ? '#b45309' : '#ddd'),fontSize:13}}>
+                                            {destBR.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                        </select>
+                                        {warnBR && <div style={{marginTop:4,fontSize:11,color:'#b45309',lineHeight:1.4}}><i className="fa-solid fa-triangle-exclamation" style={{marginRight:4}}></i>{destBR.warning}</div>}
+                                    </div>
+                                        );
+                                    })()}
                                     <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Fournisseur</label>
                                         <select value={form.fournisseur_nom} onChange={e => setForm({...form, fournisseur_nom: e.target.value})} style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}}>
                                             <option value="">-- Sélectionner --</option>
@@ -50962,6 +50975,10 @@ ${rejetHtml}
             const totalAlerte = filtered.filter(b => b.seuil_alerte && b.balance <= b.seuil_alerte && b.balance > 0).length;
             const totalRupture = filtered.filter(b => b.balance <= 0).length;
             const lieux = [...new Set(balances.map(b => b.lieu_id))].sort();
+            // Types dérivés des soldes réellement chargés (et plus magasin/station en dur) :
+            // des soldes 'externe'/'parcelle' existent et étaient affichés sans être filtrables.
+            const lieuTypes = [...new Set(balances.map(b => b.lieu_type).filter(Boolean))].sort();
+            const capitalizeType = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 
@@ -50975,8 +50992,7 @@ ${rejetHtml}
                             {filterDate && <button onClick={() => setFilterDate('')} style={{padding:'6px 10px',borderRadius:8,border:'1px solid #ddd',fontSize:11,cursor:'pointer',background:'#f5f5f5'}}>Aujourd'hui</button>}
                             <select value={filterType} onChange={e => setFilterType(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
                                 <option value="">Type lieu</option>
-                                <option value="magasin">Magasins</option>
-                                <option value="station">Stations</option>
+                                {lieuTypes.map(t => <option key={t} value={t}>{capitalizeType(t)}</option>)}
                             </select>
                             <select value={filterLieu} onChange={e => setFilterLieu(e.target.value)} style={{padding:'6px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12}}>
                                 <option value="">Tous les lieux</option>
