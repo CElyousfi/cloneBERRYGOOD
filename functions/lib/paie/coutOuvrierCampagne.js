@@ -26,7 +26,9 @@
  *   primeAnciennete = (base + primeFonction) × palier %      [déclarés]
  *   heuresSup       = HS_25/50/100 valorisées au taux horaire
  *   ─────────────── brut SOUMIS à cotisation ───────────────
- *   charges         = brut soumis × 19,26 %                  [déclarés]
+ *   charges         = brut soumis × 19,26 % (patronales)     [déclarés]
+ *                     + brut soumis × 6,74 %  (CNSS 4,48 + AMO 2,26 salariales,
+ *                       NON retenues à l'ouvrier — donc à la charge de la société)
  *   ─────────────── primes NON soumises ────────────────────
  *   + transport (par jour travaillé) + récolte (aux kilos)
  *   + traitement / conditionnement / chargement (10 DH par jour-ouvrier)
@@ -183,8 +185,9 @@ function primeRecolte(kg, variete, date) {
  *   montants DÉJÀ valorisés en DH pour la quinzaine.
  * @param {Object} args.baremes barèmes de paie.
  * @param {string} args.dateISO date de résolution du SMAG (fin de quinzaine).
- * @returns {{brutSoumis: number, chargesPatronales: number, primesNonSoumises: number,
- *   primeAnciennete: number, primeFonction: number, heuresSup: number, total: number}}
+ * @returns {{brutSoumis: number, chargesPatronales: number, cotisationsSalariales: number,
+ *   primesNonSoumises: number, primeAnciennete: number, primeFonction: number,
+ *   heuresSup: number, total: number}}
  */
 function paieOuvrierQuinzaine(args) {
   const a = args || {};
@@ -217,6 +220,13 @@ function paieOuvrierQuinzaine(args) {
   const feries = Number(primes.feries) || 0;
   const brutSoumis = baseAnciennete + primeAnciennete + heuresSup + feries;
   const chargesPatronales = declare ? brutSoumis * (b.tauxChargesPatronales || 0) : 0;
+  // COTISATIONS SALARIALES (CNSS 4,48 % + AMO 2,26 %) — comptées comme un COÛT
+  // ENTREPRISE, et ce n'est pas un doublon : le modèle de paie validé en 2026-06
+  // paie l'ouvrier sur le SMAG **brut**, SANS aucune retenue. Ce que la loi
+  // prélèverait sur son salaire, la société le verse en plus. Décision d'Omar
+  // (2026-08-20). Réservé aux déclarés, comme la part patronale : un ouvrier non
+  // déclaré ne cotise nulle part.
+  const cotisationsSalariales = declare ? brutSoumis * (b.tauxCotisationsSalariales || 0) : 0;
 
   const primesNonSoumises = (Number(primes.transport) || 0)
     + (Number(primes.recolte) || 0)
@@ -227,11 +237,12 @@ function paieOuvrierQuinzaine(args) {
   return {
     brutSoumis,
     chargesPatronales,
+    cotisationsSalariales,
     primesNonSoumises,
     primeAnciennete,
     primeFonction,
     heuresSup,
-    total: brutSoumis + chargesPatronales + primesNonSoumises,
+    total: brutSoumis + chargesPatronales + cotisationsSalariales + primesNonSoumises,
   };
 }
 
@@ -269,7 +280,7 @@ function coutOuvrierCampagne(args) {
   let joursDeclares = 0;
   const detail = {
     base: 0, primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
-    chargesPatronales: 0, transport: 0, recolte: 0,
+    chargesPatronales: 0, cotisationsSalariales: 0, transport: 0, recolte: 0,
     traitement: 0, conditionnement: 0, chargement: 0, feries: 0,
   };
 
@@ -313,6 +324,7 @@ function coutOuvrierCampagne(args) {
       detail.primeAnciennete += paie.primeAnciennete;
       detail.heuresSup += paie.heuresSup;
       detail.chargesPatronales += paie.chargesPatronales;
+      detail.cotisationsSalariales += paie.cotisationsSalariales;
       ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement', 'feries']
         .forEach((k) => { detail[k] += Number(primesOuvrier[k]) || 0; });
 

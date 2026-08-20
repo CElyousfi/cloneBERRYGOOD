@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 32,
+        "commits": 33,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 31,
+        "commits": 32,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -35,7 +35,7 @@
         "file": "public/app.jsx"
       },
       {
-        "commits": 18,
+        "commits": 19,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
@@ -47,12 +47,12 @@
         "file": "tests/unit/campagneBudgetTab.test.js"
       },
       {
-        "commits": 13,
-        "file": "functions/index.js"
+        "commits": 14,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 13,
-        "file": "functions/pointageService.js"
+        "file": "functions/index.js"
       },
       {
         "commits": 11,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:992dd2dce1e8b78b",
+    "sourceFingerprint": "sha256:3b762fdb81c1dcc5",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -799,14 +799,14 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 30,
+          "coCommits": 31,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 15,
+          "coCommits": 16,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
           "note": "probabilistic",
@@ -921,6 +921,13 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
         },

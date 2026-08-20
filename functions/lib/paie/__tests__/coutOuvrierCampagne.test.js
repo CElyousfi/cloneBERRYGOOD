@@ -9,8 +9,9 @@
  * Ce que ces tests protègent, dans l'ordre d'importance :
  *  1. la BASE vient de BEE ONE, pas d'un SMAG recalculé — sinon le badge diverge
  *     des DH/Ha de la grille sans qu'on sache lequel croire ;
- *  2. les CHARGES PATRONALES ne portent QUE sur les déclarés, et QUE sur
- *     l'assiette (jamais sur les primes de terrain) ;
+ *  2. les CHARGES ne portent QUE sur les déclarés, et QUE sur l'assiette
+ *     (jamais sur les primes de terrain) — part patronale ET part salariale,
+ *     cette dernière étant un coût entreprise puisqu'elle n'est pas retenue ;
  *  3. le TRANSPORT est dû par JOUR travaillé — l'ajouter une fois par quinzaine
  *     sous-comptait ~28 DH sur ~146, soit 19 % du coût réel ;
  *  4. l'ANCIENNETÉ se cumule d'une quinzaine à l'autre ;
@@ -111,6 +112,12 @@ test('paie — charges patronales : seulement les déclarés, seulement l\'assie
   // les primes de terrain sont hors assiette.
   assert.strictEqual(Math.round(declare.detail.chargesPatronales * 100) / 100, 18.77);
   assert.strictEqual(nonDeclare.detail.chargesPatronales, 0);
+  // Cotisations SALARIALES (CNSS 4,48 % + AMO 2,26 %) : comptées elles aussi
+  // comme un coût entreprise, parce que l'ouvrier est payé sur le brut SANS
+  // retenue — ce que la loi prélèverait, la société le verse en plus.
+  assert.strictEqual(Math.round(declare.detail.cotisationsSalariales * 100) / 100,
+    Math.round(97.44 * 0.0674 * 100) / 100);
+  assert.strictEqual(nonDeclare.detail.cotisationsSalariales, 0);
   // Les deux portent les mêmes primes de terrain (elles ne dépendent pas du statut).
   assert.strictEqual(declare.detail.transport, nonDeclare.detail.transport);
   assert.strictEqual(declare.detail.recolte, 50);
@@ -128,8 +135,12 @@ test('paie — le coût réel d\'une journée type, terme par terme', () => {
   const r = (v) => Math.round(v * 100) / 100;
   assert.strictEqual(r(out.detail.base), 97.44);
   assert.strictEqual(r(out.detail.chargesPatronales), 18.77);
+  assert.strictEqual(r(out.detail.cotisationsSalariales), 6.57);
   assert.strictEqual(r(out.detail.transport), 20);
-  assert.strictEqual(r(out.coutMoyenJour), 136.21, 'base + charges + transport');
+  // 142,77 et non 142,78 : les termes sont arrondis pour l'affichage, jamais
+  // dans le calcul — c'est la somme non arrondie qui fait foi.
+  assert.strictEqual(r(out.coutMoyenJour), 142.77,
+    'base 97,44 + patronales 18,77 + salariales 6,57 + transport 20');
 });
 
 test('transport — la prime est due PAR JOUR TRAVAILLÉ, pas une fois par quinzaine', () => {
@@ -171,6 +182,8 @@ test('primes de terrain — récolte, traitement, conditionnement, chargement, f
   // charges = (97,44 base + 97,44 férié) × 19,26 %.
   assert.strictEqual(Math.round(out.detail.chargesPatronales * 100) / 100,
     Math.round((97.44 * 2 * 0.1926) * 100) / 100);
+  assert.strictEqual(Math.round(out.detail.cotisationsSalariales * 100) / 100,
+    Math.round((97.44 * 2 * 0.0674) * 100) / 100);
 });
 
 test('coût — l\'ancienneté se CUMULE d\'une quinzaine à l\'autre', () => {
@@ -242,7 +255,7 @@ test('coût — le détail se recompose exactement dans le total', () => {
   });
   const d = out.detail;
   const somme = d.base + d.primeFonction + d.primeAnciennete + d.heuresSup
-    + d.feries + d.chargesPatronales
+    + d.feries + d.chargesPatronales + d.cotisationsSalariales
     + d.transport + d.recolte + d.traitement + d.conditionnement + d.chargement;
   assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(out.coutTotal * 1e6) / 1e6);
 });
