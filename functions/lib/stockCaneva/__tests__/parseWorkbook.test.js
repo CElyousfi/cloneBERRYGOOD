@@ -123,6 +123,34 @@ test('parseWorkbook: deltas de solde — destination parcelle n\'incrémente pas
   assert.equal(td.length, 2, 'transfert magasin→magasin: −source +dest')
 })
 
+test('parseWorkbook: sortie vers un tiers (non-ferme) reste "externe"', () => {
+  // GARDE-FOU : seules les fermes du groupe (F1..F6, BAHIA) deviennent 'magasin'.
+  // Un tiers (client, prestataire, décharge) DOIT rester 'externe' : le basculer
+  // en 'parcelle' l'exclurait de movementDelta puis de rebuildBalances → le solde
+  // disparaîtrait des Soldes Stock au prochain import.
+  const buf = makeWorkbook({
+    [SHEETS.inventaire]: [H.inv, ['', 'F-01', 'AMMONITRATE (KG)', 'KG', 100, 12]],
+    [SHEETS.entrees]: [H.ent], [SHEETS.transferts]: [H.trf], [SHEETS.consommations]: [H.cons],
+    [SHEETS.sorties]: [H.sor,
+      ['F-01', '2026-06-05', '2001', 'DECHARGE', '', 'AMMONITRATE (KG)', 'KG', 4, 'DESTRUCTION'],
+      ['F-01', '2026-06-05', '2002', 'EL BAHIA', '', 'AMMONITRATE (KG)', 'KG', 6, 'PRET'],
+    ],
+    [SHEETS.stockReel]: [['x'], [], ['ARTICLE']],
+  })
+  const plan = parseWorkbook(buf, XLSX)
+  const sorties = plan.movements.filter(m => m.type === 'sortie')
+  assert.equal(sorties.length, 2)
+
+  const versTiers = sorties.find(m => m.lieu_destination.id === 'DECHARGE')
+  assert.deepEqual(versTiers.lieu_destination, { type: 'externe', id: 'DECHARGE' })
+  const dTiers = movementDelta(versTiers)
+  assert.equal(dTiers.length, 2, 'externe reste crédité (visible dans les soldes)')
+  assert.equal(dTiers.find(d => d.delta > 0).lieu_type, 'externe')
+
+  const versBahia = sorties.find(m => m.lieu_destination.id === 'BAHIA')
+  assert.deepEqual(versBahia.lieu_destination, { type: 'magasin', id: 'BAHIA' })
+})
+
 test('parseWorkbook: validation vs stock réel (matches/mismatches)', () => {
   const plan = parseWorkbook(fullWorkbook(), XLSX)
   // F01 AMMONITRATE: inv 100 +40(recep) -20(transf out) -5(conso) = 115 == réel 115 → match

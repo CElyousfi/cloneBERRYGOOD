@@ -261,13 +261,19 @@ function parseWorkbook(buffer, XLSX) {
     sortieGroups.get(key).items.push({ article_ref: artRef, article_nom: artNom, quantite: qte, unite })
   }
   for (const group of sortieGroups.values()) {
+    // Destination d'un Bon de Sortie : SEULES les fermes du groupe (F1..F6, BAHIA)
+    // deviennent un magasin. Tout le reste (client, prestataire, « DECHARGE
+    // PUBLIQUE »…) garde EXACTEMENT le comportement historique 'externe' — le
+    // basculer en 'parcelle' (ce que buildLieu ferait) le sortirait de
+    // movementDelta puis de rebuildBalances, donc des Soldes Stock.
+    const destLieu = buildLieu(group.dest)
     movements.push({
       type: 'sortie',
       date: group.date,
       lieu_source: { type: 'magasin', id: group.lieu },
-      // buildLieu : une destination qui est une ferme du groupe (F1..F6, BAHIA)
-      // est un magasin — 'externe' est réservé aux tiers (fournisseur, client…).
-      lieu_destination: buildLieu(group.dest),
+      lieu_destination: (destLieu && destLieu.type === 'magasin')
+        ? destLieu
+        : { type: 'externe', id: normalizeFerme(group.dest) },
       ferme: group.lieu,
       items: group.items,
       ref_bl_fournisseur: '',
