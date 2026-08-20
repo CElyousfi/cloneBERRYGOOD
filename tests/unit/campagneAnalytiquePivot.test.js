@@ -1076,7 +1076,12 @@ test('rendement — en Coût DH, l\'indicateur devient DH / kg (pas la cadence)'
 const COUT_OUVRIER = {
   success: true, campagne: '2026/2027', coutMoyenJour: 200, jours: 1200,
   ouvriers: 80, quinzaines: 3, coutTotal: 240000, partDeclares: 0.75,
-  detail: { brut: 190000, chargesPatronales: 36000, transport: 14000 },
+  detail: {
+    base: 118000, primeFonction: 9000, primeAnciennete: 5000, heuresSup: 2000,
+    feries: 3000, chargesPatronales: 26000,
+    transport: 36000, recolte: 30000, traitement: 4000,
+    conditionnement: 4000, chargement: 3000,
+  },
 };
 
 test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', () => {
@@ -1111,10 +1116,23 @@ test('coût ouvrier — le repère de page annonce le chiffre et son détail', (
   // Le détail est en infobulle : afficher un coût sans permettre de le
   // contester, c'est demander de le croire sur parole.
   const badge = walk(tree).filter((n) => n.props && typeof n.props.title === 'string'
-    && n.props.title.indexOf('CNSS patronale') >= 0);
+    && n.props.title.indexOf('Coût CHARGÉ') >= 0);
   assert.strictEqual(badge.length, 1);
-  assert.match(badge[0].props.title, /journées pointées/);
-  assert.match(badge[0].props.title, /Hors pointage divers/);
+  const aide = badge[0].props.title;
+  // Chaque terme de la formule validée est nommé, dans l'ordre : un coût moyen
+  // sans sa décomposition ne se conteste pas, il se croit.
+  ['base BEE ONE', 'prime de fonction', 'ancienneté', 'heures sup', 'jours fériés',
+    'CNSS', 'transport', 'récolte', 'traitement', 'conditionnement', 'chargement']
+    .forEach((terme) => assert.ok(aide.indexOf(terme) >= 0, 'terme manquant : ' + terme));
+  assert.match(aide, /journées pointées/);
+  assert.match(aide, /Hors pointage divers/);
+  // Un terme à zéro ne s'affiche pas : une ligne « récolte 0 DH » hors saison
+  // ferait croire à une prime perdue.
+  const sansRecolte = renderBudget({ metric: 'cout', coutOuvrier: Object.assign({}, COUT_OUVRIER,
+    { detail: Object.assign({}, COUT_OUVRIER.detail, { recolte: 0 }) }) }, [true, false, null]);
+  const aide2 = walk(sansRecolte).filter((n) => n.props && typeof n.props.title === 'string'
+    && n.props.title.indexOf('Coût CHARGÉ') >= 0)[0].props.title;
+  assert.strictEqual(aide2.indexOf('· récolte'), -1);
 });
 
 test('coût ouvrier — en JH, le budget reste en JH (aucune valorisation)', () => {

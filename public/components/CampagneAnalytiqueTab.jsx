@@ -1796,15 +1796,30 @@
       var part = (typeof d.partDeclares === 'number')
         ? Math.round(d.partDeclares * 100) + ' % de journées déclarées'
         : null;
+      // Le détail EST l'argument : un coût moyen sans sa décomposition ne se
+      // conteste pas, il se croit. Chaque terme est nommé dans l'ordre de la
+      // formule validée.
+      var ligne = function (label, v) {
+        return (Number(v) > 0) ? ('\n· ' + label + ' ' + fmtDh0(v) + ' DH') : '';
+      };
       var aide = 'Coût CHARGÉ d\'une journée d\'ouvrier, moyenné sur la campagne '
-        + (d.campagne || '') + ' : brut (SMAG + ancienneté + prime de fonction + '
-        + 'heures sup) + CNSS patronale des déclarés + prime de transport, '
-        + 'divisé par les journées pointées.\n'
-        + 'Brut ' + fmtDh0(det.brut || 0) + ' DH · charges patronales '
-        + fmtDh0(det.chargesPatronales || 0) + ' DH · transport '
-        + fmtDh0(det.transport || 0) + ' DH\n'
-        + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0) + ' ouvriers, '
-        + (d.quinzaines || 0) + ' quinzaines'
+        + (d.campagne || '') + '.'
+        + '\nSalaire soumis à cotisation :'
+        + ligne('base BEE ONE', det.base)
+        + ligne('prime de fonction', det.primeFonction)
+        + ligne('ancienneté', det.primeAnciennete)
+        + ligne('heures sup', det.heuresSup)
+        + ligne('jours fériés', det.feries)
+        + '\nCharges patronales (déclarés) :'
+        + ligne('CNSS', det.chargesPatronales)
+        + '\nPrimes de terrain (hors assiette) :'
+        + ligne('transport', det.transport)
+        + ligne('récolte', det.recolte)
+        + ligne('traitement', det.traitement)
+        + ligne('conditionnement', det.conditionnement)
+        + ligne('chargement', det.chargement)
+        + '\n\n' + fmtDh0(d.jours || 0) + ' journées pointées, ' + (d.ouvriers || 0)
+        + ' ouvriers, ' + (d.quinzaines || 0) + ' quinzaines'
         + (part ? ' · ' + part : '')
         + '\nHors pointage divers (sous-traitants).';
       return React.createElement('div', {

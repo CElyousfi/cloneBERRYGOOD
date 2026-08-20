@@ -47,12 +47,12 @@
         "file": "tests/unit/campagneBudgetTab.test.js"
       },
       {
-        "commits": 14,
-        "file": "functions/pointageService.js"
+        "commits": 13,
+        "file": "functions/index.js"
       },
       {
         "commits": 13,
-        "file": "functions/index.js"
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 11,
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:ef290a6b2a9a686b",
+    "sourceFingerprint": "sha256:992dd2dce1e8b78b",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,

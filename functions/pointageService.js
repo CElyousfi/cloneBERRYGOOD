@@ -3934,6 +3934,9 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // crasher toutes les CF au load. La divergence est attrapée par
       // functions/lib/paie/__tests__/paieUtils.parite.test.js.
       if (action === "campagne-cout-ouvrier") {
+        // Traitement, chargement et conditionnement sont primés au même tarif
+        // journalier (écran Quinzaine, primesConfig.primeChargement.coutParJour).
+        const PRIME_JOUR_DH = 10;
         const today = new Date();
         const y = today.getFullYear();
         const startYear = today.getMonth() >= 6 ? y : y - 1;
@@ -3980,23 +3983,94 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               };
             }
 
-            // 1) Pointage : une lecture par journée de la campagne.
+            // 1) Pointage : une lecture par journée de la campagne. En sortent
+            //    le salaire de base BEE ONE, les journées et les heures sup ;
+            //    les PRIMES DE TERRAIN se calculent ensuite sur les mêmes lignes.
+            const holidays = await getJoursFeries();
             const quinzaines = [];
             const tousMatricules = new Set();
             for (const q of periodes) {
               const snaps = await Promise.all(q.dates.map((d) =>
                 db_firestore.collection('sql_mirror_pointage').doc(d).get()));
               const parOuvrier = {};
+              const lignesQuinzaine = [];
               snaps.forEach((snap, i) => {
                 if (!snap.exists) return;
-                coutOuvrier.cumuleJournee(parOuvrier, snap.data().rows || [], q.dates[i]);
+                const rows = snap.data().rows || [];
+                coutOuvrier.cumuleJournee(parOuvrier, rows, q.dates[i]);
+                lignesQuinzaine.push(...rows);
               });
-              Object.keys(parOuvrier).forEach((m) => tousMatricules.add(m));
+
+              // PRIME DE TRAITEMENT : 10 DH par ouvrier et par JOUR passé sur une
+              // opération de traitement (même règle que l'écran Quinzaine).
+              const joursTraitement = {};
+              lignesQuinzaine.forEach((r) => {
+                if (!/traitement/i.test(r.Operation_Famille || '')) return;
+                const m = String(r.Personnel_Matricule || '').trim();
+                if (!m) return;
+                if (!joursTraitement[m]) joursTraitement[m] = new Set();
+                joursTraitement[m].add(r.DateStr);
+              });
+
+              // CHARGEMENT / CONDITIONNEMENT / JOURS FÉRIÉS : réutilise le calcul
+              // déjà en production (computeChargCond), pour que ce coût ne puisse
+              // pas diverger de celui affiché par l'écran Quinzaine.
+              const cc = computeChargCond(lignesQuinzaine, holidays);
+              const parMat = (liste, valeur) => {
+                const out = {};
+                (liste || []).forEach((w) => {
+                  if (!w || !w.matricule) return;
+                  out[w.matricule] = (out[w.matricule] || 0) + valeur(w);
+                });
+                return out;
+              };
+              const chargement = parMat(cc.chargementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
+              const conditionnement = parMat(cc.conditionnementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
+              const feries = parMat(cc.jourFerieDetail, (w) => w.cout || 0);
+
+              Object.keys(parOuvrier).forEach((m) => {
+                tousMatricules.add(m);
+                parOuvrier[m].primes = {
+                  traitement: (joursTraitement[m] ? joursTraitement[m].size : 0) * PRIME_JOUR_DH,
+                  chargement: chargement[m] || 0,
+                  conditionnement: conditionnement[m] || 0,
+                  feries: feries[m] || 0,
+                  recolte: 0, // renseigné plus bas, depuis les kilos cueillis
+                };
+              });
+
               quinzaines.push({
                 periode: q.periode,
                 dateFin: q.dates[q.dates.length - 1],
                 parOuvrier,
               });
+            }
+
+            // 1 bis) PRIME DE RÉCOLTE : aux kilos cueillis, barème par variété.
+            // Les kilos ne sont PAS dans le pointage (l'opération Récolte y a une
+            // quantité nulle) : ils viennent de l'enrichissement production, via
+            // le MÊME calcul que l'écran Coût Récolte.
+            try {
+              const recolte = await computeRecolteEquipesPayload(periodes.length, null);
+              const parPeriode = {};
+              (recolte && recolte.rows ? recolte.rows : []).forEach((r) => {
+                const p = (r.periode || '').trim();
+                const m = (r.matricule || '').trim();
+                if (!p || !m) return;
+                if (!parPeriode[p]) parPeriode[p] = {};
+                parPeriode[p][m] = (parPeriode[p][m] || 0)
+                  + coutOuvrier.primeRecolte(r.kg, r.variete, r.jour);
+              });
+              quinzaines.forEach((q) => {
+                const parMatQ = parPeriode[q.periode] || {};
+                Object.keys(q.parOuvrier).forEach((m) => {
+                  if (q.parOuvrier[m].primes) q.parOuvrier[m].primes.recolte = parMatQ[m] || 0;
+                });
+              });
+            } catch (e) {
+              // La prime de récolte manquante DÉGRADE le coût, elle ne doit pas
+              // faire tomber l'indicateur — mais il faut que ça se voie.
+              console.warn('[campagne-cout-ouvrier] prime de récolte indisponible :', e && e.message);
             }
 
             // 2) Registre ouvriers (déclaré, ancienneté, prime de fonction).
