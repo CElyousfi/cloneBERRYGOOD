@@ -1878,9 +1878,32 @@
     // il n'a aucune traduction en DH) et seulement s'il y a un engagement.
     var quinzaineDispo = !!(CBQ && Grid && isJh && hasQuinzaineBudget);
     var enQuinzaine = vueQuinzaine && quinzaineDispo;
+    var coutJour = props.coutOuvrier && Number(props.coutOuvrier.coutMoyenJour) > 0 ? Number(props.coutOuvrier.coutMoyenJour) : null;
+    /**
+     * FACTEUR DE CHARGE — ce que coûte réellement un dirham de salaire de base.
+     *
+     * Le réalisé de la grille vient du `Cout` BEE ONE : une base NUE, sans
+     * primes ni charges. Le budget, lui, est valorisé au coût CHARGÉ. Comparer
+     * les deux tels quels sous-estimait le « % consommé » d'un quart : sur
+     * MARAVILLA MD, 44,5 % en DH contre 59,2 % en JH pour le même effort et le
+     * même budget. Majorer le réalisé du même facteur remet les deux côtés dans
+     * la même unité — et le taux en DH redevient celui en JH.
+     *
+     * La variation entre parcelles est préservée : c'est le `Cout` réel de
+     * chaque cellule qui est majoré, pas une moyenne qui l'écraserait.
+     */
+    var facteurCharge = props.coutOuvrier && Number(props.coutOuvrier.facteurCharge) > 0 ? Number(props.coutOuvrier.facteurCharge) : null;
+    var coutCharge = facteurCharge === null ? null : function (cell) {
+      if (!cell) return null;
+      var c = Number(cell.cout);
+      return isFinite(c) ? c * facteurCharge : null;
+    };
     var metrics = [{
       key: isJh ? 'jh' : 'cout',
-      label: isJh ? 'Réalisé' : 'Coût',
+      // En Coût DH, le réalisé est MAJORÉ du facteur de charge quand il est
+      // connu : sans lui, on comparerait une base nue à un budget chargé.
+      get: !isJh && coutCharge ? coutCharge : undefined,
+      label: isJh ? 'Réalisé' : facteurCharge === null ? 'Coût' : 'Coût chargé',
       unit: isJh ? uniteJh : totalMode ? 'DH' : 'DH/Ha',
       // Le pivot stocke des TOTAUX par cellule ; seul `display` bouge avec la
       // bascule Ha/Total. Le budget, lui, est déjà en JH/Ha (`basis: 'perHa'`)
@@ -1929,8 +1952,6 @@
     // moyenné sur la campagne). `null` = indisponible : le budget en DH n'est
     // alors pas proposé du tout — surtout pas un budget nul, qui afficherait un
     // dépassement infini sur chaque ligne.
-    var coutJour = props.coutOuvrier && Number(props.coutOuvrier.coutMoyenJour) > 0 ? Number(props.coutOuvrier.coutMoyenJour) : null;
-
     /**
      * Le BUDGET est saisi en JH/Ha. En Coût DH, on le valorise au coût chargé
      * d'une journée : `budget DH/Ha = budget JH/Ha × coût ouvrier DH/jour`.
@@ -1958,7 +1979,10 @@
       if (!isFinite(b) || !(b > 0)) return null;
       var ha = Number(cell.ha);
       if (!isFinite(ha) || !(ha > 0)) return null;
-      var cout = Number(cell.cout);
+      // Numérateur CHARGÉ, comme le dénominateur : c'est tout l'objet du
+      // facteur. Un réalisé nu sur un budget chargé donnait 44,5 % là où le
+      // même effort valait 59,2 % en JH.
+      var cout = Number(cell.cout) * (facteurCharge || 1);
       return {
         num: isFinite(cout) ? cout : 0,
         den: b * coutJour * ha
@@ -2059,7 +2083,8 @@
     }];
 
     // Périmètre de la vue annuelle : non déductible des chiffres affichés.
-    var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et ' + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans ' + 'le Réalisé). « % consommé » = Réalisé / Budget sur ce seul périmètre. ' + '« — » = aucun budget saisi, ou superficie inconnue.';
+    var noteCoutCharge = isJh || facteurCharge === null ? '' : ' Coût CHARGÉ : le salaire de base enregistré, majoré des primes et des ' + 'charges réellement payées sur la campagne (× ' + (Math.round(facteurCharge * 100) / 100).toLocaleString('fr-MA') + '). Réalisé et budget sont ainsi dans la même unité — sans cette ' + 'majoration, une dépense hors charges serait comparée à un budget chargé.';
+    var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et ' + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans ' + 'le Réalisé). « % consommé » = Réalisé / Budget sur ce seul périmètre. ' + '« — » = aucun budget saisi, ou superficie inconnue.' + noteCoutCharge;
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
     // rendu React (mémoire projet « tab bare global ref »).
@@ -2320,10 +2345,13 @@
         (rowsRecolte || []).forEach(function (row) {
           if (!row || row.type !== 'famille') return;
           Object.keys(row.pivot || {}).forEach(function (p) {
-            var c = Number((row.pivot[p] || {}).cout);
+            var c = Number((row.pivot[p] || {}).cout) * (facteurCharge || 1);
             if (isFinite(c)) coutParParcelle[p] = (coutParParcelle[p] || 0) + c;
           });
         });
+        // Le coût de récolte au kilo est lui aussi CHARGÉ : un DH/kg calculé sur
+        // une base nue se comparerait à un barème qui, lui, couvre le coût réel.
+        var coutRecolteCharge = effort.cout * (facteurCharge || 1);
         var trioDh = function (coutVal, kgVal) {
           // Pas de kilo rattaché → pas de coût au kilo. Un « 0 » y serait faux
           // dans les deux sens : ni gratuit, ni infiniment cher.
@@ -2340,7 +2368,7 @@
           label: 'DH / kg',
           aide: 'Coût de récolte au kilo sur la campagne, en regard du barème de ' + baremeDh + ' DH/kg pour la ' + culture.toLowerCase() + '. Au-delà de 100 %, le kilo coûte plus cher que prévu. Par parcelle,' + ' la valeur n\'apparaît que là où le bon d\'apport porte sa parcelle.',
           valeurs: valeursDh,
-          total: trioDh(effort.cout, kgCulture)
+          total: trioDh(coutRecolteCharge, kgCulture)
         }];
       }
       function trio(kgVal, jhVal) {

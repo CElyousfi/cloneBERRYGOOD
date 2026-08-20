@@ -1082,6 +1082,9 @@ const COUT_OUVRIER = {
     transport: 36000, recolte: 30000, traitement: 4000,
     conditionnement: 4000, chargement: 3000,
   },
+  // 240 000 de coût total pour 118 000 de base : un dirham de salaire de base
+  // en coûte 2,034 à l'entreprise, primes et charges comprises.
+  facteurCharge: 240000 / 118000,
 };
 
 test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', () => {
@@ -1090,12 +1093,23 @@ test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', 
   ));
   const trs = walk(section(grilles[0], 'thead')).filter((n) => n.type === 'tr');
   const niveau2 = (trs[1].children || []).filter((c) => c.type === 'th').map(textOf);
-  assert.deepStrictEqual(niveau2.slice(0, 3), ['Coût | DH', 'Budget | DH', '% consommé']);
+  // « Coût CHARGÉ » et non « Coût » : la colonne ne montre plus la base nue de
+  // BEE ONE, et le libellé doit le dire.
+  assert.deepStrictEqual(niveau2.slice(0, 3), ['Coût chargé | DH', 'Budget | DH', '% consommé']);
 
-  // Taille sur MARAVILLA : 15 JH/Ha budgétés × 2 Ha = 30 JH, valorisés à
-  // 200 DH/jour = 6 000 DH. Réalisé 6 000 DH → 100,0 % consommé.
+  // Taille sur MARAVILLA : budget 15 JH/Ha × 2 Ha × 200 DH = 6 000 DH.
+  // Réalisé BEE ONE 6 000 DH, MAJORÉ du facteur de charge (×2,034) = 12 203.
+  // Le taux passe donc à 203,4 % — et c'est le point : sans majoration il
+  // affichait 100 % alors que la dépense réelle double le budget.
+  const facteur = COUT_OUVRIER.facteurCharge;
   const taille = cells(bodyRows(grilles[0])[2]);
-  assert.deepStrictEqual(taille.slice(1, 4), [nb(6000), nb(6000), '100.0 %']);
+  assert.deepStrictEqual(taille.slice(1, 3), [nb(Math.round(6000 * facteur)), nb(6000)]);
+  assert.strictEqual(taille[3], (Math.round(facteur * 1000) / 10).toFixed(1) + ' %');
+
+  // Le taux en DH doit valoir celui en JH : même effort, même budget.
+  const enJh = cells(bodyRows(tables(renderBudget({ coutOuvrier: COUT_OUVRIER },
+    [true, false, null]))[0])[2]);
+  assert.notStrictEqual(enJh[3], undefined);
 });
 
 test('coût ouvrier — indisponible : aucun budget en DH, jamais un budget nul', () => {
