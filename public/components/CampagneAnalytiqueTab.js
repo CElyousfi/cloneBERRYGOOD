@@ -1892,18 +1892,33 @@
      * La variation entre parcelles est préservée : c'est le `Cout` réel de
      * chaque cellule qui est majoré, pas une moyenne qui l'écraserait.
      */
-    var facteurCharge = props.coutOuvrier && Number(props.coutOuvrier.facteurCharge) > 0 ? Number(props.coutOuvrier.facteurCharge) : null;
-    var coutCharge = facteurCharge === null ? null : function (cell) {
+    /**
+     * Le COÛT RÉALISÉ d'une cellule se calcule depuis ses JOURNÉES, jamais
+     * depuis le `Cout` de BEE ONE.
+     *
+     * « BEE ONE ne doit donner que les jours de pointage, le calcul de la paie
+     * est erroné dessus » (Omar, 2026-08-20). Majorer ce coût d'un facteur ne
+     * suffisait pas : cela propageait une base fausse, simplement mise à
+     * l'échelle. On valorise donc les JH — la seule donnée fiable de BEE ONE —
+     * au coût ouvrier chargé calculé par Smart Berry.
+     *
+     * Effet secondaire recherché : le « % consommé » en dirhams devient
+     * IDENTIQUE à celui en JH, puisque les deux côtés sont le même volume
+     * multiplié par la même constante. Deux vues du même écran ne peuvent plus
+     * se contredire.
+     */
+    var coutCharge = coutJour === null ? null : function (cell) {
       if (!cell) return null;
-      var c = Number(cell.cout);
-      return isFinite(c) ? c * facteurCharge : null;
+      var j = Number(cell.jh);
+      return isFinite(j) ? j * coutJour : null;
     };
     var metrics = [{
       key: isJh ? 'jh' : 'cout',
-      // En Coût DH, le réalisé est MAJORÉ du facteur de charge quand il est
-      // connu : sans lui, on comparerait une base nue à un budget chargé.
+      // En Coût DH, le réalisé vaut JH × coût ouvrier chargé. Sans coût connu,
+      // on retombe sur le `Cout` BEE ONE brut plutôt que sur rien — mais le
+      // libellé le dit (« Coût » et non « Coût chargé »).
       get: !isJh && coutCharge ? coutCharge : undefined,
-      label: isJh ? 'Réalisé' : facteurCharge === null ? 'Coût' : 'Coût chargé',
+      label: isJh ? 'Réalisé' : coutJour === null ? 'Coût' : 'Coût chargé',
       unit: isJh ? uniteJh : totalMode ? 'DH' : 'DH/Ha',
       // Le pivot stocke des TOTAUX par cellule ; seul `display` bouge avec la
       // bascule Ha/Total. Le budget, lui, est déjà en JH/Ha (`basis: 'perHa'`)
@@ -1975,18 +1990,11 @@
      */
     function pctPartsDh(cell) {
       if (!cell || coutJour === null) return null;
-      var b = Number(cell.budget);
-      if (!isFinite(b) || !(b > 0)) return null;
-      var ha = Number(cell.ha);
-      if (!isFinite(ha) || !(ha > 0)) return null;
-      // Numérateur CHARGÉ, comme le dénominateur : c'est tout l'objet du
-      // facteur. Un réalisé nu sur un budget chargé donnait 44,5 % là où le
-      // même effort valait 59,2 % en JH.
-      var cout = Number(cell.cout) * (facteurCharge || 1);
-      return {
-        num: isFinite(cout) ? cout : 0,
-        den: b * coutJour * ha
-      };
+      // Réalisé et budget sont le MÊME volume de JH multiplié par la MÊME
+      // constante : le taux se simplifie en celui des JH. On le calcule donc
+      // par le même chemin, plutôt que d'écrire une seconde formule qui
+      // pourrait en diverger à l'arrondi près.
+      return CAT_pctPartsAnnuel(cell);
     }
     var fmtDh0 = function (v) {
       return Math.round(v).toLocaleString('fr-MA');
@@ -2083,7 +2091,7 @@
     }];
 
     // Périmètre de la vue annuelle : non déductible des chiffres affichés.
-    var noteCoutCharge = isJh || facteurCharge === null ? '' : ' Coût CHARGÉ : le salaire de base enregistré, majoré des primes et des ' + 'charges réellement payées sur la campagne (× ' + (Math.round(facteurCharge * 100) / 100).toLocaleString('fr-MA') + '). Réalisé et budget sont ainsi dans la même unité — sans cette ' + 'majoration, une dépense hors charges serait comparée à un budget chargé.';
+    var noteCoutCharge = isJh || coutJour === null ? '' : ' Coût CHARGÉ : les journées pointées valorisées au coût ouvrier réel (' + fmtDh0(coutJour) + ' DH/jour — salaire Smart Berry, primes et charges ' + 'comprises). BEE ONE ne fournit que les journées : son propre calcul de ' + 'paie n\'est pas repris. Réalisé et budget étant valorisés de la même ' + 'façon, le « % consommé » est identique à celui affiché en JH.';
     var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et ' + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans ' + 'le Réalisé). « % consommé » = Réalisé / Budget sur ce seul périmètre. ' + '« — » = aucun budget saisi, ou superficie inconnue.' + noteCoutCharge;
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
@@ -2345,13 +2353,15 @@
         (rowsRecolte || []).forEach(function (row) {
           if (!row || row.type !== 'famille') return;
           Object.keys(row.pivot || {}).forEach(function (p) {
-            var c = Number((row.pivot[p] || {}).cout) * (facteurCharge || 1);
-            if (isFinite(c)) coutParParcelle[p] = (coutParParcelle[p] || 0) + c;
+            // Coût de récolte = JH de récolte × coût ouvrier chargé (cf. plus
+            // haut : le `Cout` BEE ONE n'est pas une base de paie fiable).
+            var j = Number((row.pivot[p] || {}).jh);
+            if (isFinite(j)) coutParParcelle[p] = (coutParParcelle[p] || 0) + j * (coutJour || 0);
           });
         });
         // Le coût de récolte au kilo est lui aussi CHARGÉ : un DH/kg calculé sur
         // une base nue se comparerait à un barème qui, lui, couvre le coût réel.
-        var coutRecolteCharge = effort.cout * (facteurCharge || 1);
+        var coutRecolteCharge = effort.jh * (coutJour || 0);
         var trioDh = function (coutVal, kgVal) {
           // Pas de kilo rattaché → pas de coût au kilo. Un « 0 » y serait faux
           // dans les deux sens : ni gratuit, ni infiniment cher.
