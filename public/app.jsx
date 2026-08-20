@@ -11409,7 +11409,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 // Phase 1: critical data → unblock rendering
                 Promise.all([
                     fetchFn(`/api/pointage-rh?action=quinzaine${pq}`),
-                    cachedFetch('/api/pointage-rh?action=transport'),
+                    // La période est transmise ici AUSSI : sans elle, le payload
+                    // transport ne couvrait que les deux quinzaines les plus
+                    // récentes, et les blocs Transport / Autres primes / Jours
+                    // fériés se vidaient dès qu'on consultait une quinzaine plus
+                    // ancienne — pendant que les KPI du haut, eux, restaient
+                    // justes (ils viennent de l'action `quinzaine`, qui reçoit
+                    // la période depuis toujours).
+                    fetchFn(`/api/pointage-rh?action=transport${pq}`),
                     cachedFetch('/api/pointage-rh?action=recolte-equipes'),
                 ]).then(([quinz, trData, recolteEq]) => {
                     if (quinz.success) setApiData(quinz);
