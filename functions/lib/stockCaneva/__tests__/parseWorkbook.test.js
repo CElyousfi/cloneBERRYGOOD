@@ -110,10 +110,13 @@ test('parseWorkbook: deltas de solde — destination parcelle n\'incrémente pas
 
   const sortie = plan.movements.find(m => m.type === 'sortie')
   const sd = movementDelta(sortie)
-  // mirror applyStockImpact : −source magasin, +destination externe (seul parcelle est exclu)
+  // mirror applyStockImpact : −source magasin, +destination (seul parcelle est exclu).
+  // Destination 'EL BAHIA' = ferme du groupe → magasin (et non plus 'externe'),
+  // sinon le stock BAHIA reste invisible de tous les dropdowns.
   assert.equal(sd.length, 2)
   assert.equal(sd.find(d => d.delta < 0).lieu_type, 'magasin')
-  assert.equal(sd.find(d => d.delta > 0).lieu_type, 'externe')
+  assert.equal(sd.find(d => d.delta > 0).lieu_type, 'magasin')
+  assert.equal(sd.find(d => d.delta > 0).lieu_id, 'BAHIA')
 
   const transf = plan.movements.find(m => m.type === 'transfert')
   const td = movementDelta(transf)

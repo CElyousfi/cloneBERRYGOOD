@@ -265,7 +265,9 @@ function parseWorkbook(buffer, XLSX) {
       type: 'sortie',
       date: group.date,
       lieu_source: { type: 'magasin', id: group.lieu },
-      lieu_destination: { type: 'externe', id: normalizeFerme(group.dest) },
+      // buildLieu : une destination qui est une ferme du groupe (F1..F6, BAHIA)
+      // est un magasin — 'externe' est réservé aux tiers (fournisseur, client…).
+      lieu_destination: buildLieu(group.dest),
       ferme: group.lieu,
       items: group.items,
       ref_bl_fournisseur: '',

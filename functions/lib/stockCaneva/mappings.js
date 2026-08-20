@@ -35,7 +35,9 @@ function buildLieu(raw) {
   if (['F1', 'F2', 'F3', 'F4', 'F5', 'F6'].includes(norm)) {
     return { type: 'magasin', id: norm }
   }
-  if (norm === 'BAHIA') return { type: 'externe', id: 'BAHIA' }
+  // BAHIA est une ferme du groupe qui porte un magasin (BDC réceptionnés dessus),
+  // pas un tiers externe : sans ça son stock n'apparaît dans aucun dropdown.
+  if (norm === 'BAHIA') return { type: 'magasin', id: 'BAHIA' }
   // Parcelle (from consommation)
   return { type: 'parcelle', id: String(raw).trim() }
 }
