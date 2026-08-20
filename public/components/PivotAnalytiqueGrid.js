@@ -50,6 +50,13 @@
  *                 égaux par construction à la somme des lignes affichées dessous
  *                 (le `pivot` de la ligne groupe, lui, ne porte ni budget ni
  *                 `pctIdeal` : le lire donnerait des « — »).
+ *   labelPied     {string}  Libellé de la ligne de pied (défaut 'TOTAL').
+ *   piedsSupplementaires {Array<{key, label, valeurs, total, aide}>}  Lignes
+ *                 ajoutées SOUS le pied. `valeurs` = { [cléParcelle]: [v par
+ *                 série] }, `total` = [v par série] — DÉJÀ FORMATÉES (chaînes ou
+ *                 nœuds React). Ce sont des RAPPORTS (kg/JH, DH/kg) : ni des
+ *                 séries (la grille les agrégerait), ni des lignes famille
+ *                 (elles entreraient dans les totaux). Défaut : aucune.
  *   onCellClick   {Function}  ({parcelle, operationFamille, ha, detailRows}) =>
  *                 void. Absent = cellules non cliquables (ni curseur, ni survol).
  *                 Une cellule dont `detailRows` est un tableau VIDE ne l'est pas
@@ -394,6 +401,14 @@
     // pas et garde son bandeau `colSpan` d'origine, à l'octet près — c'est
     // tests/unit/affectationAnalytiqueTable.test.js qui le verrouille.
     var chiffresGroupe = props.chiffresGroupe === true;
+    // Libellé de la ligne de pied. Défaut 'TOTAL' — l'écran Quinzaine et le
+    // tableau hors récolte le gardent ; le bloc récolte, lui, dit « TOTAL
+    // RÉCOLTE », parce qu'un second « TOTAL » sous le premier se lit comme le
+    // total général de l'écran.
+    var labelPied = props.labelPied || 'TOTAL';
+    // Lignes de pied SUPPLÉMENTAIRES (des rapports, pas des totaux — cf. plus
+    // bas). Défaut : aucune, donc `<tfoot>` inchangé.
+    var piedsSupplementaires = props.piedsSupplementaires || [];
 
     // Éclatement en sous-colonnes : MÊME test que le mode empilé historique
     // (`multi` de _pag_stack). Une seule série ⇒ rendu d'avant, intégralement.
@@ -443,6 +458,31 @@
       fontSize: 12
     };
     if (multi) tableStyle.lineHeight = 1.25;
+
+    /**
+     * LARGEURS DÉTERMINISTES — mode sous-colonnes uniquement.
+     *
+     * Sans `table-layout: fixed`, le navigateur dimensionne chaque colonne
+     * d'après SON contenu : deux grilles empilées qui portent les mêmes
+     * parcelles (hors récolte / récolte) ne tombent alors PAS en face l'une de
+     * l'autre — la seconde, dont les libellés sont plus courts, resserre sa
+     * colonne de gauche et décale toutes les autres. C'est exactement ce qu'on
+     * vient lire : la même parcelle, au-dessus et en dessous.
+     *
+     * `fixed` fait dépendre les largeurs de la PREMIÈRE ligne (l'en-tête) et
+     * des largeurs déclarées, plus du contenu. Le tableau garde son
+     * défilement horizontal : `minWidth` sur le <table> impose la largeur
+     * totale, le conteneur défile.
+     *
+     * En mode une seule série (écran Quinzaine, EN PRODUCTION), rien n'est
+     * posé : le rendu reste celui d'avant, propriété par propriété.
+     */
+    var LARGEUR_LIBELLE = 200;
+    var LARGEUR_SOUS_COLONNE = 78;
+    if (multi) {
+      tableStyle.tableLayout = 'fixed';
+      tableStyle.minWidth = LARGEUR_LIBELLE + (nbColonnesParcelles + largeurTotal) * LARGEUR_SOUS_COLONNE;
+    }
 
     /**
      * Trait de FIN DE PARCELLE, posé sur la dernière sous-colonne de chaque
@@ -1031,7 +1071,10 @@
         position: 'sticky',
         left: 0,
         background: 'var(--gray-50)',
-        minWidth: 160,
+        // En sous-colonnes, une largeur FIXE (et non un minimum) :
+        // c'est elle qui aligne deux grilles empilées, cf. tableStyle.
+        minWidth: multi ? LARGEUR_LIBELLE : 160,
+        width: multi ? LARGEUR_LIBELLE : undefined,
         borderRight: '1px solid var(--gray-200)',
         zIndex: 1
       }
@@ -1045,8 +1088,9 @@
           fontWeight: 600,
           color: 'var(--gray-600)',
           // Une parcelle éclatée n'a pas besoin de 110 px : ce sont
-          // ses sous-colonnes qui portent la largeur minimale.
+          // ses sous-colonnes qui portent la largeur.
           minWidth: multi ? undefined : 110,
+          width: multi ? nbMetrics * LARGEUR_SOUS_COLONNE : undefined,
           borderRight: multi ? traitParcelle : '1px solid var(--gray-100)'
         }
       }, _pag_h('div', {
@@ -1117,8 +1161,9 @@
             color: 'var(--gray-500)',
             // 27 sous-colonnes (9 parcelles × 3) ne tiennent pas à
             // 110 px chacune : le conteneur défile déjà en X, mais
-            // 3 000 px de large ne se lisent pas non plus.
-            minWidth: 70,
+            // 3 000 px de large ne se lisent pas non plus. Largeur
+            // FIXE : c'est elle qui aligne deux grilles empilées.
+            width: LARGEUR_SOUS_COLONNE,
             whiteSpace: 'nowrap',
             borderRight: borderSousColonne(i)
           }
@@ -1142,7 +1187,7 @@
           fontWeight: 600,
           fontSize: 10,
           color: 'var(--gray-500)',
-          minWidth: 70,
+          width: LARGEUR_SOUS_COLONNE,
           whiteSpace: 'nowrap',
           borderLeft: i === 0 ? traitParcelle : 'none',
           borderRight: borderSousColonne(i)
@@ -1169,7 +1214,7 @@
         zIndex: 1,
         color: color
       }
-    }, 'TOTAL'), parcelles.map(function (p) {
+    }, labelPied), parcelles.map(function (p) {
       var totaux = metrics.map(function (m) {
         return renderAgg(m, colTotal(m, p[0], p[1]), p[1]);
       });
@@ -1220,7 +1265,88 @@
         fontSize: 10,
         opacity: 0.7
       }
-    }))))),
+    })),
+    // ── LIGNES DE PIED SUPPLÉMENTAIRES ──────────────────────────────
+    // Un RAPPORT, pas un total : « Kg / JH » n'est pas la somme d'une
+    // colonne, c'est un rendement qui relie deux grandeurs de nature
+    // différente. Il ne peut donc pas être une série (la grille les
+    // agrège), ni une ligne famille (elle serait comptée dans le
+    // total). Les valeurs arrivent DÉJÀ FORMATÉES : la grille ne sait
+    // pas ce qu'est un kilo, et n'a pas à l'apprendre.
+    piedsSupplementaires.map(function (ligne) {
+      var valeursDe = function (cle) {
+        var v = (ligne.valeurs || {})[cle];
+        return Array.isArray(v) ? v : [];
+      };
+      return _pag_h('tr', {
+        key: '_pied#' + ligne.key,
+        style: {
+          background: color + '0d',
+          fontWeight: 600
+        }
+      }, _pag_h('td', {
+        title: ligne.aide || undefined,
+        style: {
+          padding: padPiedLabel,
+          position: 'sticky',
+          left: 0,
+          background: color + '0d',
+          borderRight: '1px solid var(--gray-200)',
+          zIndex: 1,
+          color: color,
+          fontSize: 11
+        }
+      }, ligne.label), parcelles.map(function (p) {
+        var vals = valeursDe(p[0]);
+        if (!multi) {
+          return _pag_h('td', {
+            key: p[0],
+            style: {
+              padding: padPied,
+              textAlign: 'center',
+              color: color,
+              borderRight: '1px solid var(--gray-100)'
+            }
+          }, vals[0] === undefined || vals[0] === null ? _pag_dash() : vals[0]);
+        }
+        return metrics.map(function (m, i) {
+          var v = vals[i];
+          return _pag_h('td', {
+            key: p[0] + '#' + i,
+            style: {
+              padding: padPied,
+              textAlign: 'center',
+              color: color,
+              fontSize: 11,
+              borderRight: borderSousColonne(i)
+            }
+          }, v === undefined || v === null ? _pag_dash() : v);
+        });
+      }), showTotal ? multi ? metrics.map(function (m, i) {
+        var v = (ligne.total || [])[i];
+        return _pag_h('td', {
+          key: '_total#' + i,
+          style: {
+            padding: padPied,
+            textAlign: 'center',
+            color: color,
+            fontSize: 11,
+            background: color + '1a',
+            fontWeight: 700,
+            borderLeft: i === 0 ? traitParcelle : 'none'
+          }
+        }, v === undefined || v === null ? _pag_dash() : v);
+      }) : _pag_h('td', {
+        style: {
+          padding: padPied,
+          textAlign: 'center',
+          color: color,
+          background: color + '1a',
+          position: 'sticky',
+          right: 0
+        }
+      }, (ligne.total || [])[0] || _pag_dash()) : null);
+    })))),
     // Légende : le périmètre des séries n'est PAS déductible des chiffres
     // affichés (81 réalisé − 15 budget ≠ −3 d'écart quand une partie des
     // lignes n'est pas budgétée). Sans mention visible, le lecteur conclut à

@@ -137,6 +137,81 @@
   }
 
   /**
+   * BARÈME DE VITESSE DE RÉCOLTE, en kg par journée-homme, PAR CULTURE.
+   * Valeurs arrêtées par Omar (2026-08-20). Ce n'est pas un budget saisi en
+   * base : c'est une norme de cadence, la même pour toutes les parcelles d'une
+   * culture — d'où sa place ici, nommée, plutôt qu'en dur dans un rendu.
+   */
+  var BAREME_KG_PAR_JH = { Framboise: 18, Myrtille: 30 };
+
+  /**
+   * BARÈME DE COÛT DE RÉCOLTE, en DH par kilo, PAR CULTURE (Omar, 2026-08-20).
+   * Sert la ligne « DH / kg » du bloc récolte en mode Coût DH.
+   */
+  var BAREME_DH_PAR_KG = { Framboise: 7.5, Myrtille: 4.5 };
+
+  /**
+   * Kilos par PARCELLE de la grille. PURE.
+   *
+   * Chaîne de résolution, par ordre de confiance décroissant :
+   *   1. `bon.bloc` → référentiel BLOC ID (le DQR porte le BLOC ID depuis la
+   *      campagne 2026/2027) → sa `parcelle` ;
+   *   2. `bon.parcelle` s'il est servi directement ;
+   *   3. la **désignation du bon** — le champ « Parcelle / Bloc » imprimé sur le
+   *      bon d'apport (« BREEZE MYRTILLE S8-2 »), qui est souvent MOT POUR MOT
+   *      l'intitulé de la colonne côté référentiel parcelle.
+   *
+   * Dans les trois cas, rapprochement EXACT (casse et espaces neutralisés) avec
+   * les clés de colonnes de la grille. Aucun rapprochement approché : un kilo
+   * posé sur la mauvaise parcelle est pire qu'un kilo non rattaché, parce qu'il
+   * ne se voit pas. Ce qui ne se résout pas ressort dans `kgNonRattaches`.
+   *
+   * @param {Object} args
+   * @param {Array<Object>} args.bons
+   * @param {Array<Object>} args.blocIds référentiel BLOC ID ({id, parcelle, …}).
+   * @param {Array<string>} args.cles clés de colonnes de la grille.
+   * @param {string} [args.debut] fenêtre (cf. agregeBlocs).
+   * @param {string} [args.fin]
+   * @param {string} [args.typeVente] défaut 'Export'.
+   * @returns {{parParcelle: Object<string, number>, kgTotal: number, kgNonRattaches: number}}
+   */
+  function kgParParcelle(args) {
+    var a = args || {};
+    var typeVente = a.typeVente === undefined ? 'Export' : a.typeVente;
+    var parBlocId = {};
+    (a.blocIds || []).forEach(function (b) { if (b && b.id) parBlocId[b.id] = b; });
+    var parCle = {};
+    (a.cles || []).forEach(function (c) { parCle[_cp_key(c)] = c; });
+
+    var parParcelle = {};
+    var kgTotal = 0;
+    var kgNonRattaches = 0;
+
+    (a.bons || []).forEach(function (b) {
+      if (!b) return;
+      var kg = Number(b.poidsLot);
+      if (!isFinite(kg) || !(kg > 0)) return;
+      if (typeVente && b.typeVente !== typeVente) return;
+      var d = String(b.dateISO || b.date || '').slice(0, 10);
+      if (a.debut || a.fin) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+        if (a.debut && d < a.debut) return;
+        if (a.fin && d > a.fin) return;
+      }
+      kgTotal += kg;
+      var bloc = parBlocId[b.bloc];
+      var cible = parCle[_cp_key(bloc && bloc.parcelle)]
+        || parCle[_cp_key(b.parcelle)]
+        || parCle[_cp_key(b.designation)]
+        || parCle[_cp_key(b.blocLabel)];
+      if (!cible) { kgNonRattaches += kg; return; }
+      parParcelle[cible] = (parParcelle[cible] || 0) + kg;
+    });
+
+    return { parParcelle: parParcelle, kgTotal: kgTotal, kgNonRattaches: kgNonRattaches };
+  }
+
+  /**
    * Rendement d'un bloc : kg/Ha et kg/plant. PURE.
    * `null` = dénominateur inconnu — jamais 0, qui se lirait « rendement nul ».
    * Le kg/plant n'a de sens que sur la myrtille (les framboisiers ne sont pas
@@ -212,7 +287,10 @@
   }
 
   var __campagneProductionApi = {
+    BAREME_KG_PAR_JH: BAREME_KG_PAR_JH,
+    BAREME_DH_PAR_KG: BAREME_DH_PAR_KG,
     indexDesignations: indexDesignations,
+    kgParParcelle: kgParParcelle,
     agregeBlocs: agregeBlocs,
     rendements: rendements,
     vitesseRecolte: vitesseRecolte,

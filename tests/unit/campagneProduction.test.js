@@ -135,3 +135,34 @@ test('agregeBlocs — PURE : les bons et les blocs d\'entrée ne sont pas mutés
   assert.deepStrictEqual(bons, avantBons);
   assert.deepStrictEqual(blocs, avantBlocs);
 });
+
+test('kgParParcelle — le champ « Parcelle / Bloc » du bon rejoint la colonne de la grille', () => {
+  // Cas RÉEL (bon n° 8865, capture du 20/08/2026) : le bon d'apport imprime
+  // « Parcelle / Bloc : BREEZE MYRTILLE S8-2 », et c'est mot pour mot
+  // l'intitulé de la colonne côté référentiel parcelle. C'est ce rapprochement
+  // qui fait apparaître la cadence kg/JH parcelle par parcelle.
+  const cles = ['BREEZE MYRTILLE S8-2', 'CASCADE MYRTILLE S8-1'];
+  const out = CP.kgParParcelle({
+    bons: [
+      { poidsLot: 135, dateISO: '2026-07-10', typeVente: 'Export', designation: 'BREEZE MYRTILLE S8-2' },
+      { poidsLot: 40, dateISO: '2026-07-11', typeVente: 'Export', blocLabel: 'cascade  myrtille s8-1' },
+      { poidsLot: 7, dateISO: '2026-07-12', typeVente: 'Export', designation: 'PARCELLE INCONNUE' },
+    ],
+    blocIds: [], cles, debut: '2026-07-01',
+  });
+  assert.deepStrictEqual(out.parParcelle,
+    { 'BREEZE MYRTILLE S8-2': 135, 'CASCADE MYRTILLE S8-1': 40 });
+  assert.strictEqual(out.kgNonRattaches, 7, 'jamais jeté en silence');
+});
+
+test('kgParParcelle — le BLOC ID du DQR prime sur la désignation', () => {
+  // Le DQR porte le BLOC ID : c'est la source la plus sûre, elle passe devant
+  // le libellé imprimé (qui peut être ressaisi à la main).
+  const out = CP.kgParParcelle({
+    bons: [{ poidsLot: 50, dateISO: '2026-07-10', typeVente: 'Export',
+      bloc: 'BLOC-172-MAR', designation: 'F5- MYA S9' }],
+    blocIds: [{ id: 'BLOC-172-MAR', parcelle: 'F1- S5 MARAVILLA MD' }],
+    cles: ['F1- S5 MARAVILLA MD', 'F5- MYA S9'], debut: '2026-07-01',
+  });
+  assert.deepStrictEqual(out.parParcelle, { 'F1- S5 MARAVILLA MD': 50 });
+});

@@ -2091,6 +2091,133 @@
       }
     }, joursIdeal + ' j / 365'));
 
+    /**
+     * 1er juillet de la campagne affichée, ou `null`. La frontière a UNE source
+     * (`CampagneUtils`) ; le libellé servi par le backend porte un slash, d'où
+     * la normalisation du séparateur avant de l'interroger.
+     */
+    function debutCampagneISO() {
+      var CU2 = window.CampagneUtils;
+      if (!CU2 || typeof CU2.debutCampagne !== 'function' || !data.campagne) return null;
+      var m = /^(\d{4})\D+(\d{4})$/.exec(String(data.campagne).trim());
+      return m ? CU2.debutCampagne(m[1] + '-' + m[2]) : null;
+    }
+
+    /**
+     * Référentiel BLOC ID (celui du DQR), tel que l'écran Qualité le configure.
+     * Absent ou illisible → liste vide : les kilos ne seront simplement pas
+     * rattachés à une parcelle, jamais rattachés au hasard.
+     */
+    function blocIdsRef() {
+      try {
+        var s = window.localStorage && window.localStorage.getItem('blocIdsConfig');
+        var v = s ? JSON.parse(s) : null;
+        return Array.isArray(v) ? v : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    /**
+     * Format d'un taux dont DÉPASSER LE BUDGET EST UNE BONNE NOUVELLE.
+     *
+     * Le « % consommé » d'un budget de JH vire au rouge au-delà de 100 % : on a
+     * dépensé plus que prévu. La cadence de récolte, elle, se lit à l'envers —
+     * 120 % du barème, c'est 120 % de la cadence attendue, donc une équipe qui
+     * ramasse vite. Réutiliser `fmtPct` ici afficherait une alerte rouge sur la
+     * meilleure nouvelle de l'écran.
+     */
+    function fmtPctCadence(v) {
+      var pct = Math.round(v * 1000) / 10;
+      var style = {
+        fontStyle: 'italic'
+      };
+      if (pct >= 100) style.color = '#2e7d32';
+      return React.createElement('span', {
+        style: style
+      }, pct.toFixed(1) + ' %');
+    }
+
+    /**
+     * Ligne « Kg / JH » du pied du bloc récolte : la CADENCE de récolte, en
+     * regard de son barème (18 kg/JH framboise, 30 kg/JH myrtille).
+     *
+     * Ce n'est ni une série ni une ligne famille : c'est un RAPPORT entre deux
+     * grandeurs de nature différente (des kilos, des journées), qu'aucun total
+     * de colonne ne doit sommer. D'où le passage par `piedsSupplementaires`,
+     * avec des valeurs déjà formatées.
+     *
+     * PÉRIMÈTRE : les deux termes portent sur la CAMPAGNE affichée. Les kilos
+     * d'un cycle divisés par les JH d'une campagne donneraient une cadence
+     * fausse, et fausse dans le sens flatteur.
+     *
+     * Par parcelle, la valeur n'apparaît que si le bon porte sa parcelle (le
+     * DQR porte le BLOC ID depuis cette campagne) ; sinon « — » et la cadence
+     * est servie au niveau CULTURE, dans la colonne TOTAL — jamais un prorata
+     * inventé sur les parcelles.
+     */
+    function lignesKgParJh(culture, rowsRecolte, parcellesGrille) {
+      var CP = window.CampagneProduction;
+      if (!CP || typeof CP.kgParParcelle !== 'function' || !props.bons) return [];
+      var bareme = (CP.BAREME_KG_PAR_JH || {})[culture];
+      if (!(bareme > 0)) return [];
+      var debut = debutCampagneISO();
+      if (!debut) return [];
+      var cles = (parcellesGrille || []).map(function (p) {
+        return p[0];
+      });
+      var kg = CP.kgParParcelle({
+        bons: props.bons,
+        blocIds: blocIdsRef(),
+        cles: cles,
+        debut: debut
+      });
+      // Total de la culture : maille NATIVE des bons (désignations déclarées
+      // dans le référentiel des blocs), la seule qui soit renseignée tant que
+      // les bons ne portent pas leur parcelle.
+      var blocsCulture = (window.PARCELLES_CULTURALES || []).filter(function (pc) {
+        return pc && pc.culture === culture;
+      });
+      var aggCulture = CP.agregeBlocs({
+        bons: props.bons,
+        blocs: blocsCulture,
+        debut: debut
+      });
+      var kgCulture = aggCulture.lignes.reduce(function (s, l) {
+        return s + l.kg;
+      }, 0);
+      var jhParParcelle = {};
+      (rowsRecolte || []).forEach(function (row) {
+        if (!row || row.type !== 'famille') return;
+        Object.keys(row.pivot || {}).forEach(function (p) {
+          var j = Number((row.pivot[p] || {}).jh);
+          if (isFinite(j)) jhParParcelle[p] = (jhParParcelle[p] || 0) + j;
+        });
+      });
+      var jhTotal = CP.effortRecolte(rowsRecolte).jh;
+      function trio(kgVal, jhVal) {
+        // Deux « — » distincts, et aucun 0.0 :
+        //  - pas de JH de récolte → la cadence n'existe pas encore ;
+        //  - pas de kilo RATTACHÉ à cette parcelle → on ne sait pas ce qu'elle
+        //    a ramené, ce n'est pas la même chose que « elle n'a rien ramené ».
+        //    Un 0.0 kg/JH accuserait une équipe d'un défaut de rattachement.
+        if (!(jhVal > 0) || !(kgVal > 0)) return [null, fmtJh1(bareme), null];
+        var cadence = kgVal / jhVal;
+        return [fmtJh1(cadence), fmtJh1(bareme), fmtPctCadence(cadence / bareme)];
+      }
+      var valeurs = {};
+      cles.forEach(function (c) {
+        valeurs[c] = trio(kg.parParcelle[c] || 0, jhParParcelle[c] || 0);
+      });
+      return [{
+        key: 'kg-par-jh',
+        label: 'Kg / JH',
+        aide: 'Cadence de récolte sur la campagne : kilos récoltés par journée-homme' + ' de récolte, en regard du barème de ' + bareme + ' kg/JH pour la ' + culture.toLowerCase() + '. Au-delà de 100 %, on récolte plus vite que' + ' prévu. Par parcelle, la cadence n\'apparaît que là où le bon d\'apport' + ' porte sa parcelle.',
+        valeurs: valeurs,
+        total: trio(kgCulture, jhTotal)
+      }];
+    }
+
     /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */
     function boutonPlein(i) {
       return React.createElement('button', {
@@ -2316,15 +2443,14 @@
       var metricsAffichees = quinz ? metricsQuinzaine : sup && sup.hasBudget ? metricsBudget : metrics;
       var rowsAffichees = quinz ? quinz.groupedRows : sup ? sup.groupedRows : pivot.groupedRows;
       // ── RÉCOLTE À PART ──────────────────────────────────────────
-      // En plein écran seulement : hors plein écran, plusieurs cultures
-      // sont déjà empilées, un bloc de plus par culture rendrait l'écran
-      // illisible. Les DEUX grilles reçoivent les mêmes `parcelles`, les
-      // mêmes `metrics` et la même largeur : c'est ce qui permet de lire
-      // le bloc Récolte en vis-à-vis du principal, colonne par colonne.
-      var partition = enPlein ? CAT_partitionRecolte(rowsAffichees, GROUPE_RECOLTE) : {
-        principal: rowsAffichees,
-        recolte: []
-      };
+      // Partout, plein écran ou non : la récolte sortie du tableau change
+      // le sens de son TOTAL (qui devient le total HORS récolte), et ce
+      // sens ne peut pas dépendre d'un bouton d'affichage.
+      // Les DEUX grilles reçoivent les mêmes `parcelles`, les mêmes
+      // `metrics` et les mêmes largeurs de colonnes : c'est ce qui permet
+      // de lire le bloc Récolte en vis-à-vis du principal, colonne par
+      // colonne.
+      var partition = CAT_partitionRecolte(rowsAffichees, GROUPE_RECOLTE);
       function _aDesFamilles(rows) {
         return rows.some(function (r) {
           return r && r.type === 'famille';
@@ -2376,6 +2502,10 @@
         groupedRows: partition.recolte,
         title: g.culture + ' — récolte',
         icon: g.icon,
+        // Un second « TOTAL » sous celui du tableau du dessus se lirait
+        // comme le total général de l'écran.
+        labelPied: 'TOTAL RÉCOLTE',
+        piedsSupplementaires: lignesKgParJh(g.culture, partition.recolte, pivot.parcelles),
         // Le lecteur doit savoir POURQUOI ce bloc est à part, sinon il
         // le lit comme un oubli du tableau du dessus.
         note: 'Récolte présentée à part : son budget n\'est consommé qu\'en ' + 'saison, le laisser dans le tableau ci-dessus écrasait le TOTAL ' + '(le « % consommé » global tombait à quelques pour cent). Le TOTAL ' + 'du tableau ci-dessus est donc le total HORS récolte.'
@@ -2755,6 +2885,29 @@
     var refOperations = _refOps[0];
     var setRefOperations = _refOps[1];
 
+    // BONS D'APPORT (kilos) — chargés ICI, une seule fois, et descendus en prop
+    // à la grille (ligne « Kg / JH ») comme au bloc production. Même source que
+    // l'onglet Production (`loadBonsFromFirestore`, cache mémoire partagé) :
+    // deux écrans, une lecture, donc jamais deux totaux différents pour la même
+    // journée. `null` = pas encore chargé, à distinguer de `[]` (aucun bon).
+    var _bons = useState(null);
+    var bons = _bons[0];
+    var setBons = _bons[1];
+    useEffect(function () {
+      // Garde anti-crash : une référence à un global absent fait planter TOUT
+      // le rendu React (mémoire projet « tab bare global ref »).
+      if (typeof window.loadBonsFromFirestore !== 'function') return undefined;
+      var cancelled = false;
+      window.loadBonsFromFirestore().then(function (b) {
+        if (!cancelled) setBons(b || []);
+      }).catch(function () {
+        if (!cancelled) setBons([]);
+      });
+      return function () {
+        cancelled = true;
+      };
+    }, []);
+
     // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
     // l'export), et pas seulement au montage : sinon un budget saisi dans le
     // sous-onglet Budget puis exporté sans recharger la page produirait un
@@ -3039,6 +3192,7 @@
       opBudgetsByLabel: opBudgetsByLabel,
       quinzainesByLabel: quinzainesByLabel,
       refOperations: refOperations,
+      bons: bons,
       metric: metric,
       setMetric: setMetric
     }) : React.createElement(VarieteView, {

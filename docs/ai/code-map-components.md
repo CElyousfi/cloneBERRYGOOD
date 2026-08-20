@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:695d91b01f471380 -->
+<!-- sourceFingerprint: sha256:a85b3c89810a1acb -->
 # Code Map — Composants frontend (338)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -65,7 +65,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseTransfertsSub | public/app.jsx:60385 | — |
 | CaisseValidationSub | public/app.jsx:60475 | — |
 | CaisseWarnings | public/app.jsx:61064 | — |
-| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:2204 | campagne |
+| CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:2325 | campagne |
 | CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:1411 | — |
 | CampagneProductionBloc | public/components/CampagneProductionBloc.jsx:71 | — |
 | CampagneSegmentTable | public/app.jsx:10917 | — |
@@ -133,7 +133,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ComingSoonTab | public/app.jsx:62010 | coming_soon |
 | ConditionnementSub | public/app.jsx:24305 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
-| ConsoView | public/components/CampagneAnalytiqueTab.jsx:1998 | — |
+| ConsoView | public/components/CampagneAnalytiqueTab.jsx:2119 | — |
 | CoutRecolteTab | public/app.jsx:8652 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
@@ -263,7 +263,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PGP_haSb | public/components/ParcellesGroupesPanel.jsx:49 | — |
 | PGP_SeedHaBox | public/components/ParcellesGroupesPanel.jsx:130 | — |
 | PGP_suggestLabel | public/components/ParcellesGroupesPanel.jsx:90 | — |
-| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:359 | — |
+| PivotAnalytiqueGrid | public/components/PivotAnalytiqueGrid.jsx:366 | — |
 | PivotView | public/components/CampagneAnalytiqueTab.jsx:1423 | — |
 | PlanificationTab | public/app.jsx:28972 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
