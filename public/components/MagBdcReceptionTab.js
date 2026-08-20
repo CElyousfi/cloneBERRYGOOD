@@ -36,15 +36,9 @@
     // Réconcilie la config stock avec la ferme du BDC : une ferme non déclarée
     // (ex. BAHIA) doit rester sélectionnable, sinon le select contrôlé se
     // désynchronise silencieusement et le stock part au mauvais magasin.
-    const resolveDest = (window.StockDestinations || {}).resolveDestinationOptions || (mags => ({
-      options: (mags || []).map(m => ({
-        value: m,
-        label: m,
-        horsConfig: false
-      })),
-      selected: (mags || [])[0] || '',
-      warning: null
-    }));
+    // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
+    // mieux qu'une réception BAHIA imputée silencieusement à F1.
+    const resolveDest = window.StockDestinations.resolveDestinationOptions;
     const [bdcList, setBdcList] = useState([]);
     const [receptions, setReceptions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -588,9 +582,11 @@
         fontSize: 13
       }
     })), (() => {
-      // Options = config stock + la ferme du BDC si elle n'y figure pas
-      // (sinon aucune <option> ne correspond à la valeur du state).
-      const dest = resolveDest(MAGASINS, selectedBdc.ferme);
+      // Options dérivées de la valeur COURANTE du select (et non de
+      // selectedBdc.ferme) : useStockLocations rend d'abord le fallback
+      // puis la vraie config, un re-render ne doit jamais retirer
+      // l'option correspondant à blForm.magasin.
+      const dest = resolveDest(MAGASINS, blForm.magasin || selectedBdc.ferme);
       const showWarning = dest.warning && (dest.options.find(o => o.value === blForm.magasin) || {}).horsConfig;
       return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
         style: {

@@ -84,12 +84,29 @@ test('entrées vides/blanches dans magasins ignorées', () => {
 });
 
 test('selected est toujours une valeur présente dans options (invariant du select contrôlé)', () => {
+  // CONTRAT : l'invariant « selected ∈ options » vaut dès qu'il y a au moins une
+  // destination à proposer. Le SEUL cas où il ne tient pas est le cas dégénéré
+  // « aucun magasin configuré ET aucune ferme BDC » : options === [] et
+  // selected === '' — il n'existe alors rien à sélectionner, et '' est
+  // précisément ce qu'un <select> vide rend. Ce cas est traité à part ci-dessous.
   const cases = [
     [CONFIG, 'BAHIA'], [CONFIG, 'F2'], [CONFIG, ''], [CONFIG, undefined],
     [['BAHIA'], 'bahia'], [[], 'BAHIA'],
   ];
   for (const [mags, ferme] of cases) {
     const r = resolveDestinationOptions(/** @type {any} */ (mags), /** @type {any} */ (ferme));
+    assert.ok(r.options.length > 0, JSON.stringify([mags, ferme]) + ' : options non vides attendues');
     assert.ok(r.options.some(o => o.value === r.selected), JSON.stringify([mags, ferme]));
+  }
+});
+
+test('cas dégénéré : aucune destination du tout → options vides ET selected vide', () => {
+  for (const ferme of ['', null, undefined]) {
+    const r = resolveDestinationOptions([], /** @type {any} */ (ferme));
+    assert.deepEqual(r.options, []);
+    assert.equal(r.selected, '');
+    assert.equal(r.warning, null);
+    // Invariant volontairement NON tenu ici : il n'y a rien à sélectionner.
+    assert.equal(r.options.some(o => o.value === r.selected), false);
   }
 });

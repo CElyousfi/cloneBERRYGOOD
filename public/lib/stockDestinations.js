@@ -15,8 +15,10 @@
  *   - Navigateur via <script src="lib/stockDestinations.js"> → window.StockDestinations
  *   - node:test via require('./stockDestinations.js') → module.exports
  *
- * ⚠️ Les scripts de public/lib partagent le scope global du navigateur : tous
- * les noms top-level sont préfixés SD_ pour éviter une collision (crash #75).
+ * ⚠️ Les scripts de public/lib partagent le scope global du navigateur : les
+ * noms internes sont préfixés SD_ pour éviter une collision (crash #75). Seule
+ * l'API publique `resolveDestinationOptions` n'est pas préfixée — nom unique
+ * dans tout le repo, et c'est celui exposé via window.StockDestinations.
  *
  * 2026-08 — sb/magasin-bahia.
  */

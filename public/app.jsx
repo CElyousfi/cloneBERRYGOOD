@@ -50061,8 +50061,9 @@ ${rejetHtml}
             // Garde-fou destination : une valeur hors config stock (ex. BAHIA sur un bon
             // en cours d'édition) reste proposée dans le select, avec avertissement —
             // sinon le select contrôlé se désynchronise sans rien dire au magasinier.
-            const resolveDestBR = (window.StockDestinations || {}).resolveDestinationOptions
-                || ((mags) => ({ options: (mags || []).map(m => ({ value: m, label: m, horsConfig: false })), selected: (mags || [])[0] || '', warning: null }));
+            // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
+            // mieux qu'une destination hors config imputée silencieusement au 1er magasin.
+            const resolveDestBR = window.StockDestinations.resolveDestinationOptions;
             const emptyForm = { date: '', ref_bl_fournisseur: '', magasin: MAGASINS_BR[0] || '', motif: '', motif_autre: '', fournisseur_nom: '', items: [{ article: '', quantite: '', unite: 'kg' }], scan_file: null, scan_preview: null };
             const [showForm, setShowForm] = useState(false);
             const [form, setForm] = useState(emptyForm);
@@ -50975,10 +50976,16 @@ ${rejetHtml}
             const totalAlerte = filtered.filter(b => b.seuil_alerte && b.balance <= b.seuil_alerte && b.balance > 0).length;
             const totalRupture = filtered.filter(b => b.balance <= 0).length;
             const lieux = [...new Set(balances.map(b => b.lieu_id))].sort();
-            // Types dérivés des soldes réellement chargés (et plus magasin/station en dur) :
-            // des soldes 'externe'/'parcelle' existent et étaient affichés sans être filtrables.
-            const lieuTypes = [...new Set(balances.map(b => b.lieu_type).filter(Boolean))].sort();
+            // Types du filtre = UNION de magasin/station (toujours proposés, l'UI historique
+            // ne doit pas perdre d'entrée un jour sans solde) et des lieu_type réellement
+            // rencontrés : les soldes 'externe'/'parcelle' étaient affichés mais non filtrables.
+            const lieuTypes = [...new Set(['magasin', 'station'].concat(balances.map(b => b.lieu_type).filter(Boolean)))].sort();
             const capitalizeType = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
+            // Un filtre devenu orphelin (ex. « Externe » puis changement de date vers un jour
+            // sans solde externe) viderait le tableau sans explication : on le réinitialise.
+            useEffect(() => {
+                if (filterType && !lieuTypes.includes(filterType)) setFilterType('');
+            }, [lieuTypes.join('|'), filterType]);
 
             if (loading) return React.createElement('div', {className:'fade-in',style:{textAlign:'center',padding:60}}, React.createElement('i', {className:'fa-solid fa-spinner fa-spin',style:{fontSize:32,color:'var(--berry)'}}));
 

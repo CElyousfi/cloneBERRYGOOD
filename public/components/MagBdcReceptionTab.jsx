@@ -34,8 +34,9 @@
     // Réconcilie la config stock avec la ferme du BDC : une ferme non déclarée
     // (ex. BAHIA) doit rester sélectionnable, sinon le select contrôlé se
     // désynchronise silencieusement et le stock part au mauvais magasin.
-    const resolveDest = (window.StockDestinations || {}).resolveDestinationOptions
-        || ((mags) => ({ options: (mags || []).map(m => ({ value: m, label: m, horsConfig: false })), selected: (mags || [])[0] || '', warning: null }));
+    // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
+    // mieux qu'une réception BAHIA imputée silencieusement à F1.
+    const resolveDest = window.StockDestinations.resolveDestinationOptions;
     const [bdcList, setBdcList] = useState([]);
     const [receptions, setReceptions] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -273,9 +274,11 @@
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>N° BL Fournisseur</label>
                                 <input value={blForm.numero_bl_fournisseur} onChange={e => setBlForm({...blForm, numero_bl_fournisseur: e.target.value})} placeholder="Réf BL" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                             {(() => {
-                                // Options = config stock + la ferme du BDC si elle n'y figure pas
-                                // (sinon aucune <option> ne correspond à la valeur du state).
-                                const dest = resolveDest(MAGASINS, selectedBdc.ferme);
+                                // Options dérivées de la valeur COURANTE du select (et non de
+                                // selectedBdc.ferme) : useStockLocations rend d'abord le fallback
+                                // puis la vraie config, un re-render ne doit jamais retirer
+                                // l'option correspondant à blForm.magasin.
+                                const dest = resolveDest(MAGASINS, blForm.magasin || selectedBdc.ferme);
                                 const showWarning = dest.warning && (dest.options.find(o => o.value === blForm.magasin) || {}).horsConfig;
                                 return (
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination</label>
