@@ -747,3 +747,34 @@ test('bandeau de section — une série ratio y est agrégée num/den, jamais mo
   // 107.1 % — et NON la moyenne des deux taux (104.2 %) ni leur somme.
   assert.deepStrictEqual(cells(bodyRows(tree)[0]), ['M.O HORS RÉCOLTE', '10.0', '83.3 %', '20.0', '125.0 %', '30.0', '107.1 %']);
 });
+
+// ── Largeurs déterministes (`largeursFixes`) ────────────────────────────────
+// L'écran Campagne empile DEUX grilles par culture (hors récolte / récolte) :
+// sans largeurs déclarées, chacune se dimensionne sur son propre contenu et les
+// colonnes ne tombent plus en face. Opt-in : le panneau Quinzaine, en
+// production, garde son dimensionnement automatique.
+
+function thLibelle(tree) { return walk(section(tree, 'thead')).filter((n) => n.type === 'th')[0]; }
+
+test('largeurs — sans la prop, aucune largeur déclarée (rendu Quinzaine intact)', () => {
+  const tree = render(troisSeries('perHa'));
+  const table = walk(tree).filter((n) => n.type === 'table')[0];
+  assert.strictEqual((table.props.style || {}).tableLayout, undefined);
+  assert.strictEqual((table.props.style || {}).minWidth, undefined);
+  assert.strictEqual((thLibelle(tree).props.style || {}).width, undefined);
+});
+
+test('largeurs — avec la prop, mêmes largeurs à UNE ou PLUSIEURS séries', () => {
+  // C'est tout l'objet : la grille du haut est en 3 séries, celle du bas peut
+  // n'en avoir qu'une (Coût DH) — leur colonne de libellé doit rester la même.
+  const multi = render(troisSeries('perHa'), { largeursFixes: true, showTotal: false });
+  const mono = render([troisSeries('perHa')[0]], { largeursFixes: true, showTotal: false });
+  const tableMulti = walk(multi).filter((n) => n.type === 'table')[0];
+  const tableMono = walk(mono).filter((n) => n.type === 'table')[0];
+  assert.strictEqual(tableMulti.props.style.tableLayout, 'fixed');
+  assert.strictEqual(tableMono.props.style.tableLayout, 'fixed', 'AUSSI en série unique');
+  assert.strictEqual(thLibelle(multi).props.style.width, thLibelle(mono).props.style.width);
+  // La largeur totale suit le nombre de colonnes de parcelles, pas le contenu.
+  assert.strictEqual(tableMulti.props.style.minWidth, 200 + 2 * (3 * 78));
+  assert.strictEqual(tableMono.props.style.minWidth, 200 + 2 * 110);
+});

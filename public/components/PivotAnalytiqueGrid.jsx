@@ -50,6 +50,11 @@
  *                 égaux par construction à la somme des lignes affichées dessous
  *                 (le `pivot` de la ligne groupe, lui, ne porte ni budget ni
  *                 `pctIdeal` : le lire donnerait des « — »).
+ *   largeursFixes {bool}  Largeurs de colonnes déterministes (défaut FALSE :
+ *                 dimensionnement automatique, celui de l'écran Quinzaine en
+ *                 production). À true, DEUX grilles empilées qui portent les
+ *                 mêmes parcelles tombent en face l'une de l'autre — sinon
+ *                 chacune se dimensionne sur son propre contenu.
  *   labelPied     {string}  Libellé de la ligne de pied (défaut 'TOTAL').
  *   piedsSupplementaires {Array<{key, label, valeurs, total, aide}>}  Lignes
  *                 ajoutées SOUS le pied. `valeurs` = { [cléParcelle]: [v par
@@ -390,6 +395,9 @@
     // Lignes de pied SUPPLÉMENTAIRES (des rapports, pas des totaux — cf. plus
     // bas). Défaut : aucune, donc `<tfoot>` inchangé.
     var piedsSupplementaires = props.piedsSupplementaires || [];
+    // Largeurs de colonnes déterministes (cf. plus bas). Défaut FALSE : le
+    // panneau Quinzaine, en production, garde son dimensionnement automatique.
+    var largeursFixes = props.largeursFixes === true;
 
     // Éclatement en sous-colonnes : MÊME test que le mode empilé historique
     // (`multi` de _pag_stack). Une seule série ⇒ rendu d'avant, intégralement.
@@ -451,15 +459,22 @@
      * défilement horizontal : `minWidth` sur le <table> impose la largeur
      * totale, le conteneur défile.
      *
-     * En mode une seule série (écran Quinzaine, EN PRODUCTION), rien n'est
-     * posé : le rendu reste celui d'avant, propriété par propriété.
+     * OPT-IN par `largeursFixes`, et pas déduit du nombre de séries : l'écran
+     * Campagne empile deux grilles dans TOUTES ses vues — y compris en Coût DH,
+     * où il n'y a qu'une seule série. Le déduire de `multi` laissait justement
+     * la vue Coût DH désalignée. L'écran Quinzaine, lui, ne passe pas la prop et
+     * garde son rendu d'avant, propriété par propriété.
      */
     var LARGEUR_LIBELLE = 200;
     var LARGEUR_SOUS_COLONNE = 78;
-    if (multi) {
+    // Une cellule à série unique empile sa valeur et son unité (« 54.915 » /
+    // « DH/Ha ») : elle a besoin de plus de large qu'une sous-colonne nue.
+    var LARGEUR_MONO = 110;
+    var largeurColonne = multi ? nbMetrics * LARGEUR_SOUS_COLONNE : LARGEUR_MONO;
+    if (largeursFixes) {
       tableStyle.tableLayout = 'fixed';
       tableStyle.minWidth = LARGEUR_LIBELLE
-        + (nbColonnesParcelles + largeurTotal) * LARGEUR_SOUS_COLONNE;
+        + (parcelles.length + (showTotal ? 1 : 0)) * largeurColonne;
     }
 
     /**
@@ -840,10 +855,10 @@
                 style: { padding: '8px 12px', textAlign: 'left', fontWeight: 600,
                   color: 'var(--gray-600)', position: 'sticky', left: 0,
                   background: 'var(--gray-50)',
-                  // En sous-colonnes, une largeur FIXE (et non un minimum) :
-                  // c'est elle qui aligne deux grilles empilées, cf. tableStyle.
-                  minWidth: multi ? LARGEUR_LIBELLE : 160,
-                  width: multi ? LARGEUR_LIBELLE : undefined,
+                  // Largeur FIXE (et non un minimum) : c'est elle qui aligne
+                  // deux grilles empilées, cf. tableStyle.
+                  minWidth: largeursFixes ? LARGEUR_LIBELLE : 160,
+                  width: largeursFixes ? LARGEUR_LIBELLE : undefined,
                   borderRight: '1px solid var(--gray-200)', zIndex: 1 },
               }, firstColumnLabel),
               parcelles.map(function (p) {
@@ -855,7 +870,7 @@
                     // Une parcelle éclatée n'a pas besoin de 110 px : ce sont
                     // ses sous-colonnes qui portent la largeur.
                     minWidth: multi ? undefined : 110,
-                    width: multi ? nbMetrics * LARGEUR_SOUS_COLONNE : undefined,
+                    width: largeursFixes ? largeurColonne : undefined,
                     borderRight: multi ? traitParcelle : '1px solid var(--gray-100)' },
                 },
                   _pag_h('div', { style: { color: color, fontWeight: 700 } },
@@ -881,7 +896,10 @@
               ) : _pag_h('th', {
                 title: note || undefined,
                 style: { padding: '6px 10px', textAlign: 'center', fontWeight: 700,
-                  color: 'var(--gray-700)', minWidth: 100, background: 'var(--gray-100)',
+                  color: 'var(--gray-700)',
+                  minWidth: largeursFixes ? undefined : 100,
+                  width: largeursFixes ? largeurColonne : undefined,
+                  background: 'var(--gray-100)',
                   position: 'sticky', right: 0, zIndex: 1 },
               }, 'Total')) : null
             ),
@@ -896,7 +914,8 @@
                       // 110 px chacune : le conteneur défile déjà en X, mais
                       // 3 000 px de large ne se lisent pas non plus. Largeur
                       // FIXE : c'est elle qui aligne deux grilles empilées.
-                      width: LARGEUR_SOUS_COLONNE, whiteSpace: 'nowrap',
+                      width: largeursFixes ? LARGEUR_SOUS_COLONNE : undefined,
+                      minWidth: largeursFixes ? undefined : 70, whiteSpace: 'nowrap',
                       borderRight: borderSousColonne(i) },
                   },
                     _pag_h('div', null, m.label || ''),
@@ -912,8 +931,9 @@
                 return _pag_h('th', {
                   key: '_total#' + i,
                   style: { padding: '4px 6px', textAlign: 'center', fontWeight: 600,
-                    fontSize: 10, color: 'var(--gray-500)', width: LARGEUR_SOUS_COLONNE,
-                    whiteSpace: 'nowrap',
+                    fontSize: 10, color: 'var(--gray-500)',
+                    width: largeursFixes ? LARGEUR_SOUS_COLONNE : undefined,
+                    minWidth: largeursFixes ? undefined : 70, whiteSpace: 'nowrap',
                     borderLeft: i === 0 ? traitParcelle : 'none',
                     borderRight: borderSousColonne(i) },
                 },

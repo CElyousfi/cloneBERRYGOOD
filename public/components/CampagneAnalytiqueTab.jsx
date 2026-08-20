@@ -2111,6 +2111,11 @@
               // Totaux dans les bandeaux de section : même arbitrage de largeur
               // que la colonne Total et que la colonne « Budget idéal ».
               chiffresGroupe: enPlein,
+              // Deux grilles empilées par culture (hors récolte / récolte) :
+              // sans largeurs déterministes, chacune se dimensionne sur SON
+              // contenu et les colonnes ne tombent plus en face. Vrai dans
+              // toutes les vues, y compris en Coût DH où il n'y a qu'une série.
+              largeursFixes: true,
               showTotal: enPlein && metricsAffichees.length > 1,
               parcelleLabel: function (k) { return sbNom(k, sbMap); },
               onCellClick: function (c) {
