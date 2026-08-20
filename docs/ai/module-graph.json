@@ -35,7 +35,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 18,
+        "commits": 19,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:f196e461ec6938ac",
+    "sourceFingerprint": "sha256:fc25cd09be66a6c9",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
