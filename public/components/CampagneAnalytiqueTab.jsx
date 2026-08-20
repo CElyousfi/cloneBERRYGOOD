@@ -1821,14 +1821,14 @@
 
       var cles = (parcellesGrille || []).map(function (p) { return p[0]; });
       var kg = CP.kgParParcelle({ bons: props.bons, blocIds: blocIdsRef(), cles: cles, debut: debut });
-      // Total de la culture : maille NATIVE des bons (désignations déclarées
-      // dans le référentiel des blocs), la seule qui soit renseignée tant que
-      // les bons ne portent pas leur parcelle.
-      var blocsCulture = (window.PARCELLES_CULTURALES || []).filter(function (pc) {
-        return pc && pc.culture === culture;
-      });
-      var aggCulture = CP.agregeBlocs({ bons: props.bons, blocs: blocsCulture, debut: debut });
-      var kgCulture = aggCulture.lignes.reduce(function (s, l) { return s + l.kg; }, 0);
+      // Total de la culture = somme des kilos RATTACHÉS à ses parcelles. Surtout
+      // pas un total pris dans un autre référentiel (les blocs de production
+      // portent encore le découpage de la campagne précédente) : la colonne
+      // TOTAL doit être la somme des colonnes qu'elle coiffe, sinon elle les
+      // contredit.
+      var kgCulture = Object.keys(kg.parParcelle).reduce(function (s, c) {
+        return s + kg.parParcelle[c];
+      }, 0);
 
       var jhParParcelle = {};
       (rowsRecolte || []).forEach(function (row) {
@@ -2093,21 +2093,6 @@
                   + '(le « % consommé » global tombait à quelques pour cent). Le TOTAL '
                   + 'du tableau ci-dessus est donc le total HORS récolte.',
               })) : null,
-              // ── PRODUCTION (KG) ─────────────────────────────────────────
-              // Sous les deux grilles, à la même largeur : les kilos et la
-              // vitesse de récolte (kg/JH, kg/DH) qui les relie à l'effort
-              // pointé juste au-dessus. Composant séparé, avec ses propres
-              // hooks : PivotView ne peut pas en accueillir (l'ordre de ses
-              // useState est load-bearing, cf. commentaire en tête).
-              // Garde anti-crash sur le global (mémoire « tab bare global ref »).
-              (enPlein && window.CampagneProductionBloc)
-                ? React.createElement(window.CampagneProductionBloc, {
-                  culture: g.culture,
-                  color: g.color,
-                  rowsRecolte: partition.recolte,
-                  campagne: data.campagne,
-                })
-                : null
             );
           })
     );

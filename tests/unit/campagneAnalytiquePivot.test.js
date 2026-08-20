@@ -1030,3 +1030,15 @@ test('cadence — aucun bon : le pied du bloc récolte reste seul', () => {
   assert.strictEqual(
     walk(section(sansProd, 'tfoot')).filter((n) => n.type === 'tr').length, 1);
 });
+
+test('récolte — son bloc est là AUSSI hors plein écran et en Coût DH', () => {
+  // Sortir la récolte change le sens du TOTAL (il devient le total HORS
+  // récolte) : ce sens ne peut dépendre ni du bouton plein écran, ni de la
+  // bascule JH / Coût DH.
+  [{}, { metric: 'cout' }].forEach((props) => {
+    const grilles = tables(render(props));
+    assert.strictEqual(grilles.length, 3, JSON.stringify(props));
+    assert.match(textOf(grilles[1]), /Récolte/);
+    assert.strictEqual(cells(footRow(grilles[1]))[0], 'TOTAL RÉCOLTE');
+  });
+});

@@ -2,9 +2,9 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:8b2a5dc4d2340078",
+    "sourceFingerprint": "sha256:e12a217e4658dfda",
     "stats": {
-      "targetFiles": 224,
+      "targetFiles": 222,
       "targetFilesWithDirectTests": 136,
       "targetFilesWithTransitiveTests": 157,
       "testFilesScanned": 189
@@ -1325,14 +1325,6 @@
       "transitiveTests": []
     },
     "public/components/CampagneBudgetTab.jsx": {
-      "directTests": [],
-      "transitiveTests": []
-    },
-    "public/components/CampagneProductionBloc.js": {
-      "directTests": [],
-      "transitiveTests": []
-    },
-    "public/components/CampagneProductionBloc.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
