@@ -937,16 +937,28 @@ const _moTotaux=registryReady?_CMO.netParCategorie({paie:window.PaieUtils,rows:_
 // part. La part salariale (CNSS 4,48 % + AMO 2,26 %) est bien un
 // coût d'entreprise — l'ouvrier est payé sur le brut, sans retenue,
 // donc ce que la loi prélèverait, la société le verse en plus.
-const _chargesSociales=registryReady?_CMO.chargesSociales({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey,// Les HS sont DANS l'assiette : le module les remonte au brut
+// Jours fériés par ouvrier, pour la quinzaine et le périmètre affichés.
+// On ne garde que le NOMBRE de jours : leur valorisation vient
+// désormais du barème Smart Berry, plus du coût moyen BEE ONE.
+const _feriesParOuvrier=(()=>{const acc={};(transportExtras.jourFerieDetail||[]).forEach(w=>{if(!w||w.periode!==currentPeriode)return;if(farmFilter&&w.ferme!==farmFilter)return;const k=numKey(w.matricule);if(!k)return;acc[k]=(acc[k]||0)+(Number(w.jh)||0);});return acc;})();const _chargesSociales=registryReady?_CMO.chargesSociales({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey,// Les HS sont DANS l'assiette : le module les remonte au brut
 // avant d'appliquer les taux.
-heuresSupNet:hsMontants}):null;// Total des heures sup accordées sur la quinzaine, restreint aux
+heuresSupNet:hsMontants,feriesParOuvrier:_feriesParOuvrier}):null;// Total des heures sup accordées sur la quinzaine, restreint aux
 // ouvriers qui y ont POINTÉ : une saisie laissée sur un ouvrier
 // absent ne doit pas gonfler le total de la quinzaine.
 const _hsTotal=(()=>{if(!_CMO||!_chargesSociales)return 0;return _chargesSociales.detail.reduce((s,w)=>s+(w.heuresSup||0),0);})();// Traitement (10 DH/ouvrier-jour)
 const traitRows=transportRows.filter(r=>(r.operationFamille||'').toLowerCase().includes('traitement'));const traitWD=new Set();traitRows.forEach(r=>traitWD.add(r.matricule+'|'+r.jour));const totalTraitement=traitWD.size*10;// Conditionnement (10 DH/ouvrier-jour)
 const condDetailQ=(transportExtras.conditionnementDetail||[]).filter(w=>w.periode===currentPeriode&&(!farmFilter||w.ferme===farmFilter));const totalConditionnement=condDetailQ.reduce((s,w)=>s+w.jh,0)*10;// Chargement (configurable DH/jour)
-const chargDetailQ=(transportExtras.chargementDetail||[]).filter(w=>w.periode===currentPeriode&&(!farmFilter||w.ferme===farmFilter));const totalChargement=chargDetailQ.reduce((s,w)=>s+w.jh,0)*(data.primesConfig?.primeChargement?.coutParJour||10);// Jour Férié
-const ferieDetailQ=(transportExtras.jourFerieDetail||[]).filter(w=>w.periode===currentPeriode&&(!farmFilter||w.ferme===farmFilter));const totalJourFerie=Math.round(ferieDetailQ.reduce((s,w)=>s+(w.cout||0),0));const totalAutresPrimes=totalTraitement+totalConditionnement+totalChargement+totalJourFerie;const totalDivers=diversData?diversData.total:0;// COÛT EMPLOYEUR = les 7 postes. Il remplace l'ancien `totalGlobal`,
+const chargDetailQ=(transportExtras.chargementDetail||[]).filter(w=>w.periode===currentPeriode&&(!farmFilter||w.ferme===farmFilter));const totalChargement=chargDetailQ.reduce((s,w)=>s+w.jh,0)*(data.primesConfig?.primeChargement?.coutParJour||10);// Jour Férié — coût MARGINAL calculé par le modèle Smart Berry :
+// SMAG + prime de fonction + effet sur l'ancienneté, exactement ce
+// que le bulletin verse pour ces journées.
+//
+// Remplace `w.cout`, le coût journalier moyen BEE ONE. Celui-ci
+// donnait 110,6 DH par jour férié là où le bulletin en donne 90,9,
+// TOUT EN PERDANT la prime de fonction et l'ancienneté de ces
+// journées : deux erreurs de sens contraire dont la somme paraissait
+// juste. C'était le dernier endroit où de l'argent BEE ONE entrait
+// dans le calcul de la quinzaine.
+const ferieDetailQ=(transportExtras.jourFerieDetail||[]).filter(w=>w.periode===currentPeriode&&(!farmFilter||w.ferme===farmFilter));const totalJourFerie=_chargesSociales?Math.round(_chargesSociales.detail.reduce((s,w)=>s+(w.feries||0),0)):0;const totalAutresPrimes=totalTraitement+totalConditionnement+totalChargement+totalJourFerie;const totalDivers=diversData?diversData.total:0;// COÛT EMPLOYEUR = les 7 postes. Il remplace l'ancien `totalGlobal`,
 // qui partait de `totalCout` — le coût BEE ONE — alors que les
 // tuiles MO affichaient, elles, le modèle Smart Berry. L'en-tête et
 // les cartes ne parlaient donc pas du même argent : sur la
