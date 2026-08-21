@@ -166,3 +166,21 @@ test('coutCharge — aucun taux fourni : zéro partout, et rien ne casse', () =>
   // qui mesure ce que la grille ne rattache à aucune parcelle.
   assert.ok(Object.prototype.hasOwnProperty.call(rows[0], 'cout'));
 });
+
+test('PORTÉE — `tauxParOuvrier` est déclaré DANS computeCampagneAnalytiqueDetail', () => {
+  // Le bloc d'agrégation est exécuté ici dans un bac à sable où la variable est
+  // fournie : aucun test de comportement ne peut donc voir une erreur de PORTÉE.
+  // Elle s'est produite — la déclaration avait atterri dans la fonction voisine
+  // (`computeCampagneCoutOuvrier`, qui contient elle aussi un
+  // `const meta = await getPointageMeta();`, sur lequel la réécriture s'était
+  // ancrée). Résultat : « tauxParOuvrier is not defined » sur l'onglet Campagne,
+  // en production, sans qu'aucun test ne bronche.
+  //
+  // Ce contrôle est STATIQUE à dessein : il lit la source de la fonction.
+  assert.match(BLOCK, /let tauxParOuvrier = \{\};/,
+    'la déclaration doit vivre dans computeCampagneAnalytiqueDetail, pas ailleurs');
+  const iDecl = BLOCK.indexOf('let tauxParOuvrier');
+  const iUsage = BLOCK.indexOf('tauxParOuvrier[');
+  assert.ok(iUsage > iDecl && iDecl !== -1,
+    'la déclaration doit précéder l\'usage dans la même fonction');
+});
