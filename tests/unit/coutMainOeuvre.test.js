@@ -231,3 +231,24 @@ test('modèle absent — zéro, jamais un coût inventé', () => {
   const p = CMO.paieOuvrier({ paie: null, fiche: DECLARE, jours: 15, baremes: BAREMES });
   assert.strictEqual(p.coutEmployeur, 0);
 });
+
+test('« Caporal hors Récolte » est du HORS récolte, malgré le mot « Récolte »', () => {
+  // Le libellé contient la chose qu'il nie. Une recherche naïve du mot le
+  // rangeait dans la récolte : sans effet tant que les lignes de récolte
+  // étaient jetées, faux dès qu'on les rétablit — 5 caporaux et 3 463 DH
+  // apparus dans la mauvaise tuile.
+  assert.strictEqual(CMO.categorieMO('Caporal hors Récolte'), 'horsRecolte');
+  assert.strictEqual(CMO.categorieMO('Caporal hors recolte'), 'horsRecolte');
+  assert.strictEqual(CMO.categorieMO('CAPORAL HORS RÉCOLTE'), 'horsRecolte');
+  // Et le caporal DE récolte, lui, reste en récolte : la négation ne doit pas
+  // avaler le cas nominal.
+  assert.strictEqual(CMO.categorieMO('Caporal Récolte'), 'recolte');
+  // « hors » comme mot entier, pas comme fragment : « horsain », « dehors »…
+  assert.strictEqual(CMO.categorieMO('Récolte dehors'), 'recolte');
+});
+
+test('accents — « Recolte » sans accent est reconnu comme « Récolte »', () => {
+  // BEE ONE écrit les deux. Deux orthographes qui tombent dans deux catégories
+  // différentes couperaient un total en deux sans rien lever.
+  assert.strictEqual(CMO.categorieMO('8. Recolte'), CMO.categorieMO('8. Récolte'));
+});

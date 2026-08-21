@@ -64,6 +64,12 @@
   /**
    * Catégorie MO d'une ligne de pointage, depuis sa famille d'opération. PURE.
    *
+   * ⚠️ « CAPORAL HORS RÉCOLTE » CONTIENT LE MOT « RÉCOLTE » et désigne
+   * exactement son contraire. Une recherche naïve du mot le range dans la
+   * récolte — c'est ce que faisait le code d'origine, sans conséquence visible
+   * tant que les lignes de récolte étaient jetées, et faux dès qu'on les
+   * rétablit. La négation se teste donc AVANT le mot qu'elle nie.
+   *
    * Défaut « horsRecolte » et non « inconnu » : une famille vide ou non
    * reconnue est du travail réel, qui doit peser quelque part. Le ranger dans
    * une catégorie fantôme le ferait disparaître du total.
@@ -72,8 +78,13 @@
    * @returns {'recolte'|'horsRecolte'|'postes'}
    */
   function categorieMO(operationFamille) {
-    var l = String(operationFamille || '').toLowerCase();
-    if (l.indexOf('récolte') >= 0 || l.indexOf('recolte') >= 0) return 'recolte';
+    // Accents retirés : BEE ONE écrit aussi bien « Récolte » que « Recolte ».
+    var l = String(operationFamille || '').toLowerCase()
+      .replace(/[éèêë]/g, 'e').replace(/[àâä]/g, 'a').replace(/[ùûü]/g, 'u')
+      .replace(/[ôö]/g, 'o').replace(/[îï]/g, 'i').replace(/ç/g, 'c');
+    var parleDeRecolte = l.indexOf('recolte') >= 0;
+    if (parleDeRecolte && /\bhors\b/.test(l)) return 'horsRecolte';
+    if (parleDeRecolte) return 'recolte';
     if (l.indexOf('poste') >= 0) return 'postes';
     return 'horsRecolte';
   }
@@ -247,9 +258,14 @@
    * `nbNonDeclares` est rendu pour que l'écran puisse le dire plutôt que de
    * laisser croire à des charges anormalement basses.
    *
+   * `detail` porte la LIGNE PAR OUVRIER, y compris les non déclarés (à zéro) :
+   * c'est ce qui permet à la pop-up de montrer POURQUOI le total est ce qu'il
+   * est. Un agrégat sans son détail se conteste sans pouvoir se vérifier.
+   *
    * @param {Object} args {rows, registre, baremes, paie, cleRegistre?}
    * @returns {{salariales: number, patronales: number, total: number,
-   *   brutDeclare: number, nbDeclares: number, nbNonDeclares: number}}
+   *   brutDeclare: number, nbDeclares: number, nbNonDeclares: number,
+   *   detail: Array<Object>}}
    */
   function chargesSociales(args) {
     var a = args || {};
@@ -257,23 +273,44 @@
     var cle = typeof a.cleRegistre === 'function' ? a.cleRegistre : function (m) { return m; };
     var parOuvrier = joursParOuvrier(a.rows);
     var out = { salariales: 0, patronales: 0, total: 0, brutDeclare: 0,
-      nbDeclares: 0, nbNonDeclares: 0 };
+      nbDeclares: 0, nbNonDeclares: 0, detail: [] };
 
     Object.keys(parOuvrier).forEach(function (mat) {
       var e = parOuvrier[mat];
       var fiche = registre[cle(mat)] || {};
-      if (!fiche.declare) { out.nbNonDeclares++; return; }
-      out.nbDeclares++;
+      var declare = !!fiche.declare;
+      var ligne = { matricule: mat, declare: declare, jours: 0, brut: 0, net: 0,
+        salariales: 0, patronales: 0, coutEmployeur: 0 };
+
       CATEGORIES.forEach(function (cat) {
         var j = nbJours(e, cat);
         if (j <= 0) return;
         var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: j,
           baremes: a.baremes, dateISO: e.premierJour });
-        out.brutDeclare += p.brut;
-        out.salariales += p.cotisationsSalariales;
-        out.patronales += p.chargesPatronales;
+        ligne.jours += j;
+        ligne.brut += p.brut;
+        ligne.net += p.net;
+        ligne.salariales += p.cotisationsSalariales;
+        ligne.patronales += p.chargesPatronales;
+        ligne.coutEmployeur += p.coutEmployeur;
       });
+
+      // Un non déclaré figure au détail AVEC ses jours et son brut, à charges
+      // nulles. L'omettre ferait lire la liste comme l'effectif de la
+      // quinzaine, alors qu'elle n'en montrerait qu'une fraction.
+      out.detail.push(ligne);
+      if (declare) {
+        out.nbDeclares++;
+        out.brutDeclare += ligne.brut;
+        out.salariales += ligne.salariales;
+        out.patronales += ligne.patronales;
+      } else {
+        out.nbNonDeclares++;
+      }
     });
+
+    // Les plus lourds d'abord : c'est l'ordre dans lequel on vérifie un total.
+    out.detail.sort(function (x, y) { return y.coutEmployeur - x.coutEmployeur; });
     out.total = out.salariales + out.patronales;
     return out;
   }

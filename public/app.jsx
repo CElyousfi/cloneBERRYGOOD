@@ -11645,13 +11645,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const totalPrimeRecolte = qRecolteRows.reduce((s, r) => s + calcPrime(r.kg || 0, r.variete, r.jour), 0);
 
             // Classification MO (mirrors backend classifyType)
-            const classifyMO = (opFam) => {
-                if (!opFam) return 'horsRecolte';
-                const lower = opFam.toLowerCase();
-                if (lower.includes('récolte') || lower.includes('recolte')) return 'recolte';
-                if (lower.includes('poste')) return 'postes';
-                return 'horsRecolte';
-            };
+            // MÊME règle que les totaux : la classification vit dans le module.
+            // Deux classifications, c'est une pop-up qui contredit sa tuile —
+            // et c'est comme ça que « Caporal hors Récolte » s'est retrouvé
+            // compté en récolte.
+            const classifyMO = (opFam) => (window.CoutMainOeuvre
+                ? window.CoutMainOeuvre.categorieMO(opFam)
+                : 'horsRecolte');
             // Lignes de RÉCOLTE. Ce tableau était vide EN DUR, au motif que ces
             // ouvriers seraient « comptés dans la carte Récolte » — or aucune
             // carte de ce bloc ne porte leur SALAIRE : « Prime Récolte » n'est
@@ -11799,12 +11799,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     { label: 'Jour Férié', montant: totalJourFerie },
                   ]
                 },
-                // Pas de `popupKey` : le détail est DÉJÀ sur la carte (les deux
-                // sous-lignes) et développé dans le panneau « Charges Sociales
-                // MO » plus bas. Une clé sans pop-up correspondante rendrait la
-                // carte cliquable pour ne rien ouvrir.
                 { label: 'Charges Sociales', icon: 'fa-building-columns', color: '#3949ab',
                   montant: _sbPending ? null : (_chargesSociales ? _chargesSociales.total : null),
+                  popupKey: 'charges_sociales',
                   subItems: _chargesSociales ? [
                     { label: 'Charges Salariales', montant: _chargesSociales.salariales },
                     { label: 'Charges Patronales', montant: _chargesSociales.patronales },
@@ -11948,6 +11945,95 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         devenue la tuile « Charges Sociales », à deux lignes et
                         DANS le total — un coût employeur affiché à côté du total
                         sans y entrer laissait chacun faire l'addition de tête. */}
+
+                    {quinzPopupKey === 'charges_sociales' && (() => {
+                        // Le détail par OUVRIER, non déclarés compris (à charges
+                        // nulles) : sans eux, la liste se lirait comme l'effectif
+                        // de la quinzaine alors qu'elle n'en montre qu'une part —
+                        // et des charges basses passeraient pour une anomalie de
+                        // calcul au lieu de ce qu'elles sont.
+                        const _csDetail = _chargesSociales ? _chargesSociales.detail : [];
+                        const _csNom = (mat) => {
+                            const reg = quinzRegistry[numKey(mat)] || {};
+                            return ((reg.prenom || '') + ' ' + (reg.nom || '')).trim() || mat;
+                        };
+                        const _csTh = {padding:'8px 10px',textAlign:'right',fontSize:11,color:'var(--gray-500)',fontWeight:600,borderBottom:'1px solid var(--gray-200)'};
+                        const _csThL = {..._csTh, textAlign:'left'};
+                        const _csTd = {padding:'6px 10px',textAlign:'right',fontSize:12};
+                        const _csTdL = {..._csTd, textAlign:'left', fontWeight:500};
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzPopupKey(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:1000,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:'linear-gradient(135deg, #3949ab 0%, #5c6bc0 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className="fa-solid fa-building-columns" style={{marginRight:8}}></i>Charges Sociales — {currentPeriode}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>
+                                                {_chargesSociales ? _chargesSociales.nbDeclares : 0} déclaré{(_chargesSociales && _chargesSociales.nbDeclares !== 1) ? 's' : ''} sur {_csDetail.length} ouvrier{_csDetail.length !== 1 ? 's' : ''}
+                                                {' — '}{Math.round(_chargesSociales ? _chargesSociales.total : 0).toLocaleString('fr-FR')} DH
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        {_csDetail.length === 0 ? (
+                                            <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>Registre de paie non chargé — aucun détail à afficher.</div>
+                                        ) : (
+                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                            <thead>
+                                                <tr>
+                                                    <th style={_csThL}>Ouvrier</th>
+                                                    <th style={_csThL}>Statut</th>
+                                                    <th style={_csTh}>Jours</th>
+                                                    <th style={_csTh}>Brut</th>
+                                                    <th style={_csTh} title="CNSS 4,48 % + AMO 2,26 % du brut. Coût d'entreprise : l'ouvrier est payé sur le brut, sans retenue.">Salariales</th>
+                                                    <th style={_csTh} title="19,26 % du brut.">Patronales</th>
+                                                    <th style={_csTh}>Coût employeur</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {_csDetail.map((w, i) => (
+                                                    <tr key={w.matricule} style={{background: i % 2 ? '#f8f9fc' : '#fff', borderBottom:'1px solid var(--gray-100)'}}>
+                                                        <td style={_csTdL}>{_csNom(w.matricule)}<span style={{color:'var(--gray-400)',fontSize:10,marginLeft:6}}>{w.matricule}</span></td>
+                                                        <td style={{..._csTdL, fontWeight:400}}>
+                                                            <span style={{background: w.declare ? 'var(--green-pale)' : 'var(--gray-100)', color: w.declare ? 'var(--green)' : 'var(--gray-500)', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:700}}>
+                                                                {w.declare ? 'Déclaré' : 'Non déclaré'}
+                                                            </span>
+                                                        </td>
+                                                        <td style={_csTd}>{w.jours}</td>
+                                                        <td style={_csTd}>{Math.round(w.brut).toLocaleString('fr-FR')}</td>
+                                                        <td style={{..._csTd, color:'#3949ab'}}>{w.salariales > 0 ? Math.round(w.salariales).toLocaleString('fr-FR') : '—'}</td>
+                                                        <td style={{..._csTd, color:'#3949ab'}}>{w.patronales > 0 ? Math.round(w.patronales).toLocaleString('fr-FR') : '—'}</td>
+                                                        <td style={{..._csTd, fontWeight:700}}>{Math.round(w.coutEmployeur).toLocaleString('fr-FR')}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'#eef0ff',fontWeight:700}}>
+                                                    <td style={_csTdL} colSpan={2}>TOTAL</td>
+                                                    <td style={_csTd}>{_csDetail.reduce((s, w) => s + w.jours, 0)}</td>
+                                                    <td style={_csTd}>{Math.round(_csDetail.reduce((s, w) => s + w.brut, 0)).toLocaleString('fr-FR')}</td>
+                                                    <td style={{..._csTd, color:'#3949ab'}}>{Math.round(_chargesSociales.salariales).toLocaleString('fr-FR')}</td>
+                                                    <td style={{..._csTd, color:'#3949ab'}}>{Math.round(_chargesSociales.patronales).toLocaleString('fr-FR')}</td>
+                                                    <td style={_csTd}>{Math.round(_csDetail.reduce((s, w) => s + w.coutEmployeur, 0)).toLocaleString('fr-FR')}</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        )}
+                                        <div style={{marginTop:12,fontSize:10.5,color:'var(--gray-500)'}}>
+                                            <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                            Un ouvrier NON déclaré n'appelle ni cotisation salariale ni charge patronale :
+                                            son brut EST son coût. C'est le modèle, pas un oubli — et c'est ce qui explique
+                                            des charges basses au regard de la masse salariale.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {quinzPopupKey === 'location_engins' && (() => {
                         const _divRows = diversData ? diversData.rows : [];
