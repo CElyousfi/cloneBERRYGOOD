@@ -560,6 +560,32 @@
         // Consommé par public/components/CampagneAnalytiqueTab.jsx (hors scope d'app.jsx).
         window.sbParcelleNom = sbParcelleNom;
 
+        // ===== IDENTITÉ OUVRIER — nom affichable =====
+        // BEE ONE stocke l'identité COMPLÈTE dans `Nom` (« BELAIDI ISMAIL ») et
+        // répète le prénom dans `Prenom` (« ISMAIL »). Concaténer les deux donne
+        // « ISMAIL BELAIDI ISMAIL ». Le défaut est resté invisible tant que le
+        // registre n'avait aucun prénom ; la synchronisation BEE ONE du
+        // 2026-08-21 l'a rendu visible partout d'un coup.
+        //
+        // Règle : si le nom porte DÉJÀ le prénom (comparaison sur les mots, sans
+        // casse ni accents), on rend le nom seul. Sinon on préfixe — certains
+        // ouvriers ont un prénom d'état civil absent du nom (TAITI AYOUB /
+        // LARBI), et le perdre serait pire que le répéter.
+        function nomOuvrier(prenom, nom, secours) {
+            const _mots = (s) => String(s || '')
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
+            const p = String(prenom || '').trim();
+            const n = String(nom || '').trim();
+            if (!p) return n || String(secours || '').trim();
+            if (!n) return p;
+            const motsNom = _mots(n);
+            const dejaDedans = _mots(p).every(m => motsNom.indexOf(m) >= 0);
+            return dejaDedans ? n : (p + ' ' + n);
+        }
+        // Consommé par les pop-ups Quinzaine et l'écran Paie (hors scope d'app.jsx).
+        window.nomOuvrier = nomOuvrier;
+
         const NAV_ITEMS_RH = [
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-gauge-high' },
             { id: 'quinzaine', label: 'Quinzaine', icon: 'fa-calendar-days' },
@@ -12175,7 +12201,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             .sort((a, b) => b.montant - a.montant || b.minutes - a.minutes);
                         const _hsNom = (mat) => {
                             const reg = quinzRegistry[numKey(mat)] || {};
-                            return ((reg.prenom || '') + ' ' + (reg.nom || '')).trim() || mat;
+                            return window.nomOuvrier(reg.prenom, reg.nom, mat) || mat;
                         };
                         const _hsDuree = (min) => min <= 0 ? '—'
                             : (Math.floor(min / 60) + 'h' + String(min % 60).padStart(2, '0'));
@@ -12276,7 +12302,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         const _csDetail = _chargesSociales ? _chargesSociales.detail : [];
                         const _csNom = (mat) => {
                             const reg = quinzRegistry[numKey(mat)] || {};
-                            return ((reg.prenom || '') + ' ' + (reg.nom || '')).trim() || mat;
+                            return window.nomOuvrier(reg.prenom, reg.nom, mat) || mat;
                         };
                         const _csTh = {padding:'8px 10px',textAlign:'right',fontSize:11,color:'var(--gray-500)',fontWeight:600,borderBottom:'1px solid var(--gray-200)'};
                         const _csThL = {..._csTh, textAlign:'left'};
@@ -12524,7 +12550,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             const mat = r.matricule;
                             if (!_qpWMap[mat]) {
                                 const _qpReg = quinzRegistry[numKey(mat)] || {};
-                                const _qpNom = ((_qpReg.prenom || '') + ' ' + (_qpReg.nom || r.nom || mat)).trim() || mat;
+                                const _qpNom = window.nomOuvrier(_qpReg.prenom, _qpReg.nom || r.nom, mat) || mat;
                                 _qpWMap[mat] = {
                                     matricule: mat, nom: _qpNom, ferme: r.ferme || '—',
                                     jours: new Set(), operations: new Set(), parcelles: new Set(),
@@ -13400,7 +13426,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             if (!_wDetailMap[_key]) {
                                 const _prefix = getEqPrefix(r.matricule) || 'NV';
                                 const _reg = quinzRegistry[_key] || {};
-                                const _nom = ((_reg.prenom || '') + ' ' + (_reg.nom || '')).trim() || r.nom || r.matricule;
+                                const _nom = window.nomOuvrier(_reg.prenom, _reg.nom, r.nom || r.matricule);
                                 _wDetailMap[_key] = {
                                     matricule: r.matricule,
                                     nom: _nom,
@@ -13688,7 +13714,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             const ancienneteTotal = Math.round(brutAvantAnc * ancTaux);
                             return {
                                 matricule: mat,
-                                nom: (reg.prenom || reg.nom) ? ((reg.prenom || '') + ' ' + (reg.nom || '')).trim() || _wMap[mat].nom : _wMap[mat].nom,
+                                nom: window.nomOuvrier(reg.prenom, reg.nom, _wMap[mat].nom) || _wMap[mat].nom,
                                 equipe: prefixToName[eqPrefix] || eqPrefix || '—',
                                 journees: jh,
                                 declare: isDecl,
