@@ -4046,7 +4046,11 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
               };
               const chargement = parMat(cc.chargementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
               const conditionnement = parMat(cc.conditionnementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
-              const feries = parMat(cc.jourFerieDetail, (w) => w.cout || 0);
+              // Jours fériés en NOMBRE de jours (`jh`), plus en dirhams : leur
+              // valorisation vient désormais du barème Smart Berry. `w.cout`
+              // était le coût journalier moyen BEE ONE — dernier filet d'argent
+              // BEE ONE dans le coût de campagne (corrigé le 2026-08-21).
+              const feriesJours = parMat(cc.jourFerieDetail, (w) => w.jh || 0);
 
               Object.keys(parOuvrier).forEach((m) => {
                 tousMatricules.add(m);
@@ -4054,15 +4058,25 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
                   traitement: (joursTraitement[m] ? joursTraitement[m].size : 0) * PRIME_JOUR_DH,
                   chargement: chargement[m] || 0,
                   conditionnement: conditionnement[m] || 0,
-                  feries: feries[m] || 0,
                   recolte: 0, // renseigné plus bas, depuis les kilos cueillis
                 };
+                parOuvrier[m].feriesJours = feriesJours[m] || 0;
               });
+
+              // HEURES SUP ACCORDÉES de la quinzaine (rh_heures_sup). Absentes,
+              // le coût est simplement calculé sans elles — jamais une erreur :
+              // une quinzaine sans heures sup est le cas courant.
+              let heuresSupNet = {};
+              try {
+                const hsSnap = await db_firestore.collection('rh_heures_sup').doc(q.periode).get();
+                if (hsSnap.exists) heuresSupNet = (hsSnap.data() || {}).montants || {};
+              } catch (e) { heuresSupNet = {}; }
 
               quinzaines.push({
                 periode: q.periode,
                 dateFin: q.dates[q.dates.length - 1],
                 parOuvrier,
+                heuresSupNet,
               });
             }
 

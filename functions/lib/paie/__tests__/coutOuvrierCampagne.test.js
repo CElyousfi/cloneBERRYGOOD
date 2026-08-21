@@ -176,12 +176,12 @@ test('transport — un ouvrier hors équipe listée n\'en porte aucune', () => {
   assert.strictEqual(out.detail.transport, 0);
 });
 
-test('primes de terrain — récolte, traitement, conditionnement, chargement, fériés', () => {
+test('primes de terrain — récolte, traitement, conditionnement, chargement', () => {
   const out = campagne({
     registre: { AB1: { declare: true } },
     quinzaines: [quinzaine('Q01', '2026-07-15', {
       AB1: ouvrier(['2026-07-01'], {
-        primes: { recolte: 90, traitement: 10, conditionnement: 10, chargement: 10, feries: 97.44 },
+        primes: { recolte: 90, traitement: 10, conditionnement: 10, chargement: 10 },
       }),
     })],
   });
@@ -189,13 +189,53 @@ test('primes de terrain — récolte, traitement, conditionnement, chargement, f
   assert.strictEqual(out.detail.traitement, 10);
   assert.strictEqual(out.detail.conditionnement, 10);
   assert.strictEqual(out.detail.chargement, 10);
-  assert.strictEqual(out.detail.feries, 97.44);
-  // Le férié entre dans l'ASSIETTE (c'est du salaire), les autres non :
-  // charges = (97,44 base + 97,44 férié) × 19,26 %.
+  // Ces primes-là sont HORS assiette : les charges ne portent que sur le salaire.
+  assert.strictEqual(Math.round(out.detail.chargesPatronales * 100) / 100,
+    Math.round((97.44 * 0.1926) * 100) / 100);
+});
+
+test('jour férié — compté en JOURS, valorisé par le barème, DANS l\'assiette', () => {
+  // ARBITRAGE 2026-08-21 : le férié ne vaut plus le coût journalier moyen
+  // BEE ONE (110,6 DH) mais ce que le barème lui donne (SMAG + prime de
+  // fonction + effet ancienneté), calculé par différence. C'était le dernier
+  // endroit où de l'argent BEE ONE entrait dans le coût de campagne.
+  const out = campagne({
+    registre: { AB1: { declare: true } },
+    quinzaines: [quinzaine('Q01', '2026-07-15', {
+      AB1: ouvrier(['2026-07-01'], { feriesJours: 1 }),
+    })],
+  });
+  // Un ouvrier sans prime de fonction : le férié vaut exactement un SMAG.
+  assert.strictEqual(Math.round(out.detail.feries * 100) / 100, 97.44);
+  // Et il entre dans l'assiette : charges sur (base + férié).
   assert.strictEqual(Math.round(out.detail.chargesPatronales * 100) / 100,
     Math.round((97.44 * 2 * 0.1926) * 100) / 100);
   assert.strictEqual(Math.round(out.detail.cotisationsSalariales * 100) / 100,
     Math.round((97.44 * 2 * 0.0674) * 100) / 100);
+});
+
+test('taux PAR OUVRIER — la grille Campagne valorise au coût de CHAQUE ouvrier', () => {
+  // C'est ce que le lot 2 consomme : sans lui, chaque ligne de la grille était
+  // valorisée à une moyenne d'établissement, et deux parcelles travaillées par
+  // des équipes de coûts différents ressortaient au même prix.
+  const out = campagne({
+    registre: { AB1: { declare: true }, ZZ9: { declare: false } },
+    quinzaines: [quinzaine('Q01', '2026-07-15', {
+      AB1: ouvrier(['2026-07-01', '2026-07-02']),
+      ZZ9: ouvrier(['2026-07-01']),
+    })],
+  });
+  const tauxDeclare = out.tauxParOuvrier['AB1|Q01'];
+  const tauxNonDeclare = out.tauxParOuvrier['ZZ9|Q01'];
+  assert.ok(tauxDeclare > 0 && tauxNonDeclare > 0);
+  // Déclarer coûte plus cher à JH égal : c'est tout l'intérêt d'un taux par
+  // ouvrier plutôt que d'une moyenne qui écrase la différence.
+  assert.ok(tauxDeclare > tauxNonDeclare,
+    'déclaré ' + tauxDeclare.toFixed(2) + ' vs non déclaré ' + tauxNonDeclare.toFixed(2));
+  // Le taux se recompose : taux × JH = ce que l'ouvrier coûte.
+  const q = out.parQuinzaine[0];
+  const somme = tauxDeclare * 2 + tauxNonDeclare * 1;
+  assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(q.coutTotal * 1e6) / 1e6);
 });
 
 test('coût — l\'ancienneté se CUMULE d\'une quinzaine à l\'autre', () => {
@@ -270,7 +310,7 @@ test('coût — le détail se recompose exactement dans le total', () => {
   // dans le brut (brut = net + part salariale), et l'entreprise la reverse à la
   // CNSS. L'additionner la comptait deux fois — correction du 2026-08-21.
   const somme = d.salaire + d.primeFonction + d.primeAnciennete + d.heuresSup
-    + d.feries + d.chargesPatronales - d.retenueNonDeclares
+    + d.feries + d.heuresSupAccordees + d.chargesPatronales - d.retenueNonDeclares
     + d.transport + d.recolte + d.traitement + d.conditionnement + d.chargement;
   assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(out.coutTotal * 1e6) / 1e6);
 });
