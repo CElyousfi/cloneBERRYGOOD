@@ -37,12 +37,12 @@
   function MagBdcReceptionTab({ currentProfile, profileData }) {
     // Magasins dérivés de la config stock (get-locations) — source unique, plus de hardcode.
     const MAGASINS = window.useStockLocations().magasins;
-    // Réconcilie la config stock avec la ferme du BDC : une ferme non déclarée
-    // (ex. BAHIA) doit rester sélectionnable, sinon le select contrôlé se
-    // désynchronise silencieusement et le stock part au mauvais magasin.
+    // La destination d'une réception sur BDC est IMPOSÉE par la ferme du BDC
+    // (décision produit) : resolveBdcDestination tranche « imposé » vs « libre »
+    // (BDC mutualisé `ferme: 'Toutes'` ou sans ferme).
     // Pas de fallback si lib/stockDestinations.js manque : un échec visible vaut
     // mieux qu'une réception BAHIA imputée silencieusement à F1.
-    const resolveDest = window.StockDestinations.resolveDestinationOptions;
+    const resolveBdcDest = window.StockDestinations.resolveBdcDestination;
     const resolveReceptionDest = window.StockDestinations.resolveReceptionDestination;
     const [bdcList, setBdcList] = useState([]);
     const [receptions, setReceptions] = useState([]);
@@ -87,7 +87,7 @@
     const openBdcForBl = (bdc) => {
         if (bdc.delivery_status === 'complet') { alert('Ce BDC est déjà entièrement réceptionné.'); return; }
         setSelectedBdc(bdc);
-        setBlForm({ date_reception: new Date().toISOString().split('T')[0], numero_bl_fournisseur: '', magasin: resolveDest(MAGASINS, bdc.ferme).selected, items: [] });
+        setBlForm({ date_reception: new Date().toISOString().split('T')[0], numero_bl_fournisseur: '', magasin: resolveBdcDest(MAGASINS, bdc.ferme).magasin, items: [] });
         setBlFormError(null);
         setBlScanFile(null); setBlScanPreview(null);
         setShowForm(true);
@@ -151,10 +151,15 @@
         }
         let scanUrl = null;
         if (blScanFile) { scanUrl = await uploadScan(blScanFile); }
+        // Destination recalculée à la soumission : quand elle est imposée, c'est
+        // la ferme du BDC qui part au serveur, jamais un reliquat de state (la
+        // config stock peut être arrivée après l'ouverture du formulaire).
+        const destAtSubmit = resolveBdcDest(MAGASINS, selectedBdc.ferme);
+        const magasinFinal = destAtSubmit.locked ? destAtSubmit.magasin : blForm.magasin;
         fetch('/api/stock?action=create-bl', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 bdc_id: selectedBdc.id, date_reception: blForm.date_reception,
-                numero_bl_fournisseur: blForm.numero_bl_fournisseur, magasin: blForm.magasin, items: validItems,
+                numero_bl_fournisseur: blForm.numero_bl_fournisseur, magasin: magasinFinal, items: validItems,
                 scan_url: scanUrl,
                 created_by: { profileId: currentProfile, name: profileData?.name || currentProfile, userId: profileData?.userId || '' },
             }),
@@ -233,13 +238,32 @@
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>N° BL Fournisseur</label>
                                 <input value={blForm.numero_bl_fournisseur} onChange={e => setBlForm({...blForm, numero_bl_fournisseur: e.target.value})} placeholder="Réf BL" style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:13}} /></div>
                             {(() => {
-                                // Options = union { config stock } ∪ { ferme du BDC } ∪ { valeur
-                                // courante } : blForm.magasin correspond toujours à une <option>
-                                // rendue (y compris après la bascule fallback → vraie config de
-                                // useStockLocations), et basculer sur F1 ne retire pas l'option
-                                // BAHIA — sinon on ne peut plus y revenir sans rouvrir le BDC.
-                                // Le warning est déjà porté par la valeur SÉLECTIONNÉE.
-                                const dest = resolveReceptionDest(MAGASINS, selectedBdc.ferme, blForm.magasin);
+                                // Destination IMPOSÉE par la ferme du BDC (décision produit) :
+                                // un BDC BAHIA se réceptionne sur BAHIA, point. Champ en lecture
+                                // seule — pas un select désactivé, qui laisserait croire à un choix.
+                                const bdcDest = resolveBdcDest(MAGASINS, selectedBdc.ferme);
+                                if (bdcDest.locked) {
+                                    return (
+                            <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination</label>
+                                <div style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #e2e8f0',background:'#f8fafc',fontSize:13,display:'flex',alignItems:'center',gap:8}}>
+                                    <i className="fa-solid fa-lock" style={{fontSize:11,color:'var(--gray-400)'}}></i>
+                                    <span style={{fontWeight:700,color:'var(--berry)'}}>{bdcDest.magasin}</span>
+                                    <span style={{fontSize:11,color:'var(--gray-400)'}}>imposé par le BDC</span>
+                                </div>
+                                {bdcDest.note && (
+                                    <div style={{marginTop:4,fontSize:11,color:'var(--gray-400)',lineHeight:1.4}}>
+                                        <i className="fa-solid fa-circle-info" style={{marginRight:4}}></i>{bdcDest.note}
+                                    </div>
+                                )}
+                            </div>
+                                    );
+                                }
+                                // BDC mutualisé (`ferme: 'Toutes'`) ou sans ferme : rien à imposer,
+                                // le choix reste libre. Les options passent par
+                                // resolveReceptionDestination pour que blForm.magasin corresponde
+                                // toujours à une <option> rendue, y compris après la bascule
+                                // fallback → vraie config de useStockLocations.
+                                const dest = resolveReceptionDest(MAGASINS, '', blForm.magasin);
                                 const showWarning = !!dest.warning;
                                 return (
                             <div><label style={{fontSize:12,fontWeight:600,display:'block',marginBottom:4}}>Magasin destination</label>

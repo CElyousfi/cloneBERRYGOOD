@@ -35,7 +35,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 17,
+        "commits": 16,
         "file": "public/app.jsx"
       },
       {
@@ -51,7 +51,7 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 13,
+        "commits": 12,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:b5a12bbf60c6a40e",
+    "sourceFingerprint": "sha256:c84de0bdb25efeef",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -164,13 +164,6 @@
           "coCommits": 3,
           "domain": null,
           "file": "public/components/MagBdcReceptionTab.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/MagBonsCommandeTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },

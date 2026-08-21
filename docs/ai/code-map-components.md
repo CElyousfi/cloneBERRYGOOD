@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:07fa163a2f30e853 -->
+<!-- sourceFingerprint: sha256:4c9c6a1465f650ec -->
 # Code Map — Composants frontend (337)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -210,7 +210,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MagBCEngraisTab | public/components/MagBCTab.jsx:37 | — |
 | MagBCPhytoTab | public/components/MagBCTab.jsx:42 | — |
 | MagBCTab | public/components/MagBCTab.jsx:47 | mag_bc |
-| MagBdcReceptionTab | public/components/MagBdcReceptionTab.jsx:31 | mag_bdc_reception |
+| MagBdcReceptionTab | public/components/MagBdcReceptionTab.jsx:37 | mag_bdc_reception |
 | MagBonsCommandeTab | public/components/MagBonsCommandeTab.jsx:77 | mag_bdc_liste |
 | MagDashboardStockTab | public/app.jsx:33068 | mag_dashboard |
 | MagFicheStockTab | public/app.jsx:50612 | mag_fiche_stock |

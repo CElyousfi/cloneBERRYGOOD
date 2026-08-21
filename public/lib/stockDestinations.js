@@ -140,6 +140,52 @@ function resolveReceptionDestination(magasins, fermeBdc, valeurCourante) {
   };
 }
 
+/** Note informative (non actionnable) quand la ferme imposée n'est pas déclarée. */
+var SD_NOTE_HORS_CONFIG = 'Magasin non déclaré dans la configuration stock.';
+
+/** Ferme « fourre-tout » d'un BDC mutualisé multi-fermes : ce n'est pas un magasin. */
+var SD_FERME_MUTUALISEE = 'TOUTES';
+
+/**
+ * Destination d'une réception SUR BDC. Décision produit (Omar, 2026-08) : le
+ * magasin n'est plus un choix, il est IMPOSÉ par la ferme du BDC — « les BDC
+ * BAHIA doivent être réceptionnés sur le stock de BAHIA uniquement ». On ne
+ * prévient plus l'erreur, on la rend impossible.
+ *
+ * Seule exception : un BDC mutualisé (`ferme: 'Toutes'`, cf. la liste FARMS
+ * locale de l'écran BDC dans public/app.jsx) ou sans ferme n'a aucune ferme à
+ * imposer → le choix reste libre sur les magasins de la config.
+ *
+ * - `locked: true`  → `magasin` est la destination imposée, l'UI l'affiche en
+ *   lecture seule. `note` est informatif (pas une alerte actionnable) quand la
+ *   ferme n'est pas déclarée dans la config stock.
+ * - `locked: false` → l'UI rend un select libre ; `magasin` est la
+ *   présélection (1er magasin de la config).
+ *
+ * @param {string[]|null|undefined} magasins
+ * @param {string|null|undefined} fermeBdc
+ * @returns {{locked: boolean, magasin: string, horsConfig: boolean, note: string|null}}
+ */
+function resolveBdcDestination(magasins, fermeBdc) {
+  var ferme = (fermeBdc === null || fermeBdc === undefined) ? '' : String(fermeBdc).trim();
+
+  if (!ferme || SD_key(ferme) === SD_FERME_MUTUALISEE) {
+    var libre = resolveDestinationOptions(magasins, '');
+    return { locked: false, magasin: libre.selected, horsConfig: false, note: null };
+  }
+
+  var list = Array.isArray(magasins) ? magasins : [];
+  var fermeKey = SD_key(ferme);
+  for (var i = 0; i < list.length; i++) {
+    if (SD_key(list[i]) === fermeKey) {
+      // Ferme déclarée : on retient la casse de la config, qui est celle des
+      // soldes stock existants.
+      return { locked: true, magasin: String(list[i]), horsConfig: false, note: null };
+    }
+  }
+  return { locked: true, magasin: ferme, horsConfig: true, note: SD_NOTE_HORS_CONFIG };
+}
+
 // ============================================================================
 // UMD-style export (browser global + CommonJS pour node:test)
 // ============================================================================
@@ -147,7 +193,9 @@ function resolveReceptionDestination(magasins, fermeBdc, valeurCourante) {
 var SD_api = {
   resolveDestinationOptions: resolveDestinationOptions,
   resolveReceptionDestination: resolveReceptionDestination,
+  resolveBdcDestination: resolveBdcDestination,
   SD_HORS_CONFIG_SUFFIX: SD_HORS_CONFIG_SUFFIX,
+  SD_NOTE_HORS_CONFIG: SD_NOTE_HORS_CONFIG,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SD_api;

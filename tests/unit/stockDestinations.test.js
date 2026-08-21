@@ -11,7 +11,9 @@ const assert = require('node:assert/strict');
 const {
   resolveDestinationOptions,
   resolveReceptionDestination,
+  resolveBdcDestination,
   SD_HORS_CONFIG_SUFFIX,
+  SD_NOTE_HORS_CONFIG,
 } = require('../../public/lib/stockDestinations.js');
 
 const CONFIG = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6'];
@@ -199,5 +201,78 @@ test('réception BDC — selected est toujours une option rendue (invariant du s
     const d = resolveReceptionDestination(mags, ferme, courante);
     assert.ok(d.options.length > 0, JSON.stringify([mags, ferme, courante]));
     assert.ok(d.options.some(o => o.value === d.selected), JSON.stringify([mags, ferme, courante]));
+  }
+});
+
+// ---------------------------------------------------------------------------
+// resolveBdcDestination — NOUVEAU CONTRAT (décision produit Omar, 2026-08) :
+// la destination d'une réception sur BDC est IMPOSÉE par la ferme du BDC.
+// Seul un BDC mutualisé (`ferme: 'Toutes'`) ou sans ferme laisse le choix.
+// ---------------------------------------------------------------------------
+
+test('BDC ferme réelle déclarée (F5) → destination imposée, sans note', () => {
+  const d = resolveBdcDestination(CONFIG, 'F5');
+  assert.equal(d.locked, true, 'la destination ne doit pas être modifiable');
+  assert.equal(d.magasin, 'F5');
+  assert.equal(d.horsConfig, false);
+  assert.equal(d.note, null);
+});
+
+test('BDC ferme réelle hors config (BAHIA) → imposée quand même + note informative', () => {
+  const d = resolveBdcDestination(CONFIG, 'BAHIA');
+  assert.equal(d.locked, true);
+  assert.equal(d.magasin, 'BAHIA', 'un BDC BAHIA se réceptionne sur BAHIA');
+  assert.equal(d.horsConfig, true);
+  assert.equal(d.note, SD_NOTE_HORS_CONFIG);
+  // Note INFORMATIVE : pas de tournure actionnable, l'utilisateur ne peut rien changer.
+  assert.equal(/vérifi|avant de valider/i.test(d.note), false);
+});
+
+test('BDC ferme Avocatier (réelle, hors config) → imposée aussi', () => {
+  const d = resolveBdcDestination(CONFIG, 'Avocatier');
+  assert.equal(d.locked, true);
+  assert.equal(d.magasin, 'Avocatier');
+  assert.equal(d.horsConfig, true);
+});
+
+test('BDC mutualisé (ferme "Toutes") → choix LIBRE, présélection 1er magasin', () => {
+  // 'Toutes' vient de la liste FARMS locale de l'écran BDC (public/app.jsx) :
+  // c'est un BDC multi-fermes, pas un magasin.
+  for (const t of ['Toutes', 'TOUTES', ' toutes ']) {
+    const d = resolveBdcDestination(CONFIG, t);
+    assert.equal(d.locked, false, t + ' : le choix doit rester libre');
+    assert.equal(d.magasin, 'F1');
+    assert.equal(d.note, null);
+    assert.equal(d.horsConfig, false);
+  }
+});
+
+test('BDC sans ferme (vide/null/undefined) → choix libre', () => {
+  for (const vide of ['', null, undefined, '   ']) {
+    const d = resolveBdcDestination(CONFIG, vide);
+    assert.equal(d.locked, false);
+    assert.equal(d.magasin, 'F1');
+  }
+});
+
+test('destination imposée : la casse suit la config quand la ferme y est déclarée', () => {
+  const d = resolveBdcDestination(['f5', 'F1'], 'F5');
+  assert.equal(d.locked, true);
+  assert.equal(d.magasin, 'f5', 'aligné sur la config, qui est la casse des soldes existants');
+});
+
+test('destination imposée hors config : la casse du BDC est conservée', () => {
+  const d = resolveBdcDestination(CONFIG, 'Bahia');
+  assert.equal(d.magasin, 'Bahia');
+});
+
+test('resolveBdcDestination ne crashe jamais sur une config absente', () => {
+  for (const bad of [null, undefined, 'F1', 42, {}]) {
+    const impose = resolveBdcDestination(/** @type {any} */ (bad), 'BAHIA');
+    assert.equal(impose.locked, true);
+    assert.equal(impose.magasin, 'BAHIA');
+    const libre = resolveBdcDestination(/** @type {any} */ (bad), 'Toutes');
+    assert.equal(libre.locked, false);
+    assert.equal(libre.magasin, '');
   }
 });
