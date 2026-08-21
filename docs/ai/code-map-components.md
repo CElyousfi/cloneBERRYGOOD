@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:87d549a4a4d06eb8 -->
+<!-- sourceFingerprint: sha256:51c50d0c9d6c66fc -->
 # Code Map — Composants frontend (337)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -67,8 +67,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | CaisseWarnings | public/app.jsx:61411 | — |
 | CampagneAnalytiqueTab | public/components/CampagneAnalytiqueTab.jsx:2680 | campagne |
 | CampagneBudgetTab | public/components/CampagneBudgetTab.jsx:1411 | — |
-| CampagneSegmentTable | public/app.jsx:10943 | — |
-| CampagneTab | public/app.jsx:11044 | — |
+| CampagneSegmentTable | public/app.jsx:10917 | — |
+| CampagneTab | public/app.jsx:11018 | — |
 | CanevaFinanceQueue | public/app.jsx:61272 | — |
 | CanevaImportSub | public/app.jsx:61354 | — |
 | CanevaSummaryView | public/app.jsx:61115 | — |
@@ -133,7 +133,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ConditionnementSub | public/app.jsx:24629 | — |
 | ConsoValoriseeTab | public/components/ConsoValoriseeTab.jsx:335 | — |
 | ConsoView | public/components/CampagneAnalytiqueTab.jsx:2474 | — |
-| CoutRecolteTab | public/app.jsx:8678 | cout_recolte |
+| CoutRecolteTab | public/app.jsx:8652 | cout_recolte |
 | CVT_Bandeau | public/components/ConsoValoriseeTab.jsx:91 | — |
 | CVT_DetailPopup | public/components/ConsoValoriseeTab.jsx:158 | — |
 | CVT_dh | public/components/ConsoValoriseeTab.jsx:52 | — |
@@ -189,7 +189,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | GDDTrackingTab | public/app.jsx:44913 | — |
 | HeuresSupSub | public/app.jsx:26952 | — |
 | HorsRecolteSuiviTab | public/app.jsx:28127 | hors_recolte_suivi |
-| HorsRecolteTab | public/app.jsx:10761 | hors_recolte |
+| HorsRecolteTab | public/app.jsx:10735 | hors_recolte |
 | IMP_exportExcel | public/components/InventaireMouvementsPopup.jsx:89 | — |
 | IMP_fmtDateFr | public/components/InventaireMouvementsPopup.jsx:71 | — |
 | IMP_fmtNum | public/components/InventaireMouvementsPopup.jsx:65 | — |
@@ -267,14 +267,14 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | PlanificationTab | public/app.jsx:29296 | planification |
 | PmpDetailPopup | public/components/PmpDetailPopup.jsx:73 | — |
 | PointageDiversTab | public/app.jsx:25024 | pointage_divers |
-| PointageTab | public/app.jsx:5741 | pointage |
+| PointageTab | public/app.jsx:5715 | pointage |
 | PointageValidationPanel | public/components/PointageValidationPanel.jsx:77 | — |
 | PointageValidationView | public/components/PointageValidationView.jsx:25 | — |
-| PointageValidationViewWrapper | public/app.jsx:7297 | validation_pointage |
+| PointageValidationViewWrapper | public/app.jsx:7271 | validation_pointage |
 | PptSurfaceBadge | public/components/ParcellesParamsTab.jsx:93 | — |
 | PrimesFixesTab | public/components/PrimesFixesTab.jsx:140 | primes_fixes |
 | PrimesRecapSub | public/app.jsx:24220 | — |
-| PrimesRecolteTab | public/app.jsx:10071 | — |
+| PrimesRecolteTab | public/app.jsx:10045 | — |
 | PrimesTab | public/app.jsx:24077 | primes |
 | ProductivityBoxplotMultiSvg | public/app.jsx:66712 | — |
 | ProductivityFarmSummaryBanner | public/app.jsx:66478 | — |
@@ -310,8 +310,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | QualiteValidationBonsTab | public/app.jsx:55989 | qualite_validation_bons |
 | QuinzaineCampagneSelect | public/components/QuinzaineCampagneSelect.jsx:107 | — |
 | QuinzaineRecapCards | public/components/QuinzaineRecapCards.jsx:47 | — |
-| QuinzaineTab | public/app.jsx:11124 | quinzaine |
-| RecolteTab | public/app.jsx:7306 | recolte |
+| QuinzaineTab | public/app.jsx:11098 | quinzaine |
+| RecolteTab | public/app.jsx:7280 | recolte |
 | ReconnectingBanner | public/app.jsx:67189 | — |
 | SAB_openUrl | public/components/ScanAttachmentButton.jsx:36 | — |
 | ScanAttachmentButton | public/components/ScanAttachmentButton.jsx:40 | — |

@@ -52,19 +52,19 @@
       },
       {
         "commits": 11,
-        "file": "functions/index.js"
-      },
-      {
-        "commits": 11,
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
         "commits": 11,
         "file": "public/components/PivotAnalytiqueGrid.jsx"
+      },
+      {
+        "commits": 10,
+        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:fafdd3e6c18fb014",
+    "sourceFingerprint": "sha256:4b66335aca36ce5d",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -140,7 +140,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 5,
+          "coCommits": 4,
           "domain": null,
           "file": "public/components/MagBdcReceptionTab.js",
           "note": "probabilistic",
@@ -157,13 +157,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/app.jsx",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -2959,7 +2952,7 @@
     "CampagneTab": {
       "domain": "referentiel",
       "file": "public/app.jsx",
-      "line": 11044
+      "line": 11018
     },
     "CaporalHistoriqueTab": {
       "domain": null,
@@ -3014,7 +3007,7 @@
     "CoutRecolteTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 8678
+      "line": 8652
     },
     "DGAdoptionTab": {
       "domain": null,
@@ -3164,7 +3157,7 @@
     "HorsRecolteTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 10761
+      "line": 10735
     },
     "IrrigationIntelligenceTab": {
       "domain": "agro",
@@ -3249,12 +3242,12 @@
     "PointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 5741
+      "line": 5715
     },
     "PrimesRecolteTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 10071
+      "line": 10045
     },
     "PrimesTab": {
       "domain": "paie",
@@ -3339,12 +3332,12 @@
     "QuinzaineTab": {
       "domain": "paie",
       "file": "public/app.jsx",
-      "line": 11124
+      "line": 11098
     },
     "RecolteTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 7306
+      "line": 7280
     },
     "SecurityEnvoisWATab": {
       "domain": null,
