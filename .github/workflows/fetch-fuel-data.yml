@@ -10,6 +10,12 @@ jobs:
   fetch-fuel:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Les identifiants TotalEnergies vivent dans l'environnement `data-imports`,
+    # dont la deployment branch policy n'autorise que `main`. Sans cette ligne, le
+    # job ne les voit pas ; avec elle, un workflow poussé sur une branche de feature
+    # ne peut pas y accéder non plus. C'est ce qui rend sûr d'ouvrir le dépôt en
+    # écriture à un prestataire (cf. environnement `production`, même patron).
+    environment: data-imports
 
     steps:
       - uses: actions/checkout@v4

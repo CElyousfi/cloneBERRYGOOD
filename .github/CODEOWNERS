@@ -1,0 +1,36 @@
+# CODEOWNERS — Smart Berry
+#
+# Chaque ligne désigne qui doit approuver une PR touchant les chemins listés.
+# Couplé à `require_code_owner_reviews: true` sur la branch protection de `main`,
+# c'est ce qui permet d'ouvrir le dépôt en écriture à un contributeur externe sans
+# lui donner la capacité de merger seul du code sensible.
+#
+# `enforce_admins` est à false : @omaaouni (admin) n'est pas bloqué par ses propres
+# règles et garde son flux solo. Un collaborateur en `write`, lui, l'est.
+#
+# La dernière règle qui matche l'emporte — les blocs explicites plus bas servent de
+# documentation autant que de garde.
+
+# Défaut : tout le dépôt.
+*                           @omaaouni
+
+# --- Frontend : le monolithe et tout ce qui est servi en production -------------
+/public/                    @omaaouni
+
+# --- Backend : le monolithe des Cloud Functions ---------------------------------
+/functions/index.js         @omaaouni
+
+# --- Infrastructure, accès aux données, déploiement -----------------------------
+# Modifier un workflow, c'est pouvoir lire les secrets accessibles depuis une
+# branche et changer ce qui se déploie. Chemin le plus sensible du dépôt.
+/.github/                   @omaaouni
+/firebase.json              @omaaouni
+/firestore.rules            @omaaouni
+/firestore.indexes.json     @omaaouni
+/scripts/deploy.sh          @omaaouni
+
+# --- Gouvernance : conventions et configuration des agents ----------------------
+/CLAUDE.md                  @omaaouni
+/ROADMAP.md                 @omaaouni
+/TODO_REFACTO.md            @omaaouni
+/.claude/                   @omaaouni
