@@ -12009,14 +12009,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         chemin, donc deux écrans qui ne peuvent pas afficher deux
                         coûts différents pour la même quinzaine. */}
                     {(() => {
-                        var _co = coutOuvrierCampagne;
-                        if (!_co || !Array.isArray(_co.parQuinzaine)) return null;
-                        var _per = (apiData && apiData.periode) || selectedPeriode || '';
-                        var _q = _co.parQuinzaine.filter(function(x) { return x && x.periode === _per; })[0];
-                        // Quinzaine absente du calcul (hors campagne courante) →
-                        // rien plutôt qu'un zéro, qui se lirait « coût nul ».
-                        if (!_q || !(_q.jh > 0)) return null;
-                        var _parJh = _q.coutTotal / _q.jh;
+                        // SOURCE UNIQUE : ces bulles lisaient `coutOuvrierCampagne`,
+                        // l'autre chemin de calcul, et affichaient donc un coût
+                        // DIFFÉRENT de celui du badge d'en-tête, sur le même écran
+                        // et pour la même quinzaine — 165 350 contre 202 538 DH sur
+                        // la Quinzaine 01. Ce chemin-là ignore la sous-traitance et
+                        // les heures sup, et refait sa propre correspondance
+                        // d'équipes pour le transport.
+                        // Elles consomment désormais le module, comme les tuiles.
+                        if (_coutEmployeur === null) return null;
+                        var _jhQz = totalJournees || totalJourneesDistinct || 0;
+                        if (!(_jhQz > 0)) return null;
+                        var _parJh = _coutEmployeur / _jhQz;
+                        var _q = { coutTotal: _coutEmployeur, jh: _jhQz };
                         return (
                             <div style={{display:'flex',alignItems:'stretch',gap:12,marginTop:16,marginBottom:4,flexWrap:'wrap'}}>
                                 {/* NET À PAYER — ce qui sort de la caisse. Placé en
@@ -12047,7 +12052,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         {Math.round(_q.coutTotal).toLocaleString('fr-FR')} DH
                                     </span>
                                     <span style={{fontSize:11,color:'var(--gray-500)'}}>
-                                        salaire + primes + charges, hors pointage divers
+                                        salaire + primes + heures sup + charges
                                     </span>
                                 </div>
                                 <div style={{border:'2px solid var(--berry)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'#fff',minWidth:200}}>
@@ -12061,6 +12066,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         sur {Math.round(_q.jh).toLocaleString('fr-FR')} JH pointées
                                     </span>
                                 </div>
+                                <button onClick={() => setQuinzPopupKey('cout_employeur')}
+                                    style={{border:'1px dashed var(--berry)',borderRadius:12,padding:'12px 16px',background:'transparent',color:'var(--berry)',cursor:'pointer',fontSize:12,fontWeight:600,alignSelf:'stretch'}}>
+                                    <i className="fa-solid fa-list-ul" style={{marginRight:6}}></i>Détail du coût
+                                </button>
                             </div>
                         );
                     })()}
@@ -12070,6 +12079,84 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         devenue la tuile « Charges Sociales », à deux lignes et
                         DANS le total — un coût employeur affiché à côté du total
                         sans y entrer laissait chacun faire l'addition de tête. */}
+
+                    {quinzPopupKey === 'cout_employeur' && (() => {
+                        // Le coût employeur, terme par terme. Chaque ligne est un
+                        // poste affiché ailleurs sur l'écran : l'addition doit
+                        // tomber sur le total à l'œil, sinon le chiffre ne se
+                        // vérifie pas — et un coût qu'on ne peut pas vérifier
+                        // finit par ne plus être cru.
+                        const _ce = [
+                            { l: 'MO Récolte', v: _moTotaux ? _moTotaux.recolte : 0 },
+                            { l: 'MO Hors Récolte', v: _moTotaux ? _moTotaux.horsRecolte : 0 },
+                            { l: 'Postes Fixes', v: _moTotaux ? _moTotaux.postes : 0 },
+                            { l: 'Prime Récolte', v: totalPrimeRecolte },
+                            { l: 'Prime Transport', v: transportCoutTotal },
+                            { l: 'Autres Primes', v: totalAutresPrimes, sous: [
+                                { l: 'Traitement', v: totalTraitement },
+                                { l: 'Conditionnement', v: totalConditionnement },
+                                { l: 'Chargement', v: totalChargement },
+                                { l: 'Jour Férié', v: totalJourFerie },
+                            ] },
+                            { l: 'Heures Supplémentaires', v: _hsTotal },
+                            { l: 'Charges Sociales', v: _chargesSociales ? _chargesSociales.total : 0, sous: [
+                                { l: 'CNSS salariale (4,48 %)', v: _chargesSociales ? _chargesSociales.cnss : 0 },
+                                { l: 'AMO salariale (2,26 %)', v: _chargesSociales ? _chargesSociales.amo : 0 },
+                                { l: 'Charges patronales (19,26 %)', v: _chargesSociales ? _chargesSociales.patronales : 0 },
+                            ] },
+                        ];
+                        const _som = _ce.reduce((s2, x) => s2 + (x.v || 0), 0);
+                        const _td = {padding:'7px 10px',textAlign:'right',fontSize:13};
+                        const _tdL = {..._td, textAlign:'left'};
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzPopupKey(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:640,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:'linear-gradient(135deg, var(--berry) 0%, var(--berry-light) 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className="fa-solid fa-building-columns" style={{marginRight:8}}></i>Coût employeur — {currentPeriode}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{Math.round(_coutEmployeur || 0).toLocaleString('fr-FR')} DH · {Math.round((_coutEmployeur || 0) / (totalJournees || totalJourneesDistinct || 1)).toLocaleString('fr-FR')} DH par JH</div>
+                                        </div>
+                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                            <tbody>
+                                                {_ce.map((x, i) => [
+                                                    <tr key={x.l} style={{borderBottom:'1px solid var(--gray-100)', background: i % 2 ? '#fdf7fa' : '#fff'}}>
+                                                        <td style={{..._tdL, fontWeight:600}}>{x.l}</td>
+                                                        <td style={{..._td, fontWeight:700}}>{Math.round(x.v || 0).toLocaleString('fr-FR')}</td>
+                                                    </tr>,
+                                                    ...((x.sous || []).map(sx => (
+                                                        <tr key={x.l + sx.l} style={{background: i % 2 ? '#fdf7fa' : '#fff'}}>
+                                                            <td style={{..._tdL, paddingLeft:26, fontSize:11.5, color:'var(--gray-500)'}}>↳ {sx.l}</td>
+                                                            <td style={{..._td, fontSize:11.5, color:'var(--gray-500)'}}>{Math.round(sx.v || 0).toLocaleString('fr-FR')}</td>
+                                                        </tr>
+                                                    ))),
+                                                ])}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'var(--berry-pale)',fontWeight:800}}>
+                                                    <td style={_tdL}>COÛT EMPLOYEUR</td>
+                                                    <td style={_td}>{Math.round(_som).toLocaleString('fr-FR')} DH</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        <div style={{marginTop:12,fontSize:10.5,color:'var(--gray-500)'}}>
+                                            <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                            La sous-traitance (Location &amp; Engins) n'y figure pas : un prestataire
+                                            n'a ni bulletin ni cotisation. Elle s'ajoute au Total de la quinzaine,
+                                            jamais au coût employeur — sinon on comparerait à une masse salariale
+                                            un chiffre qui n'en est pas une.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {quinzPopupKey === 'heures_sup' && (() => {
                         // SAISIE des heures sup accordées. Le montant est une
@@ -12365,7 +12452,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         pop-up par-dessus la bonne, remplie des mauvaises lignes. */}
                     {quinzPopupKey && quinzPopupKey !== 'location_engins'
                         && quinzPopupKey !== 'charges_sociales'
-                        && quinzPopupKey !== 'heures_sup' && (() => {
+                        && quinzPopupKey !== 'heures_sup'
+                        && quinzPopupKey !== 'cout_employeur' && (() => {
                         const _qpKey = quinzPopupKey;
                         const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
                         const _qpTitle = _qpKey === 'mo_recolte' ? 'MO Récolte'
