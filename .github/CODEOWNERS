@@ -1,0 +1,37 @@
+# CODEOWNERS — Smart Berry
+#
+# Le dépôt est ouvert en écriture à un contributeur externe. Deux familles de
+# garde, et il est important de ne pas les confondre :
+#
+#   • ce qu'une CI peut vérifier mécaniquement  → gate CI (cliquet anti-monolithe,
+#     interdiction de toucher public/ sur la branche de migration Vite). Automatique,
+#     ne ralentit personne, parce qu'une PR légitime la passe sans y penser ;
+#   • ce qu'aucune CI ne peut juger             → revue humaine, via ce fichier.
+#
+# D'où la règle de sélection ci-dessous : on ne met ici QUE les chemins dont une
+# modification ne se prouve pas par un test — accès aux secrets, cibles de
+# déploiement, règles d'accès aux données, conventions des agents.
+#
+# ⚠️ Volontairement ABSENTS : `*`, `public/` et `functions/index.js`. Ce sont les
+# chemins du travail quotidien. Les y mettre bloquerait chaque PR d'@omaaouni sur
+# sa propre approbation — GitHub interdit d'approuver sa propre PR — et forcerait
+# un `gh pr merge --admin` en permanence. Ils sont couverts par les gates CI.
+#
+# `required_approving_review_count` est à 0 et `enforce_admins` à false : le flux
+# solo d'@omaaouni reste fluide. Un collaborateur en `write` qui touche un chemin
+# ci-dessous, lui, ne peut pas merger seul.
+
+# --- Accès aux secrets et à la CI -----------------------------------------------
+# Le chemin le plus sensible du dépôt : modifier un workflow, c'est pouvoir lire
+# les secrets accessibles depuis une branche et changer ce qui se déploie.
+/.github/                   @omaaouni
+
+# --- Cibles de déploiement et accès aux données ---------------------------------
+/firebase.json              @omaaouni
+/firestore.rules            @omaaouni
+/firestore.indexes.json     @omaaouni
+/scripts/deploy.sh          @omaaouni
+
+# --- Gouvernance : conventions et configuration des agents ----------------------
+/CLAUDE.md                  @omaaouni
+/.claude/                   @omaaouni
