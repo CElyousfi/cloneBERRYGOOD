@@ -234,10 +234,39 @@ function paieOuvrierQuinzaine(args) {
     hs100: hs.hs100,
   });
 
-  // Les jours fériés entrent dans le SALAIRE (donc dans l'assiette), les autres
-  // primes non — c'est le découpage du modèle de paie en production.
-  const feries = Number(primes.feries) || 0;
-  const brutSoumis = paie.brut + feries;
+  // JOURS FÉRIÉS — reçus en NOMBRE DE JOURS, plus en dirhams.
+  //
+  // Ils valaient auparavant le coût journalier moyen BEE ONE : 110,6 DH par jour
+  // là où le bulletin en verse 90,9, tout en PERDANT la prime de fonction et
+  // l'ancienneté de ces journées. Deux erreurs de sens contraire dont la somme
+  // paraissait juste. Même correction que l'écran Quinzaine (2026-08-21).
+  //
+  // Le coût est calculé par DIFFÉRENCE — paie(jours + fériés) − paie(jours) —
+  // pour qu'il vaille exactement ce que le barème donne, quel que soit le détail
+  // de celui-ci, plutôt que de réimplémenter la règle et de la laisser diverger.
+  const nbFeries = Number(a.feriesJours) || 0;
+  let feries = 0;
+  if (nbFeries > 0) {
+    const avecFeries = computeWorkerPaie({
+      declare,
+      joursTravailles: jours + nbFeries,
+      anciennete: Number(a.anciennete) || 0,
+      baremes: b,
+      dateISO: a.dateISO || '',
+      primeFonctionJour: Number(a.primeFonctionJour) || 0,
+      primeTransport: 0, primeRecolte: 0,
+      hs25: hs.hs25, hs50: hs.hs50, hs100: hs.hs100,
+    });
+    feries = avecFeries.brut - paie.brut;
+  }
+
+  // HEURES SUPPLÉMENTAIRES accordées (collection rh_heures_sup) — montant NET,
+  // remonté au brut : le bulletin les range dans le brut, donc elles cotisent.
+  const hsNet = Number(a.heuresSupNet) || 0;
+  const tauxSal = Number(b.tauxCotisationsSalariales) || 0;
+  const hsBrut = hsNet > 0 ? (declare && tauxSal < 1 ? hsNet / (1 - tauxSal) : hsNet) : 0;
+
+  const brutSoumis = paie.brut + feries + hsBrut;
   // Charges recalculées sur l'assiette COMPLÈTE (fériés compris) : celles que
   // rend `computeWorkerPaie` ne les connaissent pas.
   const chargesPatronales = declare ? brutSoumis * (b.tauxChargesPatronales || 0) : 0;
@@ -267,6 +296,10 @@ function paieOuvrierQuinzaine(args) {
     heuresSup: (paie.heuresSup && paie.heuresSup.montant) || 0,
     // Salaire de base seul (SMAG × jours), pour que le détail se recompose.
     salaireBase: paie.smagBaseTotal,
+    feries,
+    // HS ACCORDÉES (rh_heures_sup), distinctes des HS_25/50/100 du modèle
+    // ci-dessus : deux notions, deux clés. Les confondre écrasait la seconde.
+    heuresSupAccordees: hsBrut,
     // Retenue d'un NON déclaré : ni versée à lui, ni reversée à la CNSS. Terme
     // négatif du coût — sans lui, le détail ne se recompose pas dans le total.
     retenueNonReversee: declare ? 0 : brutSoumis * (b.tauxCotisationsSalariales || 0),
@@ -318,11 +351,23 @@ function coutOuvrierCampagne(args) {
     // coût, et seul moyen pour que le détail se recompose exactement.
     retenueNonDeclares: 0, transport: 0, recolte: 0,
     traitement: 0, conditionnement: 0, chargement: 0, feries: 0,
+    heuresSupAccordees: 0,
   };
 
   // Détail PAR QUINZAINE : c'est lui qui rend le rapprochement avec l'écran
   // Quinzaine vérifiable, quinzaine par quinzaine, sans ressaisir un chiffre.
   const parQuinzaine = [];
+  // TAUX PAR OUVRIER ET PAR QUINZAINE, en DH par JH. C'est lui qui permet à la
+  // grille Campagne de valoriser chaque ligne au coût de L'OUVRIER qui l'a
+  // faite, au lieu d'une moyenne d'établissement appliquée à tout le monde.
+  // Clé « matricule|periode » : un même ouvrier n'a pas le même taux d'une
+  // quinzaine à l'autre (SMAG daté, ancienneté qui monte, primes qui changent).
+  //
+  // Nom distinct de `parOuvrier` À DESSEIN : la boucle ci-dessous déclare un
+  // `const parOuvrier` local (les lignes d'ENTRÉE de la quinzaine) qui masquait
+  // celui-ci — les écritures partaient silencieusement dans la map d'entrée et
+  // la sortie restait vide.
+  const tauxParOuvrier = {};
 
   quinzaines.forEach((q) => {
     const parOuvrier = (q && q.parOuvrier) || {};
@@ -351,6 +396,11 @@ function coutOuvrierCampagne(args) {
         primeFonctionJour: Number(fiche.primeFonctionJournaliere) || 0,
         hs: { hs25: e.hs25, hs50: e.hs50, hs100: e.hs100 },
         primes: primesOuvrier,
+        // Jours fériés en NOMBRE : leur coût est calculé par le barème, plus
+        // repris du coût moyen BEE ONE.
+        feriesJours: Number(e.feriesJours) || 0,
+        // Heures sup accordées (rh_heures_sup), montant NET.
+        heuresSupNet: Number((q.heuresSupNet || {})[mat]) || 0,
         baremes: a.baremes || {},
         // SMAG daté : celui en vigueur À LA FIN de la quinzaine payée.
         dateISO: q.dateFin || '',
@@ -372,8 +422,11 @@ function coutOuvrierCampagne(args) {
       detail.chargesPatronales += paie.chargesPatronales;
       detail.cotisationsSalariales += paie.cotisationsSalariales;
       detail.retenueNonDeclares += paie.retenueNonReversee;
-      ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement', 'feries']
+      ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement']
         .forEach((k) => { detail[k] += Number(primesOuvrier[k]) || 0; });
+      // Fériés et heures sup accordées viennent désormais du barème, pas des primes.
+      detail.feries += paie.feries;
+      detail.heuresSupAccordees += paie.heuresSupAccordees;
 
       cumulQ.jours += joursTravailles;
       cumulQ.jh += Number(e.jh) || 0;
@@ -390,6 +443,9 @@ function coutOuvrierCampagne(args) {
       // reversée à personne : elle sort du coût, d'où le terme négatif.
       cumulQ.charges += paie.chargesPatronales - paie.retenueNonReversee;
       cumulQ.coutTotal += paie.total;
+
+      var jhOuvrier = Number(e.jh) || 0;
+      if (jhOuvrier > 0) tauxParOuvrier[mat + '|' + cumulQ.periode] = paie.total / jhOuvrier;
 
       joursCumules[mat] = (joursCumules[mat] || 0) + joursTravailles;
     });
@@ -420,6 +476,7 @@ function coutOuvrierCampagne(args) {
     quinzaines: quinzaines.length,
     detail,
     parQuinzaine,
+    tauxParOuvrier,
     partDeclares: jours > 0 ? joursDeclares / jours : null,
   };
 }

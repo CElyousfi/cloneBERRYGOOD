@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "225/367 fichiers classifiés",
+          "detail": "225/365 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "58/156 modules avec ≥1 test",
+          "detail": "58/154 modules avec ≥1 test",
           "max": 30,
           "score": 11
         }
@@ -31,12 +31,16 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 26,
+        "commits": 27,
         "file": "public/app.jsx"
       },
       {
         "commits": 25,
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
+      },
+      {
+        "commits": 16,
+        "file": "functions/pointageService.js"
       },
       {
         "commits": 15,
@@ -45,10 +49,6 @@
       {
         "commits": 15,
         "file": "tests/unit/campagneBudgetTab.test.js"
-      },
-      {
-        "commits": 14,
-        "file": "functions/pointageService.js"
       },
       {
         "commits": 11,
@@ -64,18 +64,18 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:159f26db849a2df1",
+    "sourceFingerprint": "sha256:d8479329c2aa4fa6",
     "stats": {
-      "backendModules": 96,
+      "backendModules": 94,
       "cloudFunctions": 91,
-      "coverageScore": 37,
+      "coverageScore": 38,
       "domains": 10,
       "extractedComponents": 24,
       "firestoreCollections": 58,
       "libHelpers": 36,
       "monolithSymbols": 120,
       "tabFunctions": 120,
-      "unclassifiedFiles": 142,
+      "unclassifiedFiles": 140,
       "unitTestFiles": 37
     }
   },
@@ -2090,10 +2090,6 @@
       "confidence": "low",
       "domain": null
     },
-    "functions/lib/.DS_Store": {
-      "confidence": "low",
-      "domain": null
-    },
     "functions/lib/auth": {
       "confidence": "medium",
       "domain": "admin"
@@ -2307,10 +2303,6 @@
       "domain": null
     },
     "functions/sqlSyncService.js": {
-      "confidence": "low",
-      "domain": null
-    },
-    "functions/test-whatsapp.js": {
       "confidence": "low",
       "domain": null
     },
@@ -3890,10 +3882,6 @@
     },
     {
       "confidence": "low",
-      "file": "functions/lib/.DS_Store"
-    },
-    {
-      "confidence": "low",
       "file": "functions/lib/budgetBgf.js"
     },
     {
@@ -3979,10 +3967,6 @@
     {
       "confidence": "low",
       "file": "functions/sqlSyncService.js"
-    },
-    {
-      "confidence": "low",
-      "file": "functions/test-whatsapp.js"
     },
     {
       "confidence": "low",

@@ -57,7 +57,7 @@ function aggregateBlock() {
 }
 
 /** Exécute le bloc extrait sur un jeu de lignes miroir. */
-function runAggregate(dayRows) {
+function runAggregate(dayRows, tauxParOuvrier) {
   const sandbox = {
     dayRows,
     periode: 'Quinzaine 03',
@@ -65,6 +65,10 @@ function runAggregate(dayRows) {
     resolveFamily: () => 'Taille',
     deriveFerme: () => 'F1',
     _refMap: {},
+    // Taux par ouvrier × quinzaine (2026-08-21). Vide par défaut : le bloc doit
+    // rester exact sans lui — un ouvrier sans taux ne casse rien, il alimente
+    // `jhSansTaux` pour que l'écran puisse le dire.
+    tauxParOuvrier: tauxParOuvrier || {},
   };
   vm.createContext(sandbox);
   vm.runInContext('(function () {\n' + aggregateBlock() + '\n})();', sandbox);
@@ -102,7 +106,8 @@ test('la ligne renvoyée est sérialisable : le Set de matricules est retiré', 
   assert.ok(!('workers' in out[0]), 'le Set `workers` ne doit pas sortir du handler');
   assert.deepStrictEqual(
     Object.keys(JSON.parse(JSON.stringify(out[0]))).sort(),
-    ['code', 'cout', 'famille', 'ferme', 'groupe', 'jh', 'nbOuv', 'operation', 'parcelle', 'periode', 'refParcelle']
+    ['code', 'cout', 'coutCharge', 'famille', 'ferme', 'groupe', 'jh', 'jhSansTaux',
+      'nbOuv', 'operation', 'parcelle', 'periode', 'refParcelle'].sort()
   );
 });
 
@@ -112,12 +117,52 @@ test('lignes sans matricule : nbOuv = 0, aucune exception', () => {
 });
 
 test('la clé de cache est bumpée : une réponse v1 (sans nbOuv) ne peut plus être servie', () => {
-  assert.match(BLOCK, /campagne_analytique_detail_v2_/, 'clé de cache non bumpée');
-  assert.doesNotMatch(BLOCK, /campagne_analytique_detail_v1_/);
+  // v3 : ajout de `coutCharge` et `jhSansTaux` par ligne (2026-08-21). Chaque
+  // enrichissement du payload DOIT bumper la clé — une réponse d'une version
+  // antérieure encore en cache servirait des lignes sans le nouveau champ, et
+  // la grille afficherait 0 sans lever la moindre erreur.
+  assert.match(BLOCK, /campagne_analytique_detail_v3_/, 'clé de cache non bumpée');
+  assert.doesNotMatch(BLOCK, /campagne_analytique_detail_v[12]_/);
 });
 
 test('le handler HTTP délègue et ne réagrège rien lui-même', () => {
   assert.match(HANDLER_BLOCK, /computeCampagneAnalytiqueDetail\(_fermeFilter, _cultureFilter\)/);
   assert.doesNotMatch(HANDLER_BLOCK, /const groups = \{\};/,
     'le handler a récupéré un corps agrégatif : il doit déléguer');
+});
+
+
+// ─────────────────────────────────── coût chargé par ouvrier (lot 2)
+
+test('coutCharge — chaque ligne vaut ses JH × le taux de SON ouvrier', () => {
+  // C'est tout l'objet du lot 2 : deux ouvriers sur la même parcelle et la même
+  // opération, à des coûts différents, ne doivent plus ressortir au même prix.
+  const rows = runAggregate([
+    { ...ROW, Personnel_Matricule: 'A1', Nombre_Jr: 2 },
+    { ...ROW, Personnel_Matricule: 'B2', Nombre_Jr: 1 },
+  ], { 'A1|Quinzaine 03': 150, 'B2|Quinzaine 03': 90 });
+  assert.strictEqual(rows.length, 1, 'même parcelle + même opération = un groupe');
+  assert.strictEqual(rows[0].coutCharge, 2 * 150 + 1 * 90);
+  assert.strictEqual(rows[0].jhSansTaux, 0);
+});
+
+test('coutCharge — ouvrier sans taux : ses JH sont SIGNALÉS, pas devinés', () => {
+  // Un coût partiel affiché sans mention se lit comme un coût complet. On ne
+  // retombe surtout pas sur le `Cout` BEE ONE, qui ferait passer un coût nu
+  // pour un coût chargé.
+  const rows = runAggregate([
+    { ...ROW, Personnel_Matricule: 'A1', Nombre_Jr: 2 },
+    { ...ROW, Personnel_Matricule: 'INCONNU', Nombre_Jr: 3 },
+  ], { 'A1|Quinzaine 03': 150 });
+  assert.strictEqual(rows[0].coutCharge, 300);
+  assert.strictEqual(rows[0].jhSansTaux, 3);
+});
+
+test('coutCharge — aucun taux fourni : zéro partout, et rien ne casse', () => {
+  const rows = runAggregate([{ ...ROW, Personnel_Matricule: 'A1', Nombre_Jr: 2 }]);
+  assert.strictEqual(rows[0].coutCharge, 0);
+  assert.strictEqual(rows[0].jhSansTaux, 2);
+  // Le témoin BEE ONE reste servi : il alimente le panneau de rapprochement,
+  // qui mesure ce que la grille ne rattache à aucune parcelle.
+  assert.ok(Object.prototype.hasOwnProperty.call(rows[0], 'cout'));
 });

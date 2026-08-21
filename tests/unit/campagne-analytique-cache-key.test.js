@@ -69,7 +69,7 @@ function campagneStart(now) {
 // v2 : la base porte le bump de la réponse enrichie de `nbOuv` (cf.
 // tests/unit/campagneAnalytiqueDetailNbOuv.test.js). Les trois dimensions de
 // périmètre s'ajoutent APRÈS la base, elles sont orthogonales au versionnage.
-const BASE = `campagne_analytique_detail_v2_${campagneStart()}`;
+const BASE = `campagne_analytique_detail_v3_${campagneStart()}`;
 
 /** Appelle la vraie fonction et renvoie la clé qu'elle a passée à withCache. */
 async function keyFor(fermeFilter, cultureFilter) {
