@@ -11525,74 +11525,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // Ces deux useMemo DOIVENT être placés AVANT les early-returns (rules of hooks).
             // Les variables dérivées (transportRows, parJour, currentPeriode, classifyMO)
             // sont recalculées inline en utilisant uniquement les variables d'état.
-            const _globalMOCharges = useMemo(() => {
-                if (!apiData || !quinzBaremesResolved || !quinzRegistryResolved || Object.keys(quinzRegistry).length === 0) return null;
-                const _PU2 = window.PaieUtils;
-                if (!_PU2 || !_PU2.computePayslip) return null;
-                const _cp = selectedPeriode || (apiData.periodes || [])[0] || '';
-                const _pj = apiData.parJour || [];
-                const _firstDay = _pj.length > 0 ? _pj[0].jour : null;
-                const _smag = (_PU2.resolveSmagForDate)
-                    ? _PU2.resolveSmagForDate(quinzPaieBaremes, _firstDay)
-                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
-                const _classifyMO = (opFam) => {
-                    if (!opFam) return 'horsRecolte';
-                    const lower = opFam.toLowerCase();
-                    if (lower.includes('récolte') || lower.includes('recolte')) return 'recolte';
-                    if (lower.includes('poste')) return 'postes';
-                    return 'horsRecolte';
-                };
-                const _tRows = transportDetail.filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && (!avoSubFilter || deriveSubFerme(r.refParcelle, r.parcelle) === avoSubFilter) && matchCulture(r, cultureFilter));
-                const _moHR = _tRows.filter(r => _classifyMO(r.operationFamille) === 'horsRecolte');
-                const _moPS = _tRows.filter(r => _classifyMO(r.operationFamille) === 'postes');
-                const allMoSrc = [
-                    ..._moHR,
-                    ..._moPS,
-                    ...recolteEquipeRows
-                        .filter(r => (r.periode||'').trim() === _cp.trim() && (!farmFilter || r.ferme === farmFilter) && matchCulture(r, cultureFilter))
-                        .map(r => ({ matricule: r.matricule, nom: r.nom, jour: r.jour })),
-                ];
-                const _wJH = {};
-                allMoSrc.forEach(r => {
-                    if (!r.matricule || !r.jour) return;
-                    if (!_wJH[r.matricule]) _wJH[r.matricule] = { nom: r.nom || r.matricule, jours: new Set() };
-                    _wJH[r.matricule].jours.add(r.jour);
-                });
-                let totalBrut = 0, totalCharges = 0, totalCoutEmp = 0, cntDecl = 0, cntNonDecl = 0;
-                Object.entries(_wJH).forEach(([mat, w]) => {
-                    const _rw = quinzRegistry[numKey(mat)] || {};
-                    const _isDecl = !!(_rw.declare);
-                    if (_isDecl) {
-                        cntDecl++;
-                        if (!_PU2.computePayslip) return;
-                        const _pfJ = (function(history, currentPrime, dateStr) {
-                            if (!dateStr || !Array.isArray(history) || history.length === 0) return Number(currentPrime || 0);
-                            var applicable = history.filter(function(h) { return h.effectiveFrom && h.effectiveFrom <= dateStr; });
-                            if (applicable.length === 0) { var s = history.slice().sort(function(a,b){return a.effectiveFrom<b.effectiveFrom?-1:1;}); return Number(s[0].previousMontant||0); }
-                            var s2 = applicable.slice().sort(function(a,b){return a.effectiveFrom<b.effectiveFrom?1:-1;}); return Number(s2[0].montant||0);
-                        })(_rw.prime_history, _rw.primeFonctionJournaliere, _firstDay);
-                        const _anc = Number(_rw.baselineJours || 0);
-                        const _ancP = (_PU2.trouverPalierAnciennete)
-                            ? _PU2.trouverPalierAnciennete(_anc, quinzPaieBaremes.paliers || [])
-                            : { pourcentage: 0 };
-                        const _ancT = (_ancP.pourcentage || 0) / 100;
-                        const _ps = _PU2.computePayslip({
-                            declare: true,
-                            smagBrut: _smag.smagBrutJournalier, smagNet: _smag.smagNetJournalier,
-                            jT: w.jours.size, jF: 0,
-                            ancienneteTaux: _ancT, primeFonctionJour: _pfJ,
-                            primesOptionnelles: [], baremes: quinzPaieBaremes,
-                        });
-                        totalBrut += _ps.brut;
-                        totalCharges += _ps.chargesPatronales;
-                        totalCoutEmp += _ps.coutEmployeur;
-                    } else {
-                        cntNonDecl++;
-                    }
-                });
-                return { totalBrut, totalCharges, totalCoutEmp, cntDecl, cntNonDecl };
-            }, [apiData, quinzRegistry, quinzPaieBaremes, quinzBaremesResolved, quinzRegistryResolved, transportDetail, recolteEquipeRows, selectedPeriode, farmFilter, avoSubFilter, cultureFilter]);
-
             const _parcelleEmpCostMap = useMemo(() => {
                 if (!apiData || !quinzBaremesResolved || !quinzRegistryResolved) return { ready: false, byParcelle: {} };
                 const _PU2 = window.PaieUtils;
@@ -11720,7 +11652,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 if (lower.includes('poste')) return 'postes';
                 return 'horsRecolte';
             };
-            const moRecolteRows = []; // récolte workers comptés dans la carte Récolte — pas de double-comptage ici
+            // Lignes de RÉCOLTE. Ce tableau était vide EN DUR, au motif que ces
+            // ouvriers seraient « comptés dans la carte Récolte » — or aucune
+            // carte de ce bloc ne porte leur SALAIRE : « Prime Récolte » n'est
+            // que le bonus aux kilos. Leur paie ne pesait donc nulle part, et la
+            // pop-up « MO Récolte » s'ouvrait vide. Sans effet visible tant que
+            // la récolte n'a pas commencé (0 JH), faux dès le premier jour de
+            // cueillette — et faux en silence, puisqu'un total plus petit reste
+            // un total plausible.
+            const moRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'recolte');
             const moHorsRecolteRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'horsRecolte');
             const moPostesRows = transportRows.filter(r => classifyMO(r.operationFamille) === 'postes');
 
@@ -11739,73 +11679,73 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 return Object.values(wDays).reduce(function(s, days) { return s + days.size; }, 0);
             })();
 
+            // Lignes MO servant au COÛT — source unique des tuiles et des charges.
+            // Le pointage de la quinzaine, plus les équipes de récolte : leur
+            // payload ne porte PAS de famille d'opération, on la leur pose,
+            // sinon elles tomberaient en « hors récolte » et gonfleraient la
+            // mauvaise tuile. Un même (ouvrier, jour) présent des deux côtés ne
+            // compte qu'une fois : le module raisonne en jours distincts.
+            const _moRows = [
+                ...transportRows,
+                ..._recolteRowsQz.map(function(r) {
+                    return Object.assign({}, r, { operationFamille: '8. Récolte' });
+                }),
+            ];
+
             // ===== MODÈLE COÛT SMART BERRY (computePayslip) — source unique pour MO =====
             // On N'UTILISE PAS les coûts SQL BDP (parFerme.cout ou r.cout) qui ne sont qu'une
             // estimation comptable. Le net à payer réel est calculé via window.PaieUtils.computePayslip
             // identiquement à Validation du Pointage. Les totaux cartes = somme des nets par ouvrier.
-            const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip);
+            const _CMO = window.CoutMainOeuvre;
+            const registryReady = Object.keys(quinzRegistry).length > 0 && !!(window.PaieUtils && window.PaieUtils.computePayslip) && !!_CMO;
             // Skeleton tant que les 2 fetch paie ne sont pas résolus (succès OU échec).
             // Résolus mais registry vide/KO → registryReady false → fallback BDP (inchangé).
             const _sbPending = !quinzRegistryResolved || !quinzBaremesResolved;
             const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;
 
-            const _getPrimeForDate = (history, currentPrime, dateStr) => {
-                if (!dateStr || !Array.isArray(history) || history.length === 0) {
-                    return Number(currentPrime || 0);
-                }
-                const applicable = history.filter(function(h) { return h.effectiveFrom && h.effectiveFrom <= dateStr; });
-                if (applicable.length === 0) {
-                    const sorted = history.slice().sort(function(a, b) { return a.effectiveFrom < b.effectiveFrom ? -1 : 1; });
-                    return Number(sorted[0].previousMontant || 0);
-                }
-                const sorted = applicable.slice().sort(function(a, b) { return a.effectiveFrom < b.effectiveFrom ? 1 : -1; });
-                return Number(sorted[0].montant || 0);
-            };
 
+            // Net à payer d'UN ouvrier — délégué au module. Conservé sous ce nom
+            // parce que la pop-up par ouvrier l'appelle ligne à ligne.
             const sbNetForWorker = (mat, journees, firstDay) => {
                 if (!registryReady) return null;
-                const PU = window.PaieUtils;
-                const reg = quinzRegistry[numKey(mat)] || {};
-                const smag = PU.resolveSmagForDate
-                    ? PU.resolveSmagForDate(quinzPaieBaremes, firstDay || _firstDayQz || null)
-                    : { smagBrutJournalier: quinzPaieBaremes.smagBrutJournalier || 0, smagNetJournalier: quinzPaieBaremes.smagNetJournalier || 0 };
-                const ancTaux = PU.trouverPalierAnciennete
-                    ? (PU.trouverPalierAnciennete(Number(reg.baselineJours || 0), quinzPaieBaremes.paliers || []).pourcentage || 0) / 100
-                    : 0;
-                return Math.round(PU.computePayslip({
-                    declare: !!(reg.declare),
-                    smagBrut: smag.smagBrutJournalier, smagNet: smag.smagNetJournalier,
-                    jT: journees, jF: 0,
-                    ancienneteTaux: ancTaux,
-                    primeFonctionJour: _getPrimeForDate(reg.prime_history, reg.primeFonctionJournaliere, firstDay || _firstDayQz),
-                    primesOptionnelles: [], baremes: quinzPaieBaremes,
+                return Math.round(_CMO.paieOuvrier({
+                    paie: window.PaieUtils,
+                    fiche: quinzRegistry[numKey(mat)] || {},
+                    jours: journees,
+                    baremes: quinzPaieBaremes,
+                    dateISO: firstDay || _firstDayQz || null,
                 }).net);
             };
 
-            // Agrège les rows en un map matricule→{jours, firstDay} pour le calcul de total par type
-            const sbTotalFromRows = (rows) => {
-                const wMap = {};
-                rows.forEach(r => {
-                    if (!r.matricule) return;
-                    if (!wMap[r.matricule]) wMap[r.matricule] = { mat: r.matricule, jours: new Set() };
-                    if (r.jour) wMap[r.matricule].jours.add(r.jour);
-                });
-                return Object.values(wMap).reduce((s, w) => {
-                    const firstDay = w.jours.size > 0 ? [...w.jours].sort()[0] : null;
-                    return s + (sbNetForWorker(w.mat, w.jours.size, firstDay) || 0);
-                }, 0);
-            };
+            // Totaux MO — UNE seule passe du module sur UNE seule liste de
+            // lignes, au lieu de trois agrégations parallèles.
+            //
+            // Plus de repli sur le coût BEE ONE quand le registre n'est pas
+            // chargé : ce repli affichait un montant d'une AUTRE nature sous le
+            // même libellé, sans que rien ne le dise. Sans registre, `null` —
+            // et l'écran montre « — ».
+            const _moTotaux = registryReady
+                ? _CMO.netParCategorie({
+                    paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
+                    baremes: quinzPaieBaremes, cleRegistre: numKey,
+                })
+                : null;
+            const totalCoutRecolte = _moTotaux ? _moTotaux.recolte : null;
+            const totalCoutHorsRecolte = _moTotaux ? _moTotaux.horsRecolte : null;
+            const totalCoutPostes = _moTotaux ? _moTotaux.postes : null;
 
-            // Totaux MO Smart Berry (fallback BDP si registry pas encore chargé)
-            const totalCoutRecolte = registryReady
-                ? sbTotalFromRows(moRecolteRows)
-                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.recolte || 0) / d.journees : 0), 0));
-            const totalCoutHorsRecolte = registryReady
-                ? sbTotalFromRows(moHorsRecolteRows)
-                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.horsRecolte || 0) / d.journees : 0), 0));
-            const totalCoutPostes = registryReady
-                ? sbTotalFromRows(moPostesRows)
-                : Math.round(displayData.reduce((s, d) => s + (d.journees > 0 ? d.cout * (d.postesFixes || 0) / d.journees : 0), 0));
+            // CHARGES SOCIALES — les DEUX composantes. La carte précédente
+            // n'affichait que la patronale (19,26 %) et se disait « non incluse
+            // dans le total » : le coût employeur n'était donc affiché nulle
+            // part. La part salariale (CNSS 4,48 % + AMO 2,26 %) est bien un
+            // coût d'entreprise — l'ouvrier est payé sur le brut, sans retenue,
+            // donc ce que la loi prélèverait, la société le verse en plus.
+            const _chargesSociales = registryReady
+                ? _CMO.chargesSociales({
+                    paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
+                    baremes: quinzPaieBaremes, cleRegistre: numKey,
+                })
+                : null;
 
             // Traitement (10 DH/ouvrier-jour)
             const traitRows = transportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
@@ -11827,7 +11767,23 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             const totalAutresPrimes = totalTraitement + totalConditionnement + totalChargement + totalJourFerie;
             const totalDivers = diversData ? diversData.total : 0;
-            const totalGlobal = totalCout + transportCoutTotal + totalPrimeRecolte + totalAutresPrimes + totalDivers;
+            // COÛT EMPLOYEUR = les 7 postes. Il remplace l'ancien `totalGlobal`,
+            // qui partait de `totalCout` — le coût BEE ONE — alors que les
+            // tuiles MO affichaient, elles, le modèle Smart Berry. L'en-tête et
+            // les cartes ne parlaient donc pas du même argent : sur la
+            // Quinzaine 03, un total de 196 618 DH construit sur 153 415 DH de
+            // BEE ONE, au-dessus d'une carte MO à 148 667 DH.
+            const _coutEmployeur = (_moTotaux && _chargesSociales)
+                ? _CMO.coutEmployeur({
+                    mo: _moTotaux,
+                    primes: { recolte: totalPrimeRecolte, transport: transportCoutTotal, autres: totalAutresPrimes },
+                    charges: _chargesSociales,
+                })
+                : null;
+            // La sous-traitance est un coût de la quinzaine, pas un coût
+            // d'EMPLOYÉ : elle s'ajoute au total sans entrer dans le coût
+            // employeur, qu'on compare à une masse salariale.
+            const totalGlobal = (_coutEmployeur === null) ? null : _coutEmployeur + totalDivers;
 
             const recapItems = [
                 { label: 'MO Récolte', icon: 'fa-seedling', color: 'var(--berry)', montant: _sbPending ? null : totalCoutRecolte, popupKey: 'mo_recolte' },
@@ -11842,6 +11798,17 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     { label: 'Chargement', montant: totalChargement },
                     { label: 'Jour Férié', montant: totalJourFerie },
                   ]
+                },
+                // Pas de `popupKey` : le détail est DÉJÀ sur la carte (les deux
+                // sous-lignes) et développé dans le panneau « Charges Sociales
+                // MO » plus bas. Une clé sans pop-up correspondante rendrait la
+                // carte cliquable pour ne rien ouvrir.
+                { label: 'Charges Sociales', icon: 'fa-building-columns', color: '#3949ab',
+                  montant: _sbPending ? null : (_chargesSociales ? _chargesSociales.total : null),
+                  subItems: _chargesSociales ? [
+                    { label: 'Charges Salariales', montant: _chargesSociales.salariales },
+                    { label: 'Charges Patronales', montant: _chargesSociales.patronales },
+                  ] : []
                 },
                 { label: 'Location & Engins', icon: 'fa-truck', color: '#16a085', montant: totalDivers, popupKey: 'location_engins' },
             ];
@@ -11917,8 +11884,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             badges={[
                                 { bg: 'var(--berry-pale)', color: 'var(--berry)', icon: 'fa-calendar', text: parJour.length + ' jours' },
                                 { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-users', text: (totalJournees || totalJourneesDistinct).toLocaleString('fr-FR') + ' JH' },
-                                { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
-                                ...(parJour.length > 0 ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
+                                // Coût employeur ET total : deux chiffres, deux
+                                // périmètres. Les fondre en un seul obligerait à
+                                // choisir si la sous-traitance est de la masse
+                                // salariale — elle ne l'est pas.
+                                ...(_coutEmployeur === null ? [] : [
+                                    { bg: '#eef0ff', color: '#3949ab', icon: 'fa-building-columns', text: 'Coût employeur: ' + Math.round(_coutEmployeur).toLocaleString('fr-FR') + ' DH' },
+                                    { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
+                                ]),
+                                ...((_coutEmployeur !== null && parJour.length > 0) ? [{ bg: '#fff3e0', color: '#e65100', icon: 'fa-chart-simple', text: 'Moy/jour: ' + Math.round(totalGlobal / parJour.length).toLocaleString('fr-FR') + ' DH' }] : []),
                             ]}
                             clickable={true}
                             externalPopup={true}
@@ -11969,24 +11943,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         );
                     })()}
 
-                    {_globalMOCharges && _globalMOCharges.cntDecl > 0 && (
-                        <div style={{display:'flex',alignItems:'center',gap:12,marginTop:16,marginBottom:4}}>
-                            <div style={{border:'2px solid #3949ab',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'#f5f7ff',minWidth:220}}>
-                                <span style={{fontSize:12,fontWeight:700,color:'#3949ab',letterSpacing:0.3}}>
-                                    Charges patronales CNSS
-                                </span>
-                                <span style={{fontSize:20,fontWeight:800,color:'#3949ab'}}>
-                                    +{f2(_globalMOCharges.totalCharges)} DH
-                                </span>
-                                <span style={{fontSize:11,color:'var(--gray-500)'}}>
-                                    ≈ {(_globalMOCharges.totalBrut > 0 ? (_globalMOCharges.totalCharges / _globalMOCharges.totalBrut * 100).toFixed(2) : '19.26').replace('.', ',')}% du brut déclaré
-                                </span>
-                            </div>
-                            <span style={{fontSize:11,color:'var(--gray-400)',fontStyle:'italic',maxWidth:180}}>
-                                Non inclus dans le total — coût employeur additionnel
-                            </span>
-                        </div>
-                    )}
+                    {/* L'ancienne carte « Charges patronales CNSS » vivait ici,
+                        hors du total et amputée de sa moitié salariale. Elle est
+                        devenue la tuile « Charges Sociales », à deux lignes et
+                        DANS le total — un coût employeur affiché à côté du total
+                        sans y entrer laissait chacun faire l'addition de tête. */}
 
                     {quinzPopupKey === 'location_engins' && (() => {
                         const _divRows = diversData ? diversData.rows : [];
@@ -12924,30 +12885,39 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         </div>
                     )}
 
-                    {_globalMOCharges && _globalMOCharges.cntDecl > 0 && (
+                    {_chargesSociales && _chargesSociales.nbDeclares > 0 && (
                         <div style={{marginBottom:16,background:'#f0f4ff',borderRadius:12,padding:'16px 20px',border:'1px solid #c5d0e6'}}>
                             <div style={{fontSize:12,fontWeight:700,color:'#3949ab',textTransform:'uppercase',letterSpacing:0.5,marginBottom:12}}>
                                 <i className="fa-solid fa-shield-halved" style={{marginRight:6}}></i>
-                                Charges Patronales MO — Récolte · Hors Récolte · Postes Fixes
+                                Charges Sociales MO — Récolte · Hors Récolte · Postes Fixes
                             </div>
                             <div style={{display:'flex',gap:12,flexWrap:'wrap'}}>
                                 <div style={{flex:'1 1 120px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'1px solid #e8ecf8'}}>
                                     <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Déclarés CNSS</div>
-                                    <div style={{fontSize:22,fontWeight:800,color:'#27ae60'}}>{_globalMOCharges.cntDecl}</div>
-                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>{_globalMOCharges.cntNonDecl} non déclarés</div>
+                                    <div style={{fontSize:22,fontWeight:800,color:'#27ae60'}}>{_chargesSociales.nbDeclares}</div>
+                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>{_chargesSociales.nbNonDeclares} non déclarés</div>
                                 </div>
                                 <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'1px solid #e8ecf8'}}>
                                     <div style={{fontSize:11,color:'var(--gray-500)',marginBottom:4}}>Brut total déclarés</div>
-                                    <div style={{fontSize:16,fontWeight:700,color:'var(--gray-700)'}}>{f2(_globalMOCharges.totalBrut)} DH</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'var(--gray-700)'}}>{f2(_chargesSociales.brutDeclare)} DH</div>
+                                </div>
+                                {/* Les DEUX composantes, côte à côte. La salariale
+                                    manquait : l'ouvrier est payé sur le brut sans
+                                    retenue, donc ce que la loi prélèverait sur son
+                                    salaire, la société le verse en plus. */}
+                                <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'1px solid #e8ecf8'}}>
+                                    <div style={{fontSize:11,color:'#3949ab',marginBottom:4,fontWeight:600}}>Charges salariales</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'#3949ab'}}>+{f2(_chargesSociales.salariales)} DH</div>
+                                    <div style={{fontSize:10,color:'var(--gray-400)'}}>CNSS 4,48% + AMO 2,26%</div>
                                 </div>
                                 <div style={{flex:'1 1 160px',textAlign:'center',background:'#fff',borderRadius:8,padding:'10px 14px',border:'2px solid #3949ab'}}>
-                                    <div style={{fontSize:11,color:'#3949ab',marginBottom:4,fontWeight:600}}>Charges patronales CNSS</div>
-                                    <div style={{fontSize:16,fontWeight:700,color:'#3949ab'}}>+{f2(_globalMOCharges.totalCharges)} DH</div>
+                                    <div style={{fontSize:11,color:'#3949ab',marginBottom:4,fontWeight:600}}>Charges patronales</div>
+                                    <div style={{fontSize:16,fontWeight:700,color:'#3949ab'}}>+{f2(_chargesSociales.patronales)} DH</div>
                                     <div style={{fontSize:10,color:'var(--gray-400)'}}>≈ 19,26% du brut déclaré</div>
                                 </div>
                                 <div style={{flex:'1 1 160px',textAlign:'center',background:'linear-gradient(135deg,#3949ab,#5c6bc0)',borderRadius:8,padding:'10px 14px',color:'#fff'}}>
                                     <div style={{fontSize:11,opacity:0.85,marginBottom:4}}>Coût employeur MO total</div>
-                                    <div style={{fontSize:16,fontWeight:800}}>{f2(_globalMOCharges.totalCoutEmp)} DH</div>
+                                    <div style={{fontSize:16,fontWeight:800}}>{f2((_moTotaux ? _moTotaux.total : 0) + _chargesSociales.total)} DH</div>
                                     <div style={{fontSize:10,opacity:0.7}}>Récolte + Hors Récolte + Postes</div>
                                 </div>
                             </div>
@@ -13019,7 +12989,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                             if (r.jour) _wDetailMap[_key].joursSet.add(r.jour);
                         });
 
-                        // Résoudre SMAG pour la période (même pattern que _globalMOCharges)
+                        // Résoudre SMAG pour la période (même pattern que le module de coût)
                         const _PUd = window.PaieUtils;
                         const _firstDayD = parJour.length > 0 ? parJour[0].jour : null;
                         const _smagD = (_PUd && _PUd.resolveSmagForDate)
