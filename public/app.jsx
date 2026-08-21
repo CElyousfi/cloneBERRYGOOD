@@ -12058,7 +12058,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     un décaissement — deux lectures qu'on confond dès
                                     qu'elles se ressemblent. */}
                                 {_netAPayer !== null && (
-                                <div style={{border:'2px solid var(--green)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--green-pale)',minWidth:220}}>
+                                <div onClick={() => setQuinzPopupKey('net_a_payer')}
+                                    title="Voir le détail du calcul"
+                                    style={{border:'2px solid var(--green)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--green-pale)',minWidth:220,cursor:'pointer'}}>
                                     <span style={{fontSize:12,fontWeight:700,color:'var(--green)',letterSpacing:0.3}}>
                                         NET À PAYER
                                     </span>
@@ -12070,7 +12072,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     </span>
                                 </div>
                                 )}
-                                <div style={{border:'2px solid var(--berry)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--berry-pale)',minWidth:220}}>
+                                <div onClick={() => setQuinzPopupKey('cout_employeur')}
+                                    title="Voir le détail du calcul"
+                                    style={{border:'2px solid var(--berry)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--berry-pale)',minWidth:220,cursor:'pointer'}}>
                                     <span style={{fontSize:12,fontWeight:700,color:'var(--berry)',letterSpacing:0.3}}>
                                         Coût chargé ouvrier — TOTAL
                                     </span>
@@ -12092,10 +12096,9 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                         sur {Math.round(_q.jh).toLocaleString('fr-FR')} JH pointées
                                     </span>
                                 </div>
-                                <button onClick={() => setQuinzPopupKey('cout_employeur')}
-                                    style={{border:'1px dashed var(--berry)',borderRadius:12,padding:'12px 16px',background:'transparent',color:'var(--berry)',cursor:'pointer',fontSize:12,fontWeight:600,alignSelf:'stretch'}}>
-                                    <i className="fa-solid fa-list-ul" style={{marginRight:6}}></i>Détail du coût
-                                </button>
+                                {/* Le bouton « Détail du coût » vivait ici. Les bulles
+                                    elles-mêmes ouvrent leur détail : un chiffre qu'on
+                                    ne peut pas ouvrir n'invite pas à être vérifié. */}
                             </div>
                         );
                     })()}
@@ -12105,6 +12108,90 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         devenue la tuile « Charges Sociales », à deux lignes et
                         DANS le total — un coût employeur affiché à côté du total
                         sans y entrer laissait chacun faire l'addition de tête. */}
+
+                    {quinzPopupKey === 'net_a_payer' && (() => {
+                        // Le NET À PAYER, terme par terme. Même forme que le détail
+                        // du coût employeur, mais l'inverse en nature : ici on liste
+                        // ce qui SORT DE LA CAISSE, là-bas ce que l'entreprise
+                        // supporte. Les deux se lisent l'un après l'autre, et leur
+                        // écart EST la tuile Charges Sociales.
+                        const _np = [
+                            { l: 'MO Récolte', v: _moTotaux ? _moTotaux.recolte : 0 },
+                            { l: 'MO Hors Récolte', v: _moTotaux ? _moTotaux.horsRecolte : 0 },
+                            { l: 'Postes Fixes', v: _moTotaux ? _moTotaux.postes : 0 },
+                            { l: 'Prime Récolte', v: totalPrimeRecolte },
+                            { l: 'Prime Transport', v: transportCoutTotal },
+                            { l: 'Autres Primes', v: totalAutresPrimes, sous: [
+                                { l: 'Traitement', v: totalTraitement },
+                                { l: 'Conditionnement', v: totalConditionnement },
+                                { l: 'Chargement', v: totalChargement },
+                                { l: 'Jour Férié', v: totalJourFerie },
+                            ] },
+                            { l: 'Heures Supplémentaires', v: _hsTotal },
+                            { l: 'Location & Engins (sous-traitance)', v: totalDivers },
+                        ];
+                        const _somNp = _np.reduce((s2, x) => s2 + (x.v || 0), 0);
+                        const _td = {padding:'7px 10px',textAlign:'right',fontSize:13};
+                        const _tdL = {..._td, textAlign:'left'};
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzPopupKey(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:640,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:'linear-gradient(135deg, var(--green) 0%, var(--green-light) 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className="fa-solid fa-money-bill-wave" style={{marginRight:8}}></i>Net à payer — {currentPeriode}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>ce qui sort de la caisse · {Math.round(_netAPayer || 0).toLocaleString('fr-FR')} DH</div>
+                                        </div>
+                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                            <tbody>
+                                                {_np.map((x, i) => [
+                                                    <tr key={x.l} style={{borderBottom:'1px solid var(--gray-100)', background: i % 2 ? '#f4faf6' : '#fff'}}>
+                                                        <td style={{..._tdL, fontWeight:600}}>{x.l}</td>
+                                                        <td style={{..._td, fontWeight:700}}>{Math.round(x.v || 0).toLocaleString('fr-FR')}</td>
+                                                    </tr>,
+                                                    ...((x.sous || []).map(sx => (
+                                                        <tr key={x.l + sx.l} style={{background: i % 2 ? '#f4faf6' : '#fff'}}>
+                                                            <td style={{..._tdL, paddingLeft:26, fontSize:11.5, color:'var(--gray-500)'}}>↳ {sx.l}</td>
+                                                            <td style={{..._td, fontSize:11.5, color:'var(--gray-500)'}}>{Math.round(sx.v || 0).toLocaleString('fr-FR')}</td>
+                                                        </tr>
+                                                    ))),
+                                                ])}
+                                            </tbody>
+                                            <tfoot>
+                                                <tr style={{background:'var(--green-pale)',fontWeight:800}}>
+                                                    <td style={_tdL}>NET À PAYER</td>
+                                                    <td style={_td}>{Math.round(_somNp).toLocaleString('fr-FR')} DH</td>
+                                                </tr>
+                                                {_chargesSociales && (
+                                                <tr style={{color:'var(--gray-500)'}}>
+                                                    <td style={{..._tdL, fontSize:11.5}}>+ Charges Sociales (versées à la CNSS, pas à l'ouvrier)</td>
+                                                    <td style={{..._td, fontSize:11.5}}>{Math.round(_chargesSociales.total).toLocaleString('fr-FR')}</td>
+                                                </tr>
+                                                )}
+                                                <tr style={{fontWeight:700, color:'var(--berry)'}}>
+                                                    <td style={_tdL}>= Total quinzaine</td>
+                                                    <td style={_td}>{Math.round(totalGlobal || 0).toLocaleString('fr-FR')} DH</td>
+                                                </tr>
+                                            </tfoot>
+                                        </table>
+                                        <div style={{marginTop:12,fontSize:10.5,color:'var(--gray-500)'}}>
+                                            <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                            Les charges sociales ne figurent PAS ici : elles vont à la CNSS, pas à
+                                            l'ouvrier. La sous-traitance, elle, y figure — un prestataire est payé
+                                            lui aussi. C'est ce qui distingue ce chiffre du coût employeur, qui
+                                            fait l'inverse des deux.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {quinzPopupKey === 'cout_employeur' && (() => {
                         // Le coût employeur, terme par terme. Chaque ligne est un
@@ -12479,7 +12566,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     {quinzPopupKey && quinzPopupKey !== 'location_engins'
                         && quinzPopupKey !== 'charges_sociales'
                         && quinzPopupKey !== 'heures_sup'
-                        && quinzPopupKey !== 'cout_employeur' && (() => {
+                        && quinzPopupKey !== 'cout_employeur'
+                        && quinzPopupKey !== 'net_a_payer' && (() => {
                         const _qpKey = quinzPopupKey;
                         const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
                         const _qpTitle = _qpKey === 'mo_recolte' ? 'MO Récolte'
