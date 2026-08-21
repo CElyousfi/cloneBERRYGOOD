@@ -66,10 +66,10 @@ function campagneStart(now) {
   return `${d.getMonth() >= 6 ? y : y - 1}-07-01`;
 }
 
-// v2 : la base porte le bump de la réponse enrichie de `nbOuv` (cf.
+// La base porte le bump de la réponse (cf.
 // tests/unit/campagneAnalytiqueDetailNbOuv.test.js). Les trois dimensions de
 // périmètre s'ajoutent APRÈS la base, elles sont orthogonales au versionnage.
-const BASE = `campagne_analytique_detail_v3_${campagneStart()}`;
+const BASE = `campagne_analytique_detail_v4_${campagneStart()}`;
 
 /** Appelle la vraie fonction et renvoie la clé qu'elle a passée à withCache. */
 async function keyFor(fermeFilter, cultureFilter) {

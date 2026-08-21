@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 41,
+        "commits": 42,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 40,
+        "commits": 41,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -39,7 +39,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 17,
+        "commits": 18,
         "file": "functions/pointageService.js"
       },
       {
@@ -52,15 +52,15 @@
       },
       {
         "commits": 11,
+        "file": "functions/lib/paie/coutOuvrierCampagne.js"
+      },
+      {
+        "commits": 11,
         "file": "public/components/CampagneBudgetTab.js"
       },
       {
         "commits": 11,
         "file": "public/components/PivotAnalytiqueGrid.jsx"
-      },
-      {
-        "commits": 10,
-        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
@@ -788,7 +788,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 39,
+          "coCommits": 40,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -846,6 +846,13 @@
         {
           "coCommits": 8,
           "domain": null,
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 8,
+          "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -861,13 +868,6 @@
           "coCommits": 7,
           "domain": null,
           "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 7,
-          "domain": null,
-          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -916,6 +916,13 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "functions/pointageService.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "scripts/build-frontend.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -924,13 +931,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
         },
