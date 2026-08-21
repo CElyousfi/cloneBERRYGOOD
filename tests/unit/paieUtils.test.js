@@ -173,7 +173,7 @@ test('resolveSmagForDate: date before first entry → flat fallback', () => {
 // ---------------------------------------------------------------------------
 // computeWorkerPaie
 // ---------------------------------------------------------------------------
-test('computeWorkerPaie: declared, prime fonction dans le brut, CNSS patronale sur brut, AUCUNE retenue salariale', () => {
+test('computeWorkerPaie: declared, prime fonction dans le brut, CNSS patronale sur brut, part salariale reversée à la CNSS', () => {
   const r = computeWorkerPaie({
     declare: true, joursTravailles: 10, anciennete: 0,
     baremes: PAIE_BAREMES_DEFAULT, dateISO: '2026-06-01',
@@ -186,11 +186,11 @@ test('computeWorkerPaie: declared, prime fonction dans le brut, CNSS patronale s
   assert.ok(close(r.primeFonction, primeFonction));
   assert.ok(close(r.brut, brut));
   // Aucune retenue salariale (modèle Omar 2026-06)
-  assert.strictEqual(r.cotisationsSalariales, 0);
+  assert.ok(r.cotisationsSalariales > 0);
   // CNSS patronale calculée sur le brut INCLUANT prime de fonction
   assert.ok(close(r.chargesPatronales, brut * 0.1926));
   // Net ouvrier = brut (pas de retenue), CNSS patronale uniquement dans le coût employeur
-  assert.ok(close(r.net, brut));
+  assert.ok(close(r.net, brut * 0.9326));
   assert.ok(close(r.coutEmployeur, brut + brut * 0.1926));
 });
 
@@ -208,8 +208,8 @@ test('computeWorkerPaie: prime transport is NOT taxed (added to net & cost only)
   // brut & charges unchanged by transport
   assert.ok(close(withT.brut, noT.brut));
   assert.ok(close(withT.chargesPatronales, noT.chargesPatronales));
-  assert.strictEqual(withT.cotisationsSalariales, 0);
-  assert.strictEqual(noT.cotisationsSalariales, 0);
+  assert.ok(withT.cotisationsSalariales > 0);
+  assert.ok(noT.cotisationsSalariales > 0);
   // net & cost increased by exactly the transport amount
   assert.ok(close(withT.net, noT.net + 30));
   assert.ok(close(withT.coutEmployeur, noT.coutEmployeur + 30));
@@ -231,7 +231,8 @@ test('computeWorkerPaie: non-declared utilise SMAG BRUT, no charges, still pays 
   assert.strictEqual(r.cotisationsSalariales, 0);
   assert.strictEqual(r.primeAnciennete, 0);
   assert.ok(close(r.brut, smagBaseTotal + primeFonction));
-  assert.ok(close(r.net, smagBaseTotal + primeFonction + 30));
+  // Le net porte la retenue ; le transport, hors salaire, ne la porte pas.
+  assert.ok(close(r.net, (smagBaseTotal + primeFonction) * 0.9326 + 30));
   assert.ok(close(r.coutEmployeur, r.net));
 });
 
@@ -368,7 +369,7 @@ test('computeWorkerPaie: HS incluses dans le brut → charges sur brut+HS', () =
   assert.ok(close(withHS.brut, noHS.brut + montantHS));
   // CNSS patronale calculée sur le brut majoré des HS ; aucune retenue salariale
   assert.ok(close(withHS.chargesPatronales, withHS.brut * 0.1926));
-  assert.strictEqual(withHS.cotisationsSalariales, 0);
+  assert.ok(withHS.cotisationsSalariales > 0);
   assert.ok(withHS.chargesPatronales > noHS.chargesPatronales);
 });
 
@@ -385,8 +386,8 @@ test('computeWorkerPaie: transport hors brut (charges inchangées) + récolte ho
   // brut & charges strictement inchangés par transport + récolte
   assert.ok(close(withExtras.brut, base.brut));
   assert.ok(close(withExtras.chargesPatronales, base.chargesPatronales));
-  assert.strictEqual(withExtras.cotisationsSalariales, 0);
-  assert.strictEqual(base.cotisationsSalariales, 0);
+  assert.ok(withExtras.cotisationsSalariales > 0);
+  assert.ok(base.cotisationsSalariales > 0);
   assert.strictEqual(withExtras.primeRecolte, 50);
   // net & coût employeur augmentés de transport + récolte
   assert.ok(close(withExtras.net, base.net + 30 + 50));
@@ -470,8 +471,11 @@ test('computeWorkerPaie: déclaré vs non-déclaré — même base brut, même n
   assert.ok(close(non.smagBaseJour, 97.44));
   assert.ok(close(dec.smagBaseJour, non.smagBaseJour));
 
-  // Aucune retenue salariale pour personne
-  assert.strictEqual(dec.cotisationsSalariales, 0);
+  // ARBITRAGE 2026-08-21 : la retenue s'applique aux DEUX. Bulletins à l'appui —
+  // la colonne « Montant » vaut brut × 0,933 sur les deux feuilles, et c'est ce
+  // montant-là que totalise la feuille VIREMENT. Le déclaré la voit REVERSÉE à
+  // la CNSS ; pour le non-déclaré, elle n'est versée à personne.
+  assert.ok(dec.cotisationsSalariales > 0);
   assert.strictEqual(non.cotisationsSalariales, 0);
 
   // À primes égales (ancienneté 0), brut et net identiques
@@ -479,8 +483,8 @@ test('computeWorkerPaie: déclaré vs non-déclaré — même base brut, même n
   assert.ok(close(dec.net, non.net));
 
   // Net = brut + transport (récolte=0) pour les deux
-  assert.ok(close(dec.net, dec.brut + 30));
-  assert.ok(close(non.net, non.brut + 30));
+  assert.ok(close(dec.net, dec.brut * 0.9326 + 30));
+  assert.ok(close(non.net, non.brut * 0.9326 + 30));
 
   // Seul le déclaré porte la CNSS patronale → seul son coût employeur la contient
   assert.ok(dec.chargesPatronales > 0);
@@ -488,7 +492,11 @@ test('computeWorkerPaie: déclaré vs non-déclaré — même base brut, même n
   assert.ok(close(dec.chargesPatronales, dec.brut * 0.1926));
 
   // Le coût employeur diffère exactement de la CNSS patronale
-  assert.ok(close(dec.coutTotalEmployeur - non.coutTotalEmployeur, dec.chargesPatronales));
+  // À NET ÉGAL, déclarer coûte DEUX fois : la part patronale, et la part
+  // salariale que l'entreprise reverse à la CNSS au lieu de la garder.
+  // C'est le vrai prix de la déclaration, et il ne se lit nulle part ailleurs.
+  assert.ok(close(dec.coutTotalEmployeur - non.coutTotalEmployeur,
+    dec.chargesPatronales + dec.cotisationsSalariales));
   assert.ok(close(non.coutTotalEmployeur, non.net));
 });
 
@@ -525,19 +533,22 @@ test('computePayslip EX2 — Déclaré 10% avec férié : BRUT=233.946, NET=218.
   assert.ok(close2(r.coutEmployeur, 279.00), `coutEmployeur=${r.coutEmployeur}`);
 });
 
-test('computePayslip EX3 — Non déclaré : BRUT=NET=coutEmployeur=100, netArrondi=100', () => {
+test('computePayslip EX3 — Non déclaré : la prime de fonction porte la retenue', () => {
+  // Le SMAG est déjà pris NET (90,88). La prime, elle, est stockée en BRUT au
+  // registre : l'ajouter telle quelle donnait au non-déclaré 6,74 % de prime de
+  // plus qu'à son collègue déclaré (arbitrage 2026-08-21).
   const r = computePayslip({
     declare: false, smagNet: 90.88, jT: 1, primeFonctionJour: 9.12,
   });
-  assert.ok(close2(r.brut, 100), `brut=${r.brut}`);
-  assert.ok(close2(r.net, 100), `net=${r.net}`);
-  assert.ok(close2(r.coutEmployeur, 100), `coutEmployeur=${r.coutEmployeur}`);
+  const attendu = 90.88 + 9.12 * 0.9326;
+  assert.ok(close2(r.brut, attendu), `brut=${r.brut}`);
+  assert.ok(close2(r.net, attendu), `net=${r.net}`);
+  assert.ok(close2(r.coutEmployeur, attendu), `coutEmployeur=${r.coutEmployeur}`);
   assert.strictEqual(r.brut, r.net);
   assert.strictEqual(r.net, r.coutEmployeur);
   assert.strictEqual(r.cnss, 0);
   assert.strictEqual(r.amo, 0);
   assert.strictEqual(r.chargesPatronales, 0);
-  assert.strictEqual(r.netArrondi, 100);
 });
 
 test('computePayslip: primes optionnelles (nombre, tableau, objet) sommées dans le brut', () => {

@@ -373,3 +373,31 @@ test('HS — aucune saisie : rien ne bouge', () => {
   assert.deepStrictEqual(a.detail[0], b.detail[0]);
   assert.strictEqual(a.detail[0].heuresSup, 0);
 });
+
+// ─────────────────────── non déclaré : le MÊME net qu'un déclaré
+
+test('NON DÉCLARÉ — même net qu\'un déclaré à situation égale', () => {
+  // Arbitrage d'Omar 2026-08-21, vérifié sur les bulletins : la feuille
+  // « SANS CNSS » affiche net/brut = 0,9333 sur les trois quinzaines. La
+  // retenue s'applique donc aussi au non-déclaré ; elle n'est simplement
+  // versée à personne. Auparavant sa prime de fonction échappait à la
+  // retenue — 6,74 % de prime de plus que son collègue déclaré.
+  const fiche = { baselineJours: 0, primeFonctionJournaliere: 25.874 };
+  const d = CMO.paieOuvrier({ paie, fiche: { ...fiche, declare: true }, jours: 13,
+    baremes: BAREMES, dateISO: '2026-08-01' });
+  const n = CMO.paieOuvrier({ paie, fiche: { ...fiche, declare: false }, jours: 13,
+    baremes: BAREMES, dateISO: '2026-08-01' });
+  // Écart résiduel : le barème porte un SMAG net arrondi (90,88 contre 90,873).
+  assert.ok(Math.abs(n.net - d.net) < 0.2,
+    'nets attendus égaux, obtenus ' + n.net.toFixed(2) + ' vs ' + d.net.toFixed(2));
+});
+
+test('NON DÉCLARÉ — son coût pour l\'entreprise est son NET', () => {
+  // Ni charge patronale, ni cotisation reversée : l'entreprise ne décaisse que
+  // ce qu'elle lui remet.
+  const n = CMO.paieOuvrier({ paie, fiche: NON_DECLARE, jours: 13,
+    baremes: BAREMES, dateISO: '2026-08-01' });
+  assert.strictEqual(n.chargesPatronales, 0);
+  assert.strictEqual(n.cotisationsSalariales, 0);
+  assert.strictEqual(n.net, n.coutEmployeur);
+});

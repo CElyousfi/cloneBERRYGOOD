@@ -241,9 +241,14 @@ function paieOuvrierQuinzaine(args) {
   // Charges recalculées sur l'assiette COMPLÈTE (fériés compris) : celles que
   // rend `computeWorkerPaie` ne les connaissent pas.
   const chargesPatronales = declare ? brutSoumis * (b.tauxChargesPatronales || 0) : 0;
-  // Part SALARIALE comptée comme un coût entreprise : l'ouvrier est payé sur le
-  // brut SANS retenue (cf. paieUtils), donc ce que la loi prélèverait sur son
-  // salaire, la société le verse en plus.
+  // Part SALARIALE : l'entreprise la reverse à la CNSS pour un déclaré. Elle est
+  // donc bien dans le coût — mais À TRAVERS le brut, puisque brut = net + part
+  // salariale. Le total ci-dessous ne l'ajoute PLUS une seconde fois.
+  //
+  // Correction du 2026-08-21 : elle l'était, ce qui surévaluait le coût de
+  // campagne de 6,74 % du brut déclaré. L'erreur venait de la prémisse « payé
+  // sur le brut sans retenue » — démentie par les bulletins, où le montant
+  // viré vaut brut × 0,933.
   const cotisationsSalariales = declare ? brutSoumis * (b.tauxCotisationsSalariales || 0) : 0;
 
   const primesNonSoumises = (Number(primes.transport) || 0)
@@ -262,7 +267,13 @@ function paieOuvrierQuinzaine(args) {
     heuresSup: (paie.heuresSup && paie.heuresSup.montant) || 0,
     // Salaire de base seul (SMAG × jours), pour que le détail se recompose.
     salaireBase: paie.smagBaseTotal,
-    total: brutSoumis + chargesPatronales + cotisationsSalariales + primesNonSoumises,
+    // Retenue d'un NON déclaré : ni versée à lui, ni reversée à la CNSS. Terme
+    // négatif du coût — sans lui, le détail ne se recompose pas dans le total.
+    retenueNonReversee: declare ? 0 : brutSoumis * (b.tauxCotisationsSalariales || 0),
+    // Déclaré : brut + patronales (le brut porte déjà la part salariale reversée).
+    // Non déclaré : rien n'est reversé, le coût est le NET qu'il touche.
+    total: (declare ? brutSoumis + chargesPatronales
+      : brutSoumis * (1 - (b.tauxCotisationsSalariales || 0))) + primesNonSoumises,
   };
 }
 
@@ -301,7 +312,11 @@ function coutOuvrierCampagne(args) {
   let joursDeclares = 0;
   const detail = {
     salaire: 0, baseBeeOne: 0, primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
-    chargesPatronales: 0, cotisationsSalariales: 0, transport: 0, recolte: 0,
+    chargesPatronales: 0, cotisationsSalariales: 0,
+    // Retenue NON REVERSÉE : celle des non-déclarés. Elle ne va ni à l'ouvrier
+    // (il touche le net) ni à la CNSS (il n'est pas déclaré). Terme NÉGATIF du
+    // coût, et seul moyen pour que le détail se recompose exactement.
+    retenueNonDeclares: 0, transport: 0, recolte: 0,
     traitement: 0, conditionnement: 0, chargement: 0, feries: 0,
   };
 
@@ -356,6 +371,7 @@ function coutOuvrierCampagne(args) {
       detail.heuresSup += paie.heuresSup;
       detail.chargesPatronales += paie.chargesPatronales;
       detail.cotisationsSalariales += paie.cotisationsSalariales;
+      detail.retenueNonDeclares += paie.retenueNonReversee;
       ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement', 'feries']
         .forEach((k) => { detail[k] += Number(primesOuvrier[k]) || 0; });
 
@@ -367,7 +383,12 @@ function coutOuvrierCampagne(args) {
         + paie.primeFonction + paie.primeAnciennete + paie.heuresSup;
       // `base` reste le témoin BEE ONE (rapprochement), `salaire` le calcul
       // Smart Berry : les deux se lisent côte à côte dans le panneau.
-      cumulQ.charges += paie.chargesPatronales + paie.cotisationsSalariales;
+      //
+      // CHARGES = la patronale SEULE. La part salariale est déjà dans le brut
+      // (brut = net + part salariale) et l'entreprise la reverse ; l'ajouter
+      // ici la compterait deux fois. Pour un non-déclaré, la retenue n'est
+      // reversée à personne : elle sort du coût, d'où le terme négatif.
+      cumulQ.charges += paie.chargesPatronales - paie.retenueNonReversee;
       cumulQ.coutTotal += paie.total;
 
       joursCumules[mat] = (joursCumules[mat] || 0) + joursTravailles;
