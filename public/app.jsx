@@ -12019,6 +12019,26 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         var _parJh = _q.coutTotal / _q.jh;
                         return (
                             <div style={{display:'flex',alignItems:'stretch',gap:12,marginTop:16,marginBottom:4,flexWrap:'wrap'}}>
+                                {/* NET À PAYER — ce qui sort de la caisse. Placé en
+                                    PREMIER parce que c'est le chiffre le plus concret
+                                    des trois : les deux suivants ajoutent ce que
+                                    l'entreprise verse en plus, à la CNSS.
+                                    Vert et non bordeaux : ce n'est pas un coût, c'est
+                                    un décaissement — deux lectures qu'on confond dès
+                                    qu'elles se ressemblent. */}
+                                {_netAPayer !== null && (
+                                <div style={{border:'2px solid var(--green)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--green-pale)',minWidth:220}}>
+                                    <span style={{fontSize:12,fontWeight:700,color:'var(--green)',letterSpacing:0.3}}>
+                                        NET À PAYER
+                                    </span>
+                                    <span style={{fontSize:20,fontWeight:800,color:'var(--green)'}}>
+                                        {Math.round(_netAPayer).toLocaleString('fr-FR')} DH
+                                    </span>
+                                    <span style={{fontSize:11,color:'var(--gray-500)'}}>
+                                        salaire + primes + heures sup + sous-traitance
+                                    </span>
+                                </div>
+                                )}
                                 <div style={{border:'2px solid var(--berry)',borderRadius:12,padding:'12px 20px',display:'inline-flex',flexDirection:'column',gap:2,background:'var(--berry-pale)',minWidth:220}}>
                                     <span style={{fontSize:12,fontWeight:700,color:'var(--berry)',letterSpacing:0.3}}>
                                         Coût chargé ouvrier — TOTAL
