@@ -4366,6 +4366,32 @@
                     .finally(() => setWorkerLoading(false));
             };
 
+            // Heures sup accordées : lecture GATÉE, déclenchée par la période
+            // RÉELLEMENT affichée. Deux pièges évités ici :
+            //  - la déclencher depuis `loadData(periode)` ne marche pas : au premier
+            //    chargement l'argument est vide, la quinzaine par défaut n'étant
+            //    résolue qu'APRÈS la réponse de l'API ;
+            //  - ce hook doit rester AU-DESSUS des `return` anticipés ci-dessous,
+            //    sinon l'ordre des hooks change quand `loading` bascule et React
+            //    casse net.
+            const _periodeHS = selectedPeriode || (apiData && (apiData.periodes || [])[0]) || '';
+            useEffect(() => {
+                let annule = false;
+                if (!_periodeHS) { setHsMontants({}); return undefined; }
+                (async () => {
+                    try {
+                        const tok = (firebaseAuth && firebaseAuth.currentUser)
+                            ? await firebaseAuth.currentUser.getIdToken() : null;
+                        const r = await fetch('/api/primes?action=heures-sup-montants&periode='
+                            + encodeURIComponent(_periodeHS),
+                            { headers: tok ? { Authorization: 'Bearer ' + tok } : {} });
+                        const d = await r.json().catch(() => ({}));
+                        if (!annule) setHsMontants((d && d.success && d.montants) || {});
+                    } catch (e) { if (!annule) setHsMontants({}); }
+                })();
+                return () => { annule = true; };
+            }, [_periodeHS]);
+
             if (loading) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--gray-400)'}}><div style={{fontSize:36,marginBottom:8}}>🍇</div><i className="fa-solid fa-spinner fa-spin fa-lg" style={{color:'var(--berry)'}}></i><div style={{marginTop:12,color:'var(--berry)',fontWeight:500}}>Chargement pointage...</div></div>;
             if (!apiData) return <div className="fade-in" style={{textAlign:'center',padding:40,color:'var(--red)'}}><i className="fa-solid fa-triangle-exclamation fa-2x"></i><div style={{marginTop:12}}>Impossible de charger les données</div></div>;
 
@@ -11441,23 +11467,6 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     if (recolteEq.success) setRecolteEquipeRows(recolteEq.rows || []);
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
 
-                // Montants d'heures sup de la quinzaine affichée. Lecture GATÉE
-                // (rôle RH/DG côté serveur) : un profil sans droit reçoit 403 et
-                // l'écran affiche 0, jamais une erreur bloquante.
-                (async () => {
-                    const per = (pq || '').replace(/^&periode=/, '');
-                    if (!per) { setHsMontants({}); return; }
-                    try {
-                        const tok = (firebaseAuth && firebaseAuth.currentUser)
-                            ? await firebaseAuth.currentUser.getIdToken() : null;
-                        const r = await fetch('/api/primes?action=heures-sup-montants&periode='
-                            + encodeURIComponent(decodeURIComponent(per)),
-                            { headers: tok ? { Authorization: 'Bearer ' + tok } : {} });
-                        const d = await r.json().catch(() => ({}));
-                        setHsMontants((d && d.success && d.montants) || {});
-                    } catch (e) { setHsMontants({}); }
-                })();
-
                 // Minutes badgées de la quinzaine (action publique, cachée).
                 cachedFetch('/api/pointage-rh?action=heures-sup').then(json => {
                     if (!json || !json.success) return;
@@ -11646,6 +11655,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
 
             // Transport cost for quinzaine
             const currentPeriode = selectedPeriode || (apiData.periodes || [])[0] || '';
+
             const transportRows = transportDetail.filter(r => (r.periode||'').trim() === currentPeriode.trim() && (!farmFilter || r.ferme === farmFilter) && matchSub(r) && matchCulture(r, cultureFilter));
             // Count unique workers per equipe per day
             const transportByDay = {};
