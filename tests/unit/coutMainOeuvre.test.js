@@ -266,3 +266,41 @@ test('netAPayer — les 6 postes versés, SANS les charges sociales', () => {
   assert.strictEqual(CMO.totalQuinzaine({ mo, primes, charges, locationEngins: 5200 }),
     CMO.coutEmployeur({ mo, primes, charges }) + 5200);
 });
+
+test('CNSS et AMO restent séparées — recoupées sur un bulletin réel', () => {
+  // ABDELLAY ABDELHAMID, Quinzaine 01 : 13 jours, déclaré, prime de fonction
+  // 25,872 DH/j. Les montants sont ceux de la pop-up ouvrier en production —
+  // c'est le contrôle qui dit que le module calcule LA paie, et pas une paie.
+  const p = CMO.paieOuvrier({
+    paie,
+    fiche: { declare: true, baselineJours: 65, primeFonctionJournaliere: 25.872307692 },
+    jours: 13,
+    baremes: BAREMES,
+    dateISO: '2026-07-01',
+  });
+  assert.strictEqual(Math.round(p.brut * 100) / 100, 1603.06);
+  assert.strictEqual(Math.round(p.cnss * 100) / 100, 71.82);
+  assert.strictEqual(Math.round(p.amo * 100) / 100, 36.23);
+  assert.strictEqual(Math.round(p.chargesPatronales * 100) / 100, 308.75);
+  assert.strictEqual(Math.round(p.net * 100) / 100, 1495.01);
+  assert.strictEqual(Math.round(p.coutEmployeur * 100) / 100, 1911.81);
+  // Les deux cotisations se recomposent en une part salariale, jamais l'inverse.
+  assert.strictEqual(Math.round((p.cnss + p.amo) * 100) / 100,
+    Math.round(p.cotisationsSalariales * 100) / 100);
+});
+
+test('chargesSociales — les agrégats CNSS et AMO suivent le détail', () => {
+  const registre = { A: DECLARE, B: NON_DECLARE };
+  const c = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: rows([
+    ['A', '2026-08-01', 'Taille'],
+    ['B', '2026-08-01', 'Taille'],
+  ]) });
+  assert.strictEqual(Math.round((c.cnss + c.amo) * 100) / 100,
+    Math.round(c.salariales * 100) / 100);
+  // Un non déclaré ne cotise pas : ses colonnes sont à zéro, mais il FIGURE au
+  // détail avec ses jours et son brut.
+  const nonDecl = c.detail.filter((w) => !w.declare)[0];
+  assert.strictEqual(nonDecl.cnss, 0);
+  assert.strictEqual(nonDecl.amo, 0);
+  assert.ok(nonDecl.brut > 0);
+});

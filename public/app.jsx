@@ -11805,7 +11805,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                   montant: _sbPending ? null : (_chargesSociales ? _chargesSociales.total : null),
                   popupKey: 'charges_sociales',
                   subItems: _chargesSociales ? [
-                    { label: 'Charges Salariales', montant: _chargesSociales.salariales },
+                    { label: 'CNSS salariale', montant: _chargesSociales.cnss },
+                    { label: 'AMO salariale', montant: _chargesSociales.amo },
                     { label: 'Charges Patronales', montant: _chargesSociales.patronales },
                   ] : []
                 },
@@ -11972,7 +11973,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         return (
                             <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
                                 onClick={() => setQuinzPopupKey(null)}>
-                                <div style={{background:'#fff',borderRadius:16,maxWidth:1000,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:1180,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
                                     onClick={e => e.stopPropagation()}>
                                     <div style={{padding:'20px 24px',background:'linear-gradient(135deg, #3949ab 0%, #5c6bc0 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
                                         <div>
@@ -11997,9 +11998,16 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                     <th style={_csThL}>Statut</th>
                                                     <th style={_csTh}>Jours</th>
                                                     <th style={_csTh}>Brut</th>
-                                                    <th style={_csTh} title="CNSS 4,48 % + AMO 2,26 % du brut. Coût d'entreprise : l'ouvrier est payé sur le brut, sans retenue.">Salariales</th>
-                                                    <th style={_csTh} title="19,26 % du brut.">Patronales</th>
-                                                    <th style={_csTh}>Coût employeur</th>
+                                                    {/* CNSS et AMO sur DEUX colonnes : ce sont deux
+                                                        cotisations, à deux taux, sur deux lignes du
+                                                        bulletin. Un total qu'on ne peut pas
+                                                        décomposer est un total qu'on ne peut pas
+                                                        vérifier contre une fiche de paie. */}
+                                                    <th style={_csTh} title="Cotisation salariale CNSS, 4,48 % du brut.">CNSS 4,48%</th>
+                                                    <th style={_csTh} title="Assurance Maladie Obligatoire, part salariale, 2,26 % du brut.">AMO 2,26%</th>
+                                                    <th style={_csTh} title="Brut − CNSS − AMO : ce que l'ouvrier touche.">Net à payer</th>
+                                                    <th style={_csTh} title="Charges patronales, 19,26 % du brut.">Patronales 19,26%</th>
+                                                    <th style={_csTh} title="Brut + charges patronales.">Coût employeur</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -12012,10 +12020,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                             </span>
                                                         </td>
                                                         <td style={_csTd}>{w.jours}</td>
-                                                        <td style={_csTd}>{Math.round(w.brut).toLocaleString('fr-FR')}</td>
-                                                        <td style={{..._csTd, color:'#3949ab'}}>{w.salariales > 0 ? Math.round(w.salariales).toLocaleString('fr-FR') : '—'}</td>
-                                                        <td style={{..._csTd, color:'#3949ab'}}>{w.patronales > 0 ? Math.round(w.patronales).toLocaleString('fr-FR') : '—'}</td>
-                                                        <td style={{..._csTd, fontWeight:700}}>{Math.round(w.coutEmployeur).toLocaleString('fr-FR')}</td>
+                                                        <td style={_csTd}>{f2(w.brut)}</td>
+                                                        <td style={{..._csTd, color:'#c0392b'}}>{w.cnss > 0 ? '−' + f2(w.cnss) : '—'}</td>
+                                                        <td style={{..._csTd, color:'#c0392b'}}>{w.amo > 0 ? '−' + f2(w.amo) : '—'}</td>
+                                                        <td style={{..._csTd, color:'var(--green)', fontWeight:600}}>{f2(w.net)}</td>
+                                                        <td style={{..._csTd, color:'#3949ab'}}>{w.patronales > 0 ? '+' + f2(w.patronales) : '—'}</td>
+                                                        <td style={{..._csTd, fontWeight:700}}>{f2(w.coutEmployeur)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -12023,10 +12033,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                                 <tr style={{background:'#eef0ff',fontWeight:700}}>
                                                     <td style={_csTdL} colSpan={2}>TOTAL</td>
                                                     <td style={_csTd}>{_csDetail.reduce((s, w) => s + w.jours, 0)}</td>
-                                                    <td style={_csTd}>{Math.round(_csDetail.reduce((s, w) => s + w.brut, 0)).toLocaleString('fr-FR')}</td>
-                                                    <td style={{..._csTd, color:'#3949ab'}}>{Math.round(_chargesSociales.salariales).toLocaleString('fr-FR')}</td>
-                                                    <td style={{..._csTd, color:'#3949ab'}}>{Math.round(_chargesSociales.patronales).toLocaleString('fr-FR')}</td>
-                                                    <td style={_csTd}>{Math.round(_csDetail.reduce((s, w) => s + w.coutEmployeur, 0)).toLocaleString('fr-FR')}</td>
+                                                    <td style={_csTd}>{f2(_csDetail.reduce((s, w) => s + w.brut, 0))}</td>
+                                                    <td style={{..._csTd, color:'#c0392b'}}>−{f2(_chargesSociales.cnss)}</td>
+                                                    <td style={{..._csTd, color:'#c0392b'}}>−{f2(_chargesSociales.amo)}</td>
+                                                    <td style={{..._csTd, color:'var(--green)'}}>{f2(_csDetail.reduce((s, w) => s + w.net, 0))}</td>
+                                                    <td style={{..._csTd, color:'#3949ab'}}>+{f2(_chargesSociales.patronales)}</td>
+                                                    <td style={_csTd}>{f2(_csDetail.reduce((s, w) => s + w.coutEmployeur, 0))}</td>
                                                 </tr>
                                             </tfoot>
                                         </table>

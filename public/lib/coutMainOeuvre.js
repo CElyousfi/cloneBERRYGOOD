@@ -167,7 +167,8 @@
    * @param {Object} args.baremes barèmes de paie.
    * @param {string} args.dateISO date de référence (SMAG daté, prime datée).
    * @returns {{brut: number, net: number, chargesPatronales: number,
-   *   cotisationsSalariales: number, coutEmployeur: number, declare: boolean}}
+   *   cnss: number, amo: number, cotisationsSalariales: number,
+   *   coutEmployeur: number, declare: boolean}}
    */
   function paieOuvrier(args) {
     var a = args || {};
@@ -175,8 +176,8 @@
     var fiche = a.fiche || {};
     var baremes = a.baremes || {};
     var jours = Number(a.jours) || 0;
-    var vide = { brut: 0, net: 0, chargesPatronales: 0, cotisationsSalariales: 0,
-      coutEmployeur: 0, declare: !!fiche.declare };
+    var vide = { brut: 0, net: 0, chargesPatronales: 0, cnss: 0, amo: 0,
+      cotisationsSalariales: 0, coutEmployeur: 0, declare: !!fiche.declare };
     if (!paie || typeof paie.computePayslip !== 'function' || jours <= 0) return vide;
 
     var smag = (typeof paie.resolveSmagForDate === 'function')
@@ -210,8 +211,12 @@
       brut: ps.brut || 0,
       net: ps.net || 0,
       chargesPatronales: ps.chargesPatronales || 0,
-      // `computePayslip` rend CNSS et AMO séparément ; ensemble, elles font la
-      // part salariale que l'entreprise verse en plus du net.
+      // CNSS et AMO restent DISTINCTES jusqu'à l'affichage : ce sont deux
+      // cotisations, à deux taux, sur deux lignes de bulletin. Les fondre dès
+      // le calcul obligerait à les re-déduire pour les montrer, et un total
+      // qu'on ne peut plus décomposer est un total qu'on ne peut plus vérifier.
+      cnss: ps.cnss || 0,
+      amo: ps.amo || 0,
       cotisationsSalariales: (ps.cnss || 0) + (ps.amo || 0),
       coutEmployeur: ps.coutEmployeur || 0,
       declare: !!ps.declare,
@@ -263,24 +268,24 @@
    * est. Un agrégat sans son détail se conteste sans pouvoir se vérifier.
    *
    * @param {Object} args {rows, registre, baremes, paie, cleRegistre?}
-   * @returns {{salariales: number, patronales: number, total: number,
-   *   brutDeclare: number, nbDeclares: number, nbNonDeclares: number,
-   *   detail: Array<Object>}}
+   * @returns {{cnss: number, amo: number, salariales: number,
+   *   patronales: number, total: number, brutDeclare: number,
+   *   nbDeclares: number, nbNonDeclares: number, detail: Array<Object>}}
    */
   function chargesSociales(args) {
     var a = args || {};
     var registre = a.registre || {};
     var cle = typeof a.cleRegistre === 'function' ? a.cleRegistre : function (m) { return m; };
     var parOuvrier = joursParOuvrier(a.rows);
-    var out = { salariales: 0, patronales: 0, total: 0, brutDeclare: 0,
-      nbDeclares: 0, nbNonDeclares: 0, detail: [] };
+    var out = { cnss: 0, amo: 0, salariales: 0, patronales: 0, total: 0,
+      brutDeclare: 0, nbDeclares: 0, nbNonDeclares: 0, detail: [] };
 
     Object.keys(parOuvrier).forEach(function (mat) {
       var e = parOuvrier[mat];
       var fiche = registre[cle(mat)] || {};
       var declare = !!fiche.declare;
       var ligne = { matricule: mat, declare: declare, jours: 0, brut: 0, net: 0,
-        salariales: 0, patronales: 0, coutEmployeur: 0 };
+        cnss: 0, amo: 0, salariales: 0, patronales: 0, coutEmployeur: 0 };
 
       CATEGORIES.forEach(function (cat) {
         var j = nbJours(e, cat);
@@ -290,6 +295,8 @@
         ligne.jours += j;
         ligne.brut += p.brut;
         ligne.net += p.net;
+        ligne.cnss += p.cnss;
+        ligne.amo += p.amo;
         ligne.salariales += p.cotisationsSalariales;
         ligne.patronales += p.chargesPatronales;
         ligne.coutEmployeur += p.coutEmployeur;
@@ -302,6 +309,8 @@
       if (declare) {
         out.nbDeclares++;
         out.brutDeclare += ligne.brut;
+        out.cnss += ligne.cnss;
+        out.amo += ligne.amo;
         out.salariales += ligne.salariales;
         out.patronales += ligne.patronales;
       } else {
