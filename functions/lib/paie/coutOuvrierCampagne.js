@@ -107,19 +107,77 @@ function prefixeEquipe(matricule, equipes) {
  * le transport d'un facteur ~13, soit ~28 DH manquants sur ~146 DH par journée —
  * une sous-estimation de 19 % du coût réel, invisible à l'œil nu.
  *
+ * ⚠️ LE TARIF EST DATÉ, et c'était le second piège. `transport-config-apply`
+ * (functions/index.js) réécrit chaque équipe modifiée SANS champ
+ * `coutParOuvrier` : le tarif ne vit plus que dans `history[]`, daté par
+ * `effectiveFrom`. Lire le champ plat renvoyait donc `undefined` — soit 0 DH de
+ * transport pour TOUTE équipe déjà passée par l'écran RH, c'est-à-dire en
+ * pratique toutes. L'écran Quinzaine, lui, résout bien par quinzaine
+ * (`getCoutTransport` dans app.jsx) : d'où un coût de campagne structurellement
+ * amputé du transport, sans qu'aucun total ne paraisse anormal.
+ *
  * @param {string} matricule
- * @param {Array<{prefix?: string, coutParOuvrier?: number}>} equipes
+ * @param {Array<{prefix?: string, coutParOuvrier?: number, history?: Array<Object>}>} equipes
+ * @param {string} [periode] quinzaine payée. Absente → tarif le plus récent.
  * @returns {number} montant PAR JOUR travaillé.
  */
-function primeTransport(matricule, equipes) {
+function primeTransport(matricule, equipes, periode) {
   const prefixe = prefixeEquipe(matricule, equipes);
   if (!prefixe) return 0;
   const equipe = (equipes || []).find(
     (e) => e && String(e.prefix || '').toUpperCase() === prefixe
   );
   if (!equipe) return 0;
-  const v = Number(equipe.coutParOuvrier);
+  const v = Number(tarifADate(equipe, periode));
   return isFinite(v) && v > 0 ? v : 0;
+}
+
+/**
+ * Ordonne un libellé de quinzaine. PURE. Portage à l'identique de
+ * `quinzaineOrder` (app.jsx) : une règle d'ordre différente ici ferait retenir
+ * un autre palier de tarif que celui affiché à l'écran.
+ *
+ * Formats : « DD/MM/YYYY[ - DD/MM/YYYY] » → timestamp du début ; « Quinzaine NN »
+ * → ordinal. Les deux unités ne sont pas comparables entre elles, mais une même
+ * configuration ne mélange pas les formats.
+ *
+ * @param {string} periodeStr
+ * @returns {number}
+ */
+function ordreQuinzaine(periodeStr) {
+  if (!periodeStr) return 0;
+  const s = String(periodeStr);
+  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return new Date(m[3] + '-' + m[2] + '-' + m[1] + 'T00:00:00').getTime();
+  const n = s.match(/\d+/);
+  return n ? parseInt(n[0], 10) : 0;
+}
+
+/**
+ * Tarif de transport d'une équipe À UNE QUINZAINE. PURE.
+ *
+ * Retient la dernière entrée d'historique dont `effectiveFrom` ne dépasse pas la
+ * quinzaine payée — le tarif EN VIGUEUR alors, pas le tarif d'aujourd'hui.
+ * Rapprocher une quinzaine de juillet au tarif d'août produirait un écart qu'on
+ * chercherait ensuite dans le pointage.
+ *
+ * @param {{coutParOuvrier?: number, history?: Array<{effectiveFrom?: string, coutParOuvrier?: number}>}} equipe
+ * @param {string} [periode]
+ * @returns {number}
+ */
+function tarifADate(equipe, periode) {
+  const hist = (equipe && Array.isArray(equipe.history)) ? equipe.history : [];
+  const plat = Number((equipe || {}).coutParOuvrier) || 0;
+  if (!hist.length) return plat;
+  const cible = periode ? ordreQuinzaine(periode) : Number.MAX_SAFE_INTEGER;
+  let retenue = null;
+  hist.forEach((h) => {
+    if (!h) return;
+    const o = ordreQuinzaine(h.effectiveFrom);
+    if (o > cible) return;
+    if (retenue === null || o >= retenue.ordre) retenue = { ordre: o, entree: h };
+  });
+  return retenue ? (Number(retenue.entree.coutParOuvrier) || 0) : plat;
 }
 
 /**
@@ -401,7 +459,7 @@ function coutOuvrierCampagne(args) {
 
       const primesOuvrier = Object.assign({}, e.primes || {}, {
         // × jours : la prime de transport est due PAR JOUR TRAVAILLÉ.
-        transport: primeTransport(mat, a.equipesTransport) * joursTravailles,
+        transport: primeTransport(mat, a.equipesTransport, cumulQ.periode) * joursTravailles,
       });
 
       const paie = paieOuvrierQuinzaine({
@@ -497,6 +555,6 @@ function coutOuvrierCampagne(args) {
 }
 
 module.exports = {
-  prefixeEquipe, primeTransport, primeRecolte, cumuleJournee,
+  prefixeEquipe, primeTransport, tarifADate, ordreQuinzaine, primeRecolte, cumuleJournee,
   paieOuvrierQuinzaine, coutOuvrierCampagne,
 };

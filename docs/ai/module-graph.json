@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 40,
+        "commits": 41,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 39,
+        "commits": 40,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -788,7 +788,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 38,
+          "coCommits": 39,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -860,6 +860,20 @@
         {
           "coCommits": 7,
           "domain": null,
+          "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 7,
+          "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -875,20 +889,6 @@
           "coCommits": 7,
           "domain": null,
           "file": "tests/unit/campagneExportUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
-          "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 6,
-          "domain": null,
-          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         },

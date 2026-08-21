@@ -80,6 +80,37 @@ test('primeTransport — un matricule numérique ne reçoit RIEN', () => {
   assert.strictEqual(M.primeTransport('10502', EQUIPES), 0);
 });
 
+test('primeTransport — le tarif vit dans `history`, pas dans le champ plat', () => {
+  // LA régression qui amputait le coût de campagne : `transport-config-apply`
+  // réécrit chaque équipe modifiée SANS `coutParOuvrier`. Lire le champ plat
+  // renvoyait `undefined` → 0 DH de transport pour toute équipe déjà passée par
+  // l'écran RH. Ce test tient sur une équipe qui n'a QUE de l'historique.
+  const eqHist = [{ prefix: 'AB', equipe: 'Équipe AB', history: [
+    { effectiveFrom: '01/07/2026', coutParOuvrier: 20 },
+    { effectiveFrom: '16/07/2026', coutParOuvrier: 26 },
+  ] }];
+  // Quinzaine du 01/07 : le tarif EN VIGUEUR alors, pas celui d'aujourd'hui.
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '01/07/2026 - 15/07/2026'), 20);
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '16/07/2026 - 31/07/2026'), 26);
+  // Quinzaine antérieure à toute entrée : rien à appliquer.
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '01/06/2026 - 15/06/2026'), 0);
+  // Sans quinzaine : le tarif le plus récent.
+  assert.strictEqual(M.primeTransport('AB1', eqHist), 26);
+});
+
+test('tarifADate — historique absent : on retombe sur le champ plat', () => {
+  // Les équipes jamais modifiées depuis l'écran RH n'ont pas d'historique.
+  // Les ignorer les priverait de transport pour la raison inverse.
+  assert.strictEqual(M.tarifADate({ coutParOuvrier: 15 }, 'Quinzaine 01'), 15);
+  assert.strictEqual(M.tarifADate({}, 'Quinzaine 01'), 0);
+});
+
+test('ordreQuinzaine — ordonne dates et ordinaux comme l\'écran', () => {
+  assert.ok(M.ordreQuinzaine('16/07/2026 - 31/07/2026') > M.ordreQuinzaine('01/07/2026'));
+  assert.strictEqual(M.ordreQuinzaine('Quinzaine 03'), 3);
+  assert.strictEqual(M.ordreQuinzaine(''), 0);
+});
+
 test('primeTransport — équipe inconnue → 0, jamais un montant deviné', () => {
   assert.strictEqual(M.primeTransport('AB1', EQUIPES), 20);
   assert.strictEqual(M.primeTransport('HAFI9', EQUIPES), 15);

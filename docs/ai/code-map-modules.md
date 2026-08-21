@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:f121904d1bc9e407 -->
+<!-- sourceFingerprint: sha256:196623c0bbab7ca7 -->
 # Code Map — Modules lib (177)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -81,7 +81,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/netafim/rateLimiter.js | — | todayKey, tryConsume |
 | functions/lib/netafim/types.js | — | — voir fichier — |
 | functions/lib/paie/coutMainOeuvre.js | — | CATEGORIES, coutFeries, nbJoursDistincts, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
-| functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
+| functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, tarifADate, ordreQuinzaine, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
 | functions/lib/paie/paieUtils.js | — | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
 | functions/lib/parcelleGroupes/seedHa.js | — | MAX_LABELS, RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, sanitizeLabels, computeSeedPlan |
 | functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |
