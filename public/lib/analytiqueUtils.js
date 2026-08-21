@@ -110,11 +110,12 @@
       if (!(key in sortKeys) || raw < sortKeys[key]) sortKeys[key] = raw;
       if (!pivot[key]) pivot[key] = {};
       if (!pivot[key][r.parcelle]) {
-        pivot[key][r.parcelle] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+        pivot[key][r.parcelle] = { jh: 0, cout: 0, coutCharge: 0, ha: ha, detailRows: [] };
       }
       const cell = pivot[key][r.parcelle];
       cell.jh += r.jh || 0;
       cell.cout += r.cout || 0;
+      cell.coutCharge += r.coutCharge || 0;
       if (cell.ha === 0 && ha > 0) cell.ha = ha;
       cell.detailRows.push(r);
     });
@@ -307,23 +308,28 @@
       var parc = r.parcelle;
       var jh   = r.jh   || 0;
       var cout = r.cout  || 0;
+      // Coût CHARGÉ (Σ JH × taux de l'ouvrier). `cout` reste le témoin BEE ONE
+      // du rapprochement — il n'est jamais affiché comme de l'argent.
+      var coutCharge = r.coutCharge || 0;
       var ha   = r.ha || r.haRef || 0;
 
       // Famille
       if (!famillePivot[gbCode]) famillePivot[gbCode] = { nom: gbNom, groupeName: groupeName, total: {} };
       var fam = famillePivot[gbCode];
-      if (!fam.total[parc]) fam.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      if (!fam.total[parc]) fam.total[parc] = { jh: 0, cout: 0, coutCharge: 0, ha: ha, detailRows: [] };
       fam.total[parc].jh   += jh;
       fam.total[parc].cout += cout;
+      fam.total[parc].coutCharge += coutCharge;
       if (fam.total[parc].ha === 0 && ha > 0) fam.total[parc].ha = ha;
       fam.total[parc].detailRows.push(r);
 
       // Groupe
       if (!groupePivot[groupeName]) groupePivot[groupeName] = { total: {} };
       var grp = groupePivot[groupeName];
-      if (!grp.total[parc]) grp.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      if (!grp.total[parc]) grp.total[parc] = { jh: 0, cout: 0, coutCharge: 0, ha: ha, detailRows: [] };
       grp.total[parc].jh   += jh;
       grp.total[parc].cout += cout;
+      grp.total[parc].coutCharge += coutCharge;
       if (grp.total[parc].ha === 0 && ha > 0) grp.total[parc].ha = ha;
       grp.total[parc].detailRows.push(r);
 
@@ -341,9 +347,10 @@
         total: {},
       };
       var op = operationPivot[opRowKey];
-      if (!op.total[parc]) op.total[parc] = { jh: 0, cout: 0, ha: ha, detailRows: [] };
+      if (!op.total[parc]) op.total[parc] = { jh: 0, cout: 0, coutCharge: 0, ha: ha, detailRows: [] };
       op.total[parc].jh   += jh;
       op.total[parc].cout += cout;
+      op.total[parc].coutCharge += coutCharge;
       if (op.total[parc].ha === 0 && ha > 0) op.total[parc].ha = ha;
       op.total[parc].detailRows.push(r);
     });

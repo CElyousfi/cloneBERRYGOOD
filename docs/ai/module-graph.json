@@ -39,7 +39,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 15,
+        "commits": 16,
         "file": "functions/pointageService.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:159f26db849a2df1",
+    "sourceFingerprint": "sha256:d8479329c2aa4fa6",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,

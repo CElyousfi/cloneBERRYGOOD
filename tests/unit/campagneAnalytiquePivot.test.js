@@ -155,15 +155,15 @@ const DATA = {
   haByRef: { 'F5- S9 BLUE': 5 },
   rows: [
     { parcelle: 'F1- S5 MARAVILLA', refParcelle: 'F1S5', ferme: 'F1', periode: 'Q01',
-      operation: '9. Taille longue', famille: 'Taille', code: 'GB09', jh: 30, cout: 4500, nbOuv: 5 },
+      operation: '9. Taille longue', famille: 'Taille', code: 'GB09', jh: 30, cout: 4500, coutCharge: 9000, nbOuv: 5 },
     { parcelle: 'F1- S5 MARAVILLA', refParcelle: 'F1S5', ferme: 'F1', periode: 'Q02',
-      operation: 'Taille courte', famille: 'Taille', code: 'GB09', jh: 10, cout: 1500, nbOuv: 3 },
+      operation: 'Taille courte', famille: 'Taille', code: 'GB09', jh: 10, cout: 1500, coutCharge: 3000, nbOuv: 3 },
     { parcelle: 'F1- S5 MARAVILLA', refParcelle: 'F1S5', ferme: 'F1', periode: 'Q01',
-      operation: 'Cueillette', famille: 'Récolte', code: 'GB08', jh: 20, cout: 3000, nbOuv: 8 },
+      operation: 'Cueillette', famille: 'Récolte', code: 'GB08', jh: 20, cout: 3000, coutCharge: 6000, nbOuv: 8 },
     { parcelle: 'F5- S1 CORINA', refParcelle: 'F5S1', ferme: 'F5', periode: 'Q01',
-      operation: 'Cueillette', famille: 'Récolte', code: 'GB08', jh: 12, cout: 2400, nbOuv: 4 },
+      operation: 'Cueillette', famille: 'Récolte', code: 'GB08', jh: 12, cout: 2400, coutCharge: 4800, nbOuv: 4 },
     { parcelle: 'F5- S9 BLUE', refParcelle: 'F5S9', ferme: 'F5', periode: 'Q01',
-      operation: 'Cueillette', famille: 'Récolte', code: 'GB08', jh: 15, cout: 3750, nbOuv: 6 },
+      operation: 'Cueillette', famille: 'Récolte', code: 'GB08', jh: 15, cout: 3750, coutCharge: 7500, nbOuv: 6 },
   ],
 };
 
@@ -343,32 +343,31 @@ test('recoupement — Récap et Détail affichent le MÊME pied de tableau', () 
   // (4 500 + 1 500 = 6 000 DH), la Récolte (3 000) est passée dans son bloc ;
   // CORINA n'a que de la récolte, sa colonne est donc vide ici.
   assert.deepStrictEqual(foot([true, true, null], { metric: 'cout' }),
-    ['TOTAL', nb(6000) + ' | DH', '— | DH']);
+    ['TOTAL', nb(12000) + ' | DH', '— | DH']);
   // …et la récolte se retrouve, intacte, dans le second bloc.
   const footRecolte = (states) => cells(footRow(tables(render({ metric: 'cout' }, states))[1]));
   assert.deepStrictEqual(footRecolte([true, false, null]),
-    ['TOTAL RÉCOLTE', nb(3000) + ' | DH', nb(2400) + ' | DH']);
+    ['TOTAL RÉCOLTE', nb(6000) + ' | DH', nb(4800) + ' | DH']);
 });
 
-test('recoupement — en Total DH, la grille affiche les sommes brutes de l\'API', () => {
-  // Témoins calculés directement sur DATA.rows : ce sont EXACTEMENT les
-  // « Total DH » par parcelle qu'affichait l'ancienne vue tabulaire.
-  const maravilla = sumRaw('cout', (r) => r.parcelle === 'F1- S5 MARAVILLA'); // 9000
-  const corina = sumRaw('cout', (r) => r.parcelle === 'F5- S1 CORINA');       // 2400
-  assert.deepStrictEqual([maravilla, corina, maravilla + corina], [9000, 2400, 11400]);
+test('recoupement — en Total DH, la grille affiche le COÛT CHARGÉ de l\'API', () => {
+  // La grille additionne `coutCharge`, pas `cout`. Ce dernier reste servi comme
+  // témoin du rapprochement, mais n'est plus jamais affiché comme de l'argent :
+  // c'est le sens de tout le lot 2.
+  const maravilla = sumRaw('coutCharge', (r) => r.parcelle === 'F1- S5 MARAVILLA');
+  const corina = sumRaw('coutCharge', (r) => r.parcelle === 'F5- S1 CORINA');
+  assert.deepStrictEqual([maravilla, corina], [18000, 4800]);
 
   const tree = render({ metric: 'cout' }, [true, false, null]);
   const dh = (v) => v.toLocaleString('fr-MA') + ' | DH';
-  // Les deux blocs REUNIS redonnent les totaux de l'API, colonne par colonne :
-  // MARAVILLA 6 000 (hors récolte) + 3 000 (récolte) = 9 000 ; CORINA 0 + 2 400.
-  assert.deepStrictEqual(cells(footRow(tables(tree)[0])), ['TOTAL', dh(6000), '— | DH']);
+  // Les deux blocs RÉUNIS redonnent les totaux de l'API, colonne par colonne :
+  // MARAVILLA 12 000 (hors récolte) + 6 000 (récolte) = 18 000 ; CORINA 0 + 4 800.
+  assert.deepStrictEqual(cells(footRow(tables(tree)[0])), ['TOTAL', dh(12000), '— | DH']);
   assert.deepStrictEqual(cells(footRow(tables(tree)[1])),
-    ['TOTAL RÉCOLTE', dh(3000), dh(corina)]);
+    ['TOTAL RÉCOLTE', dh(6000), dh(corina)]);
 
-  // Détail par famille : Taille 4500+1500 dans le principal, Récolte 3000 dans
-  // son bloc.
-  assert.strictEqual(cells(bodyRows(tables(tree)[0])[1])[1], dh(6000));
-  assert.strictEqual(cells(bodyRows(tables(tree)[1])[1])[1], dh(3000));
+  assert.strictEqual(cells(bodyRows(tables(tree)[0])[1])[1], dh(12000));
+  assert.strictEqual(cells(bodyRows(tables(tree)[1])[1])[1], dh(6000));
 });
 
 test('recoupement — en JH par Ha, chaque cellule est le total divisé par le Ha', () => {
@@ -391,9 +390,9 @@ test('famille à code GB inconnu — rangée sous AUTRE, et comptée dans le tot
     haByRef: {},
     rows: [
       { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', operation: 'Bricolage divers',
-        famille: 'Bricolage', code: 'GB99', jh: 4, cout: 600, nbOuv: 1 },
+        famille: 'Bricolage', code: 'GB99', jh: 4, cout: 600, coutCharge: 1200, nbOuv: 1 },
       { parcelle: 'F1- S5 MARAVILLA', ferme: 'F1', operation: 'Taille longue',
-        famille: 'Taille', code: 'GB09', jh: 6, cout: 900, nbOuv: 2 },
+        famille: 'Taille', code: 'GB09', jh: 6, cout: 900, coutCharge: 1800, nbOuv: 2 },
     ],
   };
   const tree = render({ data: data, metric: 'cout' }, [true, false, null]);
@@ -401,13 +400,13 @@ test('famille à code GB inconnu — rangée sous AUTRE, et comptée dans le tot
   // Le libellé BEE ONE est conservé, le code affiché est 'AUTRE' — la ligne
   // n'est ni perdue, ni fondue dans une famille voisine.
   assert.deepStrictEqual(rows.map((r) => textOf(r).split(' | ').slice(0, 2)), [
-    ['M.O Hors récolte', nb(900) + ' DH'],
+    ['M.O Hors récolte', nb(1800) + ' DH'],
     ['Taille', 'GB09'],
-    ['M.O Service générale', nb(600) + ' DH'],
+    ['M.O Service générale', nb(1200) + ' DH'],
     ['Bricolage', 'AUTRE'],
   ]);
-  // 900 + 600 : la famille AUTRE entre bien dans le total général.
-  assert.strictEqual(cells(footRow(tables(tree)[0])).pop(), nb(1500) + ' | DH');
+  // 1 800 + 1 200 : la famille AUTRE entre bien dans le total général.
+  assert.strictEqual(cells(footRow(tables(tree)[0])).pop(), nb(3000) + ' | DH');
 });
 
 test('module manquant — message d\'erreur explicite, jamais une grille qui ment', () => {
@@ -642,7 +641,7 @@ test('budget — métrique Coût DH : aucune série budget (le budget est en JH/
     ['M.O Hors récolte', 'Ferti-irrigation', 'Taille']);
   assert.deepStrictEqual(bodyRows(grilles[1]).map((r) => textOf(r).split(' | ')[0]),
     ['M.O Récolte', 'Récolte']);
-  assert.strictEqual(cells(bodyRows(grilles[0])[2])[1], nb(6000) + ' | DH');
+  assert.strictEqual(cells(bodyRows(grilles[0])[2])[1], nb(12000) + ' | DH');
   // …mais AUCUNE sous-colonne de budget : un budget saisi en JH/Ha n'a pas de
   // traduction en dirhams. Une seule valeur par cellule.
   assert.strictEqual(cells(bodyRows(grilles[0])[2]).length, 3, 'libellé + 2 parcelles');
@@ -1096,7 +1095,7 @@ const COUT_OUVRIER = {
   facteurCharge: 240000 / 118000,
 };
 
-test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', () => {
+test('coût ouvrier — réalisé au coût de l\'ouvrier, budget à la moyenne', () => {
   const grilles = tables(renderBudget(
     { metric: 'cout', coutOuvrier: COUT_OUVRIER }, [true, false, null]
   ));
@@ -1111,7 +1110,9 @@ test('coût ouvrier — en Coût DH, le budget est valorisé au coût chargé', 
   // Le réalisé vient des JOURNÉES, jamais du `Cout` BEE ONE, dont le calcul de
   // paie n'est pas fiable.
   const taille = cells(bodyRows(grilles[0])[2]);
-  assert.deepStrictEqual(taille.slice(1, 4), [nb(8000), nb(6000), '133.3 %']);
+  // Le RÉALISÉ vient du coût chargé par ouvrier (9 000 + 3 000), le BUDGET reste
+  // converti à la moyenne de campagne : un budget n'a pas d'ouvrier.
+  assert.deepStrictEqual(taille.slice(1, 4), [nb(12000), nb(6000), '133.3 %']);
 
   // Et ce taux est EXACTEMENT celui affiché en JH : même volume, même
   // constante. Deux vues du même écran ne peuvent plus se contredire.

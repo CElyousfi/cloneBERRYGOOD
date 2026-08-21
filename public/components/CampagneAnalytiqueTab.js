@@ -303,6 +303,7 @@
         ha: sbHa(label, sbMap, haByRef),
         jh: r.jh || 0,
         cout: r.cout || 0,
+        coutCharge: r.coutCharge || 0,
         nbOuv: r.nbOuv || 0,
         // Quinzaine de la ligne : recopiée telle quelle, uniquement pour que la
         // moyenne mobile du « reste au rythme » (CampagneRythme) la retrouve
@@ -1907,18 +1908,31 @@
      * multiplié par la même constante. Deux vues du même écran ne peuvent plus
      * se contredire.
      */
-    var coutCharge = coutJour === null ? null : function (cell) {
+    // COÛT CHARGÉ — lu tel quel dans la cellule. Le backend l'a calculé au taux
+    // de CHAQUE ouvrier (Σ JH × taux(ouvrier, quinzaine)).
+    //
+    // Il valait auparavant `JH × coutMoyenJour`, une moyenne d'établissement
+    // appliquée à tout le monde : deux parcelles travaillées par des équipes de
+    // coûts différents ressortaient au même prix, ce qu'un écran de coût par
+    // parcelle est précisément censé distinguer.
+    //
+    // `null` quand la cellule n'a aucun coût chargé mais des JH : le taux de ces
+    // ouvriers est inconnu (absents du registre de paie). On affiche « — »,
+    // jamais le `Cout` BEE ONE — qui ferait passer un coût nu pour un coût
+    // chargé, et jamais 0, qui se lirait « gratuit ».
+    var coutCharge = function (cell) {
       if (!cell) return null;
-      var j = Number(cell.jh);
-      return isFinite(j) ? j * coutJour : null;
+      var c = Number(cell.coutCharge);
+      if (isFinite(c) && c > 0) return c;
+      return Number(cell.jh) > 0 ? null : 0;
     };
     var metrics = [{
       key: isJh ? 'jh' : 'cout',
-      // En Coût DH, le réalisé vaut JH × coût ouvrier chargé. Sans coût connu,
-      // on retombe sur le `Cout` BEE ONE brut plutôt que sur rien — mais le
-      // libellé le dit (« Coût » et non « Coût chargé »).
-      get: !isJh && coutCharge ? coutCharge : undefined,
-      label: isJh ? 'Réalisé' : coutJour === null ? 'Coût' : 'Coût chargé',
+      // En Coût DH, le réalisé est le coût CHARGÉ calculé par ouvrier. Plus
+      // aucun repli sur le `Cout` BEE ONE : il n'est pas un coût, et l'afficher
+      // sous ce libellé était la dernière façon d'en voir dans cet écran.
+      get: isJh ? undefined : coutCharge,
+      label: isJh ? 'Réalisé' : 'Coût chargé',
       unit: isJh ? uniteJh : totalMode ? 'DH' : 'DH/Ha',
       // Le pivot stocke des TOTAUX par cellule ; seul `display` bouge avec la
       // bascule Ha/Total. Le budget, lui, est déjà en JH/Ha (`basis: 'perHa'`)
@@ -2091,7 +2105,10 @@
     }];
 
     // Périmètre de la vue annuelle : non déductible des chiffres affichés.
-    var noteCoutCharge = isJh || coutJour === null ? '' : ' Coût CHARGÉ : les journées pointées valorisées au coût ouvrier réel (' + fmtDh0(coutJour) + ' DH/JH — salaire Smart Berry, primes et charges ' + 'comprises). BEE ONE ne fournit que les journées : son propre calcul de ' + 'paie n\'est pas repris. Réalisé et budget étant valorisés de la même ' + 'façon, le « % consommé » est identique à celui affiché en JH.';
+    // Le RÉALISÉ et le BUDGET ne sont plus valorisés de la même façon — et le
+    // dire est indispensable : le « % consommé » n'est donc plus identique à
+    // celui affiché en JH, contrairement à ce que cette note promettait.
+    var noteCoutCharge = isJh ? '' : ' Coût CHARGÉ : chaque journée pointée est valorisée au coût de ' + 'L\'OUVRIER qui l\'a faite (salaire Smart Berry, primes et charges ' + 'comprises) — une parcelle travaillée par une équipe chère coûte donc ' + 'plus qu\'une autre à JH égal.' + (coutJour === null ? '' : ' Le BUDGET, lui, n\'a pas d\'ouvrier : il est converti au coût moyen ' + 'de la campagne (' + fmtDh0(coutJour) + ' DH/JH).') + ' Le « % consommé » reste calculé sur les JOURNÉES, pas sur les dirhams : ' + 'il est donc identique à celui affiché en JH.' + ' BEE ONE ne fournit que les journées : son calcul de paie n\'est pas repris.';
     var noteBudgetSeul = 'Budget : périmètre budgété uniquement (les familles et ' + 'parcelles sans budget saisi en sont exclues, mais restent comptées dans ' + 'le Réalisé). « % consommé » = Réalisé / Budget sur ce seul périmètre. ' + '« — » = aucun budget saisi, ou superficie inconnue.' + noteCoutCharge;
 
     // Garde anti-crash : une référence à un global absent fait planter TOUT le
