@@ -156,6 +156,28 @@
   }
 
   /**
+   * Journées DISTINCTES d'un ouvrier, toutes catégories confondues. PURE.
+   *
+   * ⚠️ Ce n'est PAS la somme des jours par catégorie. Un ouvrier qui fait de la
+   * récolte le matin et de la taille l'après-midi apparaît dans DEUX catégories
+   * le même jour — mais il n'a travaillé qu'un jour, et il n'est payé qu'un
+   * jour.
+   *
+   * Calculer une paie par catégorie puis les additionner le payait deux fois.
+   * Le défaut dormait tant que la récolte n'avait pas commencé (MO Récolte à 0
+   * sur toute la campagne) ; il aurait mordu au premier jour de cueillette.
+   */
+  function nbJoursDistincts(entree) {
+    if (!entree) return 0;
+    var vus = {};
+    CATEGORIES.forEach(function (cat) {
+      var m = entree.jours[cat];
+      if (m) Object.keys(m).forEach(function (j) { vus[j] = true; });
+    });
+    return Object.keys(vus).length;
+  }
+
+  /**
    * Fiche de paie d'un ouvrier pour un nombre de jours donné. PURE.
    *
    * @param {Object} args
@@ -276,12 +298,22 @@
     Object.keys(parOuvrier).forEach(function (mat) {
       var e = parOuvrier[mat];
       var fiche = registre[cle(mat)] || {};
+      // UNE seule paie, sur les journées RÉELLEMENT travaillées.
+      var joursReels = nbJoursDistincts(e);
+      if (joursReels <= 0) return;
+      var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: joursReels,
+        baremes: a.baremes, dateISO: e.premierJour });
+
+      // Puis répartition entre catégories, au prorata des jours de chacune. La
+      // somme des jours par catégorie peut DÉPASSER les journées réelles (une
+      // journée partagée compte dans deux catégories) : c'est précisément
+      // pourquoi on divise par elle et non par les journées réelles — sinon la
+      // somme des catégories dépasserait la paie de l'ouvrier.
+      var sommeCat = CATEGORIES.reduce(function (t, cat) { return t + nbJours(e, cat); }, 0);
+      if (sommeCat <= 0) return;
       CATEGORIES.forEach(function (cat) {
         var j = nbJours(e, cat);
-        if (j <= 0) return;
-        var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: j,
-          baremes: a.baremes, dateISO: e.premierJour });
-        out[cat] += p.net;
+        if (j > 0) out[cat] += p.net * (j / sommeCat);
       });
     });
     out.total = out.recolte + out.horsRecolte + out.postes;
@@ -325,15 +357,16 @@
         feries: 0, heuresSup: 0, cnss: 0, amo: 0, salariales: 0, patronales: 0,
         coutEmployeur: 0 };
 
-      CATEGORIES.forEach(function (cat) {
-        var j = nbJours(e, cat);
-        if (j <= 0) return;
-        var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: j,
+      // UNE seule paie, sur les journées réellement travaillées — même raison
+      // que dans `netParCategorie` : les catégories ne partitionnent pas les
+      // journées d'un ouvrier, elles peuvent se chevaucher.
+      ligne.jours = nbJoursDistincts(e);
+      if (ligne.jours > 0) {
+        var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: ligne.jours,
           baremes: a.baremes, dateISO: e.premierJour });
-        ligne.jours += j;
         ligne.brut += p.brut;
         ligne.net += p.net;
-      });
+      }
 
       // HEURES SUPPLÉMENTAIRES — saisies au montant NET (ce que l'ouvrier
       // touche, comme la colonne « Prime heure sup » du bulletin). Elles sont
@@ -479,6 +512,7 @@
   var __coutMainOeuvreApi = {
     CATEGORIES: CATEGORIES,
     coutFeries: coutFeries,
+    nbJoursDistincts: nbJoursDistincts,
     masseSalarialeNette: masseSalarialeNette,
     netAPayer: netAPayer,
     categorieMO: categorieMO,

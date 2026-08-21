@@ -453,3 +453,54 @@ test('FÉRIÉ — aucun jour férié : rien ne change, et zéro n\'est pas « in
   assert.deepStrictEqual(CMO.coutFeries({ paie, fiche: DECLARE, jours: 10, feries: 0,
     baremes: BAREMES }), { net: 0, brut: 0 });
 });
+
+// ───────────── journées partagées entre catégories (récolte + hors récolte)
+
+test('JOURNÉE PARTAGÉE — un ouvrier n\'est payé qu\'une fois ce jour-là', () => {
+  // Récolte le matin, taille l'après-midi : DEUX catégories, UNE journée. Le
+  // calcul faisait une paie par catégorie puis les additionnait — l'ouvrier
+  // était payé deux fois. Le défaut dormait tant que la récolte n'avait pas
+  // commencé (MO Récolte à 0 sur toute la campagne) ; il aurait mordu au
+  // premier jour de cueillette, sur l'écran qui sert à préparer la paie.
+  const registre = { A: NON_DECLARE };
+  const t = CMO.netParCategorie({ paie, baremes: BAREMES, registre, rows: rows([
+    ['A', '2026-07-01', 'Taille'],
+    ['A', '2026-07-01', '8. Récolte'],
+    ['A', '2026-07-02', 'Taille'],
+  ]) });
+  const reel = CMO.paieOuvrier({ paie, fiche: NON_DECLARE, jours: 2,
+    baremes: BAREMES, dateISO: '2026-07-01' });
+  assert.strictEqual(Math.round(t.total * 100) / 100, Math.round(reel.net * 100) / 100);
+  // La paie se RÉPARTIT au prorata des jours de chaque catégorie : 2 jours
+  // « hors récolte » contre 1 de récolte → deux tiers, un tiers.
+  assert.strictEqual(Math.round(t.horsRecolte * 100) / 100,
+    Math.round(reel.net * 2 / 3 * 100) / 100);
+  assert.strictEqual(Math.round(t.recolte * 100) / 100,
+    Math.round(reel.net / 3 * 100) / 100);
+});
+
+test('JOURNÉE PARTAGÉE — les charges non plus ne doublent pas', () => {
+  const registre = { A: DECLARE };
+  const lignes = rows([
+    ['A', '2026-07-01', 'Taille'],
+    ['A', '2026-07-01', '8. Récolte'],
+  ]);
+  const c = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes });
+  const reel = CMO.paieOuvrier({ paie, fiche: DECLARE, jours: 1,
+    baremes: BAREMES, dateISO: '2026-07-01' });
+  assert.strictEqual(c.detail[0].jours, 1, 'une journée, pas deux');
+  assert.strictEqual(Math.round(c.brutDeclare * 100) / 100,
+    Math.round(reel.brut * 100) / 100);
+});
+
+test('nbJoursDistincts — ce n\'est PAS la somme des jours par catégorie', () => {
+  const j = CMO.joursParOuvrier(rows([
+    ['A', '2026-07-01', 'Taille'],
+    ['A', '2026-07-01', '8. Récolte'],
+    ['A', '2026-07-01', '11. Postes fixes'],
+  ]));
+  // Trois catégories, un seul jour.
+  assert.strictEqual(CMO.nbJoursDistincts(j.A), 1);
+  assert.strictEqual(CMO.CATEGORIES.reduce((s, c) =>
+    s + Object.keys(j.A.jours[c] || {}).length, 0), 3);
+});
