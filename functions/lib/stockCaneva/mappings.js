@@ -6,6 +6,19 @@
  * Extraits de scripts/import-stock-caneva.js — aucune dépendance Firestore/IO.
  * `resolveArticle` prend désormais la map en paramètre (pas d'état module mutable),
  * pour rester réentrant dans une Cloud Function « chaude ».
+ *
+ * ⚠️ RÈGLE DE TYPAGE DES LIEUX (buildLieu) — DUPLIQUÉE EN 3 ENDROITS.
+ * Règle : seules les FERMES du groupe (F1..F6, BAHIA) sont des 'magasin'. Sur
+ * les BONS DE SORTIE, tout le reste (fournisseur, prestataire, décharge,
+ * client) reste 'externe'. ⚠️ Asymétrie pré-existante, hors périmètre : les
+ * TRANSFERTS utilisent buildLieu nu, une destination non-ferme y devient donc
+ * 'parcelle'.
+ * Toute modification doit être répercutée dans LES TROIS :
+ *   - functions/lib/stockCaneva/mappings.js   (ce fichier — chemin Cloud Function)
+ *   - scripts/import-stock-caneva.js          (buildLieu — copie script)
+ *   - scripts/reconstruct-stock.js            (lieuFromCode)
+ * Pas encore factorisé : scripts/ est hors du périmètre de déploiement de
+ * functions/, la mutualisation mérite son propre ticket.
  */
 
 const IMPORT_SOURCE = 'CANEVA_STOCK_BGF'
@@ -35,7 +48,9 @@ function buildLieu(raw) {
   if (['F1', 'F2', 'F3', 'F4', 'F5', 'F6'].includes(norm)) {
     return { type: 'magasin', id: norm }
   }
-  if (norm === 'BAHIA') return { type: 'externe', id: 'BAHIA' }
+  // BAHIA est une ferme du groupe qui porte un magasin (BDC réceptionnés dessus),
+  // pas un tiers externe : sans ça son stock n'apparaît dans aucun dropdown.
+  if (norm === 'BAHIA') return { type: 'magasin', id: 'BAHIA' }
   // Parcelle (from consommation)
   return { type: 'parcelle', id: String(raw).trim() }
 }

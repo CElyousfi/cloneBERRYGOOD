@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:bbb508d47148f20c",
+    "sourceFingerprint": "sha256:21c7e4b712faaf94",
     "stats": {
-      "targetFiles": 225,
-      "targetFilesWithDirectTests": 136,
-      "targetFilesWithTransitiveTests": 157,
-      "testFilesScanned": 192
+      "targetFiles": 226,
+      "targetFilesWithDirectTests": 137,
+      "targetFilesWithTransitiveTests": 158,
+      "testFilesScanned": 195
     }
   },
   "index": {
@@ -1165,10 +1165,12 @@
     "functions/lib/stockCaneva/mappings.js": {
       "directTests": [
         "functions/lib/mappingConso/__tests__/resolver.test.js",
+        "functions/lib/stockCaneva/__tests__/mappings.test.js",
         "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
       ],
       "transitiveTests": [
         "functions/lib/mappingConso/__tests__/resolver.test.js",
+        "functions/lib/stockCaneva/__tests__/mappings.test.js",
         "functions/lib/stockCaneva/__tests__/parseWorkbook.test.js"
       ]
     },
@@ -1730,6 +1732,16 @@
       ],
       "transitiveTests": [
         "tests/unit/scanHistoryDisplay.test.js"
+      ]
+    },
+    "public/lib/stockDestinations.js": {
+      "directTests": [
+        "tests/unit/stockDestinations.test.js",
+        "tests/unit/stockMagasinsCoverage.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/stockDestinations.test.js",
+        "tests/unit/stockMagasinsCoverage.test.js"
       ]
     },
     "public/lib/stockMovementGuard.js": {

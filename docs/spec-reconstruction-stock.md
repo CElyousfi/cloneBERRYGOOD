@@ -135,8 +135,15 @@ tous explicables par une légère sur-consommation — exactement le résultat a
   31/03, 31/05) = ajustements à leur date (recommandé) ou tout ramener au 30/06 ?
 - **P3 — 2 mouvements malformés** prod : si dans les 13 saisis, on corrige la date ; si dans les
   4096 canevas, purgés avec le lot. (tranché à l'exécution, signalé.)
-- **P4 — Transferts vers EL BAHIA (8 dans la feuille transfert) + 8 bons de sortie EL BAHIA** :
-  EL BAHIA = lieu `externe` (déjà en prod). Conserver comme sorties externes (recommandé).
+- **P4 — Transferts vers EL BAHIA (8 dans la feuille transfert) + 8 bons de sortie EL BAHIA**
+  (~~tranché~~ : EL BAHIA = lieu `externe`, conserver comme sorties externes) — **RÈGLE CHANGÉE,
+  ne plus appliquer.** BAHIA est une **ferme du groupe** qui porte un magasin (des BDC y sont
+  réceptionnés) : le typer `externe` rendait son stock invisible de tous les dropdowns de
+  destination. Règle en vigueur : **seules les FERMES (F1..F6, BAHIA) sont des `magasin`, tout le
+  reste (fournisseur, prestataire, décharge, client) reste `externe`** — appliquée dans
+  `functions/lib/stockCaneva/mappings.js`, `scripts/import-stock-caneva.js` et
+  `scripts/reconstruct-stock.js`. Contexte et régularisation des soldes déjà écrits :
+  [docs/spec-magasin-bahia.md](spec-magasin-bahia.md).
 
 > **Aucune écriture tant qu'Omar n'a pas validé l'aperçu §6.** Backup d'abord, puis purge ciblée,
 > puis import des 5 feuilles, puis recalcul, puis investigation des 11 négatifs.

@@ -19,6 +19,19 @@
  * (or a positional non-flag argument) to point at a different workbook. The
  * "STOCK REEL A 31.03.2026" sheet is optional: when absent, Phase 8 (reconciliation)
  * is skipped cleanly and the rest of the pipeline runs normally.
+ *
+ * ⚠️ RÈGLE DE TYPAGE DES LIEUX — DUPLIQUÉE EN 3 ENDROITS.
+ * Règle : seules les FERMES du groupe (F1..F6, BAHIA) sont des 'magasin'. Sur
+ * les BONS DE SORTIE, tout le reste (fournisseur, prestataire, décharge,
+ * client) reste 'externe'. ⚠️ Asymétrie pré-existante, hors périmètre : les
+ * TRANSFERTS utilisent buildLieu nu, une destination non-ferme y devient donc
+ * 'parcelle'.
+ * Toute modification doit être répercutée dans LES TROIS :
+ *   - functions/lib/stockCaneva/mappings.js   (buildLieu — chemin Cloud Function)
+ *   - scripts/import-stock-caneva.js          (buildLieu — ce fichier)
+ *   - scripts/reconstruct-stock.js            (lieuFromCode)
+ * Pas encore factorisé : scripts/ est hors du périmètre de déploiement de
+ * functions/, la mutualisation mérite son propre ticket.
  */
 
 const path = require("path");
@@ -86,7 +99,8 @@ function buildLieu(raw) {
   if (["F1", "F2", "F3", "F4", "F5", "F6"].includes(norm)) {
     return { type: "magasin", id: norm };
   }
-  if (norm === "BAHIA") return { type: "externe", id: "BAHIA" };
+  // BAHIA est une FERME du groupe → magasin (cf. docs/spec-magasin-bahia.md).
+  if (norm === "BAHIA") return { type: "magasin", id: "BAHIA" };
   // Parcelle (from consommation)
   return { type: "parcelle", id: String(raw).trim() };
 }
@@ -813,11 +827,18 @@ async function main() {
     bsCounter++;
     const numero = `IMP-BS-${String(bsCounter).padStart(4, "0")}`;
 
+    // Destination d'un Bon de Sortie : SEULES les fermes du groupe (F1..F6,
+    // BAHIA) deviennent un magasin. Tout le reste (client, prestataire,
+    // décharge…) garde 'externe' — variante restrictive identique à
+    // functions/lib/stockCaneva/parseWorkbook.js.
+    const bsDestLieu = buildLieu(group.dest);
     const movData = {
       ...baseMovement("sortie", numero),
       date: group.date,
       lieu_source: { type: "magasin", id: group.lieu },
-      lieu_destination: { type: "externe", id: normalizeFerme(group.dest) },
+      lieu_destination: (bsDestLieu && bsDestLieu.type === "magasin")
+        ? bsDestLieu
+        : { type: "externe", id: normalizeFerme(group.dest) },
       ferme: group.lieu,
       items: group.items,
       ref_bl_fournisseur: "",
