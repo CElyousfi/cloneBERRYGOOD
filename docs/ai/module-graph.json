@@ -40,15 +40,15 @@
       },
       {
         "commits": 15,
+        "file": "functions/pointageService.js"
+      },
+      {
+        "commits": 15,
         "file": "public/components/CampagneBudgetTab.jsx"
       },
       {
         "commits": 15,
         "file": "tests/unit/campagneBudgetTab.test.js"
-      },
-      {
-        "commits": 14,
-        "file": "functions/pointageService.js"
       },
       {
         "commits": 11,

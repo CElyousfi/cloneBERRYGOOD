@@ -1608,6 +1608,219 @@ async function computeRecolteEquipesPayload(nQuinz, fermeFilter = null) {
 }
 
 // =============================================
+// computeCampagneCoutOuvrier : coût ouvrier de la campagne, PAR OUVRIER.
+//
+// Extrait du handler `campagne-cout-ouvrier` pour être appelé AUSSI par
+// computeCampagneAnalytiqueDetail : la grille Campagne doit valoriser chaque
+// ligne au taux de L'OUVRIER qui l'a faite, et refaire ce calcul ailleurs
+// recréerait exactement les deux chemins divergents qu'on vient de supprimer.
+//
+// Le résultat est caché 30 min : le second appelant ne repaie pas la lecture.
+// =============================================
+async function computeCampagneCoutOuvrier() {
+        // Traitement, chargement et conditionnement sont primés au même tarif
+        // journalier (écran Quinzaine, primesConfig.primeChargement.coutParJour).
+        const PRIME_JOUR_DH = 10;
+        const today = new Date();
+        const y = today.getFullYear();
+        const startYear = today.getMonth() >= 6 ? y : y - 1;
+        const campagne = {
+          start: `${startYear}-07-01`,
+          end: `${startYear + 1}-06-30`,
+          label: `${startYear}/${startYear + 1}`,
+        };
+
+        // Le coût moyen d'un ouvrier ne dépend NI de la ferme NI de la culture :
+        // c'est une moyenne d'entreprise. La clé de cache est donc globale — la
+        // ferme du demandeur ne change pas le résultat (contrairement aux
+        // payloads nominatifs, cloisonnés eux).
+        //
+        // GATING : l'action passe par le contrôle d'accès commun de
+        // /api/pointage-rh (authentification + profil autorisé) ; elle n'est PAS
+        // exemptée. Ce qu'elle rend est un AGRÉGAT — un coût moyen, un nombre de
+        // journées, un effectif — sans aucune donnée nominative, et il alimente
+        // la valorisation en dirhams de l'écran Campagne, que ces mêmes profils
+        // voient déjà (la grille y affiche des DH/Ha par parcelle).
+        const cached = await withCache(
+          // v2 : + tauxParOuvrier, fériés au barème (plus au coût BEE ONE), heures sup
+          // incluses. Sans bump, une réponse v1 encore en cache servirait un
+          // payload SANS taux — et la grille retomberait silencieusement sur sa
+          // moyenne, sans que rien ne le signale.
+          `campagne_cout_ouvrier_v2_${campagne.start}`,
+          30 * 60 * 1000,
+          async () => {
+            // TAUX PAR OUVRIER — c'est lui qui valorise chaque ligne au coût de
+      // L'OUVRIER qui l'a faite, au lieu d'une moyenne d'établissement appliquée
+      // à tout le monde. Même calcul que l'écran Quinzaine : un seul chemin.
+      // Indisponible (BEE ONE muet, registre vide) → `coutCharge` reste à 0 et
+      // l'écran affichera « — » ; JAMAIS un repli sur le `Cout` BEE ONE, qui
+      // ferait passer un coût nu pour un coût chargé.
+      let tauxParOuvrier = {};
+      try {
+        const co = await computeCampagneCoutOuvrier();
+        tauxParOuvrier = (co && co.tauxParOuvrier) || {};
+      } catch (e) {
+        console.warn('campagne-analytique-detail : taux ouvrier indisponible —', e.message);
+      }
+
+      const meta = await getPointageMeta();
+            const periodeMap = (meta && meta.periodeMap) || {};
+
+            // Quinzaines de la campagne, DANS L'ORDRE : l'ancienneté se cumule
+            // de l'une à l'autre, les traiter en désordre la fausserait.
+            const periodes = Object.keys(periodeMap)
+              .map((p) => ({
+                periode: p,
+                dates: (periodeMap[p] || [])
+                  .filter((d) => d >= campagne.start && d <= campagne.end)
+                  .sort(),
+              }))
+              .filter((q) => q.dates.length > 0)
+              .sort((a, b) => (a.dates[0] < b.dates[0] ? -1 : 1));
+
+            if (periodes.length === 0) {
+              return {
+                success: true, campagne: campagne.label, coutMoyenJour: null,
+                jours: 0, ouvriers: 0, quinzaines: 0, coutTotal: 0,
+              };
+            }
+
+            // 1) Pointage : une lecture par journée de la campagne. En sortent
+            //    le salaire de base BEE ONE, les journées et les heures sup ;
+            //    les PRIMES DE TERRAIN se calculent ensuite sur les mêmes lignes.
+            const holidays = await getJoursFeries();
+            const quinzaines = [];
+            const tousMatricules = new Set();
+            for (const q of periodes) {
+              const snaps = await Promise.all(q.dates.map((d) =>
+                db_firestore.collection('sql_mirror_pointage').doc(d).get()));
+              const parOuvrier = {};
+              const lignesQuinzaine = [];
+              snaps.forEach((snap, i) => {
+                if (!snap.exists) return;
+                const rows = snap.data().rows || [];
+                coutOuvrier.cumuleJournee(parOuvrier, rows, q.dates[i]);
+                lignesQuinzaine.push(...rows);
+              });
+
+              // PRIME DE TRAITEMENT : 10 DH par ouvrier et par JOUR passé sur une
+              // opération de traitement (même règle que l'écran Quinzaine).
+              const joursTraitement = {};
+              lignesQuinzaine.forEach((r) => {
+                if (!/traitement/i.test(r.Operation_Famille || '')) return;
+                const m = String(r.Personnel_Matricule || '').trim();
+                if (!m) return;
+                if (!joursTraitement[m]) joursTraitement[m] = new Set();
+                joursTraitement[m].add(r.DateStr);
+              });
+
+              // CHARGEMENT / CONDITIONNEMENT / JOURS FÉRIÉS : réutilise le calcul
+              // déjà en production (computeChargCond), pour que ce coût ne puisse
+              // pas diverger de celui affiché par l'écran Quinzaine.
+              const cc = computeChargCond(lignesQuinzaine, holidays);
+              const parMat = (liste, valeur) => {
+                const out = {};
+                (liste || []).forEach((w) => {
+                  if (!w || !w.matricule) return;
+                  out[w.matricule] = (out[w.matricule] || 0) + valeur(w);
+                });
+                return out;
+              };
+              const chargement = parMat(cc.chargementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
+              const conditionnement = parMat(cc.conditionnementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
+              // Jours fériés en NOMBRE de jours (`jh`), plus en dirhams : leur
+              // valorisation vient désormais du barème Smart Berry. `w.cout`
+              // était le coût journalier moyen BEE ONE — dernier filet d'argent
+              // BEE ONE dans le coût de campagne (corrigé le 2026-08-21).
+              const feriesJours = parMat(cc.jourFerieDetail, (w) => w.jh || 0);
+
+              Object.keys(parOuvrier).forEach((m) => {
+                tousMatricules.add(m);
+                parOuvrier[m].primes = {
+                  traitement: (joursTraitement[m] ? joursTraitement[m].size : 0) * PRIME_JOUR_DH,
+                  chargement: chargement[m] || 0,
+                  conditionnement: conditionnement[m] || 0,
+                  recolte: 0, // renseigné plus bas, depuis les kilos cueillis
+                };
+                parOuvrier[m].feriesJours = feriesJours[m] || 0;
+              });
+
+              // HEURES SUP ACCORDÉES de la quinzaine (rh_heures_sup). Absentes,
+              // le coût est simplement calculé sans elles — jamais une erreur :
+              // une quinzaine sans heures sup est le cas courant.
+              let heuresSupNet = {};
+              try {
+                const hsSnap = await db_firestore.collection('rh_heures_sup').doc(q.periode).get();
+                if (hsSnap.exists) heuresSupNet = (hsSnap.data() || {}).montants || {};
+              } catch (e) { heuresSupNet = {}; }
+
+              quinzaines.push({
+                periode: q.periode,
+                dateFin: q.dates[q.dates.length - 1],
+                parOuvrier,
+                heuresSupNet,
+              });
+            }
+
+            // 1 bis) PRIME DE RÉCOLTE : aux kilos cueillis, barème par variété.
+            // Les kilos ne sont PAS dans le pointage (l'opération Récolte y a une
+            // quantité nulle) : ils viennent de l'enrichissement production, via
+            // le MÊME calcul que l'écran Coût Récolte.
+            try {
+              const recolte = await computeRecolteEquipesPayload(periodes.length, null);
+              const parPeriode = {};
+              (recolte && recolte.rows ? recolte.rows : []).forEach((r) => {
+                const p = (r.periode || '').trim();
+                const m = (r.matricule || '').trim();
+                if (!p || !m) return;
+                if (!parPeriode[p]) parPeriode[p] = {};
+                parPeriode[p][m] = (parPeriode[p][m] || 0)
+                  + coutOuvrier.primeRecolte(r.kg, r.variete, r.jour);
+              });
+              quinzaines.forEach((q) => {
+                const parMatQ = parPeriode[q.periode] || {};
+                Object.keys(q.parOuvrier).forEach((m) => {
+                  if (q.parOuvrier[m].primes) q.parOuvrier[m].primes.recolte = parMatQ[m] || 0;
+                });
+              });
+            } catch (e) {
+              // La prime de récolte manquante DÉGRADE le coût, elle ne doit pas
+              // faire tomber l'indicateur — mais il faut que ça se voie.
+              console.warn('[campagne-cout-ouvrier] prime de récolte indisponible :', e && e.message);
+            }
+
+            // 2) Registre ouvriers (déclaré, ancienneté, prime de fonction).
+            const mats = Array.from(tousMatricules);
+            const registre = {};
+            const LOT = 20;
+            for (let i = 0; i < mats.length; i += LOT) {
+              const chunk = mats.slice(i, i + LOT);
+              const snaps = await Promise.all(chunk.map((m) =>
+                db_firestore.collection('ouvriers_registry').doc(m).get()));
+              snaps.forEach((snap, j) => { if (snap.exists) registre[chunk[j]] = snap.data(); });
+            }
+
+            // 3) Barèmes de paie et primes de transport. Absents → le module
+            //    pur retombe sur les barèmes par défaut / une prime nulle : le
+            //    chiffre reste calculable, il est simplement moins juste.
+            const [baremesSnap, transportSnap] = await Promise.all([
+              db_firestore.collection('app_settings').doc('paie_baremes').get(),
+              db_firestore.collection('rh_config').doc('transport_primes').get(),
+            ]);
+            const baremes = baremesSnap.exists ? baremesSnap.data() : {};
+            const equipesTransport = (transportSnap.exists && transportSnap.data().equipes) || [];
+
+            const out = coutOuvrier.coutOuvrierCampagne({
+              quinzaines, registre, baremes, equipesTransport,
+            });
+            return Object.assign({ success: true, campagne: campagne.label }, out);
+          }
+        );
+  return cached;
+}
+exports.computeCampagneCoutOuvrier = computeCampagneCoutOuvrier;
+
+// =============================================
 // computeCampagneAnalytiqueDetail : calcul COMPLET du payload
 // `campagne-analytique-detail` (granularité parcelle × quinzaine × opération).
 //
@@ -1678,7 +1891,10 @@ async function computeCampagneAnalytiqueDetail(fermeFilter = null, cultureFilter
     // v2 : ajout de `nbOuv` par ligne. Sans bump de clé, une réponse v1
     // encore en cache (TTL 30 min) servirait des lignes sans `nbOuv` et
     // la colonne « Ouvriers » de la pop-up afficherait 0 sans erreur.
-    pointageCacheKey(`campagne_analytique_detail_v2_${campagne.start}`, fermeFilter, cultureFilter),
+    // v3 : + `coutCharge` et `jhSansTaux` par ligne. Sans bump, une réponse v2
+    // encore en cache servirait des lignes SANS coût chargé, et la grille en
+    // mode Coût DH afficherait 0 partout — sans erreur, ce qui est le pire.
+    pointageCacheKey(`campagne_analytique_detail_v3_${campagne.start}`, fermeFilter, cultureFilter),
     30 * 60 * 1000,
     async () => {
       const meta = await getPointageMeta();
@@ -1712,6 +1928,13 @@ async function computeCampagneAnalytiqueDetail(fermeFilter = null, cultureFilter
                 code: (r.Operation_Groupe || '').trim(),
                 jh: 0,
                 cout: 0,
+                // Coût CHARGÉ : Σ (JH × taux de l'ouvrier). C'est ce que la
+                // grille affiche en mode Coût DH.
+                coutCharge: 0,
+                // JH dont l'ouvrier n'a pas de taux (absent du registre de paie).
+                // Remonté pour que l'écran puisse le DIRE : un coût partiel
+                // affiché sans mention se lit comme un coût complet.
+                jhSansTaux: 0,
                 // Matricules DISTINCTS du groupe (jamais un compteur : un
                 // ouvrier pointé deux fois sur la même opération le même
                 // jour ne compte qu'une fois). Remplacé par `nbOuv` avant
@@ -1719,7 +1942,14 @@ async function computeCampagneAnalytiqueDetail(fermeFilter = null, cultureFilter
                 workers: new Set(),
               };
               groups[key].jh += r.Nombre_Jr || 0;
+              // `cout` reste servi : ce n'est PAS un coût, c'est le témoin
+              // BEE ONE du panneau de rapprochement (il mesure ce que la grille
+              // ne rattache à aucune parcelle). Aucun écran ne doit l'afficher
+              // comme de l'argent.
               groups[key].cout += r.Cout || 0;
+              const _t = tauxParOuvrier[String(r.Personnel_Matricule || '').trim() + '|' + periode];
+              if (_t) groups[key].coutCharge += (r.Nombre_Jr || 0) * _t;
+              else groups[key].jhSansTaux += r.Nombre_Jr || 0;
               if (r.Personnel_Matricule) groups[key].workers.add(r.Personnel_Matricule);
             }
             for (const g of Object.values(groups)) {
@@ -3954,186 +4184,8 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // crasher toutes les CF au load. La divergence est attrapée par
       // functions/lib/paie/__tests__/paieUtils.parite.test.js.
       if (action === "campagne-cout-ouvrier") {
-        // Traitement, chargement et conditionnement sont primés au même tarif
-        // journalier (écran Quinzaine, primesConfig.primeChargement.coutParJour).
-        const PRIME_JOUR_DH = 10;
-        const today = new Date();
-        const y = today.getFullYear();
-        const startYear = today.getMonth() >= 6 ? y : y - 1;
-        const campagne = {
-          start: `${startYear}-07-01`,
-          end: `${startYear + 1}-06-30`,
-          label: `${startYear}/${startYear + 1}`,
-        };
-
-        // Le coût moyen d'un ouvrier ne dépend NI de la ferme NI de la culture :
-        // c'est une moyenne d'entreprise. La clé de cache est donc globale — la
-        // ferme du demandeur ne change pas le résultat (contrairement aux
-        // payloads nominatifs, cloisonnés eux).
-        //
-        // GATING : l'action passe par le contrôle d'accès commun de
-        // /api/pointage-rh (authentification + profil autorisé) ; elle n'est PAS
-        // exemptée. Ce qu'elle rend est un AGRÉGAT — un coût moyen, un nombre de
-        // journées, un effectif — sans aucune donnée nominative, et il alimente
-        // la valorisation en dirhams de l'écran Campagne, que ces mêmes profils
-        // voient déjà (la grille y affiche des DH/Ha par parcelle).
-        const cached = await withCache(
-          `campagne_cout_ouvrier_v1_${campagne.start}`,
-          30 * 60 * 1000,
-          async () => {
-            const meta = await getPointageMeta();
-            const periodeMap = (meta && meta.periodeMap) || {};
-
-            // Quinzaines de la campagne, DANS L'ORDRE : l'ancienneté se cumule
-            // de l'une à l'autre, les traiter en désordre la fausserait.
-            const periodes = Object.keys(periodeMap)
-              .map((p) => ({
-                periode: p,
-                dates: (periodeMap[p] || [])
-                  .filter((d) => d >= campagne.start && d <= campagne.end)
-                  .sort(),
-              }))
-              .filter((q) => q.dates.length > 0)
-              .sort((a, b) => (a.dates[0] < b.dates[0] ? -1 : 1));
-
-            if (periodes.length === 0) {
-              return {
-                success: true, campagne: campagne.label, coutMoyenJour: null,
-                jours: 0, ouvriers: 0, quinzaines: 0, coutTotal: 0,
-              };
-            }
-
-            // 1) Pointage : une lecture par journée de la campagne. En sortent
-            //    le salaire de base BEE ONE, les journées et les heures sup ;
-            //    les PRIMES DE TERRAIN se calculent ensuite sur les mêmes lignes.
-            const holidays = await getJoursFeries();
-            const quinzaines = [];
-            const tousMatricules = new Set();
-            for (const q of periodes) {
-              const snaps = await Promise.all(q.dates.map((d) =>
-                db_firestore.collection('sql_mirror_pointage').doc(d).get()));
-              const parOuvrier = {};
-              const lignesQuinzaine = [];
-              snaps.forEach((snap, i) => {
-                if (!snap.exists) return;
-                const rows = snap.data().rows || [];
-                coutOuvrier.cumuleJournee(parOuvrier, rows, q.dates[i]);
-                lignesQuinzaine.push(...rows);
-              });
-
-              // PRIME DE TRAITEMENT : 10 DH par ouvrier et par JOUR passé sur une
-              // opération de traitement (même règle que l'écran Quinzaine).
-              const joursTraitement = {};
-              lignesQuinzaine.forEach((r) => {
-                if (!/traitement/i.test(r.Operation_Famille || '')) return;
-                const m = String(r.Personnel_Matricule || '').trim();
-                if (!m) return;
-                if (!joursTraitement[m]) joursTraitement[m] = new Set();
-                joursTraitement[m].add(r.DateStr);
-              });
-
-              // CHARGEMENT / CONDITIONNEMENT / JOURS FÉRIÉS : réutilise le calcul
-              // déjà en production (computeChargCond), pour que ce coût ne puisse
-              // pas diverger de celui affiché par l'écran Quinzaine.
-              const cc = computeChargCond(lignesQuinzaine, holidays);
-              const parMat = (liste, valeur) => {
-                const out = {};
-                (liste || []).forEach((w) => {
-                  if (!w || !w.matricule) return;
-                  out[w.matricule] = (out[w.matricule] || 0) + valeur(w);
-                });
-                return out;
-              };
-              const chargement = parMat(cc.chargementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
-              const conditionnement = parMat(cc.conditionnementDetail, (w) => (w.jh || 0) * PRIME_JOUR_DH);
-              // Jours fériés en NOMBRE de jours (`jh`), plus en dirhams : leur
-              // valorisation vient désormais du barème Smart Berry. `w.cout`
-              // était le coût journalier moyen BEE ONE — dernier filet d'argent
-              // BEE ONE dans le coût de campagne (corrigé le 2026-08-21).
-              const feriesJours = parMat(cc.jourFerieDetail, (w) => w.jh || 0);
-
-              Object.keys(parOuvrier).forEach((m) => {
-                tousMatricules.add(m);
-                parOuvrier[m].primes = {
-                  traitement: (joursTraitement[m] ? joursTraitement[m].size : 0) * PRIME_JOUR_DH,
-                  chargement: chargement[m] || 0,
-                  conditionnement: conditionnement[m] || 0,
-                  recolte: 0, // renseigné plus bas, depuis les kilos cueillis
-                };
-                parOuvrier[m].feriesJours = feriesJours[m] || 0;
-              });
-
-              // HEURES SUP ACCORDÉES de la quinzaine (rh_heures_sup). Absentes,
-              // le coût est simplement calculé sans elles — jamais une erreur :
-              // une quinzaine sans heures sup est le cas courant.
-              let heuresSupNet = {};
-              try {
-                const hsSnap = await db_firestore.collection('rh_heures_sup').doc(q.periode).get();
-                if (hsSnap.exists) heuresSupNet = (hsSnap.data() || {}).montants || {};
-              } catch (e) { heuresSupNet = {}; }
-
-              quinzaines.push({
-                periode: q.periode,
-                dateFin: q.dates[q.dates.length - 1],
-                parOuvrier,
-                heuresSupNet,
-              });
-            }
-
-            // 1 bis) PRIME DE RÉCOLTE : aux kilos cueillis, barème par variété.
-            // Les kilos ne sont PAS dans le pointage (l'opération Récolte y a une
-            // quantité nulle) : ils viennent de l'enrichissement production, via
-            // le MÊME calcul que l'écran Coût Récolte.
-            try {
-              const recolte = await computeRecolteEquipesPayload(periodes.length, null);
-              const parPeriode = {};
-              (recolte && recolte.rows ? recolte.rows : []).forEach((r) => {
-                const p = (r.periode || '').trim();
-                const m = (r.matricule || '').trim();
-                if (!p || !m) return;
-                if (!parPeriode[p]) parPeriode[p] = {};
-                parPeriode[p][m] = (parPeriode[p][m] || 0)
-                  + coutOuvrier.primeRecolte(r.kg, r.variete, r.jour);
-              });
-              quinzaines.forEach((q) => {
-                const parMatQ = parPeriode[q.periode] || {};
-                Object.keys(q.parOuvrier).forEach((m) => {
-                  if (q.parOuvrier[m].primes) q.parOuvrier[m].primes.recolte = parMatQ[m] || 0;
-                });
-              });
-            } catch (e) {
-              // La prime de récolte manquante DÉGRADE le coût, elle ne doit pas
-              // faire tomber l'indicateur — mais il faut que ça se voie.
-              console.warn('[campagne-cout-ouvrier] prime de récolte indisponible :', e && e.message);
-            }
-
-            // 2) Registre ouvriers (déclaré, ancienneté, prime de fonction).
-            const mats = Array.from(tousMatricules);
-            const registre = {};
-            const LOT = 20;
-            for (let i = 0; i < mats.length; i += LOT) {
-              const chunk = mats.slice(i, i + LOT);
-              const snaps = await Promise.all(chunk.map((m) =>
-                db_firestore.collection('ouvriers_registry').doc(m).get()));
-              snaps.forEach((snap, j) => { if (snap.exists) registre[chunk[j]] = snap.data(); });
-            }
-
-            // 3) Barèmes de paie et primes de transport. Absents → le module
-            //    pur retombe sur les barèmes par défaut / une prime nulle : le
-            //    chiffre reste calculable, il est simplement moins juste.
-            const [baremesSnap, transportSnap] = await Promise.all([
-              db_firestore.collection('app_settings').doc('paie_baremes').get(),
-              db_firestore.collection('rh_config').doc('transport_primes').get(),
-            ]);
-            const baremes = baremesSnap.exists ? baremesSnap.data() : {};
-            const equipesTransport = (transportSnap.exists && transportSnap.data().equipes) || [];
-
-            const out = coutOuvrier.coutOuvrierCampagne({
-              quinzaines, registre, baremes, equipesTransport,
-            });
-            return Object.assign({ success: true, campagne: campagne.label }, out);
-          }
-        );
+        const cached = await computeCampagneCoutOuvrier();
+        return res.json(cached);
         return res.json(cached);
       }
 
