@@ -12136,7 +12136,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         );
                     })()}
 
-                    {quinzPopupKey && quinzPopupKey !== 'location_engins' && (() => {
+                    {/* Pop-up GÉNÉRIQUE (MO, primes, transport). Elle se déclenche
+                        sur toute clé non exclue ici, et sa dernière branche est un
+                        `else` qui retombe sur le transport : une clé oubliée dans
+                        cette liste n'ouvre donc pas RIEN, elle ouvre une DEUXIÈME
+                        pop-up par-dessus la bonne, remplie des mauvaises lignes. */}
+                    {quinzPopupKey && quinzPopupKey !== 'location_engins'
+                        && quinzPopupKey !== 'charges_sociales' && (() => {
                         const _qpKey = quinzPopupKey;
                         const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
                         const _qpTitle = _qpKey === 'mo_recolte' ? 'MO Récolte'
