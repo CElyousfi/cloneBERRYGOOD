@@ -11789,6 +11789,21 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // part. La part salariale (CNSS 4,48 % + AMO 2,26 %) est bien un
             // coût d'entreprise — l'ouvrier est payé sur le brut, sans retenue,
             // donc ce que la loi prélèverait, la société le verse en plus.
+            // Jours fériés par ouvrier, pour la quinzaine et le périmètre affichés.
+            // On ne garde que le NOMBRE de jours : leur valorisation vient
+            // désormais du barème Smart Berry, plus du coût moyen BEE ONE.
+            const _feriesParOuvrier = (() => {
+                const acc = {};
+                ((transportExtras.jourFerieDetail) || []).forEach(w => {
+                    if (!w || w.periode !== currentPeriode) return;
+                    if (farmFilter && w.ferme !== farmFilter) return;
+                    const k = numKey(w.matricule);
+                    if (!k) return;
+                    acc[k] = (acc[k] || 0) + (Number(w.jh) || 0);
+                });
+                return acc;
+            })();
+
             const _chargesSociales = registryReady
                 ? _CMO.chargesSociales({
                     paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
@@ -11796,6 +11811,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     // Les HS sont DANS l'assiette : le module les remonte au brut
                     // avant d'appliquer les taux.
                     heuresSupNet: hsMontants,
+                    feriesParOuvrier: _feriesParOuvrier,
                 })
                 : null;
             // Total des heures sup accordées sur la quinzaine, restreint aux
@@ -11820,9 +11836,20 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const chargDetailQ = (transportExtras.chargementDetail || []).filter(w => w.periode === currentPeriode && (!farmFilter || w.ferme === farmFilter));
             const totalChargement = chargDetailQ.reduce((s, w) => s + w.jh, 0) * (data.primesConfig?.primeChargement?.coutParJour || 10);
 
-            // Jour Férié
+            // Jour Férié — coût MARGINAL calculé par le modèle Smart Berry :
+            // SMAG + prime de fonction + effet sur l'ancienneté, exactement ce
+            // que le bulletin verse pour ces journées.
+            //
+            // Remplace `w.cout`, le coût journalier moyen BEE ONE. Celui-ci
+            // donnait 110,6 DH par jour férié là où le bulletin en donne 90,9,
+            // TOUT EN PERDANT la prime de fonction et l'ancienneté de ces
+            // journées : deux erreurs de sens contraire dont la somme paraissait
+            // juste. C'était le dernier endroit où de l'argent BEE ONE entrait
+            // dans le calcul de la quinzaine.
             const ferieDetailQ = (transportExtras.jourFerieDetail || []).filter(w => w.periode === currentPeriode && (!farmFilter || w.ferme === farmFilter));
-            const totalJourFerie = Math.round(ferieDetailQ.reduce((s, w) => s + (w.cout || 0), 0));
+            const totalJourFerie = _chargesSociales
+                ? Math.round(_chargesSociales.detail.reduce((s, w) => s + (w.feries || 0), 0))
+                : 0;
 
             const totalAutresPrimes = totalTraitement + totalConditionnement + totalChargement + totalJourFerie;
             const totalDivers = diversData ? diversData.total : 0;

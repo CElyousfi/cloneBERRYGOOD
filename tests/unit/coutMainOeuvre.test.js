@@ -401,3 +401,55 @@ test('NON DÉCLARÉ — son coût pour l\'entreprise est son NET', () => {
   assert.strictEqual(n.cotisationsSalariales, 0);
   assert.strictEqual(n.net, n.coutEmployeur);
 });
+
+// ─────────────────────────────────────────────────── jours fériés
+
+test('FÉRIÉ — un jour férié vaut une journée travaillée, prime comprise', () => {
+  // Le bulletin paie le férié comme un jour normal : SMAG, prime de fonction, et
+  // il compte dans l'assiette de l'ancienneté (sa colonne « nbr jour » du bloc
+  // primes vaut jours travaillés + fériés). Avant, on le sortait du salaire pour
+  // le remettre en prime valorisée au coût moyen BEE ONE : 110,6 DH au lieu de
+  // 90,9, tout en PERDANT la prime de fonction et l'ancienneté de ce jour-là.
+  const fiche = { declare: true, baselineJours: 0, primeFonctionJournaliere: 25.874 };
+  const jour = CMO.paieOuvrier({ paie, fiche, jours: 1, baremes: BAREMES, dateISO: '2026-08-01' });
+  const ferie = CMO.coutFeries({ paie, fiche, jours: 13, feries: 1,
+    baremes: BAREMES, dateISO: '2026-08-01' });
+  assert.strictEqual(Math.round(ferie.net * 100) / 100, Math.round(jour.net * 100) / 100);
+  // Et il vaut PLUS que le SMAG net seul : la prime du jour s'y ajoute.
+  assert.ok(ferie.net > BAREMES.smagNetJournalier);
+});
+
+test('FÉRIÉ — calculé par différence, donc juste quel que soit le barème', () => {
+  // Le coût marginal est `paie(jours + fériés) − paie(jours)` : réimplémenter la
+  // règle du férié la laisserait diverger du modèle le jour où un palier bouge.
+  const fiche = { declare: true, baselineJours: 700, primeFonctionJournaliere: 10 };
+  const a = CMO.paieOuvrier({ paie, fiche, jours: 12, feries: 3, baremes: BAREMES, dateISO: '2026-08-01' });
+  const b = CMO.paieOuvrier({ paie, fiche, jours: 12, feries: 0, baremes: BAREMES, dateISO: '2026-08-01' });
+  const cf = CMO.coutFeries({ paie, fiche, jours: 12, feries: 3, baremes: BAREMES, dateISO: '2026-08-01' });
+  assert.strictEqual(Math.round(cf.net * 1e6) / 1e6, Math.round((a.net - b.net) * 1e6) / 1e6);
+  // L'ancienneté de cet ouvrier (palier 5 %) s'applique AUSSI aux fériés.
+  assert.ok(cf.net > 3 * BAREMES.smagNetJournalier);
+});
+
+test('FÉRIÉ — dans l\'assiette : les charges le portent', () => {
+  const registre = { A: DECLARE };
+  const lignes = rows([['A', '2026-08-01', 'Taille']]);
+  const sans = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes });
+  const avec = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes,
+    feriesParOuvrier: { A: 2 } });
+  assert.ok(avec.patronales > sans.patronales);
+  assert.strictEqual(Math.round(avec.detail[0].feries * 100) / 100,
+    Math.round((avec.detail[0].net - sans.detail[0].net) * 100) / 100);
+});
+
+test('FÉRIÉ — aucun jour férié : rien ne change, et zéro n\'est pas « inconnu »', () => {
+  const registre = { A: DECLARE };
+  const lignes = rows([['A', '2026-08-01', 'Taille']]);
+  const a = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes });
+  const b = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes,
+    feriesParOuvrier: { A: 0 } });
+  assert.deepStrictEqual(a.detail[0], b.detail[0]);
+  assert.strictEqual(a.detail[0].feries, 0);
+  assert.deepStrictEqual(CMO.coutFeries({ paie, fiche: DECLARE, jours: 10, feries: 0,
+    baremes: BAREMES }), { net: 0, brut: 0 });
+});

@@ -164,6 +164,10 @@
    * @param {Object} args.fiche fiche registre {declare, baselineJours,
    *   primeFonctionJournaliere, prime_history}.
    * @param {number} args.jours jours travaillés.
+   * @param {number} [args.feries] jours fériés PAYÉS. Ils entrent dans la base,
+   *   portent la prime de fonction et comptent dans l'assiette de l'ancienneté —
+   *   c'est ce que fait le bulletin, dont la colonne « nbr jour » du bloc primes
+   *   vaut *jours travaillés + fériés*.
    * @param {Object} args.baremes barèmes de paie.
    * @param {string} args.dateISO date de référence (SMAG daté, prime datée).
    * @returns {{brut: number, net: number, chargesPatronales: number,
@@ -196,7 +200,7 @@
       smagBrut: smag.smagBrutJournalier,
       smagNet: smag.smagNetJournalier,
       jT: jours,
-      jF: 0,
+      jF: Number(a.feries) || 0,
       ancienneteTaux: tauxAnc,
       primeFonctionJour: primeFonctionADate(fiche.prime_history,
         fiche.primeFonctionJournaliere, a.dateISO || null),
@@ -221,6 +225,35 @@
       coutEmployeur: ps.coutEmployeur || 0,
       declare: !!ps.declare,
     };
+  }
+
+  /**
+   * Coût des JOURS FÉRIÉS d'un ouvrier — leur coût MARGINAL. PURE.
+   *
+   * = sa paie sur (jours + fériés) − sa paie sur (jours)
+   *
+   * Ce n'est pas « jours fériés × SMAG » : un jour férié porte aussi la prime de
+   * fonction, et il gonfle l'assiette de l'ancienneté. Le calculer par
+   * différence garantit qu'il vaut exactement ce que le bulletin lui donne, quel
+   * que soit le détail du barème — plutôt que de réimplémenter la règle et de la
+   * laisser diverger.
+   *
+   * Remplace une valorisation au coût journalier moyen **BEE ONE**, qui était le
+   * dernier endroit où de l'argent BEE ONE entrait dans le calcul. Elle donnait
+   * 110,6 DH par jour férié là où le bulletin en donne 90,9 — tout en PERDANT la
+   * prime de fonction et l'ancienneté de ces journées. Deux erreurs de sens
+   * contraire, dont la somme paraissait juste.
+   *
+   * @param {Object} args mêmes arguments que `paieOuvrier`, + `feries`.
+   * @returns {{net: number, brut: number}} coût marginal des fériés.
+   */
+  function coutFeries(args) {
+    var a = args || {};
+    var f = Number(a.feries) || 0;
+    if (!(f > 0)) return { net: 0, brut: 0 };
+    var avec = paieOuvrier(a);
+    var sans = paieOuvrier(Object.assign({}, a, { feries: 0 }));
+    return { net: avec.net - sans.net, brut: avec.brut - sans.brut };
   }
 
   /**
@@ -276,6 +309,7 @@
     var a = args || {};
     var registre = a.registre || {};
     var hsNet = a.heuresSupNet || {};
+    var feries = a.feriesParOuvrier || {};
     var b = a.baremes || {};
     var tauxSal = (Number(b.tauxCnssSalariale) || 0) + (Number(b.tauxAmo) || 0);
     var cle = typeof a.cleRegistre === 'function' ? a.cleRegistre : function (m) { return m; };
@@ -288,7 +322,8 @@
       var fiche = registre[cle(mat)] || {};
       var declare = !!fiche.declare;
       var ligne = { matricule: mat, declare: declare, jours: 0, brut: 0, net: 0,
-        heuresSup: 0, cnss: 0, amo: 0, salariales: 0, patronales: 0, coutEmployeur: 0 };
+        feries: 0, heuresSup: 0, cnss: 0, amo: 0, salariales: 0, patronales: 0,
+        coutEmployeur: 0 };
 
       CATEGORIES.forEach(function (cat) {
         var j = nbJours(e, cat);
@@ -305,6 +340,18 @@
       // DANS L'ASSIETTE : le bulletin les range dans le brut, donc elles
       // cotisent. On remonte donc au brut avant d'appliquer les taux, sinon on
       // sous-évaluerait les charges de 6,74 % du montant accordé.
+      // JOURS FÉRIÉS — coût marginal, ajouté une fois par ouvrier (ils
+      // n'appartiennent à aucune catégorie de travail). Dans l'assiette : le
+      // bulletin les met dans le brut.
+      var nbFer = Number(feries[cle(mat)] || feries[mat]) || 0;
+      if (nbFer > 0) {
+        var cf = coutFeries({ paie: a.paie, fiche: fiche, jours: ligne.jours,
+          feries: nbFer, baremes: a.baremes, dateISO: e.premierJour });
+        ligne.feries = cf.net;
+        ligne.net += cf.net;
+        ligne.brut += cf.brut;
+      }
+
       var net = Number(hsNet[cle(mat)] || hsNet[mat]) || 0;
       if (net > 0) {
         ligne.heuresSup = net;
@@ -431,6 +478,7 @@
 
   var __coutMainOeuvreApi = {
     CATEGORIES: CATEGORIES,
+    coutFeries: coutFeries,
     masseSalarialeNette: masseSalarialeNette,
     netAPayer: netAPayer,
     categorieMO: categorieMO,
