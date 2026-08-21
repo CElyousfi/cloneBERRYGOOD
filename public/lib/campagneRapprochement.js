@@ -111,6 +111,11 @@
         jhSansTaux: g.jhSansTaux,
         primes: Number(q.primes) || 0,
         charges: Number(q.charges) || 0,
+        // Ventilation poste par poste, telle que le backend la rend. Servie
+        // brute : c'est elle qui permet de comparer poste à poste avec les
+        // tuiles de l'écran Quinzaine, au lieu de déduire le poste manquant
+        // d'un ratio par JH.
+        postes: (q && q.postes) || null,
       };
     });
 

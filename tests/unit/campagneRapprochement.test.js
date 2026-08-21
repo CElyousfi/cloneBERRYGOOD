@@ -158,3 +158,25 @@ test('rapprocher — la décomposition permet d\'isoler un poste manquant', () =
   assert.strictEqual(l.charges, 250);
   assert.strictEqual(l.quinzaine - l.primes - l.charges, 1000);
 });
+
+test('rapprocher — la ventilation par poste est servie telle quelle', () => {
+  // Le tableau principal dit COMBIEN manque ; la ventilation dit OÙ. Un poste
+  // à zéro sur toute la campagne — le transport, en l'occurrence — désigne une
+  // donnée qui n'arrive pas, pas un poste réellement vide.
+  const postes = { transport: 0, recolte: 4200, primeFonction: 900 };
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 1300, postes }],
+    rows: [{ periode: 'Q1', coutCharge: 1300 }],
+  });
+  assert.deepStrictEqual(out.lignes[0].postes, postes);
+});
+
+test('rapprocher — sans ventilation, `postes` vaut null et non un objet vide', () => {
+  // Un `{}` se rendrait comme une ventilation intégralement à zéro : douze
+  // postes manquants au lieu d'une information absente.
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 1300 }],
+    rows: [{ periode: 'Q1', coutCharge: 1300 }],
+  });
+  assert.strictEqual(out.lignes[0].postes, null);
+});

@@ -444,8 +444,16 @@ function coutOuvrierCampagne(args) {
 
   quinzaines.forEach((q) => {
     const parOuvrier = (q && q.parOuvrier) || {};
+    // `postes` = la VENTILATION du coût de la quinzaine, poste par poste.
+    // Sans elle, un poste manquant ne se lit que comme un ratio par JH trop bas
+    // — 117 DH contre 136 — et il faut lire le code pour savoir lequel. Avec
+    // elle, il se compare directement aux tuiles de l'écran Quinzaine.
     const cumulQ = { periode: (q && q.periode) || '', jours: 0, jh: 0, base: 0,
-      salaire: 0, primes: 0, charges: 0, coutTotal: 0 };
+      salaire: 0, primes: 0, charges: 0, coutTotal: 0,
+      postes: { primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
+        heuresSupAccordees: 0, feries: 0, transport: 0, recolte: 0,
+        traitement: 0, conditionnement: 0, chargement: 0,
+        chargesPatronales: 0, cotisationsSalariales: 0 } };
     Object.keys(parOuvrier).forEach((mat) => {
       const e = parOuvrier[mat];
       const joursTravailles = e.jours instanceof Set ? e.jours.size : Number(e.jours) || 0;
@@ -516,6 +524,16 @@ function coutOuvrierCampagne(args) {
       // reversée à personne : elle sort du coût, d'où le terme négatif.
       cumulQ.charges += paie.chargesPatronales - paie.retenueNonReversee;
       cumulQ.coutTotal += paie.total;
+
+      cumulQ.postes.primeFonction += paie.primeFonction;
+      cumulQ.postes.primeAnciennete += paie.primeAnciennete;
+      cumulQ.postes.heuresSup += paie.heuresSup;
+      cumulQ.postes.heuresSupAccordees += paie.heuresSupAccordees;
+      cumulQ.postes.feries += paie.feries;
+      cumulQ.postes.chargesPatronales += paie.chargesPatronales;
+      cumulQ.postes.cotisationsSalariales += paie.cotisationsSalariales;
+      ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement']
+        .forEach((k) => { cumulQ.postes[k] += Number(primesOuvrier[k]) || 0; });
 
       var jhOuvrier = Number(e.jh) || 0;
       if (jhOuvrier > 0) tauxParOuvrier[mat + '|' + cumulQ.periode] = paie.total / jhOuvrier;

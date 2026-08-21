@@ -2126,6 +2126,80 @@
      * Affiché sous les grilles, toutes cultures confondues : c'est un contrôle
      * de couverture, pas une lecture par culture.
      */
+    /**
+     * Ventilation POSTE PAR POSTE du coût chargé, quinzaine par quinzaine.
+     *
+     * Le tableau principal dit COMBIEN manque ; celui-ci dit OÙ. Sans lui, un
+     * poste absent ne se lit que comme un ratio par JH trop bas — 117 DH contre
+     * 136 sur la Quinzaine 01 — et il faut ouvrir le code pour savoir lequel.
+     * Chaque ligne se compare directement à la tuile de même nom sur l'écran
+     * Quinzaine : un zéro en face d'une tuile non nulle est la réponse.
+     */
+    function tableauPostes(rap) {
+      var avecPostes = rap.lignes.filter(function (l) { return l.postes; });
+      if (!avecPostes.length) return null;
+
+      var POSTES = [
+        { k: 'primeFonction', l: 'Prime de fonction' },
+        { k: 'primeAnciennete', l: 'Ancienneté' },
+        { k: 'transport', l: 'Prime transport' },
+        { k: 'recolte', l: 'Prime récolte' },
+        { k: 'traitement', l: 'Traitement' },
+        { k: 'conditionnement', l: 'Conditionnement' },
+        { k: 'chargement', l: 'Chargement' },
+        { k: 'feries', l: 'Jours fériés' },
+        { k: 'heuresSup', l: 'Heures sup (pointées)' },
+        { k: 'heuresSupAccordees', l: 'Heures sup (accordées)' },
+        { k: 'chargesPatronales', l: 'Charges patronales' },
+        { k: 'cotisationsSalariales', l: 'Cotisations salariales' },
+      ];
+      var dh = function (v) { return Math.round(v).toLocaleString('fr-MA'); };
+      var th = { padding: '5px 10px', textAlign: 'right', fontSize: '10px',
+        color: C.textSec, fontWeight: 600, borderBottom: '1px solid ' + C.border };
+      var thL = Object.assign({}, th, { textAlign: 'left' });
+      var td = { padding: '5px 10px', textAlign: 'right', fontSize: '11px' };
+      var tdL = Object.assign({}, td, { textAlign: 'left', color: C.textSec });
+
+      return React.createElement('div', { style: { overflowX: 'auto',
+        borderTop: '1px solid ' + C.border } },
+        React.createElement('div', { style: { padding: '8px 16px 2px',
+          fontSize: '11px', fontWeight: 700, color: C.textSec } },
+          'Ventilation du coût chargé, poste par poste — à comparer aux tuiles '
+            + 'de l\'écran Quinzaine. Un zéro en face d\'une tuile non nulle '
+            + 'désigne le poste manquant.'),
+        React.createElement('table', {
+          style: { width: '100%', borderCollapse: 'collapse', fontSize: '11px' },
+        },
+          React.createElement('thead', null,
+            React.createElement('tr', null,
+              React.createElement('th', { style: thL }, 'Poste'),
+              avecPostes.map(function (l) {
+                return React.createElement('th', { key: l.periode, style: th }, l.periode);
+              })
+            )
+          ),
+          React.createElement('tbody', null, POSTES.map(function (p, i) {
+            var total = avecPostes.reduce(function (s, l) {
+              return s + (Number(l.postes[p.k]) || 0);
+            }, 0);
+            return React.createElement('tr', { key: p.k,
+              style: { background: i % 2 ? C.surface2 : C.surface } },
+              React.createElement('td', { style: tdL }, p.l),
+              avecPostes.map(function (l) {
+                var v = Number(l.postes[p.k]) || 0;
+                // Un poste à zéro sur TOUTE la campagne est signalé : c'est le
+                // symptôme d'une donnée qui n'arrive pas, pas d'un poste vide.
+                return React.createElement('td', { key: l.periode,
+                  style: Object.assign({}, td, total === 0
+                    ? { color: '#c0392b', fontWeight: 700 } : {}),
+                }, total === 0 ? '0 ⚠' : dh(v));
+              })
+            );
+          }))
+        )
+      );
+    }
+
     function panneauRapprochement() {
       var CRap = window.CampagneRapprochement;
       var pq = props.coutOuvrier && props.coutOuvrier.parQuinzaine;
@@ -2240,6 +2314,7 @@
             )
           )
         ),
+        tableauPostes(rap),
         React.createElement('div', {
           style: { padding: '6px 14px 10px', fontSize: '10px', color: C.textSec,
             borderTop: '1px solid var(--gray-100)' },
