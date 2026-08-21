@@ -2529,18 +2529,25 @@
         style: th
       }, 'JH'), React.createElement('th', {
         style: th,
-        title: 'Salaire de base agrégé par parcelle, tel que la grille ci-dessus l\'additionne.'
-      }, 'Grille'), React.createElement('th', {
+        title: 'Coût CHARGÉ agrégé par parcelle : Σ (JH × taux de l\'ouvrier), tel que la grille ci-dessus l\'additionne.'
+      }, 'Grille chargée'), React.createElement('th', {
         style: th,
-        title: 'Salaire de base du pointage BRUT, sans passer par la parcelle.'
-      }, 'Pointage'), React.createElement('th', {
+        title: 'Coût chargé ouvrier de l\'écran Quinzaine — la source de vérité, celle qu\'on rapproche du fichier de paie.'
+      }, 'Quinzaine chargée'), React.createElement('th', {
         style: th
       }, 'Écart'), React.createElement('th', {
         style: th
       }, '%'), React.createElement('th', {
         style: th,
-        title: 'Coût CHARGÉ de la quinzaine : base + primes + charges. À comparer au total de l\'écran Quinzaine, dont il faut retrancher le pointage divers.'
-      }, 'Coût chargé'))), React.createElement('tbody', null, rap.lignes.map(function (l, i) {
+        title: 'JH pointés dont l\'ouvrier n\'a pas de fiche de paie : ils comptent en volume, mais à coût nul.'
+      }, 'JH sans taux'), React.createElement('th', {
+        style: th,
+        title: 'Décomposition du coût chargé de la quinzaine. Un écart qui vient d\'un poste manquant (transport, prime de fonction, ancienneté) se lit ici.'
+      }, 'dont salaire'), React.createElement('th', {
+        style: th
+      }, 'dont primes'), React.createElement('th', {
+        style: th
+      }, 'dont charges'))), React.createElement('tbody', null, rap.lignes.map(function (l, i) {
         return React.createElement('tr', {
           key: l.periode,
           style: {
@@ -2556,8 +2563,10 @@
         }, (Math.round(l.jours * 10) / 10).toLocaleString('fr-MA')), React.createElement('td', {
           style: td
         }, dh(l.grille)), React.createElement('td', {
-          style: td
-        }, dh(l.pointage)), React.createElement('td', {
+          style: Object.assign({}, td, {
+            fontWeight: 700
+          })
+        }, dh(l.quinzaine)), React.createElement('td', {
           style: Object.assign({}, td, {
             color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
             fontWeight: alerte(l.ecartPct) ? 700 : 400
@@ -2568,9 +2577,22 @@
           })
         }, pct(l.ecartPct)), React.createElement('td', {
           style: Object.assign({}, td, {
-            fontWeight: 700
+            color: l.jhSansTaux > 0 ? '#c0392b' : C.textSec,
+            fontWeight: l.jhSansTaux > 0 ? 700 : 400
           })
-        }, dh(l.coutCharge)));
+        }, l.jhSansTaux > 0 ? (Math.round(l.jhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'), React.createElement('td', {
+          style: Object.assign({}, td, {
+            color: C.textSec
+          })
+        }, dh(l.quinzaine - l.primes - l.charges)), React.createElement('td', {
+          style: Object.assign({}, td, {
+            color: C.textSec
+          })
+        }, dh(l.primes)), React.createElement('td', {
+          style: Object.assign({}, td, {
+            color: C.textSec
+          })
+        }, dh(l.charges)));
       })), React.createElement('tfoot', null, React.createElement('tr', {
         style: {
           background: C.surface2,
@@ -2584,14 +2606,24 @@
         style: td
       }, dh(rap.totalGrille)), React.createElement('td', {
         style: td
-      }, dh(rap.totalPointage)), React.createElement('td', {
+      }, dh(rap.totalQuinzaine)), React.createElement('td', {
         style: td
       }, dh(rap.ecart)), React.createElement('td', {
         style: td
       }, pct(rap.ecartPct)), React.createElement('td', {
         style: td
+      }, rap.totalJhSansTaux > 0 ? (Math.round(rap.totalJhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'), React.createElement('td', {
+        style: td
       }, dh(rap.lignes.reduce(function (s, l) {
-        return s + l.coutCharge;
+        return s + l.quinzaine - l.primes - l.charges;
+      }, 0))), React.createElement('td', {
+        style: td
+      }, dh(rap.lignes.reduce(function (s, l) {
+        return s + l.primes;
+      }, 0))), React.createElement('td', {
+        style: td
+      }, dh(rap.lignes.reduce(function (s, l) {
+        return s + l.charges;
       }, 0))))))), React.createElement('div', {
         style: {
           padding: '6px 14px 10px',
@@ -2604,7 +2636,7 @@
         style: {
           marginRight: '6px'
         }
-      }), 'La grille agrège le pointage PAR PARCELLE : une ligne dont la parcelle ' + 'ou la culture ne se résout pas n\'y entre pas. Le « Pointage » part ' + 'des lignes brutes. L\'écart mesure donc ce que la grille ne voit pas ' + '— à zéro, elle couvre tout. Le « Coût chargé » se compare au total de ' + 'l\'écran Quinzaine, duquel il faut retrancher le pointage divers ' + '(sous-traitants), hors périmètre des deux chemins.'));
+      }), 'Les deux colonnes portent le même coût CHARGÉ (salaire + primes + ' + 'charges), plus jamais la base BEE ONE. La grille agrège le pointage ' + 'PAR PARCELLE : une ligne dont la parcelle ou la culture ne se résout ' + 'pas n\'y entre pas. La « Quinzaine » part des lignes brutes et fait ' + 'foi. L\'écart est donc en dirhams réels — à zéro, la grille montre ' + 'tout l\'argent. Les « JH sans taux » (ouvriers sans fiche de paie) en ' + 'sont la première cause : ils pèsent en volume, rien en coût. Le ' + 'pointage divers (sous-traitants) reste hors des deux chemins.'));
     }
 
     /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */

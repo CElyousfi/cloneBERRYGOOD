@@ -74,11 +74,25 @@ const { PAIE_BAREMES_DEFAULT, computeWorkerPaie } = require('./paieUtils.js');
  * @param {string} matricule
  * @returns {string} préfixe à 2 lettres, 'BGF' par défaut.
  */
-function prefixeEquipe(matricule) {
+function prefixeEquipe(matricule, equipes) {
   const m = String(matricule || '').toUpperCase().trim();
+  if (!m) return null;
   if (m.startsWith('HAFI')) return 'HA';
   const p2 = m.substring(0, 2);
-  return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
+  // Le préfixe doit correspondre à une équipe RÉELLE. La version précédente
+  // renvoyait 'BGF' par défaut dès que les deux premiers caractères n'étaient
+  // pas deux lettres — c'est-à-dire pour TOUS les matricules numériques, la
+  // majorité de l'effectif. Elle leur attribuait donc l'équipe BGF, alors que
+  // l'écran Quinzaine les classe « inconnu » et ne leur donne aucune prime.
+  // Deux écrans, deux transports, pour les mêmes ouvriers.
+  //
+  // On ne devine plus : sans équipe correspondante, pas de prime. C'est aussi
+  // ce que fait la feuille TRANSPORT du bulletin, qui ne liste que des équipes
+  // nommées.
+  const connu = (equipes || []).some(
+    (e) => e && String(e.prefix || '').toUpperCase() === p2
+  );
+  return connu ? p2 : null;
 }
 
 /**
@@ -98,7 +112,8 @@ function prefixeEquipe(matricule) {
  * @returns {number} montant PAR JOUR travaillé.
  */
 function primeTransport(matricule, equipes) {
-  const prefixe = prefixeEquipe(matricule);
+  const prefixe = prefixeEquipe(matricule, equipes);
+  if (!prefixe) return 0;
   const equipe = (equipes || []).find(
     (e) => e && String(e.prefix || '').toUpperCase() === prefixe
   );

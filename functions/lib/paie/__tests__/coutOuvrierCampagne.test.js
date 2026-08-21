@@ -55,13 +55,29 @@ function campagne(args) {
   return M.coutOuvrierCampagne(Object.assign({ baremes: B, equipesTransport: EQUIPES }, args));
 }
 
-test('prefixeEquipe — deux lettres, HAFI mis à part, BGF par défaut', () => {
-  // Règle reprise à l'identique du front : une divergence donnerait deux primes
-  // de transport différentes pour le même ouvrier selon l'écran.
-  assert.strictEqual(M.prefixeEquipe('AB1234'), 'AB');
-  assert.strictEqual(M.prefixeEquipe('hafi007'), 'HA');
-  assert.strictEqual(M.prefixeEquipe('123456'), 'BGF');
-  assert.strictEqual(M.prefixeEquipe(''), 'BGF');
+test('prefixeEquipe — le préfixe doit désigner une équipe RÉELLE', () => {
+  // Le commentaire précédent affirmait « règle reprise à l'identique du front ».
+  // C'était faux, et c'était le défaut : un matricule numérique — la majorité de
+  // l'effectif — recevait ici l'équipe « BGF » par défaut, alors que l'écran
+  // Quinzaine le classe inconnu et ne lui donne aucune prime de transport. Deux
+  // écrans, deux transports, pour les mêmes ouvriers.
+  //
+  // On ne devine plus : sans équipe correspondante, pas d'équipe. C'est aussi ce
+  // que fait la feuille TRANSPORT du bulletin, qui ne liste que des équipes
+  // nommées.
+  assert.strictEqual(M.prefixeEquipe('AB1234', EQUIPES), 'AB');
+  assert.strictEqual(M.prefixeEquipe('hafi007', EQUIPES), 'HA');
+  assert.strictEqual(M.prefixeEquipe('123456', EQUIPES), null);
+  assert.strictEqual(M.prefixeEquipe('', EQUIPES), null);
+  // Préfixe alphabétique mais inconnu de la liste : pas d'équipe non plus.
+  assert.strictEqual(M.prefixeEquipe('QQ42', EQUIPES), null);
+});
+
+test('primeTransport — un matricule numérique ne reçoit RIEN', () => {
+  // La régression qu'on corrige : ces ouvriers touchaient la prime de l'équipe
+  // BGF côté campagne et rien côté Quinzaine.
+  assert.strictEqual(M.primeTransport('123456', EQUIPES), 0);
+  assert.strictEqual(M.primeTransport('10502', EQUIPES), 0);
 });
 
 test('primeTransport — équipe inconnue → 0, jamais un montant deviné', () => {
