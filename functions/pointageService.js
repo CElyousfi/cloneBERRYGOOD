@@ -1649,21 +1649,7 @@ async function computeCampagneCoutOuvrier() {
           `campagne_cout_ouvrier_v2_${campagne.start}`,
           30 * 60 * 1000,
           async () => {
-            // TAUX PAR OUVRIER — c'est lui qui valorise chaque ligne au coût de
-      // L'OUVRIER qui l'a faite, au lieu d'une moyenne d'établissement appliquée
-      // à tout le monde. Même calcul que l'écran Quinzaine : un seul chemin.
-      // Indisponible (BEE ONE muet, registre vide) → `coutCharge` reste à 0 et
-      // l'écran affichera « — » ; JAMAIS un repli sur le `Cout` BEE ONE, qui
-      // ferait passer un coût nu pour un coût chargé.
-      let tauxParOuvrier = {};
-      try {
-        const co = await computeCampagneCoutOuvrier();
-        tauxParOuvrier = (co && co.tauxParOuvrier) || {};
-      } catch (e) {
-        console.warn('campagne-analytique-detail : taux ouvrier indisponible —', e.message);
-      }
-
-      const meta = await getPointageMeta();
+            const meta = await getPointageMeta();
             const periodeMap = (meta && meta.periodeMap) || {};
 
             // Quinzaines de la campagne, DANS L'ORDRE : l'ancienneté se cumule
@@ -1897,6 +1883,21 @@ async function computeCampagneAnalytiqueDetail(fermeFilter = null, cultureFilter
     pointageCacheKey(`campagne_analytique_detail_v3_${campagne.start}`, fermeFilter, cultureFilter),
     30 * 60 * 1000,
     async () => {
+      // TAUX PAR OUVRIER — il valorise chaque ligne au coût de L'OUVRIER qui l'a
+      // faite, au lieu d'une moyenne d'établissement appliquée à tout le monde.
+      // Même calcul que l'écran Quinzaine : un seul chemin, caché 30 min.
+      //
+      // Indisponible (BEE ONE muet, registre vide) → `coutCharge` reste à 0 et
+      // l'écran affiche « — » ; JAMAIS un repli sur le `Cout` BEE ONE, qui
+      // ferait passer un coût nu pour un coût chargé.
+      let tauxParOuvrier = {};
+      try {
+        const co = await computeCampagneCoutOuvrier();
+        tauxParOuvrier = (co && co.tauxParOuvrier) || {};
+      } catch (e) {
+        console.warn('campagne-analytique-detail : taux ouvrier indisponible —', e.message);
+      }
+
       const meta = await getPointageMeta();
       const allPeriodes = (meta?.allPeriodes || []).filter(p => {
         const dates = (meta?.periodeMap?.[p] || []);
