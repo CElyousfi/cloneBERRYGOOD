@@ -15904,6 +15904,48 @@ exports.primesManagement = functions
         return res.json({ success: true, matricule, primeFonctionJournaliere: montant, effectiveFrom });
       }
 
+      // ---------- heures-sup-montants : LECTURE des HS accordées d'une quinzaine ----------
+      //
+      // Les minutes de dépassement viennent de la badgeuse (action `heures-sup`),
+      // mais le MONTANT accordé est une DÉCISION, pas un calcul : la paie inscrit
+      // des montants ronds par ouvrier. On les stocke donc tels quels, et les
+      // minutes badgées restent affichées à côté comme pièce justificative.
+      //
+      // Montant SAISI = NET (ce que l'ouvrier touche, comme la colonne « Prime
+      // heure sup » du bulletin). La remontée au brut pour l'assiette est faite
+      // par le modèle de coût, jamais ici.
+      if (action === "heures-sup-montants" && req.method === "GET") {
+        const periode = String(req.query.periode || "").trim();
+        if (!periode) return res.status(400).json({ success: false, error: "periode requise" });
+        const snap = await db_firestore.collection("rh_heures_sup").doc(periode).get();
+        const d = snap.exists ? snap.data() : null;
+        return res.json({
+          success: true, periode,
+          montants: (d && d.montants) || {},
+          updatedAt: (d && d.updatedAt) || null,
+          updatedBy: (d && d.updatedBy) || null,
+        });
+      }
+
+      // ---------- save-heures-sup : ÉCRITURE du montant d'UN ouvrier ----------
+      if (action === "save-heures-sup" && req.method === "POST") {
+        const periode = String((req.body && req.body.periode) || "").trim();
+        const matricule = normalizeMatricule(req.body && req.body.matricule);
+        if (!periode) return res.status(400).json({ success: false, error: "periode requise" });
+        if (!matricule) return res.status(400).json({ success: false, error: "matricule requis" });
+        const montant = Number(req.body && req.body.montant) || 0;
+        if (montant < 0) return res.status(400).json({ success: false, error: "montant négatif" });
+
+        const ref = db_firestore.collection("rh_heures_sup").doc(periode);
+        // `merge` sur le chemin du seul matricule : deux saisies simultanées sur
+        // deux ouvriers différents ne s'écrasent pas l'une l'autre.
+        const upd = { periode, updatedAt: now, updatedBy: actor };
+        upd["montants." + matricule] = montant;
+        await ref.set({ periode, montants: {}, }, { merge: true });
+        await ref.update(upd);
+        return res.json({ success: true, periode, matricule, montant });
+      }
+
       // ---------- set-declare : déclaration ouvrier + baseline ancienneté ----------
       if (action === "set-declare" && req.method === "POST") {
         const matricule = normalizeMatricule(req.body && req.body.matricule);

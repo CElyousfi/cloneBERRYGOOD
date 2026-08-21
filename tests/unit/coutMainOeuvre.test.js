@@ -314,3 +314,62 @@ test('chargesSociales — les agrégats CNSS et AMO suivent le détail', () => {
   assert.strictEqual(nonDecl.amo, 0);
   assert.ok(nonDecl.brut > 0);
 });
+
+// ─────────────────────────────────────────────── heures supplémentaires
+
+test('HS — saisies au NET, remontées au brut pour cotiser', () => {
+  // Le bulletin range les heures sup dans le brut : elles cotisent. Le montant
+  // saisi est celui qui est ACCORDÉ (net, comme la colonne « Prime heure sup »),
+  // donc il faut remonter au brut avant d'appliquer les taux — sinon on
+  // sous-évalue les charges de 6,74 % de chaque montant accordé.
+  const registre = { A: DECLARE };
+  const lignes = rows([['A', '2026-08-01', 'Taille']]);
+  const sans = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes });
+  const avec = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes,
+    heuresSupNet: { A: 420 } });
+
+  const brutHS = 420 / (1 - 0.0674);
+  assert.strictEqual(Math.round((avec.brutDeclare - sans.brutDeclare) * 100) / 100,
+    Math.round(brutHS * 100) / 100);
+  // Les charges suivent l'assiette, patronale comprise.
+  assert.strictEqual(Math.round((avec.patronales - sans.patronales) * 100) / 100,
+    Math.round(brutHS * 0.1926 * 100) / 100);
+  // Et le net de l'ouvrier monte exactement du montant accordé.
+  assert.strictEqual(Math.round((avec.detail[0].net - sans.detail[0].net) * 100) / 100, 420);
+  assert.strictEqual(avec.detail[0].heuresSup, 420);
+});
+
+test('HS — un non déclaré ne cotise pas dessus', () => {
+  const registre = { B: NON_DECLARE };
+  const c = CMO.chargesSociales({ paie, baremes: BAREMES, registre,
+    rows: rows([['B', '2026-08-01', 'Taille']]), heuresSupNet: { B: 300 } });
+  assert.strictEqual(c.patronales, 0);
+  assert.strictEqual(c.salariales, 0);
+  // Il les touche quand même : elles pèsent dans son coût.
+  assert.strictEqual(c.detail[0].heuresSup, 300);
+});
+
+test('HS — dans le net à payer ET dans le coût employeur', () => {
+  const mo = { recolte: 0, horsRecolte: 100000, postes: 0 };
+  const primes = { recolte: 0, transport: 20000, autres: 5000 };
+  const charges = { total: 15000 };
+  const base = { mo, primes, charges, locationEngins: 3000 };
+  const avecHS = Object.assign({}, base, { heuresSup: 6045 });
+
+  assert.strictEqual(CMO.netAPayer(avecHS) - CMO.netAPayer(base), 6045);
+  assert.strictEqual(CMO.coutEmployeur(avecHS) - CMO.coutEmployeur(base), 6045);
+  // La chaîne reste fermée : les deux chemins vers le total concordent.
+  assert.strictEqual(CMO.totalQuinzaine(avecHS),
+    CMO.coutEmployeur(avecHS) + 3000);
+  assert.strictEqual(CMO.totalQuinzaine(avecHS),
+    CMO.netAPayer(avecHS) + charges.total);
+});
+
+test('HS — aucune saisie : rien ne bouge', () => {
+  const registre = { A: DECLARE };
+  const lignes = rows([['A', '2026-08-01', 'Taille']]);
+  const a = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes });
+  const b = CMO.chargesSociales({ paie, baremes: BAREMES, registre, rows: lignes, heuresSupNet: {} });
+  assert.deepStrictEqual(a.detail[0], b.detail[0]);
+  assert.strictEqual(a.detail[0].heuresSup, 0);
+});

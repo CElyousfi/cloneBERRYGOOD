@@ -275,6 +275,9 @@
   function chargesSociales(args) {
     var a = args || {};
     var registre = a.registre || {};
+    var hsNet = a.heuresSupNet || {};
+    var b = a.baremes || {};
+    var tauxSal = (Number(b.tauxCnssSalariale) || 0) + (Number(b.tauxAmo) || 0);
     var cle = typeof a.cleRegistre === 'function' ? a.cleRegistre : function (m) { return m; };
     var parOuvrier = joursParOuvrier(a.rows);
     var out = { cnss: 0, amo: 0, salariales: 0, patronales: 0, total: 0,
@@ -285,7 +288,7 @@
       var fiche = registre[cle(mat)] || {};
       var declare = !!fiche.declare;
       var ligne = { matricule: mat, declare: declare, jours: 0, brut: 0, net: 0,
-        cnss: 0, amo: 0, salariales: 0, patronales: 0, coutEmployeur: 0 };
+        heuresSup: 0, cnss: 0, amo: 0, salariales: 0, patronales: 0, coutEmployeur: 0 };
 
       CATEGORIES.forEach(function (cat) {
         var j = nbJours(e, cat);
@@ -295,12 +298,30 @@
         ligne.jours += j;
         ligne.brut += p.brut;
         ligne.net += p.net;
-        ligne.cnss += p.cnss;
-        ligne.amo += p.amo;
-        ligne.salariales += p.cotisationsSalariales;
-        ligne.patronales += p.chargesPatronales;
-        ligne.coutEmployeur += p.coutEmployeur;
       });
+
+      // HEURES SUPPLÉMENTAIRES — saisies au montant NET (ce que l'ouvrier
+      // touche, comme la colonne « Prime heure sup » du bulletin). Elles sont
+      // DANS L'ASSIETTE : le bulletin les range dans le brut, donc elles
+      // cotisent. On remonte donc au brut avant d'appliquer les taux, sinon on
+      // sous-évaluerait les charges de 6,74 % du montant accordé.
+      var net = Number(hsNet[cle(mat)] || hsNet[mat]) || 0;
+      if (net > 0) {
+        ligne.heuresSup = net;
+        ligne.net += net;
+        ligne.brut += (declare && tauxSal < 1) ? net / (1 - tauxSal) : net;
+      }
+
+      // Charges calculées sur l'assiette ASSEMBLÉE, et non additionnées
+      // catégorie par catégorie : c'est le seul ordre qui reste juste quand un
+      // terme (les HS) n'appartient à aucune catégorie.
+      if (declare) {
+        ligne.cnss = ligne.brut * (Number(b.tauxCnssSalariale) || 0);
+        ligne.amo = ligne.brut * (Number(b.tauxAmo) || 0);
+        ligne.salariales = ligne.cnss + ligne.amo;
+        ligne.patronales = ligne.brut * (Number(b.tauxChargesPatronales) || 0);
+      }
+      ligne.coutEmployeur = ligne.brut + ligne.patronales;
 
       // Un non déclaré figure au détail AVEC ses jours et son brut, à charges
       // nulles. L'omettre ferait lire la liste comme l'effectif de la
@@ -348,7 +369,11 @@
       + (Number(mo.postes) || 0)
       + (Number(primes.recolte) || 0)
       + (Number(primes.transport) || 0)
-      + (Number(primes.autres) || 0);
+      + (Number(primes.autres) || 0)
+      // Les heures sup vont à l'ouvrier : elles sont de la masse salariale,
+      // pas une prime de terrain. Elles comptent donc dans le net à payer ET
+      // dans le coût employeur, et leurs charges sont déjà dans `charges`.
+      + (Number(a.heuresSup) || 0);
   }
 
   /**

@@ -11107,6 +11107,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // deux écrans qui ne peuvent pas afficher deux coûts différents.
             const [coutOuvrierCampagne, setCoutOuvrierCampagne] = useState(null);
             const [recolteEquipeRows, setRecolteEquipeRows] = useState([]);
+            // Heures supplémentaires ACCORDÉES sur la quinzaine — { matricule: montant NET }.
+            // Le montant est une décision, pas un calcul : la badgeuse donne des
+            // minutes, la paie accorde une somme. Les deux se lisent côte à côte
+            // dans l'écran Heures Supplémentaires.
+            const [hsMontants, setHsMontants] = useState({});
+            // Minutes de dépassement issues de la badgeuse — pièce justificative
+            // affichée en regard du montant accordé. Jamais la source du montant.
+            const [hsMinutes, setHsMinutes] = useState({});
+            const [hsSaving, setHsSaving] = useState('');
             const [transportPopup, setTransportPopup] = useState(null);
             const [analytiqueData, setAnalytiqueData] = useState([]);
             const [analytiqueFullscreen, setAnalytiqueFullscreen] = useState(false);
@@ -11432,6 +11441,36 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     if (recolteEq.success) setRecolteEquipeRows(recolteEq.rows || []);
                 }).catch(err => console.warn(err)).finally(() => setLoading(false));
 
+                // Montants d'heures sup de la quinzaine affichée. Lecture GATÉE
+                // (rôle RH/DG côté serveur) : un profil sans droit reçoit 403 et
+                // l'écran affiche 0, jamais une erreur bloquante.
+                (async () => {
+                    const per = (pq || '').replace(/^&periode=/, '');
+                    if (!per) { setHsMontants({}); return; }
+                    try {
+                        const tok = (firebaseAuth && firebaseAuth.currentUser)
+                            ? await firebaseAuth.currentUser.getIdToken() : null;
+                        const r = await fetch('/api/primes?action=heures-sup-montants&periode='
+                            + encodeURIComponent(decodeURIComponent(per)),
+                            { headers: tok ? { Authorization: 'Bearer ' + tok } : {} });
+                        const d = await r.json().catch(() => ({}));
+                        setHsMontants((d && d.success && d.montants) || {});
+                    } catch (e) { setHsMontants({}); }
+                })();
+
+                // Minutes badgées de la quinzaine (action publique, cachée).
+                cachedFetch('/api/pointage-rh?action=heures-sup').then(json => {
+                    if (!json || !json.success) return;
+                    const per = decodeURIComponent((pq || '').replace(/^&periode=/, ''));
+                    const acc = {};
+                    (json.rows || []).forEach(r => {
+                        if (per && r.periode !== per) return;
+                        const k = numKey(r.matricule);
+                        acc[k] = (acc[k] || 0) + (r.overtimeMin || 0);
+                    });
+                    setHsMinutes(acc);
+                }).catch(() => {});
+
                 // Phase 2: supplementary data → appears when ready
                 // parcelles-campagne-list est fetché en parallèle pour éviter le race condition avec sbLoad.
                 // SB_PARCELLE_CAMPAGNE est peuplé avant setAnalytiqueData pour que sbParcelleHa soit correct.
@@ -11744,8 +11783,18 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 ? _CMO.chargesSociales({
                     paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
                     baremes: quinzPaieBaremes, cleRegistre: numKey,
+                    // Les HS sont DANS l'assiette : le module les remonte au brut
+                    // avant d'appliquer les taux.
+                    heuresSupNet: hsMontants,
                 })
                 : null;
+            // Total des heures sup accordées sur la quinzaine, restreint aux
+            // ouvriers qui y ont POINTÉ : une saisie laissée sur un ouvrier
+            // absent ne doit pas gonfler le total de la quinzaine.
+            const _hsTotal = (() => {
+                if (!_CMO || !_chargesSociales) return 0;
+                return _chargesSociales.detail.reduce((s, w) => s + (w.heuresSup || 0), 0);
+            })();
 
             // Traitement (10 DH/ouvrier-jour)
             const traitRows = transportRows.filter(r => (r.operationFamille || '').toLowerCase().includes('traitement'));
@@ -11780,10 +11829,12 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // rapproche d'un décaissement, quand le coût employeur est celui
             // qu'on porte au P&L.
             const _netAPayer = _moTotaux
-                ? _CMO.netAPayer({ mo: _moTotaux, primes: _primesQz, locationEngins: totalDivers })
+                ? _CMO.netAPayer({ mo: _moTotaux, primes: _primesQz, heuresSup: _hsTotal,
+                    locationEngins: totalDivers })
                 : null;
             const _coutEmployeur = (_moTotaux && _chargesSociales)
-                ? _CMO.coutEmployeur({ mo: _moTotaux, primes: _primesQz, charges: _chargesSociales })
+                ? _CMO.coutEmployeur({ mo: _moTotaux, primes: _primesQz, heuresSup: _hsTotal,
+                    charges: _chargesSociales })
                 : null;
             // La sous-traitance est un coût de la quinzaine, pas un coût
             // d'EMPLOYÉ : elle s'ajoute au total sans entrer dans le coût
@@ -11804,6 +11855,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     { label: 'Jour Férié', montant: totalJourFerie },
                   ]
                 },
+                // Heures supplémentaires : de la masse salariale, pas une prime de
+                // terrain — elles vont à l'ouvrier et elles cotisent. D'où leur
+                // place AVANT les charges, qui les incluent dans leur assiette.
+                { label: 'Heures Sup.', icon: 'fa-clock', color: '#e67e22',
+                  montant: _sbPending ? null : _hsTotal, popupKey: 'heures_sup' },
                 { label: 'Charges Sociales', icon: 'fa-building-columns', color: '#3949ab',
                   montant: _sbPending ? null : (_chargesSociales ? _chargesSociales.total : null),
                   popupKey: 'charges_sociales',
@@ -11957,6 +12013,115 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         devenue la tuile « Charges Sociales », à deux lignes et
                         DANS le total — un coût employeur affiché à côté du total
                         sans y entrer laissait chacun faire l'addition de tête. */}
+
+                    {quinzPopupKey === 'heures_sup' && (() => {
+                        // SAISIE des heures sup accordées. Le montant est une
+                        // DÉCISION (la paie inscrit des sommes rondes), pas une
+                        // conversion des minutes badgées — celles-ci s'affichent
+                        // à côté pour justifier, jamais pour calculer.
+                        const _hsList = (_chargesSociales ? _chargesSociales.detail : [])
+                            .map(w => ({
+                                matricule: w.matricule,
+                                cle: numKey(w.matricule),
+                                jours: w.jours,
+                                montant: Number(hsMontants[numKey(w.matricule)] || 0),
+                                minutes: Number(hsMinutes[numKey(w.matricule)] || 0),
+                            }))
+                            .filter(w => w.montant > 0 || w.minutes > 0)
+                            .sort((a, b) => b.montant - a.montant || b.minutes - a.minutes);
+                        const _hsNom = (mat) => {
+                            const reg = quinzRegistry[numKey(mat)] || {};
+                            return ((reg.prenom || '') + ' ' + (reg.nom || '')).trim() || mat;
+                        };
+                        const _hsDuree = (min) => min <= 0 ? '—'
+                            : (Math.floor(min / 60) + 'h' + String(min % 60).padStart(2, '0'));
+                        const _hsSave = async (cle, valeur) => {
+                            const per = currentPeriode;
+                            if (!per) return;
+                            setHsSaving(cle);
+                            try {
+                                const tok = (firebaseAuth && firebaseAuth.currentUser)
+                                    ? await firebaseAuth.currentUser.getIdToken() : null;
+                                const r = await fetch('/api/primes?action=save-heures-sup', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json',
+                                        ...(tok ? { Authorization: 'Bearer ' + tok } : {}) },
+                                    body: JSON.stringify({ periode: per, matricule: cle, montant: valeur }),
+                                });
+                                const d = await r.json().catch(() => ({}));
+                                if (!r.ok || !d.success) throw new Error(d.error || ('Erreur ' + r.status));
+                                setHsMontants(prev => ({ ...prev, [cle]: valeur }));
+                            } catch (e) {
+                                alert('Enregistrement impossible : ' + e.message);
+                            } finally { setHsSaving(''); }
+                        };
+                        const _th = {padding:'8px 10px',textAlign:'right',fontSize:11,color:'var(--gray-500)',fontWeight:600,borderBottom:'1px solid var(--gray-200)'};
+                        const _thL = {..._th, textAlign:'left'};
+                        const _td = {padding:'6px 10px',textAlign:'right',fontSize:12};
+                        return (
+                            <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}
+                                onClick={() => setQuinzPopupKey(null)}>
+                                <div style={{background:'#fff',borderRadius:16,maxWidth:900,width:'100%',maxHeight:'85vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.3)'}}
+                                    onClick={e => e.stopPropagation()}>
+                                    <div style={{padding:'20px 24px',background:'linear-gradient(135deg, #e67e22 0%, #f0932b 100%)',borderRadius:'16px 16px 0 0',color:'white',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,zIndex:1}}>
+                                        <div>
+                                            <div style={{fontSize:18,fontWeight:700}}><i className="fa-solid fa-clock" style={{marginRight:8}}></i>Heures Supplémentaires — {currentPeriode}</div>
+                                            <div style={{fontSize:12,opacity:0.85,marginTop:4}}>{Math.round(_hsTotal).toLocaleString('fr-FR')} DH accordés — montant NET, soumis à cotisation</div>
+                                        </div>
+                                        <button onClick={() => setQuinzPopupKey(null)} style={{background:'rgba(255,255,255,0.2)',border:'none',color:'white',fontSize:16,cursor:'pointer',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                                            <i className="fa-solid fa-xmark"></i>
+                                        </button>
+                                    </div>
+                                    <div style={{padding:'16px 24px'}}>
+                                        {_hsList.length === 0 ? (
+                                            <div style={{color:'var(--gray-400)',fontSize:13,fontStyle:'italic',textAlign:'center',padding:'24px 0'}}>
+                                                Aucun dépassement badgé et aucun montant saisi sur cette quinzaine.
+                                            </div>
+                                        ) : (
+                                        <table style={{width:'100%',borderCollapse:'collapse'}}>
+                                            <thead><tr>
+                                                <th style={_thL}>Ouvrier</th>
+                                                <th style={_th}>Jours</th>
+                                                <th style={_th} title="Dépassement mesuré par la badgeuse. Justificatif, jamais le montant.">Badgé</th>
+                                                <th style={_th}>Montant accordé (DH net)</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {_hsList.map((w, i) => (
+                                                    <tr key={w.matricule} style={{background: i % 2 ? '#fdf6ef' : '#fff', borderBottom:'1px solid var(--gray-100)'}}>
+                                                        <td style={{..._td, textAlign:'left', fontWeight:500}}>{_hsNom(w.matricule)}<span style={{color:'var(--gray-400)',fontSize:10,marginLeft:6}}>{w.matricule}</span></td>
+                                                        <td style={_td}>{w.jours}</td>
+                                                        <td style={{..._td, color:'var(--gray-500)'}}>{_hsDuree(w.minutes)}</td>
+                                                        <td style={_td}>
+                                                            <input type="number" min="0" step="10" defaultValue={w.montant || ''}
+                                                                disabled={hsSaving === w.cle}
+                                                                onBlur={e => {
+                                                                    const v = Number(e.target.value) || 0;
+                                                                    if (v !== w.montant) _hsSave(w.cle, v);
+                                                                }}
+                                                                style={{width:110,padding:'4px 8px',textAlign:'right',border:'1px solid var(--gray-200)',borderRadius:6,fontSize:12}} />
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                            <tfoot><tr style={{background:'#fdf0e3',fontWeight:700}}>
+                                                <td style={{..._td, textAlign:'left'}}>TOTAL</td>
+                                                <td style={_td}></td>
+                                                <td style={_td}>{_hsDuree(_hsList.reduce((s, w) => s + w.minutes, 0))}</td>
+                                                <td style={_td}>{Math.round(_hsTotal).toLocaleString('fr-FR')} DH</td>
+                                            </tr></tfoot>
+                                        </table>
+                                        )}
+                                        <div style={{marginTop:12,fontSize:10.5,color:'var(--gray-500)'}}>
+                                            <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                            Le montant est SAISI, comme sur le bulletin : la badgeuse mesure un dépassement,
+                                            elle ne décide pas d\'une rémunération. Il est net — les cotisations sont
+                                            recalculées dessus et apparaissent dans la tuile Charges Sociales.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {quinzPopupKey === 'charges_sociales' && (() => {
                         // Le détail par OUVRIER, non déclarés compris (à charges
@@ -12142,7 +12307,8 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         cette liste n'ouvre donc pas RIEN, elle ouvre une DEUXIÈME
                         pop-up par-dessus la bonne, remplie des mauvaises lignes. */}
                     {quinzPopupKey && quinzPopupKey !== 'location_engins'
-                        && quinzPopupKey !== 'charges_sociales' && (() => {
+                        && quinzPopupKey !== 'charges_sociales'
+                        && quinzPopupKey !== 'heures_sup' && (() => {
                         const _qpKey = quinzPopupKey;
                         const _isMoCard = _qpKey === 'mo_recolte' || _qpKey === 'mo_horsrecolte' || _qpKey === 'mo_postes';
                         const _qpTitle = _qpKey === 'mo_recolte' ? 'MO Récolte'
