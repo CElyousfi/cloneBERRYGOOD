@@ -102,9 +102,12 @@ test('paie — le SALAIRE vient du barème Smart Berry, BEE ONE ne donne que les
   });
   assert.strictEqual(out.detail.baseBeeOne, 240, 'témoin BEE ONE conservé');
   assert.strictEqual(Math.round(out.detail.salaire * 100) / 100, 194.88, '2 × SMAG');
-  assert.strictEqual(Math.round(out.coutTotal * 100) / 100, 194.88,
+  // Non déclaré : il touche le NET, et rien n'est reversé — son coût EST son net.
+  assert.strictEqual(Math.round(out.coutTotal * 100) / 100,
+    Math.round(194.88 * 0.9326 * 100) / 100,
     'non déclaré, hors équipe : aucun ajout');
-  assert.strictEqual(Math.round(out.coutMoyenJour * 100) / 100, 97.44);
+  assert.strictEqual(Math.round(out.coutMoyenJour * 100) / 100,
+    Math.round(97.44 * 0.9326 * 100) / 100);
 });
 
 test('paie — charges patronales : seulement les déclarés, seulement l\'assiette', () => {
@@ -144,10 +147,12 @@ test('paie — le coût réel d\'une journée type, terme par terme', () => {
   assert.strictEqual(r(out.detail.chargesPatronales), 18.77);
   assert.strictEqual(r(out.detail.cotisationsSalariales), 6.57);
   assert.strictEqual(r(out.detail.transport), 20);
-  // 142,77 et non 142,78 : les termes sont arrondis pour l'affichage, jamais
-  // dans le calcul — c'est la somme non arrondie qui fait foi.
-  assert.strictEqual(r(out.coutMoyenJour), 142.77,
-    'base 97,44 + patronales 18,77 + salariales 6,57 + transport 20');
+  // La part salariale (6,57) n'est PLUS un terme du coût : l'ouvrier touche le
+  // net et l'entreprise la reverse à la CNSS — elle est donc déjà dans le brut.
+  // L'ajouter la comptait deux fois (correction du 2026-08-21).
+  // Les termes sont arrondis pour l'affichage, jamais dans le calcul.
+  assert.strictEqual(r(out.coutMoyenJour), 136.21,
+    'base 97,44 + patronales 18,77 + transport 20');
 });
 
 test('transport — la prime est due PAR JOUR TRAVAILLÉ, pas une fois par quinzaine', () => {
@@ -261,8 +266,11 @@ test('coût — le détail se recompose exactement dans le total', () => {
     })],
   });
   const d = out.detail;
+  // La part salariale n'apparaît PLUS comme un terme du total : elle est déjà
+  // dans le brut (brut = net + part salariale), et l'entreprise la reverse à la
+  // CNSS. L'additionner la comptait deux fois — correction du 2026-08-21.
   const somme = d.salaire + d.primeFonction + d.primeAnciennete + d.heuresSup
-    + d.feries + d.chargesPatronales + d.cotisationsSalariales
+    + d.feries + d.chargesPatronales - d.retenueNonDeclares
     + d.transport + d.recolte + d.traitement + d.conditionnement + d.chargement;
   assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(out.coutTotal * 1e6) / 1e6);
 });
@@ -300,7 +308,8 @@ test('facteurCharge — combien coûte réellement un dirham de salaire de base'
   // Rapporté au Cout BEE ONE, puisque c'est LUI que la grille Campagne affiche.
   assert.strictEqual(Math.round(out.facteurCharge * 1000) / 1000,
     Math.round((out.coutTotal / out.detail.baseBeeOne) * 1000) / 1000);
-  assert.ok(out.facteurCharge > 1.4 && out.facteurCharge < 1.5);
+  // La fourchette descend : le coût ne porte plus deux fois la part salariale.
+  assert.ok(out.facteurCharge > 1.3 && out.facteurCharge < 1.45);
   // Sans base : `null` et non 1 — un facteur neutre ferait passer un coût nu
   // pour un coût complet, ce qui est l'erreur qu'on corrige.
   assert.strictEqual(campagne({ registre: {}, quinzaines: [] }).facteurCharge, null);

@@ -252,11 +252,18 @@
     const heuresSup = { h25, h50, h100, tauxHoraire, montant: montantHS };
 
     if (!isDeclare) {
-      // Modèle validé Omar 2026-06 : non-déclaré payé sur le SMAG BRUT (comme le déclaré),
-      // sans CNSS patronale ni prime d'ancienneté. Aucune retenue salariale.
+      // ARBITRAGE 2026-08-21 — ALIGNEMENT SUR LES BULLETINS.
+      // Tout le monde est payé NET, déclaré comme non déclaré : sur les trois
+      // quinzaines, la colonne « Montant » vaut brut × 0,933 sur LES DEUX
+      // feuilles, et la feuille VIREMENT totalise exactement ce montant-là.
+      // Remplace l'arbitrage 2026-06 (« payé sur le brut, aucune retenue »).
+      //
+      // Le non-déclaré ne reverse rien : ce qu'il touche EST le coût entreprise.
+      const retenue = 1 - ((Number(b.tauxCnssSalariale) || 0) + (Number(b.tauxAmo) || 0));
       const smagBaseTotal = smag.smagBrutJournalier * jrs;
       const brut = smagBaseTotal + primeFonction + montantHS;
-      const net = brut + transport + recolte;
+      // Primes de terrain hors retenue : ce n'est pas du salaire.
+      const net = brut * retenue + transport + recolte;
       return {
         statutDeclare: false,
         smagBaseJour: smag.smagBrutJournalier,
@@ -285,12 +292,15 @@
     const primeAnciennete = baseAnciennete * (pourcentage / 100);
     // Taxable gross = base (SMAG brut + prime de fonction) + prime ancienneté + heures sup.
     const brut = baseAnciennete + primeAnciennete + montantHS;
-    // Modèle validé Omar 2026-06 : AUCUNE retenue salariale (cotisations salariales = 0
-    // pour tous). Le déclaré porte uniquement la CNSS patronale (coût société).
-    const cotisationsSalariales = 0;
+    // ARBITRAGE 2026-08-21 : le déclaré est payé NET, comme sur son bulletin.
+    // La part salariale n'est pas perdue pour autant — l'entreprise la REVERSE à
+    // la CNSS. Elle est donc dans le coût, mais À TRAVERS le brut, pas en plus :
+    //     coût = net + salariales + patronales = brut + patronales
+    // L'ajouter une seconde fois au brut la compterait deux fois.
+    const retenue = 1 - ((Number(b.tauxCnssSalariale) || 0) + (Number(b.tauxAmo) || 0));
+    const cotisationsSalariales = brut * (1 - retenue);
     const chargesPatronales = brut * (b.tauxChargesPatronales || 0);
-    // Net ouvrier = brut + primes non-imposables (transport, récolte), sans retenue.
-    const net = brut + transport + recolte;
+    const net = brut * retenue + transport + recolte;
     const coutTotalEmployeur = brut + chargesPatronales + transport + recolte;
     return {
       statutDeclare: true,
@@ -386,10 +396,18 @@
     }
 
     if (!declare) {
+      // Le SMAG est déjà pris NET ici (barème `smagNetJournalier`). Il manquait
+      // la même retenue sur la prime de fonction et sur les primes optionnelles :
+      // la prime est stockée en BRUT au registre, donc l'appliquer telle quelle
+      // donnait au non-déclaré 6,74 % de prime de plus qu'à son collègue déclaré.
+      // Cf. l'arbitrage 2026-08-21 documenté dans computeWorkerPaie.
+      const retenue = 1 - ((Number(b.tauxCnssSalariale) || 0) + (Number(b.tauxAmo) || 0));
       const smagBase = smagNet != null ? (Number(smagNet) || 0) : (Number(b.smagNetJournalier) || 0);
       const base = smagBase * jTn;
-      const primeFonction = pfJour * jTn;
-      const net = base + primeFonction;
+      const primeFonction = pfJour * jTn * retenue;
+      // `primesOpt` était calculé puis JAMAIS ajouté dans cette branche : les
+      // heures sup d'un non-déclaré disparaissaient de son net sans rien lever.
+      const net = base + primeFonction + primesOpt * retenue;
       return {
         declare: false,
         smagBase, jT: jTn, jF: 0,

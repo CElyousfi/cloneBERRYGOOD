@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:2469aad7667701a7 -->
-# Code Map — Modules lib (175)
+<!-- sourceFingerprint: sha256:afd4b802fba54edd -->
+# Code Map — Modules lib (177)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -80,6 +80,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/netafim/parcelles.js | — | COLLECTION, buildParcelleUpserts, persistParcelles |
 | functions/lib/netafim/rateLimiter.js | — | todayKey, tryConsume |
 | functions/lib/netafim/types.js | — | — voir fichier — |
+| functions/lib/paie/coutMainOeuvre.js | — | CATEGORIES, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
 | functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
 | functions/lib/paie/paieUtils.js | — | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
 | functions/lib/parcelleGroupes/seedHa.js | — | MAX_LABELS, RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, sanitizeLabels, computeSeedPlan |
@@ -158,6 +159,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/campagneRapprochement.js | CampagneRapprochement | baseParQuinzaine, rapprocher |
 | public/lib/campagneRythme.js | CampagneRythme | CLASSES, JOURS_CAMPAGNE, QUINZAINES_PAR_MOIS, FENETRE_PAR_DEFAUT, MIN_QUINZAINES_CONSOMMEES, quinzaineNum, totalQuinzaines, quinzainesInfo, indexClasses, classeOf, classeFamille, resteBudgetCellule, moyenneMobile, resteRythmeCellule, decoreRestes, noteRestes, partEcoulee, joursEcoules |
 | public/lib/campagneUtils.js | CampagneUtils | campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne |
+| public/lib/coutMainOeuvre.js | CoutMainOeuvre | CATEGORIES, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
 | public/lib/cultureUtils.js | CultureUtils | CULTURES, normCulture, resolveCulture, matchesCulture |
 | public/lib/emargementExcel.js | EmargementExcel | genSansCnssXlsx, genAvecCnssXlsx, genTransporteursXlsx, genBulletinsXlsx |
 | public/lib/emargementPdf.js | EmargementPdf | genSansCnss, genAvecCnss, genTransporteurs, genBulletins, genBulletinsAr |

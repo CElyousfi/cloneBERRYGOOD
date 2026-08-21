@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:21c7e4b712faaf94",
+    "sourceFingerprint": "sha256:e9998288a9e3a475",
     "stats": {
-      "targetFiles": 226,
+      "targetFiles": 228,
       "targetFilesWithDirectTests": 137,
       "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 195
+      "testFilesScanned": 197
     }
   },
   "index": {
@@ -744,6 +744,10 @@
       ]
     },
     "functions/lib/netafim/types.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/paie/coutMainOeuvre.js": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1583,6 +1587,10 @@
         "tests/unit/campagneUtils.test.js",
         "tests/unit/campagneUtilsBackend.test.js"
       ]
+    },
+    "public/lib/coutMainOeuvre.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/cultureUtils.js": {
       "directTests": [
