@@ -253,18 +253,28 @@ test('accents — « Recolte » sans accent est reconnu comme « Récolte »', (
   assert.strictEqual(CMO.categorieMO('8. Recolte'), CMO.categorieMO('8. Récolte'));
 });
 
-test('netAPayer — les 6 postes versés, SANS les charges sociales', () => {
+test('netAPayer — sortie de caisse : sans les charges, AVEC la sous-traitance', () => {
   const mo = { recolte: 0, horsRecolte: 148667, postes: 0 };
   const primes = { recolte: 0, transport: 29330, autres: 8673 };
   const charges = { total: 16256 };
-  // Ce qui part vers les ouvriers : les charges vont à la CNSS, pas à eux.
-  assert.strictEqual(CMO.netAPayer({ mo, primes }), 186670);
-  // Et la chaîne se referme : net à payer + charges = coût employeur,
-  // + sous-traitance = total de la quinzaine. Trois chiffres, un seul calcul.
-  assert.strictEqual(CMO.coutEmployeur({ mo, primes, charges }),
-    CMO.netAPayer({ mo, primes }) + charges.total);
-  assert.strictEqual(CMO.totalQuinzaine({ mo, primes, charges, locationEngins: 5200 }),
-    CMO.coutEmployeur({ mo, primes, charges }) + 5200);
+  const loc = 5200;
+  // Les charges vont à la CNSS, pas à l'ouvrier. Les prestataires, eux, sont
+  // bien payés : c'est un décaissement de la quinzaine.
+  assert.strictEqual(CMO.masseSalarialeNette({ mo, primes }), 186670);
+  assert.strictEqual(CMO.netAPayer({ mo, primes, locationEngins: loc }), 191870);
+
+  // Le coût employeur, LUI, exclut la sous-traitance : un prestataire n'a ni
+  // bulletin ni cotisation. L'y mettre ferait comparer à une masse salariale un
+  // chiffre qui n'en est pas une.
+  assert.strictEqual(CMO.coutEmployeur({ mo, primes, charges, locationEngins: loc }), 202926);
+
+  // LES DEUX CHEMINS TOMBENT SUR LE MÊME TOTAL — c'est ce qui rend les trois
+  // chiffres de l'écran vérifiables l'un par l'autre :
+  //   coût employeur + sous-traitance  =  net à payer + charges
+  const total = CMO.totalQuinzaine({ mo, primes, charges, locationEngins: loc });
+  assert.strictEqual(total, CMO.coutEmployeur({ mo, primes, charges }) + loc);
+  assert.strictEqual(total, CMO.netAPayer({ mo, primes, locationEngins: loc }) + charges.total);
+  assert.strictEqual(total, 208126);
 });
 
 test('CNSS et AMO restent séparées — recoupées sur un bulletin réel', () => {

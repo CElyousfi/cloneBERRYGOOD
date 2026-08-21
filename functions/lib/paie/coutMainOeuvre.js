@@ -325,25 +325,21 @@
   }
 
   /**
-   * NET À PAYER de la quinzaine : ce qui part réellement vers les ouvriers. PURE.
+   * Masse salariale NETTE : les 6 postes de paie, sans les charges. PURE.
    *
    * = MO Récolte + MO Hors Récolte + Postes Fixes
    *   + Prime Récolte + Prime Transport + Autres Primes
    *
-   * SANS les charges sociales : elles ne vont pas à l'ouvrier, elles vont à la
-   * CNSS. C'est le chiffre qu'on rapproche d'une sortie de caisse, là où le
-   * coût employeur est celui qu'on porte au P&L. Les confondre, c'est soit
-   * gonfler la paie versée, soit sous-évaluer le coût de l'entreprise.
-   *
-   * La sous-traitance (Location & Engins) n'en fait pas partie non plus : elle
-   * ne relève d'aucune fiche de paie.
+   * Brique interne des deux chiffres publics ci-dessous. Elle n'inclut ni les
+   * charges (qui vont à la CNSS, pas à l'ouvrier) ni la sous-traitance (qui ne
+   * relève d'aucune fiche de paie).
    *
    * @param {Object} args
    * @param {{recolte: number, horsRecolte: number, postes: number}} args.mo nets.
    * @param {{recolte?: number, transport?: number, autres?: number}} args.primes
    * @returns {number}
    */
-  function netAPayer(args) {
+  function masseSalarialeNette(args) {
     var a = args || {};
     var mo = a.mo || {};
     var primes = a.primes || {};
@@ -356,26 +352,53 @@
   }
 
   /**
+   * NET À PAYER de la quinzaine : tout ce qui sort de la caisse. PURE.
+   *
+   * = masse salariale nette + Location & Engins
+   *
+   * SANS les charges sociales : elles ne vont pas à l'ouvrier, elles vont à la
+   * CNSS. AVEC la sous-traitance : les prestataires sont payés eux aussi, et
+   * c'est bien une sortie de caisse de la quinzaine (décision d'Omar).
+   *
+   * C'est donc le chiffre qu'on rapproche d'un décaissement, là où le coût
+   * employeur est celui qu'on porte au P&L. Les confondre revient soit à
+   * gonfler la paie versée, soit à sous-évaluer le coût de l'entreprise.
+   *
+   * @param {Object} args {mo, primes, locationEngins}
+   * @returns {number}
+   */
+  function netAPayer(args) {
+    var a = args || {};
+    return masseSalarialeNette(a) + (Number(a.locationEngins) || 0);
+  }
+
+  /**
    * Coût EMPLOYEUR d'une quinzaine : les 7 postes énumérés par Omar. PURE.
    *
-   * = Net à payer + Charges Sociales
+   * = masse salariale nette + Charges Sociales
    *
-   * La sous-traitance (Location & Engins) n'en fait PAS partie : c'est un coût
-   * de la quinzaine, pas un coût d'employé. Elle s'ajoute dans `totalQuinzaine`.
+   * La sous-traitance n'en fait PAS partie : un prestataire n'a ni bulletin ni
+   * cotisation. L'inclure ferait comparer à une masse salariale un chiffre qui
+   * n'en est pas une.
    *
-   * @param {Object} args
-   * @param {{recolte: number, horsRecolte: number, postes: number}} args.mo nets.
-   * @param {{recolte?: number, transport?: number, autres?: number}} args.primes
-   * @param {{total: number}} args.charges
+   * @param {Object} args {mo, primes, charges}
    * @returns {number}
    */
   function coutEmployeur(args) {
     var a = args || {};
     var charges = a.charges || {};
-    return netAPayer(a) + (Number(charges.total) || 0);
+    return masseSalarialeNette(a) + (Number(charges.total) || 0);
   }
 
-  /** Coût employeur + sous-traitance. PURE. */
+  /**
+   * TOTAL de la quinzaine. PURE.
+   *
+   * = coût employeur + sous-traitance
+   * = net à payer + charges sociales
+   *
+   * Les deux chemins tombent sur le même montant — c'est ce qui rend les trois
+   * chiffres de l'écran vérifiables l'un par l'autre, et un test le fige.
+   */
   function totalQuinzaine(args) {
     var a = args || {};
     return coutEmployeur(a) + (Number(a.locationEngins) || 0);
@@ -383,6 +406,7 @@
 
   var __coutMainOeuvreApi = {
     CATEGORIES: CATEGORIES,
+    masseSalarialeNette: masseSalarialeNette,
     netAPayer: netAPayer,
     categorieMO: categorieMO,
     primeFonctionADate: primeFonctionADate,

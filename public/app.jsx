@@ -11774,11 +11774,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // Quinzaine 03, un total de 196 618 DH construit sur 153 415 DH de
             // BEE ONE, au-dessus d'une carte MO à 148 667 DH.
             const _primesQz = { recolte: totalPrimeRecolte, transport: transportCoutTotal, autres: totalAutresPrimes };
-            // NET À PAYER : ce qui part vers les ouvriers. Sans les charges —
-            // elles ne vont pas à l'ouvrier, elles vont à la CNSS. C'est le
-            // chiffre qu'on rapproche d'une sortie de caisse, quand le coût
-            // employeur est celui qu'on porte au P&L.
-            const _netAPayer = _moTotaux ? _CMO.netAPayer({ mo: _moTotaux, primes: _primesQz }) : null;
+            // NET À PAYER : tout ce qui sort de la caisse. Sans les charges —
+            // elles vont à la CNSS, pas à l'ouvrier — mais AVEC la
+            // sous-traitance, qui est payée elle aussi. C'est le chiffre qu'on
+            // rapproche d'un décaissement, quand le coût employeur est celui
+            // qu'on porte au P&L.
+            const _netAPayer = _moTotaux
+                ? _CMO.netAPayer({ mo: _moTotaux, primes: _primesQz, locationEngins: totalDivers })
+                : null;
             const _coutEmployeur = (_moTotaux && _chargesSociales)
                 ? _CMO.coutEmployeur({ mo: _moTotaux, primes: _primesQz, charges: _chargesSociales })
                 : null;
