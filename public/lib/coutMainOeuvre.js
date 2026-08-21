@@ -316,10 +316,40 @@
   }
 
   /**
+   * NET À PAYER de la quinzaine : ce qui part réellement vers les ouvriers. PURE.
+   *
+   * = MO Récolte + MO Hors Récolte + Postes Fixes
+   *   + Prime Récolte + Prime Transport + Autres Primes
+   *
+   * SANS les charges sociales : elles ne vont pas à l'ouvrier, elles vont à la
+   * CNSS. C'est le chiffre qu'on rapproche d'une sortie de caisse, là où le
+   * coût employeur est celui qu'on porte au P&L. Les confondre, c'est soit
+   * gonfler la paie versée, soit sous-évaluer le coût de l'entreprise.
+   *
+   * La sous-traitance (Location & Engins) n'en fait pas partie non plus : elle
+   * ne relève d'aucune fiche de paie.
+   *
+   * @param {Object} args
+   * @param {{recolte: number, horsRecolte: number, postes: number}} args.mo nets.
+   * @param {{recolte?: number, transport?: number, autres?: number}} args.primes
+   * @returns {number}
+   */
+  function netAPayer(args) {
+    var a = args || {};
+    var mo = a.mo || {};
+    var primes = a.primes || {};
+    return (Number(mo.recolte) || 0)
+      + (Number(mo.horsRecolte) || 0)
+      + (Number(mo.postes) || 0)
+      + (Number(primes.recolte) || 0)
+      + (Number(primes.transport) || 0)
+      + (Number(primes.autres) || 0);
+  }
+
+  /**
    * Coût EMPLOYEUR d'une quinzaine : les 7 postes énumérés par Omar. PURE.
    *
-   * = MO Récolte + MO Hors Récolte + Postes Fixes + Prime Récolte
-   *   + Prime Transport + Autres Primes + Charges Sociales
+   * = Net à payer + Charges Sociales
    *
    * La sous-traitance (Location & Engins) n'en fait PAS partie : c'est un coût
    * de la quinzaine, pas un coût d'employé. Elle s'ajoute dans `totalQuinzaine`.
@@ -332,16 +362,8 @@
    */
   function coutEmployeur(args) {
     var a = args || {};
-    var mo = a.mo || {};
-    var primes = a.primes || {};
     var charges = a.charges || {};
-    return (Number(mo.recolte) || 0)
-      + (Number(mo.horsRecolte) || 0)
-      + (Number(mo.postes) || 0)
-      + (Number(primes.recolte) || 0)
-      + (Number(primes.transport) || 0)
-      + (Number(primes.autres) || 0)
-      + (Number(charges.total) || 0);
+    return netAPayer(a) + (Number(charges.total) || 0);
   }
 
   /** Coût employeur + sous-traitance. PURE. */
@@ -352,6 +374,7 @@
 
   var __coutMainOeuvreApi = {
     CATEGORIES: CATEGORIES,
+    netAPayer: netAPayer,
     categorieMO: categorieMO,
     primeFonctionADate: primeFonctionADate,
     joursParOuvrier: joursParOuvrier,

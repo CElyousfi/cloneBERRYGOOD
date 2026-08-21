@@ -252,3 +252,17 @@ test('accents — « Recolte » sans accent est reconnu comme « Récolte »', (
   // différentes couperaient un total en deux sans rien lever.
   assert.strictEqual(CMO.categorieMO('8. Recolte'), CMO.categorieMO('8. Récolte'));
 });
+
+test('netAPayer — les 6 postes versés, SANS les charges sociales', () => {
+  const mo = { recolte: 0, horsRecolte: 148667, postes: 0 };
+  const primes = { recolte: 0, transport: 29330, autres: 8673 };
+  const charges = { total: 16256 };
+  // Ce qui part vers les ouvriers : les charges vont à la CNSS, pas à eux.
+  assert.strictEqual(CMO.netAPayer({ mo, primes }), 186670);
+  // Et la chaîne se referme : net à payer + charges = coût employeur,
+  // + sous-traitance = total de la quinzaine. Trois chiffres, un seul calcul.
+  assert.strictEqual(CMO.coutEmployeur({ mo, primes, charges }),
+    CMO.netAPayer({ mo, primes }) + charges.total);
+  assert.strictEqual(CMO.totalQuinzaine({ mo, primes, charges, locationEngins: 5200 }),
+    CMO.coutEmployeur({ mo, primes, charges }) + 5200);
+});

@@ -11773,12 +11773,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // les cartes ne parlaient donc pas du même argent : sur la
             // Quinzaine 03, un total de 196 618 DH construit sur 153 415 DH de
             // BEE ONE, au-dessus d'une carte MO à 148 667 DH.
+            const _primesQz = { recolte: totalPrimeRecolte, transport: transportCoutTotal, autres: totalAutresPrimes };
+            // NET À PAYER : ce qui part vers les ouvriers. Sans les charges —
+            // elles ne vont pas à l'ouvrier, elles vont à la CNSS. C'est le
+            // chiffre qu'on rapproche d'une sortie de caisse, quand le coût
+            // employeur est celui qu'on porte au P&L.
+            const _netAPayer = _moTotaux ? _CMO.netAPayer({ mo: _moTotaux, primes: _primesQz }) : null;
             const _coutEmployeur = (_moTotaux && _chargesSociales)
-                ? _CMO.coutEmployeur({
-                    mo: _moTotaux,
-                    primes: { recolte: totalPrimeRecolte, transport: transportCoutTotal, autres: totalAutresPrimes },
-                    charges: _chargesSociales,
-                })
+                ? _CMO.coutEmployeur({ mo: _moTotaux, primes: _primesQz, charges: _chargesSociales })
                 : null;
             // La sous-traitance est un coût de la quinzaine, pas un coût
             // d'EMPLOYÉ : elle s'ajoute au total sans entrer dans le coût
@@ -11885,7 +11887,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 // périmètres. Les fondre en un seul obligerait à
                                 // choisir si la sous-traitance est de la masse
                                 // salariale — elle ne l'est pas.
+                                // Trois niveaux, du plus concret au plus complet :
+                                // ce qui part vers les ouvriers, ce que coûte
+                                // l'employeur, ce que coûte la quinzaine. Les
+                                // fondre en un seul chiffre obligerait à choisir
+                                // lequel des trois on trahit.
                                 ...(_coutEmployeur === null ? [] : [
+                                    { bg: '#e8f5e9', color: '#2D8B4E', icon: 'fa-money-bill-wave', text: 'Net à payer: ' + Math.round(_netAPayer).toLocaleString('fr-FR') + ' DH' },
                                     { bg: '#eef0ff', color: '#3949ab', icon: 'fa-building-columns', text: 'Coût employeur: ' + Math.round(_coutEmployeur).toLocaleString('fr-FR') + ' DH' },
                                     { bg: '#e8f4fd', color: '#1565C0', icon: 'fa-calculator', text: 'Total: ' + Math.round(totalGlobal).toLocaleString('fr-FR') + ' DH' },
                                 ]),
