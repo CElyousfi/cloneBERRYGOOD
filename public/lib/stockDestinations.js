@@ -147,43 +147,101 @@ var SD_NOTE_HORS_CONFIG = 'Magasin non déclaré dans la configuration stock.';
 var SD_FERME_MUTUALISEE = 'TOUTES';
 
 /**
- * Destination d'une réception SUR BDC. Décision produit (Omar, 2026-08) : le
- * magasin n'est plus un choix, il est IMPOSÉ par la ferme du BDC — « les BDC
- * BAHIA doivent être réceptionnés sur le stock de BAHIA uniquement ». On ne
- * prévient plus l'erreur, on la rend impossible.
+ * Fermes dont le stock ne se mutualise PAS, donc dont la destination de
+ * réception est verrouillée.
  *
- * Seule exception : un BDC mutualisé (`ferme: 'Toutes'`, cf. la liste FARMS
- * locale de l'écran BDC dans public/app.jsx) ou sans ferme n'a aucune ferme à
- * imposer → le choix reste libre sur les magasins de la config.
+ * MOTIF JURIDIQUE (règle métier, pas un détail technique) : BAHIA est une
+ * ENTITÉ JURIDIQUE DISTINCTE — `BDC_SOCIETES.BAHIA` dans public/app.jsx
+ * (~l.466) = « BAHIA AGRICOLE SARL », RC/IF/ICE propres, entête de BDC
+ * spécifique. Son stock ne doit pas se mélanger à celui de Berry Good Farms.
+ * F1..F6 et Avocatier relèvent au contraire de la MÊME société
+ * (BDC_SOCIETE_DEFAULT) : un BDC F1 peut légitimement être réceptionné
+ * ailleurs, c'est un arbitrage logistique interne.
+ *
+ * Le jour où une autre entité distincte apparaît : ajouter sa valeur ICI,
+ * la logique de `resolveBdcDestination` n'a pas à être relue.
+ * @type {string[]}
+ */
+var SD_FERMES_STOCK_NON_MUTUALISE = ['BAHIA'];
+
+/**
+ * Clé de comparaison d'une ferme, alignée sur `normalizeFerme`
+ * (functions/lib/stockCaneva/mappings.js) qui replie « EL BAHIA » sur
+ * « BAHIA » : selon la source (select BDC, feuille CANEVA, saisie libre) la
+ * même ferme s'écrit 'BAHIA', 'Bahia' ou 'EL BAHIA'. Légèrement plus tolérant
+ * que normalizeFerme sur les espaces internes (`EL   BAHIA`), jamais moins.
+ * @param {*} v
+ * @returns {string}
+ */
+function SD_fermeKey(v) {
+  var k = SD_key(v);
+  return /^EL\s+BAHIA$/.test(k) ? 'BAHIA' : k;
+}
+
+/**
+ * Destination d'une réception SUR BDC.
+ *
+ * Décision produit (Omar, 2026-08, corrigée) : le verrouillage ne vaut QUE
+ * pour les fermes à stock non mutualisé — aujourd'hui BAHIA seule, pour le
+ * motif juridique documenté sur SD_FERMES_STOCK_NON_MUTUALISE. « Tu as fait
+ * imposer les bons de commande partout. Ça ne marche pas. Juste BAHIA. »
+ *
+ * Pour TOUTES les autres fermes (F1..F6, Avocatier), pour un BDC mutualisé
+ * (`ferme: 'Toutes'`, cf. la liste FARMS locale de l'écran BDC dans
+ * public/app.jsx ~l.48362) et pour une ferme absente : choix LIBRE, avec le
+ * garde-fou habituel (la ferme du BDC reste proposée et présélectionnée).
  *
  * - `locked: true`  → `magasin` est la destination imposée, l'UI l'affiche en
  *   lecture seule. `note` est informatif (pas une alerte actionnable) quand la
  *   ferme n'est pas déclarée dans la config stock.
  * - `locked: false` → l'UI rend un select libre ; `magasin` est la
- *   présélection (1er magasin de la config).
+ *   présélection et `fermePreselection` la valeur à passer à
+ *   `resolveReceptionDestination` ('' pour un BDC mutualisé, qui ne doit pas
+ *   faire apparaître une option « Toutes »).
  *
  * @param {string[]|null|undefined} magasins
  * @param {string|null|undefined} fermeBdc
- * @returns {{locked: boolean, magasin: string, horsConfig: boolean, note: string|null}}
+ * @returns {{locked: boolean, magasin: string, fermePreselection: string, horsConfig: boolean, note: string|null}}
  */
 function resolveBdcDestination(magasins, fermeBdc) {
   var ferme = (fermeBdc === null || fermeBdc === undefined) ? '' : String(fermeBdc).trim();
+  var fermeKey = SD_fermeKey(ferme);
+  var mutualise = !ferme || fermeKey === SD_FERME_MUTUALISEE;
 
-  if (!ferme || SD_key(ferme) === SD_FERME_MUTUALISEE) {
-    var libre = resolveDestinationOptions(magasins, '');
-    return { locked: false, magasin: libre.selected, horsConfig: false, note: null };
+  var verrouillee = false;
+  for (var v = 0; v < SD_FERMES_STOCK_NON_MUTUALISE.length; v++) {
+    if (SD_fermeKey(SD_FERMES_STOCK_NON_MUTUALISE[v]) === fermeKey) { verrouillee = true; break; }
+  }
+
+  if (!verrouillee) {
+    // Stock mutualisable : on rend la main. La ferme du BDC reste la
+    // présélection (sauf BDC mutualisé, qui n'en a pas).
+    var fermePre = mutualise ? '' : ferme;
+    var libre = resolveDestinationOptions(magasins, fermePre);
+    return {
+      locked: false,
+      magasin: libre.selected,
+      fermePreselection: fermePre,
+      horsConfig: false,
+      note: null,
+    };
   }
 
   var list = Array.isArray(magasins) ? magasins : [];
-  var fermeKey = SD_key(ferme);
   for (var i = 0; i < list.length; i++) {
-    if (SD_key(list[i]) === fermeKey) {
+    if (SD_fermeKey(list[i]) === fermeKey) {
       // Ferme déclarée : on retient la casse de la config, qui est celle des
       // soldes stock existants.
-      return { locked: true, magasin: String(list[i]), horsConfig: false, note: null };
+      return {
+        locked: true, magasin: String(list[i]), fermePreselection: ferme,
+        horsConfig: false, note: null,
+      };
     }
   }
-  return { locked: true, magasin: ferme, horsConfig: true, note: SD_NOTE_HORS_CONFIG };
+  return {
+    locked: true, magasin: ferme, fermePreselection: ferme,
+    horsConfig: true, note: SD_NOTE_HORS_CONFIG,
+  };
 }
 
 // ============================================================================
@@ -196,6 +254,7 @@ var SD_api = {
   resolveBdcDestination: resolveBdcDestination,
   SD_HORS_CONFIG_SUFFIX: SD_HORS_CONFIG_SUFFIX,
   SD_NOTE_HORS_CONFIG: SD_NOTE_HORS_CONFIG,
+  SD_FERMES_STOCK_NON_MUTUALISE: SD_FERMES_STOCK_NON_MUTUALISE,
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = SD_api;

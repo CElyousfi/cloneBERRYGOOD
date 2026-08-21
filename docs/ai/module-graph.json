@@ -51,7 +51,7 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 12,
+        "commits": 11,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c84de0bdb25efeef",
+    "sourceFingerprint": "sha256:4735bdc631ed0cd8",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -147,13 +147,6 @@
           "windowDays": 90
         },
         {
-          "coCommits": 4,
-          "domain": null,
-          "file": "tests/unit/bdcReceptionUtils.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
           "coCommits": 3,
           "domain": null,
           "file": "public/app.jsx",
@@ -162,8 +155,8 @@
         },
         {
           "coCommits": 3,
-          "domain": null,
-          "file": "public/components/MagBdcReceptionTab.js",
+          "domain": "stock",
+          "file": "public/lib/stockDestinations.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -171,6 +164,13 @@
           "coCommits": 3,
           "domain": null,
           "file": "tests/unit/bdcReceptionUtils.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/stockDestinations.test.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -1068,7 +1068,22 @@
           "MagStockIntrantsTab"
         ]
       },
-      "gitCoupling": [],
+      "gitCoupling": [
+        {
+          "coCommits": 3,
+          "domain": "achats",
+          "file": "public/components/MagBdcReceptionTab.jsx",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "tests/unit/stockDestinations.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        }
+      ],
       "label": "Stock & Magasin",
       "tests": {
         "backend": [

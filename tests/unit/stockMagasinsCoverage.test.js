@@ -9,10 +9,14 @@
  * aucune <option> correspondante, select contrôlé désynchronisé, stock imputé
  * au mauvais magasin sans que le magasinier voie quoi que ce soit.
  *
- * RÈGLE : toute ferme de FARMS susceptible de porter du stock (donc d'être la
- * `ferme` d'un BDC) doit avoir une destination de réception. Deux façons d'y
- * répondre : la déclarer dans la config stock, ou passer par le garde-fou
- * `resolveDestinationOptions` qui la propose « hors config stock ».
+ * RÈGLE 1 (couverture) : toute ferme de FARMS susceptible de porter du stock
+ * (donc d'être la `ferme` d'un BDC) doit avoir une destination de réception.
+ * Deux façons d'y répondre : la déclarer dans la config stock, ou passer par le
+ * garde-fou `resolveDestinationOptions` qui la propose « hors config stock ».
+ *
+ * RÈGLE 2 (verrouillage) : seule BAHIA impose sa destination, parce que c'est
+ * une entité juridique distincte. Toutes les autres fermes sont mutualisables
+ * et gardent le choix. Voir le détail du motif dans stockDestinations.test.js.
  *
  * `public/app.jsx` n'est pas importable (monolithe React sans bundler) : la
  * liste FARMS est donc FIGÉE ici, copiée de public/app.jsx (~l.452). L'ajout
@@ -46,19 +50,23 @@ test('FARMS ne contient pas le pseudo-item "Toutes", la liste de l\'écran BDC s
   assert.deepEqual(FARMS_BDC, ['Toutes'].concat(FARMS), 'les deux listes ne diffèrent que par "Toutes"');
 });
 
-test('CONTRAT — toute ferme réelle d\'un BDC impose sa destination de réception', () => {
-  // Décision produit : « les BDC BAHIA doivent être réceptionnés sur le stock
-  // de BAHIA uniquement ». Aucune ferme réelle ne doit rendre la main.
-  for (const ferme of FARMS) {
-    const d = resolveBdcDestination(CONFIG_MAGASINS, ferme);
-    assert.equal(d.locked, true, ferme + ' : destination devrait être imposée');
-    assert.equal(d.magasin.toUpperCase(), ferme.toUpperCase(), ferme + ' : mauvaise destination imposée');
-  }
+test('CONTRAT — BAHIA est la SEULE ferme dont la destination est imposée', () => {
+  // Décision produit (Omar) : « Juste BAHIA. » Le verrouillage suit une
+  // frontière JURIDIQUE, pas une frontière géographique : BAHIA AGRICOLE SARL
+  // est une société distincte (BDC_SOCIETES.BAHIA, public/app.jsx ~l.466), son
+  // stock ne se mélange pas avec celui de Berry Good Farms. F1..F6 et
+  // Avocatier relèvent de la même société : réceptionner un BDC F1 sur un
+  // autre magasin est un arbitrage logistique interne, pas une erreur.
+  const imposees = FARMS_BDC.filter(f => resolveBdcDestination(CONFIG_MAGASINS, f).locked);
+  assert.deepEqual(imposees, ['BAHIA'], 'exactement une ferme imposée : BAHIA');
 });
 
-test('CONTRAT — seul le BDC mutualisé "Toutes" laisse le choix de la destination', () => {
-  const libres = FARMS_BDC.filter(f => !resolveBdcDestination(CONFIG_MAGASINS, f).locked);
-  assert.deepEqual(libres, ['Toutes'], 'exactement une valeur non imposée : "Toutes"');
+test('CONTRAT — toute ferme mutualisable reste présélectionnée sans être imposée', () => {
+  for (const ferme of FARMS_BDC.filter(f => f !== 'BAHIA' && f !== 'Toutes')) {
+    const d = resolveBdcDestination(CONFIG_MAGASINS, ferme);
+    assert.equal(d.locked, false, ferme + ' : ne doit pas être imposée');
+    assert.equal(d.magasin, ferme, ferme + ' : doit rester la présélection');
+  }
 });
 
 test('la liste FARMS figée est celle attendue (sentinelle : un ajout de ferme casse ici)', () => {
@@ -84,11 +92,25 @@ test('une ferme hors config stock (BAHIA, Avocatier) est signalée au magasinier
     const r = resolveDestinationOptions(CONFIG_MAGASINS, ferme);
     assert.equal(r.options[0].horsConfig, true, ferme + ' : option hors config attendue en tête');
     assert.ok(r.warning, ferme + ' : warning attendu');
-    // Sur un BDC, la même ferme est imposée mais reste signalée (note informative).
-    const d = resolveBdcDestination(CONFIG_MAGASINS, ferme);
-    assert.equal(d.horsConfig, true, ferme + ' : horsConfig attendu');
-    assert.ok(d.note, ferme + ' : note informative attendue');
   }
+});
+
+test('une ferme hors config est signalée, par le canal correspondant à son mode', () => {
+  // BAHIA (imposée)   → note informative portée par resolveBdcDestination.
+  // Avocatier (libre) → warning actionnable du select, via le chemin
+  //                     resolveDestinationOptions / resolveReceptionDestination.
+  const bahia = resolveBdcDestination(CONFIG_MAGASINS, 'BAHIA');
+  assert.equal(bahia.locked, true);
+  assert.equal(bahia.horsConfig, true);
+  assert.ok(bahia.note, 'BAHIA : note informative attendue');
+
+  const avocatier = resolveBdcDestination(CONFIG_MAGASINS, 'Avocatier');
+  assert.equal(avocatier.locked, false);
+  assert.equal(avocatier.note, null, 'Avocatier : pas de note, c\'est le select qui avertit');
+  assert.ok(
+    resolveDestinationOptions(CONFIG_MAGASINS, avocatier.fermePreselection).warning,
+    'Avocatier : le select doit tout de même avertir'
+  );
 });
 
 test('une ferme déclarée dans la config ne déclenche aucun warning', () => {

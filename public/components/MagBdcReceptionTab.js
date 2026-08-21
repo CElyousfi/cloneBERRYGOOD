@@ -451,9 +451,11 @@
         fontSize: 13
       }
     })), (() => {
-      // Destination IMPOSÉE par la ferme du BDC (décision produit) :
-      // un BDC BAHIA se réceptionne sur BAHIA, point. Champ en lecture
-      // seule — pas un select désactivé, qui laisserait croire à un choix.
+      // Destination IMPOSÉE uniquement pour une ferme à stock non
+      // mutualisé (BAHIA, entité juridique distincte) : champ en
+      // lecture seule — pas un select désactivé, qui laisserait
+      // croire à un choix. Partout ailleurs (F1..F6, Avocatier,
+      // BDC mutualisé), le choix reste libre.
       const bdcDest = resolveBdcDest(MAGASINS, selectedBdc.ferme);
       if (bdcDest.locked) {
         return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
@@ -505,12 +507,13 @@
           }
         }), bdcDest.note));
       }
-      // BDC mutualisé (`ferme: 'Toutes'`) ou sans ferme : rien à imposer,
-      // le choix reste libre. Les options passent par
-      // resolveReceptionDestination pour que blForm.magasin corresponde
-      // toujours à une <option> rendue, y compris après la bascule
-      // fallback → vraie config de useStockLocations.
-      const dest = resolveReceptionDest(MAGASINS, '', blForm.magasin);
+      // Choix libre. Les options passent par resolveReceptionDestination
+      // pour que blForm.magasin corresponde toujours à une <option>
+      // rendue, y compris après la bascule fallback → vraie config de
+      // useStockLocations, et pour que la ferme du BDC reste proposée.
+      // fermePreselection vaut '' sur un BDC mutualisé : pas d'option
+      // « Toutes (hors config stock) » fabriquée à partir du fourre-tout.
+      const dest = resolveReceptionDest(MAGASINS, bdcDest.fermePreselection, blForm.magasin);
       const showWarning = !!dest.warning;
       return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("label", {
         style: {
