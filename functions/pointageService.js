@@ -1884,7 +1884,11 @@ async function computeCampagneAnalytiqueDetail(fermeFilter = null, cultureFilter
     // v3 : + `coutCharge` et `jhSansTaux` par ligne. Sans bump, une réponse v2
     // encore en cache servirait des lignes SANS coût chargé, et la grille en
     // mode Coût DH afficherait 0 partout — sans erreur, ce qui est le pire.
-    pointageCacheKey(`campagne_analytique_detail_v3_${campagne.start}`, fermeFilter, cultureFilter),
+    // v4 : les TAUX changent de valeur (le transport était résolu à 0, son tarif
+    // ne vivant que dans `history`). Le payload garde la même FORME : sans bump,
+    // rien ne casse et la grille sert simplement l'ancien coût, amputé — un
+    // chiffre faux et plausible, le seul genre qu'on ne repère pas à l'œil.
+    pointageCacheKey(`campagne_analytique_detail_v4_${campagne.start}`, fermeFilter, cultureFilter),
     30 * 60 * 1000,
     async () => {
       // TAUX PAR OUVRIER — il valorise chaque ligne au coût de L'OUVRIER qui l'a

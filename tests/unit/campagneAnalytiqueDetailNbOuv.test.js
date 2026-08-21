@@ -121,8 +121,13 @@ test('la clé de cache est bumpée : une réponse v1 (sans nbOuv) ne peut plus �
   // enrichissement du payload DOIT bumper la clé — une réponse d'une version
   // antérieure encore en cache servirait des lignes sans le nouveau champ, et
   // la grille afficherait 0 sans lever la moindre erreur.
-  assert.match(BLOCK, /campagne_analytique_detail_v3_/, 'clé de cache non bumpée');
-  assert.doesNotMatch(BLOCK, /campagne_analytique_detail_v[12]_/);
+  //
+  // v4 : la FORME ne change pas, les VALEURS si — le transport était résolu à 0
+  // (son tarif ne vit que dans `history`). C'est le cas le plus sournois : rien
+  // ne casse, la grille sert simplement l'ancien coût amputé. Un payload dont
+  // le sens change vaut un payload dont la forme change.
+  assert.match(BLOCK, /campagne_analytique_detail_v4_/, 'clé de cache non bumpée');
+  assert.doesNotMatch(BLOCK, /campagne_analytique_detail_v[123]_/);
 });
 
 test('le handler HTTP délègue et ne réagrège rien lui-même', () => {
