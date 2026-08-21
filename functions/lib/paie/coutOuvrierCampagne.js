@@ -74,11 +74,25 @@ const { PAIE_BAREMES_DEFAULT, computeWorkerPaie } = require('./paieUtils.js');
  * @param {string} matricule
  * @returns {string} préfixe à 2 lettres, 'BGF' par défaut.
  */
-function prefixeEquipe(matricule) {
+function prefixeEquipe(matricule, equipes) {
   const m = String(matricule || '').toUpperCase().trim();
+  if (!m) return null;
   if (m.startsWith('HAFI')) return 'HA';
   const p2 = m.substring(0, 2);
-  return /^[A-Z]{2}$/.test(p2) ? p2 : 'BGF';
+  // Le préfixe doit correspondre à une équipe RÉELLE. La version précédente
+  // renvoyait 'BGF' par défaut dès que les deux premiers caractères n'étaient
+  // pas deux lettres — c'est-à-dire pour TOUS les matricules numériques, la
+  // majorité de l'effectif. Elle leur attribuait donc l'équipe BGF, alors que
+  // l'écran Quinzaine les classe « inconnu » et ne leur donne aucune prime.
+  // Deux écrans, deux transports, pour les mêmes ouvriers.
+  //
+  // On ne devine plus : sans équipe correspondante, pas de prime. C'est aussi
+  // ce que fait la feuille TRANSPORT du bulletin, qui ne liste que des équipes
+  // nommées.
+  const connu = (equipes || []).some(
+    (e) => e && String(e.prefix || '').toUpperCase() === p2
+  );
+  return connu ? p2 : null;
 }
 
 /**
@@ -93,18 +107,77 @@ function prefixeEquipe(matricule) {
  * le transport d'un facteur ~13, soit ~28 DH manquants sur ~146 DH par journée —
  * une sous-estimation de 19 % du coût réel, invisible à l'œil nu.
  *
+ * ⚠️ LE TARIF EST DATÉ, et c'était le second piège. `transport-config-apply`
+ * (functions/index.js) réécrit chaque équipe modifiée SANS champ
+ * `coutParOuvrier` : le tarif ne vit plus que dans `history[]`, daté par
+ * `effectiveFrom`. Lire le champ plat renvoyait donc `undefined` — soit 0 DH de
+ * transport pour TOUTE équipe déjà passée par l'écran RH, c'est-à-dire en
+ * pratique toutes. L'écran Quinzaine, lui, résout bien par quinzaine
+ * (`getCoutTransport` dans app.jsx) : d'où un coût de campagne structurellement
+ * amputé du transport, sans qu'aucun total ne paraisse anormal.
+ *
  * @param {string} matricule
- * @param {Array<{prefix?: string, coutParOuvrier?: number}>} equipes
+ * @param {Array<{prefix?: string, coutParOuvrier?: number, history?: Array<Object>}>} equipes
+ * @param {string} [periode] quinzaine payée. Absente → tarif le plus récent.
  * @returns {number} montant PAR JOUR travaillé.
  */
-function primeTransport(matricule, equipes) {
-  const prefixe = prefixeEquipe(matricule);
+function primeTransport(matricule, equipes, periode) {
+  const prefixe = prefixeEquipe(matricule, equipes);
+  if (!prefixe) return 0;
   const equipe = (equipes || []).find(
     (e) => e && String(e.prefix || '').toUpperCase() === prefixe
   );
   if (!equipe) return 0;
-  const v = Number(equipe.coutParOuvrier);
+  const v = Number(tarifADate(equipe, periode));
   return isFinite(v) && v > 0 ? v : 0;
+}
+
+/**
+ * Ordonne un libellé de quinzaine. PURE. Portage à l'identique de
+ * `quinzaineOrder` (app.jsx) : une règle d'ordre différente ici ferait retenir
+ * un autre palier de tarif que celui affiché à l'écran.
+ *
+ * Formats : « DD/MM/YYYY[ - DD/MM/YYYY] » → timestamp du début ; « Quinzaine NN »
+ * → ordinal. Les deux unités ne sont pas comparables entre elles, mais une même
+ * configuration ne mélange pas les formats.
+ *
+ * @param {string} periodeStr
+ * @returns {number}
+ */
+function ordreQuinzaine(periodeStr) {
+  if (!periodeStr) return 0;
+  const s = String(periodeStr);
+  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return new Date(m[3] + '-' + m[2] + '-' + m[1] + 'T00:00:00').getTime();
+  const n = s.match(/\d+/);
+  return n ? parseInt(n[0], 10) : 0;
+}
+
+/**
+ * Tarif de transport d'une équipe À UNE QUINZAINE. PURE.
+ *
+ * Retient la dernière entrée d'historique dont `effectiveFrom` ne dépasse pas la
+ * quinzaine payée — le tarif EN VIGUEUR alors, pas le tarif d'aujourd'hui.
+ * Rapprocher une quinzaine de juillet au tarif d'août produirait un écart qu'on
+ * chercherait ensuite dans le pointage.
+ *
+ * @param {{coutParOuvrier?: number, history?: Array<{effectiveFrom?: string, coutParOuvrier?: number}>}} equipe
+ * @param {string} [periode]
+ * @returns {number}
+ */
+function tarifADate(equipe, periode) {
+  const hist = (equipe && Array.isArray(equipe.history)) ? equipe.history : [];
+  const plat = Number((equipe || {}).coutParOuvrier) || 0;
+  if (!hist.length) return plat;
+  const cible = periode ? ordreQuinzaine(periode) : Number.MAX_SAFE_INTEGER;
+  let retenue = null;
+  hist.forEach((h) => {
+    if (!h) return;
+    const o = ordreQuinzaine(h.effectiveFrom);
+    if (o > cible) return;
+    if (retenue === null || o >= retenue.ordre) retenue = { ordre: o, entree: h };
+  });
+  return retenue ? (Number(retenue.entree.coutParOuvrier) || 0) : plat;
 }
 
 /**
@@ -371,8 +444,16 @@ function coutOuvrierCampagne(args) {
 
   quinzaines.forEach((q) => {
     const parOuvrier = (q && q.parOuvrier) || {};
+    // `postes` = la VENTILATION du coût de la quinzaine, poste par poste.
+    // Sans elle, un poste manquant ne se lit que comme un ratio par JH trop bas
+    // — 117 DH contre 136 — et il faut lire le code pour savoir lequel. Avec
+    // elle, il se compare directement aux tuiles de l'écran Quinzaine.
     const cumulQ = { periode: (q && q.periode) || '', jours: 0, jh: 0, base: 0,
-      salaire: 0, primes: 0, charges: 0, coutTotal: 0 };
+      salaire: 0, primes: 0, charges: 0, coutTotal: 0,
+      postes: { primeFonction: 0, primeAnciennete: 0, heuresSup: 0,
+        heuresSupAccordees: 0, feries: 0, transport: 0, recolte: 0,
+        traitement: 0, conditionnement: 0, chargement: 0,
+        chargesPatronales: 0, cotisationsSalariales: 0 } };
     Object.keys(parOuvrier).forEach((mat) => {
       const e = parOuvrier[mat];
       const joursTravailles = e.jours instanceof Set ? e.jours.size : Number(e.jours) || 0;
@@ -386,7 +467,7 @@ function coutOuvrierCampagne(args) {
 
       const primesOuvrier = Object.assign({}, e.primes || {}, {
         // × jours : la prime de transport est due PAR JOUR TRAVAILLÉ.
-        transport: primeTransport(mat, a.equipesTransport) * joursTravailles,
+        transport: primeTransport(mat, a.equipesTransport, cumulQ.periode) * joursTravailles,
       });
 
       const paie = paieOuvrierQuinzaine({
@@ -444,6 +525,16 @@ function coutOuvrierCampagne(args) {
       cumulQ.charges += paie.chargesPatronales - paie.retenueNonReversee;
       cumulQ.coutTotal += paie.total;
 
+      cumulQ.postes.primeFonction += paie.primeFonction;
+      cumulQ.postes.primeAnciennete += paie.primeAnciennete;
+      cumulQ.postes.heuresSup += paie.heuresSup;
+      cumulQ.postes.heuresSupAccordees += paie.heuresSupAccordees;
+      cumulQ.postes.feries += paie.feries;
+      cumulQ.postes.chargesPatronales += paie.chargesPatronales;
+      cumulQ.postes.cotisationsSalariales += paie.cotisationsSalariales;
+      ['transport', 'recolte', 'traitement', 'conditionnement', 'chargement']
+        .forEach((k) => { cumulQ.postes[k] += Number(primesOuvrier[k]) || 0; });
+
       var jhOuvrier = Number(e.jh) || 0;
       if (jhOuvrier > 0) tauxParOuvrier[mat + '|' + cumulQ.periode] = paie.total / jhOuvrier;
 
@@ -482,6 +573,6 @@ function coutOuvrierCampagne(args) {
 }
 
 module.exports = {
-  prefixeEquipe, primeTransport, primeRecolte, cumuleJournee,
+  prefixeEquipe, primeTransport, tarifADate, ordreQuinzaine, primeRecolte, cumuleJournee,
   paieOuvrierQuinzaine, coutOuvrierCampagne,
 };

@@ -2126,6 +2126,80 @@
      * Affiché sous les grilles, toutes cultures confondues : c'est un contrôle
      * de couverture, pas une lecture par culture.
      */
+    /**
+     * Ventilation POSTE PAR POSTE du coût chargé, quinzaine par quinzaine.
+     *
+     * Le tableau principal dit COMBIEN manque ; celui-ci dit OÙ. Sans lui, un
+     * poste absent ne se lit que comme un ratio par JH trop bas — 117 DH contre
+     * 136 sur la Quinzaine 01 — et il faut ouvrir le code pour savoir lequel.
+     * Chaque ligne se compare directement à la tuile de même nom sur l'écran
+     * Quinzaine : un zéro en face d'une tuile non nulle est la réponse.
+     */
+    function tableauPostes(rap) {
+      var avecPostes = rap.lignes.filter(function (l) { return l.postes; });
+      if (!avecPostes.length) return null;
+
+      var POSTES = [
+        { k: 'primeFonction', l: 'Prime de fonction' },
+        { k: 'primeAnciennete', l: 'Ancienneté' },
+        { k: 'transport', l: 'Prime transport' },
+        { k: 'recolte', l: 'Prime récolte' },
+        { k: 'traitement', l: 'Traitement' },
+        { k: 'conditionnement', l: 'Conditionnement' },
+        { k: 'chargement', l: 'Chargement' },
+        { k: 'feries', l: 'Jours fériés' },
+        { k: 'heuresSup', l: 'Heures sup (pointées)' },
+        { k: 'heuresSupAccordees', l: 'Heures sup (accordées)' },
+        { k: 'chargesPatronales', l: 'Charges patronales' },
+        { k: 'cotisationsSalariales', l: 'Cotisations salariales' },
+      ];
+      var dh = function (v) { return Math.round(v).toLocaleString('fr-MA'); };
+      var th = { padding: '5px 10px', textAlign: 'right', fontSize: '10px',
+        color: C.textSec, fontWeight: 600, borderBottom: '1px solid ' + C.border };
+      var thL = Object.assign({}, th, { textAlign: 'left' });
+      var td = { padding: '5px 10px', textAlign: 'right', fontSize: '11px' };
+      var tdL = Object.assign({}, td, { textAlign: 'left', color: C.textSec });
+
+      return React.createElement('div', { style: { overflowX: 'auto',
+        borderTop: '1px solid ' + C.border } },
+        React.createElement('div', { style: { padding: '8px 16px 2px',
+          fontSize: '11px', fontWeight: 700, color: C.textSec } },
+          'Ventilation du coût chargé, poste par poste — à comparer aux tuiles '
+            + 'de l\'écran Quinzaine. Un zéro en face d\'une tuile non nulle '
+            + 'désigne le poste manquant.'),
+        React.createElement('table', {
+          style: { width: '100%', borderCollapse: 'collapse', fontSize: '11px' },
+        },
+          React.createElement('thead', null,
+            React.createElement('tr', null,
+              React.createElement('th', { style: thL }, 'Poste'),
+              avecPostes.map(function (l) {
+                return React.createElement('th', { key: l.periode, style: th }, l.periode);
+              })
+            )
+          ),
+          React.createElement('tbody', null, POSTES.map(function (p, i) {
+            var total = avecPostes.reduce(function (s, l) {
+              return s + (Number(l.postes[p.k]) || 0);
+            }, 0);
+            return React.createElement('tr', { key: p.k,
+              style: { background: i % 2 ? C.surface2 : C.surface } },
+              React.createElement('td', { style: tdL }, p.l),
+              avecPostes.map(function (l) {
+                var v = Number(l.postes[p.k]) || 0;
+                // Un poste à zéro sur TOUTE la campagne est signalé : c'est le
+                // symptôme d'une donnée qui n'arrive pas, pas d'un poste vide.
+                return React.createElement('td', { key: l.periode,
+                  style: Object.assign({}, td, total === 0
+                    ? { color: '#c0392b', fontWeight: 700 } : {}),
+                }, total === 0 ? '0 ⚠' : dh(v));
+              })
+            );
+          }))
+        )
+      );
+    }
+
     function panneauRapprochement() {
       var CRap = window.CampagneRapprochement;
       var pq = props.coutOuvrier && props.coutOuvrier.parQuinzaine;
@@ -2173,11 +2247,14 @@
               React.createElement('tr', { style: { background: C.surface2 } },
                 React.createElement('th', { style: thL }, 'Quinzaine'),
                 React.createElement('th', { style: th }, 'JH'),
-                React.createElement('th', { style: th, title: 'Salaire de base agrégé par parcelle, tel que la grille ci-dessus l\'additionne.' }, 'Grille'),
-                React.createElement('th', { style: th, title: 'Salaire de base du pointage BRUT, sans passer par la parcelle.' }, 'Pointage'),
+                React.createElement('th', { style: th, title: 'Coût CHARGÉ agrégé par parcelle : Σ (JH × taux de l\'ouvrier), tel que la grille ci-dessus l\'additionne.' }, 'Grille chargée'),
+                React.createElement('th', { style: th, title: 'Coût chargé ouvrier de l\'écran Quinzaine — la source de vérité, celle qu\'on rapproche du fichier de paie.' }, 'Quinzaine chargée'),
                 React.createElement('th', { style: th }, 'Écart'),
                 React.createElement('th', { style: th }, '%'),
-                React.createElement('th', { style: th, title: 'Coût CHARGÉ de la quinzaine : base + primes + charges. À comparer au total de l\'écran Quinzaine, dont il faut retrancher le pointage divers.' }, 'Coût chargé')
+                React.createElement('th', { style: th, title: 'JH pointés dont l\'ouvrier n\'a pas de fiche de paie : ils comptent en volume, mais à coût nul.' }, 'JH sans taux'),
+                React.createElement('th', { style: th, title: 'Décomposition du coût chargé de la quinzaine. Un écart qui vient d\'un poste manquant (transport, prime de fonction, ancienneté) se lit ici.' }, 'dont salaire'),
+                React.createElement('th', { style: th }, 'dont primes'),
+                React.createElement('th', { style: th }, 'dont charges')
               )
             ),
             React.createElement('tbody', null, rap.lignes.map(function (l, i) {
@@ -2188,7 +2265,8 @@
                 React.createElement('td', { style: Object.assign({}, td, { color: C.textSec }) },
                   (Math.round(l.jours * 10) / 10).toLocaleString('fr-MA')),
                 React.createElement('td', { style: td }, dh(l.grille)),
-                React.createElement('td', { style: td }, dh(l.pointage)),
+                React.createElement('td', { style: Object.assign({}, td, { fontWeight: 700 }) },
+                  dh(l.quinzaine)),
                 React.createElement('td', {
                   style: Object.assign({}, td, {
                     color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
@@ -2200,8 +2278,19 @@
                     color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
                   }),
                 }, pct(l.ecartPct)),
-                React.createElement('td', { style: Object.assign({}, td, { fontWeight: 700 }) },
-                  dh(l.coutCharge))
+                React.createElement('td', {
+                  style: Object.assign({}, td, {
+                    color: l.jhSansTaux > 0 ? '#c0392b' : C.textSec,
+                    fontWeight: l.jhSansTaux > 0 ? 700 : 400,
+                  }),
+                }, l.jhSansTaux > 0
+                  ? (Math.round(l.jhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'),
+                React.createElement('td', { style: Object.assign({}, td, { color: C.textSec }) },
+                  dh(l.quinzaine - l.primes - l.charges)),
+                React.createElement('td', { style: Object.assign({}, td, { color: C.textSec }) },
+                  dh(l.primes)),
+                React.createElement('td', { style: Object.assign({}, td, { color: C.textSec }) },
+                  dh(l.charges))
               );
             })),
             React.createElement('tfoot', null,
@@ -2209,27 +2298,37 @@
                 React.createElement('td', { style: tdL }, 'TOTAL'),
                 React.createElement('td', { style: td }, ''),
                 React.createElement('td', { style: td }, dh(rap.totalGrille)),
-                React.createElement('td', { style: td }, dh(rap.totalPointage)),
+                React.createElement('td', { style: td }, dh(rap.totalQuinzaine)),
                 React.createElement('td', { style: td }, dh(rap.ecart)),
                 React.createElement('td', { style: td }, pct(rap.ecartPct)),
                 React.createElement('td', { style: td },
-                  dh(rap.lignes.reduce(function (s, l) { return s + l.coutCharge; }, 0)))
+                  rap.totalJhSansTaux > 0
+                    ? (Math.round(rap.totalJhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'),
+                React.createElement('td', { style: td }, dh(rap.lignes.reduce(
+                  function (s, l) { return s + l.quinzaine - l.primes - l.charges; }, 0))),
+                React.createElement('td', { style: td }, dh(rap.lignes.reduce(
+                  function (s, l) { return s + l.primes; }, 0))),
+                React.createElement('td', { style: td }, dh(rap.lignes.reduce(
+                  function (s, l) { return s + l.charges; }, 0)))
               )
             )
           )
         ),
+        tableauPostes(rap),
         React.createElement('div', {
           style: { padding: '6px 14px 10px', fontSize: '10px', color: C.textSec,
             borderTop: '1px solid var(--gray-100)' },
         },
           React.createElement('i', { className: 'fa-solid fa-circle-info',
             style: { marginRight: '6px' } }),
-          'La grille agrège le pointage PAR PARCELLE : une ligne dont la parcelle '
-            + 'ou la culture ne se résout pas n\'y entre pas. Le « Pointage » part '
-            + 'des lignes brutes. L\'écart mesure donc ce que la grille ne voit pas '
-            + '— à zéro, elle couvre tout. Le « Coût chargé » se compare au total de '
-            + 'l\'écran Quinzaine, duquel il faut retrancher le pointage divers '
-            + '(sous-traitants), hors périmètre des deux chemins.'
+          'Les deux colonnes portent le même coût CHARGÉ (salaire + primes + '
+            + 'charges), plus jamais la base BEE ONE. La grille agrège le pointage '
+            + 'PAR PARCELLE : une ligne dont la parcelle ou la culture ne se résout '
+            + 'pas n\'y entre pas. La « Quinzaine » part des lignes brutes et fait '
+            + 'foi. L\'écart est donc en dirhams réels — à zéro, la grille montre '
+            + 'tout l\'argent. Les « JH sans taux » (ouvriers sans fiche de paie) en '
+            + 'sont la première cause : ils pèsent en volume, rien en coût. Le '
+            + 'pointage divers (sous-traitants) reste hors des deux chemins.'
         )
       );
     }

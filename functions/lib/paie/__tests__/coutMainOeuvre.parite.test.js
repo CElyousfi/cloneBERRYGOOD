@@ -49,7 +49,8 @@ test('la copie backend se charge et expose la même API', () => {
   const mod = require(BACK);
   assert.deepStrictEqual(Object.keys(mod).sort(), [
     'CATEGORIES', 'categorieMO', 'chargesSociales', 'coutEmployeur',
-    'coutFeries', 'joursParOuvrier', 'masseSalarialeNette', 'netAPayer',
-    'netParCategorie', 'paieOuvrier', 'primeFonctionADate', 'totalQuinzaine',
+    'coutFeries', 'joursParOuvrier', 'masseSalarialeNette', 'nbJoursDistincts',
+    'netAPayer', 'netParCategorie', 'paieOuvrier', 'primeFonctionADate',
+    'totalQuinzaine',
   ]);
 });

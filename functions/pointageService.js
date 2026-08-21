@@ -1646,7 +1646,11 @@ async function computeCampagneCoutOuvrier() {
           // incluses. Sans bump, une réponse v1 encore en cache servirait un
           // payload SANS taux — et la grille retomberait silencieusement sur sa
           // moyenne, sans que rien ne le signale.
-          `campagne_cout_ouvrier_v2_${campagne.start}`,
+          // v3 : + `postes` (ventilation par quinzaine) et transport résolu à la
+          // quinzaine — le tarif ne vit que dans `history`, le champ plat
+          // renvoyait 0. Une réponse v2 en cache servirait un coût amputé du
+          // transport, exactement le symptôme qu'on vient de corriger.
+          `campagne_cout_ouvrier_v3_${campagne.start}`,
           30 * 60 * 1000,
           async () => {
             const meta = await getPointageMeta();

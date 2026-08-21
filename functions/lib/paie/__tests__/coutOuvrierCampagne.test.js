@@ -55,13 +55,60 @@ function campagne(args) {
   return M.coutOuvrierCampagne(Object.assign({ baremes: B, equipesTransport: EQUIPES }, args));
 }
 
-test('prefixeEquipe — deux lettres, HAFI mis à part, BGF par défaut', () => {
-  // Règle reprise à l'identique du front : une divergence donnerait deux primes
-  // de transport différentes pour le même ouvrier selon l'écran.
-  assert.strictEqual(M.prefixeEquipe('AB1234'), 'AB');
-  assert.strictEqual(M.prefixeEquipe('hafi007'), 'HA');
-  assert.strictEqual(M.prefixeEquipe('123456'), 'BGF');
-  assert.strictEqual(M.prefixeEquipe(''), 'BGF');
+test('prefixeEquipe — le préfixe doit désigner une équipe RÉELLE', () => {
+  // Le commentaire précédent affirmait « règle reprise à l'identique du front ».
+  // C'était faux, et c'était le défaut : un matricule numérique — la majorité de
+  // l'effectif — recevait ici l'équipe « BGF » par défaut, alors que l'écran
+  // Quinzaine le classe inconnu et ne lui donne aucune prime de transport. Deux
+  // écrans, deux transports, pour les mêmes ouvriers.
+  //
+  // On ne devine plus : sans équipe correspondante, pas d'équipe. C'est aussi ce
+  // que fait la feuille TRANSPORT du bulletin, qui ne liste que des équipes
+  // nommées.
+  assert.strictEqual(M.prefixeEquipe('AB1234', EQUIPES), 'AB');
+  assert.strictEqual(M.prefixeEquipe('hafi007', EQUIPES), 'HA');
+  assert.strictEqual(M.prefixeEquipe('123456', EQUIPES), null);
+  assert.strictEqual(M.prefixeEquipe('', EQUIPES), null);
+  // Préfixe alphabétique mais inconnu de la liste : pas d'équipe non plus.
+  assert.strictEqual(M.prefixeEquipe('QQ42', EQUIPES), null);
+});
+
+test('primeTransport — un matricule numérique ne reçoit RIEN', () => {
+  // La régression qu'on corrige : ces ouvriers touchaient la prime de l'équipe
+  // BGF côté campagne et rien côté Quinzaine.
+  assert.strictEqual(M.primeTransport('123456', EQUIPES), 0);
+  assert.strictEqual(M.primeTransport('10502', EQUIPES), 0);
+});
+
+test('primeTransport — le tarif vit dans `history`, pas dans le champ plat', () => {
+  // LA régression qui amputait le coût de campagne : `transport-config-apply`
+  // réécrit chaque équipe modifiée SANS `coutParOuvrier`. Lire le champ plat
+  // renvoyait `undefined` → 0 DH de transport pour toute équipe déjà passée par
+  // l'écran RH. Ce test tient sur une équipe qui n'a QUE de l'historique.
+  const eqHist = [{ prefix: 'AB', equipe: 'Équipe AB', history: [
+    { effectiveFrom: '01/07/2026', coutParOuvrier: 20 },
+    { effectiveFrom: '16/07/2026', coutParOuvrier: 26 },
+  ] }];
+  // Quinzaine du 01/07 : le tarif EN VIGUEUR alors, pas celui d'aujourd'hui.
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '01/07/2026 - 15/07/2026'), 20);
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '16/07/2026 - 31/07/2026'), 26);
+  // Quinzaine antérieure à toute entrée : rien à appliquer.
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '01/06/2026 - 15/06/2026'), 0);
+  // Sans quinzaine : le tarif le plus récent.
+  assert.strictEqual(M.primeTransport('AB1', eqHist), 26);
+});
+
+test('tarifADate — historique absent : on retombe sur le champ plat', () => {
+  // Les équipes jamais modifiées depuis l'écran RH n'ont pas d'historique.
+  // Les ignorer les priverait de transport pour la raison inverse.
+  assert.strictEqual(M.tarifADate({ coutParOuvrier: 15 }, 'Quinzaine 01'), 15);
+  assert.strictEqual(M.tarifADate({}, 'Quinzaine 01'), 0);
+});
+
+test('ordreQuinzaine — ordonne dates et ordinaux comme l\'écran', () => {
+  assert.ok(M.ordreQuinzaine('16/07/2026 - 31/07/2026') > M.ordreQuinzaine('01/07/2026'));
+  assert.strictEqual(M.ordreQuinzaine('Quinzaine 03'), 3);
+  assert.strictEqual(M.ordreQuinzaine(''), 0);
 });
 
 test('primeTransport — équipe inconnue → 0, jamais un montant deviné', () => {

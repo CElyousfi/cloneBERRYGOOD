@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:1e74b45016ca2138 -->
+<!-- sourceFingerprint: sha256:a7956819c412008f -->
 # Code Map — Modules lib (177)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -80,8 +80,8 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/netafim/parcelles.js | — | COLLECTION, buildParcelleUpserts, persistParcelles |
 | functions/lib/netafim/rateLimiter.js | — | todayKey, tryConsume |
 | functions/lib/netafim/types.js | — | — voir fichier — |
-| functions/lib/paie/coutMainOeuvre.js | — | CATEGORIES, coutFeries, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
-| functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
+| functions/lib/paie/coutMainOeuvre.js | — | CATEGORIES, coutFeries, nbJoursDistincts, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
+| functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, tarifADate, ordreQuinzaine, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
 | functions/lib/paie/paieUtils.js | — | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
 | functions/lib/parcelleGroupes/seedHa.js | — | MAX_LABELS, RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, sanitizeLabels, computeSeedPlan |
 | functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |
@@ -156,10 +156,10 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
 | public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
 | public/lib/campagneProduction.js | CampagneProduction | BAREME_KG_PAR_JH, BAREME_DH_PAR_KG, kgParParcelle, vitesseRecolte, effortRecolte |
-| public/lib/campagneRapprochement.js | CampagneRapprochement | baseParQuinzaine, rapprocher |
+| public/lib/campagneRapprochement.js | CampagneRapprochement | chargeParQuinzaine, rapprocher |
 | public/lib/campagneRythme.js | CampagneRythme | CLASSES, JOURS_CAMPAGNE, QUINZAINES_PAR_MOIS, FENETRE_PAR_DEFAUT, MIN_QUINZAINES_CONSOMMEES, quinzaineNum, totalQuinzaines, quinzainesInfo, indexClasses, classeOf, classeFamille, resteBudgetCellule, moyenneMobile, resteRythmeCellule, decoreRestes, noteRestes, partEcoulee, joursEcoules |
 | public/lib/campagneUtils.js | CampagneUtils | campagneOf, campagneCourante, debutCampagne, finCampagne, campagneDeCharge, phaseDeCharge, mostRecentCampagne |
-| public/lib/coutMainOeuvre.js | CoutMainOeuvre | CATEGORIES, coutFeries, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
+| public/lib/coutMainOeuvre.js | CoutMainOeuvre | CATEGORIES, coutFeries, nbJoursDistincts, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
 | public/lib/cultureUtils.js | CultureUtils | CULTURES, normCulture, resolveCulture, matchesCulture |
 | public/lib/emargementExcel.js | EmargementExcel | genSansCnssXlsx, genAvecCnssXlsx, genTransporteursXlsx, genBulletinsXlsx |
 | public/lib/emargementPdf.js | EmargementPdf | genSansCnss, genAvecCnss, genTransporteurs, genBulletins, genBulletinsAr |
