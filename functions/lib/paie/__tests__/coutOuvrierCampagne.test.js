@@ -519,3 +519,47 @@ test('unité — sans JH, pas de coût moyen (jamais une division par les journ�
   });
   assert.strictEqual(out.coutMoyenJour, null);
 });
+
+test('cleRegistre — le registre est keyé NUMÉRIQUE, comme l\'écran Quinzaine', () => {
+  // LE défaut du 2026-08-22 : le coût de campagne lisait `registre[matricule]`
+  // avec le matricule BRUT du pointage. Or `ouvriers_registry` ne connaît que
+  // des clés numériques, et le pointage sert des matricules alphanumériques.
+  // Résultat : aucune fiche trouvée → l'ouvrier passait pour un non-déclaré,
+  // sans ancienneté ni prime de fonction ni charges.
+  //
+  // Rien ne le signalait : un ouvrier SANS fiche est un cas légitime (nouvelle
+  // embauche). Le bug se confondait avec un cas normal.
+  assert.strictEqual(M.cleRegistre('CA10563'), '10563');
+  assert.strictEqual(M.cleRegistre('HT4204'), '4204');
+  assert.strictEqual(M.cleRegistre('10563'), '10563');
+  assert.strictEqual(M.cleRegistre(''), '');
+});
+
+test('un matricule ALPHANUMÉRIQUE retrouve sa fiche de déclaré', () => {
+  // Le test qui aurait attrapé le bug : même ouvrier, matricule préfixé par son
+  // équipe, fiche keyée numérique. Sans normalisation il coûte le net d'un
+  // non-déclaré ; avec, il porte ses charges patronales.
+  const q = (mat) => ({
+    periode: 'Q1', dateFin: '2026-07-15',
+    parOuvrier: { [mat]: { jours: new Set(['2026-07-01']), jh: 1, base: 97.44 } },
+  });
+  const out = M.coutOuvrierCampagne({
+    quinzaines: [q('CA10563')],
+    registre: { 10563: { declare: true, primeFonctionJournaliere: 20 } },
+    baremes: {}, equipesTransport: [],
+  });
+  const p = out.parQuinzaine[0].postes;
+  assert.ok(p.chargesPatronales > 0, 'un déclaré doit porter des charges patronales');
+  assert.strictEqual(Math.round(p.primeFonction), 20);
+});
+
+test('sans fiche, l\'ouvrier reste traité comme non-déclaré', () => {
+  // La normalisation ne doit pas INVENTER de fiche : une nouvelle embauche
+  // absente du registre reste un non-déclaré, sans charges.
+  const out = M.coutOuvrierCampagne({
+    quinzaines: [{ periode: 'Q1', dateFin: '2026-07-15',
+      parOuvrier: { 'ZZ9999': { jours: new Set(['2026-07-01']), jh: 1, base: 97.44 } } }],
+    registre: {}, baremes: {}, equipesTransport: [],
+  });
+  assert.strictEqual(out.parQuinzaine[0].postes.chargesPatronales, 0);
+});

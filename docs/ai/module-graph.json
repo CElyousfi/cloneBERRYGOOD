@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 45,
+        "commits": 46,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 44,
+        "commits": 45,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -415,21 +415,21 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": "referentiel",
           "file": "public/components/CampagneAnalytiqueTab.jsx",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
           "file": "tests/unit/campagneRapprochement.test.js",
           "note": "probabilistic",
@@ -818,7 +818,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 43,
+          "coCommits": 44,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -951,16 +951,23 @@
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
+          "domain": "caisse",
+          "file": "public/lib/campagneRapprochement.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 5,
           "domain": null,
-          "file": "functions/pointageService.js",
+          "file": "tests/unit/campagneRapprochement.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 4,
-          "domain": "caisse",
-          "file": "public/lib/campagneRapprochement.js",
+          "domain": null,
+          "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -975,13 +982,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 4,
-          "domain": null,
-          "file": "tests/unit/campagneRapprochement.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },

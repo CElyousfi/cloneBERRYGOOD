@@ -74,6 +74,21 @@ const { PAIE_BAREMES_DEFAULT, computeWorkerPaie } = require('./paieUtils.js');
  * @param {string} matricule
  * @returns {string} préfixe à 2 lettres, 'BGF' par défaut.
  */
+/**
+ * Clé d'accès au registre des ouvriers. PURE.
+ *
+ * `ouvriers_registry` est keyé NUMÉRIQUE : on ne garde que les chiffres. Règle
+ * identique à `numKey` (app.jsx) — une normalisation différente ici rendrait
+ * les deux écrans incapables de reconnaître les mêmes ouvriers, ce qui est
+ * exactement le défaut corrigé le 2026-08-22.
+ *
+ * @param {string} matricule
+ * @returns {string}
+ */
+function cleRegistre(matricule) {
+  return String(matricule || '').toUpperCase().replace(/[^0-9]/g, '');
+}
+
 function prefixeEquipe(matricule, equipes) {
   const m = String(matricule || '').toUpperCase().trim();
   if (!m) return null;
@@ -488,7 +503,23 @@ function coutOuvrierCampagne(args) {
       if (!(joursTravailles > 0)) return;
       matriculesVus.add(mat);
 
-      const fiche = registre[mat] || {};
+      // CLÉ DU REGISTRE — normalisée, jamais le matricule brut.
+      //
+      // `ouvriers_registry` est keyé NUMÉRIQUE. Le pointage, lui, sert des
+      // matricules alphanumériques (`CA10563`, `HT4204`). Lire `registre[mat]`
+      // ne trouvait donc rien pour eux : pas de fiche → `declare` faux →
+      // classés non-déclarés, sans ancienneté ni prime de fonction, et sans
+      // charges. Mesuré sur la Quinzaine 01 (2026-08-22) contre le fichier de
+      // paie : 13 009 DH de prime de fonction au lieu de 17 514, et un brut
+      // déclaré de ~60 000 au lieu de 84 781.
+      //
+      // Rien ne signalait l'anomalie : un ouvrier sans fiche est un cas
+      // LÉGITIME (nouvelle embauche), traité comme non-déclaré. Le bug se
+      // confondait donc avec un cas normal.
+      //
+      // L'écran Quinzaine normalise depuis toujours (`numKey`). C'est cette
+      // divergence de clé — et non une formule — qui séparait les deux écrans.
+      const fiche = registre[cleRegistre(mat)] || registre[mat] || {};
       const declare = !!fiche.declare;
       const socle = Number(fiche.baselineJours) || 0;
       const anciennete = socle + (joursCumules[mat] || 0);
@@ -601,6 +632,6 @@ function coutOuvrierCampagne(args) {
 }
 
 module.exports = {
-  prefixeEquipe, primeTransport, tarifADate, dateEffet, primeRecolte, cumuleJournee,
+  prefixeEquipe, primeTransport, tarifADate, dateEffet, cleRegistre, primeRecolte, cumuleJournee,
   paieOuvrierQuinzaine, coutOuvrierCampagne,
 };
