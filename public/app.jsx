@@ -11224,7 +11224,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             };
             React.useEffect(() => {
                 const snap = _snapshotRef.current;
-                if (!snap) { majEtat('attente', 'calcul en cours — écran pas encore cohérent'); return; }
+                if (!snap) { majEtat('attente', 'calcul en cours — écran pas encore complet'); return; }
                 if (!snap.pleinPerimetre) {
                     majEtat('refus', 'un filtre est actif — retire ferme / culture / sous-ferme');
                     return;
@@ -11243,7 +11243,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 // alors indéfiniment un document amputé des nouveaux champs, et
                 // afficherait « ? » sans qu'on sache qu'il suffit de rouvrir.
                 // À incrémenter à CHAQUE ajout de champ.
-                const cle = 'v3|' + snap.periode + '|' + Math.round(snap.coutEmployeur);
+                // Le NET À PAYER entre dans la clé : lui seul porte la
+                // sous-traitance. Avec le coût employeur seul, un instantané
+                // amputé de ses divers ne repartait jamais.
+                const cle = 'v4|' + snap.periode + '|' + Math.round(snap.coutEmployeur)
+                    + '|' + Math.round(snap.netAPayer || 0);
                 if (_snapshotEnvoye.current[cle]) return;
                 _snapshotEnvoye.current[cle] = true;
                 // Route `/api/pointage-rh` — la SEULE mappée vers `pointageV3` dans
@@ -11653,7 +11657,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                         });
                     });
                     var rows = Object.values(bySt).sort(function(a, b) { return b.totM - a.totM; });
-                    setDiversData({ total: Math.round(totalDivers), dates: j.dates || [], byDate: rowsByDate, rows: rows });
+                    // La PÉRIODE est mémorisée avec la donnée : elle seule permet de
+                    // savoir si ces divers correspondent à la quinzaine affichée.
+                    // Sans elle, l'instantané pouvait être enregistré avec une
+                    // sous-traitance encore à zéro — c'est arrivé sur la
+                    // Quinzaine 01 (7 950 DH manquants, 2026-08-22).
+                    setDiversData({ total: Math.round(totalDivers), dates: j.dates || [],
+                        byDate: rowsByDate, rows: rows,
+                        periode: periode || ((apiData && apiData.periode) || '') });
                 }).catch(function(e) { console.warn('quinzaine divers:', e); });
             // eslint-disable-next-line react-hooks/exhaustive-deps
             }, [selectedPeriode, apiData && (apiData.periodes || [])[0]]);
@@ -12033,7 +12044,19 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // `apiData.periode` est la période que le SERVEUR a réellement
             // servie. Tant qu'elle ne correspond pas à celle affichée, l'écran
             // n'est pas cohérent et il n'y a rien à enregistrer.
-            const _coherent = !!apiData && apiData.periode === currentPeriode;
+            // COHÉRENCE : apiData ET les divers. Ce sont DEUX requêtes distinctes,
+            // et il ne suffit pas d'attendre la première.
+            //
+            // Corrigé une première fois pour `apiData` (journées périmées), la
+            // garde laissait passer l'autre : la Quinzaine 01 a été enregistrée
+            // avec une sous-traitance à 0 alors qu'elle vaut 7 950 DH, et le
+            // rapprochement affichait 7 991 DH d'écart au lieu de 41.
+            //
+            // Le dédoublonnage ne pouvait pas le rattraper : sa clé porte le coût
+            // employeur, qui n'inclut PAS la sous-traitance. La clé ne bougeait
+            // donc pas quand les divers arrivaient enfin.
+            const _coherent = !!apiData && apiData.periode === currentPeriode
+                && !!diversData && diversData.periode === currentPeriode;
             // Bornes de la quinzaine, lues dans le détail par journée. Elles
             // permettent au rapprochement d'apparier un fichier de paie à la
             // bonne quinzaine par ses DATES — un libellé « Quinzaine 03 » ne dit
