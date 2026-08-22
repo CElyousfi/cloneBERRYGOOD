@@ -164,9 +164,30 @@
     const [erreur, setErreur] = useState(null);
     const [nomFichier, setNomFichier] = useState(null);
     const [periodeFichier, setPeriodeFichier] = useState(null);
-    function deposer(e) {
-      const f = e.target.files && e.target.files[0];
+    const [survol, setSurvol] = useState(false);
+
+    // GARDE-FOU NAVIGATEUR. Sans elle, un fichier lâché À CÔTÉ de la zone fait
+    // NAVIGUER l'onglet vers ce fichier : l'application disparaît et tout le
+    // travail en cours est perdu. Le comportement par défaut d'un navigateur
+    // sur un drop est d'ouvrir le fichier — il faut l'annuler sur toute la
+    // fenêtre tant que le popup est ouvert, pas seulement sur la zone.
+    React.useEffect(() => {
+      const stop = e => {
+        e.preventDefault();
+      };
+      window.addEventListener('dragover', stop);
+      window.addEventListener('drop', stop);
+      return () => {
+        window.removeEventListener('dragover', stop);
+        window.removeEventListener('drop', stop);
+      };
+    }, []);
+    function traiter(f) {
       if (!f) return;
+      if (!/\.xlsx$/i.test(f.name)) {
+        setErreur('« ' + f.name + ' » n\'est pas un .xlsx. Dépose le fichier de ' + 'quinzaine, pas un .xls ni un PDF.');
+        return;
+      }
       setErreur(null);
       setRapport(null);
       setNomFichier(f.name);
@@ -188,6 +209,13 @@
       };
       lecteur.onerror = () => setErreur('Lecture du fichier impossible.');
       lecteur.readAsArrayBuffer(f);
+    }
+    const deposer = e => traiter(e.target.files && e.target.files[0]);
+    function lacher(e) {
+      e.preventDefault();
+      setSurvol(false);
+      const dt = e.dataTransfer;
+      traiter(dt && dt.files && dt.files[0]);
     }
     const td = {
       padding: '7px 10px',
@@ -263,28 +291,62 @@
         marginBottom: 14
       }
     }, "Le fichier est lu ", /*#__PURE__*/React.createElement("strong", null, "dans ton navigateur"), " : il n'est ni envoy\xE9 au serveur, ni enregistr\xE9. Rien n'est modifi\xE9."), /*#__PURE__*/React.createElement("label", {
+      onDragEnter: e => {
+        e.preventDefault();
+        setSurvol(true);
+      },
+      onDragOver: e => {
+        e.preventDefault();
+        setSurvol(true);
+      },
+      onDragLeave: () => setSurvol(false),
+      onDrop: lacher,
       style: {
-        display: 'inline-flex',
+        display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
-        gap: 8,
-        padding: '8px 14px',
-        border: '1px dashed ' + C.berry,
-        borderRadius: 8,
+        justifyContent: 'center',
+        gap: 6,
+        padding: '22px 18px',
+        border: '2px dashed ' + (survol ? C.vert : C.berry),
+        borderRadius: 10,
         cursor: 'pointer',
-        color: C.berry,
+        color: survol ? C.vert : C.berry,
         fontSize: 13,
-        fontWeight: 600
+        fontWeight: 600,
+        background: survol ? '#e9f7f1' : '#fcfbf9',
+        transition: 'background .15s, border-color .15s'
       }
     }, /*#__PURE__*/React.createElement("i", {
-      className: "fa-solid fa-upload"
-    }), nomFichier || 'Déposer le fichier .xlsx de la quinzaine', /*#__PURE__*/React.createElement("input", {
+      className: 'fa-solid ' + (survol ? 'fa-file-arrow-down' : 'fa-folder-open'),
+      style: {
+        fontSize: 22
+      }
+    }), /*#__PURE__*/React.createElement("span", null, nomFichier || 'Cliquer pour choisir le fichier .xlsx de la quinzaine'), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        fontWeight: 400,
+        color: C.gris
+      }
+    }, "\u2026ou glisser le fichier ici"), /*#__PURE__*/React.createElement("input", {
       type: "file",
       accept: ".xlsx",
       onChange: deposer,
       style: {
         display: 'none'
       }
-    })), periodeFichier && /*#__PURE__*/React.createElement("div", {
+    })), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: C.gris,
+        marginTop: 8
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-lightbulb",
+      style: {
+        marginRight: 6
+      }
+    }), "En plein \xE9cran, le glisser-d\xE9poser depuis le Finder est peu fiable (macOS change d'espace en cours de glissement). ", /*#__PURE__*/React.createElement("strong", null, "Le clic ouvre le s\xE9lecteur de fichiers"), " et fonctionne toujours."), periodeFichier && /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 12,
         color: C.gris,
