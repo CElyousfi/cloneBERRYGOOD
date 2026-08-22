@@ -150,12 +150,14 @@ function lireClasseur(fichier) {
   const pointage = lecture.lireFeuilleOuvriers(gP);
   const sansCnss = lecture.lireFeuilleOuvriers(gS);
   const transport = nT ? lecture.lireTransport(grille(wb, nT)) : { total: 0, places: 0, equipes: [] };
+  const nD = wb.SheetNames.find((x) => /divers/i.test(x));
+  const divers = nD ? lecture.lireDivers(grille(wb, nD)) : undefined;
   // La quinzaine se lit DANS la feuille, jamais dans le nom du fichier (NFD).
   const periode = lecture.periodeDeGrille(gP) || lecture.periodeDeGrille(gS);
   return {
     fichier: path.basename(fichier),
     periode,
-    postes: lecture.postesExcel({ pointage, sansCnss, transport }),
+    postes: lecture.postesExcel({ pointage, sansCnss, transport, divers }),
   };
 }
 

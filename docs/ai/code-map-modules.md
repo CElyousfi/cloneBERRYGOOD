@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:792e7613beaf9774 -->
+<!-- sourceFingerprint: sha256:2d5feacfc13fbc90 -->
 # Code Map — Modules lib (181)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -83,7 +83,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/paie/coutMainOeuvre.js | — | CATEGORIES, coutFeries, nbJoursDistincts, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
 | functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, tarifADate, dateEffet, cleRegistre, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
 | functions/lib/paie/coutQuinzaineSnapshot.js | — | POSTES, SOUS_POSTES, nombre, normaliser, valider, versDocument, parPeriode |
-| functions/lib/paie/lecturePaieExcel.js | — | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, agregerOuvriers, postesExcel |
+| functions/lib/paie/lecturePaieExcel.js | — | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, lireDivers, agregerOuvriers, postesExcel |
 | functions/lib/paie/paieUtils.js | — | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
 | functions/lib/parcelleGroupes/seedHa.js | — | MAX_LABELS, RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, sanitizeLabels, computeSeedPlan |
 | functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |
@@ -170,7 +170,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/growthUtils.js | GrowthUtils | rows, error, FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM, framboiseParcelles, varietesFramboise, buildGrowthSeries, validateMeasurement, normalizeCheckpoints |
 | public/lib/inflightDedup.js | InflightDedup | — voir fichier — |
 | public/lib/inventaireUtils.js | InventaireUtils | computeInventaireTotals, formatQteParUnite, boundedLedger |
-| public/lib/lecturePaieExcel.js | LecturePaieExcel | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, agregerOuvriers, postesExcel |
+| public/lib/lecturePaieExcel.js | LecturePaieExcel | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, lireDivers, agregerOuvriers, postesExcel |
 | public/lib/local-test-bypass.js | location | success, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx |
 | public/lib/meteoCalc.js | MeteoCalc | saturationVaporPressure, vpdAt, computeHourlyVPD, computeCumRadiation, peakIndex |
 | public/lib/paieDataCache.js | PaieDataCache | DEFAULT_TTL_MS, pointageKey, peek, set, getOrLoad, invalidate |

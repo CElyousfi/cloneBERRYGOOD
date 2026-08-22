@@ -146,14 +146,35 @@
       ligne('transport', 'Prime de transport', f.transport, transportSB,
         { nature: 'calcul' }),
 
-      ligne('location', 'Location & Engins (sous-traitance)', null, locationSB,
-        { nature: 'info',
-          note: 'Absente du fichier de paie : un prestataire n\'a pas de bulletin. '
-            + 'Servie pour reconstituer le décaissement total.' }),
+      // SOUS-TRAITANCE. Le fichier la porte sur sa feuille « TRSP MARCHANDISE &
+      // Divers » — contrairement à ce que cet écran a d'abord affirmé. Il
+      // servait « — » et EMPRUNTAIT le montant de Smart Berry pour composer le
+      // total du fichier : le résultat tombait juste (les deux coïncident sur
+      // les trois quinzaines) mais un chiffre emprunté à celui qu'on contrôle
+      // ne contrôle plus rien.
+      //
+      // `null` = feuille non lue (ancien fichier, autre format). On retombe
+      // alors sur Smart Berry pour ne pas casser le total, et on le DIT.
+      ligne('location', f.sousTraitance === null || f.sousTraitance === undefined
+        ? 'Location & Engins (sous-traitance) — non lue dans le fichier'
+        : 'Location & Engins (sous-traitance)',
+        (f.sousTraitance === null || f.sousTraitance === undefined) ? null : f.sousTraitance,
+        locationSB,
+        (f.sousTraitance === null || f.sousTraitance === undefined)
+          ? { nature: 'info',
+            note: 'Feuille « TRSP MARCHANDISE & Divers » absente ou illisible : le '
+              + 'total du fichier reprend le montant Smart Berry, faute de mieux.' }
+          : { nature: 'calcul',
+            note: 'Lue dans la feuille « TRSP MARCHANDISE & Divers » du fichier.' }),
     ];
 
     // TOTAL DÉCAISSÉ — périmètre reconstitué des deux côtés, explicitement.
-    var totalFichier = nombre(f.net) + nombre(f.transport) + locationSB;
+    // La sous-traitance vient du FICHIER quand il la porte. À défaut seulement,
+    // on emprunte celle de Smart Berry — sinon le total chuterait de plusieurs
+    // milliers de dirhams et afficherait un écart qui n'existe pas.
+    var locationFichier = (f.sousTraitance === null || f.sousTraitance === undefined)
+      ? locationSB : nombre(f.sousTraitance);
+    var totalFichier = nombre(f.net) + nombre(f.transport) + locationFichier;
     var totalSB = nombre(q.netAPayer);
     var total = {
       libelle: 'TOTAL décaissé (salaires + transport + sous-traitance)',

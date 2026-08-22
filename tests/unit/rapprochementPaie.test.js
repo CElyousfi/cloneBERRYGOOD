@@ -23,7 +23,7 @@ const BAREMES = { smagBrutJournalier: 97.44, tauxCnssSalariale: 0.0448, tauxAmo:
 /** Quinzaine 01 (01–15/07) : aucun jour férié, l'écart y est de 41 DH. */
 function q01() {
   return {
-    fichier: { jours: 1484, feries: 0, net: 153503, transport: 26325 },
+    fichier: { jours: 1484, feries: 0, net: 153503, transport: 26325, sousTraitance: 7950 },
     quinzaine: {
       jours: 1484, netAPayer: 187737, joursFeries: 0,
       postes: { primeTransport: 26445, locationEngins: 7950 },
@@ -129,11 +129,40 @@ test('comparer — sans fichier ou sans instantané : `comparable: false`', () =
   assert.strictEqual(R.comparer(null).comparable, false);
 });
 
-test('la Location & Engins est servie en INFO, sans écart', () => {
-  // Absente du fichier de paie : un prestataire n'a pas de bulletin. Lui
-  // calculer un écart ferait apparaître un manque qui n'en est pas un.
+test('la SOUS-TRAITANCE vient du FICHIER, pas empruntée à Smart Berry', () => {
+  // Le fichier la porte sur sa feuille « TRSP MARCHANDISE & Divers » — 7 950 DH
+  // sur la Q01, exactement le montant de Smart Berry. L'écran affichait « — » et
+  // EMPRUNTAIT le chiffre de Smart Berry pour composer le total du fichier : le
+  // résultat tombait juste, mais un chiffre emprunté à celui qu'on contrôle ne
+  // contrôle plus rien.
   const l = R.comparer(q01()).lignes.find((x) => x.cle === 'location');
+  assert.strictEqual(l.nature, 'calcul');
+  assert.strictEqual(l.fichier, 7950);
+  assert.strictEqual(l.smartBerry, 7950);
+  assert.strictEqual(l.ecart, 0);
+});
+
+test('sous-traitance NON LUE : on emprunte Smart Berry, mais on le DIT', () => {
+  // Un fichier sans la feuille ne doit pas faire chuter le total de plusieurs
+  // milliers de dirhams et afficher un écart qui n'existe pas. On retombe donc
+  // sur Smart Berry — en le signalant dans le libellé ET dans la nature.
+  const a = q01();
+  a.fichier.sousTraitance = null;
+  const r = R.comparer(a);
+  const l = r.lignes.find((x) => x.cle === 'location');
   assert.strictEqual(l.nature, 'info');
   assert.strictEqual(l.fichier, null);
-  assert.strictEqual(l.ecart, null);
+  assert.match(l.libelle, /non lue/);
+  // Le total reste juste : il emprunte les 7 950 de Smart Berry.
+  assert.strictEqual(r.total.fichier, 153503 + 26325 + 7950);
+});
+
+test('une sous-traitance DIFFÉRENTE ressort en écart', () => {
+  // Zéro n'est pas « absent » : une quinzaine sans prestataire est une
+  // information, et un désaccord sur ce poste doit se voir.
+  const a = q01();
+  a.fichier.sousTraitance = 6000;
+  const r = R.comparer(a);
+  assert.strictEqual(r.lignes.find((x) => x.cle === 'location').ecart, 6000 - 7950);
+  assert.strictEqual(r.total.fichier, 153503 + 26325 + 6000);
 });

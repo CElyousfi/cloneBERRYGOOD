@@ -88,6 +88,11 @@
       places: 0,
       equipes: []
     };
+    // Sous-traitance. `undefined` si la feuille manque — et non un objet à zéro :
+    // « feuille absente » et « aucune sous-traitance » sont deux informations
+    // différentes, et l'écran les affiche différemment.
+    const nD = wb.SheetNames.find(x => /divers/i.test(x));
+    const divers = nD ? L.lireDivers(grille(wb, nD)) : undefined;
     // La quinzaine se lit DANS la feuille, jamais dans le nom du fichier :
     // macOS encode les accents en NFD, et deux quinzaines ont déjà été
     // interverties à cause de ça (2026-08-21).
@@ -97,7 +102,8 @@
       postes: L.postesExcel({
         pointage,
         sansCnss,
-        transport
+        transport,
+        divers
       })
     };
   }

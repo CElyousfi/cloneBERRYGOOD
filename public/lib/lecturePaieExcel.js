@@ -312,6 +312,61 @@
   }
 
   /**
+   * Lit la feuille « TRSP MARCHANDISE & Divers » — la SOUS-TRAITANCE. PURE.
+   *
+   * Tracteurs, chargements, nettoyages : des prestataires, sans bulletin de
+   * paie. Le fichier les tient sur une feuille à part, avec sa propre ligne
+   * « Total en Dirham ».
+   *
+   * ⚠️ Cette feuille EXISTE, contrairement à ce que l'écran de rapprochement a
+   * d'abord affirmé (2026-08-22). Il servait « — » côté fichier et empruntait le
+   * montant de Smart Berry pour composer le total du fichier : le résultat
+   * tombait juste — les deux valeurs coïncident sur les trois quinzaines — mais
+   * un chiffre emprunté à celui qu'on contrôle ne contrôle plus rien.
+   *
+   * Comme TRANSPORT, la feuille porte SES totaux : « Montant Total » par ligne,
+   * et une ligne « Total en Dirham ». On les lit, on ne les recalcule pas. Sa
+   * colonne de total se déplace selon le nombre de jours (21 ou 22) — d'où le
+   * repérage par en-tête.
+   *
+   * @param {Array<Array<*>>} grille
+   * @returns {{total: number, lignes: Array<Object>}}
+   */
+  function lireDivers(grille) {
+    const en = trouverEnTete(grille, 'bénéficiaire') || trouverEnTete(grille, 'beneficiaire');
+    if (!en) return { total: 0, lignes: [] };
+    const cMontant = colonne(en.index, 'montant total');
+    if (cMontant === null) return { total: 0, lignes: [] };
+    const c = {
+      prix: colonne(en.index, 'prix unitaire'),
+      fonction: colonne(en.index, 'fonction'),
+      tache: colonne(en.index, 'tache', 'tâche'),
+      qte: colonne(en.index, 'total'),
+    };
+    const g = Array.isArray(grille) ? grille : [];
+    const out = { total: 0, lignes: [] };
+    for (let i = en.ligne + 1; i < g.length; i++) {
+      const r = Array.isArray(g[i]) ? g[i] : [];
+      const nom = String(r[0] === null || r[0] === undefined ? '' : r[0]).trim();
+      if (!nom || !estNombre(r[cMontant])) continue;
+      // « Total en Dirham » : même règle que TRANSPORT — un préfixe, et non une
+      // liste fermée qu'une variante de plus prendrait en défaut.
+      if (/^tota/i.test(nom)) continue;
+      const l = {
+        beneficiaire: nom,
+        fonction: c.fonction === null ? '' : String(r[c.fonction] || '').trim(),
+        tache: c.tache === null ? '' : String(r[c.tache] || '').trim(),
+        prixUnitaire: c.prix === null ? 0 : nombre(r[c.prix]),
+        quantite: c.qte === null ? 0 : nombre(r[c.qte]),
+        montant: nombre(r[cMontant]),
+      };
+      out.lignes.push(l);
+      out.total += l.montant;
+    }
+    return out;
+  }
+
+  /**
    * Agrège les lignes d'une feuille d'ouvriers. PURE.
    *
    * @param {Array<Object>} lignes sortie de `lireFeuilleOuvriers`.
@@ -384,6 +439,11 @@
       net: aP.net + aS.net,
       transport: nombre(transport.total),
       placesTransport: nombre(transport.places),
+      // `null` quand la feuille n'a pas été fournie : un 0 se lirait « aucune
+      // sous-traitance cette quinzaine », ce qui n'est pas « je n'ai pas lu
+      // cette feuille ».
+      sousTraitance: a.divers ? nombre(a.divers.total) : null,
+      lignesSousTraitance: (a.divers && a.divers.lignes) || [],
     };
   }
 
@@ -397,6 +457,7 @@
     lireFeuilleOuvriers: lireFeuilleOuvriers,
     periodeDeGrille: periodeDeGrille,
     lireTransport: lireTransport,
+    lireDivers: lireDivers,
     agregerOuvriers: agregerOuvriers,
     postesExcel: postesExcel,
   };
