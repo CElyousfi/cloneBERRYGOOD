@@ -11918,6 +11918,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     // avant d'appliquer les taux.
                     heuresSupNet: hsMontants,
                     feriesParOuvrier: _feriesParOuvrier,
+                    // PLAFOND DE DÉCLARATION — injecté, comme PaieUtils : le
+                    // module de coût ne lit jamais une globale. Absent (script
+                    // non chargé) → aucune coupure, comportement d'avant.
+                    plafond: window.PlafondDeclaration,
                 })
                 : null;
             // Total des heures sup accordées sur la quinzaine, restreint aux

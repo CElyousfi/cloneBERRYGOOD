@@ -355,7 +355,11 @@
       var declare = !!fiche.declare;
       var ligne = { matricule: mat, declare: declare, jours: 0, brut: 0, net: 0,
         feries: 0, heuresSup: 0, cnss: 0, amo: 0, salariales: 0, patronales: 0,
-        coutEmployeur: 0 };
+        coutEmployeur: 0,
+        // Journées travaillées au-delà du plafond déclarable, et le brut
+        // correspondant. Servis à l'écran : un ouvrier dont une partie des
+        // journées sort de la CNSS doit pouvoir être identifié.
+        joursHorsPlafond: 0, brutHorsPlafond: 0, assietteCnss: 0 };
 
       // UNE seule paie, sur les journées réellement travaillées — même raison
       // que dans `netParCategorie` : les catégories ne partitionnent pas les
@@ -366,6 +370,35 @@
           baremes: a.baremes, dateISO: e.premierJour });
         ligne.brut += p.brut;
         ligne.net += p.net;
+
+        // PLAFOND DE DÉCLARATION. Un ouvrier déclaré ne peut voir déclarer
+        // qu'un nombre limité de journées par quinzaine : jours calendaires
+        // moins les dimanches (13 sur 15 jours, 14 sur 16). Au-delà, il
+        // travaille et il est payé — mais HORS CNSS. Règle confirmée par le RH
+        // le 2026-08-22 et vérifiée sur les trois fichiers de paie.
+        //
+        // Cela ne change PAS son net : une journée déclarée et une journée hors
+        // CNSS valent le même net (90,87 contre 90,88). Cela change l'ASSIETTE
+        // des cotisations. Mesuré sur la Quinzaine 01 : Smart Berry déclarait
+        // 87 501 DH de brut là où la paie en déclare 84 781 — 2 720 DH de trop,
+        // soit ~707 DH de charges patronales indues.
+        //
+        // Plafond inconnu (date illisible) → `repartir` ne coupe rien : inventer
+        // une coupure sortirait des journées de la CNSS sans preuve.
+        if (ligne.declare && a.plafond && typeof a.plafond.repartir === 'function') {
+          var rep = a.plafond.repartir(ligne.jours,
+            a.plafond.plafondQuinzaine(e.premierJour));
+          if (rep.horsPlafond > 0) {
+            // On recalcule le brut sur les seules journées DÉCLARABLES. Par
+            // différence plutôt que par prorata : la prime de fonction et
+            // l'ancienneté ne sont pas proportionnelles aux journées de la
+            // même façon, et un prorata les fausserait toutes les deux.
+            var pd = paieOuvrier({ paie: a.paie, fiche: fiche, jours: rep.declares,
+              baremes: a.baremes, dateISO: e.premierJour });
+            ligne.brutHorsPlafond = p.brut - pd.brut;
+            ligne.joursHorsPlafond = rep.horsPlafond;
+          }
+        }
       }
 
       // HEURES SUPPLÉMENTAIRES — saisies au montant NET (ce que l'ouvrier
@@ -396,10 +429,15 @@
       // catégorie par catégorie : c'est le seul ordre qui reste juste quand un
       // terme (les HS) n'appartient à aucune catégorie.
       if (declare) {
-        ligne.cnss = ligne.brut * (Number(b.tauxCnssSalariale) || 0);
-        ligne.amo = ligne.brut * (Number(b.tauxAmo) || 0);
+        // ASSIETTE = le brut, MOINS ce qui dépasse le plafond de déclaration.
+        // Ces journées-là ne sont pas déclarées : elles ne cotisent pas.
+        var assiette = ligne.brut - (Number(ligne.brutHorsPlafond) || 0);
+        if (!(assiette > 0)) assiette = 0;
+        ligne.assietteCnss = assiette;
+        ligne.cnss = assiette * (Number(b.tauxCnssSalariale) || 0);
+        ligne.amo = assiette * (Number(b.tauxAmo) || 0);
         ligne.salariales = ligne.cnss + ligne.amo;
-        ligne.patronales = ligne.brut * (Number(b.tauxChargesPatronales) || 0);
+        ligne.patronales = assiette * (Number(b.tauxChargesPatronales) || 0);
       }
       ligne.coutEmployeur = ligne.brut + ligne.patronales;
 

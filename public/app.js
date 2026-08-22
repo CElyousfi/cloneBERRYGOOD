@@ -992,7 +992,10 @@ const _moTotaux=registryReady?_CMO.netParCategorie({paie:window.PaieUtils,rows:_
 // désormais du barème Smart Berry, plus du coût moyen BEE ONE.
 const _feriesParOuvrier=(()=>{const acc={};(transportExtras.jourFerieDetail||[]).forEach(w=>{if(!w||w.periode!==currentPeriode)return;if(farmFilter&&w.ferme!==farmFilter)return;const k=numKey(w.matricule);if(!k)return;acc[k]=(acc[k]||0)+(Number(w.jh)||0);});return acc;})();const _chargesSociales=registryReady?_CMO.chargesSociales({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey,// Les HS sont DANS l'assiette : le module les remonte au brut
 // avant d'appliquer les taux.
-heuresSupNet:hsMontants,feriesParOuvrier:_feriesParOuvrier}):null;// Total des heures sup accordées sur la quinzaine, restreint aux
+heuresSupNet:hsMontants,feriesParOuvrier:_feriesParOuvrier,// PLAFOND DE DÉCLARATION — injecté, comme PaieUtils : le
+// module de coût ne lit jamais une globale. Absent (script
+// non chargé) → aucune coupure, comportement d'avant.
+plafond:window.PlafondDeclaration}):null;// Total des heures sup accordées sur la quinzaine, restreint aux
 // ouvriers qui y ont POINTÉ : une saisie laissée sur un ouvrier
 // absent ne doit pas gonfler le total de la quinzaine.
 const _hsTotal=(()=>{if(!_CMO||!_chargesSociales)return 0;return _chargesSociales.detail.reduce((s,w)=>s+(w.heuresSup||0),0);})();// Traitement (10 DH/ouvrier-jour)
