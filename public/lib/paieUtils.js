@@ -385,14 +385,31 @@
       const retenue = 1 - ((Number(b.tauxCnssSalariale) || 0) + (Number(b.tauxAmo) || 0));
       const smagBase = smagNet != null ? (Number(smagNet) || 0) : (Number(b.smagNetJournalier) || 0);
       const base = smagBase * jTn;
-      const primeFonction = pfJour * jTn * retenue;
+      // JOURS FÉRIÉS — au MÊME SMAG que les journées travaillées de cette
+      // branche. `jF` était ignoré et `feries` forcé à 0 : le férié d'un non
+      // déclaré ne valait RIEN.
+      //
+      // Mesuré le 2026-08-22 sur le 30/07 : 24 journées fériées valorisées, 40
+      // à zéro (13 non-déclarés + 27 sans fiche, traités comme non-déclarés).
+      // D'où un jour férié payé ~46 DH en moyenne au lieu de 90,87 — la moitié.
+      // Le fichier de paie, lui, porte bien une colonne « Jour férié » sur la
+      // feuille SANS CNSS (29 journées sur la quinzaine d'août) et l'inclut
+      // dans le Montant Brut.
+      //
+      // Rien ne le signalait : un non-déclaré n'a ni CNSS ni ancienneté, et
+      // « pas de férié non plus » passait pour une conséquence du statut.
+      const feries = smagBase * jFn;
+      // La prime de fonction porte sur les journées fériées AUSSI, comme dans la
+      // branche déclarée (`pfJour * (jTn + jFn)`) : un ouvrier ne perd pas sa
+      // fonction un jour férié.
+      const primeFonction = pfJour * (jTn + jFn) * retenue;
       // `primesOpt` était calculé puis JAMAIS ajouté dans cette branche : les
       // heures sup d'un non-déclaré disparaissaient de son net sans rien lever.
-      const net = base + primeFonction + primesOpt * retenue;
+      const net = base + feries + primeFonction + primesOpt * retenue;
       return {
         declare: false,
-        smagBase, jT: jTn, jF: 0,
-        base, feries: 0,
+        smagBase, jT: jTn, jF: jFn,
+        base, feries,
         ancienneteTaux: 0, anciennete: 0,
         primeFonctionJour: pfJour, primeFonction,
         primesOptionnelles: primesOpt,
