@@ -572,3 +572,51 @@ test('computePayslip: args vides → pas de crash, zéros', () => {
   assert.strictEqual(r.net, 0);
   assert.strictEqual(r.netArrondi, 0);
 });
+
+test('computePayslip — le JOUR FÉRIÉ d\'un non-déclaré vaut son SMAG, pas zéro', () => {
+  // LE défaut du 2026-08-22 : `jF` était ignoré et `feries` forcé à 0 dans la
+  // branche non-déclarée. Le férié d'un non-déclaré ne valait RIEN.
+  //
+  // Mesuré sur le 30/07 : 24 journées fériées valorisées, 40 à zéro (13 non
+  // déclarés + 27 sans fiche, traités comme non-déclarés). D'où un jour férié
+  // payé ~46 DH en moyenne au lieu de 90,87 — la moitié — et 4 435 DH d'écart
+  // avec le fichier de paie sur la seule quinzaine du 16–31/07.
+  //
+  // Rien ne le signalait : un non-déclaré n'a ni CNSS ni ancienneté, et « pas de
+  // férié non plus » passait pour une conséquence du statut.
+  const b = { smagBrutJournalier: 97.44, smagNetJournalier: 90.88,
+    tauxCnssSalariale: 0.0448, tauxAmo: 0.0226, tauxChargesPatronales: 0.1926 };
+  const sans = PaieUtils.computePayslip({ declare: false, smagBrut: 97.44, smagNet: 90.88,
+    jT: 10, jF: 0, primeFonctionJour: 0, primesOptionnelles: [], baremes: b });
+  const avec = PaieUtils.computePayslip({ declare: false, smagBrut: 97.44, smagNet: 90.88,
+    jT: 10, jF: 2, primeFonctionJour: 0, primesOptionnelles: [], baremes: b });
+  // Le coût MARGINAL de deux jours fériés = deux fois le SMAG NET, celui-là même
+  // que la branche applique aux journées travaillées.
+  assert.strictEqual(Math.round((avec.net - sans.net) * 100) / 100, 181.76);
+  assert.strictEqual(avec.jF, 2);
+  assert.strictEqual(Math.round(avec.feries * 100) / 100, 181.76);
+});
+
+test('computePayslip — la prime de fonction porte AUSSI sur les jours fériés', () => {
+  // Symétrie avec la branche déclarée, qui applique `pfJour × (jT + jF)` : un
+  // ouvrier ne perd pas sa fonction un jour férié.
+  const b = { smagBrutJournalier: 97.44, smagNetJournalier: 90.88,
+    tauxCnssSalariale: 0.0448, tauxAmo: 0.0226 };
+  const p = PaieUtils.computePayslip({ declare: false, smagBrut: 97.44, smagNet: 90.88,
+    jT: 10, jF: 2, primeFonctionJour: 20, primesOptionnelles: [], baremes: b });
+  // 12 journées portent la prime, nette de la retenue de 6,74 %.
+  assert.strictEqual(Math.round(p.primeFonction * 100) / 100,
+    Math.round(20 * 12 * (1 - 0.0674) * 100) / 100);
+});
+
+test('computePayslip — un non-déclaré SANS jour férié est inchangé', () => {
+  // Garde-fou de non-régression : la correction ne doit rien changer aux
+  // quinzaines sans férié — c'est le témoin à 41 DH du rapprochement.
+  const b = { smagBrutJournalier: 97.44, smagNetJournalier: 90.88,
+    tauxCnssSalariale: 0.0448, tauxAmo: 0.0226 };
+  const p = PaieUtils.computePayslip({ declare: false, smagBrut: 97.44, smagNet: 90.88,
+    jT: 12, jF: 0, primeFonctionJour: 15, primesOptionnelles: [], baremes: b });
+  assert.strictEqual(p.feries, 0);
+  assert.strictEqual(Math.round(p.net * 100) / 100,
+    Math.round((90.88 * 12 + 15 * 12 * (1 - 0.0674)) * 100) / 100);
+});
