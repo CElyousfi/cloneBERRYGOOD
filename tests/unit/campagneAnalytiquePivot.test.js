@@ -116,6 +116,12 @@ function loadTab(deps) {
   if (!deps || deps.rapprochement !== false) {
     vm.runInContext(read('public/lib/campagneRapprochement.js'), sandbox);
   }
+  // Ventilation d'une parcelle par quinzaine (pop-up au clic sur l'en-tête).
+  // Omissible : sans ce module, la pop-up doit le DIRE — une pop-up vide se
+  // lirait « cette parcelle n'a rien consommé ».
+  if (!deps || deps.parcelleQuinzaine !== false) {
+    vm.runInContext(read('public/lib/campagneParcelleQuinzaine.js'), sandbox);
+  }
   if (withBudget) {
     vm.runInContext(read('public/lib/campagneBudgetPivot.js'), sandbox);
     // Porteur de la RÈGLE MÉTIER (familleTotal / splitOpKey), injectée dans le
@@ -831,14 +837,17 @@ function theadTotal(table) {
     .filter((n) => n.type === 'th' && /^TOTAL\b/.test(textOf(n)))[0];
 }
 
-test('Total — plein écran à UNE SEULE série : toujours aucune colonne Total', () => {
-  // Framboise sans budget : la grille n'a qu'une série (Réalisé JH/Ha).
+test('Total — plein écran à UNE SEULE série : la colonne Total est là AUSSI', () => {
+  // Une culture jamais budgétée (l'Avocatier) n'a qu'une série. Elle se
+  // retrouvait sans total, là où ses voisines budgétées en avaient un — une
+  // culture dont on ne peut pas lire le cumul alors que les autres si.
+  // À une seule série, la colonne reprend son rendu historique : une colonne
+  // unique, empilée et collée à droite, celle de l'écran Quinzaine.
   const table = tables(render(null, [false, false, null, false, '', true, 0]))[0];
-  assert.strictEqual(theadTotal(table), undefined, 'en-tête');
-  assert.strictEqual(headers(table).indexOf('Total'), -1, 'en-tête historique');
-  // Largeur : le libellé + 2 parcelles × 1 série, et rien de plus.
+  assert.notStrictEqual(headers(table).indexOf('Total'), -1, 'en-tête historique');
+  // Largeur : le libellé + 2 parcelles × 1 série + la colonne Total.
   const largeur = (bodyRows(table)[1].children || []).filter((c) => c.type === 'td').length;
-  assert.strictEqual(largeur, 3);
+  assert.strictEqual(largeur, 4);
   // Bandeau de section CHIFFRÉ en plein écran : il n'a plus de colSpan, il
   // occupe exactement les mêmes colonnes qu'une ligne famille.
   const bandeau = (bodyRows(table)[0].children || []).filter((c) => c.type === 'td');
@@ -1203,4 +1212,77 @@ test('rapprochement — absent en plein écran, et sans données de coût', () =
     parQuinzaine: [{ periode: 'Q01', jours: 1, base: 100, primes: 0, charges: 0, coutTotal: 100 }],
   }) }, null, TabSansRap);
   assert.strictEqual(textOf(sansRap).indexOf('Rapprochement pointage'), -1);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pop-up « une parcelle, quinzaine par quinzaine » (clic sur l'en-tête)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** La 1re grille rendue (celle du bloc hors récolte de la 1re culture). */
+function premiereGrille(tree) {
+  return walk(tree).filter((n) => n.type === 'table')[0];
+}
+
+/**
+ * La grille de la pop-up : la seule dont les colonnes sont des QUINZAINES.
+ * Repérée par ses en-têtes et non par sa position — la pop-up est rendue avant
+ * les grilles de culture, pas après.
+ */
+function grillePopup(tree) {
+  return tables(tree).filter((t) => headers(t).some((h) => h.indexOf('Q01') === 0))[0];
+}
+
+test('en-tête cliquable — le clic remonte la parcelle, son Ha et sa couleur', () => {
+  const tree = render(null, [false, false, null, false, '', true, 0]);
+  // L'en-tête de parcelle porte l'onClick posé par la vue.
+  // Repéré par son onClick et non par son libellé : l'en-tête affiche le nom
+  // Smart Berry (sbNom), pas la clé BEE ONE — c'est justement la clé, pas le
+  // libellé, que la pop-up doit recevoir.
+  const ths = walk(section(premiereGrille(tree), 'thead'))
+    .filter((n) => n.type === 'th' && typeof n.props.onClick === 'function');
+  assert.ok(ths.length, 'des en-têtes de parcelle cliquables');
+  ths[0].props.onClick();
+  const zoom = setterCalls[setterCalls.length - 1];
+  assert.strictEqual(zoom.parcelle, 'F1- S5 MARAVILLA');
+  assert.strictEqual(zoom.ha, 2);
+  assert.ok(zoom.color, 'la couleur de la culture voyage avec');
+});
+
+test('pop-up quinzaine — colonnes = quinzaines, réalisé SEUL, total au bout', () => {
+  // 8e état = parcelleZoom (déclaré en dernier dans PivotView).
+  const tree = render(null, [false, false, null, false, '', false, 0,
+    { parcelle: 'F1- S5 MARAVILLA', ha: 2, color: '#8B2252', label: 'S5 Maravilla' }]);
+  const popup = grillePopup(tree);
+  const entetes = headers(popup);
+  // Les colonnes sont les QUINZAINES de la parcelle, pas ses parcelles voisines.
+  assert.ok(entetes.some((h) => h.indexOf('Q01') === 0), 'colonne Q01');
+  assert.ok(entetes.some((h) => h.indexOf('Q02') === 0), 'colonne Q02');
+  // À une seule série, l'en-tête du total garde son rendu historique (« Total »).
+  assert.ok(entetes.some((h) => /^(Total|TOTAL)\b/.test(h)), 'colonne Total');
+  assert.ok(!entetes.some((h) => h.indexOf('F5- S1 CORINA') === 0),
+    'aucune colonne d\'une autre parcelle');
+  // Ni budget ni « % consommé » : le budget est annuel, le découper par
+  // quinzaine demanderait une clé de répartition qui n'existe pas.
+  assert.ok(!entetes.some((h) => /Budget|consommé/.test(h)),
+    'ni budget ni taux dans la pop-up');
+});
+
+test('pop-up quinzaine — les JH sont ceux de CETTE parcelle, quinzaine par quinzaine', () => {
+  const tree = render(null, [false, false, null, false, '', false, 0,
+    { parcelle: 'F1- S5 MARAVILLA', ha: 2, color: '#8B2252', label: 'S5 Maravilla' }]);
+  const popup = grillePopup(tree);
+  // Pied de la pop-up : le total de la parcelle sur toute la campagne doit
+  // valoir la somme brute de ses lignes — sinon la pop-up contredit la colonne
+  // dont elle sort.
+  const attendu = sumRaw('jh', (r) => r.parcelle === 'F1- S5 MARAVILLA');
+  const totalPied = cells(footRow(popup)).slice(-1)[0];
+  // Affiché en JH/Ha (2 Ha), défaut « Par Ha » hérité de l'écran.
+  assert.strictEqual(totalPied.trim().split(/\s/)[0], (attendu / 2).toFixed(1));
+});
+
+test('pop-up quinzaine — module absent : elle le DIT, elle ne s\'affiche pas vide', () => {
+  const T = loadTab({ parcelleQuinzaine: false });
+  const tree = render(null, [false, false, null, false, '', false, 0,
+    { parcelle: 'F1- S5 MARAVILLA', ha: 2, color: '#8B2252', label: 'S5 Maravilla' }], T);
+  assert.match(textOf(tree), /module de ventilation non chargé/);
 });

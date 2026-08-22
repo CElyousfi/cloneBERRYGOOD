@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "228/368 fichiers classifiés",
+          "detail": "229/369 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,12 +14,12 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "60/157 modules avec ≥1 test",
+          "detail": "61/158 modules avec ≥1 test",
           "max": 30,
-          "score": 11
+          "score": 12
         }
       },
-      "total": 63
+      "total": 64
     },
     "heatmap": [
       {
@@ -39,7 +39,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 21,
+        "commits": 22,
         "file": "functions/pointageService.js"
       },
       {
@@ -64,19 +64,19 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:ebae3bbb214dc4fb",
+    "sourceFingerprint": "sha256:811712dfb718dff2",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
-      "coverageScore": 38,
+      "coverageScore": 39,
       "domains": 10,
       "extractedComponents": 25,
       "firestoreCollections": 58,
-      "libHelpers": 38,
+      "libHelpers": 39,
       "monolithSymbols": 120,
       "tabFunctions": 120,
       "unclassifiedFiles": 140,
-      "unitTestFiles": 39
+      "unitTestFiles": 40
     }
   },
   "domains": {
@@ -439,16 +439,16 @@
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
-          "file": "functions/lib/paie/coutOuvrierCampagne.js",
+          "file": "public/components/RapprochementPaiePopup.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 3,
           "domain": null,
-          "file": "public/components/RapprochementPaiePopup.js",
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -794,7 +794,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 74,
+      "coverageScore": 75,
       "firestore": {
         "collections": [
           "mapping_campagne",
@@ -821,6 +821,7 @@
           "public/lib/analytiqueUtils.js",
           "public/lib/campagneBudgetPivot.js",
           "public/lib/campagneExportUtils.js",
+          "public/lib/campagneParcelleQuinzaine.js",
           "public/lib/campagneRythme.js",
           "public/lib/campagneUtils.js",
           "public/lib/parcelleGroupUtils.js"
@@ -1051,6 +1052,7 @@
           "tests/unit/analytiqueUtils.test.js",
           "tests/unit/campagneBudgetPivot.test.js",
           "tests/unit/campagneExportUtils.test.js",
+          "tests/unit/campagneParcelleQuinzaine.test.js",
           "tests/unit/campagneRythme.test.js",
           "tests/unit/campagneUtils.test.js",
           "tests/unit/parcelleGroupUtils.test.js"
@@ -2506,6 +2508,10 @@
       "domain": "paie"
     },
     "public/lib/campagneExportUtils.js": {
+      "confidence": "high",
+      "domain": "referentiel"
+    },
+    "public/lib/campagneParcelleQuinzaine.js": {
       "confidence": "high",
       "domain": "referentiel"
     },

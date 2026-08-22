@@ -1505,6 +1505,205 @@
   }
 
   /**
+   * Pop-up « une parcelle, quinzaine par quinzaine ».
+   *
+   * La grille montre une parcelle en UNE colonne : le cumul de la campagne. On
+   * y lit COMBIEN, jamais QUAND — trois quinzaines calmes suivies d'une flambée
+   * et un rythme régulier s'y affichent exactement pareil. Cette pop-up fait
+   * pivoter les MÊMES lignes sur l'axe du temps : parcelle figée, colonnes =
+   * quinzaines, TOTAL au bout.
+   *
+   * Elle n'affiche QUE le réalisé — ni budget ni « % consommé ». Le budget est
+   * annuel : le découper en quinzaines demanderait une clé de répartition qui
+   * n'existe pas, et tout taux affiché ici serait une invention. Ce qui reste
+   * réglable, ce sont les unités (JH ↔ Coût DH, Par Ha ↔ Total), initialisées
+   * sur celles de l'écran pour que la pop-up prolonge la lecture en cours.
+   *
+   * Rien n'est agrégé ici : le pivot est celui de la grille
+   * (AnalytiqueUtils.buildAnalytiquePivotByFamille) et le rendu aussi
+   * (PivotAnalytiqueGrid) — seul l'axe des colonnes change.
+   */
+  function CAT_ParcelleQuinzainePopup(props) {
+    var onClose = props.onClose;
+    var ha = Number(props.ha) || 0;
+    var coutJour = props.coutJour;
+    var _metric = React.useState(props.metric || 'jh');
+    var metric = _metric[0];
+    var setMetric = _metric[1];
+    var _totalMode = React.useState(!!props.totalMode);
+    var totalMode = _totalMode[0];
+    var setTotalMode = _totalMode[1];
+    var _detailMode = React.useState(false);
+    var detailMode = _detailMode[0];
+    var setDetailMode = _detailMode[1];
+    var Grid = window.PivotAnalytiqueGrid;
+    var AU = window.AnalytiqueUtils;
+    var CPQ = window.CampagneParcelleQuinzaine;
+    var isJh = metric === 'jh';
+    var contenu;
+    if (!Grid || !AU || !CPQ) {
+      // Module absent (script non chargé) → on le DIT. Une pop-up vide se
+      // lirait « cette parcelle n'a rien consommé ».
+      contenu = React.createElement('div', {
+        style: {
+          padding: '24px',
+          textAlign: 'center',
+          color: C.textSec,
+          fontSize: '13px'
+        }
+      }, 'Détail indisponible : module de ventilation non chargé.');
+    } else {
+      var lignes = CPQ.lignesParQuinzaine(props.rows, props.parcelle, ha);
+      var pivot = AU.buildAnalytiquePivotByFamille(lignes, {
+        detail: detailMode
+      });
+      if (!pivot.groupedRows || !pivot.groupedRows.length) {
+        contenu = React.createElement('div', {
+          style: {
+            padding: '24px',
+            textAlign: 'center',
+            color: C.textSec,
+            fontSize: '13px'
+          }
+        }, 'Aucun pointage sur cette parcelle pour la campagne.');
+      } else {
+        // Coût CHARGÉ quand il est connu, exactement comme dans la grille :
+        // JH × coût ouvrier. Sans coût connu, le `Cout` BEE ONE brut — et le
+        // libellé de la série le dit.
+        var getValeur = !isJh && coutJour !== null && coutJour !== undefined ? function (cell) {
+          if (!cell) return null;
+          var j = Number(cell.jh);
+          return isFinite(j) ? j * coutJour : null;
+        } : undefined;
+        contenu = React.createElement(Grid, {
+          parcelles: pivot.parcelles,
+          groupedRows: pivot.groupedRows,
+          color: props.color || C.berry,
+          firstColumnLabel: 'Opération',
+          // Les colonnes sont des QUINZAINES qui partagent la même surface :
+          // la somme des colonnes vaudrait 4 × la parcelle sur 4 quinzaines,
+          // et « JH/Ha » au TOTAL serait divisé par quatre.
+          totalHa: ha,
+          chiffresGroupe: true,
+          largeursFixes: true,
+          metrics: [{
+            key: isJh ? 'jh' : 'cout',
+            get: getValeur,
+            label: isJh ? 'Réalisé' : coutJour === null || coutJour === undefined ? 'Coût' : 'Coût chargé',
+            unit: isJh ? totalMode ? 'JH' : 'JH/Ha' : totalMode ? 'DH' : 'DH/Ha',
+            basis: 'total',
+            display: totalMode ? 'total' : 'perHa',
+            format: isJh ? function (v) {
+              return (Math.round(v * 10) / 10).toFixed(1);
+            } : function (v) {
+              return Math.round(v).toLocaleString('fr-MA');
+            },
+            summary: isJh ? function (t) {
+              return Math.round(t).toLocaleString('fr-MA') + ' JH total';
+            } : function (t) {
+              return Math.round(t).toLocaleString('fr-MA') + ' DH';
+            }
+          }]
+        });
+      }
+    }
+    return React.createElement('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.6)',
+        zIndex: 10001,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '20px'
+      },
+      onClick: onClose
+    }, React.createElement('div', {
+      style: {
+        background: '#fff',
+        borderRadius: '16px',
+        maxWidth: '1100px',
+        width: '100%',
+        maxHeight: '86vh',
+        overflow: 'auto',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.35)'
+      },
+      onClick: function (e) {
+        e.stopPropagation();
+      }
+    }, React.createElement('div', {
+      style: {
+        padding: '16px 20px',
+        background: props.color || C.berry,
+        borderRadius: '16px 16px 0 0',
+        color: '#fff',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center'
+      }
+    }, React.createElement('div', null, React.createElement('div', {
+      style: {
+        fontSize: '15px',
+        fontWeight: 700
+      }
+    }, props.label || props.parcelle), React.createElement('div', {
+      style: {
+        fontSize: '11px',
+        opacity: 0.85,
+        marginTop: '2px'
+      }
+    }, 'Réalisé quinzaine par quinzaine · ' + (ha > 0 ? fmtHaLabel(ha) : 'Ha inconnu'))), React.createElement('button', {
+      onClick: onClose,
+      style: {
+        background: 'rgba(255,255,255,0.2)',
+        border: 'none',
+        color: '#fff',
+        fontSize: '16px',
+        cursor: 'pointer',
+        borderRadius: '8px',
+        width: '32px',
+        height: '32px'
+      }
+    }, React.createElement('i', {
+      className: 'fa-solid fa-xmark'
+    }))), React.createElement('div', {
+      style: {
+        padding: '12px 20px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        flexWrap: 'wrap'
+      }
+    }, React.createElement('span', {
+      style: {
+        fontSize: '13px',
+        color: C.textSec,
+        marginRight: '4px'
+      }
+    }, 'Afficher :'), CAT_pills([['jh', 'JH'], ['cout', 'Coût DH']], metric, setMetric, 'pm-'), React.createElement('span', {
+      style: {
+        width: '8px'
+      }
+    }), CAT_pills([['ha', 'Par Ha'], ['total', 'Total']], totalMode ? 'total' : 'ha', function (v) {
+      setTotalMode(v === 'total');
+    }, 'pt-'), React.createElement('span', {
+      style: {
+        width: '8px'
+      }
+    }), CAT_pills([['recap', 'Récap'], ['detail', 'Détail']], detailMode ? 'detail' : 'recap', function (v) {
+      setDetailMode(v === 'detail');
+    }, 'pd-')), React.createElement('div', {
+      style: {
+        padding: '0 20px 20px'
+      }
+    }, contenu)));
+  }
+
+  /**
    * Pop-up de détail d'une cellule de la grille : opérations fines de la
    * famille sur la parcelle.
    *
@@ -1779,6 +1978,12 @@
     var _cultureIdx = useState(0);
     var cultureIdx = _cultureIdx[0];
     var setCultureIdx = _cultureIdx[1];
+    // Parcelle ouverte en ventilation par quinzaine (clic sur son en-tête).
+    // Déclaré EN DERNIER : l'ordre des useState est l'index de state de React,
+    // l'insérer plus haut renumérote tous les suivants.
+    var _parcelleZoom = useState(null);
+    var parcelleZoom = _parcelleZoom[0];
+    var setParcelleZoom = _parcelleZoom[1];
 
     // Sortie au clavier + gel du défilement de la page derrière l'overlay :
     // même mécanisme que l'écran Quinzaine (où il vit chez QuinzaineTab, parce
@@ -2919,6 +3124,20 @@
       onClose: function () {
         setDetailCell(null);
       }
+    }) : null, parcelleZoom ? React.createElement(CAT_ParcelleQuinzainePopup, {
+      parcelle: parcelleZoom.parcelle,
+      label: parcelleZoom.label,
+      ha: parcelleZoom.ha,
+      color: parcelleZoom.color,
+      rows: data.rows,
+      // Unités de l'écran : la pop-up prolonge la lecture en cours plutôt
+      // que de repartir d'un défaut.
+      metric: metric,
+      totalMode: totalMode,
+      coutJour: coutJour,
+      onClose: function () {
+        setParcelleZoom(null);
+      }
     }) : null,
     // Carrousel de cultures — MÊME geste que le panneau Affectation
     // Analytique de l'écran Quinzaine : deux chevrons qui bouclent, et une
@@ -3085,7 +3304,14 @@
         // …et elles coulissent ensemble : deux tableaux de mêmes colonnes
         // qui défilent séparément font lire une parcelle pour une autre.
         scrollGroup: 'campagne-' + g.culture,
-        showTotal: enPlein && metricsAffichees.length > 1,
+        // Colonne TOTAL en plein écran, quel que soit le nombre de séries.
+        // Elle était conditionnée à « plusieurs séries » : l'Avocatier,
+        // jamais budgété, n'en a qu'une et se retrouvait donc SANS total
+        // là où la Framboise et la Myrtille en avaient un — une culture
+        // dont on ne peut pas lire le cumul alors que ses voisines si.
+        // À une seule série, la colonne reprend son rendu historique
+        // (empilé, collé à droite), celui de l'écran Quinzaine.
+        showTotal: enPlein,
         parcelleLabel: function (k) {
           return sbNom(k, sbMap);
         },
@@ -3093,6 +3319,17 @@
           setDetailCell(Object.assign({
             parcelleLabel: sbNom(c.parcelle, sbMap)
           }, c));
+        },
+        // Clic sur l'en-tête d'une parcelle → sa ventilation par
+        // quinzaine. La couleur de la culture voyage avec, pour que la
+        // pop-up se rattache visuellement à la grille d'où elle sort.
+        onParcelleClick: function (cle, haCol) {
+          setParcelleZoom({
+            parcelle: cle,
+            ha: haCol,
+            color: g.color,
+            label: sbNom(cle, sbMap)
+          });
         }
       };
       // Chaque grille est encapsulée pour porter SON bouton plein écran,

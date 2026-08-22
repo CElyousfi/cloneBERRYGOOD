@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:1da5c691bb34c26c",
+    "sourceFingerprint": "sha256:5af5e895707ca7c1",
     "stats": {
-      "targetFiles": 235,
+      "targetFiles": 236,
       "targetFilesWithDirectTests": 137,
       "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 203
+      "testFilesScanned": 204
     }
   },
   "index": {
@@ -1583,6 +1583,10 @@
         "tests/unit/campagneExportBackend.test.js",
         "tests/unit/campagneExportUtils.test.js"
       ]
+    },
+    "public/lib/campagneParcelleQuinzaine.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/campagneProduction.js": {
       "directTests": [],

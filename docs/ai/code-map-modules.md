@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:6fdaa3fc64609fbe -->
-# Code Map — Modules lib (182)
+<!-- sourceFingerprint: sha256:98f5b0c71f1012f3 -->
+# Code Map — Modules lib (183)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -158,6 +158,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
 | public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
 | public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
+| public/lib/campagneParcelleQuinzaine.js | CampagneParcelleQuinzaine | lignesParQuinzaine, periodesDe |
 | public/lib/campagneProduction.js | CampagneProduction | BAREME_KG_PAR_JH, BAREME_DH_PAR_KG, kgParParcelle, vitesseRecolte, effortRecolte |
 | public/lib/campagneRapprochement.js | CampagneRapprochement | chargeParQuinzaine, rapprocher |
 | public/lib/campagneRythme.js | CampagneRythme | CLASSES, JOURS_CAMPAGNE, QUINZAINES_PAR_MOIS, FENETRE_PAR_DEFAUT, MIN_QUINZAINES_CONSOMMEES, quinzaineNum, totalQuinzaines, quinzainesInfo, indexClasses, classeOf, classeFamille, resteBudgetCellule, moyenneMobile, resteRythmeCellule, decoreRestes, noteRestes, partEcoulee, joursEcoules |
