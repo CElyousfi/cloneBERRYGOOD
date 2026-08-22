@@ -92,20 +92,32 @@ test('valeurFerieFichier — reconstitué au SMAG, avec la retenue', () => {
   assert.strictEqual(R.valeurFerieFichier(74, null), 0);
 });
 
-test('comparer — l\'écart HORS férié est isolé et attribué au calcul', () => {
-  // Le rapport doit répondre « une fois le férié mis de côté, que reste-t-il ? ».
-  // Sans cette ligne, on impute au férié un écart qui vient d'ailleurs.
+test('la ligne JOUR FÉRIÉ est INDICATIVE — les deux colonnes ne couvrent pas la même chose', () => {
+  // Côté fichier : reconstitué au SMAG nu (90,9 DH/jour). Côté Smart Berry :
+  // ancienneté et prime de fonction de ces journées comprises (104,8 DH/jour).
+  // Les soustraire donnait −927 DH qui ne mesuraient rien, et gonflaient
+  // l'alerte de résidu à 1 308 DH pour 294 réels (Quinzaine 02, 2026-08-22).
   const a = q01();
   a.fichier.feries = 74;
-  a.quinzaine.joursFeries = 74;      // même nombre de journées des deux côtés…
-  a.quinzaine.sousPostes.jourFerie = 0; // …mais Smart Berry ne les valorise pas
-  a.fichier.net = 153503 + 6725;
+  a.quinzaine.joursFeries = 73;
+  a.quinzaine.sousPostes.jourFerie = 7652;
+  const l = R.comparer(a).lignes.find((x) => x.cle === 'ferieDH');
+  assert.strictEqual(l.nature, 'info');
+  assert.match(l.libelle, /indicatif/);
+  assert.match(l.note, /NON COMPARABLE/);
+});
+
+test('le résidu annoncé est l\'écart du TOTAL, sans retrancher le férié', () => {
+  // Retrancher une ligne non comparable inventait du résidu.
+  const a = q01();
+  a.fichier.feries = 74;
+  a.quinzaine.joursFeries = 73;
+  a.quinzaine.sousPostes.jourFerie = 7652;
+  a.fichier.net = 153503 + 5000;   // écart total volontairement large
   const r = R.comparer(a);
-  const ferie = r.lignes.find((x) => x.cle === 'ferieDH');
-  assert.strictEqual(Math.round(ferie.ecart), 6725);
-  // L'écart total étant intégralement expliqué par le férié, aucune alerte de
-  // calcul résiduel ne doit être levée.
-  assert.ok(!r.alertes.some((x) => x.niveau === 'calcul'));
+  const alerte = r.alertes.find((x) => x.niveau === 'calcul');
+  assert.ok(alerte);
+  assert.match(alerte.texte, new RegExp(String(Math.round(r.total.ecart))));
 });
 
 test('comparer — sous-postes absents : `null`, jamais 0', () => {
