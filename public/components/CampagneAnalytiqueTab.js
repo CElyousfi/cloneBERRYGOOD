@@ -2564,7 +2564,8 @@
       if (!CRap || typeof CRap.rapprocher !== 'function' || !pq || !pq.length) return null;
       var rap = CRap.rapprocher({
         parQuinzaine: pq,
-        rows: data.rows
+        rows: data.rows,
+        snapshots: props.snapQuinz
       });
       if (!rap.lignes.length) return null;
       var dh = function (v) {
@@ -2633,7 +2634,17 @@
           color: alerte(rap.ecartPct) ? '#c0392b' : C.textSec,
           fontWeight: alerte(rap.ecartPct) ? 700 : 400
         }
-      }, 'écart total ' + dh(rap.ecart) + ' DH (' + pct(rap.ecartPct) + ')')), React.createElement('div', {
+      }, 'écart total ' + dh(rap.ecart) + ' DH (' + pct(rap.ecartPct) + ')'),
+      // Dire ce qui n'est PAS comparé. Un total qui paraît complet alors
+      // qu'il laisse des quinzaines de côté est pire qu'un total absent.
+      rap.sansSnapshot && rap.sansSnapshot.length ? React.createElement('span', {
+        style: {
+          fontSize: '11px',
+          color: '#c0392b',
+          fontWeight: 600
+        },
+        title: 'Ouvrir l\'écran Quinzaine sur ces périodes enregistre leur ' + 'coût et les fait entrer dans le rapprochement.'
+      }, rap.sansSnapshot.length + ' quinzaine(s) hors comparaison — ' + rap.sansSnapshot.join(', ')) : null), React.createElement('div', {
         style: {
           overflowX: 'auto'
         }
@@ -2656,7 +2667,7 @@
         title: 'Coût CHARGÉ agrégé par parcelle : Σ (JH × taux de l\'ouvrier), tel que la grille ci-dessus l\'additionne.'
       }, 'Grille chargée'), React.createElement('th', {
         style: th,
-        title: 'Coût chargé ouvrier de l\'écran Quinzaine — la source de vérité, celle qu\'on rapproche du fichier de paie.'
+        title: 'Coût chargé ouvrier ENREGISTRÉ PAR l\'écran Quinzaine — pas recalculé ici. « — » signifie que personne n\'a ouvert cette quinzaine depuis la mise en service.'
       }, 'Quinzaine chargée'), React.createElement('th', {
         style: th
       }, 'Écart'), React.createElement('th', {
@@ -2689,13 +2700,16 @@
         }, dh(l.grille)), React.createElement('td', {
           style: Object.assign({}, td, {
             fontWeight: 700
-          })
-        }, dh(l.quinzaine)), React.createElement('td', {
+          }, l.quinzaine === null ? {
+            color: C.textSec,
+            fontWeight: 400
+          } : {})
+        }, l.quinzaine === null ? '—' : dh(l.quinzaine)), React.createElement('td', {
           style: Object.assign({}, td, {
             color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
             fontWeight: alerte(l.ecartPct) ? 700 : 400
           })
-        }, dh(l.ecart)), React.createElement('td', {
+        }, l.ecart === null ? '—' : dh(l.ecart)), React.createElement('td', {
           style: Object.assign({}, td, {
             color: alerte(l.ecartPct) ? '#c0392b' : C.textSec
           })
@@ -2728,7 +2742,7 @@
         style: td
       }, ''), React.createElement('td', {
         style: td
-      }, dh(rap.totalGrille)), React.createElement('td', {
+      }, dh(rap.totalGrilleComparable)), React.createElement('td', {
         style: td
       }, dh(rap.totalQuinzaine)), React.createElement('td', {
         style: td
@@ -2760,7 +2774,7 @@
         style: {
           marginRight: '6px'
         }
-      }), 'Les deux colonnes portent le même coût CHARGÉ (salaire + primes + ' + 'charges), plus jamais la base BEE ONE. La grille agrège le pointage ' + 'PAR PARCELLE : une ligne dont la parcelle ou la culture ne se résout ' + 'pas n\'y entre pas. La « Quinzaine » part des lignes brutes et fait ' + 'foi. L\'écart est donc en dirhams réels — à zéro, la grille montre ' + 'tout l\'argent. Les « JH sans taux » (ouvriers sans fiche de paie) en ' + 'sont la première cause : ils pèsent en volume, rien en coût. Le ' + 'pointage divers (sous-traitants) reste hors des deux chemins.'));
+      }), 'La colonne « Quinzaine chargée » est le total ENREGISTRÉ par l\'écran ' + 'Quinzaine — il n\'est pas recalculé ici. C\'est délibéré : trois ' + 'tentatives de le reproduire ont produit trois divergences, et un ' + 'écart entre deux implémentations ne dit rien. « — » signifie que ' + 'personne n\'a ouvert cette quinzaine depuis la mise en service : ' + 'ouvrir l\'écran Quinzaine sur cette période suffit à l\'enregistrer. ' + 'La grille, elle, agrège le pointage PAR PARCELLE : une ligne dont la ' + 'parcelle ou la culture ne se résout pas n\'y entre pas. L\'écart est ' + 'donc en dirhams réels — à zéro, la grille montre tout l\'argent. Les ' + '« JH sans taux » (ouvriers sans fiche de paie) en sont la première ' + 'cause : ils pèsent en volume, rien en coût. Le pointage divers ' + '(sous-traitants) reste hors des deux chemins.'));
     }
 
     /** Bouton plein écran d'UNE grille de culture (posé sur son bandeau). */
@@ -3492,6 +3506,33 @@
       };
     }, []);
 
+    // INSTANTANÉS DE L'ÉCRAN QUINZAINE — la référence du rapprochement.
+    //
+    // Ce panneau ne RECALCULE plus le coût de la quinzaine : trois tentatives de
+    // le reproduire ont produit trois divergences. L'écran Quinzaine enregistre
+    // son propre total, on le relit ici tel quel. L'écart affiché redevient donc
+    // un écart RÉEL entre deux mesures, et non entre deux implémentations.
+    //
+    // Absent = personne n'a ouvert la Quinzaine depuis la mise en service. Le
+    // panneau le DIT au lieu de retomber sur un calcul local : un chiffre de
+    // repli s'y lirait comme la référence, et on aurait reconstruit exactement
+    // le problème qu'on vient de supprimer.
+    var _snapQuinz = useState(null);
+    var snapQuinz = _snapQuinz[0];
+    var setSnapQuinz = _snapQuinz[1];
+    useEffect(function () {
+      var cancelled = false;
+      fetch('/api/pointage?action=cout-quinzaine').then(function (r) {
+        return r.json();
+      }).then(function (d) {
+        if (cancelled || !d || !d.success) return;
+        setSnapQuinz(d.parPeriode || {});
+      }).catch(function () {/* indisponible → le panneau affiche « — » */});
+      return function () {
+        cancelled = true;
+      };
+    }, []);
+
     // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
     // l'export), et pas seulement au montage : sinon un budget saisi dans le
     // sous-onglet Budget puis exporté sans recharger la page produirait un
@@ -3778,6 +3819,7 @@
       refOperations: refOperations,
       bons: bons,
       coutOuvrier: coutOuvrier,
+      snapQuinz: snapQuinz,
       metric: metric,
       setMetric: setMetric
     }) : React.createElement(VarieteView, {

@@ -31,6 +31,7 @@ const {
 // Coût CHARGÉ d'une journée d'ouvrier (CNSS patronale + transport compris) —
 // calcul PUR, testé sans émulateur. Cf. l'action `campagne-cout-ouvrier`.
 const coutOuvrier = require("./lib/paie/coutOuvrierCampagne.js");
+const coutQuinzaineSnap = require("./lib/paie/coutQuinzaineSnapshot.js");
 
 // Aliases bruts (non filtrés) des fetchers de lignes, pour le gating chef
 // dans pointageRH : les wrappers filtrés shadowent les noms non préfixés,
@@ -4885,6 +4886,59 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         });
         groupes.sort((a, b) => (a.label || "").localeCompare(b.label || ""));
         return res.json({ success: true, groupes });
+      }
+
+      // INSTANTANÉ DU COÛT DE QUINZAINE — écrit par l'écran Quinzaine lui-même.
+      //
+      // L'écran Campagne ne RECALCULE plus ce total : trois tentatives de le
+      // reproduire ont produit trois divergences (transport résolu au mauvais
+      // format de date, préfixe d'équipe deviné, part salariale comptée d'un
+      // côté seulement). L'écran qui fait foi enregistre son chiffre, l'autre le
+      // relit. L'écart affiché redevient un écart RÉEL entre deux mesures.
+      if (action === "cout-quinzaine-save" && req.method === "POST") {
+        const _authUserQ = await verifyAuth(req);
+        const callerProfileQ = await resolveCallerProfile(_authUserQ);
+        const _pidQ = callerProfileQ && (callerProfileQ.profileId || callerProfileQ.role || '');
+        // Mêmes profils que ceux qui VOIENT l'écran Quinzaine : on enregistre ce
+        // qu'ils ont sous les yeux, on n'ouvre aucun accès nouveau.
+        if (!['dg', 'rh', 'finance', 'admin'].includes(_pidQ)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH/Finance requis" });
+        }
+        // Un profil à périmètre restreint ne voit qu'une ferme : son total EST un
+        // sous-total, quoi qu'il déclare.
+        if (_fermeFilter) {
+          return res.status(403).json({ success: false, error: "Accès refusé — périmètre restreint" });
+        }
+
+        const snapQ = coutQuinzaineSnap.normaliser(req.body || {});
+        const vQ = coutQuinzaineSnap.valider(snapQ);
+        if (!vQ.ok) {
+          // 400 et la RAISON : un refus muet laisserait l'écran Campagne afficher
+          // « — » sans que personne ne sache quoi corriger.
+          return res.status(400).json({ success: false, error: vQ.raison });
+        }
+
+        const docQ = coutQuinzaineSnap.versDocument(snapQ, new Date().toISOString(), {
+          uid: (_authUserQ && _authUserQ.uid) || null,
+          profileId: _pidQ,
+          email: (_authUserQ && _authUserQ.email) || '',
+        });
+        await db_firestore.collection("rh_cout_quinzaine")
+          .doc(snapQ.periode).set(docQ, { merge: false });
+        return res.json({ success: true, periode: snapQ.periode, enregistre: docQ });
+      }
+
+      // Lecture des instantanés — sert le panneau de rapprochement de l'écran
+      // Campagne. AGRÉGAT par quinzaine, aucune donnée nominative : même
+      // exemption de gate que `campagne-cout-ouvrier`, qui alimente le même écran.
+      if (action === "cout-quinzaine") {
+        const snapsQ = await db_firestore.collection("rh_cout_quinzaine").get();
+        const docsQ = [];
+        snapsQ.forEach((d) => docsQ.push(d.data() || {}));
+        return res.json({
+          success: true,
+          parPeriode: coutQuinzaineSnap.parPeriode(docsQ),
+        });
       }
 
       // Création / édition d'un groupe (DG/RH/admin — même gate que sb-referentiel-save)

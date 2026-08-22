@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:e9998288a9e3a475",
+    "sourceFingerprint": "sha256:a63cf51fbabdcbcd",
     "stats": {
-      "targetFiles": 228,
+      "targetFiles": 229,
       "targetFilesWithDirectTests": 137,
       "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 197
+      "testFilesScanned": 198
     }
   },
   "index": {
@@ -752,6 +752,10 @@
       "transitiveTests": []
     },
     "functions/lib/paie/coutOuvrierCampagne.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/paie/coutQuinzaineSnapshot.js": {
       "directTests": [],
       "transitiveTests": []
     },

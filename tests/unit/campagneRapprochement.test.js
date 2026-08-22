@@ -51,6 +51,7 @@ test('rapprocher — écart nul quand la grille porte tout le coût chargé', ()
       { periode: 'Quinzaine 01', jours: 100, base: 9744, primes: 3000, charges: 2500, coutTotal: 15244 },
     ],
     rows: [{ periode: 'Quinzaine 01', coutCharge: 15244 }],
+    snapshots: { 'Quinzaine 01': { coutEmployeur: 15244 } },
   });
   assert.strictEqual(out.ecart, 0);
   assert.strictEqual(out.ecartPct, 0);
@@ -65,6 +66,7 @@ test('rapprocher — la BASE BEE ONE n\'entre plus dans le rapprochement', () =>
       { periode: 'Q1', jours: 10, base: 999999, primes: 100, charges: 200, coutTotal: 1300 },
     ],
     rows: [{ periode: 'Q1', cout: 888888, coutCharge: 1300 }],
+    snapshots: { Q1: { coutEmployeur: 1300 } },
   });
   assert.strictEqual(out.lignes[0].grille, 1300);
   assert.strictEqual(out.lignes[0].quinzaine, 1300);
@@ -79,6 +81,7 @@ test('rapprocher — l\'écart mesure le coût que la grille ne rattache pas', (
       { periode: 'Quinzaine 01', jours: 100, base: 9744, primes: 3000, charges: 2500, coutTotal: 15244 },
     ],
     rows: [{ periode: 'Quinzaine 01', coutCharge: 13244 }],
+    snapshots: { 'Quinzaine 01': { coutEmployeur: 15244 } },
   });
   assert.strictEqual(out.lignes[0].grille, 13244);
   assert.strictEqual(out.lignes[0].quinzaine, 15244);
@@ -98,6 +101,7 @@ test('rapprocher — les JH sans taux remontent, ligne à ligne et au total', ()
       { periode: 'Q1', coutCharge: 1200, jhSansTaux: 3 },
       { periode: 'Q2', coutCharge: 2600, jhSansTaux: 0 },
     ],
+    snapshots: { Q1: { coutEmployeur: 1300 }, Q2: { coutEmployeur: 2600 } },
   });
   assert.strictEqual(out.lignes[0].jhSansTaux, 3);
   assert.strictEqual(out.lignes[1].jhSansTaux, 0);
@@ -112,6 +116,7 @@ test('rapprocher — une quinzaine absente de la grille ressort en écart total'
       { periode: 'Quinzaine 07', jours: 50, base: 5000, primes: 0, charges: 0, coutTotal: 5000 },
     ],
     rows: [],
+    snapshots: { 'Quinzaine 07': { coutEmployeur: 5000 } },
   });
   assert.strictEqual(out.lignes[0].grille, 0);
   assert.strictEqual(out.lignes[0].ecart, 5000);
@@ -124,6 +129,7 @@ test('rapprocher — quinzaine sans coût : `null`, jamais « 0 % rapproché »'
       { periode: 'Quinzaine 09', jours: 0, base: 0, primes: 0, charges: 0, coutTotal: 0 },
     ],
     rows: [],
+    snapshots: {},
   });
   assert.strictEqual(out.lignes[0].ecartPct, null);
   assert.strictEqual(out.ecartPct, null);
@@ -136,6 +142,7 @@ test('rapprocher — les totaux sont la somme des quinzaines', () => {
       { periode: 'Q2', jours: 20, base: 2000, primes: 200, charges: 400, coutTotal: 2600 },
     ],
     rows: [{ periode: 'Q1', coutCharge: 1200 }, { periode: 'Q2', coutCharge: 2600 }],
+    snapshots: { Q1: { coutEmployeur: 1300 }, Q2: { coutEmployeur: 2600 } },
   });
   assert.strictEqual(out.totalQuinzaine, 3900);
   assert.strictEqual(out.totalGrille, 3800);
@@ -152,6 +159,7 @@ test('rapprocher — la décomposition permet d\'isoler un poste manquant', () =
       { periode: 'Q1', jours: 10, primes: 300, charges: 250, coutTotal: 1550 },
     ],
     rows: [{ periode: 'Q1', coutCharge: 1550 }],
+    snapshots: { Q1: { coutEmployeur: 1550 } },
   });
   const l = out.lignes[0];
   assert.strictEqual(l.primes, 300);
@@ -167,6 +175,7 @@ test('rapprocher — la ventilation par poste est servie telle quelle', () => {
   const out = R.rapprocher({
     parQuinzaine: [{ periode: 'Q1', coutTotal: 1300, postes }],
     rows: [{ periode: 'Q1', coutCharge: 1300 }],
+    snapshots: { Q1: { coutEmployeur: 1300 } },
   });
   assert.deepStrictEqual(out.lignes[0].postes, postes);
 });
@@ -177,6 +186,58 @@ test('rapprocher — sans ventilation, `postes` vaut null et non un objet vide',
   const out = R.rapprocher({
     parQuinzaine: [{ periode: 'Q1', coutTotal: 1300 }],
     rows: [{ periode: 'Q1', coutCharge: 1300 }],
+    snapshots: { Q1: { coutEmployeur: 1300 } },
   });
   assert.strictEqual(out.lignes[0].postes, null);
+});
+
+test('rapprocher — SANS instantané : `null`, jamais un repli sur le calcul local', () => {
+  // Le cœur de la bascule. `coutTotal` est l'AUTRE implémentation — celle que le
+  // rapprochement est censé contrôler. S'en servir de référence par défaut
+  // ferait passer un écart nul pour une preuve, alors qu'il ne prouverait
+  // qu'une chose : le calcul est égal à lui-même.
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 168071 }],
+    rows: [{ periode: 'Q1', coutCharge: 168071 }],
+    snapshots: {},
+  });
+  assert.strictEqual(out.lignes[0].quinzaine, null);
+  assert.strictEqual(out.lignes[0].ecart, null);
+  assert.strictEqual(out.lignes[0].ecartPct, null);
+  assert.deepStrictEqual(out.sansSnapshot, ['Q1']);
+});
+
+test('rapprocher — un instantané à 0 est traité comme absent', () => {
+  // Zéro n'est pas une mesure : c'est un écran qui n'avait pas fini de charger.
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 1300 }],
+    rows: [{ periode: 'Q1', coutCharge: 1300 }],
+    snapshots: { Q1: { coutEmployeur: 0 } },
+  });
+  assert.strictEqual(out.lignes[0].quinzaine, null);
+});
+
+test('rapprocher — le total ignore les quinzaines sans instantané', () => {
+  // Additionner une grille dont la référence manque gonflerait l'écart d'un
+  // montant qui n'a jamais été mesuré — un écart inventé, et impossible à
+  // rapprocher de quoi que ce soit.
+  const out = R.rapprocher({
+    parQuinzaine: [
+      { periode: 'Q1', coutTotal: 1300 },
+      { periode: 'Q2', coutTotal: 2600 },
+    ],
+    rows: [
+      { periode: 'Q1', coutCharge: 1200 },
+      { periode: 'Q2', coutCharge: 2500 },
+    ],
+    snapshots: { Q1: { coutEmployeur: 1300 } },
+  });
+  // Q2 n'est comparée ni au numérateur ni au dénominateur.
+  assert.strictEqual(out.totalQuinzaine, 1300);
+  assert.strictEqual(out.totalGrilleComparable, 1200);
+  assert.strictEqual(out.ecart, 100);
+  // `totalGrille` reste la somme COMPLÈTE : les deux chiffres ont chacun leur
+  // usage, les confondre est ce qui produirait la soustraction impossible.
+  assert.strictEqual(out.totalGrille, 3700);
+  assert.deepStrictEqual(out.sansSnapshot, ['Q2']);
 });
