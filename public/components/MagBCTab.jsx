@@ -48,9 +48,40 @@
             const type = typeProp || '';
             const label = labelProp || (type === 'engrais' ? 'Engrais' : type === 'pesticide' ? 'Phytosanitaire' : 'Tous');
             const icon = iconProp || 'fa-flask';
+
+            // ---- Brouillon persistant de saisie -------------------------------
+            // Le bon en cours de saisie ne doit JAMAIS disparaître : l'état local
+            // était perdu à chaque remount du tab (retour de fenêtre / sortie du
+            // plein écran, pull-to-refresh, rechargement mobile). On sauvegarde le
+            // brouillon dans localStorage à chaque frappe et on le restaure au
+            // montage. Effacé à la création du bon et à « Annuler ».
+            const BC_DRAFT_KEY = 'bcDraft_v1_' + (type || 'tous');
+            const BC_DRAFT_TTL_MS = 24 * 3600 * 1000;
+            const clearBcDraft = () => { try { window.localStorage.removeItem(BC_DRAFT_KEY); } catch (e) {} };
+            // Un brouillon n'est restauré que s'il contient vraiment quelque chose :
+            // un formulaire vierge ne doit pas rouvrir la fenêtre tout seul.
+            const bcDraftHasContent = (f) => !!(f && Array.isArray(f.items) && f.items.some(
+                it => (it.article || '').trim() || String(it.quantite || '').trim() || (it.parcelle || '').trim()));
+            const readBcDraft = () => {
+                try {
+                    const raw = window.localStorage.getItem(BC_DRAFT_KEY);
+                    if (!raw) return null;
+                    const d = JSON.parse(raw);
+                    if (!d || !d.form || !Array.isArray(d.form.items)) return null;
+                    if (!d.savedAt || (Date.now() - d.savedAt) > BC_DRAFT_TTL_MS) { clearBcDraft(); return null; }
+                    if (!bcDraftHasContent(d.form)) { clearBcDraft(); return null; }
+                    return d;
+                } catch (e) { return null; }
+            };
+            // Lu une seule fois, au premier rendu (useState paresseux plus bas).
+            const bcDraftRef = _r.useRef(undefined);
+            if (bcDraftRef.current === undefined) bcDraftRef.current = readBcDraft();
+            const bcDraft0 = bcDraftRef.current;
+            // -------------------------------------------------------------------
+
             const [bcs, setBcs] = useState([]);
             const [loading, setLoading] = useState(true);
-            const [showForm, setShowForm] = useState(false);
+            const [showForm, setShowForm] = useState(!!bcDraft0);
             const [stocks, setStocks] = useState([]);
             const [catalogueArticles, setCatalogueArticles] = useState([]);
             const [showCreateArticle, setShowCreateArticle] = useState(false);
@@ -72,17 +103,19 @@
             const MAGASINS = window.useStockLocations().magasins;
             const STATIONS = ['Station F1', 'Station F2', 'Station F3', 'Station F4', 'Station F5', 'Station F6'];
             const emptyItem = { article: '', quantite: '', unite: 'kg', parcelle: '', parcelle_ref: '', culture: '', ferme: '', groupe_id: '' };
-            const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] });
+            const [form, setForm] = useState(() => (bcDraft0 && bcDraft0.form)
+                || { date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] });
             const [scanFileBC, setScanFileBC] = useState(null);
             const [scanPreviewBC, setScanPreviewBC] = useState(null);
             // Campagne (année fiscale Juillet→Juin) : '2025-2026', etc.
             // Source unique : window.CampagneUtils (lib/campagneUtils.js). Fallback
             // défensif si le lib n'est pas encore chargé (renvoie '' comme l'ancien helper).
             const bcCampagneOf = (dateStr) => (window.CampagneUtils ? (window.CampagneUtils.campagneOf(dateStr) || '') : (() => { const m = (dateStr || '').match(/^(\d{4})-(\d{2})/); if (!m) return ''; const y = +m[1], mo = +m[2]; const start = mo >= 7 ? y : y - 1; return start + '-' + (start + 1); })());
-            const [bcCampagne, setBcCampagne] = useState(() => bcCampagneOf(new Date().toISOString().slice(0, 10)));
+            const [bcCampagne, setBcCampagne] = useState(() => (bcDraft0 && bcDraft0.bcCampagne)
+                || bcCampagneOf(new Date().toISOString().slice(0, 10)));
             // Culture : filtre GLOBAL au bon (pas une donnée du bon). '' = toutes.
             // Jamais envoyé au backend — même convention que bcCampagne.
-            const [bcCulture, setBcCulture] = useState('');
+            const [bcCulture, setBcCulture] = useState(() => (bcDraft0 && bcDraft0.bcCulture) || '');
 
             const [query, setQuery] = useState('');
             const [filterSource, setFilterSource] = useState('');
@@ -114,6 +147,13 @@
                 }).finally(() => setLoading(false));
             };
             useEffect(() => { loadBcs(); }, []);
+            // Sauvegarde du brouillon à chaque modification pendant la saisie.
+            // (Le scan joint n'est pas sérialisable : il est à re-joindre après un
+            // retour de fenêtre — le reste du bon est intact.)
+            useEffect(() => {
+                if (!showForm || !bcDraftHasContent(form)) return;
+                try { window.localStorage.setItem(BC_DRAFT_KEY, JSON.stringify({ form, bcCampagne, bcCulture, savedAt: Date.now() })); } catch (e) {}
+            }, [showForm, form, bcCampagne, bcCulture]); // eslint-disable-line react-hooks/exhaustive-deps
             useEffect(() => { window.cachedFetch('/api/stock?action=stock-levels').then(json => { if (json.success) setStocks(json.stocks || []); }).catch(() => {}); }, []);
             useEffect(() => { fetch('/api/stock?action=list-articles').then(r=>r.json()).then(j=>{ if(j.success) { const seen = new Set(); setCatalogueArticles((j.articles||[]).filter(a => { if(seen.has(a.nom)) return false; seen.add(a.nom); return true; })); } }).catch(()=>{}); }, []);
             useEffect(() => { window.cachedFetch('/api/parcelles').then(json => { if (json.success) setParcelles(json.parcelles || []); }).catch(() => {}); }, []);
@@ -306,7 +346,7 @@
                 fetch('/api/stock?action=create-bc', { method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ type: type || 'engrais', date: form.date, lieu_source: { type: form.lieu_source_type, id: form.lieu_source_id }, items: validItems.map(i => ({ article: i.article, quantite: i.quantite, unite: i.unite, parcelle: i.parcelle, parcelle_ref: i.parcelle_ref || '', culture: i.culture, ferme: i.ferme, groupe_id: i.groupe_id || '' })), scan_url: scanUrl, authorized_by: { profileId: currentProfile, name: profileData?.name || currentProfile }, created_by: { profileId: currentProfile, name: profileData?.name || currentProfile } }),
                 }).then(r => r.json()).then(json => {
-                    if (json.success) { alert('Bon de consommation ' + json.numero + ' cree'); setShowForm(false); loadBcs(); }
+                    if (json.success) { alert('Bon de consommation ' + json.numero + ' cree'); clearBcDraft(); setShowForm(false); loadBcs(); }
                     else alert('Erreur: ' + (json.error || 'Echec'));
                 }).catch(() => alert('Erreur reseau'));
             };
@@ -402,7 +442,7 @@
                                 <option value="saisie">Saisie</option>
                                 <option value="import">Import</option>
                             </select>
-                            {currentProfile === 'magasinier' && <button onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setBcCulture(''); setShowForm(true); }}
+                            {currentProfile === 'magasinier' && <button onClick={() => { clearBcDraft(); setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setBcCulture(''); setShowForm(true); }}
                                 style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon
                             </button>}
@@ -447,8 +487,11 @@
                         </tbody>
                     </table></div>
 
+                    {/* Pas de fermeture au clic sur le fond : un clic hors de la fenêtre
+                        en cours de saisie perdait tout le brouillon du bon (le formulaire
+                        est réinitialisé à la réouverture). Sortie explicite via « Annuler ». */}
                     {showForm && (
-                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
+                        <div className="modal-overlay">
                             <div className="modal-content" style={{maxWidth:800,maxHeight:'90vh',overflowY:'auto'}}>
                                 <h3 style={{marginTop:0,color:'var(--berry)'}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Nouveau Bon de Consommation {label}</h3>
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
@@ -535,15 +578,16 @@
                                 </table>
                                 <button onClick={addItem} style={{marginTop:8,background:'none',border:'1px dashed #ddd',borderRadius:8,padding:'6px 16px',cursor:'pointer',fontSize:12,color:'var(--blue)'}}>+ Ajouter article</button>
                                 <div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}>
-                                    <button onClick={() => setShowForm(false)} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
+                                    <button onClick={() => { clearBcDraft(); setShowForm(false); }} style={{padding:'8px 16px',borderRadius:8,border:'1px solid #ddd',background:'#fff',cursor:'pointer',fontSize:13}}>Annuler</button>
                                     <button onClick={handleCreate} style={{padding:'8px 16px',borderRadius:8,border:'none',background:'var(--berry)',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13}}>Creer le bon</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* Idem : saisie en cours, sortie explicite par « Annuler ». */}
                     {showCreateArticle && (
-                        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowCreateArticle(false); setCreateArticleLineIdx(null); } }} style={{zIndex:10001}}>
+                        <div className="modal-overlay" style={{zIndex:10001}}>
                             <div className="modal-content" style={{maxWidth:500,width:'90vw'}}>
                                 <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-box" style={{marginRight:8}}></i>Nouvel Article</h3>
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>

@@ -67540,62 +67540,23 @@ ${rejetHtml}
                 return () => { clearRetry(); unsub(); };
             }, []);
 
-            // Fullscreen auto : paysage mobile + desktop — armé UNIQUEMENT après
-            // authentification. Sur l'écran de login on reste fenêtré : passer en
-            // plein écran pendant la saisie du mot de passe déclenche sur macOS le
-            // glissement de Space pour afficher l'autofill système (Trousseau / carte).
+            // Plein écran automatique : DÉSACTIVÉ (demande d'Omar, 2026-08-22).
+            //
+            // Le mécanisme demandait le plein écran au premier clic après
+            // authentification, sur desktop et en paysage mobile. Or le navigateur
+            // sort du plein écran dès qu'on change de fenêtre, et l'app le
+            // redemandait au retour : cette transition remontait l'onglet courant et
+            // faisait disparaître la saisie en cours (bon de consommation du
+            // magasinier). L'app reste désormais fenêtrée ; l'utilisateur garde le
+            // plein écran natif du navigateur (F11 / bouton de la fenêtre) s'il le
+            // veut. Une sortie propre est faite au montage pour les sessions déjà
+            // basculées en plein écran par l'ancienne version.
             useEffect(() => {
-                if (!authUser || !userProfile) return;
-                let wantFullscreen = false;
-
-                const tryFullscreen = () => {
-                    if (document.fullscreenElement || document.webkitFullscreenElement) return;
-                    const el = document.documentElement;
-                    const rfs = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-                    if (rfs) {
-                        rfs.call(el).then(() => {
-                            wantFullscreen = false;
-                            document.removeEventListener('click', onInteraction, true);
-                            document.removeEventListener('touchstart', onInteraction, true);
-                        }).catch(() => {});
-                    }
-                };
-
-                const onInteraction = (e) => {
-                    // Exclure le déclencheur du picker "Joindre un scan" : sur Safari,
-                    // appeler requestFullscreen sur le même geste que l'ouverture du
-                    // picker tue le picker. Voir public/components/ScanAttachmentButton.jsx.
-                    if (e && e.target && e.target.closest && e.target.closest('[data-no-fullscreen]')) return;
-                    if (wantFullscreen) tryFullscreen();
-                };
-
-                const checkOrientation = () => {
-                    const isLandscape = window.innerWidth > window.innerHeight;
-                    const isMobileDevice = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
-
-                    if ((isMobileDevice && isLandscape) || (!isMobileDevice)) {
-                        wantFullscreen = true;
-                        document.addEventListener('click', onInteraction, true);
-                        document.addEventListener('touchstart', onInteraction, true);
-                    } else {
-                        wantFullscreen = false;
-                        if (document.fullscreenElement || document.webkitFullscreenElement) {
-                            (document.exitFullscreen || document.webkitExitFullscreen)?.call(document);
-                        }
-                    }
-                };
-
-                window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 300));
-                window.addEventListener('resize', checkOrientation);
-                checkOrientation();
-
-                return () => {
-                    window.removeEventListener('orientationchange', checkOrientation);
-                    window.removeEventListener('resize', checkOrientation);
-                    document.removeEventListener('click', onInteraction, true);
-                    document.removeEventListener('touchstart', onInteraction, true);
-                };
-            }, [authUser, userProfile]);
+                if (document.fullscreenElement || document.webkitFullscreenElement) {
+                    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+                    if (exit) { try { const r = exit.call(document); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+                }
+            }, []);
 
             if (authLoading) return (
                 <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#fff',position:'relative',overflow:'hidden',fontFamily:"'Inter',sans-serif"}}>

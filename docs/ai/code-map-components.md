@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:c8ab0b297acbd7d7 -->
+<!-- sourceFingerprint: sha256:ba0512c56ce34974 -->
 # Code Map — Composants frontend (340)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -39,7 +39,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | Alerte | public/components/RapprochementPaiePopup.jsx:96 | — |
 | AnalysesFoliairesAlertDashboard | public/app.jsx:3631 | — |
 | App | public/app.jsx:67420 | — |
-| AuthenticatedApp | public/app.jsx:67929 | — |
+| AuthenticatedApp | public/app.jsx:67890 | — |
 | BackupManagementPanel | public/app.jsx:63369 | — |
 | BaremesPaiePanel | public/app.jsx:26692 | — |
 | BudgetVsReelTab | public/app.jsx:58317 | fin_budget |
@@ -199,7 +199,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | IMP_Td | public/components/InventaireMouvementsPopup.jsx:177 | — |
 | IMP_Th | public/components/InventaireMouvementsPopup.jsx:171 | — |
 | IMP_typeLabel | public/components/InventaireMouvementsPopup.jsx:61 | — |
-| InstallGuide | public/app.jsx:67725 | — |
+| InstallGuide | public/app.jsx:67686 | — |
 | InventaireMouvementsPopup | public/components/InventaireMouvementsPopup.jsx:183 | — |
 | InventairePrixView | public/app.jsx:52108 | — |
 | InventaireStockView | public/app.jsx:51811 | — |
@@ -235,8 +235,8 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | MMC_Kpi | public/components/MagMappingConsoTab.jsx:126 | — |
 | MOReferentielView | public/components/ParcellesReferentielTab.jsx:426 | — |
 | MSF_Dropzone | public/components/MagStockFilesTab.jsx:164 | — |
-| NewVersionToast | public/app.jsx:67704 | — |
-| NotificationPopup | public/app.jsx:68187 | — |
+| NewVersionToast | public/app.jsx:67665 | — |
+| NotificationPopup | public/app.jsx:68148 | — |
 | PaieTab | public/app.jsx:26826 | paie |
 | Panel | public/app.jsx:3032 | — |
 | ParametresTab | public/app.jsx:27972 | parametres |
@@ -285,7 +285,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ProductivityTreatmentDetail | public/app.jsx:67065 | — |
 | ProductivityTreatmentsTable | public/app.jsx:67008 | — |
 | ProductivityTrendSvg | public/app.jsx:67338 | — |
-| ProfileLoadErrorScreen | public/app.jsx:67681 | — |
+| ProfileLoadErrorScreen | public/app.jsx:67642 | — |
 | PRT_buildSavePayload | public/components/ParcellesReferentielTab.jsx:112 | — |
 | PRT_CampagneCard | public/components/ParcellesReferentielTab.jsx:368 | — |
 | PRT_CultureBadge | public/components/ParcellesReferentielTab.jsx:69 | — |
@@ -315,7 +315,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | QuinzaineTab | public/app.jsx:11124 | quinzaine |
 | RapprochementPaiePopup | public/components/RapprochementPaiePopup.jsx:112 | — |
 | RecolteTab | public/app.jsx:7306 | recolte |
-| ReconnectingBanner | public/app.jsx:67670 | — |
+| ReconnectingBanner | public/app.jsx:67631 | — |
 | SAB_openUrl | public/components/ScanAttachmentButton.jsx:36 | — |
 | ScanAttachmentButton | public/components/ScanAttachmentButton.jsx:40 | — |
 | SecurityEnvoisWATab | public/app.jsx:34601 | sec_envois_wa |
@@ -340,7 +340,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | ToastProvider | public/app.jsx:66246 | — |
 | TraitementSub | public/app.jsx:25152 | — |
 | TransportSub | public/app.jsx:25284 | — |
-| TutorialMenu | public/app.jsx:67798 | — |
+| TutorialMenu | public/app.jsx:67759 | — |
 | VarieteView | public/components/CampagneAnalytiqueTab.jsx:735 | — |
 | WhatsAppConfigPanel | public/app.jsx:63074 | — |
 | WorkerDetailModal | public/app.jsx:3060 | — |

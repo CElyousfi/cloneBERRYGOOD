@@ -138,9 +138,11 @@
       children.push(React.createElement('label', {
         key: 'up',
         title: 'Joindre un scan',
-        // Exclure ce déclencheur du "Fullscreen auto" : sur Safari, requestFullscreen
-        // déclenché sur le même geste que l'ouverture du picker tue le picker.
-        // Le handler onInteraction (app.jsx) ignore tout clic sous [data-no-fullscreen].
+        // Exclut ce déclencheur d'un éventuel "Fullscreen auto" : sur Safari,
+        // requestFullscreen déclenché sur le même geste que l'ouverture du picker
+        // tue le picker. Le plein écran automatique est DÉSACTIVÉ depuis le
+        // 2026-08-22 (app.jsx) : l'attribut est conservé comme garde-fou si la
+        // fonctionnalité revient.
         'data-no-fullscreen': '',
         // A <label> cannot be `disabled`; during upload we neutralize it via
         // pointer-events + dimmed style instead.
