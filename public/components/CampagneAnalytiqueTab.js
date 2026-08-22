@@ -2673,6 +2673,11 @@
       }, 'Écart'), React.createElement('th', {
         style: th
       }, '%'), React.createElement('th', {
+        style: Object.assign({}, th, {
+          color: C.textSec
+        }),
+        title: 'Net à payer de l\'écran Quinzaine — À NE PAS rapprocher du coût chargé : ' + 'il exclut les charges sociales (qui vont à la CNSS) et inclut la sous-traitance. ' + 'Affiché ici parce que c\'est le chiffre qu\'on lit spontanément sur la Quinzaine.'
+      }, 'Net à payer (info)'), React.createElement('th', {
         style: th,
         title: 'JH pointés dont l\'ouvrier n\'a pas de fiche de paie : ils comptent en volume, mais à coût nul.'
       }, 'JH sans taux'), React.createElement('th', {
@@ -2715,6 +2720,11 @@
           })
         }, pct(l.ecartPct)), React.createElement('td', {
           style: Object.assign({}, td, {
+            color: C.textSec,
+            fontStyle: 'italic'
+          })
+        }, l.netQuinzaine === null ? '—' : dh(l.netQuinzaine)), React.createElement('td', {
+          style: Object.assign({}, td, {
             color: l.jhSansTaux > 0 ? '#c0392b' : C.textSec,
             fontWeight: l.jhSansTaux > 0 ? 700 : 400
           })
@@ -2749,6 +2759,8 @@
       }, dh(rap.ecart)), React.createElement('td', {
         style: td
       }, pct(rap.ecartPct)), React.createElement('td', {
+        style: td
+      }, ''), React.createElement('td', {
         style: td
       }, rap.totalJhSansTaux > 0 ? (Math.round(rap.totalJhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'), React.createElement('td', {
         style: td

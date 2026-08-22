@@ -51,11 +51,11 @@
         "file": "tests/unit/campagneBudgetTab.test.js"
       },
       {
-        "commits": 12,
+        "commits": 13,
         "file": "functions/lib/paie/coutOuvrierCampagne.js"
       },
       {
-        "commits": 11,
+        "commits": 12,
         "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:500236c2cdcc3ad0",
+    "sourceFingerprint": "sha256:604608fc3b32c0e7",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,

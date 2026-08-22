@@ -241,3 +241,28 @@ test('rapprocher — le total ignore les quinzaines sans instantané', () => {
   assert.strictEqual(out.totalGrille, 3700);
   assert.deepStrictEqual(out.sansSnapshot, ['Q2']);
 });
+
+test('rapprocher — le NET À PAYER est servi à côté, jamais à la place du coût', () => {
+  // Confusion constatée en usage : 187 737 (net à payer) comparé à un coût
+  // chargé, d'où un écart inventé. Les deux diffèrent des charges sociales et
+  // de la sous-traitance. Les afficher côte à côte est le seul moyen fiable de
+  // ne pas les confondre — mais le rapprochement, lui, ne porte QUE sur le coût.
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 0 }],
+    rows: [{ periode: 'Q1', coutCharge: 194516 }],
+    snapshots: { Q1: { coutEmployeur: 202528, netAPayer: 187737 } },
+  });
+  assert.strictEqual(out.lignes[0].quinzaine, 202528);
+  assert.strictEqual(out.lignes[0].netQuinzaine, 187737);
+  // L'écart se calcule sur le COÛT, pas sur le net.
+  assert.strictEqual(out.lignes[0].ecart, 202528 - 194516);
+});
+
+test('rapprocher — net à payer absent : `null`, pas 0', () => {
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 0 }],
+    rows: [{ periode: 'Q1', coutCharge: 100 }],
+    snapshots: { Q1: { coutEmployeur: 200 } },
+  });
+  assert.strictEqual(out.lignes[0].netQuinzaine, null);
+});

@@ -2262,6 +2262,11 @@
                 React.createElement('th', { style: th, title: 'Coût chargé ouvrier ENREGISTRÉ PAR l\'écran Quinzaine — pas recalculé ici. « — » signifie que personne n\'a ouvert cette quinzaine depuis la mise en service.' }, 'Quinzaine chargée'),
                 React.createElement('th', { style: th }, 'Écart'),
                 React.createElement('th', { style: th }, '%'),
+                React.createElement('th', { style: Object.assign({}, th, { color: C.textSec }),
+                  title: 'Net à payer de l\'écran Quinzaine — À NE PAS rapprocher du coût chargé : '
+                    + 'il exclut les charges sociales (qui vont à la CNSS) et inclut la sous-traitance. '
+                    + 'Affiché ici parce que c\'est le chiffre qu\'on lit spontanément sur la Quinzaine.',
+                }, 'Net à payer (info)'),
                 React.createElement('th', { style: th, title: 'JH pointés dont l\'ouvrier n\'a pas de fiche de paie : ils comptent en volume, mais à coût nul.' }, 'JH sans taux'),
                 React.createElement('th', { style: th, title: 'Décomposition du coût chargé de la quinzaine. Un écart qui vient d\'un poste manquant (transport, prime de fonction, ancienneté) se lit ici.' }, 'dont salaire'),
                 React.createElement('th', { style: th }, 'dont primes'),
@@ -2290,6 +2295,9 @@
                     color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
                   }),
                 }, pct(l.ecartPct)),
+                React.createElement('td', { style: Object.assign({}, td, {
+                  color: C.textSec, fontStyle: 'italic' }) },
+                  l.netQuinzaine === null ? '—' : dh(l.netQuinzaine)),
                 React.createElement('td', {
                   style: Object.assign({}, td, {
                     color: l.jhSansTaux > 0 ? '#c0392b' : C.textSec,
@@ -2313,6 +2321,7 @@
                 React.createElement('td', { style: td }, dh(rap.totalQuinzaine)),
                 React.createElement('td', { style: td }, dh(rap.ecart)),
                 React.createElement('td', { style: td }, pct(rap.ecartPct)),
+                React.createElement('td', { style: td }, ''),
                 React.createElement('td', { style: td },
                   rap.totalJhSansTaux > 0
                     ? (Math.round(rap.totalJhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'),
