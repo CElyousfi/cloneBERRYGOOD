@@ -97,6 +97,12 @@ function normaliser(brut) {
       brutDeclare: nombre(pop.brutDeclare),
     },
     periode: String(b.periode || '').trim(),
+    // BORNES de la quinzaine. Un libellé « Quinzaine 03 » ne dit pas à quelles
+    // dates il correspond : sans elles, apparier un fichier de paie à son
+    // instantané suppose de connaître la numérotation, et un appariement par
+    // nombre de journées échoue dès que deux quinzaines en ont autant.
+    dateDebut: String(b.dateDebut || '').trim(),
+    dateFin: String(b.dateFin || '').trim(),
     coutEmployeur: nombre(b.coutEmployeur),
     netAPayer: nombre(b.netAPayer),
     masseSalariale: nombre(b.masseSalariale),
@@ -151,6 +157,8 @@ function versDocument(snap, nowISO, auteur) {
   const a = auteur || {};
   return {
     periode: snap.periode,
+    dateDebut: snap.dateDebut,
+    dateFin: snap.dateFin,
     coutEmployeur: snap.coutEmployeur,
     netAPayer: snap.netAPayer,
     masseSalariale: snap.masseSalariale,

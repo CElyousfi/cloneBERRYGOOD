@@ -11224,7 +11224,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             };
             React.useEffect(() => {
                 const snap = _snapshotRef.current;
-                if (!snap) { majEtat('attente', 'calcul en cours'); return; }
+                if (!snap) { majEtat('attente', 'calcul en cours — écran pas encore cohérent'); return; }
                 if (!snap.pleinPerimetre) {
                     majEtat('refus', 'un filtre est actif — retire ferme / culture / sous-ferme');
                     return;
@@ -11243,7 +11243,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 // alors indéfiniment un document amputé des nouveaux champs, et
                 // afficherait « ? » sans qu'on sache qu'il suffit de rouvrir.
                 // À incrémenter à CHAQUE ajout de champ.
-                const cle = 'v2|' + snap.periode + '|' + Math.round(snap.coutEmployeur);
+                const cle = 'v3|' + snap.periode + '|' + Math.round(snap.coutEmployeur);
                 if (_snapshotEnvoye.current[cle]) return;
                 _snapshotEnvoye.current[cle] = true;
                 // Route `/api/pointage-rh` — la SEULE mappée vers `pointageV3` dans
@@ -11990,8 +11990,30 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // le rapprochement en silence — l'écart paraîtrait énorme et personne
             // ne saurait qu'il vient d'un filtre laissé actif la veille. Le
             // serveur refuse d'ailleurs tout instantané qui ne le déclare pas.
-            _snapshotRef.current = (_coutEmployeur === null || !currentPeriode) ? null : {
+            // COHÉRENCE AVANT TOUT. `apiData` (d'où viennent les journées) et les
+            // détails transport/MO (d'où viennent les montants) arrivent par des
+            // requêtes distinctes. Entre deux périodes, un rendu intermédiaire
+            // porte les NOUVEAUX montants et les ANCIENNES journées.
+            //
+            // C'est arrivé : les instantanés Q02 et Q03 ont été enregistrés à 5
+            // secondes d'intervalle, et la Q03 porte 1 465 journées — celles de
+            // la Q02 — avec les montants d'août. Le dédoublonnage n'y voit rien :
+            // sa clé est le montant, et le montant, lui, était déjà le bon.
+            //
+            // `apiData.periode` est la période que le SERVEUR a réellement
+            // servie. Tant qu'elle ne correspond pas à celle affichée, l'écran
+            // n'est pas cohérent et il n'y a rien à enregistrer.
+            const _coherent = !!apiData && apiData.periode === currentPeriode;
+            // Bornes de la quinzaine, lues dans le détail par journée. Elles
+            // permettent au rapprochement d'apparier un fichier de paie à la
+            // bonne quinzaine par ses DATES — un libellé « Quinzaine 03 » ne dit
+            // pas à quelles dates il correspond.
+            const _joursQz = ((apiData && apiData.parJour) || [])
+                .map((d) => d && d.jour).filter(Boolean).sort();
+            _snapshotRef.current = (_coutEmployeur === null || !currentPeriode || !_coherent) ? null : {
                 periode: currentPeriode,
+                dateDebut: _joursQz[0] || '',
+                dateFin: _joursQz[_joursQz.length - 1] || '',
                 coutEmployeur: _coutEmployeur,
                 netAPayer: _netAPayer,
                 masseSalariale: (_netAPayer === null) ? 0 : _netAPayer - totalDivers,
