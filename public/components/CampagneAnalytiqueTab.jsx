@@ -2204,7 +2204,8 @@
       var CRap = window.CampagneRapprochement;
       var pq = props.coutOuvrier && props.coutOuvrier.parQuinzaine;
       if (!CRap || typeof CRap.rapprocher !== 'function' || !pq || !pq.length) return null;
-      var rap = CRap.rapprocher({ parQuinzaine: pq, rows: data.rows });
+      var rap = CRap.rapprocher({ parQuinzaine: pq, rows: data.rows,
+        snapshots: props.snapQuinz });
       if (!rap.lignes.length) return null;
 
       var dh = function (v) { return Math.round(v).toLocaleString('fr-MA'); };
@@ -2237,7 +2238,17 @@
           React.createElement('span', {
             style: { fontSize: '11px', color: alerte(rap.ecartPct) ? '#c0392b' : C.textSec,
               fontWeight: alerte(rap.ecartPct) ? 700 : 400 },
-          }, 'écart total ' + dh(rap.ecart) + ' DH (' + pct(rap.ecartPct) + ')')
+          }, 'écart total ' + dh(rap.ecart) + ' DH (' + pct(rap.ecartPct) + ')'),
+          // Dire ce qui n'est PAS comparé. Un total qui paraît complet alors
+          // qu'il laisse des quinzaines de côté est pire qu'un total absent.
+          (rap.sansSnapshot && rap.sansSnapshot.length)
+            ? React.createElement('span', {
+              style: { fontSize: '11px', color: '#c0392b', fontWeight: 600 },
+              title: 'Ouvrir l\'écran Quinzaine sur ces périodes enregistre leur '
+                + 'coût et les fait entrer dans le rapprochement.',
+            }, rap.sansSnapshot.length + ' quinzaine(s) hors comparaison — '
+              + rap.sansSnapshot.join(', '))
+            : null
         ),
         React.createElement('div', { style: { overflowX: 'auto' } },
           React.createElement('table', {
@@ -2248,7 +2259,7 @@
                 React.createElement('th', { style: thL }, 'Quinzaine'),
                 React.createElement('th', { style: th }, 'JH'),
                 React.createElement('th', { style: th, title: 'Coût CHARGÉ agrégé par parcelle : Σ (JH × taux de l\'ouvrier), tel que la grille ci-dessus l\'additionne.' }, 'Grille chargée'),
-                React.createElement('th', { style: th, title: 'Coût chargé ouvrier de l\'écran Quinzaine — la source de vérité, celle qu\'on rapproche du fichier de paie.' }, 'Quinzaine chargée'),
+                React.createElement('th', { style: th, title: 'Coût chargé ouvrier ENREGISTRÉ PAR l\'écran Quinzaine — pas recalculé ici. « — » signifie que personne n\'a ouvert cette quinzaine depuis la mise en service.' }, 'Quinzaine chargée'),
                 React.createElement('th', { style: th }, 'Écart'),
                 React.createElement('th', { style: th }, '%'),
                 React.createElement('th', { style: th, title: 'JH pointés dont l\'ouvrier n\'a pas de fiche de paie : ils comptent en volume, mais à coût nul.' }, 'JH sans taux'),
@@ -2265,14 +2276,15 @@
                 React.createElement('td', { style: Object.assign({}, td, { color: C.textSec }) },
                   (Math.round(l.jours * 10) / 10).toLocaleString('fr-MA')),
                 React.createElement('td', { style: td }, dh(l.grille)),
-                React.createElement('td', { style: Object.assign({}, td, { fontWeight: 700 }) },
-                  dh(l.quinzaine)),
+                React.createElement('td', { style: Object.assign({}, td, { fontWeight: 700 },
+                  l.quinzaine === null ? { color: C.textSec, fontWeight: 400 } : {}) },
+                  l.quinzaine === null ? '—' : dh(l.quinzaine)),
                 React.createElement('td', {
                   style: Object.assign({}, td, {
                     color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
                     fontWeight: alerte(l.ecartPct) ? 700 : 400,
                   }),
-                }, dh(l.ecart)),
+                }, l.ecart === null ? '—' : dh(l.ecart)),
                 React.createElement('td', {
                   style: Object.assign({}, td, {
                     color: alerte(l.ecartPct) ? '#c0392b' : C.textSec,
@@ -2297,7 +2309,7 @@
               React.createElement('tr', { style: { background: C.surface2, fontWeight: 700 } },
                 React.createElement('td', { style: tdL }, 'TOTAL'),
                 React.createElement('td', { style: td }, ''),
-                React.createElement('td', { style: td }, dh(rap.totalGrille)),
+                React.createElement('td', { style: td }, dh(rap.totalGrilleComparable)),
                 React.createElement('td', { style: td }, dh(rap.totalQuinzaine)),
                 React.createElement('td', { style: td }, dh(rap.ecart)),
                 React.createElement('td', { style: td }, pct(rap.ecartPct)),
@@ -2321,14 +2333,18 @@
         },
           React.createElement('i', { className: 'fa-solid fa-circle-info',
             style: { marginRight: '6px' } }),
-          'Les deux colonnes portent le même coût CHARGÉ (salaire + primes + '
-            + 'charges), plus jamais la base BEE ONE. La grille agrège le pointage '
-            + 'PAR PARCELLE : une ligne dont la parcelle ou la culture ne se résout '
-            + 'pas n\'y entre pas. La « Quinzaine » part des lignes brutes et fait '
-            + 'foi. L\'écart est donc en dirhams réels — à zéro, la grille montre '
-            + 'tout l\'argent. Les « JH sans taux » (ouvriers sans fiche de paie) en '
-            + 'sont la première cause : ils pèsent en volume, rien en coût. Le '
-            + 'pointage divers (sous-traitants) reste hors des deux chemins.'
+          'La colonne « Quinzaine chargée » est le total ENREGISTRÉ par l\'écran '
+            + 'Quinzaine — il n\'est pas recalculé ici. C\'est délibéré : trois '
+            + 'tentatives de le reproduire ont produit trois divergences, et un '
+            + 'écart entre deux implémentations ne dit rien. « — » signifie que '
+            + 'personne n\'a ouvert cette quinzaine depuis la mise en service : '
+            + 'ouvrir l\'écran Quinzaine sur cette période suffit à l\'enregistrer. '
+            + 'La grille, elle, agrège le pointage PAR PARCELLE : une ligne dont la '
+            + 'parcelle ou la culture ne se résout pas n\'y entre pas. L\'écart est '
+            + 'donc en dirhams réels — à zéro, la grille montre tout l\'argent. Les '
+            + '« JH sans taux » (ouvriers sans fiche de paie) en sont la première '
+            + 'cause : ils pèsent en volume, rien en coût. Le pointage divers '
+            + '(sous-traitants) reste hors des deux chemins.'
         )
       );
     }
@@ -2915,6 +2931,32 @@
       return function () { cancelled = true; };
     }, []);
 
+    // INSTANTANÉS DE L'ÉCRAN QUINZAINE — la référence du rapprochement.
+    //
+    // Ce panneau ne RECALCULE plus le coût de la quinzaine : trois tentatives de
+    // le reproduire ont produit trois divergences. L'écran Quinzaine enregistre
+    // son propre total, on le relit ici tel quel. L'écart affiché redevient donc
+    // un écart RÉEL entre deux mesures, et non entre deux implémentations.
+    //
+    // Absent = personne n'a ouvert la Quinzaine depuis la mise en service. Le
+    // panneau le DIT au lieu de retomber sur un calcul local : un chiffre de
+    // repli s'y lirait comme la référence, et on aurait reconstruit exactement
+    // le problème qu'on vient de supprimer.
+    var _snapQuinz = useState(null);
+    var snapQuinz = _snapQuinz[0]; var setSnapQuinz = _snapQuinz[1];
+
+    useEffect(function () {
+      var cancelled = false;
+      fetch('/api/pointage?action=cout-quinzaine')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (cancelled || !d || !d.success) return;
+          setSnapQuinz(d.parPeriode || {});
+        })
+        .catch(function () { /* indisponible → le panneau affiche « — » */ });
+      return function () { cancelled = true; };
+    }, []);
+
     // Rechargé à CHAQUE retour sur le sous-onglet « Main Oeuvre » (d'où part
     // l'export), et pas seulement au montage : sinon un budget saisi dans le
     // sous-onglet Budget puis exporté sans recharger la page produirait un
@@ -3148,6 +3190,7 @@
                 refOperations: refOperations,
                 bons: bons,
                 coutOuvrier: coutOuvrier,
+                snapQuinz: snapQuinz,
                 metric: metric,
                 setMetric: setMetric,
               })

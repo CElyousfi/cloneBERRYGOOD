@@ -118,66 +118,76 @@ function prefixeEquipe(matricule, equipes) {
  *
  * @param {string} matricule
  * @param {Array<{prefix?: string, coutParOuvrier?: number, history?: Array<Object>}>} equipes
- * @param {string} [periode] quinzaine payée. Absente → tarif le plus récent.
+ * @param {string} [dateISO] date de la quinzaine payée ('YYYY-MM-DD').
  * @returns {number} montant PAR JOUR travaillé.
  */
-function primeTransport(matricule, equipes, periode) {
+function primeTransport(matricule, equipes, dateISO) {
   const prefixe = prefixeEquipe(matricule, equipes);
   if (!prefixe) return 0;
   const equipe = (equipes || []).find(
     (e) => e && String(e.prefix || '').toUpperCase() === prefixe
   );
   if (!equipe) return 0;
-  const v = Number(tarifADate(equipe, periode));
+  const v = Number(tarifADate(equipe, dateISO));
   return isFinite(v) && v > 0 ? v : 0;
 }
 
 /**
- * Ordonne un libellé de quinzaine. PURE. Portage à l'identique de
- * `quinzaineOrder` (app.jsx) : une règle d'ordre différente ici ferait retenir
- * un autre palier de tarif que celui affiché à l'écran.
+ * Date de prise d'effet d'une entrée d'historique, en ISO. PURE.
  *
- * Formats : « DD/MM/YYYY[ - DD/MM/YYYY] » → timestamp du début ; « Quinzaine NN »
- * → ordinal. Les deux unités ne sont pas comparables entre elles, mais une même
- * configuration ne mélange pas les formats.
+ * `effectiveFrom` s'écrit « DD/MM/YYYY - DD/MM/YYYY » (app.jsx, écran Équipes).
+ * On en retient le PREMIER jour : c'est celui à partir duquel le tarif vaut.
  *
- * @param {string} periodeStr
- * @returns {number}
+ * ⚠️ Ne PAS comparer un `effectiveFrom` à un libellé de quinzaine. L'ordre de
+ * l'écran (`quinzaineOrder`) rend un timestamp pour une date et un ORDINAL pour
+ * « Quinzaine 01 » — deux unités sans commune mesure. Les comparer écartait
+ * toutes les entrées d'historique et ramenait le transport à 0, sans erreur ni
+ * trace. Ici on compare des DATES ISO, jamais des libellés.
+ *
+ * @param {string} effectiveFrom
+ * @returns {string} 'YYYY-MM-DD', ou '' si aucune date n'est lisible.
  */
-function ordreQuinzaine(periodeStr) {
-  if (!periodeStr) return 0;
-  const s = String(periodeStr);
-  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  if (m) return new Date(m[3] + '-' + m[2] + '-' + m[1] + 'T00:00:00').getTime();
-  const n = s.match(/\d+/);
-  return n ? parseInt(n[0], 10) : 0;
+function dateEffet(effectiveFrom) {
+  const m = String(effectiveFrom || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
 }
 
 /**
- * Tarif de transport d'une équipe À UNE QUINZAINE. PURE.
+ * Tarif de transport d'une équipe À UNE DATE. PURE.
  *
- * Retient la dernière entrée d'historique dont `effectiveFrom` ne dépasse pas la
- * quinzaine payée — le tarif EN VIGUEUR alors, pas le tarif d'aujourd'hui.
- * Rapprocher une quinzaine de juillet au tarif d'août produirait un écart qu'on
- * chercherait ensuite dans le pointage.
+ * Retient la dernière entrée d'historique prenant effet au plus tard à cette
+ * date — le tarif EN VIGUEUR alors, pas celui d'aujourd'hui. Valoriser une
+ * quinzaine de juillet au tarif d'août produirait un écart qu'on irait ensuite
+ * chercher dans le pointage.
+ *
+ * Aucune entrée applicable (quinzaine antérieure à toute l'historique) → on
+ * retient la PLUS ANCIENNE, et non zéro : l'équipe transportait déjà ses
+ * ouvriers avant que quelqu'un ne saisisse son tarif dans l'écran RH. Zéro
+ * ferait passer une lacune de saisie pour une absence de transport.
  *
  * @param {{coutParOuvrier?: number, history?: Array<{effectiveFrom?: string, coutParOuvrier?: number}>}} equipe
- * @param {string} [periode]
+ * @param {string} [dateISO] 'YYYY-MM-DD'. Absente → tarif le plus récent.
  * @returns {number}
  */
-function tarifADate(equipe, periode) {
+function tarifADate(equipe, dateISO) {
   const hist = (equipe && Array.isArray(equipe.history)) ? equipe.history : [];
   const plat = Number((equipe || {}).coutParOuvrier) || 0;
   if (!hist.length) return plat;
-  const cible = periode ? ordreQuinzaine(periode) : Number.MAX_SAFE_INTEGER;
-  let retenue = null;
+  const cible = String(dateISO || '9999-12-31');
+  let applicable = null;
+  let plusAncienne = null;
   hist.forEach((h) => {
     if (!h) return;
-    const o = ordreQuinzaine(h.effectiveFrom);
-    if (o > cible) return;
-    if (retenue === null || o >= retenue.ordre) retenue = { ordre: o, entree: h };
+    const d = dateEffet(h.effectiveFrom);
+    if (!d) return;
+    if (plusAncienne === null || d < plusAncienne.d) plusAncienne = { d: d, e: h };
+    if (d > cible) return;
+    if (applicable === null || d >= applicable.d) applicable = { d: d, e: h };
   });
-  return retenue ? (Number(retenue.entree.coutParOuvrier) || 0) : plat;
+  const retenue = applicable || plusAncienne;
+  if (!retenue) return plat;
+  const v = Number(retenue.e.coutParOuvrier);
+  return isFinite(v) && v > 0 ? v : plat;
 }
 
 /**
@@ -467,7 +477,7 @@ function coutOuvrierCampagne(args) {
 
       const primesOuvrier = Object.assign({}, e.primes || {}, {
         // × jours : la prime de transport est due PAR JOUR TRAVAILLÉ.
-        transport: primeTransport(mat, a.equipesTransport, cumulQ.periode) * joursTravailles,
+        transport: primeTransport(mat, a.equipesTransport, q.dateFin) * joursTravailles,
       });
 
       const paie = paieOuvrierQuinzaine({
@@ -573,6 +583,6 @@ function coutOuvrierCampagne(args) {
 }
 
 module.exports = {
-  prefixeEquipe, primeTransport, tarifADate, ordreQuinzaine, primeRecolte, cumuleJournee,
+  prefixeEquipe, primeTransport, tarifADate, dateEffet, primeRecolte, cumuleJournee,
   paieOuvrierQuinzaine, coutOuvrierCampagne,
 };

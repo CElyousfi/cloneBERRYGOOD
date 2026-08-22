@@ -11189,6 +11189,46 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [emargementLoading, setEmargementLoading] = useState(false);
             const [diversData, setDiversData] = useState(null); // {total, dates, byDate, rows} — Location & Engins
             const [diversPopupOpen, setDiversPopupOpen] = useState(false);
+
+            // INSTANTANÉ DU COÛT — cet écran fait foi, il enregistre son chiffre.
+            //
+            // L'écran Campagne ne le recalcule plus : trois tentatives de le
+            // reproduire ont produit trois divergences (transport résolu au
+            // mauvais format de date, préfixe d'équipe deviné, part salariale
+            // comptée d'un seul côté). Il relit maintenant ce total tel quel, et
+            // l'écart qu'il affiche redevient un écart RÉEL entre deux mesures.
+            //
+            // Le ref est renseigné pendant le rendu (aucun re-rendu déclenché) et
+            // lu par l'effet ci-dessous, APRÈS le rendu — les totaux ne sont
+            // calculés que dans le corps du composant, hors de portée d'un hook.
+            const _snapshotRef = React.useRef(null);
+            const _snapshotEnvoye = React.useRef({});
+            React.useEffect(() => {
+                const snap = _snapshotRef.current;
+                if (!snap || !snap.pleinPerimetre || !(snap.coutEmployeur > 0)) return;
+                // Dédoublonnage sur la VALEUR, pas sur la période : le total se
+                // stabilise après plusieurs rendus (chargements successifs), et
+                // republier un chiffre identique à chaque rendu inonderait
+                // l'écriture sans rien changer au document.
+                const cle = snap.periode + '|' + Math.round(snap.coutEmployeur);
+                if (_snapshotEnvoye.current[cle]) return;
+                _snapshotEnvoye.current[cle] = true;
+                fetch('/api/pointage?action=cout-quinzaine-save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(snap),
+                }).then(r => r.json()).then(j => {
+                    if (!j || !j.success) {
+                        // On REJOUE en cas de refus : le garder marqué comme
+                        // envoyé condamnerait la période pour toute la session.
+                        delete _snapshotEnvoye.current[cle];
+                        console.warn('[cout-quinzaine] refus :', (j && j.error) || 'inconnu');
+                    }
+                }).catch(e => {
+                    delete _snapshotEnvoye.current[cle];
+                    console.warn('[cout-quinzaine] échec :', e.message);
+                });
+            });
             const [syncingBeeOne, setSyncingBeeOne] = useState(false);
             const [syncBeeOneResult, setSyncBeeOneResult] = useState(null);
             const [emargChefs, setEmargChefs] = React.useState({ loading: false, error: null });
@@ -11903,6 +11943,35 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // d'EMPLOYÉ : elle s'ajoute au total sans entrer dans le coût
             // employeur, qu'on compare à une masse salariale.
             const totalGlobal = (_coutEmployeur === null) ? null : _coutEmployeur + totalDivers;
+
+            // Instantané destiné à l'écran Campagne. `pleinPerimetre` est la
+            // clause décisive : sous filtre (ferme, culture, sous-ferme) ce total
+            // est un SOUS-total, et l'enregistrer comme référence empoisonnerait
+            // le rapprochement en silence — l'écart paraîtrait énorme et personne
+            // ne saurait qu'il vient d'un filtre laissé actif la veille. Le
+            // serveur refuse d'ailleurs tout instantané qui ne le déclare pas.
+            _snapshotRef.current = (_coutEmployeur === null || !currentPeriode) ? null : {
+                periode: currentPeriode,
+                coutEmployeur: _coutEmployeur,
+                netAPayer: _netAPayer,
+                masseSalariale: (_netAPayer === null) ? 0 : _netAPayer - totalDivers,
+                // Mêmes JH que la bulle « Coût chargé ouvrier / JH » : sans le même
+                // dénominateur, les deux écrans afficheraient deux DH/JH pour un
+                // total identique.
+                jours: totalJournees || totalJourneesDistinct || 0,
+                pleinPerimetre: !farmFilter && !cultureFilter && !avoSubFilter,
+                postes: {
+                    moRecolte: totalCoutRecolte,
+                    moHorsRecolte: totalCoutHorsRecolte,
+                    postesFixes: totalCoutPostes,
+                    primeRecolte: totalPrimeRecolte,
+                    primeTransport: transportCoutTotal,
+                    autresPrimes: totalAutresPrimes,
+                    heuresSup: _hsTotal,
+                    chargesSociales: _chargesSociales ? _chargesSociales.total : 0,
+                    locationEngins: totalDivers,
+                },
+            };
 
             const recapItems = [
                 { label: 'MO Récolte', icon: 'fa-seedling', color: 'var(--berry)', montant: _sbPending ? null : totalCoutRecolte, popupKey: 'mo_recolte' },

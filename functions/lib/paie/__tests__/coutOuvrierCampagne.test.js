@@ -86,29 +86,47 @@ test('primeTransport — le tarif vit dans `history`, pas dans le champ plat', (
   // renvoyait `undefined` → 0 DH de transport pour toute équipe déjà passée par
   // l'écran RH. Ce test tient sur une équipe qui n'a QUE de l'historique.
   const eqHist = [{ prefix: 'AB', equipe: 'Équipe AB', history: [
-    { effectiveFrom: '01/07/2026', coutParOuvrier: 20 },
-    { effectiveFrom: '16/07/2026', coutParOuvrier: 26 },
+    { effectiveFrom: '01/07/2026 - 15/07/2026', coutParOuvrier: 20 },
+    { effectiveFrom: '16/07/2026 - 31/07/2026', coutParOuvrier: 26 },
   ] }];
-  // Quinzaine du 01/07 : le tarif EN VIGUEUR alors, pas celui d'aujourd'hui.
-  assert.strictEqual(M.primeTransport('AB1', eqHist, '01/07/2026 - 15/07/2026'), 20);
-  assert.strictEqual(M.primeTransport('AB1', eqHist, '16/07/2026 - 31/07/2026'), 26);
-  // Quinzaine antérieure à toute entrée : rien à appliquer.
-  assert.strictEqual(M.primeTransport('AB1', eqHist, '01/06/2026 - 15/06/2026'), 0);
-  // Sans quinzaine : le tarif le plus récent.
+  // On compare des DATES ISO, jamais des libellés de quinzaine.
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '2026-07-15'), 20);
+  assert.strictEqual(M.primeTransport('AB1', eqHist, '2026-07-31'), 26);
+  // Sans date : le tarif le plus récent.
   assert.strictEqual(M.primeTransport('AB1', eqHist), 26);
+});
+
+test('tarifADate — un libellé « Quinzaine NN » ne doit RIEN écarter', () => {
+  // La régression du 2026-08-22 : `effectiveFrom` est une DATE, la quinzaine de
+  // campagne un ORDINAL (« Quinzaine 01 »). Les comparer écartait toute
+  // l'historique et ramenait le transport à 0, sans erreur ni trace. Le module
+  // ne prend donc plus que des dates ISO — et une chaîne qui n'en est pas une
+  // ne peut plus faire disparaître un tarif.
+  const eq = { history: [{ effectiveFrom: '01/07/2026 - 15/07/2026', coutParOuvrier: 20 }] };
+  assert.strictEqual(M.tarifADate(eq, 'Quinzaine 01'), 20);
+});
+
+test('tarifADate — quinzaine antérieure à l\'historique : la plus ancienne, pas 0', () => {
+  // L'équipe transportait déjà ses ouvriers avant que quelqu'un ne saisisse son
+  // tarif. Zéro ferait passer une lacune de saisie pour une absence de transport.
+  const eq = { history: [
+    { effectiveFrom: '16/07/2026 - 31/07/2026', coutParOuvrier: 26 },
+    { effectiveFrom: '01/08/2026 - 15/08/2026', coutParOuvrier: 30 },
+  ] };
+  assert.strictEqual(M.tarifADate(eq, '2026-07-10'), 26);
 });
 
 test('tarifADate — historique absent : on retombe sur le champ plat', () => {
   // Les équipes jamais modifiées depuis l'écran RH n'ont pas d'historique.
   // Les ignorer les priverait de transport pour la raison inverse.
-  assert.strictEqual(M.tarifADate({ coutParOuvrier: 15 }, 'Quinzaine 01'), 15);
-  assert.strictEqual(M.tarifADate({}, 'Quinzaine 01'), 0);
+  assert.strictEqual(M.tarifADate({ coutParOuvrier: 15 }, '2026-07-15'), 15);
+  assert.strictEqual(M.tarifADate({}, '2026-07-15'), 0);
 });
 
-test('ordreQuinzaine — ordonne dates et ordinaux comme l\'écran', () => {
-  assert.ok(M.ordreQuinzaine('16/07/2026 - 31/07/2026') > M.ordreQuinzaine('01/07/2026'));
-  assert.strictEqual(M.ordreQuinzaine('Quinzaine 03'), 3);
-  assert.strictEqual(M.ordreQuinzaine(''), 0);
+test('dateEffet — extrait le PREMIER jour de la plage', () => {
+  assert.strictEqual(M.dateEffet('01/07/2026 - 15/07/2026'), '2026-07-01');
+  assert.strictEqual(M.dateEffet('Quinzaine 01'), '');
+  assert.strictEqual(M.dateEffet(''), '');
 });
 
 test('primeTransport — équipe inconnue → 0, jamais un montant deviné', () => {
