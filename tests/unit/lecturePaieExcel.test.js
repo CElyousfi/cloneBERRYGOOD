@@ -16,7 +16,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const path = require('node:path');
 
-const L = require(path.join(__dirname, '../lecturePaieExcel.js'));
+const L = require(path.join(__dirname, '../../public/lib/lecturePaieExcel.js'));
 
 /** En-tête réel des feuilles POINTAGE / SANS CNSS (15 colonnes de jours). */
 const ENTETE_15 = [

@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:68feb450eb3394b8",
+    "sourceFingerprint": "sha256:7010803b7d257135",
     "stats": {
-      "targetFiles": 230,
+      "targetFiles": 234,
       "targetFilesWithDirectTests": 137,
       "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 200
+      "testFilesScanned": 202
     }
   },
   "index": {
@@ -1494,6 +1494,14 @@
       "directTests": [],
       "transitiveTests": []
     },
+    "public/components/RapprochementPaiePopup.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/RapprochementPaiePopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/components/ScanAttachmentButton.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1662,6 +1670,10 @@
         "tests/unit/inventaireUtils.test.js"
       ]
     },
+    "public/lib/lecturePaieExcel.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/lib/local-test-bypass.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1721,6 +1733,10 @@
       "transitiveTests": [
         "tests/unit/quinzaineUtils.test.js"
       ]
+    },
+    "public/lib/rapprochementPaie.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/recolteKpiUtils.js": {
       "directTests": [

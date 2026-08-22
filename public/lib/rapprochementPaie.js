@@ -1,0 +1,235 @@
+/*
+ * rapprochementPaie.js — FICHIER DE PAIE ↔ écran Quinzaine. PURE, aucune I/O.
+ *
+ * Le fichier Excel est la source de vérité : c'est lui qui sert à payer. Ce
+ * module met ses postes face à ceux de l'écran Quinzaine et dit OÙ ils
+ * divergent — pas seulement de combien.
+ *
+ * Chargé en <script> classique : tout est wrappé dans une IIFE, aucun
+ * identifiant top-level ne fuite (une collision dans le scope global crashe le
+ * boot React, cf. mémoire projet `umd-global-collision-smoke-load`). Un seul
+ * global : `window.RapprochementPaie`.
+ *
+ * ── COMPARER CE QUI EST COMPARABLE ─────────────────────────────────────────
+ * Les deux sources ne découpent pas le coût de la même façon. Le fichier range
+ * le jour férié DANS le montant de l'ouvrier ; l'écran Quinzaine en fait une
+ * ligne d'« Autres Primes ». Le fichier ignore la sous-traitance ; l'écran
+ * l'ajoute au net à payer.
+ *
+ * On ne compare donc QUE des périmètres reconstitués explicitement — et on le
+ * dit dans le libellé de chaque ligne. Mettre côte à côte le « NET » du fichier
+ * (153 503) et le « Net à payer » de l'écran (187 737) fabrique un écart de
+ * 34 000 DH qui n'existe pas : c'est arrivé le 2026-08-22, et il a fallu une
+ * demi-journée pour établir que les deux chiffres ne parlaient pas de la même
+ * chose.
+ *
+ * ── UN ÉCART N'EST PAS FORCÉMENT UNE ERREUR DE CALCUL ──────────────────────
+ * Le pointage BEE ONE et la feuille de paie peuvent être en désaccord sur une
+ * PRÉSENCE : 39 ouvriers pointés le 14/08 quand la paie en paie 72. Aucun code
+ * ne tranche ça. Le rapport distingue donc explicitement ce qui relève du
+ * CALCUL (corrigeable) et ce qui relève des DONNÉES (à arbitrer).
+ */
+// @ts-check
+(function () {
+  'use strict';
+
+  /** @param {*} v @returns {number} */
+  function nombre(v) {
+    var n = Number(v);
+    return isFinite(n) ? n : 0;
+  }
+
+  /**
+   * Valeur du jour férié côté FICHIER, en dirhams nets. PURE.
+   *
+   * Le fichier ne l'isole pas : il l'ajoute au « Total » de l'ouvrier, qui part
+   * ensuite dans le Montant Brut puis dans le Net. On le reconstitue donc au
+   * SMAG, comme la paie le fait : `jours × SMAG brut × (1 − retenue)`.
+   *
+   * C'est une reconstitution, pas une lecture — le rapport doit le dire, sans
+   * quoi on la prendrait pour une valeur du fichier.
+   *
+   * @param {number} joursFeries
+   * @param {{smagBrutJournalier?: number, tauxCnssSalariale?: number, tauxAmo?: number}} baremes
+   * @returns {number}
+   */
+  function valeurFerieFichier(joursFeries, baremes) {
+    var b = baremes || {};
+    var smag = nombre(b.smagBrutJournalier);
+    var retenue = 1 - (nombre(b.tauxCnssSalariale) + nombre(b.tauxAmo));
+    return nombre(joursFeries) * smag * retenue;
+  }
+
+  /**
+   * Une ligne de comparaison. PURE.
+   *
+   * `nature` porte l'information la plus utile du rapport : un écart de CALCUL
+   * se corrige dans Smart Berry, un écart de DONNÉES se tranche avec le RH. Les
+   * confondre fait chercher un bug là où il y a un désaccord sur une présence.
+   *
+   * @param {string} cle
+   * @param {string} libelle
+   * @param {number|null} fichier
+   * @param {number|null} smartBerry
+   * @param {{unite?: string, nature?: string, note?: string}} [opts]
+   */
+  function ligne(cle, libelle, fichier, smartBerry, opts) {
+    var o = opts || {};
+    var ecart = (fichier === null || smartBerry === null)
+      ? null : nombre(fichier) - nombre(smartBerry);
+    return {
+      cle: cle,
+      libelle: libelle,
+      fichier: fichier === null ? null : nombre(fichier),
+      smartBerry: smartBerry === null ? null : nombre(smartBerry),
+      ecart: ecart,
+      unite: o.unite || 'DH',
+      // 'calcul'    → Smart Berry se corrige ;
+      // 'donnees'   → les deux sources sont en désaccord, arbitrage RH ;
+      // 'perimetre' → les deux ne couvrent pas la même chose, à reconstituer ;
+      // 'info'      → servi pour lecture, pas un écart.
+      nature: o.nature || 'calcul',
+      note: o.note || '',
+    };
+  }
+
+  /**
+   * Rapproche un fichier de paie et un instantané de l'écran Quinzaine. PURE.
+   *
+   * @param {Object} args
+   * @param {Object} args.fichier sortie de `LecturePaieExcel.postesExcel`.
+   * @param {Object} args.quinzaine instantané `rh_cout_quinzaine`.
+   * @param {Object} [args.baremes] barèmes de paie, pour reconstituer le férié.
+   * @returns {{lignes: Array<Object>, total: Object, alertes: Array<Object>,
+   *   comparable: boolean}}
+   */
+  function comparer(args) {
+    var a = args || {};
+    var f = a.fichier;
+    var q = a.quinzaine;
+    if (!f || !q) {
+      return { lignes: [], total: null, alertes: [], comparable: false };
+    }
+    var postes = q.postes || {};
+    var sous = q.sousPostes || {};
+    var transportSB = nombre(postes.primeTransport);
+    var locationSB = nombre(postes.locationEngins);
+
+    // Salaires NETS, des deux côtés, hors transport et hors sous-traitance.
+    // C'est le seul périmètre que les deux sources couvrent à l'identique.
+    var salairesSB = nombre(q.netAPayer) - transportSB - locationSB;
+
+    var lignes = [
+      ligne('jh', 'Journées-homme (JH)', f.jours, q.jours,
+        { unite: 'JH', nature: 'perimetre',
+          note: 'Un écart ici précède tous les autres : deux totaux qui ne '
+            + 'portent pas sur les mêmes journées ne se comparent pas.' }),
+
+      // LA ligne qui a motivé ce module.
+      ligne('joursFeries', 'Jours fériés — nombre de journées',
+        f.feries, q.joursFeries === undefined ? null : nombre(q.joursFeries),
+        { unite: 'j', nature: 'donnees',
+          note: 'Le pointage BEE ONE et la feuille de paie peuvent être en '
+            + 'désaccord sur qui était présent un jour férié. Cela ne se corrige '
+            + 'pas dans Smart Berry : c\'est un arbitrage RH.' }),
+
+      ligne('ferieDH', 'Jour férié — montant',
+        valeurFerieFichier(f.feries, a.baremes),
+        sous.jourFerie === undefined ? null : nombre(sous.jourFerie),
+        { nature: 'calcul',
+          note: 'Côté fichier, RECONSTITUÉ au SMAG (le fichier ne l\'isole pas : '
+            + 'il l\'inclut dans le montant de l\'ouvrier).' }),
+
+      ligne('salaires', 'Salaires nets (hors transport et sous-traitance)',
+        f.net, salairesSB, { nature: 'calcul' }),
+
+      ligne('transport', 'Prime de transport', f.transport, transportSB,
+        { nature: 'calcul' }),
+
+      ligne('location', 'Location & Engins (sous-traitance)', null, locationSB,
+        { nature: 'info',
+          note: 'Absente du fichier de paie : un prestataire n\'a pas de bulletin. '
+            + 'Servie pour reconstituer le décaissement total.' }),
+    ];
+
+    // TOTAL DÉCAISSÉ — périmètre reconstitué des deux côtés, explicitement.
+    var totalFichier = nombre(f.net) + nombre(f.transport) + locationSB;
+    var totalSB = nombre(q.netAPayer);
+    var total = {
+      libelle: 'TOTAL décaissé (salaires + transport + sous-traitance)',
+      fichier: totalFichier,
+      smartBerry: totalSB,
+      ecart: totalFichier - totalSB,
+      ecartPct: totalFichier > 0 ? (totalFichier - totalSB) / totalFichier : null,
+    };
+
+    return {
+      lignes: lignes,
+      total: total,
+      alertes: alertes(lignes, total),
+      comparable: true,
+    };
+  }
+
+  /**
+   * Ce qu'il faut regarder en premier, et pourquoi. PURE.
+   *
+   * Un rapport qui se contente d'aligner des nombres oblige le lecteur à
+   * refaire l'analyse à chaque fois. Ces alertes disent quoi faire — ou qu'il
+   * n'y a rien à faire.
+   *
+   * @param {Array<Object>} lignes
+   * @param {Object} total
+   * @returns {Array<{niveau: string, texte: string}>}
+   */
+  function alertes(lignes, total) {
+    var out = [];
+    var par = {};
+    lignes.forEach(function (l) { par[l.cle] = l; });
+
+    // 1) Le périmètre d'abord : sans lui, le reste ne veut rien dire.
+    if (par.jh && par.jh.ecart !== null && Math.abs(par.jh.ecart) > 0.5) {
+      out.push({ niveau: 'bloquant', texte:
+        'Les journées ne concordent pas (' + Math.round(par.jh.ecart * 10) / 10
+        + ' JH d\'écart). Régler ce point AVANT de regarder les montants : deux '
+        + 'totaux qui ne portent pas sur les mêmes journées ne se comparent pas.' });
+    }
+
+    // 2) Les jours fériés : un désaccord de DONNÉES, pas un bug.
+    if (par.joursFeries && par.joursFeries.ecart !== null
+        && Math.abs(par.joursFeries.ecart) >= 1) {
+      var d = Math.round(par.joursFeries.ecart);
+      out.push({ niveau: 'arbitrage', texte:
+        'Le fichier paie ' + (d > 0 ? d + ' journées fériées DE PLUS' : (-d) + ' journées fériées DE MOINS')
+        + ' que le pointage BEE ONE n\'en enregistre. Les deux sources sont en '
+        + 'désaccord sur des présences — aucun code ne tranche cela, c\'est une '
+        + 'décision RH.' });
+    }
+
+    // 3) Ce qui reste, une fois le férié mis de côté : là, c'est du calcul.
+    var ferie = (par.ferieDH && par.ferieDH.ecart) || 0;
+    if (total && Math.abs(total.ecart - ferie) > Math.max(500, Math.abs(total.fichier) * 0.005)) {
+      out.push({ niveau: 'calcul', texte:
+        'Hors jour férié, il reste ' + Math.round(total.ecart - ferie)
+        + ' DH d\'écart. Celui-là relève du calcul Smart Berry.' });
+    }
+
+    if (!out.length) {
+      out.push({ niveau: 'ok', texte:
+        'Aucun écart significatif : le fichier et Smart Berry disent la même chose.' });
+    }
+    return out;
+  }
+
+  var __rapprochementPaieApi = {
+    nombre: nombre,
+    valeurFerieFichier: valeurFerieFichier,
+    ligne: ligne,
+    comparer: comparer,
+    alertes: alertes,
+  };
+
+  if (typeof module !== 'undefined' && module.exports) module.exports = __rapprochementPaieApi;
+  if (typeof window !== 'undefined') window.RapprochementPaie = __rapprochementPaieApi;
+
+})();

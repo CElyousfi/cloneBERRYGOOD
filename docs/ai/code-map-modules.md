@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:62fe2bf01059c8b4 -->
-# Code Map — Modules lib (179)
+<!-- sourceFingerprint: sha256:c73afa92de344107 -->
+# Code Map — Modules lib (181)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -170,6 +170,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/growthUtils.js | GrowthUtils | rows, error, FRAMBOISE_CULTURE, ALL_VARIETES, MAX_LENGTH_CM, framboiseParcelles, varietesFramboise, buildGrowthSeries, validateMeasurement, normalizeCheckpoints |
 | public/lib/inflightDedup.js | InflightDedup | — voir fichier — |
 | public/lib/inventaireUtils.js | InventaireUtils | computeInventaireTotals, formatQteParUnite, boundedLedger |
+| public/lib/lecturePaieExcel.js | LecturePaieExcel | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, agregerOuvriers, postesExcel |
 | public/lib/local-test-bypass.js | location | success, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx |
 | public/lib/meteoCalc.js | MeteoCalc | saturationVaporPressure, vpdAt, computeHourlyVPD, computeCumRadiation, peakIndex |
 | public/lib/paieDataCache.js | PaieDataCache | DEFAULT_TTL_MS, pointageKey, peek, set, getOrLoad, invalidate |
@@ -178,6 +179,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/primesImportParse.js | PrimesImportParse | rows, headerIndex, normHeader, MATRICULE_ALIASES, PRIME_ALIASES, findHeaderRow, extractPrimesRows |
 | public/lib/primesV2.js | PrimesV2 | norm, matches, searchWorkers, buildHistoryView |
 | public/lib/quinzaineUtils.js | QuinzaineUtils | getEqPrefix, computeTransportQuinzaine |
+| public/lib/rapprochementPaie.js | RapprochementPaie | nombre, valeurFerieFichier, ligne, comparer, alertes |
 | public/lib/recolteKpiUtils.js | RecolteKpiUtils | aggregatePeriodKpis, computeNetDhParKg, computeNetDhParKgProd, distinctOuvriersFromRows |
 | public/lib/scanAttachmentUtils.js | ScanAttachmentUtils | ENTITY_MAP, ALLOWED_EXTENSIONS, isValidEntityType, collectionForEntity, folderForEntity, extOf, mimeFromFilename, sanitizeFilename, buildScanPath, isScanPathForEntity, validateUploadAttachmentParams |
 | public/lib/scanClientUpload.js | ScanClientUpload | isStorageAvailable, uploadDirect, recordAttachment, uploadAndRecord, getAttachmentUrl |
