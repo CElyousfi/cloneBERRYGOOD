@@ -283,7 +283,10 @@ async function principal() {
     const cp = camp.postes || {};
     const lignes = [
       ['Journées (JH)', j(p.jours), snap ? j(snap.jours) : '—', j(camp.jh)],
-      ['Jours fériés', j(p.feries), s.joursFeries === undefined ? '?' : j(s.joursFeries), '?'],
+      ['Jours fériés (nombre)', j(p.feries),
+        snap && snap.joursFeries !== undefined ? j(snap.joursFeries) : '?', '?'],
+      ['Jour férié (DH)', '—',
+        snap && snap.sousPostes ? dh(snap.sousPostes.jourFerie) : '?', dh(cp.feries)],
       ['Ancienneté', dh(p.anciennete), '—', dh(cp.primeAnciennete)],
       ['Prime fonction (brut fichier*)', dh(p.primeFonctionBrut), '—', dh(cp.primeFonction)],
       ['Transport', dh(p.transport), s.primeTransport === undefined ? '—' : dh(s.primeTransport), dh(cp.transport)],
@@ -309,6 +312,11 @@ async function principal() {
     console.log('   Populations fichier : ' + p.effectifDeclaresPurs + ' déclarés purs, '
       + p.effectifNonDeclaresPurs + ' non-déclarés purs, ' + p.mixtes.length
       + ' MIXTES (présents sur les deux feuilles).');
+    if (snap && snap.population) {
+      console.log('   Populations Quinzaine : ' + snap.population.declares + ' déclarés, '
+        + snap.population.nonDeclares + ' non-déclarés | brut déclaré '
+        + dh(snap.population.brutDeclare) + ' (fichier : ' + dh(p.declares.brut) + ')');
+    }
     // Les primes de terrain ne sont pas reconstituées par ce script : le dire,
     // plutôt que de laisser lire le total « Campagne » comme un total complet.
     console.log('   ⚠️  Campagne recalculée SANS les primes de terrain (traitement, '

@@ -33,6 +33,18 @@ const POSTES = [
 ];
 
 /**
+ * SOUS-POSTES d'« Autres Primes ».
+ *
+ * Sans eux, « Autres Primes » est un seul nombre, et le jour férié y est
+ * indiscernable. Or c'est LUI le suspect : la seule quinzaine sans jour férié
+ * est la seule sans écart avec le fichier de paie (161 DH, contre 4 455 et
+ * 4 830 sur les deux autres). Tant que le poste reste agrégé, on ne peut ni
+ * confirmer ni infirmer — on ne peut que supposer, ce qui a déjà coûté quatre
+ * diagnostics faux.
+ */
+const SOUS_POSTES = ['traitement', 'conditionnement', 'chargement', 'jourFerie'];
+
+/**
  * Normalise un nombre. PURE.
  *
  * `NaN` et `Infinity` deviennent 0 : un total non fini sérialisé en JSON
@@ -64,7 +76,26 @@ function normaliser(brut) {
   const postes = {};
   const src = b.postes || {};
   POSTES.forEach((k) => { postes[k] = nombre(src[k]); });
+  const sousPostes = {};
+  const srcS = b.sousPostes || {};
+  SOUS_POSTES.forEach((k) => { sousPostes[k] = nombre(srcS[k]); });
+  const pop = b.population || {};
   return {
+    sousPostes,
+    // JOURS fériés en NOMBRE, pas en dirhams. C'est le nombre qui se compare au
+    // fichier, et c'est lui qui a révélé un écart de DONNÉES que les montants
+    // masquaient : le pointage BEE ONE compte 39 présents le 14/08 quand la
+    // paie en compte 72. Un montant seul aurait laissé croire à un problème de
+    // valorisation.
+    joursFeries: nombre(b.joursFeries),
+    // Populations, pour recouper les deux feuilles du fichier. Un ouvrier
+    // classé déclaré d'un côté et non déclaré de l'autre décale les charges
+    // sans rien changer aux journées — invisible dans les totaux.
+    population: {
+      declares: nombre(pop.declares),
+      nonDeclares: nombre(pop.nonDeclares),
+      brutDeclare: nombre(pop.brutDeclare),
+    },
     periode: String(b.periode || '').trim(),
     coutEmployeur: nombre(b.coutEmployeur),
     netAPayer: nombre(b.netAPayer),
@@ -125,6 +156,9 @@ function versDocument(snap, nowISO, auteur) {
     masseSalariale: snap.masseSalariale,
     jours: snap.jours,
     postes: snap.postes,
+    sousPostes: snap.sousPostes,
+    joursFeries: snap.joursFeries,
+    population: snap.population,
     // Horodatage : sans lui, on ne peut pas dire si le chiffre affiché en face
     // de la grille date d'aujourd'hui ou d'avant la dernière correction de paie.
     enregistre_at: nowISO,
@@ -153,6 +187,7 @@ function parPeriode(docs) {
 
 module.exports = {
   POSTES,
+  SOUS_POSTES,
   nombre,
   normaliser,
   valider,

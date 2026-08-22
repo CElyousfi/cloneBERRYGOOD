@@ -127,3 +127,42 @@ test('parPeriode — indexe par période et ignore les documents sans période',
   assert.deepStrictEqual(Object.keys(out).sort(), ['Q1', 'Q2']);
   assert.strictEqual(out.Q1.coutEmployeur, 10);
 });
+
+test('normaliser — sous-postes, jours fériés et populations sont conservés', () => {
+  // Sans eux, « Autres Primes » reste un seul nombre et le jour férié y est
+  // indiscernable — or c'est le suspect n°1 : la seule quinzaine SANS férié est
+  // la seule sans écart avec le fichier de paie (161 DH contre 4 455 et 4 830).
+  const out = S.normaliser({
+    periode: 'Quinzaine 02', coutEmployeur: 199675, jours: 1465, pleinPerimetre: true,
+    joursFeries: 64,
+    sousPostes: { traitement: 500, conditionnement: 200, chargement: 70, jourFerie: 3538, inventé: 9 },
+    population: { declares: 60, nonDeclares: 130, brutDeclare: 84781, inventé: 9 },
+  });
+  assert.strictEqual(out.joursFeries, 64);
+  assert.strictEqual(out.sousPostes.jourFerie, 3538);
+  assert.strictEqual(out.sousPostes['inventé'], undefined);
+  assert.strictEqual(out.population.brutDeclare, 84781);
+  assert.strictEqual(out.population['inventé'], undefined);
+  S.SOUS_POSTES.forEach((k) => assert.strictEqual(typeof out.sousPostes[k], 'number'));
+});
+
+test('normaliser — champs absents : zéros structurés, jamais `undefined`', () => {
+  // Firestore REFUSE `undefined` et fait échouer l'écriture ENTIÈRE. Un
+  // instantané enregistré par un client antérieur doit donc rester écrivable.
+  const out = S.normaliser({ periode: 'Q1', coutEmployeur: 1, jours: 1, pleinPerimetre: true });
+  assert.strictEqual(out.joursFeries, 0);
+  assert.deepStrictEqual(out.population, { declares: 0, nonDeclares: 0, brutDeclare: 0 });
+  S.SOUS_POSTES.forEach((k) => assert.strictEqual(out.sousPostes[k], 0));
+});
+
+test('versDocument — les nouveaux champs atteignent bien le document', () => {
+  const snap = S.normaliser({
+    periode: 'Q1', coutEmployeur: 100, jours: 10, pleinPerimetre: true,
+    joursFeries: 5, sousPostes: { jourFerie: 42 },
+    population: { declares: 3, nonDeclares: 7, brutDeclare: 900 },
+  });
+  const doc = S.versDocument(snap, '2026-08-22T10:00:00.000Z', null);
+  assert.strictEqual(doc.joursFeries, 5);
+  assert.strictEqual(doc.sousPostes.jourFerie, 42);
+  assert.strictEqual(doc.population.declares, 3);
+});
