@@ -860,7 +860,7 @@ const[snapEtat,setSnapEtat]=useState({etat:'attente',message:'en attente du calc
 // un objet neuf y déclencherait un rendu, donc l'effet, donc un
 // rendu — React ne peut pas court-circuiter, `Object.is` compare
 // deux littéraux distincts. On ne pose donc l'état que s'il CHANGE.
-const _snapEtatRef=React.useRef('attente|en attente du calcul');const majEtat=(etat,message)=>{const cle=etat+'|'+message;if(_snapEtatRef.current===cle)return;_snapEtatRef.current=cle;setSnapEtat({etat:etat,message:message});};React.useEffect(()=>{const snap=_snapshotRef.current;if(!snap){majEtat('attente','calcul en cours — écran pas encore cohérent');return;}if(!snap.pleinPerimetre){majEtat('refus','un filtre est actif — retire ferme / culture / sous-ferme');return;}if(!(snap.coutEmployeur>0)){majEtat('attente','coût non encore calculé');return;}// Dédoublonnage sur la VALEUR, pas sur la période : le total se
+const _snapEtatRef=React.useRef('attente|en attente du calcul');const majEtat=(etat,message)=>{const cle=etat+'|'+message;if(_snapEtatRef.current===cle)return;_snapEtatRef.current=cle;setSnapEtat({etat:etat,message:message});};React.useEffect(()=>{const snap=_snapshotRef.current;if(!snap){majEtat('attente','calcul en cours — écran pas encore complet');return;}if(!snap.pleinPerimetre){majEtat('refus','un filtre est actif — retire ferme / culture / sous-ferme');return;}if(!(snap.coutEmployeur>0)){majEtat('attente','coût non encore calculé');return;}// Dédoublonnage sur la VALEUR, pas sur la période : le total se
 // stabilise après plusieurs rendus (chargements successifs), et
 // republier un chiffre identique à chaque rendu inonderait
 // l'écriture sans rien changer au document.
@@ -870,7 +870,10 @@ const _snapEtatRef=React.useRef('attente|en attente du calcul');const majEtat=(e
 // alors indéfiniment un document amputé des nouveaux champs, et
 // afficherait « ? » sans qu'on sache qu'il suffit de rouvrir.
 // À incrémenter à CHAQUE ajout de champ.
-const cle='v3|'+snap.periode+'|'+Math.round(snap.coutEmployeur);if(_snapshotEnvoye.current[cle])return;_snapshotEnvoye.current[cle]=true;// Route `/api/pointage-rh` — la SEULE mappée vers `pointageV3` dans
+// Le NET À PAYER entre dans la clé : lui seul porte la
+// sous-traitance. Avec le coût employeur seul, un instantané
+// amputé de ses divers ne repartait jamais.
+const cle='v4|'+snap.periode+'|'+Math.round(snap.coutEmployeur)+'|'+Math.round(snap.netAPayer||0);if(_snapshotEnvoye.current[cle])return;_snapshotEnvoye.current[cle]=true;// Route `/api/pointage-rh` — la SEULE mappée vers `pointageV3` dans
 // firebase.json. `/api/pointage` n'existe pas : elle retombe sur
 // index.html, `r.json()` lève sur du HTML, et le `catch` avalait
 // tout. Aucun instantané n'a jamais été écrit, et rien ne l'a
@@ -926,7 +929,12 @@ fetch('/api/pointage-rh?action=campagne-cout-ouvrier').then(function(r){return r
 // Rules of Hooks : placé avant tout early-return.
 React.useEffect(()=>{var periode=selectedPeriode;// On attend que apiData soit chargé pour connaître la période par défaut.
 if(!periode&&!apiData)return;var pUrl='/api/validation?action=divers-entries-range'+(periode?'&periode='+encodeURIComponent(periode):'');fetch(pUrl).then(function(r){return r.json();}).then(function(j){if(!j||!j.success)return;var totalDivers=0;var prestSet={};var rowsByDate={};(j.dates||[]).forEach(function(d){var dayData=(j.byDate||{})[d]||{entries:[],totalMontant:0};totalDivers+=dayData.totalMontant||0;rowsByDate[d]=dayData;(dayData.entries||[]).forEach(function(e){var key=(e.beneficiaire||e.matricule||'?')+'|'+(e.fonction||'');if(key)prestSet[key]={beneficiaire:e.beneficiaire||'',matricule:e.matricule||'',fonction:e.fonction||''};});});// Calcul des agrégats (même logique que DiversQuinzaineSub)
-var bySt={};(j.dates||[]).forEach(function(d){((rowsByDate[d]||{}).entries||[]).forEach(function(e){var key=(e.matricule||e.beneficiaire||'?')+'|'+(e.fonction||'');if(!bySt[key])bySt[key]={matricule:e.matricule||'',beneficiaire:e.beneficiaire||'',fonction:e.fonction||'',byDay:{},totQ:0,totM:0};var cur=bySt[key].byDay[d]||{q:0,m:0};cur.q+=Number(e.quantite)||0;cur.m+=Number(e.montant)||0;bySt[key].byDay[d]=cur;bySt[key].totQ+=Number(e.quantite)||0;bySt[key].totM+=Number(e.montant)||0;});});var rows=Object.values(bySt).sort(function(a,b){return b.totM-a.totM;});setDiversData({total:Math.round(totalDivers),dates:j.dates||[],byDate:rowsByDate,rows:rows});}).catch(function(e){console.warn('quinzaine divers:',e);});// eslint-disable-next-line react-hooks/exhaustive-deps
+var bySt={};(j.dates||[]).forEach(function(d){((rowsByDate[d]||{}).entries||[]).forEach(function(e){var key=(e.matricule||e.beneficiaire||'?')+'|'+(e.fonction||'');if(!bySt[key])bySt[key]={matricule:e.matricule||'',beneficiaire:e.beneficiaire||'',fonction:e.fonction||'',byDay:{},totQ:0,totM:0};var cur=bySt[key].byDay[d]||{q:0,m:0};cur.q+=Number(e.quantite)||0;cur.m+=Number(e.montant)||0;bySt[key].byDay[d]=cur;bySt[key].totQ+=Number(e.quantite)||0;bySt[key].totM+=Number(e.montant)||0;});});var rows=Object.values(bySt).sort(function(a,b){return b.totM-a.totM;});// La PÉRIODE est mémorisée avec la donnée : elle seule permet de
+// savoir si ces divers correspondent à la quinzaine affichée.
+// Sans elle, l'instantané pouvait être enregistré avec une
+// sous-traitance encore à zéro — c'est arrivé sur la
+// Quinzaine 01 (7 950 DH manquants, 2026-08-22).
+setDiversData({total:Math.round(totalDivers),dates:j.dates||[],byDate:rowsByDate,rows:rows,periode:periode||apiData&&apiData.periode||''});}).catch(function(e){console.warn('quinzaine divers:',e);});// eslint-disable-next-line react-hooks/exhaustive-deps
 },[selectedPeriode,apiData&&(apiData.periodes||[])[0]]);const handlePeriodeChange=p=>{setSelectedPeriode(p);setLoading(true);loadData(p);// Reset de l'override local du panneau Affectation Analytique : un
 // changement de quinzaine globale invalide toute sélection quinzaine/campagne
 // locale précédente (évite d'afficher des données périmées).
@@ -1054,7 +1062,18 @@ const totalGlobal=_coutEmployeur===null?null:_coutEmployeur+totalDivers;// Insta
 // `apiData.periode` est la période que le SERVEUR a réellement
 // servie. Tant qu'elle ne correspond pas à celle affichée, l'écran
 // n'est pas cohérent et il n'y a rien à enregistrer.
-const _coherent=!!apiData&&apiData.periode===currentPeriode;// Bornes de la quinzaine, lues dans le détail par journée. Elles
+// COHÉRENCE : apiData ET les divers. Ce sont DEUX requêtes distinctes,
+// et il ne suffit pas d'attendre la première.
+//
+// Corrigé une première fois pour `apiData` (journées périmées), la
+// garde laissait passer l'autre : la Quinzaine 01 a été enregistrée
+// avec une sous-traitance à 0 alors qu'elle vaut 7 950 DH, et le
+// rapprochement affichait 7 991 DH d'écart au lieu de 41.
+//
+// Le dédoublonnage ne pouvait pas le rattraper : sa clé porte le coût
+// employeur, qui n'inclut PAS la sous-traitance. La clé ne bougeait
+// donc pas quand les divers arrivaient enfin.
+const _coherent=!!apiData&&apiData.periode===currentPeriode&&!!diversData&&diversData.periode===currentPeriode;// Bornes de la quinzaine, lues dans le détail par journée. Elles
 // permettent au rapprochement d'apparier un fichier de paie à la
 // bonne quinzaine par ses DATES — un libellé « Quinzaine 03 » ne dit
 // pas à quelles dates il correspond.
