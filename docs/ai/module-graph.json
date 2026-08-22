@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:58fa62c9a7c8a4fe",
+    "sourceFingerprint": "sha256:ebae3bbb214dc4fb",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -444,6 +444,13 @@
           "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/RapprochementPaiePopup.js",
+          "note": "probabilistic",
+          "windowDays": 90
         }
       ],
       "label": "Caisse & Finance",
@@ -521,6 +528,7 @@
           "functions/lib/paie/__tests__/coutMainOeuvre.parite.test.js",
           "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
           "functions/lib/paie/__tests__/coutQuinzaineSnapshot.test.js",
+          "functions/lib/paie/__tests__/fichierPaieStore.test.js",
           "functions/lib/paie/__tests__/lecturePaieExcel.parite.test.js",
           "functions/lib/paie/__tests__/paieUtils.parite.test.js"
         ],

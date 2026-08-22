@@ -32,6 +32,7 @@ const {
 // calcul PUR, testé sans émulateur. Cf. l'action `campagne-cout-ouvrier`.
 const coutOuvrier = require("./lib/paie/coutOuvrierCampagne.js");
 const coutQuinzaineSnap = require("./lib/paie/coutQuinzaineSnapshot.js");
+const fichierPaieStore = require("./lib/paie/fichierPaieStore.js");
 
 // Aliases bruts (non filtrés) des fetchers de lignes, pour le gating chef
 // dans pointageRH : les wrappers filtrés shadowent les noms non préfixés,
@@ -4897,6 +4898,61 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         });
         groupes.sort((a, b) => (a.label || "").localeCompare(b.label || ""));
         return res.json({ success: true, groupes });
+      }
+
+      // FICHIER DE PAIE CONSERVÉ — déposé une fois, exploitable ensuite par tous.
+      //
+      // ⚠️ On ne conserve NI NOM NI RIB. Le classeur porte une feuille VIREMENT
+      // avec les coordonnées bancaires de 250 personnes ; le module de
+      // normalisation applique une liste blanche stricte (matricule, journées,
+      // montants). Décision d'Omar, 2026-08-22 : une donnée bancaire conservée
+      // devient une responsabilité permanente, et le rapprochement n'en a aucun
+      // besoin.
+      if (action === "paie-fichier-save" && req.method === "POST") {
+        const _authUserF = await verifyAuth(req);
+        const callerProfileF = await resolveCallerProfile(_authUserF);
+        const _pidF = callerProfileF && (callerProfileF.profileId || callerProfileF.role || '');
+        if (!['dg', 'rh', 'finance', 'admin'].includes(_pidF)) {
+          return res.status(403).json({ success: false, error: "Accès refusé — DG/RH/Finance requis" });
+        }
+        if (_fermeFilter) {
+          return res.status(403).json({ success: false, error: "Accès refusé — périmètre restreint" });
+        }
+
+        const impF = fichierPaieStore.normaliser(req.body || {});
+        const vF = fichierPaieStore.valider(impF);
+        if (!vF.ok) {
+          // 400 et la RAISON : un refus muet laisserait le RH redéposer
+          // indéfiniment le même fichier sans savoir ce qui cloche.
+          return res.status(400).json({ success: false, error: vF.raison });
+        }
+        const docF = fichierPaieStore.versDocument(impF, new Date().toISOString(), {
+          uid: (_authUserF && _authUserF.uid) || null,
+          profileId: _pidF,
+          email: (_authUserF && _authUserF.email) || '',
+        });
+        await db_firestore.collection("rh_paie_fichier")
+          .doc(impF.periode).set(docF, { merge: false });
+        return res.json({ success: true, periode: impF.periode, totaux: docF.totaux });
+      }
+
+      // Lecture des fichiers conservés. AGRÉGATS et lignes par MATRICULE, sans
+      // aucune donnée nominative — même gate de lecture que les autres actions
+      // de cet écran.
+      if (action === "paie-fichier") {
+        const snapsF = await db_firestore.collection("rh_paie_fichier").get();
+        const docsF = [];
+        snapsF.forEach((d) => docsF.push(d.data() || {}));
+        // `detail=1` sert les lignes par ouvrier (analyse du résidu). Sans lui,
+        // on ne rend que les agrégats : un payload de 210 lignes par quinzaine
+        // n'a pas à traverser le réseau pour afficher six totaux.
+        if (String(req.query.detail || '') === '1') {
+          return res.json({ success: true, fichiers: docsF });
+        }
+        return res.json({
+          success: true,
+          parPeriode: fichierPaieStore.parPeriode(docsF),
+        });
       }
 
       // INSTANTANÉ DU COÛT DE QUINZAINE — écrit par l'écran Quinzaine lui-même.

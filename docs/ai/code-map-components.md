@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:f232e0ddf7acfc30 -->
+<!-- sourceFingerprint: sha256:7c18948e783f89e0 -->
 # Code Map — Composants frontend (339)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
@@ -36,7 +36,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | AgroParcellesTab | public/app.jsx:43869 | agro_parcelles |
 | AgroPhytoTab | public/app.jsx:39611 | agro_phyto |
 | AgroSurveillanceTab | public/app.jsx:45998 | — |
-| Alerte | public/components/RapprochementPaiePopup.jsx:95 | — |
+| Alerte | public/components/RapprochementPaiePopup.jsx:96 | — |
 | AnalysesFoliairesAlertDashboard | public/app.jsx:3631 | — |
 | App | public/app.jsx:67390 | — |
 | AuthenticatedApp | public/app.jsx:67899 | — |
@@ -312,7 +312,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | QuinzaineCampagneSelect | public/components/QuinzaineCampagneSelect.jsx:107 | — |
 | QuinzaineRecapCards | public/components/QuinzaineRecapCards.jsx:47 | — |
 | QuinzaineTab | public/app.jsx:11124 | quinzaine |
-| RapprochementPaiePopup | public/components/RapprochementPaiePopup.jsx:111 | — |
+| RapprochementPaiePopup | public/components/RapprochementPaiePopup.jsx:112 | — |
 | RecolteTab | public/app.jsx:7306 | recolte |
 | ReconnectingBanner | public/app.jsx:67640 | — |
 | SAB_openUrl | public/components/ScanAttachmentButton.jsx:36 | — |
