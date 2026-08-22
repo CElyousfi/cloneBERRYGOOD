@@ -166,3 +166,25 @@ test('versDocument — les nouveaux champs atteignent bien le document', () => {
   assert.strictEqual(doc.sousPostes.jourFerie, 42);
   assert.strictEqual(doc.population.declares, 3);
 });
+
+test('normaliser — les BORNES de la quinzaine sont conservées', () => {
+  // Un libellé « Quinzaine 03 » ne dit pas à quelles dates il correspond. Sans
+  // les bornes, apparier un fichier de paie à son instantané suppose de
+  // connaître la numérotation — et un appariement par nombre de journées échoue
+  // dès que deux quinzaines en comptent autant (1 465 pour Q02 ET Q03 le
+  // 2026-08-22, à cause d'un instantané incohérent).
+  const out = S.normaliser({ periode: 'Quinzaine 03', coutEmployeur: 1, jours: 1,
+    pleinPerimetre: true, dateDebut: ' 2026-08-01 ', dateFin: '2026-08-15' });
+  assert.strictEqual(out.dateDebut, '2026-08-01');
+  assert.strictEqual(out.dateFin, '2026-08-15');
+  const doc = S.versDocument(out, '2026-08-22T10:00:00.000Z', null);
+  assert.strictEqual(doc.dateDebut, '2026-08-01');
+  assert.strictEqual(doc.dateFin, '2026-08-15');
+});
+
+test('normaliser — bornes absentes : chaînes vides, jamais `undefined`', () => {
+  // Firestore refuse `undefined` et fait échouer l'écriture ENTIÈRE.
+  const out = S.normaliser({ periode: 'Q1', coutEmployeur: 1, jours: 1, pleinPerimetre: true });
+  assert.strictEqual(out.dateDebut, '');
+  assert.strictEqual(out.dateFin, '');
+});

@@ -109,6 +109,36 @@
     const [nomFichier, setNomFichier] = useState(null);
     const [periodeFichier, setPeriodeFichier] = useState(null);
     const [survol, setSurvol] = useState(false);
+    // Tous les instantanés enregistrés, pour APPARIER le fichier à sa quinzaine
+    // par ses DATES. Sans cela, l'outil comparait toujours à la quinzaine
+    // AFFICHÉE : déposer le fichier de juillet en regardant août produisait un
+    // écart énorme, et seul un humain attentif pouvait s'en apercevoir.
+    const [tousSnaps, setTousSnaps] = useState(null);
+    const [apparie, setApparie] = useState(null);
+
+    React.useEffect(() => {
+      let annule = false;
+      fetch('/api/pointage-rh?action=cout-quinzaine')
+        .then((r) => r.json())
+        .then((d) => { if (!annule && d && d.success) setTousSnaps(d.parPeriode || {}); })
+        .catch(() => { /* on retombe sur la quinzaine affichée */ });
+      return () => { annule = true; };
+    }, []);
+
+    /**
+     * Trouve l'instantané dont les DATES couvrent celles du fichier.
+     * Rend `null` plutôt que la quinzaine affichée : comparer au mauvais
+     * instantané est pire que ne pas comparer — le rapport paraîtrait valide.
+     */
+    function apparier(periodeFic) {
+      if (!periodeFic || !tousSnaps) return null;
+      const cles = Object.keys(tousSnaps);
+      for (const k of cles) {
+        const s = tousSnaps[k];
+        if (s && s.dateDebut === periodeFic.debut && s.dateFin === periodeFic.fin) return s;
+      }
+      return null;
+    }
 
     // GARDE-FOU NAVIGATEUR. Sans elle, un fichier lâché À CÔTÉ de la zone fait
     // NAVIGUER l'onglet vers ce fichier : l'application disparaît et tout le
@@ -141,7 +171,13 @@
           setPeriodeFichier(lu.periode);
           const R = window.RapprochementPaie;
           if (!R) throw new Error('Module de rapprochement non chargé — recharge la page.');
-          setRapport(R.comparer({ fichier: lu.postes, quinzaine, baremes }));
+          // APPARIEMENT AUTOMATIQUE par les dates du fichier. À défaut, on
+          // retombe sur la quinzaine affichée — mais on le DIT, plutôt que de
+          // laisser croire que la comparaison porte sur la bonne période.
+          const trouve = apparier(lu.periode);
+          const cible = trouve || quinzaine;
+          setApparie(trouve ? { auto: true, snap: trouve } : { auto: false, snap: quinzaine });
+          setRapport(R.comparer({ fichier: lu.postes, quinzaine: cible, baremes }));
         } catch (err) {
           setErreur(err.message);
         }
@@ -213,9 +249,28 @@
           </div>
 
           {periodeFichier && (
-            <div style={{ fontSize: 12, color: C.gris, marginTop: 8 }}>
-              Quinzaine lue <strong>dans la feuille</strong> : du {periodeFichier.debut} au {periodeFichier.fin}
-              {' '}— vérifie qu'elle correspond bien à « {periode} ».
+            <div style={{ fontSize: 12, marginTop: 10, padding: '8px 12px', borderRadius: 6,
+              background: apparie && apparie.auto ? '#e9f7f1' : '#fff8e6',
+              borderLeft: '3px solid ' + (apparie && apparie.auto ? C.vert : C.ambre),
+              color: apparie && apparie.auto ? C.vert : C.ambre }}>
+              <i className={'fa-solid ' + (apparie && apparie.auto ? 'fa-circle-check' : 'fa-triangle-exclamation')}
+                style={{ marginRight: 8 }}></i>
+              {apparie && apparie.auto ? (
+                <span>
+                  Quinzaine reconnue d'après les dates de la feuille :
+                  <strong> {periodeFichier.debut} → {periodeFichier.fin}</strong>
+                  {' '}(« {apparie.snap.periode} »). La comparaison porte sur celle-là,
+                  quelle que soit la quinzaine affichée à l'écran.
+                </span>
+              ) : (
+                <span>
+                  Le fichier couvre <strong>{periodeFichier.debut} → {periodeFichier.fin}</strong>,
+                  et aucun instantané enregistré ne porte ces dates. La comparaison
+                  se fait donc avec la quinzaine <strong>affichée</strong> («&nbsp;{periode}&nbsp;») —
+                  vérifie qu'il s'agit bien de la même période. Sinon, ouvre la bonne
+                  quinzaine sans filtre pour l'enregistrer, puis recommence.
+                </span>
+              )}
             </div>
           )}
 

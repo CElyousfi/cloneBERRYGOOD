@@ -165,6 +165,36 @@
     const [nomFichier, setNomFichier] = useState(null);
     const [periodeFichier, setPeriodeFichier] = useState(null);
     const [survol, setSurvol] = useState(false);
+    // Tous les instantanés enregistrés, pour APPARIER le fichier à sa quinzaine
+    // par ses DATES. Sans cela, l'outil comparait toujours à la quinzaine
+    // AFFICHÉE : déposer le fichier de juillet en regardant août produisait un
+    // écart énorme, et seul un humain attentif pouvait s'en apercevoir.
+    const [tousSnaps, setTousSnaps] = useState(null);
+    const [apparie, setApparie] = useState(null);
+    React.useEffect(() => {
+      let annule = false;
+      fetch('/api/pointage-rh?action=cout-quinzaine').then(r => r.json()).then(d => {
+        if (!annule && d && d.success) setTousSnaps(d.parPeriode || {});
+      }).catch(() => {/* on retombe sur la quinzaine affichée */});
+      return () => {
+        annule = true;
+      };
+    }, []);
+
+    /**
+     * Trouve l'instantané dont les DATES couvrent celles du fichier.
+     * Rend `null` plutôt que la quinzaine affichée : comparer au mauvais
+     * instantané est pire que ne pas comparer — le rapport paraîtrait valide.
+     */
+    function apparier(periodeFic) {
+      if (!periodeFic || !tousSnaps) return null;
+      const cles = Object.keys(tousSnaps);
+      for (const k of cles) {
+        const s = tousSnaps[k];
+        if (s && s.dateDebut === periodeFic.debut && s.dateFin === periodeFic.fin) return s;
+      }
+      return null;
+    }
 
     // GARDE-FOU NAVIGATEUR. Sans elle, un fichier lâché À CÔTÉ de la zone fait
     // NAVIGUER l'onglet vers ce fichier : l'application disparaît et tout le
@@ -198,9 +228,21 @@
           setPeriodeFichier(lu.periode);
           const R = window.RapprochementPaie;
           if (!R) throw new Error('Module de rapprochement non chargé — recharge la page.');
+          // APPARIEMENT AUTOMATIQUE par les dates du fichier. À défaut, on
+          // retombe sur la quinzaine affichée — mais on le DIT, plutôt que de
+          // laisser croire que la comparaison porte sur la bonne période.
+          const trouve = apparier(lu.periode);
+          const cible = trouve || quinzaine;
+          setApparie(trouve ? {
+            auto: true,
+            snap: trouve
+          } : {
+            auto: false,
+            snap: quinzaine
+          });
           setRapport(R.comparer({
             fichier: lu.postes,
-            quinzaine,
+            quinzaine: cible,
             baremes
           }));
         } catch (err) {
@@ -349,10 +391,19 @@
     }), "En plein \xE9cran, le glisser-d\xE9poser depuis le Finder est peu fiable (macOS change d'espace en cours de glissement). ", /*#__PURE__*/React.createElement("strong", null, "Le clic ouvre le s\xE9lecteur de fichiers"), " et fonctionne toujours."), periodeFichier && /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 12,
-        color: C.gris,
-        marginTop: 8
+        marginTop: 10,
+        padding: '8px 12px',
+        borderRadius: 6,
+        background: apparie && apparie.auto ? '#e9f7f1' : '#fff8e6',
+        borderLeft: '3px solid ' + (apparie && apparie.auto ? C.vert : C.ambre),
+        color: apparie && apparie.auto ? C.vert : C.ambre
       }
-    }, "Quinzaine lue ", /*#__PURE__*/React.createElement("strong", null, "dans la feuille"), " : du ", periodeFichier.debut, " au ", periodeFichier.fin, ' ', "\u2014 v\xE9rifie qu'elle correspond bien \xE0 \xAB ", periode, " \xBB."), erreur && /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("i", {
+      className: 'fa-solid ' + (apparie && apparie.auto ? 'fa-circle-check' : 'fa-triangle-exclamation'),
+      style: {
+        marginRight: 8
+      }
+    }), apparie && apparie.auto ? /*#__PURE__*/React.createElement("span", null, "Quinzaine reconnue d'apr\xE8s les dates de la feuille :", /*#__PURE__*/React.createElement("strong", null, " ", periodeFichier.debut, " \u2192 ", periodeFichier.fin), ' ', "(\xAB ", apparie.snap.periode, " \xBB). La comparaison porte sur celle-l\xE0, quelle que soit la quinzaine affich\xE9e \xE0 l'\xE9cran.") : /*#__PURE__*/React.createElement("span", null, "Le fichier couvre ", /*#__PURE__*/React.createElement("strong", null, periodeFichier.debut, " \u2192 ", periodeFichier.fin), ", et aucun instantan\xE9 enregistr\xE9 ne porte ces dates. La comparaison se fait donc avec la quinzaine ", /*#__PURE__*/React.createElement("strong", null, "affich\xE9e"), " (\xAB\xA0", periode, "\xA0\xBB) \u2014 v\xE9rifie qu'il s'agit bien de la m\xEAme p\xE9riode. Sinon, ouvre la bonne quinzaine sans filtre pour l'enregistrer, puis recommence.")), erreur && /*#__PURE__*/React.createElement("div", {
       style: {
         background: '#fdecea',
         borderLeft: '3px solid ' + C.rouge,
