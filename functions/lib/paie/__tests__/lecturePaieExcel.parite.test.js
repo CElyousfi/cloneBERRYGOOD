@@ -49,7 +49,7 @@ test('la copie backend se charge sous Node et expose la même API', () => {
   const mod = require(BACK);
   assert.deepStrictEqual(Object.keys(mod).sort(), [
     'agregerOuvriers', 'cleMatricule', 'colonne', 'estLigneTotal', 'estNombre',
-    'lireFeuilleOuvriers', 'lireTransport', 'normaliserLibelle', 'periodeDeGrille',
-    'postesExcel', 'trouverEnTete',
+    'lireDivers', 'lireFeuilleOuvriers', 'lireTransport', 'normaliserLibelle',
+    'periodeDeGrille', 'postesExcel', 'trouverEnTete',
   ]);
 });
