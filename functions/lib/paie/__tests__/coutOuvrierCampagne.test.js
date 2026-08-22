@@ -106,14 +106,53 @@ test('tarifADate — un libellé « Quinzaine NN » ne doit RIEN écarter', () =
   assert.strictEqual(M.tarifADate(eq, 'Quinzaine 01'), 20);
 });
 
-test('tarifADate — quinzaine antérieure à l\'historique : la plus ancienne, pas 0', () => {
-  // L'équipe transportait déjà ses ouvriers avant que quelqu'un ne saisisse son
-  // tarif. Zéro ferait passer une lacune de saisie pour une absence de transport.
-  const eq = { history: [
-    { effectiveFrom: '16/07/2026 - 31/07/2026', coutParOuvrier: 26 },
-    { effectiveFrom: '01/08/2026 - 15/08/2026', coutParOuvrier: 30 },
+test('tarifADate — historique ORDINAL seul : le dernier tarif saisi, pas 0', () => {
+  // DONNÉE RÉELLE (rh_config/transport_primes, 2026-08-22) : `effectiveFrom`
+  // mélange deux formats, et les ORDINAUX sont MAJORITAIRES. Aucune équipe ne
+  // porte de `coutParOuvrier` plat. Ne retenir que les entrées datées revenait
+  // donc à n'en retenir aucune : le tarif tombait à 0 et le transport
+  // disparaissait du coût de campagne.
+  //
+  // Un ordinal ne s'ordonne pas contre une date — « Quinzaine 23 » désigne une
+  // quinzaine de la campagne PRÉCÉDENTE, donc antérieure à « Quinzaine 01 » de
+  // celle-ci, alors que 23 > 1. On retient la dernière entrée écrite : une
+  // valeur mesurée, là où 0 est une valeur inventée.
+  const ha = { history: [
+    { effectiveFrom: 'Quinzaine 23', coutParOuvrier: 35 },
+    { effectiveFrom: 'Quinzaine 24', coutParOuvrier: 30 },
   ] };
-  assert.strictEqual(M.tarifADate(eq, '2026-07-10'), 26);
+  assert.strictEqual(M.tarifADate(ha, '2026-07-15'), 30);
+});
+
+test('tarifADate — formats MÉLANGÉS : la date l\'emporte sur l\'ordinal', () => {
+  // Équipe MM en production : deux ordinaux et une plage datée. La plage est la
+  // seule information ordonnable contre la quinzaine payée, elle décide.
+  const mm = { history: [
+    { effectiveFrom: 'Quinzaine 23', coutParOuvrier: 35 },
+    { effectiveFrom: '16/06/2026 - 30/06/2026', coutParOuvrier: 30 },
+    { effectiveFrom: 'Quinzaine 24', coutParOuvrier: 99 },
+  ] };
+  assert.strictEqual(M.tarifADate(mm, '2026-07-15'), 30);
+});
+
+test('tarifADate — plusieurs dates applicables : la plus récente', () => {
+  // Équipe LG en production.
+  const lg = { history: [
+    { effectiveFrom: '01/06/2026 - 15/06/2026', coutParOuvrier: 40 },
+    { effectiveFrom: 'Quinzaine 24', coutParOuvrier: 35 },
+    { effectiveFrom: '01/07/2026 - 15/07/2026', coutParOuvrier: 35 },
+  ] };
+  assert.strictEqual(M.tarifADate(lg, '2026-07-15'), 35);
+  // Avant la seconde prise d'effet, c'est encore la première qui vaut.
+  assert.strictEqual(M.tarifADate(lg, '2026-06-20'), 40);
+});
+
+test('tarifADate — une équipe explicitement à 0 reste à 0', () => {
+  // « BGF » porte un tarif de 0 en production. Le repli ne doit pas lui
+  // inventer un montant : 0 est ici une valeur SAISIE, pas une lacune.
+  assert.strictEqual(M.tarifADate({ history: [
+    { effectiveFrom: 'Quinzaine 23', coutParOuvrier: 0 },
+  ] }, '2026-07-15'), 0);
 });
 
 test('tarifADate — historique absent : on retombe sur le champ plat', () => {

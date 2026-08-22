@@ -173,20 +173,38 @@ function tarifADate(equipe, dateISO) {
   const hist = (equipe && Array.isArray(equipe.history)) ? equipe.history : [];
   const plat = Number((equipe || {}).coutParOuvrier) || 0;
   if (!hist.length) return plat;
+
+  // 1) La règle exacte : la dernière entrée DATÉE prenant effet au plus tard à
+  //    la date visée.
   const cible = String(dateISO || '9999-12-31');
   let applicable = null;
-  let plusAncienne = null;
   hist.forEach((h) => {
     if (!h) return;
     const d = dateEffet(h.effectiveFrom);
-    if (!d) return;
-    if (plusAncienne === null || d < plusAncienne.d) plusAncienne = { d: d, e: h };
-    if (d > cible) return;
+    if (!d || d > cible) return;
     if (applicable === null || d >= applicable.d) applicable = { d: d, e: h };
   });
-  const retenue = applicable || plusAncienne;
+
+  // 2) Repli : la DERNIÈRE entrée de l'historique, quel que soit son format.
+  //
+  //    En production, `effectiveFrom` mélange deux formats : des plages de dates
+  //    (« 01/07/2026 - 15/07/2026 ») et des ORDINAUX (« Quinzaine 23 »), ces
+  //    derniers majoritaires. Un ordinal ne s'ordonne pas contre une date — et
+  //    « Quinzaine 23 » désigne une quinzaine de la campagne PRÉCÉDENTE, donc
+  //    antérieure à « Quinzaine 01 » de celle-ci, alors que 23 > 1.
+  //
+  //    Ne retenir que les entrées datées revenait à n'en retenir aucune pour la
+  //    plupart des équipes : aucune ne porte de `coutParOuvrier` plat, le tarif
+  //    tombait donc à 0 et le transport disparaissait du coût de campagne.
+  //
+  //    `transport-config-apply` fait `history.push(entry)` : l'ordre du tableau
+  //    est celui des ÉCRITURES. Sa dernière entrée est donc le dernier tarif
+  //    saisi — une valeur mesurée, là où 0 est une valeur inventée.
+  const retenue = applicable ? applicable.e : hist[hist.length - 1];
   if (!retenue) return plat;
-  const v = Number(retenue.e.coutParOuvrier);
+  const v = Number(retenue.coutParOuvrier);
+  // `> 0` et non `>= 0` : une équipe explicitement à 0 (« BGF ») garde 0 par ce
+  // chemin, puisque `plat` vaut 0 lui aussi. Aucun tarif n'est deviné.
   return isFinite(v) && v > 0 ? v : plat;
 }
 

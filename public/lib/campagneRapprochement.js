@@ -112,6 +112,14 @@
       var snap = snaps[q.periode];
       var quinzaine = (snap && Number(snap.coutEmployeur) > 0)
         ? Number(snap.coutEmployeur) : null;
+      // Le NET À PAYER de la même quinzaine, servi à côté. Ce n'est PAS le
+      // chiffre à rapprocher — il exclut les charges sociales (qui vont à la
+      // CNSS, pas à l'ouvrier) et inclut la sous-traitance. Mais c'est celui
+      // qu'on lit spontanément sur l'écran Quinzaine, et le comparer au coût
+      // chargé fabrique un écart qui n'existe pas. L'afficher côte à côte est le
+      // seul moyen fiable de ne pas les confondre.
+      var netQuinzaine = (snap && Number(snap.netAPayer) > 0)
+        ? Number(snap.netAPayer) : null;
       totalGrille += grille;
       if (quinzaine !== null) totalQuinzaine += quinzaine;
       totalJhSansTaux += g.jhSansTaux;
@@ -121,6 +129,7 @@
         jours: Number(q.jours) || 0,
         grille: grille,
         quinzaine: quinzaine,
+        netQuinzaine: netQuinzaine,
         ecart: ecart,
         // `null` et non 0 quand il n'y a rien à rapporter : un « 0,0 % » sur
         // une quinzaine vide se lirait « parfaitement rapproché ».
