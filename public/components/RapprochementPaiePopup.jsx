@@ -79,11 +79,17 @@
     }
     const nT = feuille(wb, 'TRANSPORT');
     const transport = nT ? L.lireTransport(grille(wb, nT)) : { total: 0, places: 0, equipes: [] };
+    // Sous-traitance. `undefined` si la feuille manque — et non un objet à zéro :
+    // « feuille absente » et « aucune sous-traitance » sont deux informations
+    // différentes, et l'écran les affiche différemment.
+    const nD = wb.SheetNames.find((x) => /divers/i.test(x));
+    const divers = nD ? L.lireDivers(grille(wb, nD)) : undefined;
     // La quinzaine se lit DANS la feuille, jamais dans le nom du fichier :
     // macOS encode les accents en NFD, et deux quinzaines ont déjà été
     // interverties à cause de ça (2026-08-21).
     const periode = L.periodeDeGrille(gP) || L.periodeDeGrille(gS);
-    return { periode, postes: L.postesExcel({ pointage, sansCnss, transport }) };
+    return { periode, pointage, sansCnss, transport, divers,
+      postes: L.postesExcel({ pointage, sansCnss, transport, divers }) };
   }
 
   /** Bandeau d'alerte — la couleur porte la NATURE de l'écart. */
@@ -115,6 +121,11 @@
     // écart énorme, et seul un humain attentif pouvait s'en apercevoir.
     const [tousSnaps, setTousSnaps] = useState(null);
     const [apparie, setApparie] = useState(null);
+    // Fichiers de paie DÉJÀ conservés : le RH dépose une fois, tout le monde
+    // peut ensuite relire le rapprochement sans redéposer.
+    const [fichiersStockes, setFichiersStockes] = useState(null);
+    const [dernierLu, setDernierLu] = useState(null);
+    const [enregistrement, setEnregistrement] = useState(null);
 
     React.useEffect(() => {
       let annule = false;
@@ -122,6 +133,15 @@
         .then((r) => r.json())
         .then((d) => { if (!annule && d && d.success) setTousSnaps(d.parPeriode || {}); })
         .catch(() => { /* on retombe sur la quinzaine affichée */ });
+      return () => { annule = true; };
+    }, []);
+
+    React.useEffect(() => {
+      let annule = false;
+      fetch('/api/pointage-rh?action=paie-fichier')
+        .then((r) => r.json())
+        .then((d) => { if (!annule && d && d.success) setFichiersStockes(d.parPeriode || {}); })
+        .catch(() => { /* pas de fichier conservé → dépôt manuel */ });
       return () => { annule = true; };
     }, []);
 
@@ -168,6 +188,9 @@
       lecteur.onload = (ev) => {
         try {
           const lu = lireClasseur(new Uint8Array(ev.target.result));
+          lu.nomFichier = f.name;
+          setDernierLu(lu);
+          setEnregistrement(null);
           setPeriodeFichier(lu.periode);
           const R = window.RapprochementPaie;
           if (!R) throw new Error('Module de rapprochement non chargé — recharge la page.');
@@ -187,6 +210,51 @@
     }
 
     const deposer = (e) => traiter(e.target.files && e.target.files[0]);
+
+    /**
+     * Compare avec un fichier DÉJÀ conservé, sans redéposer.
+     * Même chemin de comparaison qu'un fichier fraîchement lu : `parPeriode`
+     * côté serveur reconstitue exactement la forme que produit `postesExcel`,
+     * donc un seul comportement à vérifier.
+     */
+    function comparerStocke(stocke) {
+      const R = window.RapprochementPaie;
+      if (!R || !stocke) return;
+      setErreur(null);
+      setDernierLu(null);
+      setNomFichier(stocke.nomFichier + '  (déjà déposé)');
+      setPeriodeFichier({ debut: stocke.dateDebut, fin: stocke.dateFin });
+      const trouve = apparier({ debut: stocke.dateDebut, fin: stocke.dateFin });
+      const cible = trouve || quinzaine;
+      setApparie(trouve ? { auto: true, snap: trouve } : { auto: false, snap: quinzaine });
+      setRapport(R.comparer({ fichier: stocke.postes, quinzaine: cible, baremes }));
+    }
+
+    /** Conserve le fichier lu — sans nom ni RIB, le module les écarte. */
+    function enregistrer() {
+      if (!dernierLu) return;
+      setEnregistrement({ etat: 'encours', message: 'enregistrement…' });
+      fetch('/api/pointage-rh?action=paie-fichier-save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          periode: (apparie && apparie.snap && apparie.snap.periode) || periode,
+          dateDebut: dernierLu.periode ? dernierLu.periode.debut : '',
+          dateFin: dernierLu.periode ? dernierLu.periode.fin : '',
+          nomFichier: dernierLu.nomFichier || '',
+          transport: dernierLu.postes.transport,
+          sousTraitance: dernierLu.postes.sousTraitance,
+          pointage: dernierLu.pointage,
+          sansCnss: dernierLu.sansCnss,
+        }),
+      }).then((r) => r.json()).then((j) => {
+        if (j && j.success) {
+          setEnregistrement({ etat: 'ok', message: 'fichier conservé — plus besoin de le redéposer' });
+        } else {
+          setEnregistrement({ etat: 'erreur', message: (j && j.error) || 'refus sans motif' });
+        }
+      }).catch((e) => setEnregistrement({ etat: 'erreur', message: e.message }));
+    }
 
     function lacher(e) {
       e.preventDefault();
@@ -218,6 +286,36 @@
             Le fichier est lu <strong>dans ton navigateur</strong> : il n'est ni envoyé au
             serveur, ni enregistré. Rien n'est modifié.
           </div>
+
+          {/* FICHIERS DÉJÀ CONSERVÉS. Le dépôt ne sert qu'une fois par quinzaine :
+              ensuite, n'importe qui peut relire le rapprochement sans avoir le
+              classeur sous la main. */}
+          {fichiersStockes && Object.keys(fichiersStockes).length > 0 && (
+            <div style={{ marginBottom: 14, padding: '10px 14px', background: '#f5f4ef',
+              borderRadius: 8, fontSize: 12 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6, color: C.gris }}>
+                <i className="fa-solid fa-box-archive" style={{ marginRight: 6 }}></i>
+                Fichiers déjà déposés — cliquer pour comparer sans redéposer
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {Object.keys(fichiersStockes).sort().map((k) => {
+                  const st = fichiersStockes[k];
+                  return (
+                    <button key={k} onClick={() => comparerStocke(st)}
+                      title={'Déposé le ' + String(st.importe_at || '').slice(0, 10)
+                        + ' — ' + st.nomFichier}
+                      style={{ padding: '5px 12px', borderRadius: 8, border: '1px solid ' + C.vert,
+                        background: '#fff', color: C.vert, fontSize: 12, fontWeight: 600,
+                        cursor: 'pointer' }}>
+                      {k} <span style={{ fontWeight: 400, color: C.gris }}>
+                        ({st.dateDebut} → {st.dateFin})
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Zone de dépôt ET bouton. Le CLIC reste le chemin principal : en
               plein écran macOS, glisser un fichier depuis le Finder oblige à
@@ -334,6 +432,36 @@
                   </tr>
                 </tfoot>
               </table>
+
+              {dernierLu && (
+                <div style={{ marginTop: 14, padding: '10px 14px', borderRadius: 8,
+                  background: '#f5f4ef', display: 'flex', alignItems: 'center', gap: 12,
+                  flexWrap: 'wrap' }}>
+                  <button onClick={enregistrer}
+                    disabled={enregistrement && enregistrement.etat === 'encours'}
+                    style={{ padding: '6px 14px', borderRadius: 8, border: '1px solid ' + C.vert,
+                      background: C.vert, color: '#fff', fontSize: 12, fontWeight: 600,
+                      cursor: 'pointer' }}>
+                    <i className="fa-solid fa-box-archive" style={{ marginRight: 6 }}></i>
+                    Conserver ce fichier pour l'équipe
+                  </button>
+                  <span style={{ fontSize: 11, color: C.gris, flex: 1, minWidth: 240 }}>
+                    Seules les données de paie sont conservées, par
+                    <strong> matricule</strong> : ni nom, ni RIB — la feuille VIREMENT
+                    n'est jamais lue. Le fichier lui-même n'est pas envoyé.
+                  </span>
+                  {enregistrement && (
+                    <span style={{ fontSize: 12, fontWeight: 600,
+                      color: enregistrement.etat === 'ok' ? C.vert
+                        : enregistrement.etat === 'erreur' ? C.rouge : C.gris }}>
+                      <i className={'fa-solid ' + (enregistrement.etat === 'ok' ? 'fa-circle-check'
+                        : enregistrement.etat === 'erreur' ? 'fa-triangle-exclamation'
+                          : 'fa-hourglass-half')} style={{ marginRight: 5 }}></i>
+                      {enregistrement.message}
+                    </span>
+                  )}
+                </div>
+              )}
 
               <div style={{ fontSize: 11, color: C.gris, marginTop: 12, lineHeight: 1.5 }}>
                 <i className="fa-solid fa-circle-info" style={{ marginRight: 6 }}></i>
