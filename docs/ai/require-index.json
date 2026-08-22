@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:1da5c691bb34c26c",
+    "sourceFingerprint": "sha256:23d85b1defb25c1f",
     "stats": {
-      "targetFiles": 235,
+      "targetFiles": 238,
       "targetFilesWithDirectTests": 137,
       "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 203
+      "testFilesScanned": 205
     }
   },
   "index": {
@@ -768,6 +768,10 @@
       "transitiveTests": []
     },
     "functions/lib/paie/paieUtils.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "functions/lib/paie/plafondDeclaration.js": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1584,6 +1588,10 @@
         "tests/unit/campagneExportUtils.test.js"
       ]
     },
+    "public/lib/campagneParcelleQuinzaine.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
     "public/lib/campagneProduction.js": {
       "directTests": [],
       "transitiveTests": []
@@ -1713,6 +1721,10 @@
       "transitiveTests": [
         "tests/unit/parcelleGroupUtils.test.js"
       ]
+    },
+    "public/lib/plafondDeclaration.js": {
+      "directTests": [],
+      "transitiveTests": []
     },
     "public/lib/primesImportParse.js": {
       "directTests": [

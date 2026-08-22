@@ -893,7 +893,13 @@ var totCells=_dates.map(function(d){var tJH=0,tOuv=0;(f.parcelles||[]).forEach(f
 // BDP qui sautait ensuite vers le net Smart Berry (2-3 valeurs successives).
 // En cas d'échec réseau → resolved quand même → fallback BDP (comportement
 // dégradé identique à avant).
-const[quinzBaremesResolved,setQuinzBaremesResolved]=useState(false);const[quinzRegistryResolved,setQuinzRegistryResolved]=useState(false);React.useEffect(()=>{const db=firebase.firestore();let cancelled=false;db.collection('app_settings').doc('paie_baremes').get().then(doc=>{if(!cancelled&&doc.exists)setQuinzPaieBaremes(prev=>({...prev,...doc.data()}));}).catch(e=>console.warn('quinz paie_baremes:',e)).finally(()=>{if(!cancelled)setQuinzBaremesResolved(true);});return()=>{cancelled=true;};},[]);React.useEffect(()=>{let cancelled=false;fetch('/api/registry?action=get-registry').then(r=>r.json()).then(resp=>{if(cancelled||!resp||!resp.success)return;const reg={};(resp.ouvriers||[]).forEach(o=>{reg[numKey(o.matricule)]=o;});if(!cancelled)setQuinzRegistry(reg);}).catch(e=>console.warn('quinz registry:',e)).finally(()=>{if(!cancelled)setQuinzRegistryResolved(true);});return()=>{cancelled=true;};},[]);// Transport config & prefix helper
+const[quinzBaremesResolved,setQuinzBaremesResolved]=useState(false);const[quinzRegistryResolved,setQuinzRegistryResolved]=useState(false);// Journées pointées DEPUIS le socle d'ancienneté de chaque ouvrier.
+// Sans elles, l'ancienneté restait figée à la photo du 30/04 et ne
+// progressait jamais — l'écran Campagne, lui, cumulait déjà.
+const[joursDepuisSocle,setJoursDepuisSocle]=useState({});React.useEffect(()=>{const db=firebase.firestore();let cancelled=false;db.collection('app_settings').doc('paie_baremes').get().then(doc=>{if(!cancelled&&doc.exists)setQuinzPaieBaremes(prev=>({...prev,...doc.data()}));}).catch(e=>console.warn('quinz paie_baremes:',e)).finally(()=>{if(!cancelled)setQuinzBaremesResolved(true);});return()=>{cancelled=true;};},[]);React.useEffect(()=>{let cancelled=false;// Arrêté à la FIN de la quinzaine affichée : l'ancienneté d'une
+// quinzaine passée ne doit pas bénéficier des journées
+// travaillées depuis. Sans période, on prend aujourd'hui.
+const _fin=apiData&&apiData.parJour&&apiData.parJour.length?apiData.parJour.map(d=>d&&d.jour).filter(Boolean).sort().pop():'';fetch('/api/pointage-rh?action=anciennete-cumul'+(_fin?'&jusqua='+encodeURIComponent(_fin):'')).then(r=>r.json()).then(j=>{if(!cancelled&&j&&j.success)setJoursDepuisSocle(j.cumul||{});}).catch(e=>console.warn('anciennete-cumul:',e));return()=>{cancelled=true;};},[apiData]);React.useEffect(()=>{let cancelled=false;fetch('/api/registry?action=get-registry').then(r=>r.json()).then(resp=>{if(cancelled||!resp||!resp.success)return;const reg={};(resp.ouvriers||[]).forEach(o=>{reg[numKey(o.matricule)]=o;});if(!cancelled)setQuinzRegistry(reg);}).catch(e=>console.warn('quinz registry:',e)).finally(()=>{if(!cancelled)setQuinzRegistryResolved(true);});return()=>{cancelled=true;};},[]);// Transport config & prefix helper
 const transportConfig=data.transportConfig||[];// currentPeriode doit être calculé AVANT coutMap : getCoutTransport est versionné
 // par quinzaine et selectedPeriode reste '' tant que l'user ne change pas la sélection.
 // Utiliser apiData.periodes[0] comme fallback pour obtenir le bon tarif historique.
@@ -981,7 +987,11 @@ const sbNetForWorker=(mat,journees,firstDay)=>{if(!registryReady)return null;ret
 // chargé : ce repli affichait un montant d'une AUTRE nature sous le
 // même libellé, sans que rien ne le dise. Sans registre, `null` —
 // et l'écran montre « — ».
-const _moTotaux=registryReady?_CMO.netParCategorie({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey}):null;const totalCoutRecolte=_moTotaux?_moTotaux.recolte:null;const totalCoutHorsRecolte=_moTotaux?_moTotaux.horsRecolte:null;const totalCoutPostes=_moTotaux?_moTotaux.postes:null;// CHARGES SOCIALES — les DEUX composantes. La carte précédente
+const _moTotaux=registryReady?_CMO.netParCategorie({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey,// MÊME ancienneté que `chargesSociales` : sans cette
+// injection, le net et les charges se calculeraient sur deux
+// anciennetés différentes pour le même ouvrier, et leur somme
+// ne serait le total de rien.
+joursDepuisSocle:joursDepuisSocle}):null;const totalCoutRecolte=_moTotaux?_moTotaux.recolte:null;const totalCoutHorsRecolte=_moTotaux?_moTotaux.horsRecolte:null;const totalCoutPostes=_moTotaux?_moTotaux.postes:null;// CHARGES SOCIALES — les DEUX composantes. La carte précédente
 // n'affichait que la patronale (19,26 %) et se disait « non incluse
 // dans le total » : le coût employeur n'était donc affiché nulle
 // part. La part salariale (CNSS 4,48 % + AMO 2,26 %) est bien un
@@ -990,9 +1000,12 @@ const _moTotaux=registryReady?_CMO.netParCategorie({paie:window.PaieUtils,rows:_
 // Jours fériés par ouvrier, pour la quinzaine et le périmètre affichés.
 // On ne garde que le NOMBRE de jours : leur valorisation vient
 // désormais du barème Smart Berry, plus du coût moyen BEE ONE.
-const _feriesParOuvrier=(()=>{const acc={};(transportExtras.jourFerieDetail||[]).forEach(w=>{if(!w||w.periode!==currentPeriode)return;if(farmFilter&&w.ferme!==farmFilter)return;const k=numKey(w.matricule);if(!k)return;acc[k]=(acc[k]||0)+(Number(w.jh)||0);});return acc;})();const _chargesSociales=registryReady?_CMO.chargesSociales({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey,// Les HS sont DANS l'assiette : le module les remonte au brut
+const _feriesParOuvrier=(()=>{const acc={};(transportExtras.jourFerieDetail||[]).forEach(w=>{if(!w||w.periode!==currentPeriode)return;if(farmFilter&&w.ferme!==farmFilter)return;const k=numKey(w.matricule);if(!k)return;acc[k]=(acc[k]||0)+(Number(w.jh)||0);});return acc;})();const _chargesSociales=registryReady?_CMO.chargesSociales({paie:window.PaieUtils,rows:_moRows,registre:quinzRegistry,baremes:quinzPaieBaremes,cleRegistre:numKey,joursDepuisSocle:joursDepuisSocle,// Les HS sont DANS l'assiette : le module les remonte au brut
 // avant d'appliquer les taux.
-heuresSupNet:hsMontants,feriesParOuvrier:_feriesParOuvrier}):null;// Total des heures sup accordées sur la quinzaine, restreint aux
+heuresSupNet:hsMontants,feriesParOuvrier:_feriesParOuvrier,// PLAFOND DE DÉCLARATION — injecté, comme PaieUtils : le
+// module de coût ne lit jamais une globale. Absent (script
+// non chargé) → aucune coupure, comportement d'avant.
+plafond:window.PlafondDeclaration}):null;// Total des heures sup accordées sur la quinzaine, restreint aux
 // ouvriers qui y ont POINTÉ : une saisie laissée sur un ouvrier
 // absent ne doit pas gonfler le total de la quinzaine.
 const _hsTotal=(()=>{if(!_CMO||!_chargesSociales)return 0;return _chargesSociales.detail.reduce((s,w)=>s+(w.heuresSup||0),0);})();// Traitement (10 DH/ouvrier-jour)

@@ -66,6 +66,13 @@
  *                 nœuds React). Ce sont des RAPPORTS (kg/JH, DH/kg) : ni des
  *                 séries (la grille les agrégerait), ni des lignes famille
  *                 (elles entreraient dans les totaux). Défaut : aucune.
+ *   onParcelleClick {Function}  (cléParcelle, ha) => void. Rend l'EN-TÊTE de
+ *                 chaque colonne cliquable (curseur, soulignement). Absent =
+ *                 en-têtes inertes, contrat historique.
+ *   totalHa       {number}  Surface de la colonne TOTAL. Défaut : la somme des
+ *                 colonnes. À surcharger quand les colonnes ne sont PAS des
+ *                 parcelles distinctes (grille par quinzaine d'UNE parcelle :
+ *                 la somme y vaudrait 4 × la surface réelle sur 4 quinzaines).
  *   onCellClick   {Function}  ({parcelle, operationFamille, ha, detailRows}) =>
  *                 void. Absent = cellules non cliquables (ni curseur, ni survol).
  *                 Une cellule dont `detailRows` est un tableau VIDE ne l'est pas
@@ -421,6 +428,7 @@
     }];
     var color = props.color || 'var(--berry)';
     var onCellClick = typeof props.onCellClick === 'function' ? props.onCellClick : null;
+    var onParcelleClick = typeof props.onParcelleClick === 'function' ? props.onParcelleClick : null;
     var parcelleLabel = typeof props.parcelleLabel === 'function' ? props.parcelleLabel : null;
     var firstColumnLabel = props.firstColumnLabel || 'Opération';
     var note = props.note || '';
@@ -545,7 +553,10 @@
     function borderSousColonne(i) {
       return i === nbMetrics - 1 ? traitParcelle : 'none';
     }
-    var totalHa = parcelles.reduce(function (s, p) {
+
+    // Surface de la colonne TOTAL. Somme des colonnes par défaut ; surchargée
+    // quand les colonnes partagent la même surface (cf. `totalHa` en tête).
+    var totalHa = typeof props.totalHa === 'number' && props.totalHa >= 0 ? props.totalHa : parcelles.reduce(function (s, p) {
       return s + p[1];
     }, 0);
 
@@ -1130,24 +1141,38 @@
         zIndex: 1
       }
     }, firstColumnLabel), parcelles.map(function (p) {
-      return _pag_h('th', {
+      var styleEntete = {
+        padding: '6px 10px',
+        textAlign: 'center',
+        fontWeight: 600,
+        color: 'var(--gray-600)',
+        // Une parcelle éclatée n'a pas besoin de 110 px : ce sont
+        // ses sous-colonnes qui portent la largeur.
+        minWidth: multi ? undefined : 110,
+        width: largeursFixes ? largeurColonne : undefined,
+        borderRight: multi ? traitParcelle : '1px solid var(--gray-100)'
+      };
+      var attrsEntete = {
         key: p[0],
-        colSpan: multi ? nbMetrics : undefined,
-        style: {
-          padding: '6px 10px',
-          textAlign: 'center',
-          fontWeight: 600,
-          color: 'var(--gray-600)',
-          // Une parcelle éclatée n'a pas besoin de 110 px : ce sont
-          // ses sous-colonnes qui portent la largeur.
-          minWidth: multi ? undefined : 110,
-          width: largeursFixes ? largeurColonne : undefined,
-          borderRight: multi ? traitParcelle : '1px solid var(--gray-100)'
-        }
-      }, _pag_h('div', {
+        colSpan: multi ? nbMetrics : undefined
+      };
+      if (onParcelleClick) {
+        styleEntete.cursor = 'pointer';
+        attrsEntete.title = 'Voir le détail quinzaine par quinzaine';
+        attrsEntete.onClick = function (cle, ha) {
+          return function () {
+            onParcelleClick(cle, ha);
+          };
+        }(p[0], p[1]);
+      }
+      attrsEntete.style = styleEntete;
+      return _pag_h('th', attrsEntete, _pag_h('div', {
         style: {
           color: color,
-          fontWeight: 700
+          fontWeight: 700,
+          textDecoration: onParcelleClick ? 'underline' : 'none',
+          textDecorationStyle: 'dotted',
+          textUnderlineOffset: '3px'
         }
       }, (parcelleLabel ? parcelleLabel(p[0]) : p[0]) || p[0]), _pag_h('div', {
         style: {

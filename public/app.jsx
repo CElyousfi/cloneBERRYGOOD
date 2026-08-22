@@ -11470,6 +11470,10 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // dégradé identique à avant).
             const [quinzBaremesResolved, setQuinzBaremesResolved] = useState(false);
             const [quinzRegistryResolved, setQuinzRegistryResolved] = useState(false);
+            // Journées pointées DEPUIS le socle d'ancienneté de chaque ouvrier.
+            // Sans elles, l'ancienneté restait figée à la photo du 30/04 et ne
+            // progressait jamais — l'écran Campagne, lui, cumulait déjà.
+            const [joursDepuisSocle, setJoursDepuisSocle] = useState({});
 
             React.useEffect(() => {
                 const db = firebase.firestore();
@@ -11480,6 +11484,22 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     .finally(() => { if (!cancelled) setQuinzBaremesResolved(true); });
                 return () => { cancelled = true; };
             }, []);
+
+            React.useEffect(() => {
+                let cancelled = false;
+                // Arrêté à la FIN de la quinzaine affichée : l'ancienneté d'une
+                // quinzaine passée ne doit pas bénéficier des journées
+                // travaillées depuis. Sans période, on prend aujourd'hui.
+                const _fin = (apiData && apiData.parJour && apiData.parJour.length)
+                    ? apiData.parJour.map(d => d && d.jour).filter(Boolean).sort().pop()
+                    : '';
+                fetch('/api/pointage-rh?action=anciennete-cumul'
+                    + (_fin ? '&jusqua=' + encodeURIComponent(_fin) : ''))
+                    .then(r => r.json()).then(j => {
+                        if (!cancelled && j && j.success) setJoursDepuisSocle(j.cumul || {});
+                    }).catch(e => console.warn('anciennete-cumul:', e));
+                return () => { cancelled = true; };
+            }, [apiData]);
 
             React.useEffect(() => {
                 let cancelled = false;
@@ -11883,6 +11903,11 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 ? _CMO.netParCategorie({
                     paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
                     baremes: quinzPaieBaremes, cleRegistre: numKey,
+                    // MÊME ancienneté que `chargesSociales` : sans cette
+                    // injection, le net et les charges se calculeraient sur deux
+                    // anciennetés différentes pour le même ouvrier, et leur somme
+                    // ne serait le total de rien.
+                    joursDepuisSocle: joursDepuisSocle,
                 })
                 : null;
             const totalCoutRecolte = _moTotaux ? _moTotaux.recolte : null;
@@ -11914,10 +11939,15 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 ? _CMO.chargesSociales({
                     paie: window.PaieUtils, rows: _moRows, registre: quinzRegistry,
                     baremes: quinzPaieBaremes, cleRegistre: numKey,
+                    joursDepuisSocle: joursDepuisSocle,
                     // Les HS sont DANS l'assiette : le module les remonte au brut
                     // avant d'appliquer les taux.
                     heuresSupNet: hsMontants,
                     feriesParOuvrier: _feriesParOuvrier,
+                    // PLAFOND DE DÉCLARATION — injecté, comme PaieUtils : le
+                    // module de coût ne lit jamais une globale. Absent (script
+                    // non chargé) → aucune coupure, comportement d'avant.
+                    plafond: window.PlafondDeclaration,
                 })
                 : null;
             // Total des heures sup accordées sur la quinzaine, restreint aux

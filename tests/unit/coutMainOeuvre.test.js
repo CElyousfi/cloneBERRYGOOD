@@ -504,3 +504,55 @@ test('nbJoursDistincts — ce n\'est PAS la somme des jours par catégorie', () 
   assert.strictEqual(CMO.CATEGORIES.reduce((s, c) =>
     s + Object.keys(j.A.jours[c] || {}).length, 0), 3);
 });
+
+test('ancienneté — elle CUMULE les journées depuis le socle, elle ne fige plus', () => {
+  // LE défaut du 2026-08-22 : `paieOuvrier` appliquait `baselineJours` SEUL — une
+  // photo datée du 30/04/2026 — si bien que l'ancienneté ne progressait jamais
+  // sur l'écran Quinzaine. L'écran Campagne, lui, cumulait déjà : deux écrans,
+  // deux anciennetés pour le même ouvrier.
+  //
+  // Cas RÉEL, matricule 3607 : socle 606 jours, 111 journées pointées depuis. À
+  // 717 il franchit le seuil des 624 (5 %) — ce que la paie lui verse et que cet
+  // écran lui refusait.
+  const baremes = { smagBrutJournalier: 97.44, smagNetJournalier: 90.88,
+    tauxCnssSalariale: 0.0448, tauxAmo: 0.0226, tauxChargesPatronales: 0.1926,
+    paliers: [{ seuilJours: 624, pourcentage: 5 }, { seuilJours: 1560, pourcentage: 10 }] };
+  const fiche = { declare: true, baselineJours: 606 };
+  const commun = { paie: paie, fiche, jours: 10, baremes, dateISO: '2026-07-15' };
+
+  const fige = CMO.paieOuvrier(commun);
+  const cumule = CMO.paieOuvrier(Object.assign({}, commun, { joursDepuisSocle: 111 }));
+  assert.ok(cumule.brut > fige.brut,
+    'à 717 jours l\'ouvrier doit toucher 5 % que le socle seul lui refuse');
+  // 5 % de la base, exactement.
+  assert.strictEqual(Math.round((cumule.brut - fige.brut) * 100) / 100,
+    Math.round(97.44 * 10 * 0.05 * 100) / 100);
+});
+
+test('ancienneté — cumul ABSENT : on retombe sur le socle, jamais sur une valeur inventée', () => {
+  // Mieux vaut une ancienneté sous-estimée qu'une ancienneté inventée : la
+  // seconde ferait franchir des seuils à des ouvriers qui n'y sont pas.
+  const baremes = { smagBrutJournalier: 97.44, smagNetJournalier: 90.88,
+    tauxCnssSalariale: 0.0448, tauxAmo: 0.0226, tauxChargesPatronales: 0.1926,
+    paliers: [{ seuilJours: 624, pourcentage: 5 }] };
+  const args = { paie: paie, fiche: { declare: true, baselineJours: 606 },
+    jours: 10, baremes, dateISO: '2026-07-15' };
+  const sans = CMO.paieOuvrier(args);
+  const zero = CMO.paieOuvrier(Object.assign({}, args, { joursDepuisSocle: 0 }));
+  assert.strictEqual(sans.brut, zero.brut);
+});
+
+test('ancienneté — un cumul insuffisant ne fait PAS franchir le seuil', () => {
+  // Matricule 2296 : socle 599, et 18 journées seulement depuis le début de
+  // campagne. À 617 il reste sous les 624 — c'est en partant du SOCLE (50
+  // journées) qu'il franchit. Le point de départ du cumul compte.
+  const baremes = { smagBrutJournalier: 97.44, smagNetJournalier: 90.88,
+    tauxCnssSalariale: 0.0448, tauxAmo: 0.0226, tauxChargesPatronales: 0.1926,
+    paliers: [{ seuilJours: 624, pourcentage: 5 }] };
+  const args = { paie: paie, fiche: { declare: true, baselineJours: 599 },
+    jours: 10, baremes, dateISO: '2026-07-15' };
+  const court = CMO.paieOuvrier(Object.assign({}, args, { joursDepuisSocle: 18 }));
+  const complet = CMO.paieOuvrier(Object.assign({}, args, { joursDepuisSocle: 50 }));
+  assert.strictEqual(court.brut, CMO.paieOuvrier(args).brut, '617 < 624');
+  assert.ok(complet.brut > court.brut, '649 ≥ 624');
+});

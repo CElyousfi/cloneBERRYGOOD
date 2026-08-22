@@ -4900,6 +4900,81 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
         return res.json({ success: true, groupes });
       }
 
+      // ANCIENNETÉ CUMULÉE — journées travaillées DEPUIS le socle du registre.
+      //
+      // L'écran Quinzaine appliquait `trouverPalierAnciennete(baselineJours)` :
+      // le socle SEUL, figé au 30/04/2026. L'ancienneté n'y progressait donc
+      // jamais. L'écran Campagne, lui, cumule déjà — nos deux écrans ne
+      // donnaient pas la même ancienneté au même ouvrier.
+      //
+      // Mesuré le 2026-08-22 : le matricule 3607 est à 606 jours de socle et a
+      // pointé 111 journées depuis. À 717 il franchit le seuil des 624 (5 %) —
+      // ce que la paie lui verse, et que la Quinzaine lui refusait.
+      //
+      // ⚠️ On cumule depuis `baselineDate`, PAS depuis le début de campagne :
+      // le socle date du 30/04 et la campagne commence le 01/07. Partir de la
+      // campagne perdrait mai et juin — 59 journées pour le seul 3607, et le
+      // matricule 2296 resterait sous son seuil à tort.
+      if (action === "anciennete-cumul") {
+        const jusqua = String(req.query.jusqua || '').match(/^\d{4}-\d{2}-\d{2}$/)
+          ? String(req.query.jusqua) : new Date().toISOString().slice(0, 10);
+        const cachedA = await withCache(
+          `anciennete_cumul_v1_${jusqua}`,
+          6 * 60 * 60 * 1000,
+          async () => {
+            // Socles : on ne lit QUE les dates, pas les fiches entières.
+            const regSnap = await db_firestore.collection('ouvriers_registry').get();
+            const socles = {};
+            let plusAncien = jusqua;
+            regSnap.forEach((doc) => {
+              const d = doc.data() || {};
+              const dt = String(d.baselineDate || '');
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(dt)) return;
+              socles[coutOuvrier.cleRegistre(doc.id)] = dt;
+              if (dt < plusAncien) plusAncien = dt;
+            });
+
+            // Journées DISTINCTES par ouvrier, du lendemain du socle à `jusqua`.
+            // Une journée est comptée une fois, quel que soit le nombre de
+            // lignes de pointage : c'est l'assiette de l'ancienneté, comme celle
+            // de la paie.
+            const cumul = {};
+            const vusParJour = {};
+            const d0 = new Date(plusAncien + 'T00:00:00Z');
+            d0.setUTCDate(d0.getUTCDate() + 1);
+            const dFin = new Date(jusqua + 'T00:00:00Z');
+            const jours = [];
+            for (let d = d0; d <= dFin; d.setUTCDate(d.getUTCDate() + 1)) {
+              jours.push(d.toISOString().slice(0, 10));
+            }
+            const LOT_J = 15;
+            for (let i = 0; i < jours.length; i += LOT_J) {
+              const lot = jours.slice(i, i + LOT_J);
+              const snaps = await Promise.all(lot.map((j) =>
+                db_firestore.collection('sql_mirror_pointage').doc(j).get()));
+              snaps.forEach((snap, k) => {
+                if (!snap.exists) return;
+                const jour = lot[k];
+                const vus = new Set();
+                (snap.data().rows || []).forEach((r) => {
+                  const m = coutOuvrier.cleRegistre(r.Personnel_Matricule);
+                  if (!m || vus.has(m)) return;
+                  vus.add(m);
+                  // Chaque ouvrier ne compte QUE les journées postérieures à SON
+                  // socle : ils ne sont pas tous datés du même jour.
+                  const socle = socles[m];
+                  if (!socle || jour <= socle) return;
+                  cumul[m] = (cumul[m] || 0) + 1;
+                });
+                vusParJour[jour] = vus.size;
+              });
+            }
+            return { success: true, jusqua, socles, cumul, joursLus: Object.keys(vusParJour).length };
+          }
+        );
+        return res.json(cachedA);
+      }
+
       // FICHIER DE PAIE CONSERVÉ — déposé une fois, exploitable ensuite par tous.
       //
       // ⚠️ On ne conserve NI NOM NI RIB. Le classeur porte une feuille VIREMENT

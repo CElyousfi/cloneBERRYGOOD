@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:6fdaa3fc64609fbe -->
-# Code Map — Modules lib (182)
+<!-- sourceFingerprint: sha256:4098a25ab65e2cce -->
+# Code Map — Modules lib (185)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -86,6 +86,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/paie/fichierPaieStore.js | — | MAX_LIGNES, CHAMPS_LIGNE, normaliserLigne, normaliser, totaux, valider, versDocument, parPeriode |
 | functions/lib/paie/lecturePaieExcel.js | — | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, lireDivers, agregerOuvriers, postesExcel |
 | functions/lib/paie/paieUtils.js | — | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
+| functions/lib/paie/plafondDeclaration.js | — | bornesQuinzaine, plafondSurPeriode, plafondQuinzaine, repartir |
 | functions/lib/parcelleGroupes/seedHa.js | — | MAX_LABELS, RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, sanitizeLabels, computeSeedPlan |
 | functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |
 | functions/lib/parcelleGroupes/validate.js | — | slugGroupeLabel, validateGroupeSave |
@@ -158,6 +159,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/campagneBudgetPivot.js | CampagneBudgetPivot | indexBudgets, buildBudgetPivot, ecartCell |
 | public/lib/campagneBudgetQuinzaine.js | CampagneBudgetQuinzaine | quinzaineKey, quinzaineNum, optionsFromPeriodes, quinzaineCourante, quinzainePrecedente, quinzainesByLabel, trancheQuinzaine, realiseQuinzaine, decoreQuinzaine, pctPartsCellule, resteQuinzaineCellule, noteQuinzaine |
 | public/lib/campagneExportUtils.js | CampagneExportUtils | SHEET_MAX, ROW_KIND, PERCENT_HEADER, BUDGET_HEADER, scopeNote, perHa, buildParcelleBudgetIndex, haLabel, numFmtFor, percentFmtFor, percentColumns, sumBudget, budgetScope, budgetCells, safeSheetName, buildSyntheseRows, buildSyntheseAoA, syntheseSheetCols, buildParcelleSheetRows, buildParcelleSheetAoA, parcelleSheetCols |
+| public/lib/campagneParcelleQuinzaine.js | CampagneParcelleQuinzaine | lignesParQuinzaine, periodesDe |
 | public/lib/campagneProduction.js | CampagneProduction | BAREME_KG_PAR_JH, BAREME_DH_PAR_KG, kgParParcelle, vitesseRecolte, effortRecolte |
 | public/lib/campagneRapprochement.js | CampagneRapprochement | chargeParQuinzaine, rapprocher |
 | public/lib/campagneRythme.js | CampagneRythme | CLASSES, JOURS_CAMPAGNE, QUINZAINES_PAR_MOIS, FENETRE_PAR_DEFAUT, MIN_QUINZAINES_CONSOMMEES, quinzaineNum, totalQuinzaines, quinzainesInfo, indexClasses, classeOf, classeFamille, resteBudgetCellule, moyenneMobile, resteRythmeCellule, decoreRestes, noteRestes, partEcoulee, joursEcoules |
@@ -177,6 +179,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | public/lib/paieDataCache.js | PaieDataCache | DEFAULT_TTL_MS, pointageKey, peek, set, getOrLoad, invalidate |
 | public/lib/paieUtils.js | PaieUtils | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
 | public/lib/parcelleGroupUtils.js | ParcelleGroupUtils | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, formatApercu |
+| public/lib/plafondDeclaration.js | PlafondDeclaration | bornesQuinzaine, plafondSurPeriode, plafondQuinzaine, repartir |
 | public/lib/primesImportParse.js | PrimesImportParse | rows, headerIndex, normHeader, MATRICULE_ALIASES, PRIME_ALIASES, findHeaderRow, extractPrimesRows |
 | public/lib/primesV2.js | PrimesV2 | norm, matches, searchWorkers, buildHistoryView |
 | public/lib/quinzaineUtils.js | QuinzaineUtils | getEqPrefix, computeTransportQuinzaine |

@@ -793,3 +793,47 @@ test('défilement — deux grilles d\'un même groupe coulissent ensemble', () =
   assert.strictEqual(div.props['data-scroll-group'], undefined);
   assert.strictEqual(div.props.onScroll, undefined);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// En-têtes cliquables et surface du TOTAL
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** L'en-tête de niveau 1 d'une parcelle (celui qui porte son libellé). */
+function parcelleTh(tree, cle) {
+  return headerThs(tree).filter(function (n) { return textOf(n).indexOf(cle) === 0; })[0];
+}
+
+test('onParcelleClick — absent, les en-têtes restent inertes', () => {
+  const th = parcelleTh(render(troisSeries('perHa')), 'P2');
+  assert.strictEqual(th.props.onClick, undefined);
+  assert.strictEqual(th.props.style.cursor, undefined);
+});
+
+test('onParcelleClick — présent, l\'en-tête rend SA parcelle et SON Ha', () => {
+  const vus = [];
+  const tree = render(troisSeries('perHa'), {
+    onParcelleClick: function (cle, ha) { vus.push([cle, ha]); },
+  });
+  parcelleTh(tree, 'P2').props.onClick();
+  parcelleTh(tree, 'P4').props.onClick();
+  // Chaque en-tête doit fermer sur SA colonne : une fermeture partagée dans la
+  // boucle ouvrirait toujours la dernière parcelle, sans rien lever.
+  assert.deepStrictEqual(vus, [['P2', 2], ['P4', 4]]);
+  assert.strictEqual(parcelleTh(tree, 'P2').props.style.cursor, 'pointer');
+});
+
+test('totalHa — par défaut, la somme des colonnes', () => {
+  // 2 Ha + 4 Ha : l'en-tête du Total annonce 6 Ha.
+  assert.match(textOf(totalTh(render(troisSeries('perHa')))), /6 Ha/);
+});
+
+test('totalHa — surchargeable quand les colonnes partagent la même surface', () => {
+  // Grille « une parcelle, quinzaine par quinzaine » : chaque colonne porte la
+  // MÊME surface. Sommer les colonnes donnerait 4 × la parcelle sur 4
+  // quinzaines — et diviserait par 4 tous les « JH/Ha » du Total.
+  const tree = render(troisSeries('perHa'), { totalHa: 2 });
+  assert.match(textOf(totalTh(tree)), /2 Ha/);
+  // Le total en JH/Ha suit la surface annoncée : 30 JH réalisés / 2 Ha = 15,0.
+  const totalRealise = tds(bodyRows(tree)[1]).slice(-3)[0];
+  assert.strictEqual(textOf(totalRealise).trim(), '15.0');
+});

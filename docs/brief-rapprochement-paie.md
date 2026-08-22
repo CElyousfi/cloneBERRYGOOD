@@ -150,16 +150,56 @@ paie. **Mesurer d'abord.**
 
 ---
 
+## 7 ter. Le PLAFOND DE DÉCLARATION — réglé, déployé
+
+Un ouvrier déclaré ne peut voir déclarer qu'un nombre limité de journées par quinzaine ;
+au-delà, il est payé HORS CNSS. Confirmé par le RH le 2026-08-22.
+
+⚠️ **Le plafond n'est PAS 13**, contrairement à la formulation reçue. C'est
+`jours calendaires − dimanches` : 13 sur une quinzaine de 15 jours, **14** sur une de 16.
+Vérifié sur les trois fichiers ; un test fige ce point.
+
+Il ne change **pas le net** — une journée déclarée et une journée hors CNSS valent le même
+net (90,87 contre 90,88) — il change l'**assiette** des cotisations :
+
+| quinzaine | hors plafond (SB) | (fichier) | charges | net |
+|---|---|---|---|---|
+| 01–15/07 | 17 | 17 | −824 DH | inchangé |
+| 16–31/07 | 13 | 13 | −727 DH | inchangé |
+| 01–15/08 | 21 | 20 | −900 DH | inchangé |
+
+⚠️ La prime de fonction n'est **pas** plafonnée : la feuille `Prime General` la calcule
+sur TOUTES les journées travaillées (mat 198 : 15 jours), et le fichier la reporte en
+entier sur la ligne déclarée. D'où le PF à 0 sur la ligne `SANS CNSS` — ce qui m'avait
+fait croire, à tort, à une réduction.
+
+**« Deux statuts en même temps » n'existe pas.** C'est un seul homme, un seul statut : le
+fichier découpe ses journées en deux lignes pour respecter le plafond. Ne pas reprendre
+cette formulation, elle a fait perdre du temps.
+
 ## 8. La suite, dans l'ordre
 
-1. **Vérifier** la piste du férié des non-déclarés (§3.1) — par la mesure, pas par la
-   lecture du code. Puis corriger, avec un test.
-2. **Corriger** le `jours` périmé de l'instantané (§3.2).
-3. Reprendre le rapprochement : les 4 435 / 4 818 DH doivent tomber à ~1 300 / 1 700
-   (le résidu « hors férié » actuel), et les 41 DH de la Q01 ne doivent pas bouger.
-4. Identifier ce résidu de ~1 500 DH. Piste non vérifiée : les ouvriers **à cheval sur
-   les deux feuilles** (17, 13 et 20 selon la quinzaine), dont une partie des journées
-   est déclarée et l'autre non, alors que Smart Berry leur donne un statut unique.
+1. ~~Férié des non-déclarés~~ — **RÉGLÉ**, déployé : il valait zéro, il vaut son SMAG.
+2. ~~`jours` périmé de l'instantané~~ — **RÉGLÉ** : garde de cohérence sur
+   `apiData.periode`.
+3. ~~Plafond de déclaration~~ — **RÉGLÉ**, cf. §7 ter.
+4. **Le résidu : 386 DH (16–31/07) et 329 DH (01–15/08)**, contre 41 DH sur la quinzaine
+   témoin. Ce qui est **écarté par la mesure**, et qu'il ne faut pas rouvrir :
+
+   | poste | verdict |
+   |---|---|
+   | prime de fonction | concorde à **1 DH** (comparée sur `prime dh × nbr jour`, PAS sur la colonne agrégée) |
+   | transport | < 0,5 % |
+   | sous-traitance | écart **0** |
+   | JH / périmètre | concordent exactement |
+   | ancienneté des non-déclarés | le fichier n'en verse pas — nos modules non plus |
+
+   Restent, jamais confrontés poste à poste : l'**ancienneté** et les **heures sup**.
+   À mesurer avant toute hypothèse.
+
+5. Un cas isolé à trancher avec le RH : **matricule 1588**, prime de fonction 19,13 au
+   fichier contre 29,13 au registre (5 jours, 49 DH sur août). Correction de registre =
+   règle de paie = **gated**.
 
 ---
 
