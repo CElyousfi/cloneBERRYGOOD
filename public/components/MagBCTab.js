@@ -72,9 +72,51 @@
     const type = typeProp || '';
     const label = labelProp || (type === 'engrais' ? 'Engrais' : type === 'pesticide' ? 'Phytosanitaire' : 'Tous');
     const icon = iconProp || 'fa-flask';
+
+    // ---- Brouillon persistant de saisie -------------------------------
+    // Le bon en cours de saisie ne doit JAMAIS disparaître : l'état local
+    // était perdu à chaque remount du tab (retour de fenêtre / sortie du
+    // plein écran, pull-to-refresh, rechargement mobile). On sauvegarde le
+    // brouillon dans localStorage à chaque frappe et on le restaure au
+    // montage. Effacé à la création du bon et à « Annuler ».
+    const BC_DRAFT_KEY = 'bcDraft_v1_' + (type || 'tous');
+    const BC_DRAFT_TTL_MS = 24 * 3600 * 1000;
+    const clearBcDraft = () => {
+      try {
+        window.localStorage.removeItem(BC_DRAFT_KEY);
+      } catch (e) {}
+    };
+    // Un brouillon n'est restauré que s'il contient vraiment quelque chose :
+    // un formulaire vierge ne doit pas rouvrir la fenêtre tout seul.
+    const bcDraftHasContent = f => !!(f && Array.isArray(f.items) && f.items.some(it => (it.article || '').trim() || String(it.quantite || '').trim() || (it.parcelle || '').trim()));
+    const readBcDraft = () => {
+      try {
+        const raw = window.localStorage.getItem(BC_DRAFT_KEY);
+        if (!raw) return null;
+        const d = JSON.parse(raw);
+        if (!d || !d.form || !Array.isArray(d.form.items)) return null;
+        if (!d.savedAt || Date.now() - d.savedAt > BC_DRAFT_TTL_MS) {
+          clearBcDraft();
+          return null;
+        }
+        if (!bcDraftHasContent(d.form)) {
+          clearBcDraft();
+          return null;
+        }
+        return d;
+      } catch (e) {
+        return null;
+      }
+    };
+    // Lu une seule fois, au premier rendu (useState paresseux plus bas).
+    const bcDraftRef = _r.useRef(undefined);
+    if (bcDraftRef.current === undefined) bcDraftRef.current = readBcDraft();
+    const bcDraft0 = bcDraftRef.current;
+    // -------------------------------------------------------------------
+
     const [bcs, setBcs] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [showForm, setShowForm] = useState(false);
+    const [showForm, setShowForm] = useState(!!bcDraft0);
     const [stocks, setStocks] = useState([]);
     const [catalogueArticles, setCatalogueArticles] = useState([]);
     const [showCreateArticle, setShowCreateArticle] = useState(false);
@@ -114,7 +156,7 @@
       ferme: '',
       groupe_id: ''
     };
-    const [form, setForm] = useState({
+    const [form, setForm] = useState(() => bcDraft0 && bcDraft0.form || {
       date: new Date().toISOString().split('T')[0],
       lieu_source_type: 'magasin',
       lieu_source_id: 'F1',
@@ -135,10 +177,10 @@
       const start = mo >= 7 ? y : y - 1;
       return start + '-' + (start + 1);
     })();
-    const [bcCampagne, setBcCampagne] = useState(() => bcCampagneOf(new Date().toISOString().slice(0, 10)));
+    const [bcCampagne, setBcCampagne] = useState(() => bcDraft0 && bcDraft0.bcCampagne || bcCampagneOf(new Date().toISOString().slice(0, 10)));
     // Culture : filtre GLOBAL au bon (pas une donnée du bon). '' = toutes.
     // Jamais envoyé au backend — même convention que bcCampagne.
-    const [bcCulture, setBcCulture] = useState('');
+    const [bcCulture, setBcCulture] = useState(() => bcDraft0 && bcDraft0.bcCulture || '');
     const [query, setQuery] = useState('');
     const [filterSource, setFilterSource] = useState('');
     const [dateFrom, setDateFrom] = useState('');
@@ -178,6 +220,20 @@
     useEffect(() => {
       loadBcs();
     }, []);
+    // Sauvegarde du brouillon à chaque modification pendant la saisie.
+    // (Le scan joint n'est pas sérialisable : il est à re-joindre après un
+    // retour de fenêtre — le reste du bon est intact.)
+    useEffect(() => {
+      if (!showForm || !bcDraftHasContent(form)) return;
+      try {
+        window.localStorage.setItem(BC_DRAFT_KEY, JSON.stringify({
+          form,
+          bcCampagne,
+          bcCulture,
+          savedAt: Date.now()
+        }));
+      } catch (e) {}
+    }, [showForm, form, bcCampagne, bcCulture]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => {
       window.cachedFetch('/api/stock?action=stock-levels').then(json => {
         if (json.success) setStocks(json.stocks || []);
@@ -549,6 +605,7 @@
       }).then(r => r.json()).then(json => {
         if (json.success) {
           alert('Bon de consommation ' + json.numero + ' cree');
+          clearBcDraft();
           setShowForm(false);
           loadBcs();
         } else alert('Erreur: ' + (json.error || 'Echec'));
@@ -740,6 +797,7 @@
       value: "import"
     }, "Import")), currentProfile === 'magasinier' && /*#__PURE__*/React.createElement("button", {
       onClick: () => {
+        clearBcDraft();
         setForm({
           date: new Date().toISOString().split('T')[0],
           lieu_source_type: 'magasin',
@@ -1255,7 +1313,10 @@
         marginTop: 16
       }
     }, /*#__PURE__*/React.createElement("button", {
-      onClick: () => setShowForm(false),
+      onClick: () => {
+        clearBcDraft();
+        setShowForm(false);
+      },
       style: {
         padding: '8px 16px',
         borderRadius: 8,
