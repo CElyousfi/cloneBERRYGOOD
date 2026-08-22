@@ -23,11 +23,11 @@
     },
     "heatmap": [
       {
-        "commits": 43,
+        "commits": 44,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 42,
+        "commits": 43,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:604608fc3b32c0e7",
+    "sourceFingerprint": "sha256:cd935f088cf4a729",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -415,30 +415,30 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/lib/paie/coutOuvrierCampagne.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": "referentiel",
           "file": "public/components/CampagneAnalytiqueTab.jsx",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneRapprochement.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -818,7 +818,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 41,
+          "coCommits": 42,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -959,6 +959,13 @@
         },
         {
           "coCommits": 4,
+          "domain": "caisse",
+          "file": "public/lib/campagneRapprochement.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
           "domain": null,
           "file": "scripts/build-frontend.js",
           "note": "probabilistic",
@@ -972,6 +979,13 @@
           "windowDays": 90
         },
         {
+          "coCommits": 4,
+          "domain": null,
+          "file": "tests/unit/campagneRapprochement.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 3,
           "domain": null,
           "file": "public/components/ParcellesReferentielTab.js",
@@ -980,13 +994,6 @@
         },
         {
           "coCommits": 3,
-          "domain": "caisse",
-          "file": "public/lib/campagneRapprochement.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
           "domain": null,
           "file": "tests/unit/campagneBudgetQuinzaine.test.js",
           "note": "probabilistic",
@@ -996,13 +1003,6 @@
           "coCommits": 3,
           "domain": null,
           "file": "tests/unit/campagneBudgetQuinzaine.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "tests/unit/campagneRapprochement.test.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -2841,157 +2841,157 @@
     "AchatsAnalysesFoliairesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 47956
+      "line": 48018
     },
     "AchatsBDCTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 48932
+      "line": 48994
     },
     "AchatsBonApportTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 53202
+      "line": 53264
     },
     "AchatsCatalogueTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 47316
+      "line": 47378
     },
     "AchatsConsultationTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 47667
+      "line": 47729
     },
     "AchatsDATab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 43863
+      "line": 43925
     },
     "AchatsDashboardTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 46880
+      "line": 46942
     },
     "AchatsFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52223
+      "line": 52285
     },
     "AchatsFournisseursTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 48315
+      "line": 48377
     },
     "AchatsPaiementsTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52418
+      "line": 52480
     },
     "AchatsRapprochementTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 55205
+      "line": 55267
     },
     "AchatsReceptionsValoriserTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 57100
+      "line": 57162
     },
     "AchatsScanBLTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52911
+      "line": 52973
     },
     "AchatsScanFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52601
+      "line": 52663
     },
     "AchatsVentePlastiqueTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 54954
+      "line": 55016
     },
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63409
+      "line": 63471
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 44170
+      "line": 44232
     },
     "AgroAvancementTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 40089
+      "line": 40151
     },
     "AgroCompositionTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 43505
+      "line": 43567
     },
     "AgroDashboardTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 39204
+      "line": 39266
     },
     "AgroFarmroadTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 41888
+      "line": 41950
     },
     "AgroFertilisationTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 39351
+      "line": 39413
     },
     "AgroForecastTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 41410
+      "line": 41472
     },
     "AgroGrowthTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 39762
+      "line": 39824
     },
     "AgroHarvestPredictionTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 40945
+      "line": 41007
     },
     "AgroIrrigationTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 42678
+      "line": 42740
     },
     "AgroParcellesTab": {
       "domain": "referentiel",
       "file": "public/app.jsx",
-      "line": 43736
+      "line": 43798
     },
     "AgroPhytoTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 39478
+      "line": 39540
     },
     "AgroSurveillanceTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 45865
+      "line": 45927
     },
     "BudgetVsReelTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 58154
+      "line": 58216
     },
     "CaisseTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 59674
+      "line": 59736
     },
     "CampagneTab": {
       "domain": "referentiel",
@@ -3001,52 +3001,52 @@
     "CaporalHistoriqueTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 30239
+      "line": 30301
     },
     "CaporalSaisieTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 30434
+      "line": 30496
     },
     "CaporalSuiviTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 29671
+      "line": 29733
     },
     "ChefAgronomieTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 46409
+      "line": 46471
     },
     "ChefDATab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 46747
+      "line": 46809
     },
     "ChefTrackingTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 46447
+      "line": 46509
     },
     "ChefValidationBonsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 56493
+      "line": 56555
     },
     "ChefValidationsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 50105
+      "line": 50167
     },
     "ClimatProductionTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 45411
+      "line": 45473
     },
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 62675
+      "line": 62737
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -3056,42 +3056,42 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 63765
+      "line": 63827
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64732
+      "line": 64794
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65970
+      "line": 66032
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65434
+      "line": 65496
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64282
+      "line": 64344
     },
     "DGValidationsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 50274
+      "line": 50336
     },
     "DQRDailyTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 56070
+      "line": 56132
     },
     "DashboardAssocieTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 21985
+      "line": 22047
     },
     "DashboardTab": {
       "domain": null,
@@ -3101,102 +3101,102 @@
     "EquipesTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 25899
+      "line": 25961
     },
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66111
+      "line": 66173
     },
     "FinBDCTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 48605
+      "line": 48667
     },
     "FinCATab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 35651
+      "line": 35713
     },
     "FinCarburantTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 36337
+      "line": 36399
     },
     "FinCodesAnalytiquesTab": {
       "domain": "referentiel",
       "file": "public/app.jsx",
-      "line": 47773
+      "line": 47835
     },
     "FinDashboardTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 34611
+      "line": 34673
     },
     "FinDeleteArticlesTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 47854
+      "line": 47916
     },
     "FinFacturesTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 52512
+      "line": 52574
     },
     "FinLiquidationsTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 37943
+      "line": 38005
     },
     "FinOjraTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 37031
+      "line": 37093
     },
     "FinPaiementsTab": {
       "domain": "paie",
       "file": "public/app.jsx",
-      "line": 56681
+      "line": 56743
     },
     "FinPlantsTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 36043
+      "line": 36105
     },
     "FinStockTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 37364
+      "line": 37426
     },
     "FinTelecomTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 36814
+      "line": 36876
     },
     "FinTresorerieTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 37571
+      "line": 37633
     },
     "FinVirementsTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 47906
+      "line": 47968
     },
     "FinanceMarcheLocalTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 20200
+      "line": 20262
     },
     "GDDTrackingTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 45231
+      "line": 45293
     },
     "HorsRecolteSuiviTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 28445
+      "line": 28507
     },
     "HorsRecolteTab": {
       "domain": "recolte",
@@ -3206,82 +3206,82 @@
     "IrrigationIntelligenceTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 32355
+      "line": 32417
     },
     "IrrigationRecoTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 46137
+      "line": 46199
     },
     "MagDashboardStockTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 33647
+      "line": 33709
     },
     "MagFicheStockTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51191
+      "line": 51253
     },
     "MagInventaireTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51623
+      "line": 51685
     },
     "MagMouvementsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57654
+      "line": 57716
     },
     "MagParcTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 33736
+      "line": 33798
     },
     "MagReceptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 50621
+      "line": 50683
     },
     "MagSortieTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 57233
+      "line": 57295
     },
     "MagStockIntrantsTab": {
       "domain": "stock",
       "file": "public/app.jsx",
-      "line": 51514
+      "line": 51576
     },
     "MagTransfertTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 56747
+      "line": 56809
     },
     "MeteoTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 29163
+      "line": 29225
     },
     "PaieTab": {
       "domain": "paie",
       "file": "public/app.jsx",
-      "line": 26663
+      "line": 26725
     },
     "ParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 27809
+      "line": 27871
     },
     "PlanificationTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 29614
+      "line": 29676
     },
     "PointageDiversTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 25342
+      "line": 25404
     },
     "PointageTab": {
       "domain": "pointage",
@@ -3296,82 +3296,82 @@
     "PrimesTab": {
       "domain": "paie",
       "file": "public/app.jsx",
-      "line": 24395
+      "line": 24457
     },
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66585
+      "line": 66647
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 15329
+      "line": 15391
     },
     "QualiteBrixTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 19720
+      "line": 19782
     },
     "QualiteDashboardTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 16244
+      "line": 16306
     },
     "QualiteEcartsTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 23908
+      "line": 23970
     },
     "QualiteExpeditionsTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 20643
+      "line": 20705
     },
     "QualiteHistoriqueTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 17554
+      "line": 17616
     },
     "QualiteInspectionsTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 17126
+      "line": 17188
     },
     "QualiteLiquidationsTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 22007
+      "line": 22069
     },
     "QualiteMarcheLocalTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 19983
+      "line": 20045
     },
     "QualitePFQInterneTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 14288
+      "line": 14350
     },
     "QualiteProductionTab": {
       "domain": "recolte",
       "file": "public/app.jsx",
-      "line": 17897
+      "line": 17959
     },
     "QualiteReconciliationTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 21337
+      "line": 21399
     },
     "QualiteSuiviCalibreTab": {
       "domain": "qualite",
       "file": "public/app.jsx",
-      "line": 14079
+      "line": 14141
     },
     "QualiteValidationBonsTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 56307
+      "line": 56369
     },
     "QuinzaineTab": {
       "domain": "paie",
@@ -3386,57 +3386,57 @@
     "SecurityEnvoisWATab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 34438
+      "line": 34500
     },
     "SecurityIncidentsTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 34527
+      "line": 34589
     },
     "SecurityRegistreTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 33814
+      "line": 33876
     },
     "SecurityScanRegistreTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 34048
+      "line": 34110
     },
     "SecurityTunnelsTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 34255
+      "line": 34317
     },
     "StationnaireAnalyseTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 31976
+      "line": 32038
     },
     "StationnaireHistoriqueTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 31287
+      "line": 31349
     },
     "StationnaireImportScanTab": {
       "domain": "achats",
       "file": "public/app.jsx",
-      "line": 31746
+      "line": 31808
     },
     "StationnaireIrrigationTab": {
       "domain": "agro",
       "file": "public/app.jsx",
-      "line": 30715
+      "line": 30777
     },
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65112
+      "line": 65174
     },
     "SuiviTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 19878
+      "line": 19940
     }
   },
   "routes": {

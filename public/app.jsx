@@ -11203,9 +11203,35 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             // calculés que dans le corps du composant, hors de portée d'un hook.
             const _snapshotRef = React.useRef(null);
             const _snapshotEnvoye = React.useRef({});
+            // ÉTAT VISIBLE de l'enregistrement. Sans lui, un échec est
+            // indiscernable d'un succès : l'écran Campagne affiche « — » et
+            // personne ne sait s'il faut attendre, changer un filtre, ou
+            // signaler un bug. Une opération qui réussit à vide ne prouve rien.
+            const [snapEtat, setSnapEtat] = useState({ etat: 'attente', message: 'en attente du calcul' });
+            // L'effet ci-dessous n'a PAS de tableau de dépendances : il tourne
+            // après chaque rendu, parce que le total n'est calculé que dans le
+            // corps du composant, hors de portée d'un hook. Poser un état avec
+            // un objet neuf y déclencherait un rendu, donc l'effet, donc un
+            // rendu — React ne peut pas court-circuiter, `Object.is` compare
+            // deux littéraux distincts. On ne pose donc l'état que s'il CHANGE.
+            const _snapEtatRef = React.useRef('attente|en attente du calcul');
+            const majEtat = (etat, message) => {
+                const cle = etat + '|' + message;
+                if (_snapEtatRef.current === cle) return;
+                _snapEtatRef.current = cle;
+                setSnapEtat({ etat: etat, message: message });
+            };
             React.useEffect(() => {
                 const snap = _snapshotRef.current;
-                if (!snap || !snap.pleinPerimetre || !(snap.coutEmployeur > 0)) return;
+                if (!snap) { majEtat('attente', 'calcul en cours'); return; }
+                if (!snap.pleinPerimetre) {
+                    majEtat('refus', 'un filtre est actif — retire ferme / culture / sous-ferme');
+                    return;
+                }
+                if (!(snap.coutEmployeur > 0)) {
+                    majEtat('attente', 'coût non encore calculé');
+                    return;
+                }
                 // Dédoublonnage sur la VALEUR, pas sur la période : le total se
                 // stabilise après plusieurs rendus (chargements successifs), et
                 // republier un chiffre identique à chaque rendu inonderait
@@ -11213,20 +11239,27 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 const cle = snap.periode + '|' + Math.round(snap.coutEmployeur);
                 if (_snapshotEnvoye.current[cle]) return;
                 _snapshotEnvoye.current[cle] = true;
-                fetch('/api/pointage?action=cout-quinzaine-save', {
+                // Route `/api/pointage-rh` — la SEULE mappée vers `pointageV3` dans
+                // firebase.json. `/api/pointage` n'existe pas : elle retombe sur
+                // index.html, `r.json()` lève sur du HTML, et le `catch` avalait
+                // tout. Aucun instantané n'a jamais été écrit, et rien ne l'a
+                // jamais signalé — d'où le voyant d'état ci-dessus.
+                fetch('/api/pointage-rh?action=cout-quinzaine-save', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(snap),
                 }).then(r => r.json()).then(j => {
-                    if (!j || !j.success) {
-                        // On REJOUE en cas de refus : le garder marqué comme
-                        // envoyé condamnerait la période pour toute la session.
-                        delete _snapshotEnvoye.current[cle];
-                        console.warn('[cout-quinzaine] refus :', (j && j.error) || 'inconnu');
+                    if (j && j.success) {
+                        majEtat('ok', 'enregistré pour la Campagne');
+                        return;
                     }
+                    // On REJOUE en cas de refus : le garder marqué comme
+                    // envoyé condamnerait la période pour toute la session.
+                    delete _snapshotEnvoye.current[cle];
+                    majEtat('erreur', (j && j.error) || 'refus sans motif');
                 }).catch(e => {
                     delete _snapshotEnvoye.current[cle];
-                    console.warn('[cout-quinzaine] échec :', e.message);
+                    majEtat('erreur', e.message);
                 });
             });
             const [syncingBeeOne, setSyncingBeeOne] = useState(false);
@@ -12164,6 +12197,35 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                     <span style={{fontSize:11,color:'var(--gray-500)'}}>
                                         sur {Math.round(_q.jh).toLocaleString('fr-FR')} JH pointées
                                     </span>
+                                </div>
+                                {/* ÉTAT DE L'ENREGISTREMENT pour l'écran Campagne.
+                                    Cet écran fait foi : c'est SON total que le
+                                    rapprochement compare. Tant qu'il n'est pas
+                                    enregistré, la Campagne affiche « — » — et sans
+                                    ce voyant, rien ne disait pourquoi. */}
+                                <div style={{display:'inline-flex',flexDirection:'column',gap:4,justifyContent:'center',minWidth:210}}>
+                                    <span style={{fontSize:11,fontWeight:700,letterSpacing:0.3,
+                                        color: snapEtat.etat === 'ok' ? 'var(--green)'
+                                            : snapEtat.etat === 'attente' ? 'var(--gray-500)' : '#c0392b'}}>
+                                        <i className={'fa-solid ' + (snapEtat.etat === 'ok' ? 'fa-circle-check'
+                                            : snapEtat.etat === 'attente' ? 'fa-hourglass-half' : 'fa-triangle-exclamation')}
+                                            style={{marginRight:5}}></i>
+                                        RAPPROCHEMENT CAMPAGNE
+                                    </span>
+                                    <span style={{fontSize:11,color:'var(--gray-500)'}}>{snapEtat.message}</span>
+                                    {snapEtat.etat !== 'ok' && snapEtat.etat !== 'attente' && (
+                                    <button onClick={() => {
+                                        // Réessai MANUEL : le dédoublonnage porte sur la
+                                        // valeur, donc un refus corrigé (filtre retiré)
+                                        // ne repartirait pas tout seul si le total n'a
+                                        // pas bougé. Le geste doit rester possible.
+                                        _snapshotEnvoye.current = {};
+                                        majEtat('attente', 'nouvel essai…');
+                                    }} style={{padding:'3px 10px',borderRadius:8,border:'1px solid #c0392b',
+                                        background:'#fff',color:'#c0392b',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                                        Réessayer
+                                    </button>
+                                    )}
                                 </div>
                                 {/* Le bouton « Détail du coût » vivait ici. Les bulles
                                     elles-mêmes ouvrent leur détail : un chiffre qu'on
