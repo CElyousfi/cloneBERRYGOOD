@@ -108,10 +108,30 @@
     const [erreur, setErreur] = useState(null);
     const [nomFichier, setNomFichier] = useState(null);
     const [periodeFichier, setPeriodeFichier] = useState(null);
+    const [survol, setSurvol] = useState(false);
 
-    function deposer(e) {
-      const f = e.target.files && e.target.files[0];
+    // GARDE-FOU NAVIGATEUR. Sans elle, un fichier lâché À CÔTÉ de la zone fait
+    // NAVIGUER l'onglet vers ce fichier : l'application disparaît et tout le
+    // travail en cours est perdu. Le comportement par défaut d'un navigateur
+    // sur un drop est d'ouvrir le fichier — il faut l'annuler sur toute la
+    // fenêtre tant que le popup est ouvert, pas seulement sur la zone.
+    React.useEffect(() => {
+      const stop = (e) => { e.preventDefault(); };
+      window.addEventListener('dragover', stop);
+      window.addEventListener('drop', stop);
+      return () => {
+        window.removeEventListener('dragover', stop);
+        window.removeEventListener('drop', stop);
+      };
+    }, []);
+
+    function traiter(f) {
       if (!f) return;
+      if (!/\.xlsx$/i.test(f.name)) {
+        setErreur('« ' + f.name + ' » n\'est pas un .xlsx. Dépose le fichier de '
+          + 'quinzaine, pas un .xls ni un PDF.');
+        return;
+      }
       setErreur(null); setRapport(null);
       setNomFichier(f.name);
       const lecteur = new FileReader();
@@ -128,6 +148,15 @@
       };
       lecteur.onerror = () => setErreur('Lecture du fichier impossible.');
       lecteur.readAsArrayBuffer(f);
+    }
+
+    const deposer = (e) => traiter(e.target.files && e.target.files[0]);
+
+    function lacher(e) {
+      e.preventDefault();
+      setSurvol(false);
+      const dt = e.dataTransfer;
+      traiter(dt && dt.files && dt.files[0]);
     }
 
     const td = { padding: '7px 10px', fontSize: 13, textAlign: 'right' };
@@ -154,13 +183,34 @@
             serveur, ni enregistré. Rien n'est modifié.
           </div>
 
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 14px',
-            border: '1px dashed ' + C.berry, borderRadius: 8, cursor: 'pointer', color: C.berry,
-            fontSize: 13, fontWeight: 600 }}>
-            <i className="fa-solid fa-upload"></i>
-            {nomFichier || 'Déposer le fichier .xlsx de la quinzaine'}
+          {/* Zone de dépôt ET bouton. Le CLIC reste le chemin principal : en
+              plein écran macOS, glisser un fichier depuis le Finder oblige à
+              changer d'espace, et le glisser-déposer y est peu fiable. */}
+          <label
+            onDragEnter={(e) => { e.preventDefault(); setSurvol(true); }}
+            onDragOver={(e) => { e.preventDefault(); setSurvol(true); }}
+            onDragLeave={() => setSurvol(false)}
+            onDrop={lacher}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 6, padding: '22px 18px',
+              border: '2px dashed ' + (survol ? C.vert : C.berry), borderRadius: 10,
+              cursor: 'pointer', color: survol ? C.vert : C.berry, fontSize: 13,
+              fontWeight: 600, background: survol ? '#e9f7f1' : '#fcfbf9',
+              transition: 'background .15s, border-color .15s' }}>
+            <i className={'fa-solid ' + (survol ? 'fa-file-arrow-down' : 'fa-folder-open')}
+              style={{ fontSize: 22 }}></i>
+            <span>{nomFichier || 'Cliquer pour choisir le fichier .xlsx de la quinzaine'}</span>
+            <span style={{ fontSize: 11, fontWeight: 400, color: C.gris }}>
+              …ou glisser le fichier ici
+            </span>
             <input type="file" accept=".xlsx" onChange={deposer} style={{ display: 'none' }} />
           </label>
+          <div style={{ fontSize: 11, color: C.gris, marginTop: 8 }}>
+            <i className="fa-solid fa-lightbulb" style={{ marginRight: 6 }}></i>
+            En plein écran, le glisser-déposer depuis le Finder est peu fiable (macOS
+            change d'espace en cours de glissement). <strong>Le clic ouvre le
+            sélecteur de fichiers</strong> et fonctionne toujours.
+          </div>
 
           {periodeFichier && (
             <div style={{ fontSize: 12, color: C.gris, marginTop: 8 }}>
