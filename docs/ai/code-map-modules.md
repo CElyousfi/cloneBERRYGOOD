@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:0cfa0bfe690982fa -->
-# Code Map — Modules lib (178)
+<!-- sourceFingerprint: sha256:6b13dd3fb0b2f84e -->
+# Code Map — Modules lib (179)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -83,6 +83,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/paie/coutMainOeuvre.js | — | CATEGORIES, coutFeries, nbJoursDistincts, masseSalarialeNette, netAPayer, categorieMO, primeFonctionADate, joursParOuvrier, paieOuvrier, netParCategorie, chargesSociales, coutEmployeur, totalQuinzaine |
 | functions/lib/paie/coutOuvrierCampagne.js | — | prefixeEquipe, primeTransport, tarifADate, dateEffet, cleRegistre, primeRecolte, cumuleJournee, paieOuvrierQuinzaine, coutOuvrierCampagne |
 | functions/lib/paie/coutQuinzaineSnapshot.js | — | POSTES, nombre, normaliser, valider, versDocument, parPeriode |
+| functions/lib/paie/lecturePaieExcel.js | — | normaliserLibelle, cleMatricule, estNombre, estLigneTotal, trouverEnTete, colonne, lireFeuilleOuvriers, periodeDeGrille, lireTransport, agregerOuvriers, postesExcel |
 | functions/lib/paie/paieUtils.js | — | PAIE_BAREMES_DEFAULT, trouverPalierAnciennete, calculerPaieOuvrier, resolveSmagForDate, computeWorkerPaie, computePayslip |
 | functions/lib/parcelleGroupes/seedHa.js | — | MAX_LABELS, RAISON_DEJA_SB, RAISON_SANS_SURFACE, SOURCE_BEE_ONE, normLabel, sanitizeLabels, computeSeedPlan |
 | functions/lib/parcelleGroupes/split.js | — | QTY_DECIMALS, round3, totalHa, computeParts, splitQuantite, expandItems |

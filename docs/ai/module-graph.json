@@ -39,7 +39,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 20,
+        "commits": 21,
         "file": "functions/pointageService.js"
       },
       {
@@ -51,11 +51,11 @@
         "file": "tests/unit/campagneBudgetTab.test.js"
       },
       {
-        "commits": 13,
+        "commits": 14,
         "file": "functions/lib/paie/coutOuvrierCampagne.js"
       },
       {
-        "commits": 12,
+        "commits": 13,
         "file": "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js"
       },
       {
@@ -516,6 +516,7 @@
           "functions/lib/paie/__tests__/coutMainOeuvre.parite.test.js",
           "functions/lib/paie/__tests__/coutOuvrierCampagne.test.js",
           "functions/lib/paie/__tests__/coutQuinzaineSnapshot.test.js",
+          "functions/lib/paie/__tests__/lecturePaieExcel.test.js",
           "functions/lib/paie/__tests__/paieUtils.parite.test.js"
         ],
         "unit": [
