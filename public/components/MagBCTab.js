@@ -844,10 +844,7 @@
         padding: 40
       }
     }, "Aucun bon de consommation ", label.toLowerCase(), "."))))), showForm && /*#__PURE__*/React.createElement("div", {
-      className: "modal-overlay",
-      onClick: e => {
-        if (e.target === e.currentTarget) setShowForm(false);
-      }
+      className: "modal-overlay"
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-content",
       style: {
@@ -1281,12 +1278,6 @@
       }
     }, "Creer le bon")))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay",
-      onClick: e => {
-        if (e.target === e.currentTarget) {
-          setShowCreateArticle(false);
-          setCreateArticleLineIdx(null);
-        }
-      },
       style: {
         zIndex: 10001
       }

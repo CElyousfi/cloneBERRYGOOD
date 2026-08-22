@@ -447,8 +447,11 @@
                         </tbody>
                     </table></div>
 
+                    {/* Pas de fermeture au clic sur le fond : un clic hors de la fenêtre
+                        en cours de saisie perdait tout le brouillon du bon (le formulaire
+                        est réinitialisé à la réouverture). Sortie explicite via « Annuler ». */}
                     {showForm && (
-                        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowForm(false); }}>
+                        <div className="modal-overlay">
                             <div className="modal-content" style={{maxWidth:800,maxHeight:'90vh',overflowY:'auto'}}>
                                 <h3 style={{marginTop:0,color:'var(--berry)'}}><i className={'fa-solid ' + icon} style={{marginRight:8}}></i>Nouveau Bon de Consommation {label}</h3>
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
@@ -542,8 +545,9 @@
                         </div>
                     )}
 
+                    {/* Idem : saisie en cours, sortie explicite par « Annuler ». */}
                     {showCreateArticle && (
-                        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) { setShowCreateArticle(false); setCreateArticleLineIdx(null); } }} style={{zIndex:10001}}>
+                        <div className="modal-overlay" style={{zIndex:10001}}>
                             <div className="modal-content" style={{maxWidth:500,width:'90vw'}}>
                                 <h3 style={{marginTop:0,color:'var(--berry)'}}><i className="fa-solid fa-box" style={{marginRight:8}}></i>Nouvel Article</h3>
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:12}}>
