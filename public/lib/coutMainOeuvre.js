@@ -212,8 +212,22 @@
         smagNetJournalier: baremes.smagNetJournalier || 0 };
     var tauxAnc = 0;
     if (typeof paie.trouverPalierAnciennete === 'function') {
-      var palier = paie.trouverPalierAnciennete(Number(fiche.baselineJours) || 0,
-        baremes.paliers || []);
+      // ANCIENNETÉ CUMULÉE, et non le socle figé.
+      //
+      // On appliquait `baselineJours` seul — une photo datée du 30/04/2026 — si
+      // bien que l'ancienneté ne progressait JAMAIS sur cet écran. L'écran
+      // Campagne, lui, cumulait déjà : nos deux écrans donnaient deux
+      // anciennetés différentes au même ouvrier.
+      //
+      // Mesuré : le matricule 3607 a 606 jours de socle et 111 journées pointées
+      // depuis. À 717 il franchit le seuil des 624 (5 %) — ce que la paie lui
+      // verse et que cet écran lui refusait.
+      //
+      // `joursDepuisSocle` est INJECTÉ (action `anciennete-cumul`). Absent → on
+      // retombe sur le socle seul, c'est-à-dire le comportement d'avant : mieux
+      // vaut une ancienneté sous-estimée qu'une ancienneté inventée.
+      var anc = (Number(fiche.baselineJours) || 0) + (Number(a.joursDepuisSocle) || 0);
+      var palier = paie.trouverPalierAnciennete(anc, baremes.paliers || []);
       tauxAnc = ((palier && palier.pourcentage) || 0) / 100;
     }
 
@@ -302,7 +316,8 @@
       var joursReels = nbJoursDistincts(e);
       if (joursReels <= 0) return;
       var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: joursReels,
-        baremes: a.baremes, dateISO: e.premierJour });
+        baremes: a.baremes, dateISO: e.premierJour,
+        joursDepuisSocle: (a.joursDepuisSocle || {})[cle(mat)] });
 
       // Puis répartition entre catégories, au prorata des jours de chacune. La
       // somme des jours par catégorie peut DÉPASSER les journées réelles (une
@@ -367,7 +382,8 @@
       ligne.jours = nbJoursDistincts(e);
       if (ligne.jours > 0) {
         var p = paieOuvrier({ paie: a.paie, fiche: fiche, jours: ligne.jours,
-          baremes: a.baremes, dateISO: e.premierJour });
+          baremes: a.baremes, dateISO: e.premierJour,
+          joursDepuisSocle: (a.joursDepuisSocle || {})[cle(mat)] });
         ligne.brut += p.brut;
         ligne.net += p.net;
 
@@ -394,7 +410,8 @@
             // l'ancienneté ne sont pas proportionnelles aux journées de la
             // même façon, et un prorata les fausserait toutes les deux.
             var pd = paieOuvrier({ paie: a.paie, fiche: fiche, jours: rep.declares,
-              baremes: a.baremes, dateISO: e.premierJour });
+              baremes: a.baremes, dateISO: e.premierJour,
+              joursDepuisSocle: (a.joursDepuisSocle || {})[cle(mat)] });
             ligne.brutHorsPlafond = p.brut - pd.brut;
             ligne.joursHorsPlafond = rep.horsPlafond;
           }
@@ -412,7 +429,8 @@
       var nbFer = Number(feries[cle(mat)] || feries[mat]) || 0;
       if (nbFer > 0) {
         var cf = coutFeries({ paie: a.paie, fiche: fiche, jours: ligne.jours,
-          feries: nbFer, baremes: a.baremes, dateISO: e.premierJour });
+          feries: nbFer, baremes: a.baremes, dateISO: e.premierJour,
+          joursDepuisSocle: (a.joursDepuisSocle || {})[cle(mat)] });
         ligne.feries = cf.net;
         ligne.net += cf.net;
         ligne.brut += cf.brut;
