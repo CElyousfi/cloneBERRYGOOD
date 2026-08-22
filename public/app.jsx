@@ -11189,6 +11189,7 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
             const [emargementLoading, setEmargementLoading] = useState(false);
             const [diversData, setDiversData] = useState(null); // {total, dates, byDate, rows} — Location & Engins
             const [diversPopupOpen, setDiversPopupOpen] = useState(false);
+            const [rapprochementOpen, setRapprochementOpen] = useState(false);
 
             // INSTANTANÉ DU COÛT — cet écran fait foi, il enregistre son chiffre.
             //
@@ -12075,6 +12076,14 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                                 style={{padding:'4px 12px',borderRadius:8,border:'1px solid var(--berry)',background:'var(--berry)',color:'#fff',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
                                 <i className="fa-solid fa-coins"></i>Voir les Primes
                             </button>
+                        )}
+                        {(currentProfile === 'rh' || currentProfile === 'dg' || currentProfile === 'finance') && (
+                        <button
+                            onClick={() => setRapprochementOpen(true)}
+                            title="Déposer le fichier Excel de la quinzaine et comparer poste par poste"
+                            style={{padding:'4px 12px',borderRadius:8,border:'1px solid #1D9E75',background:'#fff',color:'#1D9E75',fontSize:11,fontWeight:600,cursor:'pointer',display:'inline-flex',alignItems:'center',gap:6}}>
+                            <i className="fa-solid fa-file-excel"></i>Comparer au fichier de paie
+                        </button>
                         )}
                         {(currentProfile === 'chef_rh' || currentProfile === 'rh' || currentProfile === 'dg') && (
                         <button
@@ -13919,6 +13928,20 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                     })()}
 
                     {/* ─── Popup États d'émargement ─────────────────────────────────────── */}
+                    {/* RAPPROCHEMENT AU FICHIER DE PAIE. On passe l'instantané
+                        CALCULÉ à l'instant (`_snapshotRef`) plutôt que celui
+                        enregistré en base : c'est le même contenu, mais toujours
+                        à jour — comparer un fichier frais à un instantané de la
+                        veille ferait apparaître un écart qui n'est qu'un décalage
+                        d'enregistrement. */}
+                    {rapprochementOpen && window.RapprochementPaiePopup && (
+                        <window.RapprochementPaiePopup
+                            periode={currentPeriode}
+                            quinzaine={_snapshotRef.current}
+                            baremes={quinzPaieBaremes}
+                            onClose={() => setRapprochementOpen(false)}
+                        />
+                    )}
                     {emargementOpen && (() => {
                         const _PU = window.PaieUtils;
                         const _firstDayQz = parJour.length > 0 ? parJour[0].jour : null;

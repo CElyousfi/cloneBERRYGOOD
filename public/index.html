@@ -1377,7 +1377,11 @@
     <!-- Modèle de coût M.O — consomme PaieUtils par INJECTION, donc l'ordre des
          <script> n'a pas d'importance ici (rien n'est lu au chargement). -->
     <script defer src="lib/coutMainOeuvre.js?v=mt3i24bb"></script>
-    <script defer src="lib/quinzaineUtils.js?v=mt3i24bb"></script>
+        <!-- Lecture du fichier de paie + rapprochement. PURS, sans dépendance :
+         l'ordre des <script> est indifférent, rien n'est lu au chargement. -->
+    <script defer src="lib/lecturePaieExcel.js?v=mt3i24bb"></script>
+    <script defer src="lib/rapprochementPaie.js?v=mt3i24bb"></script>
+<script defer src="lib/quinzaineUtils.js?v=mt3i24bb"></script>
     <script defer src="lib/analytiqueUtils.js?v=mt3i24bb"></script>
     <script defer src="lib/paieDataCache.js?v=mt3i24bb"></script>
     <script defer src="lib/primesImportParse.js?v=mt3i24bb"></script>
@@ -1417,6 +1421,7 @@
     <script defer src="components/ParcellesReferentielTab.js?v=mt3i24bb"></script>
     <script defer src="lib/campagneRapprochement.js?v=mt3i24bb"></script>
     <script defer src="lib/campagneProduction.js?v=mt3i24bb"></script>
+    <script defer src="components/RapprochementPaiePopup.js?v=mt3i24bb"></script>
     <script defer src="components/CampagneAnalytiqueTab.js?v=mt3i24bb"></script>
     <script defer src="components/MagStockFilesTab.js?v=mt3i24bb"></script>
     <script defer src="components/QuinzaineCampagneSelect.js?v=mt3i24bb"></script>
