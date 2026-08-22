@@ -447,7 +447,12 @@
       out.detail.push(ligne);
       if (declare) {
         out.nbDeclares++;
-        out.brutDeclare += ligne.brut;
+        // L'ASSIETTE, et non le brut entier : depuis le plafond de déclaration,
+        // une partie du brut d'un ouvrier peut ne pas être déclarée. Rapporter
+        // le brut entier ferait un total qui ne correspond plus aux charges
+        // affichées juste à côté — et c'est ce chiffre qu'on compare au brut de
+        // la feuille POINTAGE du fichier de paie.
+        out.brutDeclare += (Number(ligne.assietteCnss) || ligne.brut);
         out.cnss += ligne.cnss;
         out.amo += ligne.amo;
         out.salariales += ligne.salariales;
