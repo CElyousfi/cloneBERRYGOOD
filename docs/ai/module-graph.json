@@ -39,7 +39,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 21,
+        "commits": 22,
         "file": "functions/pointageService.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:ebae3bbb214dc4fb",
+    "sourceFingerprint": "sha256:e651bea978abf296",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -439,16 +439,16 @@
           "windowDays": 90
         },
         {
-          "coCommits": 3,
+          "coCommits": 4,
           "domain": null,
-          "file": "functions/lib/paie/coutOuvrierCampagne.js",
+          "file": "public/components/RapprochementPaiePopup.js",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 3,
           "domain": null,
-          "file": "public/components/RapprochementPaiePopup.js",
+          "file": "functions/lib/paie/coutOuvrierCampagne.js",
           "note": "probabilistic",
           "windowDays": 90
         }
