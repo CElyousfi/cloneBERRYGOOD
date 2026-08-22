@@ -3534,7 +3534,9 @@
     var setSnapQuinz = _snapQuinz[1];
     useEffect(function () {
       var cancelled = false;
-      fetch('/api/pointage?action=cout-quinzaine').then(function (r) {
+      // `/api/pointage-rh` : seule route mappée vers `pointageV3`. `/api/pointage`
+      // n'existe pas et rend index.html — un 200 qui n'est pas du JSON.
+      fetch('/api/pointage-rh?action=cout-quinzaine').then(function (r) {
         return r.json();
       }).then(function (d) {
         if (cancelled || !d || !d.success) return;
