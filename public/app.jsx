@@ -11236,7 +11236,13 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 // stabilise après plusieurs rendus (chargements successifs), et
                 // republier un chiffre identique à chaque rendu inonderait
                 // l'écriture sans rien changer au document.
-                const cle = snap.periode + '|' + Math.round(snap.coutEmployeur);
+                // La VERSION entre dans la clé : sans elle, un instantané déjà
+                // enregistré ne repartirait pas quand la charge utile s'enrichit
+                // (le montant, lui, n'a pas bougé). L'écran Campagne relirait
+                // alors indéfiniment un document amputé des nouveaux champs, et
+                // afficherait « ? » sans qu'on sache qu'il suffit de rouvrir.
+                // À incrémenter à CHAQUE ajout de champ.
+                const cle = 'v2|' + snap.periode + '|' + Math.round(snap.coutEmployeur);
                 if (_snapshotEnvoye.current[cle]) return;
                 _snapshotEnvoye.current[cle] = true;
                 // Route `/api/pointage-rh` — la SEULE mappée vers `pointageV3` dans
@@ -11993,6 +11999,26 @@ ${printList.map(r => `<tr><td style="font-family:monospace;font-weight:600">${r.
                 // total identique.
                 jours: totalJournees || totalJourneesDistinct || 0,
                 pleinPerimetre: !farmFilter && !cultureFilter && !avoSubFilter,
+                // JOURS fériés en NOMBRE : c'est lui qui se compare au fichier
+                // de paie, et c'est lui qui a révélé un écart de DONNÉES que les
+                // montants masquaient (39 présents au pointage le 14/08 contre
+                // 72 à la paie). Un montant seul aurait fait chercher une erreur
+                // de valorisation là où il y a un désaccord sur une présence.
+                joursFeries: Object.keys(_feriesParOuvrier)
+                    .reduce((s, k) => s + (Number(_feriesParOuvrier[k]) || 0), 0),
+                population: _chargesSociales ? {
+                    declares: _chargesSociales.nbDeclares,
+                    nonDeclares: _chargesSociales.nbNonDeclares,
+                    brutDeclare: _chargesSociales.brutDeclare,
+                } : { declares: 0, nonDeclares: 0, brutDeclare: 0 },
+                // Sous-postes d'« Autres Primes » : agrégés, le jour férié y est
+                // indiscernable — et c'est justement lui qu'on cherche.
+                sousPostes: {
+                    traitement: totalTraitement,
+                    conditionnement: totalConditionnement,
+                    chargement: totalChargement,
+                    jourFerie: totalJourFerie,
+                },
                 postes: {
                     moRecolte: totalCoutRecolte,
                     moHorsRecolte: totalCoutHorsRecolte,
