@@ -266,3 +266,76 @@ test('rapprocher — net à payer absent : `null`, pas 0', () => {
   });
   assert.strictEqual(out.lignes[0].netQuinzaine, null);
 });
+
+test('ecartParPoste — la ventilation BOUCLE exactement sur l\'écart total', () => {
+  // La propriété qui rend la ventilation utilisable : la somme des écarts par
+  // poste vaut l'écart affiché. Sans elle, on chercherait indéfiniment un
+  // reliquat qui ne serait qu'une erreur d'agrégation.
+  const out = R.rapprocher({
+    parQuinzaine: [{
+      periode: 'Q1', coutTotal: 194516,
+      postes: { transport: 26445, recolte: 0, traitement: 500, conditionnement: 200,
+        chargement: 70, feries: 0, heuresSup: 0, heuresSupAccordees: 2299 },
+    }],
+    rows: [{ periode: 'Q1', coutCharge: 194516 }],
+    snapshots: { Q1: { coutEmployeur: 202538, jours: 1484, postes: {
+      primeTransport: 26445, primeRecolte: 0, autresPrimes: 770, heuresSup: 2240 } } },
+  });
+  const l = out.lignes[0];
+  const somme = l.ecartPostes.reduce((s, p) => s + p.ecart, 0);
+  assert.strictEqual(Math.round(somme), Math.round(l.ecart));
+  assert.strictEqual(Math.round(l.ecart), 8022);
+});
+
+test('ecartParPoste — le transport aligné ressort à zéro, le reste porte l\'écart', () => {
+  // Le résultat mesuré sur la Quinzaine 01 : transport identique des deux
+  // côtés, écart concentré dans les salaires et charges. C'est ce que la
+  // ventilation doit rendre lisible d'un coup d'œil.
+  const out = R.rapprocher({
+    parQuinzaine: [{
+      periode: 'Q1', coutTotal: 194516,
+      postes: { transport: 26445, recolte: 0, traitement: 500, conditionnement: 200,
+        chargement: 70, feries: 0, heuresSup: 0, heuresSupAccordees: 2299 },
+    }],
+    rows: [{ periode: 'Q1', coutCharge: 194516 }],
+    snapshots: { Q1: { coutEmployeur: 202538, postes: {
+      primeTransport: 26445, primeRecolte: 0, autresPrimes: 770, heuresSup: 2240 } } },
+  });
+  const p = {};
+  out.lignes[0].ecartPostes.forEach(x => { p[x.cle] = x; });
+  assert.strictEqual(p.transport.ecart, 0);
+  assert.strictEqual(p.autres.ecart, 0);
+  assert.strictEqual(Math.round(p.hs.ecart), -59);
+  assert.strictEqual(Math.round(p.salaires.ecart), 8081);
+});
+
+test('ecartParPoste — sans ventilation d\'un des deux côtés : null, pas des zéros', () => {
+  // Douze écarts à zéro se liraient « tout concorde ». Une information absente
+  // doit rester absente.
+  const sansSnap = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 100, postes: { transport: 1 } }],
+    rows: [], snapshots: { Q1: { coutEmployeur: 100 } },
+  });
+  assert.strictEqual(sansSnap.lignes[0].ecartPostes, null);
+  const sansCamp = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', coutTotal: 100 }],
+    rows: [], snapshots: { Q1: { coutEmployeur: 100, postes: { primeTransport: 1 } } },
+  });
+  assert.strictEqual(sansCamp.lignes[0].ecartPostes, null);
+});
+
+test('les DEUX mesures de journées sont servies séparément', () => {
+  // `jours` = journées calendaires distinctes (assiette de la paie), `jh` =
+  // journées-homme (demi-journées à 0,5). Sur la Quinzaine 01 : 1 488 contre
+  // 1 484. Les afficher sous un même en-tête ferait passer un écart de MESURE
+  // pour un écart de périmètre — et on chercherait des dirhams manquants là où
+  // il n'y a qu'une convention de comptage.
+  const out = R.rapprocher({
+    parQuinzaine: [{ periode: 'Q1', jours: 1488, jh: 1484, coutTotal: 1 }],
+    rows: [],
+    snapshots: { Q1: { coutEmployeur: 1, jours: 1484 } },
+  });
+  assert.strictEqual(out.lignes[0].jours, 1488);
+  assert.strictEqual(out.lignes[0].jh, 1484);
+  assert.strictEqual(out.lignes[0].joursQuinzaine, 1484);
+});

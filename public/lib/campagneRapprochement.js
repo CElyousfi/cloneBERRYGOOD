@@ -82,6 +82,67 @@
   }
 
   /**
+   * Postes COMPARABLES entre les deux calculs. PURE.
+   *
+   * Les deux ventilations ne se correspondent pas terme à terme : la campagne
+   * décompose en salaire / prime de fonction / ancienneté / patronales, l'écran
+   * Quinzaine en MO Récolte / Hors Récolte / Postes Fixes / charges sociales.
+   * Aligner ces lignes-là serait inventer une correspondance.
+   *
+   * QUATRE postes, en revanche, ont la même définition des deux côtés : les
+   * primes de terrain et les heures sup. On les compare, et tout le reste —
+   * salaires et charges — se déduit par différence. C'est suffisant pour
+   * répondre à la seule question qui compte : l'écart vient-il d'une prime
+   * absente, ou de la masse salariale elle-même ?
+   *
+   * @param {Object} q ligne `parQuinzaine` (côté campagne).
+   * @param {Object} snap instantané de l'écran Quinzaine.
+   * @returns {Array<{cle: string, libelle: string, campagne: number,
+   *   quinzaine: number, ecart: number}>|null}
+   */
+  function ecartParPoste(q, snap) {
+    if (!q || !q.postes || !snap || !snap.postes) return null;
+    var pc = q.postes;
+    var ps = snap.postes;
+    var n = function (v) { var x = Number(v); return isFinite(x) ? x : 0; };
+
+    var lignes = [
+      { cle: 'transport', libelle: 'Prime transport',
+        campagne: n(pc.transport), quinzaine: n(ps.primeTransport) },
+      { cle: 'recolte', libelle: 'Prime récolte',
+        campagne: n(pc.recolte), quinzaine: n(ps.primeRecolte) },
+      // Le fériés est rangé dans « Autres Primes » côté Quinzaine : on agrège
+      // donc la campagne de la même façon, sinon on comparerait un poste à
+      // une somme de postes.
+      { cle: 'autres', libelle: 'Autres primes (traitement, cond., charg., fériés)',
+        campagne: n(pc.traitement) + n(pc.conditionnement) + n(pc.chargement) + n(pc.feries),
+        quinzaine: n(ps.autresPrimes) },
+      { cle: 'hs', libelle: 'Heures supplémentaires',
+        campagne: n(pc.heuresSup) + n(pc.heuresSupAccordees),
+        quinzaine: n(ps.heuresSup) },
+    ];
+    var sommeC = 0;
+    var sommeQ = 0;
+    lignes.forEach(function (l) {
+      l.ecart = l.quinzaine - l.campagne;
+      sommeC += l.campagne;
+      sommeQ += l.quinzaine;
+    });
+    // LE RESTE : salaires et charges. Calculé par différence des TOTAUX, jamais
+    // en additionnant des postes — c'est ce qui garantit que la ventilation
+    // boucle exactement sur l'écart affiché, quelles que soient les
+    // conventions de décomposition de chaque côté.
+    var totalC = Number(q.coutTotal) || 0;
+    var totalQ = Number(snap.coutEmployeur) || 0;
+    lignes.push({
+      cle: 'salaires', libelle: 'Salaires et charges (reste)',
+      campagne: totalC - sommeC, quinzaine: totalQ - sommeQ,
+      ecart: (totalQ - sommeQ) - (totalC - sommeC),
+    });
+    return lignes;
+  }
+
+  /**
    * Rapprochement quinzaine par quinzaine. PURE.
    *
    * @param {Object} args
@@ -126,7 +187,16 @@
       var ecart = quinzaine === null ? null : quinzaine - grille;
       return {
         periode: q.periode,
+        // ⚠️ DEUX GRANDEURS DIFFÉRENTES, et c'est un piège.
+        // `q.jours` = journées calendaires DISTINCTES (assiette de la paie : un
+        // ouvrier pointé deux fois le même jour touche un jour).
+        // `q.jh` et `snap.jours` = JOURNÉES-HOMME (les demi-journées comptent
+        // pour 0,5). Sur la Quinzaine 01 : 1 488 contre 1 484.
+        // Les afficher sous un même en-tête « JH » ferait passer un écart de
+        // mesure pour un écart de périmètre.
         jours: Number(q.jours) || 0,
+        jh: Number(q.jh) || 0,
+        joursQuinzaine: (snap && Number(snap.jours) > 0) ? Number(snap.jours) : null,
         grille: grille,
         quinzaine: quinzaine,
         netQuinzaine: netQuinzaine,
@@ -144,6 +214,13 @@
         // tuiles de l'écran Quinzaine, au lieu de déduire le poste manquant
         // d'un ratio par JH.
         postes: (q && q.postes) || null,
+        // Total du calcul CAMPAGNE. Distinct de `grille` (qui passe par la
+        // parcelle) et de `quinzaine` (l'instantané). Les trois se lisent
+        // ensemble ; les mélanger dans une même soustraction — ce que faisait
+        // la décomposition « dont salaire » — produit un nombre qui n'est le
+        // total de rien.
+        campagne: Number(q && q.coutTotal) || 0,
+        ecartPostes: ecartParPoste(q, snap),
       };
     });
 

@@ -1651,7 +1651,11 @@ async function computeCampagneCoutOuvrier() {
           // quinzaine — le tarif ne vit que dans `history`, le champ plat
           // renvoyait 0. Une réponse v2 en cache servirait un coût amputé du
           // transport, exactement le symptôme qu'on vient de corriger.
-          `campagne_cout_ouvrier_v3_${campagne.start}`,
+          // v4 : clé de registre normalisée. Les matricules alphanumériques
+          // trouvent enfin leur fiche — déclaré, ancienneté, prime de fonction.
+          // Les valeurs changent sans que la forme bouge : sans bump, le cache
+          // servirait l'ancien coût, faux et plausible.
+          `campagne_cout_ouvrier_v4_${campagne.start}`,
           30 * 60 * 1000,
           async () => {
             const meta = await getPointageMeta();
@@ -1781,7 +1785,14 @@ async function computeCampagneCoutOuvrier() {
             }
 
             // 2) Registre ouvriers (déclaré, ancienneté, prime de fonction).
-            const mats = Array.from(tousMatricules);
+            // CLÉS NUMÉRIQUES — `ouvriers_registry` n'en connaît pas d'autres.
+            // Le pointage sert des matricules alphanumériques (`CA10563`) ;
+            // demander le document `CA10563` ne rendait rien, et l'ouvrier
+            // passait pour un non-déclaré sans fiche. On dédoublonne au passage :
+            // deux matricules bruts peuvent viser la même fiche.
+            const mats = Array.from(new Set(
+              Array.from(tousMatricules).map((m) => coutOuvrier.cleRegistre(m)).filter(Boolean)
+            ));
             const registre = {};
             const LOT = 20;
             for (let i = 0; i < mats.length; i += LOT) {
