@@ -133,12 +133,28 @@
             + 'désaccord sur qui était présent un jour férié. Cela ne se corrige '
             + 'pas dans Smart Berry : c\'est un arbitrage RH.' }),
 
-      ligne('ferieDH', 'Jour férié — montant',
+      // JOUR FÉRIÉ — INDICATIF, et non un écart.
+      //
+      // Les deux colonnes ne couvrent pas les mêmes composants : côté fichier on
+      // reconstitue au SMAG NU, faute de pouvoir isoler la part de férié dans le
+      // montant de l'ouvrier ; côté Smart Berry le montant porte AUSSI
+      // l'ancienneté et la prime de fonction de ces journées.
+      //
+      // Constaté sur la Quinzaine 02 : 90,9 DH/jour d'un côté, 104,8 de l'autre.
+      // Les soustraire donnait −927 DH qui ne mesuraient rien — et gonflaient
+      // l'alerte « hors jour férié » à 1 308 DH pour un résidu réel de 294.
+      //
+      // Le férié est de toute façon DÉJÀ dans la ligne « Salaires nets » des deux
+      // côtés : cette ligne n'a jamais eu à entrer dans le total, seulement à
+      // renseigner.
+      ligne('ferieDH', 'Jour férié — montant (indicatif)',
         valeurFerieFichier(f.feries, a.baremes),
         sous.jourFerie === undefined ? null : nombre(sous.jourFerie),
-        { nature: 'calcul',
-          note: 'Côté fichier, RECONSTITUÉ au SMAG (le fichier ne l\'isole pas : '
-            + 'il l\'inclut dans le montant de l\'ouvrier).' }),
+        { nature: 'info',
+          note: 'NON COMPARABLE terme à terme : côté fichier, reconstitué au SMAG '
+            + 'nu ; côté Smart Berry, ancienneté et prime de fonction de ces '
+            + 'journées comprises. Le férié est déjà dans les salaires nets des '
+            + 'deux côtés.' }),
 
       ligne('salaires', 'Salaires nets (hors transport et sous-traitance)',
         f.net, salairesSB, { nature: 'calcul' }),
@@ -227,12 +243,14 @@
         + 'décision RH.' });
     }
 
-    // 3) Ce qui reste, une fois le férié mis de côté : là, c'est du calcul.
-    var ferie = (par.ferieDH && par.ferieDH.ecart) || 0;
-    if (total && Math.abs(total.ecart - ferie) > Math.max(500, Math.abs(total.fichier) * 0.005)) {
+    // 3) Le résidu. On ne RETRANCHE PLUS le férié : sa ligne n'est qu'indicative,
+    //    les deux colonnes n'y couvrent pas les mêmes composants. Le soustraire
+    //    gonflait le résidu — 1 308 DH annoncés pour 294 réels sur la
+    //    Quinzaine 02.
+    if (total && Math.abs(total.ecart) > Math.max(500, Math.abs(total.fichier) * 0.005)) {
       out.push({ niveau: 'calcul', texte:
-        'Hors jour férié, il reste ' + Math.round(total.ecart - ferie)
-        + ' DH d\'écart. Celui-là relève du calcul Smart Berry.' });
+        'Il reste ' + Math.round(total.ecart) + ' DH d\'écart sur le total '
+        + 'décaissé. Celui-là relève du calcul Smart Berry.' });
     }
 
     if (!out.length) {
