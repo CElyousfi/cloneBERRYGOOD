@@ -23,15 +23,15 @@
     },
     "heatmap": [
       {
-        "commits": 44,
+        "commits": 45,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 43,
+        "commits": 44,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 29,
+        "commits": 30,
         "file": "public/app.jsx"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:cd935f088cf4a729",
+    "sourceFingerprint": "sha256:b77c3bd5881f2fbe",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -818,7 +818,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 42,
+          "coCommits": 43,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -944,16 +944,16 @@
           "windowDays": 90
         },
         {
-          "coCommits": 4,
+          "coCommits": 5,
           "domain": null,
-          "file": "functions/pointageService.js",
+          "file": "public/app.jsx",
           "note": "probabilistic",
           "windowDays": 90
         },
         {
           "coCommits": 4,
           "domain": null,
-          "file": "public/app.jsx",
+          "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
         },

@@ -2444,47 +2444,10 @@
      * Quinzaine : un zéro en face d'une tuile non nulle est la réponse.
      */
     function tableauPostes(rap) {
-      var avecPostes = rap.lignes.filter(function (l) {
-        return l.postes;
+      var avec = rap.lignes.filter(function (l) {
+        return l.ecartPostes;
       });
-      if (!avecPostes.length) return null;
-      var POSTES = [{
-        k: 'primeFonction',
-        l: 'Prime de fonction'
-      }, {
-        k: 'primeAnciennete',
-        l: 'Ancienneté'
-      }, {
-        k: 'transport',
-        l: 'Prime transport'
-      }, {
-        k: 'recolte',
-        l: 'Prime récolte'
-      }, {
-        k: 'traitement',
-        l: 'Traitement'
-      }, {
-        k: 'conditionnement',
-        l: 'Conditionnement'
-      }, {
-        k: 'chargement',
-        l: 'Chargement'
-      }, {
-        k: 'feries',
-        l: 'Jours fériés'
-      }, {
-        k: 'heuresSup',
-        l: 'Heures sup (pointées)'
-      }, {
-        k: 'heuresSupAccordees',
-        l: 'Heures sup (accordées)'
-      }, {
-        k: 'chargesPatronales',
-        l: 'Charges patronales'
-      }, {
-        k: 'cotisationsSalariales',
-        l: 'Cotisations salariales'
-      }];
+      if (!avec.length) return null;
       var dh = function (v) {
         return Math.round(v).toLocaleString('fr-MA');
       };
@@ -2508,6 +2471,26 @@
         textAlign: 'left',
         color: C.textSec
       });
+
+      // Les postes sont les mêmes d'une quinzaine à l'autre : on prend l'ordre
+      // de la première ligne comme référence.
+      var cles = avec[0].ecartPostes.map(function (p) {
+        return p.cle;
+      });
+      var libelles = {};
+      avec[0].ecartPostes.forEach(function (p) {
+        libelles[p.cle] = p.libelle;
+      });
+      function poste(l, cle) {
+        var p = (l.ecartPostes || []).filter(function (x) {
+          return x.cle === cle;
+        })[0];
+        return p || {
+          campagne: 0,
+          quinzaine: 0,
+          ecart: 0
+        };
+      }
       return React.createElement('div', {
         style: {
           overflowX: 'auto',
@@ -2520,7 +2503,13 @@
           fontWeight: 700,
           color: C.textSec
         }
-      }, 'Ventilation du coût chargé, poste par poste — à comparer aux tuiles ' + 'de l\'écran Quinzaine. Un zéro en face d\'une tuile non nulle ' + 'désigne le poste manquant.'), React.createElement('table', {
+      }, 'D\'OÙ VIENT L\'ÉCART — par poste, quinzaine par quinzaine'), React.createElement('div', {
+        style: {
+          padding: '0 16px 6px',
+          fontSize: '10px',
+          color: C.textSec
+        }
+      }, 'Les deux ventilations ne se correspondent pas terme à terme : la ' + 'campagne décompose en salaire / prime de fonction / ancienneté, ' + 'l\'écran Quinzaine en MO Récolte / Hors Récolte / Postes Fixes. ' + 'Aligner ces lignes-là serait inventer une correspondance. Seules ' + 'les primes de terrain et les heures sup ont la même définition ' + 'des deux côtés ; tout le reste se déduit par différence des ' + 'totaux — ce qui garantit que la ventilation boucle exactement ' + 'sur l\'écart affiché.'), React.createElement('table', {
         style: {
           width: '100%',
           borderCollapse: 'collapse',
@@ -2528,33 +2517,64 @@
         }
       }, React.createElement('thead', null, React.createElement('tr', null, React.createElement('th', {
         style: thL
-      }, 'Poste'), avecPostes.map(function (l) {
+      }, 'Poste'), avec.map(function (l) {
         return React.createElement('th', {
           key: l.periode,
-          style: th
+          style: th,
+          colSpan: 3
         }, l.periode);
-      }))), React.createElement('tbody', null, POSTES.map(function (p, i) {
-        var total = avecPostes.reduce(function (s, l) {
-          return s + (Number(l.postes[p.k]) || 0);
-        }, 0);
+      })), React.createElement('tr', null, React.createElement('th', {
+        style: thL
+      }, ''), avec.map(function (l) {
+        return [React.createElement('th', {
+          key: l.periode + 'c',
+          style: th
+        }, 'campagne'), React.createElement('th', {
+          key: l.periode + 'q',
+          style: th
+        }, 'quinzaine'), React.createElement('th', {
+          key: l.periode + 'e',
+          style: th
+        }, 'écart')];
+      }))), React.createElement('tbody', null, cles.map(function (cle, i) {
+        var estReste = cle === 'salaires';
         return React.createElement('tr', {
-          key: p.k,
+          key: cle,
           style: {
-            background: i % 2 ? C.surface2 : C.surface
+            background: i % 2 ? C.surface2 : C.surface,
+            borderTop: estReste ? '1px solid ' + C.border : 'none'
           }
         }, React.createElement('td', {
-          style: tdL
-        }, p.l), avecPostes.map(function (l) {
-          var v = Number(l.postes[p.k]) || 0;
-          // Un poste à zéro sur TOUTE la campagne est signalé : c'est le
-          // symptôme d'une donnée qui n'arrive pas, pas d'un poste vide.
-          return React.createElement('td', {
-            key: l.periode,
-            style: Object.assign({}, td, total === 0 ? {
+          style: Object.assign({}, tdL, estReste ? {
+            fontWeight: 700,
+            color: C.text
+          } : {})
+        }, libelles[cle]), avec.map(function (l) {
+          var p = poste(l, cle);
+          // Un écart nul se met en retrait : ce sont les lignes NON nulles
+          // qu'on cherche, et les faire ressortir évite de relire douze
+          // nombres pour trouver le seul qui compte.
+          var nul = Math.abs(p.ecart) < 1;
+          return [React.createElement('td', {
+            key: l.periode + 'c',
+            style: Object.assign({}, td, {
+              color: C.textSec
+            })
+          }, dh(p.campagne)), React.createElement('td', {
+            key: l.periode + 'q',
+            style: Object.assign({}, td, {
+              color: C.textSec
+            })
+          }, dh(p.quinzaine)), React.createElement('td', {
+            key: l.periode + 'e',
+            style: Object.assign({}, td, nul ? {
+              color: C.textSec,
+              opacity: 0.4
+            } : {
               color: '#c0392b',
               fontWeight: 700
-            } : {})
-          }, total === 0 ? '0 ⚠' : dh(v));
+            })
+          }, nul ? '0' : dh(p.ecart))];
         }));
       }))));
     }
@@ -2661,8 +2681,12 @@
       }, React.createElement('th', {
         style: thL
       }, 'Quinzaine'), React.createElement('th', {
-        style: th
+        style: th,
+        title: 'Journées-homme du pointage (les demi-journées comptent 0,5).'
       }, 'JH'), React.createElement('th', {
+        style: th,
+        title: 'JH de l\'écran Quinzaine. Un écart ici est un écart de PÉRIMÈTRE — à régler avant de regarder les dirhams.'
+      }, 'JH Quinz.'), React.createElement('th', {
         style: th,
         title: 'Coût CHARGÉ agrégé par parcelle : Σ (JH × taux de l\'ouvrier), tel que la grille ci-dessus l\'additionne.'
       }, 'Grille chargée'), React.createElement('th', {
@@ -2682,12 +2706,8 @@
         title: 'JH pointés dont l\'ouvrier n\'a pas de fiche de paie : ils comptent en volume, mais à coût nul.'
       }, 'JH sans taux'), React.createElement('th', {
         style: th,
-        title: 'Décomposition du coût chargé de la quinzaine. Un écart qui vient d\'un poste manquant (transport, prime de fonction, ancienneté) se lit ici.'
-      }, 'dont salaire'), React.createElement('th', {
-        style: th
-      }, 'dont primes'), React.createElement('th', {
-        style: th
-      }, 'dont charges'))), React.createElement('tbody', null, rap.lignes.map(function (l, i) {
+        title: 'Total du calcul CAMPAGNE, avant passage par la parcelle. Son écart avec la « Grille chargée » mesure ce que la grille ne rattache pas.'
+      }, 'Campagne (calc.)'))), React.createElement('tbody', null, rap.lignes.map(function (l, i) {
         return React.createElement('tr', {
           key: l.periode,
           style: {
@@ -2700,7 +2720,15 @@
           style: Object.assign({}, td, {
             color: C.textSec
           })
-        }, (Math.round(l.jours * 10) / 10).toLocaleString('fr-MA')), React.createElement('td', {
+        }, (Math.round(l.jh * 10) / 10).toLocaleString('fr-MA')), React.createElement('td', {
+          style: Object.assign({}, td, {
+            // Un écart de PÉRIMÈTRE se règle avant de discuter des
+            // dirhams : comparer deux totaux qui ne portent pas sur les
+            // mêmes journées ne veut rien dire.
+            color: l.joursQuinzaine !== null && Math.abs(l.joursQuinzaine - l.jh) > 0.5 ? '#c0392b' : C.textSec,
+            fontWeight: l.joursQuinzaine !== null && Math.abs(l.joursQuinzaine - l.jh) > 0.5 ? 700 : 400
+          })
+        }, l.joursQuinzaine === null ? '—' : (Math.round(l.joursQuinzaine * 10) / 10).toLocaleString('fr-MA')), React.createElement('td', {
           style: td
         }, dh(l.grille)), React.createElement('td', {
           style: Object.assign({}, td, {
@@ -2732,15 +2760,7 @@
           style: Object.assign({}, td, {
             color: C.textSec
           })
-        }, dh(l.quinzaine - l.primes - l.charges)), React.createElement('td', {
-          style: Object.assign({}, td, {
-            color: C.textSec
-          })
-        }, dh(l.primes)), React.createElement('td', {
-          style: Object.assign({}, td, {
-            color: C.textSec
-          })
-        }, dh(l.charges)));
+        }, dh(l.campagne)));
       })), React.createElement('tfoot', null, React.createElement('tr', {
         style: {
           background: C.surface2,
@@ -2749,6 +2769,8 @@
       }, React.createElement('td', {
         style: tdL
       }, 'TOTAL'), React.createElement('td', {
+        style: td
+      }, ''), React.createElement('td', {
         style: td
       }, ''), React.createElement('td', {
         style: td
@@ -2765,15 +2787,7 @@
       }, rap.totalJhSansTaux > 0 ? (Math.round(rap.totalJhSansTaux * 10) / 10).toLocaleString('fr-MA') : '—'), React.createElement('td', {
         style: td
       }, dh(rap.lignes.reduce(function (s, l) {
-        return s + l.quinzaine - l.primes - l.charges;
-      }, 0))), React.createElement('td', {
-        style: td
-      }, dh(rap.lignes.reduce(function (s, l) {
-        return s + l.primes;
-      }, 0))), React.createElement('td', {
-        style: td
-      }, dh(rap.lignes.reduce(function (s, l) {
-        return s + l.charges;
+        return s + l.campagne;
       }, 0))))))), tableauPostes(rap), React.createElement('div', {
         style: {
           padding: '6px 14px 10px',
