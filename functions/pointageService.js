@@ -2508,6 +2508,117 @@ exports.warmPointageCache = functions
   });
 
 // =============================================
+// GATING PAIE (Étape 0) — actions EXEMPTÉES de la barrière nominative
+// =============================================
+// Déclarée au niveau MODULE (et exportée) pour être vérifiable par un test
+// unitaire : le contrat d'accès est une surface de sécurité, il ne doit pas
+// pouvoir dériver silencieusement. Voir tests/unit/pointageGatingExempt.test.js.
+//
+// Une action n'entre ici que si sa RÉPONSE est intégralement NON NOMINATIVE :
+// aucun matricule, aucun nom d'ouvrier, aucun montant/coût, aucune donnée paie.
+// L'authentification reste exigée en amont dans tous les cas (/api/pointage-rh
+// passe requireAuth via pointageV3, idem la délégation /api/validation).
+// L'exemption ne porte QUE sur la LECTURE : toute action d'ÉCRITURE reste gatée
+// par son propre contrôle de rôle DG/RH/admin (cf. sb-referentiel-save,
+// sb-groupe-save/-delete), et n'a rien à faire dans cette table.
+//
+//  - 'suivi-tunnels'  : agrégats de PROGRESSION par parcelle/tâche (effectifs,
+//    quantités) pour l'écran « Tunnels » du caporal — pas un listing paie ;
+//    déjà cloisonné côté client par ?ferme=.
+//  - 'confection-types' / 'referentiel-taches-list' : simples référentiels
+//    d'opérations/tâches, non nominatifs.
+//  - 'sb-groupes-list' : référentiel des GROUPES de parcelles (labels + Ha),
+//    non nominatif, nécessaire au MAGASINIER pour le popup Bon de Consommation
+//    (le gating paie refuserait ce profil).
+//  - 'parcelles-campagne-list' : référentiel des PARCELLES classées par campagne
+//    (courante / précédente), nécessaire au MAGASINIER pour le même popup Bon de
+//    Consommation — sans lui, la modale retombe silencieusement sur /api/parcelles
+//    qui agrège l'historique BR_Consommation de la campagne PRÉCÉDENTE, et le
+//    magasinier ne trouve plus les parcelles de la campagne en cours.
+//    Réponse strictement descriptive : par parcelle, uniquement
+//    { ref, label, culture, variete, ferme, sup, debut, fin } — soit la référence
+//    et le libellé BEE ONE de la parcelle, sa culture/variété, sa ferme dérivée,
+//    sa surface en Ha (BR_Parcelle.Sup_Parcelle_Culturale) et les bornes de dates
+//    de pointage. Aucun matricule, aucun nom de personne, aucun coût, aucune
+//    journée-homme. Les deux branches (SQL BR_Pointage et mirror Firestore)
+//    construisent le MÊME objet à 8 champs — vérifié champ par champ.
+//    ⚠ Exemptée du 403 SEULEMENT : elle reste CLOISONNÉE (cf. EXEMPT_BUT_SCOPED).
+const GATING_EXEMPT_ACTIONS = {
+  "suivi-tunnels": true,
+  "confection-types": true,
+  "referentiel-taches-list": true,
+  "sb-groupes-list": true,
+  "parcelles-campagne-list": true,
+};
+exports.GATING_EXEMPT_ACTIONS = GATING_EXEMPT_ACTIONS;
+
+// Sous-ensemble de GATING_EXEMPT_ACTIONS : actions exemptées du 403 mais dont le
+// CLOISONNEMENT ferme/culture d'un chef DOIT rester appliqué.
+//
+// Une exemption « nue » ne saute pas que le 403 : elle saute TOUTE la résolution
+// de périmètre, donc `_fermeFilter`/`_cultureFilter` restent null et les fetchers
+// ne sont plus shadowés. Pour une action listant des parcelles, ça élargit le
+// périmètre d'un chef (un chef_f5 verrait toutes les fermes / toutes les
+// cultures) — pas une fuite nominative, mais un changement de cloisonnement.
+//
+// Pour ces actions on résout donc le périmètre comme d'habitude, et on n'utilise
+// l'exemption que pour NE PAS renvoyer 403 quand le profil n'est pas autorisé
+// (magasinier) : il obtient alors la liste non filtrée, ce qui est le
+// comportement voulu pour le popup Bon de Consommation.
+//
+// Les 4 exemptions historiques (suivi-tunnels, confection-types,
+// referentiel-taches-list, sb-groupes-list) ne sont volontairement PAS ici : les
+// y mettre changerait le comportement de l'écran caporal (hors périmètre).
+const EXEMPT_BUT_SCOPED = { "parcelles-campagne-list": true };
+exports.EXEMPT_BUT_SCOPED = EXEMPT_BUT_SCOPED;
+
+/**
+ * Faut-il résoudre le périmètre de l'appelant (verifyAuth + resolvePerimetre)
+ * pour cette action ? PURE — c'est la décision du handler, extraite pour être
+ * testable telle quelle (un test qui la recopierait ne protégerait rien).
+ *
+ * false ⇒ action exemptée « nue » : le bloc de gating est entièrement sauté,
+ * aucun verifyAuth n'est effectué (comportement historique de l'écran caporal).
+ *
+ * @param {string} action
+ * @returns {boolean}
+ */
+function gatingRequiresPerimetre(action) {
+  return !GATING_EXEMPT_ACTIONS[action] || EXEMPT_BUT_SCOPED[action] === true;
+}
+exports.gatingRequiresPerimetre = gatingRequiresPerimetre;
+
+/**
+ * Décision de gating pour une action dont le périmètre A ÉTÉ résolu. PURE.
+ *
+ * - non autorisé + action NON exemptée      → denied (403).
+ * - non autorisé + action exemptée (scoped) → autorisé SANS filtre : la donnée
+ *   est non nominative, il n'y a aucun périmètre légitime à appliquer
+ *   (cas du magasinier sur le popup Bon de Consommation).
+ * - autorisé                                → filtres du périmètre (chef : SA
+ *   ferme / SA culture ; dg-finance-rh-admin : null = toutes fermes).
+ *
+ * @param {string} action
+ * @param {{autorise?:boolean, perimetre_ferme?:string, culture_filtre?:(null|string)}|null} perim
+ * @returns {{denied: boolean, fermeFilter: (null|string), cultureFilter: (null|string)}}
+ */
+function resolveGatingFilters(action, perim) {
+  const access = resolvePointageRHAccess(perim);
+  if (!access.allowed) {
+    if (!GATING_EXEMPT_ACTIONS[action]) {
+      return { denied: true, fermeFilter: null, cultureFilter: null };
+    }
+    return { denied: false, fermeFilter: null, cultureFilter: null };
+  }
+  return {
+    denied: false,
+    fermeFilter: access.fermeFilter,
+    cultureFilter: (perim && perim.culture_filtre) || null,
+  };
+}
+exports.resolveGatingFilters = resolveGatingFilters;
+
+// =============================================
 // API: pointageRH
 // =============================================
 exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 180, memory: "512MB" }).https.onRequest((req, res) => {
@@ -2531,30 +2642,36 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
       // délégation de /api/validation ; les deux passent déjà requireAuth. Le
       // gating est ici pour couvrir les deux points d'entrée en un seul endroit.
       //
-      // EXCEPTION — actions OPÉRATIONNELLES légitimement utilisées par le caporal
-      // (écran « Tunnels » : HorsRecolteSuiviTab → action=suivi-tunnels). Ce sont
-      // des agrégats de PROGRESSION par parcelle/tâche (effectifs, quantités),
-      // PAS un listing paie nominatif ; déjà cloisonnés côté client par ?ferme=.
-      // On les exclut du gating paie pour ne pas casser l'écran caporal.
-      // 'confection-types' = simple référentiel d'ops (non nominatif), laissé libre.
-      // 'sb-groupes-list' = référentiel des GROUPES de parcelles (labels + Ha),
-      // non nominatif, nécessaire au MAGASINIER pour le popup Bon de
-      // Consommation (le gating paie refuserait ce profil). L'authentification
-      // reste exigée : /api/pointage-rh (pointageV3) passe requireAuth en amont,
-      // et l'action revérifie le token. L'ÉCRITURE reste gatée DG/RH/admin.
-      const GATING_EXEMPT_ACTIONS = { "suivi-tunnels": true, "confection-types": true, "referentiel-taches-list": true, "sb-groupes-list": true };
-      let _fermeFilter = null; // null = accès global (all) ou action exemptée
+      // EXCEPTION — actions OPÉRATIONNELLES non nominatives (caporal, magasinier).
+      // Les tables GATING_EXEMPT_ACTIONS et EXEMPT_BUT_SCOPED sont déclarées et
+      // justifiées action par action au niveau module (juste au-dessus de cet
+      // export), et exportées pour être verrouillées par un test unitaire.
+      //
+      // Trois régimes :
+      //  - action NON exemptée            → périmètre résolu + 403 si non autorisé
+      //                                     (comportement d'origine).
+      //  - action exemptée ET « scoped »  → périmètre résolu, PAS de 403 : l'exemption
+      //                                     lève la barrière SANS lever le cloisonnement.
+      //                                     Un chef reste filtré sur SA ferme/culture ;
+      //                                     un profil non autorisé (magasinier) passe
+      //                                     sans filtre.
+      //  - action exemptée « nue »        → bloc entièrement sauté (aucun verifyAuth
+      //                                     réintroduit) : comportement historique
+      //                                     de l'écran caporal, inchangé.
+      // La décision elle-même vit dans gatingRequiresPerimetre / resolveGatingFilters
+      // (pures, exportées, verrouillées par tests/unit/pointageGatingExempt.test.js).
+      let _fermeFilter = null; // null = accès global (all), non autorisé exempté, ou action exemptée nue
       let _cultureFilter = null; // null = pas de filtre culture additionnel
-      if (!GATING_EXEMPT_ACTIONS[action]) {
+      if (gatingRequiresPerimetre(action)) {
         const _authUser = await verifyAuth(req);
         const _callerProfile = await resolveCallerProfile(_authUser);
         const _perim = consoAccessControl.resolvePerimetre(_callerProfile, req.query.ferme);
-        const _access = resolvePointageRHAccess(_perim);
-        if (!_access.allowed) {
+        const _gate = resolveGatingFilters(action, _perim);
+        if (_gate.denied) {
           return res.status(403).json({ success: false, error: "Accès non autorisé" });
         }
-        _fermeFilter = _access.fermeFilter; // null (all) ou 'F1'|'F5'|'Avocatier'|'BAHIA'
-        _cultureFilter = _perim.culture_filtre || null; // null ou 'Myrtille' (chef_f5)
+        _fermeFilter = _gate.fermeFilter; // null (all / exempté non autorisé) ou 'F1'|'F5'|'Avocatier'|'BAHIA'
+        _cultureFilter = _gate.cultureFilter; // null ou 'Myrtille' (chef_f5) / 'Framboise' (chef_f1)
       }
       // Chef : filtre ferme appliqué AU NIVEAU DES LIGNES BRUTES, avant toute
       // agrégation, en shadowant les fetchers. deriveFerme retourne 'Autre' si

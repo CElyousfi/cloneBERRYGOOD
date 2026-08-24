@@ -2,22 +2,24 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:23d85b1defb25c1f",
+    "sourceFingerprint": "sha256:5b51d3ae964ba488",
     "stats": {
       "targetFiles": 238,
       "targetFilesWithDirectTests": 137,
       "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 205
+      "testFilesScanned": 206
     }
   },
   "index": {
     "functions/lib/auth/paieAccess.js": {
       "directTests": [
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ],
       "transitiveTests": [
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ]
     },
@@ -1274,11 +1276,13 @@
       "directTests": [
         "tests/unit/consoAccessControl.test.js",
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ],
       "transitiveTests": [
         "tests/unit/consoAccessControl.test.js",
         "tests/unit/paieAccess.test.js",
+        "tests/unit/pointageGatingExempt.test.js",
         "tests/unit/registryAccess.test.js"
       ]
     },
