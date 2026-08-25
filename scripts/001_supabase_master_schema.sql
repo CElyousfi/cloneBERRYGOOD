@@ -1,5 +1,5 @@
 -- ============================================================
--- Smart BERRY — Master Supabase Postgres Schema (Public Compatible)
+-- Smart BERRY — Master Supabase Postgres Schema (Public Schema)
 -- Idempotent: safe to run multiple times in Supabase SQL Editor.
 -- Target Project: eqopexrgcottuzfkywgi.supabase.co
 -- ============================================================
@@ -26,7 +26,7 @@ $$;
 
 
 -- ============================================================
--- 2. FINANCE DOMAIN TABLES (Public Schema)
+-- 2. FINANCE DOMAIN TABLES
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS invoices (
     updated_at                TIMESTAMPTZ DEFAULT now(),
     created_by                TEXT
 );
-COMMENT ON TABLE invoices IS 'Factures fournisseurs — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS caisse_transactions (
     id               SERIAL PRIMARY KEY,
@@ -67,7 +66,6 @@ CREATE TABLE IF NOT EXISTS caisse_transactions (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE caisse_transactions IS 'Transactions caisse — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS virements (
     id             SERIAL PRIMARY KEY,
@@ -83,7 +81,6 @@ CREATE TABLE IF NOT EXISTS virements (
     updated_at     TIMESTAMPTZ DEFAULT now(),
     created_by     TEXT
 );
-COMMENT ON TABLE virements IS 'Virements bancaires — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS ojra_payroll (
     id               SERIAL PRIMARY KEY,
@@ -103,7 +100,6 @@ CREATE TABLE IF NOT EXISTS ojra_payroll (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE ojra_payroll IS 'OJRA Paie — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS liquidations (
     id               SERIAL PRIMARY KEY,
@@ -121,7 +117,6 @@ CREATE TABLE IF NOT EXISTS liquidations (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE liquidations IS 'Liquidations finance — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS encaissements (
     id                SERIAL PRIMARY KEY,
@@ -136,7 +131,6 @@ CREATE TABLE IF NOT EXISTS encaissements (
     updated_at        TIMESTAMPTZ DEFAULT now(),
     created_by        TEXT
 );
-COMMENT ON TABLE encaissements IS 'Encaissements — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS comptes_clients (
     id             SERIAL PRIMARY KEY,
@@ -151,7 +145,6 @@ CREATE TABLE IF NOT EXISTS comptes_clients (
     updated_at     TIMESTAMPTZ DEFAULT now(),
     created_by     TEXT
 );
-COMMENT ON TABLE comptes_clients IS 'Comptes clients — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS codes_analytiques (
     id         SERIAL PRIMARY KEY,
@@ -164,7 +157,6 @@ CREATE TABLE IF NOT EXISTS codes_analytiques (
     updated_at TIMESTAMPTZ DEFAULT now(),
     created_by TEXT
 );
-COMMENT ON TABLE codes_analytiques IS 'Codes analytiques — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS budget_campagne (
     id              SERIAL PRIMARY KEY,
@@ -180,7 +172,6 @@ CREATE TABLE IF NOT EXISTS budget_campagne (
     updated_at      TIMESTAMPTZ DEFAULT now(),
     created_by      TEXT
 );
-COMMENT ON TABLE budget_campagne IS 'Budget campagne — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS fuel_transactions (
     id               SERIAL PRIMARY KEY,
@@ -197,7 +188,6 @@ CREATE TABLE IF NOT EXISTS fuel_transactions (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE fuel_transactions IS 'Carburant — Smart BERRY Finance';
 
 CREATE TABLE IF NOT EXISTS telecom_bills (
     id              SERIAL PRIMARY KEY,
@@ -213,11 +203,10 @@ CREATE TABLE IF NOT EXISTS telecom_bills (
     updated_at      TIMESTAMPTZ DEFAULT now(),
     created_by      TEXT
 );
-COMMENT ON TABLE telecom_bills IS 'Factures telecom — Smart BERRY Finance';
 
 
 -- ============================================================
--- 3. QUALITÉ DOMAIN TABLES (Public Schema)
+-- 3. QUALITÉ DOMAIN TABLES
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS inspections (
@@ -235,7 +224,6 @@ CREATE TABLE IF NOT EXISTS inspections (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE inspections IS 'Inspections qualité — Smart BERRY Qualité';
 
 CREATE TABLE IF NOT EXISTS expeditions (
     id               SERIAL PRIMARY KEY,
@@ -255,7 +243,6 @@ CREATE TABLE IF NOT EXISTS expeditions (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE expeditions IS 'Expéditions — Smart BERRY Qualité';
 
 CREATE TABLE IF NOT EXISTS ecarts (
     id               SERIAL PRIMARY KEY,
@@ -272,7 +259,6 @@ CREATE TABLE IF NOT EXISTS ecarts (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE ecarts IS 'Écarts qualité — Smart BERRY Qualité';
 
 CREATE TABLE IF NOT EXISTS brix_readings (
     id               SERIAL PRIMARY KEY,
@@ -287,7 +273,6 @@ CREATE TABLE IF NOT EXISTS brix_readings (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE brix_readings IS 'Lectures Brix — Smart BERRY Qualité';
 
 CREATE TABLE IF NOT EXISTS bons_apport (
     id               SERIAL PRIMARY KEY,
@@ -305,7 +290,6 @@ CREATE TABLE IF NOT EXISTS bons_apport (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE bons_apport IS 'Bons d''apport — Smart BERRY Qualité';
 
 CREATE TABLE IF NOT EXISTS pfq_records (
     id               SERIAL PRIMARY KEY,
@@ -320,7 +304,6 @@ CREATE TABLE IF NOT EXISTS pfq_records (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
-COMMENT ON TABLE pfq_records IS 'Indicateurs PFQ — Smart BERRY Qualité';
 
 
 -- ============================================================
@@ -346,45 +329,27 @@ CREATE INDEX IF NOT EXISTS idx_pfq_records_ferme       ON pfq_records(ferme);
 
 
 -- ============================================================
--- 5. UPDATED_AT TRIGGERS
+-- 5. UPDATED_AT TRIGGERS (Using CREATE OR REPLACE TRIGGER)
 -- ============================================================
 
-DROP TRIGGER IF EXISTS trg_invoices_upd         ON invoices;
-DROP TRIGGER IF EXISTS trg_caisse_upd           ON caisse_transactions;
-DROP TRIGGER IF EXISTS trg_virements_upd        ON virements;
-DROP TRIGGER IF EXISTS trg_ojra_upd             ON ojra_payroll;
-DROP TRIGGER IF EXISTS trg_liquidations_upd     ON liquidations;
-DROP TRIGGER IF EXISTS trg_encaissements_upd    ON encaissements;
-DROP TRIGGER IF EXISTS trg_comptes_clients_upd  ON comptes_clients;
-DROP TRIGGER IF EXISTS trg_codes_ana_upd        ON codes_analytiques;
-DROP TRIGGER IF EXISTS trg_budget_upd           ON budget_campagne;
-DROP TRIGGER IF EXISTS trg_fuel_upd             ON fuel_transactions;
-DROP TRIGGER IF EXISTS trg_telecom_upd          ON telecom_bills;
-DROP TRIGGER IF EXISTS trg_inspections_upd      ON inspections;
-DROP TRIGGER IF EXISTS trg_expeditions_upd      ON expeditions;
-DROP TRIGGER IF EXISTS trg_ecarts_upd           ON ecarts;
-DROP TRIGGER IF EXISTS trg_brix_upd             ON brix_readings;
-DROP TRIGGER IF EXISTS trg_bons_apport_upd      ON bons_apport;
-DROP TRIGGER IF EXISTS trg_pfq_upd              ON pfq_records;
-
-CREATE TRIGGER trg_invoices_upd         BEFORE UPDATE ON invoices         FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_caisse_upd           BEFORE UPDATE ON caisse_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_virements_upd        BEFORE UPDATE ON virements        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_ojra_upd             BEFORE UPDATE ON ojra_payroll     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_liquidations_upd     BEFORE UPDATE ON liquidations     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_encaissements_upd    BEFORE UPDATE ON encaissements    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_comptes_clients_upd  BEFORE UPDATE ON comptes_clients  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_codes_ana_upd        BEFORE UPDATE ON codes_analytiques FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_budget_upd           BEFORE UPDATE ON budget_campagne  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_fuel_upd             BEFORE UPDATE ON fuel_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_telecom_upd          BEFORE UPDATE ON telecom_bills     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_inspections_upd      BEFORE UPDATE ON inspections      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_expeditions_upd      BEFORE UPDATE ON expeditions      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_ecarts_upd           BEFORE UPDATE ON ecarts           FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_brix_upd             BEFORE UPDATE ON brix_readings     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_bons_apport_upd      BEFORE UPDATE ON bons_apport      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_pfq_upd              BEFORE UPDATE ON pfq_records      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_invoices_upd         BEFORE UPDATE ON invoices         FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_caisse_upd           BEFORE UPDATE ON caisse_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_virements_upd        BEFORE UPDATE ON virements        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_ojra_upd             BEFORE UPDATE ON ojra_payroll     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_liquidations_upd     BEFORE UPDATE ON liquidations     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_encaissements_upd    BEFORE UPDATE ON encaissements    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_comptes_clients_upd  BEFORE UPDATE ON comptes_clients  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_codes_ana_upd        BEFORE UPDATE ON codes_analytiques FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_budget_upd           BEFORE UPDATE ON budget_campagne  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_fuel_upd             BEFORE UPDATE ON fuel_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_telecom_upd          BEFORE UPDATE ON telecom_bills     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_inspections_upd      BEFORE UPDATE ON inspections      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_expeditions_upd      BEFORE UPDATE ON expeditions      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_ecarts_upd           BEFORE UPDATE ON ecarts           FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_brix_upd             BEFORE UPDATE ON brix_readings     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_bons_apport_upd      BEFORE UPDATE ON bons_apport      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE OR REPLACE TRIGGER trg_pfq_upd              BEFORE UPDATE ON pfq_records      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 -- ============================================================
--- Done. All 17 tables created in Public schema for instant Supabase REST API access.
+-- Done. All 17 tables created cleanly in Public schema with CREATE OR REPLACE TRIGGER.
 -- ============================================================
