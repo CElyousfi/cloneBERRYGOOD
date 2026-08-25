@@ -7,6 +7,7 @@
     "module": "commonjs",
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "baseUrl": ".",
     "paths": {
       "@features/*": [
         "src/features/*"

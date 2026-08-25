@@ -7,16 +7,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
-  root: 'src',
+  root: __dirname,
   publicDir: path.resolve(__dirname, 'public'),
   build: {
-    outDir: path.resolve(__dirname, 'public/dist'),
+    outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
-    rollupOptions: {
-      external: [
-        // Firebase loaded via CDN in index.html
-      ]
-    }
   },
   resolve: {
     alias: {
