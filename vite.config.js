@@ -25,13 +25,13 @@ export default defineConfig({
     port: 5173,
     cors: true,
     watch: {
-      ignored: [
-        '**/node_modules/**',
-        '**/functions/node_modules/**',
-        '**/public/**',
-        '**/dist/**',
-        '**/.git/**'
-      ]
+      ignored: (filePath) => {
+        const norm = String(filePath);
+        return norm.includes('node_modules') ||
+               norm.includes('.git') ||
+               norm.includes('dist') ||
+               norm.includes('public');
+      }
     }
   }
 });
