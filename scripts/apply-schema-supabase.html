@@ -2,255 +2,45 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Smart BERRY — Apply Finance Schema to Supabase</title>
+  <title>Smart BERRY — Copy Master Supabase Schema</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Inter', system-ui, sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; padding: 40px 20px; }
     .container { max-width: 800px; margin: 0 auto; }
-    h1 { font-size: 24px; color: #e879a0; margin-bottom: 8px; }
-    p.sub { color: #888; font-size: 14px; margin-bottom: 32px; }
+    h1 { font-size: 24px; color: #10B981; margin-bottom: 8px; }
+    p.sub { color: #888; font-size: 14px; margin-bottom: 24px; }
     .card { background: #1a1a2e; border-radius: 12px; padding: 24px; margin-bottom: 20px; border: 1px solid #2a2a4a; }
-    label { display: block; font-size: 13px; color: #aaa; margin-bottom: 8px; font-weight: 500; }
-    input { width: 100%; padding: 12px 14px; background: #0f0f1a; border: 1px solid #3a3a5a; border-radius: 8px; color: #fff; font-size: 14px; outline: none; }
-    input:focus { border-color: #8B2252; }
-    button { padding: 12px 24px; background: linear-gradient(135deg, #8B2252, #A93068); color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 16px; transition: opacity 0.2s; }
+    button { padding: 14px 24px; background: linear-gradient(135deg, #10B981, #059669); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%; transition: opacity 0.2s; }
     button:hover { opacity: 0.9; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .log { background: #0a0a15; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; min-height: 200px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; margin-top: 16px; }
-    .ok { color: #4CAF50; }
-    .err { color: #f44336; }
-    .info { color: #64B5F6; }
-    .warn { color: #FFB74D; }
-    .step { margin: 6px 0; }
-    .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
-    .badge-ok { background: rgba(76,175,80,0.2); color: #4CAF50; }
-    .badge-warn { background: rgba(255,183,77,0.2); color: #FFB74D; }
-    a { color: #e879a0; }
+    .log { background: #0a0a15; border: 1px solid #2a2a4a; border-radius: 8px; padding: 16px; font-family: 'Monaco', 'Courier New', monospace; font-size: 12px; min-height: 180px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; margin-top: 16px; color: #A7F3D0; }
+    a { color: #10B981; font-weight: 600; }
+    ol { margin-left: 20px; color: #ccc; font-size: 14px; line-height: 1.8; }
   </style>
 </head>
 <body>
 <div class="container">
-  <h1>🍓 Smart BERRY — Apply Finance Schema</h1>
-  <p class="sub">Run this once to create the <code>finance</code> Postgres schema in your Supabase project (eqopexrgcottuzfkywgi).<br>Uses your service_role key. Nothing is deleted — all statements are idempotent.</p>
+  <h1>🫐 Smart BERRY — Fix Supabase Database Schema</h1>
+  <p class="sub">Guaranteed 1-Click Master SQL for project <code>eqopexrgcottuzfkywgi</code> (All 17 Finance & Qualité tables).</p>
 
   <div class="card">
-    <label>Supabase Service Role Key</label>
-    <input type="password" id="serviceKey" placeholder="eyJ..." value="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxb3BleHJnY290dHV6Zmt5d2dpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzY2MDg0NiwiZXhwIjoyMTAzMjM2ODQ2fQ.WLGypXzTcRl5qDxYPFxL3-HD7NTNUvx_Mn4Cf3xed4A">
-    <label style="margin-top:16px">Supabase URL</label>
-    <input type="text" id="supabaseUrl" value="https://eqopexrgcottuzfkywgi.supabase.co">
-    <button id="applyBtn" onclick="applySchema()">Apply Finance Schema to Supabase</button>
-    <button style="background: linear-gradient(135deg,#1a5276,#2471a3); margin-top:8px" onclick="verifySchema()">Verify Schema (Check Tables Exist)</button>
-    <div class="log" id="log">Ready. Click "Apply Finance Schema" to begin.\nThe schema is idempotent — safe to run multiple times.\n</div>
-  </div>
+    <ol>
+      <li>Click the button below to copy the <strong>Clean Master SQL</strong> to your clipboard.</li>
+      <li>Open <a href="https://app.supabase.com/project/eqopexrgcottuzfkywgi/sql/new" target="_blank">Supabase SQL Editor (New Query)</a>.</li>
+      <li>Paste into the editor (Ctrl+V / ⌘V) and click <strong>Run ▶</strong>.</li>
+    </ol>
 
-  <div class="card">
-    <p style="font-size:13px;color:#888;">
-      <strong style="color:#aaa">Alternative:</strong> Open the 
-      <a href="https://app.supabase.com/project/eqopexrgcottuzfkywgi/sql/new" target="_blank">Supabase SQL Editor</a>,
-      paste the contents of <code>scripts/migrate-finance-to-postgres/001_schema.sql</code> and run it.
-    </p>
+    <button id="copyBtn" onclick="copyMasterSql()" style="margin-top:20px;">📋 Copy Master SQL to Clipboard</button>
+    <div class="log" id="log">Ready. Click "Copy Master SQL" then paste in Supabase SQL Editor.</div>
   </div>
 </div>
 
 <script>
-// The SQL is embedded here so this file works standalone (no server needed)
-const SCHEMA_SQL = `
--- Smart BERRY Finance Schema
--- Auto-generated by migration agent. Idempotent.
--- Apply via: Supabase SQL Editor or psql
-
-CREATE SCHEMA IF NOT EXISTS finance;
-SET search_path = finance, public;
-
-CREATE OR REPLACE FUNCTION finance.update_updated_at() RETURNS trigger AS $$
-BEGIN NEW.updated_at = now(); RETURN NEW; END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION finance.current_user_profile() RETURNS TEXT AS $$
-  SELECT current_setting('app.user_profile', true);
-$$ LANGUAGE sql STABLE;
-
-CREATE TABLE IF NOT EXISTS finance.invoices (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, numero_facture TEXT, fournisseur TEXT,
-    montant NUMERIC, tva NUMERIC, montant_ttc NUMERIC, payment_status TEXT, ferme TEXT,
-    date_facture TIMESTAMPTZ, date_validation_achats TIMESTAMPTZ, date_validation_finance TIMESTAMPTZ,
-    date_validation_dg TIMESTAMPTZ, validated_by_achats TEXT, validated_by_finance TEXT,
-    validated_by_dg TEXT, notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-COMMENT ON TABLE finance.invoices IS 'Factures fournisseurs — migrated from Firestore invoices';
-
-CREATE TABLE IF NOT EXISTS finance.caisse_transactions (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, type TEXT, montant NUMERIC, description TEXT,
-    date TIMESTAMPTZ, ferme TEXT, categorie TEXT, justificatif_url TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.virements (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, bdc_id TEXT, montant NUMERIC, banque TEXT,
-    reference TEXT, status TEXT, date_virement TIMESTAMPTZ, ferme TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.ojra_payroll (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, quinzaine TEXT, ferme TEXT, matricule TEXT,
-    nom TEXT, poste TEXT, jours_travailles NUMERIC, salaire_base NUMERIC, primes NUMERIC,
-    retenues NUMERIC, net_a_payer NUMERIC, statut TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.liquidations (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, quinzaine TEXT, ferme TEXT, variete TEXT,
-    kg_total NUMERIC, prix_unitaire NUMERIC, montant_total NUMERIC, type_expedition TEXT, statut TEXT,
-    date_liquidation TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.encaissements (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, compte_client_id TEXT, montant NUMERIC,
-    mode_paiement TEXT, date_encaissement TIMESTAMPTZ, reference TEXT, ferme TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.comptes_clients (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, nom TEXT, telephone TEXT, adresse TEXT,
-    solde_initial NUMERIC, type TEXT, actif BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.codes_analytiques (
-    id SERIAL PRIMARY KEY, code TEXT UNIQUE, libelle TEXT, domaine TEXT, ferme TEXT, actif BOOLEAN DEFAULT true,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.budget_campagne (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, campagne TEXT, ferme TEXT, categorie TEXT,
-    sous_categorie TEXT, montant_budget NUMERIC, montant_reel NUMERIC, quinzaine TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.fuel_transactions (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, date_transaction TIMESTAMPTZ, vehicule TEXT,
-    conducteur TEXT, litres NUMERIC, prix_litre NUMERIC, montant NUMERIC, ferme TEXT, odometer NUMERIC,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE TABLE IF NOT EXISTS finance.telecom_bills (
-    id SERIAL PRIMARY KEY, firestore_id TEXT UNIQUE, operateur TEXT, mois TEXT, numero TEXT,
-    montant_ht NUMERIC, montant_ttc NUMERIC, type TEXT, statut_paiement TEXT,
-    created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now(), created_by TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_invoices_ferme ON finance.invoices(ferme);
-CREATE INDEX IF NOT EXISTS idx_invoices_payment_status ON finance.invoices(payment_status);
-CREATE INDEX IF NOT EXISTS idx_invoices_date_facture ON finance.invoices(date_facture);
-CREATE INDEX IF NOT EXISTS idx_caisse_ferme ON finance.caisse_transactions(ferme);
-CREATE INDEX IF NOT EXISTS idx_caisse_date ON finance.caisse_transactions(date);
-CREATE INDEX IF NOT EXISTS idx_liquidations_quinzaine ON finance.liquidations(quinzaine);
-CREATE INDEX IF NOT EXISTS idx_liquidations_ferme ON finance.liquidations(ferme);
-CREATE INDEX IF NOT EXISTS idx_ojra_quinzaine ON finance.ojra_payroll(quinzaine);
-CREATE INDEX IF NOT EXISTS idx_ojra_ferme ON finance.ojra_payroll(ferme);
-`;
-
-const TABLES = ['invoices','caisse_transactions','virements','ojra_payroll','liquidations',
-  'encaissements','comptes_clients','codes_analytiques','budget_campagne','fuel_transactions','telecom_bills'];
-
-function log(msg, type='') {
-  const el = document.getElementById('log');
-  const span = document.createElement('span');
-  span.className = type ? `step ${type}` : 'step';
-  span.textContent = msg + '\n';
-  el.appendChild(span);
-  el.scrollTop = el.scrollHeight;
-}
-
-// Use supabase-js via CDN to run the SQL
-async function applySchema() {
-  const url = document.getElementById('supabaseUrl').value.trim();
-  const key = document.getElementById('serviceKey').value.trim();
-  document.getElementById('log').innerHTML = '';
-  log('🚀 Starting schema application...', 'info');
-  log(`   Project: ${url}`, 'info');
-
-  // Split SQL into individual statements (by semicolons, roughly)
-  // We'll run each CREATE TABLE / CREATE INDEX separately via the pg.query RPC
-  const statements = SCHEMA_SQL
-    .split(/;\s*\n/)
-    .map(s => s.trim())
-    .filter(s => s.length > 5);
-
-  log(`   Found ${statements.length} SQL statements to execute`, 'info');
-
-  let ok = 0, failed = 0;
-  for (const stmt of statements) {
-    try {
-      const res = await fetch(`${url}/rest/v1/rpc/`, {
-        method: 'OPTIONS',
-        headers: { 'apikey': key, 'Authorization': `Bearer ${key}` }
-      });
-      // Actually use the Supabase HTTP API via a special pg function
-      // Since we can't run raw DDL via REST, we'll insert into a helper table if it exists
-      // Better: guide user to use SQL editor with the embedded SQL
-      break;
-    } catch(e) {
-      log(`Error: ${e.message}`, 'err');
-      failed++;
-    }
-  }
-
-  // The REST API can't run DDL directly. Show the SQL for the user to copy.
-  log('\n⚠️  The Supabase REST API does not support raw DDL.', 'warn');
-  log('   Please use the Supabase SQL Editor instead:', 'warn');
-  log('   1. Open: https://app.supabase.com/project/eqopexrgcottuzfkywgi/sql/new', 'info');
-  log('   2. Copy the SQL below and paste it into the editor:', 'info');
-  log('   3. Click Run ▶', 'info');
-  log('\n' + '─'.repeat(60), '');
-  log(SCHEMA_SQL, '');
-  log('─'.repeat(60), '');
-  log('\n✅ SQL ready to paste above ↑', 'ok');
-
-  // Also copy to clipboard
-  try {
-    await navigator.clipboard.writeText(SCHEMA_SQL);
-    log('📋 Schema SQL copied to clipboard!', 'ok');
-  } catch(e) {
-    log('   (Could not auto-copy to clipboard \u2014 copy manually from above)', 'warn');
-  }
-}
-
-async function verifySchema() {
-  const url = document.getElementById('supabaseUrl').value.trim();
-  const key = document.getElementById('serviceKey').value.trim();
-  document.getElementById('log').innerHTML = '';
-  log('🔍 Verifying Finance schema tables...', 'info');
-
-  let found = 0;
-  for (const table of TABLES) {
-    try {
-      const res = await fetch(`${url}/rest/v1/${table}?limit=0&select=id`, {
-        headers: { 'apikey': key, 'Authorization': `Bearer ${key}`, 'Accept-Profile': 'finance' }
-      });
-      if (res.ok || res.status === 200 || res.status === 206) {
-        log(`  ✅ finance.${table} — EXISTS`, 'ok');
-        found++;
-      } else {
-        const body = await res.json().catch(() => ({}));
-        if (body.message && body.message.includes('not found')) {
-          log(`  ❌ finance.${table} — NOT FOUND (apply schema first)`, 'err');
-        } else {
-          log(`  ⚠️  finance.${table} — ${res.status}: ${body.message||'unknown'}`, 'warn');
-        }
-      }
-    } catch(e) {
-      log(`  ❌ finance.${table} — ${e.message}`, 'err');
-    }
-  }
-  log(`\nResult: ${found}/${TABLES.length} tables found`, found === TABLES.length ? 'ok' : 'warn');
-  if (found === TABLES.length) {
-    log('🎉 Schema fully applied! Ready for seed migration.', 'ok');
-  } else {
-    log('   Apply the schema via SQL Editor then click Verify again.', 'info');
-  }
+async function copyMasterSql() {
+  const sqlRes = await fetch('./001_supabase_master_schema.sql');
+  const sql = await sqlRes.text();
+  await navigator.clipboard.writeText(sql);
+  document.getElementById('log').textContent = "✅ MASTER SQL COPIED TO CLIPBOARD!\n\nPaste it into Supabase SQL Editor (https://app.supabase.com/project/eqopexrgcottuzfkywgi/sql/new) and click Run ▶.";
+  alert("Master SQL copied to clipboard! Paste in Supabase SQL Editor and click Run.");
 }
 </script>
 </body>
