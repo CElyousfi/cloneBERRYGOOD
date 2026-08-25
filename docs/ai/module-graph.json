@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c8b4cd79a923fc90",
+    "sourceFingerprint": "sha256:e686656d8509dcca",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -160,13 +160,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/MagBCScanModal.js",
           "note": "probabilistic",
           "windowDays": 90
         }

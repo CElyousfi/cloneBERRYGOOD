@@ -37,6 +37,7 @@ const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
 const bcScan = require("./lib/stock/bcScan");
+const bcDate = require("./lib/stock/bcDate");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
 const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
@@ -7893,6 +7894,76 @@ exports.stockManagement = functions
         }
 
         return res.json({ success: true, id: docRef.id, numero });
+      }
+
+      // ========== MODIFICATION DE LA DATE D'UN BON DE CONSOMMATION ==========
+      // Périmètre volontairement étroit (ticket sb/bc-modifier-date) : LA DATE,
+      // et rien d'autre. Articles/quantités/parcelles restent immuables — les
+      // toucher obligerait à recalculer des soldes de stock déjà décrémentés.
+      //
+      // POINT CRITIQUE : un bon porte une date ET les `stock_movements` créés
+      // par `create-bc` (type consommation, BCS-…) en portent une COPIE. Ce sont
+      // ces mouvements que lisent les analyses par période. Les deux sont donc
+      // mis à jour dans la MÊME transaction — jamais l'un sans l'autre.
+      // Logique pure (validation, campagne, patch) : lib/stock/bcDate.js.
+      if (action === "update-bc-date" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        const bcDateRole = await resolveCallerRole(authUser);
+        if (bcDateRole !== "magasinier" && bcDateRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+
+        const bcDateId = req.body && req.body.bc_id;
+        const bcNewDate = req.body && req.body.date;
+        if (!bcDateId || typeof bcDateId !== "string") {
+          return res.status(400).json({ success: false, error: "bc_id requis" });
+        }
+        // Date du jour calculée SERVEUR (Africa/Casablanca) — jamais l'horloge client.
+        const bcDateCheck = bcDate.validateBcDate(bcNewDate, stockFilesRecord.todayInCasablanca());
+        if (!bcDateCheck.valid) {
+          return res.status(400).json({ success: false, error: bcDateCheck.error });
+        }
+
+        const bcDateActor = {
+          uid: authUser.uid || "",
+          profileId: bcDateRole || "",
+          name: authUser.name || authUser.email || "",
+        };
+        const bcDateRef = db_firestore.collection("consumption_vouchers").doc(bcDateId);
+        const bcDateMovQuery = db_firestore.collection("stock_movements").where("bc_id", "==", bcDateId);
+
+        const bcDateResult = await db_firestore.runTransaction(async (tx) => {
+          // Toutes les lectures AVANT toute écriture (contrainte Firestore).
+          const bcSnap = await tx.get(bcDateRef);
+          if (!bcSnap.exists) return { notFound: true };
+          const movSnap = await tx.get(bcDateMovQuery);
+
+          const before = bcSnap.data() || {};
+          const patch = bcDate.buildDateUpdate({
+            bc: before, date: bcNewDate, by: bcDateActor, at: Date.now(),
+          });
+          tx.update(bcDateRef, patch.bcUpdate);
+          movSnap.docs.forEach((d) => tx.update(d.ref, patch.movementUpdate));
+          return {
+            notFound: false,
+            date_avant: before.date || "",
+            movements_updated: movSnap.size,
+            campagne: bcDate.campagneChange(before.date, bcNewDate),
+          };
+        });
+
+        if (bcDateResult.notFound) {
+          return res.status(404).json({ success: false, error: "Bon de consommation introuvable" });
+        }
+        return res.json({
+          success: true,
+          date: bcNewDate,
+          date_avant: bcDateResult.date_avant,
+          movements_updated: bcDateResult.movements_updated,
+          campagne_changed: bcDateResult.campagne.changed,
+          campagne_avant: bcDateResult.campagne.from,
+          campagne_apres: bcDateResult.campagne.to,
+        });
       }
 
       // ========== STOCK DASHBOARD ==========

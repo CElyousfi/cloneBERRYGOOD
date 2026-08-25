@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:49f3484e159191a2",
+    "sourceFingerprint": "sha256:b9fcbc2e4a5ffb2d",
     "stats": {
-      "targetFiles": 243,
-      "targetFilesWithDirectTests": 140,
-      "targetFilesWithTransitiveTests": 161,
-      "testFilesScanned": 210
+      "targetFiles": 244,
+      "targetFilesWithDirectTests": 141,
+      "targetFilesWithTransitiveTests": 162,
+      "testFilesScanned": 213
     }
   },
   "index": {
@@ -534,6 +534,7 @@
         "functions/lib/mappingConso/__tests__/resolver.test.js",
         "functions/lib/pointage/__tests__/campagnePeriodes.test.js",
         "functions/lib/pointage/__tests__/mirrorWindow.test.js",
+        "tests/unit/bcDate.test.js",
         "tests/unit/campagne-export-fail-loud.test.js",
         "tests/unit/campagneUtilsBackend.test.js"
       ]
@@ -1109,6 +1110,14 @@
         "tests/unit/articleHistoryIndex.test.js"
       ]
     },
+    "functions/lib/stock/bcDate.js": {
+      "directTests": [
+        "tests/unit/bcDate.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcDate.test.js"
+      ]
+    },
     "functions/lib/stock/bcScan.js": {
       "directTests": [
         "tests/unit/bcScan.test.js",
@@ -1644,12 +1653,14 @@
       "directTests": [
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
-        "tests/unit/campagneUtilsBackend.test.js"
+        "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCTabEditDate.test.js"
       ],
       "transitiveTests": [
         "tests/unit/campagnePeriodes.test.js",
         "tests/unit/campagneUtils.test.js",
-        "tests/unit/campagneUtilsBackend.test.js"
+        "tests/unit/campagneUtilsBackend.test.js",
+        "tests/unit/magBCTabEditDate.test.js"
       ]
     },
     "public/lib/coutMainOeuvre.js": {

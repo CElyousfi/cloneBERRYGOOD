@@ -190,6 +190,14 @@
     const [sortField, setSortField] = useState('date');
     const [sortDir, setSortDir] = useState('desc');
     const [detailBc, setDetailBc] = useState(null);
+    // --- Modification de la DATE d'un bon (magasinier) ------------------
+    // Périmètre volontairement étroit : la date, et rien d'autre. Le
+    // backend (action `update-bc-date`) met à jour le bon ET les
+    // stock_movements liés dans la MÊME transaction.
+    const [editDateBc, setEditDateBc] = useState(null);
+    const [editDateValue, setEditDateValue] = useState('');
+    const [editDateSaving, setEditDateSaving] = useState(false);
+    const [editDateError, setEditDateError] = useState('');
     const isImportBC = bc => bc._isImport || (bc.numero || '').startsWith('IMP-') || bc.created_by?.userId === 'import_caneva';
     const loadBcs = () => {
       Promise.all([fetch('/api/stock?action=list-bc&type=' + type).then(r => r.json()).catch(() => ({
@@ -613,6 +621,69 @@
         } else alert('Erreur: ' + (json.error || 'Echec'));
       }).catch(() => alert('Erreur reseau'));
     };
+
+    // --- Modification de la date d'un bon existant ----------------------
+    // Réservé au magasinier (même conditionnement que « Nouveau bon »).
+    // Exclus : les lignes VIRTUELLES issues de mouvements sans bc_id
+    // (id 'mov_…' : aucun document consumption_vouchers à modifier) et
+    // les bons importés (convention repo : un import ne s'édite pas).
+    const canEditBcDate = currentProfile === 'magasinier';
+    const isEditableBc = bc => !!bc && !String(bc.id || '').startsWith('mov_') && !isImportBC(bc);
+    const openEditDate = bc => {
+      setEditDateBc(bc);
+      setEditDateValue(bc.date || '');
+      setEditDateError('');
+    };
+    const closeEditDate = () => {
+      setEditDateBc(null);
+      setEditDateError('');
+    };
+    // Avertissement AVANT validation : un basculement de campagne
+    // (année fiscale Juillet→Juin) fausserait les analyses sans que
+    // personne ne le voie. bcCampagneOf est la source unique.
+    const editDateCampagne = (() => {
+      const from = bcCampagneOf(editDateBc && editDateBc.date);
+      const to = bcCampagneOf(editDateValue);
+      return {
+        from,
+        to,
+        changed: !!from && !!to && from !== to
+      };
+    })();
+    const submitEditDate = async () => {
+      if (!editDateBc || !editDateValue) {
+        setEditDateError('Choisissez une date');
+        return;
+      }
+      setEditDateSaving(true);
+      setEditDateError('');
+      try {
+        const r = await fetch('/api/stock?action=update-bc-date', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            bc_id: editDateBc.id,
+            date: editDateValue
+          })
+        });
+        const j = await r.json();
+        if (!j.success) {
+          // Erreur serveur affichée TELLE QUELLE (date future, bon
+          // introuvable, 403…) — jamais reformulée côté client.
+          setEditDateError(j.error || 'Échec de la modification');
+          setEditDateSaving(false);
+          return;
+        }
+        setEditDateBc(null);
+        setDetailBc(null);
+        loadBcs();
+      } catch (e) {
+        setEditDateError('Erreur réseau');
+      }
+      setEditDateSaving(false);
+    };
     if (loading) return React.createElement('div', {
       className: 'fade-in',
       style: {
@@ -890,7 +961,24 @@
           style: {
             fontSize: 12
           }
-        }, isFirst ? bc.date || '—' : ''), /*#__PURE__*/React.createElement("td", {
+        }, isFirst ? bc.date || '—' : '', isFirst && canEditBcDate && isEditableBc(bc) && /*#__PURE__*/React.createElement("button", {
+          onClick: e => {
+            e.stopPropagation();
+            openEditDate(bc);
+          },
+          title: "Modifier la date du bon",
+          style: {
+            marginLeft: 6,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: 'var(--berry)',
+            fontSize: 11,
+            padding: 0
+          }
+        }, /*#__PURE__*/React.createElement("i", {
+          className: "fa-solid fa-pen"
+        }))), /*#__PURE__*/React.createElement("td", {
           style: {
             fontSize: 12
           }
@@ -1380,7 +1468,122 @@
         fontWeight: 600,
         fontSize: 13
       }
-    }, "Creer le bon")))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
+    }, "Creer le bon")))), editDateBc && /*#__PURE__*/React.createElement("div", {
+      className: "modal-overlay",
+      style: {
+        zIndex: 10002
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "modal-content",
+      style: {
+        maxWidth: 420,
+        width: '90vw'
+      }
+    }, /*#__PURE__*/React.createElement("h3", {
+      style: {
+        marginTop: 0,
+        color: 'var(--berry)'
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-calendar-day",
+      style: {
+        marginRight: 8
+      }
+    }), "Modifier la date"), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: 'var(--gray-400)',
+        marginBottom: 12
+      }
+    }, "Bon ", /*#__PURE__*/React.createElement("strong", {
+      style: {
+        color: 'var(--berry)'
+      }
+    }, editDateBc.numero || ''), " \u2014 date actuelle : ", /*#__PURE__*/React.createElement("strong", null, editDateBc.date || '—')), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: 'var(--gray-400)',
+        marginBottom: 12
+      }
+    }, "Seule la date est modifi\xE9e. Les articles, quantit\xE9s et parcelles restent inchang\xE9s."), /*#__PURE__*/React.createElement("label", {
+      style: {
+        fontSize: 12,
+        fontWeight: 600,
+        display: 'block',
+        marginBottom: 4
+      }
+    }, "Nouvelle date"), /*#__PURE__*/React.createElement("input", {
+      type: "date",
+      value: editDateValue,
+      onChange: e => {
+        setEditDateValue(e.target.value);
+        setEditDateError('');
+      },
+      style: {
+        width: '100%',
+        padding: '8px 12px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        fontSize: 13
+      }
+    }), editDateCampagne.changed && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: '#fff4e5',
+        border: '1px solid #ffb74d',
+        color: '#8a4b00',
+        fontSize: 12,
+        fontWeight: 600
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 6
+      }
+    }), "Attention : ce bon change de campagne (", editDateCampagne.from, " \u2192 ", editDateCampagne.to, "). Les analyses par campagne en seront modifi\xE9es."), editDateError && /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 10,
+        padding: '8px 10px',
+        borderRadius: 8,
+        background: '#fdecea',
+        border: '1px solid #e74c3c',
+        color: '#a01d10',
+        fontSize: 12
+      }
+    }, editDateError), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 8,
+        justifyContent: 'flex-end',
+        marginTop: 16
+      }
+    }, /*#__PURE__*/React.createElement("button", {
+      onClick: closeEditDate,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: '1px solid #ddd',
+        background: '#fff',
+        cursor: 'pointer',
+        fontSize: 13
+      }
+    }, "Annuler"), /*#__PURE__*/React.createElement("button", {
+      onClick: submitEditDate,
+      disabled: editDateSaving || !editDateValue,
+      style: {
+        padding: '8px 16px',
+        borderRadius: 8,
+        border: 'none',
+        background: 'var(--berry)',
+        color: '#fff',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13,
+        opacity: editDateSaving || !editDateValue ? 0.6 : 1
+      }
+    }, editDateSaving ? 'Enregistrement...' : 'Confirmer la date')))), showCreateArticle && /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay",
       style: {
         zIndex: 10001
