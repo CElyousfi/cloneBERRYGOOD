@@ -12,6 +12,7 @@
     "coverage": "c8 --reporter=text --reporter=html npm run test:all",
     "test:prod": "BASE_URL=https://berrygood-farms-dashboard.web.app node ../tests/test-workflows.js",
     "test:irrigation": "node --test 'lib/irrigation/__tests__/*.test.js'",
+    "test:finance": "node --test 'lib/finance/__tests__/*.test.js'",
     "test:phenology": "node --test 'lib/phenology/__tests__/*.test.js'",
     "test:netafim": "node --test 'lib/netafim/__tests__/*.test.js'",
     "test:heuresSup": "node --test 'lib/heuresSup/__tests__/*.test.js'",
@@ -38,7 +39,8 @@
     "mssql": "^11.0.1",
     "nodemailer": "^8.0.4",
     "pdf-parse": "^2.4.5",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "@supabase/supabase-js": "^2.48.1"
   },
   "devDependencies": {
     "c8": "^11.0.0"

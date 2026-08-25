@@ -14,12 +14,15 @@
     "smoke": "BASE_URL=https://berrygood-farms-dashboard.web.app node tests/smoke-test.js",
     "smoke:sprint-1": "node tests/smoke-sprint-1.js",
     "deploy:functions": "bash scripts/deploy.sh functions",
-    "deploy:hosting": "bash scripts/deploy.sh hosting"
+    "deploy:hosting": "bash scripts/deploy.sh hosting",
+    "dev": "vite --config vite.config.js",
+    "build:vite": "vite build --config vite.config.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "dotenv": "^17.3.1",
     "playwright": "^1.58.2",
     "xlsx": "^0.18.5"
@@ -31,8 +34,11 @@
     "@babel/cli": "^7.28.6",
     "@babel/core": "^7.29.0",
     "@babel/preset-react": "^7.28.5",
+    "@vitejs/plugin-react": "^6.1.0",
     "c8": "^11.0.0",
-    "typescript": "^7.0.2"
+    "pg": "^8.23.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
   },
   "type": "commonjs"
 }
