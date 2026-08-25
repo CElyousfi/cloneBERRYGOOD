@@ -10123,14 +10123,62 @@ IMPORTANT:
         await file.save(buffer, { metadata: { contentType: mediaType } });
         const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
 
-        // 3) Appel vision. `today` est INJECTÉ dans le prompt : aucune année en
+        // 3) Référentiels — lus AVANT l'appel vision, car ils alimentent
+        //    désormais le VOCABULAIRE injecté dans le prompt (et non plus
+        //    seulement le rapprochement d'après-coup).
+        //    `consumption_vouchers` est borné aux 200 bons les plus récents :
+        //    on ne cherche qu'à savoir ce que le magasinier consomme vraiment,
+        //    pas à parcourir l'historique complet à chaque photo.
+        const [artSnapBc, aliasSnapBc, bonsSnapBc] = await Promise.all([
+          db_firestore.collection("articles_catalog").where("active", "==", true).get(),
+          db_firestore.collection("bc_scan_aliases").get(),
+          db_firestore.collection("consumption_vouchers").orderBy("date", "desc").limit(200).get()
+            .catch(() => null),
+        ]);
+        const catalogueBc = artSnapBc.docs
+          .map(d => ({ nom: (d.data() || {}).nom || "", categorie: (d.data() || {}).categorie || "" }))
+          .filter(a => a.nom);
+        // Noms d'articles vus dans les bons récents. Panne de lecture (index
+        // manquant sur `date`) -> liste vide : le vocabulaire retombe sur le
+        // seul filtre de catégorie, jamais d'erreur remontée au magasinier.
+        const consommesBc = [];
+        if (bonsSnapBc) {
+          bonsSnapBc.forEach((d) => {
+            const items = (d.data() || {}).items;
+            if (!Array.isArray(items)) return;
+            items.forEach((it) => { if (it && it.article) consommesBc.push(String(it.article)); });
+          });
+        }
+
+        // 4) Appel vision. `today` est INJECTÉ dans le prompt : aucune année en
         //    dur (défaut du prompt scan-bon-apport, figé sur 2026).
         const today = new Date().toISOString().split("T")[0];
         const Anthropic = require("@anthropic-ai/sdk");
         const bcClient = new Anthropic({ apiKey });
+        // VOCABULAIRE injecté dans le prompt (lot B) : ARTICLES UNIQUEMENT.
+        //
+        // ⚠️ L'absence de vocabulaire de PARCELLES est un RETRAIT MESURÉ, pas un
+        // oubli — ne pas le « rétablir » en croyant corriger une omission. Le
+        // paramètre `parcelles` de buildBcScanPrompt existe toujours et reste
+        // testé : seule l'alimentation depuis cette action a été retirée.
+        // Mesuré sur les 7 bons de référence, 4 passages : 29/73 parcelles
+        // pré-remplies AVEC la liste, 29/73 SANS. Aucun bénéfice, ~200 tokens
+        // par image, et une surface de risque de forçage en plus sur la donnée
+        // la plus coûteuse à se tromper (une consommation imputée à la mauvaise
+        // parcelle est invisible). Le rapprochement des parcelles se fait côté
+        // front (§5) et leur apprentissage par les alias du lot A.
+        const bcPrompt = bcScan.buildBcScanPrompt({
+          today,
+          articles: bcScan.selectVocabArticles(catalogueBc, type || "", consommesBc),
+        });
+        // Ordre VOLONTAIRE : texte (stable au sein d'un lot) d'abord avec le
+        // point de cache, image (variable) ensuite. Inversé, le préfixe ne
+        // serait plus cachable. `cache_control` n'engage la mise en cache qu'au
+        // delà du minimum de tokens du modèle ; en-dessous, l'appel se comporte
+        // exactement comme avant (aucune erreur, aucun surcoût).
         const bcMessageContent = [
+          { type: "text", text: bcPrompt, cache_control: { type: "ephemeral" } },
           { type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } },
-          { type: "text", text: bcScan.buildBcScanPrompt({ today }) },
         ];
         // Modèles — choix issu de la skill `claude-api` (source de vérité des ids
         // de modèles ; à reconsulter AVANT toute modification de cette liste).
@@ -10139,19 +10187,42 @@ IMPORTANT:
         // - Les ids sont COMPLETS tels quels : ne JAMAIS y ajouter un suffixe de
         //   date. Ne pas régresser vers les snapshots figés de mai 2025 encore
         //   utilisés par les autres actions scan-*.
-        // - Aucun paramètre `thinking`/`budget_tokens` et aucun prefill de message
-        //   assistant : rejetés en 400 sur cette génération. Sans `thinking`, le
-        //   modèle tourne en adaptatif, ce qui convient ici.
+        // - `budget_tokens` et le prefill de message assistant sont bien rejetés
+        //   en 400 sur cette génération. En revanche le sujet du raisonnement
+        //   n'est PAS clos : sur claude-opus-5 le raisonnement adaptatif est
+        //   ACTIF PAR DÉFAUT (contrairement à opus-4-8), et sa profondeur se
+        //   pilote par `output_config.effort` — GA, sans en-tête beta, et
+        //   uniquement DANS `output_config`, jamais à la racine du corps.
+        // - On demande `effort: "low"` : lire un bon est une TRANSCRIPTION
+        //   structurée, pas un problème de raisonnement. Mesuré sur les 7 bons
+        //   de référence, 2 balayages entrelacés low/medium/high :
+        //   fidélité IDENTIQUE aux trois niveaux (48/73 articles), mais 7,2 s
+        //   par bon en `low` contre 11,2 s sans vocabulaire et ~15 s en `high`,
+        //   et 460 tokens de sortie contre ~1000. `low` est aussi le SEUL
+        //   niveau dont les sommes de quantités sont conformes au papier sur
+        //   les 7 bons, aux deux passages.
+        //   ⚠️ `output_config` n'est envoyé qu'à claude-opus-5, et la raison
+        //   n'est PAS que le repli le refuserait : vérifié par sonde,
+        //   claude-opus-4-8 l'accepte sans erreur. La raison est qu'on n'a
+        //   mesuré l'effet de `effort` que sur opus-5 (le repli n'a pas de
+        //   raisonnement actif par défaut, l'effet y est au mieux nul). Le
+        //   repli est le chemin d'urgence : on n'y ajoute pas un paramètre
+        //   dont on n'a pas mesuré le comportement.
         const BC_SCAN_MODELS = ["claude-opus-5", "claude-opus-4-8"];
+        const BC_SCAN_EFFORT_MODELS = { "claude-opus-5": "low" };
         let bcResponse = null;
         let bcLastError = null;
         for (const modelId of BC_SCAN_MODELS) {
           try {
-            bcResponse = await bcClient.messages.create({
+            const bcBody = {
               model: modelId,
               max_tokens: 3000,
               messages: [{ role: "user", content: bcMessageContent }],
-            });
+            };
+            if (BC_SCAN_EFFORT_MODELS[modelId]) {
+              bcBody.output_config = { effort: BC_SCAN_EFFORT_MODELS[modelId] };
+            }
+            bcResponse = await bcClient.messages.create(bcBody);
             break;
           } catch (e) {
             bcLastError = e;
@@ -10168,7 +10239,7 @@ IMPORTANT:
           return res.json({ success: false, scan_url, error: "Analyse IA impossible - réponse non structurée", raw: bcAiText });
         }
 
-        // 4) Rapprochement — ARTICLES UNIQUEMENT (catalogue actif + alias mémorisés).
+        // 5) Rapprochement — ARTICLES UNIQUEMENT (catalogue actif + alias mémorisés).
         //
         // Les PARCELLES ne sont volontairement PAS rapprochées côté serveur : le
         // backend ne peut pas savoir quelle liste le front affiche au magasinier
@@ -10186,11 +10257,8 @@ IMPORTANT:
         // et un statut `unmatched` franc ; le rapprochement se fait côté front,
         // là où la liste affichée est connue, via bcScan.matchParcelle.
         const flatItems = bcScan.flattenBcScan(analysis);
-        const [artSnapBc, aliasSnapBc] = await Promise.all([
-          db_firestore.collection("articles_catalog").where("active", "==", true).get(),
-          db_firestore.collection("bc_scan_aliases").get(),
-        ]);
-        const catalogueBc = artSnapBc.docs.map(d => ({ nom: (d.data() || {}).nom || "" })).filter(a => a.nom);
+        // catalogueBc / aliasSnapBc sont déjà lus au §3 (ils servent aussi au
+        // vocabulaire du prompt) — pas de seconde lecture Firestore ici.
         // Forme objet {article_nom, count} : le compteur d'usage est remonté au
         // front (article_alias_count) pour distinguer un alias confirmé N fois
         // d'un alias posé une seule fois par un magasinier — un alias reste une

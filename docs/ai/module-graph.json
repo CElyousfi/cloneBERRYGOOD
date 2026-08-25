@@ -60,11 +60,11 @@
       },
       {
         "commits": 12,
-        "file": "public/components/PivotAnalytiqueGrid.jsx"
+        "file": "functions/index.js"
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:d2e517803e2ee572",
+    "sourceFingerprint": "sha256:c8b4cd79a923fc90",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
@@ -160,6 +160,13 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/MagBCScanModal.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -1004,13 +1011,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/ParcellesReferentielTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },

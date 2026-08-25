@@ -17,6 +17,10 @@ const {
   nextParcelleAliasCount,
   parcelleAliasDocId,
   aliasMatchParcelle,
+  sanitizeVocabList,
+  buildVocabulaireSection,
+  selectVocabArticles,
+  VOCAB_MAX_ENTRIES,
   SIMILARITY_THRESHOLD,
   INCLUSION_THRESHOLD,
 } = require('../../functions/lib/stock/bcScan')
@@ -849,6 +853,153 @@ test('buildBcScanPrompt — injecte today, aucune année en dur', () => {
   // Aucune année codée en dur ailleurs que dans `today`.
   const sansToday = prompt.split('2026-07-14').join('')
   assert.strictEqual(/\b(19|20)\d{2}\b/.test(sansToday), false)
+})
+
+// ---------------------------------------------------------------------------
+// Vocabulaire injecté dans le prompt (lot B)
+// ---------------------------------------------------------------------------
+
+// Extrait du catalogue RÉEL (casse et catégories telles qu'en base, doublons
+// compris) — c'est cette saleté-là qui casse un filtre écrit par égalité.
+const CATALOGUE_REEL = [
+  { nom: 'Nitrate de Calcium', categorie: 'Engrais' },
+  { nom: 'Nitrate de Calcium', categorie: 'engrais' },
+  { nom: 'Nitrate de calcium Ultrasol', categorie: 'Engrais' },
+  { nom: 'Sulfate de Potasse Granulé', categorie: 'Engrais' },
+  { nom: 'DECIS EXPERT', categorie: 'Pesticides' },
+  { nom: 'DECIS EXPERT', categorie: 'pesticides' },
+  { nom: 'DECIS FLUXX', categorie: 'PHYTO-SANITAIRE' },
+  { nom: 'HUILE MINERALE', categorie: 'PRODUIT BIO' },
+  { nom: 'MEGAFOL', categorie: 'autre' },
+  { nom: 'M.K.P' },
+  { nom: 'TRACTEUR JOHN DEERE', categorie: 'IMMOBILISATION' },
+  { nom: '', categorie: 'Engrais' },
+]
+
+test('sanitizeVocabList — dédoublonne (le catalogue réel a des doublons de casse)', () => {
+  const out = sanitizeVocabList(['DECIS EXPERT', 'decis expert', ' DECIS  EXPERT ', 'DECIS FLUXX'])
+  assert.deepStrictEqual(out, ['DECIS EXPERT', 'DECIS FLUXX'])
+})
+
+test('sanitizeVocabList — entrées non exploitables ignorées, jamais de crash', () => {
+  assert.deepStrictEqual(sanitizeVocabList(null), [])
+  assert.deepStrictEqual(sanitizeVocabList('pas un tableau'), [])
+  assert.deepStrictEqual(sanitizeVocabList([null, 42, '', '   ', {}, 'Ammonitrate']), ['Ammonitrate'])
+})
+
+test('sanitizeVocabList — borné : un catalogue aberrant ne fait pas exploser le prompt', () => {
+  const enorme = Array.from({ length: VOCAB_MAX_ENTRIES + 250 }, (_, i) => 'ARTICLE ' + i)
+  assert.strictEqual(sanitizeVocabList(enorme).length, VOCAB_MAX_ENTRIES)
+  assert.strictEqual(sanitizeVocabList(enorme, 5).length, 5)
+})
+
+test('selectVocabArticles — bon d\'engrais : pas de pesticide, catégories sales absorbées', () => {
+  const noms = selectVocabArticles(CATALOGUE_REEL, 'engrais', [])
+  assert.ok(noms.includes('Nitrate de Calcium'))
+  assert.ok(noms.includes('Nitrate de calcium Ultrasol'))
+  assert.ok(!noms.includes('DECIS EXPERT'))
+  assert.ok(!noms.includes('TRACTEUR JOHN DEERE'))
+  // Doublon de casse du catalogue réel : une seule entrée dans le prompt.
+  assert.strictEqual(noms.filter(n => n === 'Nitrate de Calcium').length, 1)
+})
+
+test('selectVocabArticles — bon de pesticide : pesticides + phyto + bio, pas d\'engrais', () => {
+  const noms = selectVocabArticles(CATALOGUE_REEL, 'pesticide', [])
+  assert.ok(noms.includes('DECIS EXPERT'))
+  assert.ok(noms.includes('DECIS FLUXX'))
+  assert.ok(noms.includes('HUILE MINERALE'))
+  assert.ok(!noms.includes('Nitrate de Calcium'))
+})
+
+test('selectVocabArticles — type VIDE (onglet « Tous ») : les deux familles, jamais une liste vide', () => {
+  const noms = selectVocabArticles(CATALOGUE_REEL, '', [])
+  assert.ok(noms.includes('Nitrate de Calcium'))
+  assert.ok(noms.includes('DECIS EXPERT'))
+  assert.ok(!noms.includes('TRACTEUR JOHN DEERE'))
+  assert.deepStrictEqual(selectVocabArticles(CATALOGUE_REEL, undefined, []), noms)
+})
+
+test('selectVocabArticles — les articles consommés rattrapent les catégories « autre »/absentes', () => {
+  // Mesuré sur les données réelles : 7 des 44 articles réellement consommés
+  // (MEGAFOL, M.K.P, …) sont hors des catégories engrais/pesticide et seraient
+  // perdus par le seul filtre de catégorie.
+  const sans = selectVocabArticles(CATALOGUE_REEL, 'engrais', [])
+  assert.ok(!sans.includes('MEGAFOL'))
+  assert.ok(!sans.includes('M.K.P'))
+  const avec = selectVocabArticles(CATALOGUE_REEL, 'engrais', ['MEGAFOL', 'M.K.P'])
+  assert.ok(avec.includes('MEGAFOL'))
+  assert.ok(avec.includes('M.K.P'))
+  // …et ils passent en tête (les plus probables survivent si le plafond mord).
+  assert.deepStrictEqual(avec.slice(0, 2), ['MEGAFOL', 'M.K.P'])
+})
+
+test('selectVocabArticles — un consommé absent du catalogue actif n\'est jamais suggéré', () => {
+  // Article désactivé depuis : il n'est plus sélectionnable dans le bon, le
+  // proposer au modèle ne produirait qu'une valeur rejetée ensuite.
+  const noms = selectVocabArticles(CATALOGUE_REEL, 'engrais', ['ARTICLE RETIRE DU CATALOGUE'])
+  assert.ok(!noms.includes('ARTICLE RETIRE DU CATALOGUE'))
+})
+
+test('buildBcScanPrompt — sans vocabulaire : prompt identique à l\'historique', () => {
+  const base = buildBcScanPrompt({ today: '2026-07-14' })
+  assert.strictEqual(buildBcScanPrompt({ today: '2026-07-14', articles: [], parcelles: [] }), base)
+  assert.ok(!base.includes('VOCABULAIRE DE RÉFÉRENCE'))
+})
+
+test('buildBcScanPrompt — le vocabulaire est présent, article ET parcelle', () => {
+  const prompt = buildBcScanPrompt({
+    today: '2026-07-14',
+    articles: ['Nitrate de calcium Ultrasol', 'DECIS FLUXX'],
+    parcelles: ['F1- S5 MARAVILLA MD', 'F5- CASCADE -S13'],
+  })
+  assert.ok(prompt.includes('VOCABULAIRE DE RÉFÉRENCE'))
+  assert.ok(prompt.includes('- Nitrate de calcium Ultrasol'))
+  assert.ok(prompt.includes('- DECIS FLUXX'))
+  assert.ok(prompt.includes('ARTICLES connus (2)'))
+  assert.ok(prompt.includes('- F1- S5 MARAVILLA MD'))
+  assert.ok(prompt.includes('PARCELLES connues (2)'))
+  // Le JSON de sortie reste la DERNIÈRE consigne, jamais noyée par les listes.
+  assert.ok(prompt.lastIndexOf('Réponds UNIQUEMENT') > prompt.lastIndexOf('- F5- CASCADE -S13'))
+})
+
+test('buildBcScanPrompt — la consigne ANTI-FORÇAGE figure avant les listes', () => {
+  // Garde-fou n°1 du lot B : un faux positif fausse le stock en silence, un
+  // texte brut fait juste cliquer le magasinier. Une consigne placée APRÈS 600
+  // libellés ne pèse plus rien — d'où l'assertion de position.
+  const prompt = buildBcScanPrompt({
+    today: '2026-07-14',
+    articles: ['Nitrate de Calcium', 'Nitrate de calcium Ultrasol'],
+    parcelles: ['F1- S5 MARAVILLA MD'],
+  })
+  assert.ok(prompt.includes('rends le TEXTE BRUT'))
+  assert.ok(prompt.includes('Ne choisis pas « la plus probable »'))
+  assert.ok(prompt.includes('Dix textes bruts valent mieux qu\'un seul rapprochement faux'))
+  assert.ok(prompt.indexOf('RÈGLE DE SUBSTITUTION') < prompt.indexOf('ARTICLES connus'))
+  assert.ok(prompt.indexOf('RÈGLE DE SUBSTITUTION') < prompt.indexOf('PARCELLES connues'))
+})
+
+test('buildBcScanPrompt — consigne explicite sur le secteur inconnu (cas « marvilla S-3 »)', () => {
+  // 29 lignes des bons de référence portent l'en-tête « marvilla S-3 » alors
+  // qu'aucune parcelle de secteur 3 n'existe dans la campagne courante.
+  const prompt = buildBcScanPrompt({
+    today: '2026-07-14',
+    parcelles: ['F1- S5 MARAVILLA MD', 'F1-S6.S7 MARAVILLA MOTTE'],
+  })
+  assert.ok(prompt.includes('secteur ABSENT de la'))
+  assert.ok(prompt.includes('Ne le rabats jamais sur un autre secteur'))
+})
+
+test('buildVocabulaireSection — aucun vocabulaire exploitable -> section absente', () => {
+  assert.deepStrictEqual(buildVocabulaireSection([], []), [])
+  assert.deepStrictEqual(buildVocabulaireSection(null, undefined), [])
+  assert.deepStrictEqual(buildVocabulaireSection(['  '], [null]), [])
+})
+
+test('buildVocabulaireSection — articles seuls : pas de section parcelles fantôme', () => {
+  const lines = buildVocabulaireSection(['Ammonitrate'], [])
+  const txt = lines.join('\n')
+  assert.ok(txt.includes('ARTICLES connus (1)'))
+  assert.ok(!txt.includes('PARCELLES connues'))
 })
 
 // ---------------------------------------------------------------------------

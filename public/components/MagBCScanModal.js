@@ -406,6 +406,11 @@
           headers: {
             'Content-Type': 'application/json'
           },
+          // Pas de liste de parcelles dans le corps : le vocabulaire injecté
+          // dans le prompt scan-bc est volontairement limité aux ARTICLES
+          // (retrait mesuré — 29/73 parcelles pré-remplies avec la liste comme
+          // sans, cf. le commentaire de l'action scan-bc). Le rapprochement des
+          // parcelles reste ici, contre les options réellement affichées.
           body: JSON.stringify({
             scan_base64: base64,
             filename,

@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:b63b2b8e4d5a77b0 -->
+<!-- sourceFingerprint: sha256:fd8bfc46efa134cd -->
 # Code Map — Composants frontend (341)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.

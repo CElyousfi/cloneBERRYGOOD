@@ -232,14 +232,228 @@ function resolveScanMedia(scanBase64, filename) {
 }
 
 /**
+ * Nombre MAXIMAL d'entrées injectées dans une liste de vocabulaire du prompt.
+ *
+ * Borne de sécurité, pas un réglage de qualité : la sélection amont (catégorie
+ * du bon + articles réellement consommés) ramène déjà le catalogue de 1124
+ * articles actifs à ~350 (bon d'engrais) / ~600 (onglet « Tous »). Ce plafond
+ * n'existe que pour qu'une donnée aberrante (catégories toutes vidées en base)
+ * ne fasse pas exploser le prompt à 1124 lignes à chaque image.
+ */
+const VOCAB_MAX_ENTRIES = 900
+
+/**
+ * Nettoie une liste de libellés destinée au prompt : chaînes non vides,
+ * espaces réduits, DÉDOUBLONNÉE (le catalogue réel contient des doublons —
+ * « DECIS EXPERT » existe en catégorie `Pesticides` ET `pesticides`, « Nitrate
+ * de Calcium » en `Engrais` ET `engrais` — les lister deux fois inviterait le
+ * modèle à croire à deux produits distincts), et BORNÉE.
+ * L'ordre d'entrée est conservé : la sélection amont y met le plus pertinent.
+ * @param {*} list Liste brute (peut être null / hétérogène).
+ * @param {number} [max] Plafond d'entrées.
+ * @returns {string[]} Libellés propres, uniques, bornés.
+ */
+function sanitizeVocabList(list, max) {
+  const limit = typeof max === 'number' && max > 0 ? max : VOCAB_MAX_ENTRIES
+  if (!Array.isArray(list)) return []
+  /** @type {string[]} */
+  const out = []
+  const seen = new Set()
+  for (const raw of list) {
+    if (typeof raw !== 'string') continue
+    const v = raw.replace(/\s+/g, ' ').trim()
+    if (!v) continue
+    const key = normalizeLabel(v)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(v)
+    if (out.length >= limit) break
+  }
+  return out
+}
+
+/**
+ * Section « vocabulaire » du prompt : les libellés cibles (articles du
+ * catalogue, parcelles réellement proposées au magasinier) donnés au modèle AU
+ * MOMENT DE LA LECTURE.
+ *
+ * Pourquoi : le magasinier écrit ses abréviations maison (« N. calcium »,
+ * « S. Potassium », « Decis »). Lire à l'aveugle puis rapprocher par similarité
+ * échoue sur 45 % des lignes — et c'est un échec VOULU du matcher, qui refuse
+ * de trancher entre plusieurs candidats légitimes. Connaître les libellés
+ * cibles pendant la lecture attaque la cause (l'abréviation) plutôt que le
+ * symptôme.
+ *
+ * ⚠️ RISQUE INVERSE, et c'est LE point dur : fournir une liste pousse le modèle
+ * à FORCER chaque libellé lu vers un élément de la liste. Un faux positif est
+ * bien plus grave qu'un non-reconnu — une consommation imputée au mauvais
+ * article ou à la mauvaise parcelle fausse le stock EN SILENCE, alors qu'un
+ * champ vide fait juste cliquer le magasinier. Cas réel qui l'illustre :
+ * l'en-tête « marvilla S-3 » apparaît sur 29 lignes des bons de référence alors
+ * qu'AUCUNE parcelle de secteur 3 n'existe dans la campagne courante ; le
+ * rapprocher vers S5 ou S6.S7 imputerait 29 lignes à la mauvaise parcelle.
+ * D'où les consignes anti-forçage ci-dessous, volontairement répétées et
+ * placées AVANT les listes (une consigne noyée après 600 libellés ne pèse plus).
+ *
+ * @param {string[]} articles Noms d'articles du catalogue (déjà réduits).
+ * @param {string[]} parcelles Libellés de parcelles proposés au magasinier.
+ * @returns {string[]} Lignes du prompt ([] si aucun vocabulaire).
+ */
+function buildVocabulaireSection(articles, parcelles) {
+  const arts = sanitizeVocabList(articles)
+  const parcs = sanitizeVocabList(parcelles)
+  if (!arts.length && !parcs.length) return []
+
+  const lines = [
+    '',
+    'VOCABULAIRE DE RÉFÉRENCE (aide à la transcription) :',
+    'Les listes ci-dessous donnent les libellés EXACTS utilisés dans le système.',
+    'Le magasinier écrit souvent des abréviations maison.',
+    '',
+    'RÈGLE DE SUBSTITUTION — lis-la entièrement avant les listes :',
+    '- Si le texte lu correspond de façon CERTAINE à une entrée de la liste,',
+    '  recopie l\'entrée EXACTEMENT telle qu\'elle figure dans la liste.',
+    '- SINON, rends le TEXTE BRUT que tu as lu, sans le modifier.',
+    '- « Certaine » veut dire : une SEULE entrée peut correspondre. Si PLUSIEURS',
+    '  entrées pourraient convenir et que rien sur le papier ne permet de',
+    '  trancher, rends le texte brut. Ne choisis pas « la plus probable ».',
+    '- Si RIEN dans la liste ne correspond, rends le texte brut. La liste n\'est',
+    '  pas exhaustive : beaucoup de libellés lus n\'y figurent tout simplement pas.',
+    '- N\'utilise JAMAIS une entrée de la liste pour « corriger » un numéro de',
+    '  secteur, une variété ou une ferme que tu as lus. Ce que tu lis fait foi.',
+    '- Un libellé rendu en texte brut n\'est PAS une erreur : c\'est le',
+    '  comportement attendu. Un mauvais rapprochement, lui, fausse le stock en',
+    '  silence. Dix textes bruts valent mieux qu\'un seul rapprochement faux.',
+  ]
+  if (arts.length) {
+    lines.push('', 'ARTICLES connus (' + arts.length + ') :')
+    for (const a of arts) lines.push('- ' + a)
+  }
+  if (parcs.length) {
+    lines.push(
+      '',
+      'PARCELLES connues (' + parcs.length + ') — pour les en-têtes manuscrits',
+      'au-dessus des colonnes « Pile » UNIQUEMENT :',
+    )
+    for (const p of parcs) lines.push('- ' + p)
+    lines.push(
+      '',
+      'Rappel pour les parcelles : un en-tête qui nomme un secteur ABSENT de la',
+      'liste (ex. « S-3 » alors que la liste n\'a que S5 et S6) se rend en TEXTE',
+      'BRUT. Ne le rabats jamais sur un autre secteur, même proche.',
+    )
+  }
+  return lines
+}
+
+/**
+ * Familles de `categorie` du catalogue, par type de bon.
+ *
+ * ⚠️ Le champ est bien `categorie` sur `articles_catalog` — PAS `cpc_categorie`,
+ * qui n'existe que sur les `consumption_vouchers` (le bon porte la catégorie
+ * CPC, l'article porte la sienne). Vérifié sur les 1129 documents réels : les
+ * 1124 articles actifs ont `categorie` renseigné, aucun n'a `cpc_categorie`.
+ *
+ * Les valeurs réelles sont sales (casse mélangée, singulier/pluriel,
+ * « PHYTO-SANITAIRE », « pesticides », « Engrais »/« engrais ») : on compare
+ * donc par SOUS-CHAÎNE sur la forme normalisée, jamais par égalité.
+ */
+const VOCAB_CATEGORIES = {
+  engrais: ['engrais'],
+  // `bio` couvre « PRODUIT BIO » (4 articles) : produits de traitement rangés
+  // hors « Pesticides ». Quelques noms en trop coûtent des tokens ; un nom
+  // manquant coûte une ligne non reconnue.
+  pesticide: ['pesticid', 'phyto', 'bio'],
+}
+
+/**
+ * Sélectionne les articles à injecter dans le prompt.
+ *
+ * Le catalogue actif compte 1124 articles (18 k caractères) : l'envoyer entier
+ * à chaque image gonfle le prompt sans nécessité. Deux réductions CUMULÉES,
+ * toutes deux justifiées par la mesure sur les données réelles :
+ *
+ * 1. **Catégorie du bon** — un bon d'engrais ne consomme pas de pesticide.
+ *    Mesuré : 302 engrais / 288 pesticides+phyto+bio (dédoublonnés) contre 1124.
+ * 2. **Articles réellement consommés** (union, pas intersection) — 44 articles
+ *    distincts sur l'ensemble des `consumption_vouchers`. Cette union n'est PAS
+ *    cosmétique : 7 de ces 44 (« MEGAFOL », « EXTREME », « RHIZO BOR »,
+ *    « ECOVIGOR », « GZ », « M.K.P », « Maspilan ») portent `categorie: "autre"`
+ *    ou rien du tout, et seraient PERDUS par le seul filtre de catégorie.
+ *
+ * ⚠️ Un type de bon VIDE (onglet « Tous ») n'est pas une erreur : on prend alors
+ * les deux familles. Jamais de filtre vide qui donnerait une liste vide — sans
+ * vocabulaire, le prompt retombe simplement sur son comportement historique,
+ * mais autant lui donner les deux familles qu'aucune.
+ *
+ * Les noms consommés sont placés EN TÊTE (ce sont les plus probables) et
+ * filtrés contre le catalogue actif : on ne propose jamais au modèle un libellé
+ * qui ne serait plus sélectionnable côté magasinier.
+ *
+ * @param {Array<{nom?: string, categorie?: string}>} catalogue Articles actifs.
+ * @param {string} type '' | 'engrais' | 'pesticide' (type du bon scanné).
+ * @param {string[]} [consommes] Noms d'articles vus dans les bons récents.
+ * @returns {string[]} Noms d'articles, dédoublonnés et bornés.
+ */
+function selectVocabArticles(catalogue, type, consommes) {
+  const list = Array.isArray(catalogue) ? catalogue : []
+  const t = normalizeLabel(type)
+  const familles = Object.prototype.hasOwnProperty.call(VOCAB_CATEGORIES, t)
+    ? VOCAB_CATEGORIES[t]
+    : [].concat(VOCAB_CATEGORIES.engrais, VOCAB_CATEGORIES.pesticide)
+
+  /** @type {Map<string, string>} Nom normalisé -> nom du catalogue. */
+  const actifs = new Map()
+  for (const a of list) {
+    const nom = a && typeof a.nom === 'string' ? a.nom.trim() : ''
+    if (!nom) continue
+    const key = normalizeLabel(nom)
+    if (key && !actifs.has(key)) actifs.set(key, nom)
+  }
+
+  /** @type {string[]} */
+  const ordered = []
+  for (const c of Array.isArray(consommes) ? consommes : []) {
+    const key = normalizeLabel(c)
+    // Filtré contre le catalogue ACTIF : un article consommé puis désactivé ne
+    // doit plus être suggéré (il n'est plus sélectionnable dans le bon).
+    if (key && actifs.has(key)) ordered.push(actifs.get(key))
+  }
+  for (const a of list) {
+    const nom = a && typeof a.nom === 'string' ? a.nom.trim() : ''
+    if (!nom) continue
+    const cat = normalizeLabel(a.categorie)
+    if (!cat) continue
+    if (familles.some(f => cat.indexOf(f) !== -1)) ordered.push(nom)
+  }
+  // sanitizeVocabList dédoublonne en conservant le premier vu : les consommés
+  // gardent donc leur priorité si le plafond devait mordre.
+  return sanitizeVocabList(ordered)
+}
+
+/**
  * Construit le prompt vision envoyé à Claude pour lire un bon de consommation.
  * `today` est INJECTÉ : on n'écrit jamais une année en dur (défaut connu du
  * prompt `scan-bon-apport`, qui force 2026).
- * @param {{today: string}} args today au format YYYY-MM-DD.
+ *
+ * Le VOCABULAIRE (articles / parcelles) est optionnel et ADDITIF : sans lui, le
+ * prompt est identique au prompt historique, octet pour octet.
+ *
+ * ⚠️ Ordre volontaire : la partie STABLE (consignes + vocabulaire) est en tête
+ * et l'appelant y pose le point de cache (`cache_control`) ; l'image, seule
+ * partie variable d'une photo à l'autre, vient après. Inverser les deux
+ * rendrait le préfixe non cachable au sein d'un lot.
+ *
+ * @param {{today: string, articles?: string[], parcelles?: string[]}} args
+ *   today au format YYYY-MM-DD ; articles/parcelles = vocabulaire déjà réduit.
  * @returns {string} Le prompt complet.
  */
 function buildBcScanPrompt(args) {
   const today = (args && args.today) || ''
+  const vocab = buildVocabulaireSection(
+    args && args.articles,
+    args && args.parcelles,
+  )
   return [
     'Tu lis un formulaire papier marocain « BON DE CONSOMMATION INTERNE » de',
     'Berry Good Farms (framboise / myrtille). Le document est manuscrit.',
@@ -270,6 +484,7 @@ function buildBcScanPrompt(args) {
     '  dans "lignes" comme des lignes normales.',
     '- Si une valeur est illisible, mets null. N\'invente JAMAIS une valeur.',
     '- Une cellule vide = pas de clé dans "quantites" (ou null).',
+    ...vocab,
     '',
     'Réponds UNIQUEMENT par un objet JSON strict, sans texte avant ni après,',
     'sans bloc de code markdown, au schéma exact suivant :',
@@ -952,6 +1167,10 @@ module.exports = {
   normalizeLabel,
   toNumber,
   buildBcScanPrompt,
+  sanitizeVocabList,
+  buildVocabulaireSection,
+  selectVocabArticles,
+  VOCAB_MAX_ENTRIES,
   parseAiJson,
   flattenBcScan,
   diceCoefficient,
