@@ -82,6 +82,8 @@
             const [bcs, setBcs] = useState([]);
             const [loading, setLoading] = useState(true);
             const [showForm, setShowForm] = useState(!!bcDraft0);
+            // Modale « Scanner des bons » (composant séparé, window.MagBCScanModal)
+            const [showScan, setShowScan] = useState(false);
             const [stocks, setStocks] = useState([]);
             const [catalogueArticles, setCatalogueArticles] = useState([]);
             const [showCreateArticle, setShowCreateArticle] = useState(false);
@@ -442,6 +444,10 @@
                                 <option value="saisie">Saisie</option>
                                 <option value="import">Import</option>
                             </select>
+                            {currentProfile === 'magasinier' && <button onClick={() => setShowScan(true)} title="Déposer des photos de bons papier"
+                                style={{background:'#e65100',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
+                                <i className="fa-solid fa-camera" style={{marginRight:6}}></i>Scanner des bons
+                            </button>}
                             {currentProfile === 'magasinier' && <button onClick={() => { clearBcDraft(); setForm({ date: new Date().toISOString().split('T')[0], lieu_source_type: 'magasin', lieu_source_id: 'F1', items: [{ ...emptyItem }] }); setBcCulture(''); setShowForm(true); }}
                                 style={{background:'var(--berry)',color:'#fff',border:'none',borderRadius:8,padding:'8px 16px',cursor:'pointer',fontWeight:600,fontSize:13}}>
                                 <i className="fa-solid fa-plus" style={{marginRight:6}}></i>Nouveau bon
@@ -486,6 +492,17 @@
                             {filteredBcs.length === 0 && <tr><td colSpan="7" style={{textAlign:'center',color:'var(--gray-400)',padding:40}}>Aucun bon de consommation {label.toLowerCase()}.</td></tr>}
                         </tbody>
                     </table></div>
+
+                    {/* Modale de scan IA. Garde explicite sur le global : une référence
+                        nue crasherait TOUT le tab si le script n'est pas chargé
+                        (mémoire tab-bare-global-ref-crash). */}
+                    {showScan && window.MagBCScanModal && React.createElement(window.MagBCScanModal, {
+                        type, catalogueArticles, getStock, catalogUnit, refForCampagne, parcelles,
+                        parcelleGroupes, parcelleNom, parcelleCulture, metaForParcelle,
+                        useConsoSelector, MAGASINS, STATIONS, currentProfile, profileData,
+                        onClose: () => setShowScan(false),
+                        onCreated: loadBcs,
+                    })}
 
                     {/* Pas de fermeture au clic sur le fond : un clic hors de la fenêtre
                         en cours de saisie perdait tout le brouillon du bon (le formulaire

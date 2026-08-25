@@ -117,6 +117,8 @@
     const [bcs, setBcs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(!!bcDraft0);
+    // Modale « Scanner des bons » (composant séparé, window.MagBCScanModal)
+    const [showScan, setShowScan] = useState(false);
     const [stocks, setStocks] = useState([]);
     const [catalogueArticles, setCatalogueArticles] = useState([]);
     const [showCreateArticle, setShowCreateArticle] = useState(false);
@@ -796,6 +798,24 @@
     }, "Saisie"), /*#__PURE__*/React.createElement("option", {
       value: "import"
     }, "Import")), currentProfile === 'magasinier' && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowScan(true),
+      title: "D\xE9poser des photos de bons papier",
+      style: {
+        background: '#e65100',
+        color: '#fff',
+        border: 'none',
+        borderRadius: 8,
+        padding: '8px 16px',
+        cursor: 'pointer',
+        fontWeight: 600,
+        fontSize: 13
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-camera",
+      style: {
+        marginRight: 6
+      }
+    }), "Scanner des bons"), currentProfile === 'magasinier' && /*#__PURE__*/React.createElement("button", {
       onClick: () => {
         clearBcDraft();
         setForm({
@@ -901,7 +921,25 @@
         color: 'var(--gray-400)',
         padding: 40
       }
-    }, "Aucun bon de consommation ", label.toLowerCase(), "."))))), showForm && /*#__PURE__*/React.createElement("div", {
+    }, "Aucun bon de consommation ", label.toLowerCase(), "."))))), showScan && window.MagBCScanModal && React.createElement(window.MagBCScanModal, {
+      type,
+      catalogueArticles,
+      getStock,
+      catalogUnit,
+      refForCampagne,
+      parcelles,
+      parcelleGroupes,
+      parcelleNom,
+      parcelleCulture,
+      metaForParcelle,
+      useConsoSelector,
+      MAGASINS,
+      STATIONS,
+      currentProfile,
+      profileData,
+      onClose: () => setShowScan(false),
+      onCreated: loadBcs
+    }), showForm && /*#__PURE__*/React.createElement("div", {
       className: "modal-overlay"
     }, /*#__PURE__*/React.createElement("div", {
       className: "modal-content",

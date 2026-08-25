@@ -36,6 +36,7 @@ const { deriveFermeFromParcelle } = require("./lib/valorisation/fermeParcelle");
 const parcelleGroupSplit = require("./lib/parcelleGroupes/split");
 const locationsConfig = require("./lib/stock/locationsConfig");
 const scanAttachment = require("./lib/stock/scanAttachment");
+const bcScan = require("./lib/stock/bcScan");
 const stockFilesRecord = require("./lib/stockFiles/recordSubmission");
 const { createStockFileReminders } = require("./lib/stockFiles/reminders");
 const { STOCK_FILE_ALLOWED_MIME, STOCK_FILE_ALLOWED_FORMATS_LABEL } = require("./lib/stockFiles/allowedMime");
@@ -7836,6 +7837,11 @@ exports.stockManagement = functions
           numero, type,
           parcelle: allParcelles.join(", "), culture: "", ferme: allFermes.join(", "),
           date: date || new Date().toISOString().split("T")[0],
+          // motif : champ « Motif » du bon papier (ex. « Fertigation/Traitement »),
+          // lu par le scan et éditable côté front. Ajout PUREMENT ADDITIF et
+          // OPTIONNEL : aucune validation, absent du body -> "" (comportement
+          // strictement identique à avant pour tous les appelants existants).
+          motif: typeof req.body.motif === "string" ? req.body.motif.trim() : "",
           authorized_by: authorized_by || {},
           items: bcItems,
           cpc_categorie: type === "engrais" ? "Engrais" : "Pesticides",
@@ -10067,6 +10073,203 @@ IMPORTANT:
         }
 
         return res.json({ success: true, scan_url, analysis });
+      }
+
+      // ========== SCAN BON DE CONSOMMATION INTERNE (matrice piles x articles) ==========
+      // Toute la logique métier vit dans functions/lib/stock/bcScan.js (module PUR,
+      // couvert par tests/unit/bcScan.test.js). Ici : upload + appel vision +
+      // rapprochement catalogue/parcelles. AUCUNE écriture métier : le BC n'est
+      // créé qu'ensuite, par l'action `create-bc` inchangée.
+
+      if (action === "scan-bc" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body — même
+        // garde que save-bc-scan-alias. Sans elle, n'importe quel profil
+        // authentifié (chef, RH, ouvrier) pourrait déclencher un appel Opus et
+        // un upload Storage, alors que le bouton n'est exposé qu'au magasinier.
+        const scanBcRole = await resolveCallerRole(authUser);
+        if (scanBcRole !== "magasinier" && scanBcRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+
+        const { scan_base64, filename, type } = req.body || {};
+        if (!scan_base64) return res.status(400).json({ success: false, error: "scan_base64 requis" });
+
+        const apiKey = process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) return res.status(400).json({ success: false, error: "Clé API Anthropic non configurée" });
+
+        // 1) Type MIME RÉEL du scan — déduit du préfixe data-url, PAS de
+        //    l'extension du filename : le client ré-encode toujours en JPEG
+        //    (public/lib/imageDownscale.js), donc « bon.png » porte des octets
+        //    JPEG. Cf. bcScan.resolveScanMedia (module pur, testé). Le même
+        //    mediaType sert à l'appel vision ET au contentType Storage.
+        const rawName = String(filename || "scan.jpg");
+        const media = bcScan.resolveScanMedia(scan_base64, rawName);
+        if (!media.ok) return res.status(400).json({ success: false, error: media.error });
+        const mediaType = media.mediaType;
+
+        // Taille bornée pour ne pas saturer la mémoire de la function.
+        const cleanBase64 = scan_base64.replace(/^data:[a-z0-9.+-]+\/[a-z0-9.+-]+\s*;\s*base64,/i, "");
+        const buffer = Buffer.from(cleanBase64, "base64");
+        const BC_SCAN_MAX_BYTES = 8 * 1024 * 1024;
+        if (buffer.length > BC_SCAN_MAX_BYTES) {
+          const mo = (buffer.length / (1024 * 1024)).toFixed(1);
+          return res.status(400).json({ success: false, error: `Image trop lourde (${mo} Mo) : maximum 8 Mo` });
+        }
+
+        // 2) Upload du scan (trace + pièce jointe du futur BC).
+        const ts = Date.now();
+        const storagePath = `scans/bons_consommation/${ts}_${rawName}`;
+        const file = bucket.file(storagePath);
+        await file.save(buffer, { metadata: { contentType: mediaType } });
+        const scan_url = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
+
+        // 3) Appel vision. `today` est INJECTÉ dans le prompt : aucune année en
+        //    dur (défaut du prompt scan-bon-apport, figé sur 2026).
+        const today = new Date().toISOString().split("T")[0];
+        const Anthropic = require("@anthropic-ai/sdk");
+        const bcClient = new Anthropic({ apiKey });
+        const bcMessageContent = [
+          { type: "image", source: { type: "base64", media_type: mediaType, data: cleanBase64 } },
+          { type: "text", text: bcScan.buildBcScanPrompt({ today }) },
+        ];
+        // Modèles — choix issu de la skill `claude-api` (source de vérité des ids
+        // de modèles ; à reconsulter AVANT toute modification de cette liste).
+        // - claude-opus-5 = modèle par défaut actuel (vision incluse) ;
+        //   claude-opus-4-8 = repli d'une génération.
+        // - Les ids sont COMPLETS tels quels : ne JAMAIS y ajouter un suffixe de
+        //   date. Ne pas régresser vers les snapshots figés de mai 2025 encore
+        //   utilisés par les autres actions scan-*.
+        // - Aucun paramètre `thinking`/`budget_tokens` et aucun prefill de message
+        //   assistant : rejetés en 400 sur cette génération. Sans `thinking`, le
+        //   modèle tourne en adaptatif, ce qui convient ici.
+        const BC_SCAN_MODELS = ["claude-opus-5", "claude-opus-4-8"];
+        let bcResponse = null;
+        let bcLastError = null;
+        for (const modelId of BC_SCAN_MODELS) {
+          try {
+            bcResponse = await bcClient.messages.create({
+              model: modelId,
+              max_tokens: 3000,
+              messages: [{ role: "user", content: bcMessageContent }],
+            });
+            break;
+          } catch (e) {
+            bcLastError = e;
+            console.error("Erreur modèle scan-bc", modelId, e.message);
+          }
+        }
+        if (!bcResponse) {
+          return res.json({ success: false, scan_url, error: `Appel IA impossible : ${bcLastError ? bcLastError.message : "erreur inconnue"}` });
+        }
+
+        const bcAiText = (bcResponse.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+        const analysis = bcScan.parseAiJson(bcAiText);
+        if (!analysis) {
+          return res.json({ success: false, scan_url, error: "Analyse IA impossible - réponse non structurée", raw: bcAiText });
+        }
+
+        // 4) Rapprochement — ARTICLES UNIQUEMENT (catalogue actif + alias mémorisés).
+        //
+        // Les PARCELLES ne sont volontairement PAS rapprochées côté serveur : le
+        // backend ne peut pas savoir quelle liste le front affiche au magasinier
+        // (mode `useConsoSelector` -> `refForCampagne`, sinon `/api/parcelles`,
+        // plus les groupes). Et le seul référentiel disponible ici,
+        // `sb_parcelle_referentiel` (15 entrées), est bien un SOUS-ENSEMBLE des
+        // 43 labels de `sql_mirror_pointage_meta/br_parcelle_sup` qui alimentent
+        // `parcelles-campagne-list`, donc le <select> — ses 15 labels y figurent
+        // tous, les deux listes ne sont PAS disjointes. Mais c'est un
+        // sous-ensemble PARTIEL (15/43) et NON FILTRÉ PAR CAMPAGNE : rapprocher
+        // contre lui, c'est (a) ne jamais pouvoir proposer les 28 autres
+        // parcelles — dont « S3 - MARAVILLA MOTTE F1 », la plus utilisée des
+        // bons — et (b) pouvoir proposer une parcelle hors campagne courante,
+        // absente du select, donc rejetée. On renvoie donc `parcelle_lue` brut
+        // et un statut `unmatched` franc ; le rapprochement se fait côté front,
+        // là où la liste affichée est connue, via bcScan.matchParcelle.
+        const flatItems = bcScan.flattenBcScan(analysis);
+        const [artSnapBc, aliasSnapBc] = await Promise.all([
+          db_firestore.collection("articles_catalog").where("active", "==", true).get(),
+          db_firestore.collection("bc_scan_aliases").get(),
+        ]);
+        const catalogueBc = artSnapBc.docs.map(d => ({ nom: (d.data() || {}).nom || "" })).filter(a => a.nom);
+        // Forme objet {article_nom, count} : le compteur d'usage est remonté au
+        // front (article_alias_count) pour distinguer un alias confirmé N fois
+        // d'un alias posé une seule fois par un magasinier — un alias reste une
+        // saisie humaine, jamais une certitude.
+        const aliasesBc = {};
+        aliasSnapBc.forEach((d) => {
+          const data = d.data() || {};
+          if (data.article_nom) {
+            aliasesBc[d.id] = { article_nom: data.article_nom, count: parseInt(data.count, 10) || 0 };
+          }
+        });
+        const items = flatItems.map((it) => {
+          const am = bcScan.matchArticle(it.article_lu, catalogueBc, aliasesBc);
+          return {
+            article_lu: it.article_lu,
+            article: am.article,
+            article_status: am.status,
+            article_score: am.score,
+            article_alias_count: am.aliasCount,
+            // parcelle_lue = texte brut de l'en-tête manuscrit, indispensable au
+            // rapprochement front. Les 3 champs suivants gardent la forme du
+            // contrat (le front les consomme déjà) mais ne sont plus renseignés
+            // ici : c'est le front qui rapproche, avec la liste qu'il affiche.
+            parcelle_lue: it.parcelle_lue,
+            parcelle: "",
+            parcelle_status: "unmatched",
+            parcelle_candidats: [],
+            quantite: it.quantite,
+            unite: it.unite_lue,
+            pile: it.pile,
+            // barre : la ligne est rayée sur le papier. Elle n'est PLUS filtrée
+            // (dernier chemin de perte silencieuse) — le front la grise et
+            // laisse l'utilisateur trancher, la détection de rature pouvant
+            // se tromper. Champ additif, toujours booléen.
+            barre: it.barre === true,
+          };
+        });
+
+        return res.json({ success: true, scan_url, type: type || null, analysis, items });
+      }
+
+      if (action === "list-bc-scan-aliases") {
+        const snap = await db_firestore.collection("bc_scan_aliases").get();
+        const aliases = {};
+        snap.forEach((d) => {
+          const data = d.data() || {};
+          if (data.article_nom) aliases[d.id] = data.article_nom;
+        });
+        return res.json({ success: true, aliases });
+      }
+
+      if (action === "save-bc-scan-alias" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        const aliasRole = await resolveCallerRole(authUser);
+        if (aliasRole !== "magasinier" && aliasRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const { libelle_lu, article_nom, created_by } = req.body || {};
+        if (!libelle_lu || !article_nom) {
+          return res.status(400).json({ success: false, error: "Champs requis: libelle_lu, article_nom" });
+        }
+        const aliasId = bcScan.normalizeLabel(libelle_lu);
+        if (!aliasId) return res.status(400).json({ success: false, error: "libelle_lu invalide" });
+
+        const aliasRef = db_firestore.collection("bc_scan_aliases").doc(aliasId);
+        const count = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(aliasRef);
+          const prev = snap.exists ? (snap.data() || {}) : {};
+          const nextCount = (parseInt(prev.count, 10) || 0) + 1;
+          tx.set(aliasRef, {
+            libelle_lu: String(libelle_lu),
+            article_nom: String(article_nom),
+            count: nextCount,
+            created_by: prev.created_by || created_by || {},
+            updated_at: Date.now(),
+          }, { merge: true });
+          return nextCount;
+        });
+        return res.json({ success: true, id: aliasId, count });
       }
 
       // ========== SCAN FICHE IRRIGATION (AI-powered irrigation sheet scanning) ==========

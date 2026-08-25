@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:a3afdd3757fd1516 -->
-# Code Map — Composants frontend (340)
+<!-- sourceFingerprint: sha256:33efc844fc9127a2 -->
+# Code Map — Composants frontend (341)
 
 Chaque composant React de public/app.jsx et public/components/, avec son emplacement exact et le tab qui le monte — à consulter AVANT toute recherche dans app.jsx.
 
@@ -211,6 +211,7 @@ Chaque composant React de public/app.jsx et public/components/, avec son emplace
 | LoginScreen | public/app.jsx:62872 | — |
 | MagBCEngraisTab | public/components/MagBCTab.jsx:37 | — |
 | MagBCPhytoTab | public/components/MagBCTab.jsx:42 | — |
+| MagBCScanModal | public/components/MagBCScanModal.jsx:48 | — |
 | MagBCTab | public/components/MagBCTab.jsx:47 | mag_bc |
 | MagBdcReceptionTab | public/components/MagBdcReceptionTab.jsx:37 | mag_bdc_reception |
 | MagBonsCommandeTab | public/components/MagBonsCommandeTab.jsx:77 | mag_bdc_liste |

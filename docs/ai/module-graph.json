@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "229/370 fichiers classifiés",
+          "detail": "231/373 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "62/159 modules avec ≥1 test",
+          "detail": "65/162 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -31,7 +31,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 37,
+        "commits": 33,
         "file": "public/app.jsx"
       },
       {
@@ -39,7 +39,7 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 22,
+        "commits": 21,
         "file": "functions/pointageService.js"
       },
       {
@@ -64,19 +64,19 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:08e75d04d3b54bf9",
+    "sourceFingerprint": "sha256:59ca23bb725263cf",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
-      "coverageScore": 39,
+      "coverageScore": 40,
       "domains": 10,
-      "extractedComponents": 25,
-      "firestoreCollections": 58,
-      "libHelpers": 40,
+      "extractedComponents": 26,
+      "firestoreCollections": 59,
+      "libHelpers": 42,
       "monolithSymbols": 120,
       "tabFunctions": 120,
-      "unclassifiedFiles": 141,
-      "unitTestFiles": 41
+      "unclassifiedFiles": 142,
+      "unitTestFiles": 44
     }
   },
   "domains": {
@@ -95,9 +95,10 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 40,
+      "coverageScore": 47,
       "firestore": {
         "collections": [
+          "bc_scan_aliases",
           "scan_corrections",
           "security_scan_registre"
         ]
@@ -105,11 +106,13 @@
       "frontend": {
         "components": [
           "public/components/FactureDetailPopup.jsx",
+          "public/components/MagBCScanModal.jsx",
           "public/components/MagBdcReceptionTab.jsx",
           "public/components/MagBonsCommandeTab.jsx",
           "public/components/ScanAttachmentButton.jsx"
         ],
         "libs": [
+          "public/lib/bcScanMatch.js",
           "public/lib/bdcReceptionUtils.js",
           "public/lib/bdcWorkflow.js",
           "public/lib/factureExportUtils.js",
@@ -156,6 +159,13 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "tests/unit/magBCScanModal.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -167,6 +177,8 @@
           "tests/unit/bdcReminderService.test.js"
         ],
         "unit": [
+          "tests/unit/MagBCScanModal.test.js",
+          "tests/unit/bcScanMatch.test.js",
           "tests/unit/bdcReceptionUtils.test.js",
           "tests/unit/bdcWorkflow.test.js",
           "tests/unit/factureExportUtils.test.js",
@@ -998,13 +1010,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "public/components/ParcellesReferentielTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -2411,6 +2416,10 @@
       "confidence": "high",
       "domain": "stock"
     },
+    "public/components/MagBCScanModal.jsx": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
     "public/components/MagBCTab.jsx": {
       "confidence": "low",
       "domain": null
@@ -2487,6 +2496,10 @@
       "confidence": "high",
       "domain": "admin"
     },
+    "public/lib/bcScanMatch.js": {
+      "confidence": "medium",
+      "domain": "achats"
+    },
     "public/lib/bdcReceptionUtils.js": {
       "confidence": "medium",
       "domain": "achats"
@@ -2558,6 +2571,10 @@
     "public/lib/growthUtils.js": {
       "confidence": "high",
       "domain": "recolte"
+    },
+    "public/lib/imageDownscale.js": {
+      "confidence": "low",
+      "domain": null
     },
     "public/lib/inflightDedup.js": {
       "confidence": "low",
@@ -2648,6 +2665,10 @@
     "app_settings": {
       "accessLevel": "CF-only",
       "domain": null
+    },
+    "bc_scan_aliases": {
+      "accessLevel": "CF-only",
+      "domain": "achats"
     },
     "bons_apport_saisie": {
       "accessLevel": "CF-only",
@@ -4084,6 +4105,10 @@
     {
       "confidence": "low",
       "file": "public/lib/emargementPdf.js"
+    },
+    {
+      "confidence": "low",
+      "file": "public/lib/imageDownscale.js"
     },
     {
       "confidence": "low",

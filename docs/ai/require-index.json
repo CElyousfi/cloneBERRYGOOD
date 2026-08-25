@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:5b51d3ae964ba488",
+    "sourceFingerprint": "sha256:49f3484e159191a2",
     "stats": {
-      "targetFiles": 238,
-      "targetFilesWithDirectTests": 137,
-      "targetFilesWithTransitiveTests": 158,
-      "testFilesScanned": 206
+      "targetFiles": 243,
+      "targetFilesWithDirectTests": 140,
+      "targetFilesWithTransitiveTests": 161,
+      "testFilesScanned": 210
     }
   },
   "index": {
@@ -202,6 +202,8 @@
       "transitiveTests": [
         "functions/lib/campagneExport/__tests__/buildWorkbook.test.js",
         "functions/lib/campagneExport/__tests__/renderXlsx.test.js",
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js",
         "tests/unit/campagneExportBackend.test.js"
       ]
     },
@@ -1107,6 +1109,16 @@
         "tests/unit/articleHistoryIndex.test.js"
       ]
     },
+    "functions/lib/stock/bcScan.js": {
+      "directTests": [
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js"
+      ]
+    },
     "functions/lib/stock/locationsConfig.js": {
       "directTests": [
         "tests/unit/locationsConfig.test.js"
@@ -1243,7 +1255,9 @@
         "tests/unit/articleMerge.test.js"
       ],
       "transitiveTests": [
-        "tests/unit/articleMerge.test.js"
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/bcScan.test.js",
+        "tests/unit/bcScanMatch.test.js"
       ]
     },
     "functions/lib/suppliers/supplierValidation.js": {
@@ -1383,6 +1397,14 @@
       "transitiveTests": []
     },
     "public/components/InventaireMouvementsPopup.jsx": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBCScanModal.js": {
+      "directTests": [],
+      "transitiveTests": []
+    },
+    "public/components/MagBCScanModal.jsx": {
       "directTests": [],
       "transitiveTests": []
     },
@@ -1542,6 +1564,16 @@
         "tests/unit/authResilience.test.js"
       ]
     },
+    "public/lib/bcScanMatch.js": {
+      "directTests": [
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/magBCScanModal.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/magBCScanModal.test.js"
+      ]
+    },
     "public/lib/bdcReceptionUtils.js": {
       "directTests": [
         "tests/unit/bdcReceptionUtils.test.js"
@@ -1626,16 +1658,20 @@
     },
     "public/lib/cultureUtils.js": {
       "directTests": [
+        "tests/unit/bcScanMatch.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/campagneExportBackend.test.js",
-        "tests/unit/cultureUtils.test.js"
+        "tests/unit/cultureUtils.test.js",
+        "tests/unit/magBCScanModal.test.js"
       ],
       "transitiveTests": [
+        "tests/unit/bcScanMatch.test.js",
         "tests/unit/campagneBudgetQuinzaine.test.js",
         "tests/unit/campagneBudgetTab.test.js",
         "tests/unit/campagneExportBackend.test.js",
-        "tests/unit/cultureUtils.test.js"
+        "tests/unit/cultureUtils.test.js",
+        "tests/unit/magBCScanModal.test.js"
       ]
     },
     "public/lib/emargementExcel.js": {
@@ -1668,6 +1704,14 @@
       ],
       "transitiveTests": [
         "tests/unit/growthUtils.test.js"
+      ]
+    },
+    "public/lib/imageDownscale.js": {
+      "directTests": [
+        "tests/unit/imageDownscale.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/imageDownscale.test.js"
       ]
     },
     "public/lib/inflightDedup.js": {

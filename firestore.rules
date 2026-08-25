@@ -226,6 +226,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Alias de scan des bons de consommation (libellé manuscrit -> article du
+    // catalogue) — lecture pour utilisateur authentifié, écriture via la Cloud
+    // Function stockManagement (action save-bc-scan-alias) uniquement.
+    match /bc_scan_aliases/{docId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
     // Stock balances — read-only for authenticated users, write via Cloud Functions
     match /stock_balances/{docId} {
       allow read: if request.auth != null;
