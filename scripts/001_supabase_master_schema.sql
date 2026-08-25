@@ -4,7 +4,7 @@
 -- Target Project: eqopexrgcottuzfkywgi.supabase.co
 -- ============================================================
 
--- 1. Helper Function for Auto-Updating updated_at
+-- Helper Function for Auto-Updating updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -15,7 +15,7 @@ $$;
 
 
 -- ============================================================
--- 2. FINANCE & QUALITÉ DOMAIN TABLES & TRIGGERS (Self-Contained)
+-- FINANCE & QUALITE DOMAIN TABLES & TRIGGERS
 -- ============================================================
 
 -- 1. Invoices
@@ -303,7 +303,7 @@ CREATE TABLE IF NOT EXISTS brix_readings (
 CREATE OR REPLACE TRIGGER trg_brix_upd BEFORE UPDATE ON brix_readings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
--- 16. Bons d'Apport
+-- 16. Bons Apport
 CREATE TABLE IF NOT EXISTS bons_apport (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -341,7 +341,7 @@ CREATE OR REPLACE TRIGGER trg_pfq_upd BEFORE UPDATE ON pfq_records FOR EACH ROW 
 
 
 -- ============================================================
--- 3. INDEXES
+-- INDEXES
 -- ============================================================
 
 CREATE INDEX IF NOT EXISTS idx_invoices_ferme          ON invoices(ferme);
@@ -353,6 +353,7 @@ CREATE INDEX IF NOT EXISTS idx_virements_ferme         ON virements(ferme);
 CREATE INDEX IF NOT EXISTS idx_ojra_payroll_ferme      ON ojra_payroll(ferme);
 CREATE INDEX IF NOT EXISTS idx_liquidations_ferme      ON liquidations(ferme);
 CREATE INDEX IF NOT EXISTS idx_encaissements_ferme     ON encaissements(ferme);
+
 CREATE INDEX IF NOT EXISTS idx_inspections_ferme       ON inspections(ferme);
 CREATE INDEX IF NOT EXISTS idx_expeditions_ferme       ON expeditions(ferme);
 CREATE INDEX IF NOT EXISTS idx_ecarts_ferme            ON ecarts(ferme);
@@ -361,5 +362,5 @@ CREATE INDEX IF NOT EXISTS idx_bons_apport_ferme       ON bons_apport(ferme);
 CREATE INDEX IF NOT EXISTS idx_pfq_records_ferme       ON pfq_records(ferme);
 
 -- ============================================================
--- Done. Each table and its trigger are defined together in self-contained blocks.
+-- Done. Clean single-quote-free comments & self-contained table blocks.
 -- ============================================================
