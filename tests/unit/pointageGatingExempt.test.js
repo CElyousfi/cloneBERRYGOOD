@@ -26,6 +26,13 @@
 // une exemption « nue » saute TOUTE la résolution de périmètre, pas seulement le
 // 403 → `_fermeFilter`/`_cultureFilter` restent null, les fetchers ne sont plus
 // shadowés, et un chef_f5 recevait les parcelles de TOUTES les fermes/cultures.
+//
+// Régression n°3 couverte : `sb-referentiel-list` (noms Smart Berry, Ha, culture
+// SB) était bloquée par la même barrière → le magasinier voyait les libellés
+// BEE ONE bruts, et une parcelle dont `culture_sb` diverge de sa culture BEE ONE
+// disparaissait derrière le filtre « Culture » du bon de consommation. Elle est
+// exemptée et volontairement NON scoped (référentiel de noms visible par tous) ;
+// c'est la PROJECTION de la réponse qui protège `updated_by`/`updated_at`.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -35,6 +42,9 @@ const {
   EXEMPT_BUT_SCOPED,
   gatingRequiresPerimetre,
   resolveGatingFilters,
+  projectSbReferentielDoc,
+  projectSbReferentielForCaller,
+  SB_REFERENTIEL_PUBLIC_FIELDS,
 } = require('../../functions/pointageService');
 const { resolvePerimetre } = require('../../functions/lib/valorisation/accessControl');
 const { resolvePointageRHAccess } = require('../../functions/lib/auth/paieAccess');
@@ -94,6 +104,7 @@ test('GATING_EXEMPT_ACTIONS : liste blanche exhaustive', () => {
     'parcelles-campagne-list',
     'referentiel-taches-list',
     'sb-groupes-list',
+    'sb-referentiel-list',
     'suivi-tunnels',
   ]);
 });
@@ -224,6 +235,121 @@ test('une action inconnue n\'est pas exemptée par accident (fail-closed, 403)',
   assert.strictEqual(gateDecision('action-qui-nexiste-pas', MAGASINIER).status, 403);
 });
 
+// --- Comportement 6 : sb-referentiel-list (noms Smart Berry pour TOUS) -------
+
+test('RÉGRESSION n°3 — magasinier / sb-referentiel-list : pas de 403, aucun filtre', () => {
+  assert.strictEqual(GATING_EXEMPT_ACTIONS['sb-referentiel-list'], true);
+  const d = gateDecision('sb-referentiel-list', MAGASINIER);
+  assert.strictEqual(d.status, 200, 'le magasinier ne doit plus prendre de 403 sur les noms SB');
+  assert.strictEqual(d.fermeFilter, null, 'aucun filtre ferme : référentiel de noms visible par tous');
+  assert.strictEqual(d.cultureFilter, null);
+});
+
+test('sb-referentiel-list n\'est PAS scoped — décision produit, contrairement à parcelles-campagne-list', () => {
+  // Différence de traitement ASSUMÉE : cloisonner un référentiel de NOMS
+  // casserait l'objectif (« tous les profils voient les noms Smart Berry »).
+  assert.notStrictEqual(EXEMPT_BUT_SCOPED['sb-referentiel-list'], true);
+  assert.strictEqual(EXEMPT_BUT_SCOPED['parcelles-campagne-list'], true);
+  for (const profil of [MAGASINIER, CHEF_F5, CHEF_F1, CHEF_BAHIA, DG, FINANCE, ADMIN]) {
+    const d = gateDecision('sb-referentiel-list', profil);
+    assert.strictEqual(d.status, 200, `${profil.profileId || profil.role} doit passer`);
+    assert.strictEqual(d.fermeFilter, null, `${profil.profileId || profil.role} : liste NON cloisonnée`);
+    assert.strictEqual(d.cultureFilter, null);
+  }
+});
+
+test('un chef_f5 reste cloisonné sur parcelles-campagne-list (non-régression du correctif déployé)', () => {
+  // Ajouter sb-referentiel-list ne doit rien changer au cloisonnement voisin.
+  const d = gateDecision('parcelles-campagne-list', CHEF_F5);
+  assert.strictEqual(d.fermeFilter, 'F5');
+  assert.strictEqual(d.cultureFilter, 'Myrtille');
+});
+
+// --- Projection de la réponse sb-referentiel-list ----------------------------
+
+// Document COMPLET tel que réellement écrit par sb-referentiel-save (nom/Ha/
+// culture + traçabilité) et sb-referentiel-seed-ha (seeded_from), + `id` posé par
+// le handler.
+const DOC_COMPLET = Object.freeze({
+  id: 'F5 YAZMIN MT',
+  label_bee_one: 'F5 YAZMIN MT',
+  nom_sb: 'Yazmin Myrtille',
+  ha: 3.42,
+  culture_sb: 'Myrtille',
+  seeded_from: 'BR_Parcelle',
+  updated_by: { uid: 'abc123', profileId: 'dg' },
+  updated_at: { _seconds: 1750000000 },
+});
+
+/** Rejoue le handler : resolvePerimetre puis la VRAIE fonction de projection. */
+function projectFor(callerProfile, doc) {
+  return projectSbReferentielForCaller(doc || DOC_COMPLET, resolvePerimetre(callerProfile));
+}
+
+test('SB_REFERENTIEL_PUBLIC_FIELDS : liste blanche exhaustive', () => {
+  assert.deepStrictEqual(SB_REFERENTIEL_PUBLIC_FIELDS.slice().sort(), [
+    'culture_sb', 'ha', 'id', 'label_bee_one', 'nom_sb',
+  ]);
+});
+
+test('profil NON autorisé : la réponse ne contient AUCUNE clé hors liste blanche', () => {
+  // Assertion sur l'ENSEMBLE des clés, pas sur l'absence d'updated_by : un champ
+  // sensible ajouté demain au document doit casser ce test, pas passer en silence.
+  for (const profil of [MAGASINIER, { profileId: 'chef_agronomie', role: 'user' }, { profileId: null, role: null }]) {
+    const out = projectFor(profil);
+    assert.deepStrictEqual(
+      Object.keys(out).sort(),
+      ['culture_sb', 'ha', 'id', 'label_bee_one', 'nom_sb'],
+      `clés inattendues pour ${profil.profileId || 'anonyme'}`,
+    );
+    for (const k of Object.keys(out)) {
+      assert.ok(SB_REFERENTIEL_PUBLIC_FIELDS.includes(k), `${k} n'est pas dans la liste blanche`);
+    }
+  }
+});
+
+test('profil NON autorisé : les valeurs utiles sont bien servies (le nom SB arrive)', () => {
+  const out = projectFor(MAGASINIER);
+  assert.deepStrictEqual(out, {
+    id: 'F5 YAZMIN MT',
+    label_bee_one: 'F5 YAZMIN MT',
+    nom_sb: 'Yazmin Myrtille',
+    ha: 3.42,
+    culture_sb: 'Myrtille',
+  });
+});
+
+test('profil DÉJÀ autorisé : document INTÉGRAL, aucune perte d\'information', () => {
+  for (const profil of [DG, FINANCE, ADMIN, CHEF_F5, CHEF_F1, CHEF_BAHIA, { profileId: 'rh', role: 'user' }]) {
+    const out = projectFor(profil);
+    assert.deepStrictEqual(out, DOC_COMPLET, `${profil.profileId || profil.role} perd de l'information`);
+    assert.deepStrictEqual(out.updated_by, { uid: 'abc123', profileId: 'dg' });
+    assert.ok(out.updated_at, 'updated_at doit rester servi aux profils autorisés');
+  }
+});
+
+test('projectSbReferentielDoc : la liste blanche est appliquée champ par champ', () => {
+  assert.deepStrictEqual(projectSbReferentielDoc(DOC_COMPLET, true), DOC_COMPLET);
+  assert.deepStrictEqual(
+    projectSbReferentielDoc({ id: 'X', label_bee_one: 'X', updated_by: { uid: 'u' } }, false),
+    { id: 'X', label_bee_one: 'X' },
+  );
+  // Champ absent du document → absent de la sortie (pas de `undefined` sérialisé).
+  assert.deepStrictEqual(Object.keys(projectSbReferentielDoc({ nom_sb: 'A' }, false)), ['nom_sb']);
+  // fail-closed : tout ce qui n'est pas strictement `true` projette le sous-ensemble.
+  for (const truthy of [1, 'oui', {}, undefined, null, 0, false]) {
+    assert.ok(!('updated_by' in projectSbReferentielDoc(DOC_COMPLET, /** @type {any} */(truthy))),
+      `fullAccess=${String(truthy)} ne doit pas ouvrir le document complet`);
+  }
+  assert.deepStrictEqual(projectSbReferentielDoc(null, false), {});
+});
+
+test('la projection ne mute jamais le document source', () => {
+  const src = { id: 'A', nom_sb: 'N', updated_by: { uid: 'u' } };
+  projectSbReferentielDoc(src, false);
+  assert.deepStrictEqual(Object.keys(src).sort(), ['id', 'nom_sb', 'updated_by']);
+});
+
 // --- Écritures ---------------------------------------------------------------
 
 test('aucune action d\'ÉCRITURE n\'est exemptée (les writes gardent leur gate DG/RH)', () => {
@@ -233,7 +359,7 @@ test('aucune action d\'ÉCRITURE n\'est exemptée (les writes gardent leur gate 
       `${action} ressemble à une écriture et ne doit pas être exemptée`,
     );
   }
-  for (const write of ['sb-referentiel-save', 'sb-groupe-save', 'sb-groupe-delete', 'cout-quinzaine-save']) {
+  for (const write of ['sb-referentiel-save', 'sb-referentiel-seed-ha', 'sb-groupe-save', 'sb-groupe-delete', 'cout-quinzaine-save']) {
     assert.notStrictEqual(GATING_EXEMPT_ACTIONS[write], true, `${write} ne doit pas être exemptée`);
     assert.strictEqual(gateDecision(write, MAGASINIER).status, 403, `${write} doit rester refusée`);
   }

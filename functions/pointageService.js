@@ -2543,12 +2543,29 @@ exports.warmPointageCache = functions
 //    journée-homme. Les deux branches (SQL BR_Pointage et mirror Firestore)
 //    construisent le MÊME objet à 8 champs — vérifié champ par champ.
 //    ⚠ Exemptée du 403 SEULEMENT : elle reste CLOISONNÉE (cf. EXEMPT_BUT_SCOPED).
+//  - 'sb-referentiel-list' : référentiel des NOMS Smart Berry (nom_sb), des
+//    surfaces (ha) et de la culture SB (culture_sb), clé par le label BEE ONE.
+//    C'est la source des noms affichés PARTOUT dans l'app ; sans elle, une
+//    parcelle s'affiche sous son libellé BEE ONE brut, et une parcelle dont
+//    `culture_sb` diverge de sa culture BEE ONE devient invisible dès qu'un
+//    filtre « Culture » est posé (cas du bon de consommation du magasinier).
+//    ⚠ DIFFÉRENCE DE TRAITEMENT ASSUMÉE avec 'parcelles-campagne-list' : cette
+//    action n'est volontairement PAS dans EXEMPT_BUT_SCOPED. Décision produit
+//    (Omar) : TOUS les profils doivent voir les noms Smart Berry. Cloisonner un
+//    référentiel de NOMS casserait précisément cet objectif — et lire le nom
+//    d'une parcelle d'une autre ferme est sans conséquence (aucun matricule,
+//    aucun montant, aucune journée-homme).
+//    Ce qui est cloisonné ici, ce n'est pas la LISTE mais la PROJECTION : les
+//    champs de traçabilité `updated_by` (uid + profileId d'un utilisateur) et
+//    `updated_at` ne sont servis QU'AUX profils déjà autorisés par
+//    resolvePointageRHAccess. Cf. projectSbReferentielDoc ci-dessous.
 const GATING_EXEMPT_ACTIONS = {
   "suivi-tunnels": true,
   "confection-types": true,
   "referentiel-taches-list": true,
   "sb-groupes-list": true,
   "parcelles-campagne-list": true,
+  "sb-referentiel-list": true,
 };
 exports.GATING_EXEMPT_ACTIONS = GATING_EXEMPT_ACTIONS;
 
@@ -2569,8 +2586,71 @@ exports.GATING_EXEMPT_ACTIONS = GATING_EXEMPT_ACTIONS;
 // Les 4 exemptions historiques (suivi-tunnels, confection-types,
 // referentiel-taches-list, sb-groupes-list) ne sont volontairement PAS ici : les
 // y mettre changerait le comportement de l'écran caporal (hors périmètre).
+//
+// 'sb-referentiel-list' n'est PAS ici non plus, et c'est délibéré : c'est un
+// référentiel de NOMS que tous les profils doivent voir en entier (décision
+// produit). Voir le commentaire de GATING_EXEMPT_ACTIONS ci-dessus.
 const EXEMPT_BUT_SCOPED = { "parcelles-campagne-list": true };
 exports.EXEMPT_BUT_SCOPED = EXEMPT_BUT_SCOPED;
+
+// ---- Projection de sb_parcelle_referentiel ---------------------------------
+// Champs RÉELLEMENT présents dans un document `sb_parcelle_referentiel`
+// (écrit par `sb-referentiel-save` et `sb-referentiel-seed-ha`, seuls writers) :
+//   label_bee_one : string  — libellé BEE ONE de la parcelle           → PUBLIC
+//   nom_sb        : string  — nom Smart Berry                          → PUBLIC
+//   ha            : number  — surface Smart Berry                      → PUBLIC
+//   culture_sb    : string  — culture Smart Berry (Myrtille/…)         → PUBLIC
+//   seeded_from   : string  — provenance de l'initialisation des Ha    → RÉSERVÉ
+//   updated_by    : {uid, profileId} d'un utilisateur Smart Berry      → RÉSERVÉ
+//   updated_at    : Timestamp de dernière modification                 → RÉSERVÉ
+// (+ `id` = docId, ajouté par le handler, utilisé côté client comme clé de repli
+//  quand `label_bee_one` est absent — cf. app.jsx / ParcellesReferentielTab).
+//
+// Aucune de ces données n'est de la paie, mais élargir l'accès à TOUS les profils
+// ne doit pas diffuser des identifiants d'utilisateur : on projette donc une
+// liste blanche pour les profils qui n'avaient PAS accès avant ce correctif.
+const SB_REFERENTIEL_PUBLIC_FIELDS = ['id', 'label_bee_one', 'nom_sb', 'ha', 'culture_sb'];
+exports.SB_REFERENTIEL_PUBLIC_FIELDS = SB_REFERENTIEL_PUBLIC_FIELDS;
+
+/**
+ * Projette un document du référentiel selon le profil appelant. PURE.
+ *
+ * @param {Object} doc document complet `{ id, ...doc.data() }`.
+ * @param {boolean} fullAccess true = profil DÉJÀ autorisé avant ce correctif
+ *   (resolvePointageRHAccess(...).allowed : dg/finance/rh/admin/chef résolu) →
+ *   document intégral, aucune régression pour l'écran « Parcelles & Référentiel ».
+ *   false = profil nouvellement admis (magasinier, chef non résolu, …) →
+ *   sous-ensemble SB_REFERENTIEL_PUBLIC_FIELDS uniquement.
+ * @returns {Object}
+ */
+function projectSbReferentielDoc(doc, fullAccess) {
+  const d = doc || {};
+  if (fullAccess === true) return d;
+  const out = {};
+  for (const f of SB_REFERENTIEL_PUBLIC_FIELDS) {
+    if (d[f] !== undefined) out[f] = d[f];
+  }
+  return out;
+}
+exports.projectSbReferentielDoc = projectSbReferentielDoc;
+
+/**
+ * Projection de `sb-referentiel-list` pour un appelant dont le périmètre a été
+ * résolu. PURE — c'est LA décision du handler, extraite pour être testée telle
+ * quelle (même motif que gatingRequiresPerimetre / resolveGatingFilters : un test
+ * qui recopierait la décision ne protégerait rien).
+ *
+ * Aucun 403 ici : l'action est exemptée, tout le monde reçoit la LISTE ENTIÈRE.
+ * Seule la richesse de chaque document dépend du profil.
+ *
+ * @param {Object} doc document complet `{ id, ...doc.data() }`.
+ * @param {{autorise?:boolean, perimetre_ferme?:string}|null} perim sortie de resolvePerimetre.
+ * @returns {Object}
+ */
+function projectSbReferentielForCaller(doc, perim) {
+  return projectSbReferentielDoc(doc, resolvePointageRHAccess(perim).allowed);
+}
+exports.projectSbReferentielForCaller = projectSbReferentielForCaller;
 
 /**
  * Faut-il résoudre le périmètre de l'appelant (verifyAuth + resolvePerimetre)
@@ -4581,10 +4661,25 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
 
       // ===== RÉFÉRENTIEL PARCELLES SMART BERRY =====
       // Lecture du référentiel (noms SB + surfaces éditables)
+      //
+      // Exemptée du gating paie (GATING_EXEMPT_ACTIONS) : TOUS les profils
+      // authentifiés voient les noms Smart Berry — décision produit. Le 403 est
+      // levé, mais pas la protection des champs de traçabilité : on résout ici le
+      // périmètre de l'appelant à la SEULE fin de choisir la PROJECTION.
+      //  - profil déjà autorisé avant ce correctif (dg/finance/rh/admin/chef
+      //    résolu) → document intégral, strictement comme avant ;
+      //  - tout autre profil (magasinier…) → sous-ensemble non nominatif
+      //    { id, label_bee_one, nom_sb, ha, culture_sb }.
+      // verifyAuth renvoie null (ne throw pas) si le header est absent/invalide ;
+      // l'authentification reste par ailleurs exigée en amont par requireAuth sur
+      // /api/pointage-rh. Aucun 403 n'est émis ici.
       if (action === "sb-referentiel-list") {
+        const _authUserR = await verifyAuth(req);
+        const _callerProfileR = await resolveCallerProfile(_authUserR);
+        const _perimR = consoAccessControl.resolvePerimetre(_callerProfileR, req.query.ferme);
         const snap = await db_firestore.collection("sb_parcelle_referentiel").get();
         const parcelles = [];
-        snap.forEach(doc => parcelles.push({ id: doc.id, ...doc.data() }));
+        snap.forEach(doc => parcelles.push(projectSbReferentielForCaller({ id: doc.id, ...doc.data() }, _perimR)));
         return res.json({ success: true, parcelles });
       }
 
