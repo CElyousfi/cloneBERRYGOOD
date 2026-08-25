@@ -21,12 +21,17 @@ export default defineConfig({
     }
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5001',
-        changeOrigin: true,
-      }
+    cors: true,
+    watch: {
+      ignored: [
+        '**/node_modules/**',
+        '**/functions/node_modules/**',
+        '**/public/**',
+        '**/dist/**',
+        '**/.git/**'
+      ]
     }
   }
 });
