@@ -77,6 +77,28 @@ Ce fichier liste les chantiers de refacto identifiés. Mis à jour à chaque spr
 
 ---
 
+### 5. Harnais de test des composants : états adressés par INDEX POSITIONNEL
+
+**État** : faute de React Testing Library (impossible sans bundler, cf. §1), les tests de composants stubent `React.useState` et adressent chaque état par son **rang d'appel** — `load([undefined, queue, 0, true, false, 0, {done,total}])` dans `tests/unit/magBCScanModal.test.js`, `tests/unit/affectationAnalytiqueTable.test.js`, etc.
+
+**Risque (une phrase)** : insérer ou réordonner un `useState` décale silencieusement tous les suivants, si bien que les tests **continuent de passer en vérifiant le mauvais état** — un vert mensonger, pire qu'un échec, puisque rien ne signale la dérive.
+
+**Contournement actuel** : commentaire « ce `useState` est volontairement le DERNIER » dans `MagBCScanModal.jsx`. Discipline humaine, pas un garde-fou.
+
+**Solution prévue** : après Sprint 0 / migration Vite, remplacer le stub positionnel par RTL (`render` + interactions réelles). Palliatif possible avant : stub `useState` acceptant une **clé nommée** (via un `useState` enveloppé maison ou l'ordre déclaré explicitement dans un manifeste vérifié par un test).
+
+---
+
+### 6. Stubs de réponse HTTP incomplets dans les tests front
+
+**État** : les tests fabriquent des objets « Response » minimalistes. Exemple : `scan429()` dans `tests/unit/magBCScanModal.test.js` renvoie `{ status: 429, headers }` **sans méthode `json()`**, parce que le code sous test n'appelle pas `json()` sur un statut transitoire.
+
+**Risque (une phrase)** : ces stubs ne modélisent pas assez fidèlement un `Response` pour **tuer les mutations qu'ils devraient tuer** — un code muté qui lirait le corps avant de classer le statut planterait sur un `TypeError` au lieu d'être correctement diagnostiqué, et un stub trop pauvre peut laisser passer une régression de classification.
+
+**Solution prévue** : une fabrique partagée `fakeResponse({ status, headers, body })` exposant toujours `status`, `ok`, `headers.get()`, `json()` et `text()`, réutilisée par tous les tests front qui stubent `fetch`.
+
+---
+
 ## 🟢 Améliorations long terme
 
 - **Lint / format** : aucun `.eslintrc` ni `.prettierrc` à la racine. À ajouter dès Sprint 0.

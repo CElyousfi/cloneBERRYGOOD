@@ -43,6 +43,68 @@
   var useRef = _r.useRef;
   var BCSCAN_UNITES = ['kg', 'L', 'unité', 'carton', 'sac', 'bidon'];
   var BCSCAN_ORANGE = '#e65100';
+
+  // ---- Analyse IA : parallélisme et reprise --------------------------------
+  // L'analyse d'UN bon coûte ~7 s côté modèle (claude-opus-5, mesuré sur les
+  // photos réelles). En file strictement séquentielle, un lot de 5 bons prenait
+  // ~35 s. Le seul levier côté client est la concurrence : 3 analyses en vol
+  // ramènent le même lot à ~14 s.
+  // Pourquoi 3 et pas plus : au-delà, le compte déclenche des 429 (limite de
+  // débit du fournisseur) plus vite qu'on ne gagne de temps, et chaque image
+  // envoyée est déjà lourde (~2000 px de côté). 3 est le compromis mesuré.
+  var BCSCAN_MAX_PARALLEL = 3;
+  // Nombre TOTAL de tentatives par image (1 essai + 2 reprises).
+  var BCSCAN_MAX_ATTEMPTS = 3;
+  // Attente avant reprise : 1 s, puis 2 s (doublement), + un aléa pour éviter
+  // que les 3 requêtes en vol rejouent exactement en même temps.
+  var BCSCAN_RETRY_BASE_MS = 1000;
+  var BCSCAN_RETRY_JITTER_MS = 400;
+  // Plafond de respect d'un `retry-after` serveur : au-delà, on préfère rendre
+  // la main au magasinier (vignette en erreur + bouton « Réessayer »).
+  var BCSCAN_RETRY_MAX_MS = 30000;
+
+  /**
+   * Codes HTTP considérés comme TRANSITOIRES (méritent une reprise). Tout le
+   * reste est un refus DÉFINITIF : le réessayer ne ferait que perdre du temps.
+   *
+   * Les refus métier de scan-bc arrivent avec leur PROPRE code, pas en 200 :
+   * 400 pour un PDF / une image trop lourde / un scan_base64 manquant, 403
+   * pour un rôle non autorisé (cf. functions/index.js, action scan-bc). Ils
+   * portent tous un corps `{success:false, error}` dont le message est affiché
+   * tel quel sur la vignette. La classification se fait donc bien par STATUT —
+   * ni 400 ni 403 n'est dans la liste transitoire — et le corps `success:false`
+   * n'est qu'un second filet pour un refus qui remonterait en 200.
+   */
+  function bcscanIsTransientStatus(status) {
+    return status === 408 || status === 429 || status >= 500 && status < 600;
+  }
+
+  /** Erreur transitoire, reconnaissable par la boucle de reprise. */
+  function bcscanTransient(message, retryAfterMs) {
+    var e = new Error(message);
+    e.bcscanTransient = true;
+    e.bcscanRetryAfterMs = retryAfterMs || 0;
+    return e;
+  }
+
+  /** Lit l'en-tête `retry-after` (secondes ou date HTTP). 0 si absent/illisible. */
+  function bcscanRetryAfterMs(resp) {
+    var h = null;
+    try {
+      if (resp && resp.headers && typeof resp.headers.get === 'function') h = resp.headers.get('retry-after');
+    } catch (e) {
+      h = null;
+    }
+    if (!h) return 0;
+    var secs = parseFloat(h);
+    if (secs > 0) return Math.min(secs * 1000, BCSCAN_RETRY_MAX_MS);
+    var at = Date.parse(h);
+    if (at) {
+      var delta = at - Date.now();
+      return delta > 0 ? Math.min(delta, BCSCAN_RETRY_MAX_MS) : 0;
+    }
+    return 0;
+  }
   function MagBCScanModal({
     type,
     catalogueArticles,
@@ -86,6 +148,14 @@
     const [processing, setProcessing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [createdCount, setCreatedCount] = useState(0);
+    // Progression du lot en cours d'analyse — sans elle, la concurrence est
+    // invisible et l'attente paraît identique au mode séquentiel.
+    // NOTE : ce useState est volontairement le DERNIER (les tests unitaires
+    // adressent les états par index positionnel).
+    const [analyse, setAnalyse] = useState({
+      done: 0,
+      total: 0
+    });
 
     // Miroir de la file lisible depuis la boucle d'analyse asynchrone : l'état
     // React n'y serait visible qu'au rendu suivant.
@@ -282,16 +352,144 @@
       setQueue(prev => prev.concat(entries));
     };
 
-    // ---- Analyse séquentielle ------------------------------------------------
-    // Une image à la fois. Les mises à jour ciblent l'entrée par son id via
-    // setQueue(prev => …) : jamais de réécriture d'une copie figée de la file,
-    // sinon les corrections saisies pendant l'analyse seraient écrasées.
+    // ---- Analyse concurrente (plafond BCSCAN_MAX_PARALLEL) -------------------
+    // Jusqu'à 3 images en vol simultanément, jamais plus. Chaque « worker » tire
+    // la prochaine image `pending` de la file et la RÉSERVE de façon synchrone
+    // (mutation de queueRef AVANT le premier await) : deux workers ne peuvent
+    // pas prendre la même photo.
+    //
+    // INVARIANT CRITIQUE (le piège de la parallélisation) : toutes les mises à
+    // jour passent par setQueue(prev => …) et ciblent l'entrée par son `id`.
+    // Jamais de réécriture d'une copie figée de la file — sinon un worker qui
+    // termine écraserait les corrections saisies par le magasinier sur un autre
+    // bon, ou le résultat d'un worker plus rapide.
+    // L'ORDRE d'affichage reste celui du dépôt : on ne réordonne jamais la
+    // file, seul le contenu de chaque entrée est patché sur place.
+    const toBase64 = file => window.ImageDownscale ? window.ImageDownscale.downscaleToDataUrl(file, {
+      maxSide: 2000,
+      quality: 0.8
+    }) : new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = e => resolve(e.target.result);
+      rd.onerror = reject;
+      rd.readAsDataURL(file);
+    });
+
+    /** Un aller-retour réseau. Lève une erreur marquée transitoire ou non. */
+    const scanOnce = async (base64, filename) => {
+      let resp;
+      try {
+        resp = await fetch('/api/stock?action=scan-bc', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            scan_base64: base64,
+            filename,
+            type: type || 'engrais'
+          })
+        });
+      } catch (netErr) {
+        // Coupure réseau / timeout : transitoire par nature.
+        throw bcscanTransient(netErr && netErr.message || 'Erreur réseau', 0);
+      }
+      const status = resp && typeof resp.status === 'number' ? resp.status : 200;
+      if (bcscanIsTransientStatus(status)) {
+        throw bcscanTransient(status === 429 ? 'Service saturé (429) — reprise automatique' : 'Erreur serveur (' + status + ')', bcscanRetryAfterMs(resp));
+      }
+      let json = null;
+      try {
+        json = await resp.json();
+      } catch (e) {
+        json = null;
+      }
+      // Réponse illisible (proxy, coupure en cours de corps) : transitoire.
+      if (!json) throw bcscanTransient('Réponse illisible du serveur', 0);
+      // Refus explicite du backend ({success:false, error}) : DÉFINITIF, on ne
+      // réessaie pas — un PDF restera un PDF au 3e essai.
+      if (!json.success) throw new Error(json.error || 'Analyse impossible');
+      return json;
+    };
+
+    /** scanOnce + reprises à attente croissante sur erreur transitoire. */
+    const scanWithRetry = async (base64, filename) => {
+      let attempt = 0;
+      for (;;) {
+        try {
+          return await scanOnce(base64, filename);
+        } catch (e) {
+          attempt += 1;
+          if (!e || !e.bcscanTransient || attempt >= BCSCAN_MAX_ATTEMPTS) throw e;
+          const backoff = BCSCAN_RETRY_BASE_MS * Math.pow(2, attempt - 1);
+          const jitter = Math.floor(Math.random() * BCSCAN_RETRY_JITTER_MS);
+          const wait = Math.max(e.bcscanRetryAfterMs || 0, backoff) + jitter;
+          await new Promise(r => setTimeout(r, wait));
+        }
+      }
+    };
     useEffect(() => {
       if (processingRef.current) return;
       if (!queue.some(q => q.status === 'pending')) return;
       processingRef.current = true;
       setProcessing(true);
-      (async () => {
+
+      // Décompte du lot tenu ENTIÈREMENT dans cette closure, jamais relu depuis
+      // queueRef : ce miroir n'est resynchronisé qu'au rendu, donc le lire ici
+      // ferait dépendre un compteur affiché de l'ordonnancement de React (et
+      // deviendrait faux le jour où l'app passera en createRoot, qui batche les
+      // setState issus d'une continuation de promesse).
+      // - `total` est FIGÉ au démarrage sur le nombre de photos en attente ;
+      // - il ne monte que si des photos ajoutées en cours de lot sont
+      //   réellement réservées par un worker (`claimed`), jamais autrement.
+      const lot = {
+        done: 0,
+        total: queue.filter(q => q.status === 'pending').length,
+        claimed: new Set()
+      };
+      setAnalyse({
+        done: 0,
+        total: lot.total
+      });
+      const claim = id => {
+        lot.claimed.add(id);
+      };
+      const bumpProgress = () => {
+        lot.done += 1;
+        setAnalyse({
+          done: lot.done,
+          total: Math.max(lot.total, lot.claimed.size)
+        });
+      };
+      const runOne = async item => {
+        const id = item.id;
+        try {
+          const base64 = await toBase64(item.file);
+          const json = await scanWithRetry(base64, item.file.name);
+          setQueue(prev => prev.map(q => {
+            if (q.id !== id) return q;
+            const built = buildFromResponse(json, q.header);
+            return {
+              ...q,
+              status: 'done',
+              scan_url: json.scan_url || '',
+              error: '',
+              header: built.header,
+              items: built.items
+            };
+          }));
+        } catch (e) {
+          // Jamais de plantage silencieux : la vignette porte le message et le
+          // bouton « Réessayer » remet l'entrée en `pending`.
+          const msg = e && e.message || 'Erreur réseau';
+          setQueue(prev => prev.map(q => q.id === id ? {
+            ...q,
+            status: 'error',
+            error: msg
+          } : q));
+        }
+      };
+      const worker = async () => {
         for (;;) {
           const next = queueRef.current.find(q => q.status === 'pending');
           if (!next) break;
@@ -300,54 +498,26 @@
             ...q,
             status: 'processing'
           } : q;
+          // Réservation SYNCHRONE : aucun await entre le find et cette ligne.
           queueRef.current = queueRef.current.map(markProcessing);
+          claim(id);
           setQueue(prev => prev.map(markProcessing));
-          try {
-            const base64 = window.ImageDownscale ? await window.ImageDownscale.downscaleToDataUrl(next.file, {
-              maxSide: 2000,
-              quality: 0.8
-            }) : await new Promise((resolve, reject) => {
-              const rd = new FileReader();
-              rd.onload = e => resolve(e.target.result);
-              rd.onerror = reject;
-              rd.readAsDataURL(next.file);
-            });
-            const resp = await fetch('/api/stock?action=scan-bc', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                scan_base64: base64,
-                filename: next.file.name,
-                type: type || 'engrais'
-              })
-            });
-            const json = await resp.json();
-            if (!json || !json.success) throw new Error(json && json.error || 'Analyse impossible');
-            setQueue(prev => prev.map(q => {
-              if (q.id !== id) return q;
-              const built = buildFromResponse(json, q.header);
-              return {
-                ...q,
-                status: 'done',
-                scan_url: json.scan_url || '',
-                error: '',
-                header: built.header,
-                items: built.items
-              };
-            }));
-          } catch (e) {
-            const msg = e && e.message || 'Erreur réseau';
-            setQueue(prev => prev.map(q => q.id === id ? {
-              ...q,
-              status: 'error',
-              error: msg
-            } : q));
-          }
+          await runOne(next);
+          bumpProgress();
         }
+      };
+      (async () => {
+        const workers = [];
+        for (let i = 0; i < BCSCAN_MAX_PARALLEL; i++) workers.push(worker());
+        // Une image en erreur ne doit pas emporter le lot : runOne ne rejette
+        // jamais, mais on reste défensif.
+        await Promise.all(workers.map(p => p.catch(() => {})));
         processingRef.current = false;
         setProcessing(false);
+        setAnalyse({
+          done: 0,
+          total: 0
+        });
         // Un fichier déposé pendant le dernier await ne doit pas rester bloqué.
         if (queueRef.current.some(q => q.status === 'pending')) setQueue(prev => prev.slice());
       })();
@@ -890,7 +1060,7 @@
       style: {
         marginRight: 4
       }
-    }), "Analyse en cours\u2026"), /*#__PURE__*/React.createElement("span", {
+    }), analyse.total > 0 ? 'Analyse ' + analyse.done + '/' + analyse.total + ' — jusqu\'à ' + BCSCAN_MAX_PARALLEL + ' en parallèle' : 'Analyse en cours…'), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 11,
         color: '#888',

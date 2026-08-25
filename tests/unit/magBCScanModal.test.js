@@ -47,18 +47,27 @@ function createElement(type, props, ...children) {
 }
 
 /** États dans l'ordre des useState du composant. */
-const S = { lotLieu: 0, queue: 1, currentIdx: 2, processing: 3, saving: 4, createdCount: 5 };
+const S = { lotLieu: 0, queue: 1, currentIdx: 2, processing: 3, saving: 4, createdCount: 5, analyse: 6 };
 
 function load(stateOverrides, spy, opts) {
   const o = opts || {};
   const sandbox = {
     window: {},
+    // Les attentes de reprise (backoff) sont instantanées en test : on retient
+    // seulement les délais demandés, pour vérifier qu'ils croissent.
+    setTimeout: function (fn, ms) {
+      if (spy) spy.waits = (spy.waits || []).concat([ms]);
+      return setImmediate(fn);
+    },
     // `fetch` espionné : sans réponse déclarée il reste pendant (aucun effet de
     // bord dans les tests de rendu pur).
     fetch: function (url, init) {
       if (spy) spy.fetches.push({ url, init });
       if (/action=create-bc/.test(url) && o.createBcResponse) {
         return Promise.resolve({ json: () => Promise.resolve(o.createBcResponse) });
+      }
+      if (/action=scan-bc/.test(url) && o.scanHandler) {
+        return o.scanHandler(url, init);
       }
       if (/action=scan-bc/.test(url) && o.scanResponse) {
         return Promise.resolve({ json: () => Promise.resolve(o.scanResponse) });
@@ -89,7 +98,15 @@ function load(stateOverrides, spy, opts) {
       return [override === undefined ? initial : override, function (v) { if (spy) spy.sets.push({ index, value: v }); }];
     },
     useEffect: function (fn, deps) { if (spy) spy.effects.push({ fn, deps }); },
-    useRef: function (initial) { return { current: initial }; },
+    // Les refs sont exposées au spy pour pouvoir simuler ce que fait un RENDU
+    // réel : resynchroniser queueRef (spy.refs[0], 1er useRef du composant) sur
+    // la file courante — c'est ainsi que des photos ajoutées en cours de lot
+    // deviennent visibles des workers.
+    useRef: function (initial) {
+      const ref = { current: initial };
+      if (spy) spy.refs = (spy.refs || []).concat([ref]);
+      return ref;
+    },
   };
   vm.createContext(sandbox);
   vm.runInContext(SRC, sandbox);
@@ -620,6 +637,253 @@ test('parcelle — window.BcScanMatch absent : aucune proposition, aucun crash',
   assert.strictEqual(e.items[0].parcelle_status, 'unmatched');
   // (length, pas deepStrictEqual : le tableau vide naît dans le realm du vm.)
   assert.strictEqual(e.items[0].parcelle_candidats.length, 0);
+});
+
+// ------------------------------------------- analyse concurrente (plafond 3)
+
+/** Rend la main pendant `n` tours de boucle — simule une latence réseau. */
+function afterTicks(n) {
+  let p = Promise.resolve();
+  for (let i = 0; i < n; i++) p = p.then(() => new Promise((r) => setImmediate(r)));
+  return p;
+}
+
+function pendingEntry(i) {
+  return entry({
+    id: 'p' + i, file: { name: 'bon' + i + '.jpg' }, preview: 'blob:' + i,
+    status: 'pending', scan_url: '', items: [],
+  });
+}
+
+const SCAN_ITEM = {
+  article_lu: 'UREE', article: 'UREE 46', article_status: 'exact',
+  parcelle_lue: '', quantite: 5, unite: 'kg',
+};
+/** Réponse HTTP de succès (pas de `status` → traitée comme 200, comme fetch). */
+function scanOk(idx) {
+  return { json: () => Promise.resolve({ success: true, scan_url: 'https://scan/' + idx + '.jpg', analysis: { numero_bon: 'BC-' + idx }, items: [SCAN_ITEM] }) };
+}
+/** 429 avec en-tête `retry-after` optionnel. */
+function scan429(retryAfter) {
+  return { status: 429, headers: { get: (h) => (h === 'retry-after' ? (retryAfter || null) : null) } };
+}
+/** Refus métier du backend : 200 + `{success:false}` → JAMAIS réessayé. */
+function scanRefus(message) {
+  return { json: () => Promise.resolve({ success: false, error: message }) };
+}
+
+/**
+ * Joue l'effet d'analyse sur un lot de `n` photos en attente.
+ * `handler(idx, attempt)` renvoie la réponse de la photo `idx` à sa `attempt`-ième
+ * tentative (ou `{ networkError: 'msg' }` pour faire échouer le fetch lui-même).
+ * Mesure le PIC de requêtes scan-bc simultanément en vol.
+ */
+async function runLot(n, handler, opts) {
+  const o = opts || {};
+  const spy = { fetches: [], sets: [], effects: [], waits: [], refs: [] };
+  const initial = [];
+  for (let i = 0; i < n; i++) initial.push(pendingEntry(i));
+  const flight = { now: 0, peak: 0 };
+  const attempts = {};
+  const ticksFor = o.ticksFor || (() => 3);
+
+  const scanHandler = (url, init) => {
+    const idx = Number(String(JSON.parse(init.body).filename).replace(/\D/g, ''));
+    attempts[idx] = (attempts[idx] || 0) + 1;
+    const attempt = attempts[idx];
+    flight.now += 1;
+    if (flight.now > flight.peak) flight.peak = flight.now;
+    // Point d'injection : permet au test d'ajouter des photos EN COURS de lot.
+    if (o.onScan) o.onScan(idx, attempt, spy);
+    return afterTicks(ticksFor(idx)).then(() => {
+      flight.now -= 1;
+      const res = handler(idx, attempt);
+      if (res && res.networkError) return Promise.reject(new Error(res.networkError));
+      return res;
+    });
+  };
+
+  const Modal = load([undefined, initial, 0], spy, {
+    window: { ImageDownscale: { downscaleToDataUrl: () => Promise.resolve('data:image/jpeg;base64,AA') } },
+    scanHandler,
+  });
+  Modal(BASE_PROPS);
+  spy.effects[0].fn();
+  for (let i = 0; i < 600; i++) await new Promise((r) => setImmediate(r));
+
+  const updaters = spy.sets.filter((s) => typeof s.value === 'function').map((s) => s.value);
+  let queue = initial;
+  updaters.forEach((u) => { queue = u(queue); });
+  return { spy, queue, updaters, initial, peak: flight.peak, attempts, progress: progressOf(spy) };
+}
+
+/** Séquence « fait/total » réellement poussée dans l'état de progression. */
+function progressOf(spy) {
+  return spy.sets.filter((s) => s.index === S.analyse).map((s) => s.value.done + '/' + s.value.total);
+}
+
+test('concurrence — 7 photos : jamais plus de 3 analyses en vol, aucune perdue', async () => {
+  const r = await runLot(7, (idx) => scanOk(idx));
+  assert.strictEqual(r.peak, 3, 'pic de concurrence mesuré');
+  assert.strictEqual(r.queue.length, 7);
+  assert.ok(r.queue.every((q) => q.status === 'done'), 'toutes les photos analysées');
+  // Une seule requête par photo, aucune photo analysée deux fois (le piège
+  // d'une file partagée par 3 workers).
+  assert.strictEqual(r.spy.fetches.filter((f) => /action=scan-bc/.test(f.url)).length, 7);
+  assert.deepStrictEqual(Object.keys(r.attempts).map(Number).sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6]);
+  assert.ok(Object.values(r.attempts).every((a) => a === 1));
+});
+
+test('concurrence — l\'ordre d\'affichage reste celui du dépôt, pas des réponses', async () => {
+  // Les dernières photos répondent le plus vite : l'ordre d'arrivée est
+  // strictement inversé par rapport au dépôt.
+  const r = await runLot(6, (idx) => scanOk(idx), { ticksFor: (idx) => 2 + (6 - idx) * 2 });
+  assert.deepStrictEqual(r.queue.map((q) => q.file.name),
+    ['bon0.jpg', 'bon1.jpg', 'bon2.jpg', 'bon3.jpg', 'bon4.jpg', 'bon5.jpg']);
+  // Chaque entrée porte bien SON résultat (pas de croisement).
+  assert.deepStrictEqual(r.queue.map((q) => q.scan_url),
+    [0, 1, 2, 3, 4, 5].map((i) => 'https://scan/' + i + '.jpg'));
+  assert.ok(r.queue.every((q) => q.status === 'done'));
+  assert.ok(r.peak <= 3, 'plafond respecté : ' + r.peak);
+});
+
+test('429 ponctuel — reprise automatique puis succès, file cohérente', async () => {
+  const r = await runLot(3, (idx, attempt) => ((idx === 1 && attempt === 1) ? scan429() : scanOk(idx)));
+  assert.strictEqual(r.attempts[1], 2, 'la photo 1 a été rejouée une fois');
+  assert.ok(r.queue.every((q) => q.status === 'done'), 'toutes les photos finissent analysées');
+  assert.strictEqual(r.queue[1].error, '');
+  assert.strictEqual(r.queue[1].scan_url, 'https://scan/1.jpg');
+  // Une seule attente de reprise, d'au moins la base de backoff.
+  assert.strictEqual(r.spy.waits.length, 1);
+  assert.ok(r.spy.waits[0] >= 1000, 'attente ≥ 1 s : ' + r.spy.waits[0]);
+});
+
+test('429 persistant — la vignette passe en erreur, le reste du lot aboutit', async () => {
+  const r = await runLot(4, (idx) => (idx === 2 ? scan429() : scanOk(idx)));
+  assert.strictEqual(r.attempts[2], 3, '3 tentatives au total, pas plus');
+  assert.strictEqual(r.queue[2].status, 'error');
+  assert.match(r.queue[2].error, /429/);
+  // Aucune photo perdue : les 3 autres sont analysées.
+  assert.deepStrictEqual(r.queue.map((q) => q.status), ['done', 'done', 'error', 'done']);
+  // Attente croissante : le 2e délai double le 1er (jitter borné à 400 ms).
+  assert.strictEqual(r.spy.waits.length, 2);
+  assert.ok(r.spy.waits[0] >= 1000 && r.spy.waits[0] < 1400, 'backoff 1 : ' + r.spy.waits[0]);
+  assert.ok(r.spy.waits[1] >= 2000 && r.spy.waits[1] < 2400, 'backoff 2 : ' + r.spy.waits[1]);
+});
+
+test('429 avec `retry-after` — l\'en-tête serveur prime sur le backoff local', async () => {
+  const r = await runLot(1, (idx, attempt) => (attempt === 1 ? scan429('7') : scanOk(idx)));
+  assert.strictEqual(r.queue[0].status, 'done');
+  assert.strictEqual(r.spy.waits.length, 1);
+  assert.ok(r.spy.waits[0] >= 7000, 'retry-after: 7 respecté (' + r.spy.waits[0] + ')');
+});
+
+test('refus définitif du backend (success:false) — JAMAIS réessayé', async () => {
+  const r = await runLot(3, (idx) => (idx === 0 ? scanRefus('Les PDF ne sont pas supportés') : scanOk(idx)));
+  assert.strictEqual(r.attempts[0], 1, 'un seul appel : un PDF le restera au 3e essai');
+  assert.strictEqual(r.queue[0].status, 'error');
+  assert.strictEqual(r.queue[0].error, 'Les PDF ne sont pas supportés');
+  assert.strictEqual(r.spy.waits.length, 0, 'aucune attente de reprise');
+  assert.deepStrictEqual(r.queue.map((q) => q.status), ['error', 'done', 'done']);
+});
+
+test('erreur réseau transitoire — rejouée comme un 429', async () => {
+  const r = await runLot(2, (idx, attempt) => ((idx === 0 && attempt === 1) ? { networkError: 'Failed to fetch' } : scanOk(idx)));
+  assert.strictEqual(r.attempts[0], 2);
+  assert.ok(r.queue.every((q) => q.status === 'done'));
+});
+
+// LE piège de la parallélisation (et le défaut historique du flux « Bons
+// d'Apport ») : un worker qui termine réécrit une copie figée de la file et
+// efface la correction que le magasinier vient de saisir sur un autre bon.
+test('édition utilisateur pendant l\'analyse d\'autres photos — jamais écrasée', async () => {
+  const r = await runLot(4, (idx) => scanOk(idx), { ticksFor: (idx) => 2 + idx * 4 });
+  let queue = r.initial;
+  let injected = false;
+  r.updaters.forEach((u) => {
+    queue = u(queue);
+    if (!injected && queue[0].status === 'done' && queue.some((q) => q.status === 'processing')) {
+      injected = true;
+      // Exactement ce que fait patchItem : setQueue(prev => …) ciblé par id.
+      queue = queue.map((q) => (q.id === 'p0'
+        ? { ...q, items: q.items.map((it, i) => (i === 0 ? { ...it, quantite: '42', article: 'MAP' } : it)) }
+        : q));
+    }
+  });
+  assert.ok(injected, 'une édition a bien été injectée pendant que le lot tournait');
+  assert.strictEqual(queue[0].items[0].quantite, '42');
+  assert.strictEqual(queue[0].items[0].article, 'MAP');
+  // Et les autres photos ont quand même abouti.
+  assert.ok(queue.every((q) => q.status === 'done'));
+});
+
+// Le compteur est SOUS LES YEUX du magasinier : sa séquence ne doit dépendre
+// que du lot, jamais de l'ordonnancement des rendus React. Une version qui
+// relit queueRef (miroir resynchronisé au rendu seulement) produit
+// « 0/5 → 1/6 → 2/7 → … » : le total dérive à chaque image terminée.
+test('progression — séquence exacte sur un lot de 5, total figé', async () => {
+  const r = await runLot(5, (idx) => scanOk(idx));
+  assert.deepStrictEqual(r.progress, ['0/5', '1/5', '2/5', '3/5', '4/5', '5/5', '0/0']);
+});
+
+test('progression — le total reste figé même avec des réponses désordonnées', async () => {
+  const r = await runLot(5, (idx) => scanOk(idx), { ticksFor: (idx) => 2 + (5 - idx) * 3 });
+  assert.deepStrictEqual(r.progress, ['0/5', '1/5', '2/5', '3/5', '4/5', '5/5', '0/0']);
+});
+
+test('progression — une photo en erreur compte quand même dans l\'avancement', async () => {
+  const r = await runLot(3, (idx) => (idx === 1 ? scanRefus('PDF non supporté') : scanOk(idx)));
+  assert.deepStrictEqual(r.progress, ['0/3', '1/3', '2/3', '3/3', '0/0']);
+});
+
+// Des photos ajoutées PENDANT le lot doivent rejoindre le compteur (le total
+// monte) au lieu de le faire déborder (done > total) ou d'être ignorées.
+test('progression — 2 photos ajoutées pendant un lot de 3 rejoignent le compteur', async () => {
+  let injected = false;
+  const r = await runLot(3, (idx) => scanOk(idx), {
+    onScan: (idx, attempt, spy) => {
+      if (injected) return;
+      injected = true;
+      // Ce que fait un vrai rendu après handleFiles : queueRef (1er useRef du
+      // composant) est resynchronisé sur la file, photos ajoutées comprises.
+      const queueRef = spy.refs[0];
+      queueRef.current = queueRef.current.concat([pendingEntry(3), pendingEntry(4)]);
+    },
+  });
+  assert.ok(injected, 'les photos ont bien été ajoutées en cours de lot');
+  // Séquence mesurée : 0/3 → 1/3 → 2/4 → 3/5 → 4/5 → 5/5 → 0/0. On n'épingle
+  // pas ce littéral (il dépend de l'entrelacement des workers) mais les
+  // INVARIANTS qu'il illustre, vérifiés plus bas.
+  // Les 5 photos sont analysées, une fois chacune.
+  assert.deepStrictEqual(Object.keys(r.attempts).map(Number).sort((a, b) => a - b), [0, 1, 2, 3, 4]);
+  assert.ok(Object.values(r.attempts).every((a) => a === 1));
+  // Le total part de 3 puis monte à 5 quand les nouvelles photos sont réservées.
+  assert.strictEqual(r.progress[0], '0/3');
+  assert.ok(r.progress.some((p) => Number(p.split('/')[1]) > 3),
+    'le total monte en cours de lot : ' + r.progress.join(' → '));
+  assert.strictEqual(r.progress[r.progress.length - 2], '5/5', 'le lot se termine sur 5/5');
+  assert.strictEqual(r.progress[r.progress.length - 1], '0/0', 'remise à zéro en fin de lot');
+  const pairs = r.progress.slice(0, -1).map((p) => p.split('/').map(Number));
+  // `done` avance de 1 en 1, `total` ne décroît jamais, et `done` ne dépasse
+  // JAMAIS `total` (le débordement qu'on veut interdire).
+  pairs.forEach(([done, total], i) => {
+    assert.strictEqual(done, i, 'done incrémente de 1 : ' + r.progress.join(' → '));
+    assert.ok(done <= total, 'done ≤ total : ' + r.progress.join(' → '));
+    if (i > 0) assert.ok(total >= pairs[i - 1][1], 'total ne décroît pas : ' + r.progress.join(' → '));
+  });
+});
+
+test('progression du lot affichée pendant l\'analyse', () => {
+  const queue = [entry({ id: 'e1', status: 'processing', items: [] }), entry({ id: 'e2', status: 'pending', items: [] })];
+  const tree = load([undefined, queue, 0, true, false, 0, { done: 2, total: 5 }])(BASE_PROPS);
+  assert.match(flatText(tree), /Analyse 2\/5/);
+  assert.match(flatText(tree), /3 en parallèle/);
+});
+
+test('progression — repli sur le libellé générique si le total est inconnu', () => {
+  const queue = [entry({ id: 'e1', status: 'processing', items: [] })];
+  const tree = load([undefined, queue, 0, true, false, 0, { done: 0, total: 0 }])(BASE_PROPS);
+  assert.match(flatText(tree), /Analyse en cours…/);
 });
 
 test('un seul global exposé par le fichier', () => {
