@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Sidebar } from './shared/layout/Sidebar';
 import { TopHeader } from './shared/layout/TopHeader';
+import { ErrorBoundary } from './shared/components/ErrorBoundary';
 
 // Domain Feature Views
 import { OverviewDomainView } from './features/dashboard/OverviewDomainView';
@@ -49,25 +50,65 @@ export function App() {
   const renderActiveDomainView = () => {
     switch (activeDomain) {
       case 'dashboard':
-        return <OverviewDomainView activeFarm={activeFarm} onOpenNewModal={() => setShowNewModal(true)} />;
+        return (
+          <ErrorBoundary domainName="Tableau de bord">
+            <OverviewDomainView activeFarm={activeFarm} onOpenNewModal={() => setShowNewModal(true)} />
+          </ErrorBoundary>
+        );
       case 'finance':
-        return <FinanceDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="Finances & Caisse">
+            <FinanceDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       case 'qualite':
-        return <QualiteDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="Qualité & Brix">
+            <QualiteDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       case 'rh':
-        return <RhDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="RH & Paie">
+            <RhDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       case 'achats':
-        return <AchatsDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="Achats & Commandes">
+            <AchatsDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       case 'stock':
-        return <StockDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="Stock & Magasinier">
+            <StockDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       case 'agronomie':
-        return <AgronomieDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="Agronomie & Météo">
+            <AgronomieDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       case 'recolte':
-        return <OverviewDomainView activeFarm={activeFarm} onOpenNewModal={() => setShowNewModal(true)} />;
+        return (
+          <ErrorBoundary domainName="Récolte & Rendement">
+            <OverviewDomainView activeFarm={activeFarm} onOpenNewModal={() => setShowNewModal(true)} />
+          </ErrorBoundary>
+        );
       case 'dg':
-        return <DgDomainView activeFarm={activeFarm} />;
+        return (
+          <ErrorBoundary domainName="Direction & Audit">
+            <DgDomainView activeFarm={activeFarm} />
+          </ErrorBoundary>
+        );
       default:
-        return <OverviewDomainView activeFarm={activeFarm} onOpenNewModal={() => setShowNewModal(true)} />;
+        return (
+          <ErrorBoundary domainName="Tableau de bord">
+            <OverviewDomainView activeFarm={activeFarm} onOpenNewModal={() => setShowNewModal(true)} />
+          </ErrorBoundary>
+        );
     }
   };
 

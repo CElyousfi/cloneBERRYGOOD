@@ -3,6 +3,7 @@
  * src/main.jsx — Smart BERRY Modern Vite Entry Point.
  * Renders the new modular React application shell inspired by the Bonsai UI aesthetic.
  */
+import './shared/utils/globalsInit.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App.jsx';
