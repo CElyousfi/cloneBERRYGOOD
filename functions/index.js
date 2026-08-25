@@ -10272,6 +10272,88 @@ IMPORTANT:
         return res.json({ success: true, id: aliasId, count });
       }
 
+      // ---- Alias de PARCELLE (en-tête de pile manuscrit -> libellé BEE ONE) ----
+      // Symétrique des alias d'article, avec UNE différence structurante : la
+      // CAMPAGNE fait partie de la clé. Le secteur 9 portait « S9 - REYNA F5 »
+      // (3 ha) en 2025-2026 et porte « F5- MYA S9 » + « F5 YAZMIN MT » en
+      // 2026-2027 : un alias appris l'an dernier imputerait la consommation à une
+      // parcelle qui n'existe plus. Cf. docs/spec-scan-apprentissage.md, risque R1.
+      //
+      // La valeur mémorisée est le LIBELLÉ BEE ONE, jamais le nom Smart Berry :
+      // ce dernier n'est qu'un habillage d'affichage, et un renommage
+      // invaliderait silencieusement tous les alias appris.
+
+      if (action === "list-bc-scan-parcelle-aliases") {
+        // Rôle résolu SERVEUR, comme save-bc-scan-parcelle-alias : ces alias
+        // n'ont d'usage que dans la modale de scan, réservée au magasinier.
+        const listParcAliasRole = await resolveCallerRole(authUser);
+        if (listParcAliasRole !== "magasinier" && listParcAliasRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const campagneAsked = String((req.query || {}).campagne || "").trim();
+        // Sans campagne explicite, on ne renvoie RIEN : renvoyer « tous les alias »
+        // reviendrait à laisser le front appliquer une correspondance d'une autre
+        // campagne — exactement ce que la clé cherche à empêcher.
+        if (!/^\d{4}-\d{4}$/.test(campagneAsked)) {
+          return res.json({ success: true, campagne: "", aliases: {} });
+        }
+        const parcAliasSnap = await db_firestore.collection("bc_scan_parcelle_aliases")
+          .where("campagne", "==", campagneAsked).get();
+        const parcelleAliases = {};
+        parcAliasSnap.forEach((d) => {
+          const data = d.data() || {};
+          if (data.normalise && data.parcelle) {
+            parcelleAliases[data.normalise] = {
+              parcelle: data.parcelle,
+              count: parseInt(data.count, 10) || 0,
+              campagne: data.campagne || campagneAsked,
+            };
+          }
+        });
+        return res.json({ success: true, campagne: campagneAsked, aliases: parcelleAliases });
+      }
+
+      if (action === "save-bc-scan-parcelle-alias" && req.method === "POST") {
+        // Rôle résolu SERVEUR (resolveCallerRole), jamais depuis le body.
+        const parcAliasRole = await resolveCallerRole(authUser);
+        if (parcAliasRole !== "magasinier" && parcAliasRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au profil magasinier (ou dg)" });
+        }
+        const { entete_lu, parcelle, campagne, created_by } = req.body || {};
+        // En-tête illisible -> rien à apprendre (risque R6 : clé vide polluante).
+        if (!entete_lu || !parcelle || !campagne) {
+          return res.status(400).json({ success: false, error: "Champs requis: entete_lu, parcelle, campagne" });
+        }
+        const parcAliasId = bcScan.parcelleAliasDocId(campagne, entete_lu);
+        if (!parcAliasId) {
+          return res.status(400).json({ success: false, error: "entete_lu ou campagne invalide" });
+        }
+        const normalise = bcScan.normalizeLabel(entete_lu);
+
+        const parcAliasRef = db_firestore.collection("bc_scan_parcelle_aliases").doc(parcAliasId);
+        const parcCount = await db_firestore.runTransaction(async (tx) => {
+          const snap = await tx.get(parcAliasRef);
+          const prev = snap.exists ? (snap.data() || {}) : {};
+          // La DERNIÈRE décision humaine fait foi : si le magasinier choisit une
+          // AUTRE parcelle pour le même en-tête, on écrase et le compteur repart
+          // à 1 (module pur bcScan.nextParcelleAliasCount, testé unitairement).
+          const memeParcelle = String(prev.parcelle || "") === String(parcelle);
+          const nextCount = bcScan.nextParcelleAliasCount(prev, parcelle);
+          tx.set(parcAliasRef, {
+            entete_lu: String(entete_lu),
+            normalise,
+            campagne: String(campagne),
+            parcelle: String(parcelle),
+            count: nextCount,
+            created_by: memeParcelle ? (prev.created_by || created_by || {}) : (created_by || {}),
+            updated_by: created_by || {},
+            updated_at: Date.now(),
+          }, { merge: true });
+          return nextCount;
+        });
+        return res.json({ success: true, id: parcAliasId, count: parcCount });
+      }
+
       // ========== SCAN FICHE IRRIGATION (AI-powered irrigation sheet scanning) ==========
 
       if (action === "scan-irrigation-sheet" && req.method === "POST") {

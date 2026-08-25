@@ -14,6 +14,9 @@ const {
   extractCulture,
   extractVariete,
   resolveScanMedia,
+  nextParcelleAliasCount,
+  parcelleAliasDocId,
+  aliasMatchParcelle,
   SIMILARITY_THRESHOLD,
   INCLUSION_THRESHOLD,
 } = require('../../functions/lib/stock/bcScan')
@@ -910,4 +913,90 @@ test('resolveScanMedia — format non supporté refusé', () => {
 test('normalizeLabel — minuscules, sans accents, espaces réduits', () => {
   assert.strictEqual(normalizeLabel('  Sulfate  de   MAGNÉSIE '), 'sulfate de magnesie')
   assert.strictEqual(normalizeLabel(null), '')
+})
+
+// ---------------------------------------------------------------------------
+// Alias de PARCELLE (lot A — mémorisation des en-têtes de pile)
+// ---------------------------------------------------------------------------
+
+const CAMPAGNE_AL = '2026-2027'
+const REFS_AL = [{ label: 'F5- MYA S9' }, { label: 'S9 - REYNA F5' }, { label: 'CASCADE MYRTILLE S8-1' }]
+
+// La campagne est dans la CLÉ, ce n'est pas cosmétique : c'est la parade au
+// risque R1 (secteur 9 renouvelé entre 2025-2026 et 2026-2027).
+test('parcelleAliasDocId — la campagne préfixe la clé', () => {
+  assert.strictEqual(parcelleAliasDocId('2026-2027', 'M.T.L S-8'), '2026-2027__m.t.l%20s-8')
+  // Deux campagnes = deux documents, jamais un seul.
+  assert.notStrictEqual(parcelleAliasDocId('2026-2027', 'M.T.L S-8'), parcelleAliasDocId('2025-2026', 'M.T.L S-8'))
+})
+
+test('parcelleAliasDocId — clé stable quelles que soient casse et espaces', () => {
+  const attendu = parcelleAliasDocId(CAMPAGNE_AL, 'M.T.L S-8')
+  for (const e of ['m.t.l s-8', '  M.T.L   S-8 ', 'M.T.L S-8']) {
+    assert.strictEqual(parcelleAliasDocId(CAMPAGNE_AL, e), attendu, e)
+  }
+})
+
+// Un id Firestore ne peut pas contenir « / » : « S1/S4 Maravilla » est un
+// libellé RÉEL de la liste de production.
+test('parcelleAliasDocId — aucun « / » dans l\'id, et pas de collision', () => {
+  const id = parcelleAliasDocId(CAMPAGNE_AL, 'S1/S4 Maravilla')
+  assert.ok(!id.slice(CAMPAGNE_AL.length + 2).includes('/'), id)
+  assert.notStrictEqual(id, parcelleAliasDocId(CAMPAGNE_AL, 'S1 S4 Maravilla'))
+})
+
+test('parcelleAliasDocId — campagne ou en-tête invalide → \'\' (rien à mémoriser)', () => {
+  for (const c of ['', null, undefined, '2026', '2026/2027', 'courante', '26-27']) {
+    assert.strictEqual(parcelleAliasDocId(c, 'M.T.L S-8'), '', String(c))
+  }
+  for (const e of ['', '   ', null, undefined]) {
+    assert.strictEqual(parcelleAliasDocId(CAMPAGNE_AL, e), '', String(e))
+  }
+})
+
+test('aliasMatchParcelle — alias appliqué, statut `alias` et compteur remonté', () => {
+  const r = aliasMatchParcelle({ 'miya s-9': { parcelle: 'F5- MYA S9', count: 4, campagne: CAMPAGNE_AL } },
+    'Miya S-9', CAMPAGNE_AL, REFS_AL)
+  assert.deepStrictEqual(r, { label: 'F5- MYA S9', score: 1, status: 'alias', candidats: [], aliasCount: 4 })
+})
+
+test('aliasMatchParcelle — campagne étrangère, label hors liste, en-tête vide → null', () => {
+  const a = { 'miya s-9': { parcelle: 'F5- MYA S9', count: 4, campagne: '2025-2026' } }
+  assert.strictEqual(aliasMatchParcelle(a, 'Miya S-9', CAMPAGNE_AL, REFS_AL), null)
+  const hors = { 'miya s-9': { parcelle: 'PARCELLE RETIREE', count: 4, campagne: CAMPAGNE_AL } }
+  assert.strictEqual(aliasMatchParcelle(hors, 'Miya S-9', CAMPAGNE_AL, REFS_AL), null)
+  const vide = { '': { parcelle: 'F5- MYA S9', count: 1, campagne: CAMPAGNE_AL } }
+  assert.strictEqual(aliasMatchParcelle(vide, '', CAMPAGNE_AL, REFS_AL), null)
+  assert.strictEqual(aliasMatchParcelle(null, 'Miya S-9', CAMPAGNE_AL, REFS_AL), null)
+})
+
+test('matchParcelle — l\'alias prime sur la cascade, sans jamais sortir de la liste', () => {
+  const a = { 's-9': { parcelle: 'S9 - REYNA F5', count: 2, campagne: CAMPAGNE_AL } }
+  // Sans alias, S9 est ambigu (2 parcelles) : on ne devine pas.
+  assert.strictEqual(matchParcelle('S-9', REFS_AL).status, 'unmatched')
+  const r = matchParcelle('S-9', REFS_AL, a, CAMPAGNE_AL)
+  assert.strictEqual(r.label, 'S9 - REYNA F5')
+  assert.strictEqual(r.status, 'alias')
+  // Campagne suivante : l'alias tombe, l'ambiguïté revient (R1).
+  assert.strictEqual(matchParcelle('S-9', REFS_AL, a, '2027-2028').status, 'unmatched')
+})
+
+test('nextParcelleAliasCount — même parcelle : le compteur monte', () => {
+  assert.strictEqual(nextParcelleAliasCount(undefined, 'F5- MYA S9'), 1)
+  assert.strictEqual(nextParcelleAliasCount({}, 'F5- MYA S9'), 1)
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'F5- MYA S9', count: 1 }, 'F5- MYA S9'), 2)
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'F5- MYA S9', count: 6 }, 'F5- MYA S9'), 7)
+})
+
+// La dernière décision humaine fait foi : un alias contredit ne garde pas la
+// valeur de preuve de ses N confirmations précédentes.
+test('nextParcelleAliasCount — parcelle DIFFÉRENTE : le compteur repart à 1', () => {
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'S9 - REYNA F5', count: 12 }, 'F5- MYA S9'), 1)
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'S9 - REYNA F5', count: 1 }, 'F5- MYA S9'), 1)
+})
+
+test('nextParcelleAliasCount — compteur illisible/absent traité comme 0', () => {
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'F5- MYA S9' }, 'F5- MYA S9'), 1)
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'F5- MYA S9', count: 'douze' }, 'F5- MYA S9'), 1)
+  assert.strictEqual(nextParcelleAliasCount({ parcelle: 'F5- MYA S9', count: -3 }, 'F5- MYA S9'), 1)
 })

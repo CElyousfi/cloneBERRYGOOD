@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:48052a04e5c25303 -->
+<!-- sourceFingerprint: sha256:76b08e9544d3f566 -->
 # Code Map — Modules lib (188)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -128,7 +128,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/productivity/refetchPipeline.js | — | refetchProductivityReports |
 | functions/lib/sentinel/sentinelRecipients.js | — | filterSentinelRecipients |
 | functions/lib/stock/articleHistoryIndex.js | — | buildArticleHistoryIndex, sliceArticleHistory, isStockLieu, STOCK_LIEU_TYPES |
-| functions/lib/stock/bcScan.js | — | SIMILARITY_THRESHOLD, INCLUSION_THRESHOLD, AMBIGUITY_MARGIN, VARIETY_ALIASES, CULTURE_TOKENS, VARIETE_EST_CULTURE, extractCulture, ALLOWED_SCAN_MIME, EXT_TO_MIME, resolveScanMedia, normalizeLabel, toNumber, buildBcScanPrompt, parseAiJson, flattenBcScan, diceCoefficient, matchArticle, extractSecteurs, extractVariete, matchParcelle |
+| functions/lib/stock/bcScan.js | — | SIMILARITY_THRESHOLD, INCLUSION_THRESHOLD, AMBIGUITY_MARGIN, VARIETY_ALIASES, CULTURE_TOKENS, VARIETE_EST_CULTURE, extractCulture, ALLOWED_SCAN_MIME, EXT_TO_MIME, resolveScanMedia, normalizeLabel, toNumber, buildBcScanPrompt, parseAiJson, flattenBcScan, diceCoefficient, matchArticle, extractSecteurs, extractVariete, aliasMatchParcelle, parcelleAliasDocId, nextParcelleAliasCount, matchParcelle |
 | functions/lib/stock/locationsConfig.js | — | ROLE_CONTROLE, authorizeSetLocations, buildLocationsPatch |
 | functions/lib/stock/movementGuard.js | — | IMPORT_CREATED_BY, VALIDATED_STATUS, isImportedMovement, isValidatedMovement, isDeletedMovement, isCreator, evaluateMutable, canEditMovement, canDeleteMovement, ADMIN_DELETE_ROLES, isAdminDeleter, evaluateAdminDelete, canAdminDeleteMovement, refusalMessage |
 | functions/lib/stock/movementImpact.js | — | isImpactApplied, IMPACT_STATUS |
@@ -154,7 +154,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/valorisation/fermeParcelle.js | — | deriveFermeFromParcelle |
 | public/lib/analytiqueUtils.js | AnalytiqueUtils | opLabel, opKey, buildAnalytiquePivot, resolveGroupeFamille, resolveGbCode, buildAnalytiquePivotByFamille, GB_GROUPE_MAP, GROUPE_ORDER, GB_ORDER |
 | public/lib/authResilience.js | AuthResilience | action, reason, profile, 5000, 10000, 20000, decideAuthState, isNewAppVersion, retryDelayMs |
-| public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, matchParcelle |
+| public/lib/bcScanMatch.js | BcScanMatch | VARIETY_ALIASES, CULTURE_TOKENS, normalizeLabel, extractSecteurs, extractVariete, extractCulture, et, aliasMatch, matchParcelle |
 | public/lib/bdcReceptionUtils.js | BdcReceptionUtils | computeDeliveryData, resolveDeliveryDataOrError, filterReceptionsForBdc, computeReceptionRowsWithReliquat, computeReceptionEcart, clampReceivedQty |
 | public/lib/bdcWorkflow.js | BdcWorkflow | DIRECT_DG_FARMS, requiresChefValidation, nextStatusOnSubmit, bypassReason, chefProfileForFerme |
 | public/lib/caisseUtils.js | CaisseUtils | EXPENSE_TYPES, INCOME_TYPES, OP_EXPENSE_TYPES, OP_INCOME_TYPES, TRANSFER_TYPES, QUICK_PERIODS, QUICK_TYPES, ANOMALY_CODES, MONTANT_ANOMALY_THRESHOLD, DESCRIPTION_MIN_LENGTH, ANALYTIQUE_PLACEHOLDER, MONTANT_ATYPIQUE_FACTOR, MONTANT_ATYPIQUE_WINDOW_DAYS, MONTANT_ATYPIQUE_MIN_SAMPLE, DOUBLON_MAX_DATE_DELTA_DAYS, DOUBLON_LEVENSHTEIN_THRESHOLD, DOUBLON_DESC_PREFIX_LEN, DESCRIPTION_GENERIC_REGEX, BAHIA_MARKER, AVANCE_KEYWORD_REGEX, detectCaisseAnomalies, computeTotals, quickPeriodToDateRange, searchTransactions, filterByQuickType, detectAnomaliesBatch, extractBeneficiaire, aggregateAvances, COMPTE_CLIENT_PREFIX, isCompteClientCaisse, computeCompteClientTotals |

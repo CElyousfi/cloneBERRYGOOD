@@ -27,6 +27,10 @@
  *   - parcelleCulture   : (label, fallback) => string
  *   - metaForParcelle   : (label) => { culture, ferme }
  *   - useConsoSelector  : bool — même bascule de select que la saisie manuelle
+ *   - campagne          : '2026-2027' — campagne du bon. Sert de CLÉ aux alias de
+ *     parcelle mémorisés : un alias appris sur une autre campagne n'est ni lu ni
+ *     appliqué (les parcelles changent d'une campagne à l'autre). Absente → aucun
+ *     apprentissage, le rapprochement retombe sur la cascade secteur/culture.
  *   - MAGASINS, STATIONS: string[]
  *   - currentProfile, profileData
  *   - onClose()         : fermeture (bouton ✕ uniquement, jamais au clic fond)
@@ -108,7 +112,7 @@
   function MagBCScanModal({
     type, catalogueArticles, getStock, catalogUnit, refForCampagne, parcelles,
     parcelleGroupes, parcelleNom, parcelleCulture, metaForParcelle,
-    useConsoSelector, MAGASINS, STATIONS, currentProfile, profileData,
+    useConsoSelector, MAGASINS, STATIONS, currentProfile, profileData, campagne,
     onClose, onCreated,
   }) {
     const articles = catalogueArticles || [];
@@ -143,6 +147,12 @@
     const processingRef = useRef(false);
     const lotLieuRef = useRef(lotLieu);
     lotLieuRef.current = lotLieu;
+    // Alias de parcelle mémorisés, chargés UNE fois à l'ouverture (comme le
+    // catalogue et le référentiel, jamais par bon). Tenus dans un ref et non
+    // dans un état : ils sont lus par la boucle d'analyse asynchrone, où un état
+    // React ne serait visible qu'au rendu suivant, et leur arrivée n'a rien à
+    // ré-afficher par elle-même.
+    const parcelleAliasesRef = useRef({});
 
     // ---- Référentiels : helpers de résolution -------------------------------
     const knownArticle = (nom) => {
@@ -210,7 +220,10 @@
       const items = (json.items || []).map(raw => {
         const proposedArticle = knownArticle(raw.article) ? raw.article : '';
         // Lib absente → aucune proposition, jamais de crash.
-        const match = matcher ? matcher.matchParcelle(raw.parcelle_lue, options) : null;
+        // Les alias mémorisés sont passés au matcher : un en-tête déjà tranché
+        // une fois par le magasinier est pré-rempli (statut `alias`). La campagne
+        // suit, pour qu'un alias d'une AUTRE campagne ne soit jamais appliqué.
+        const match = matcher ? matcher.matchParcelle(raw.parcelle_lue, options, parcelleAliasesRef.current, campagne || '') : null;
         // Règle produit n°1 : même proposée par le matcher, une parcelle doit
         // être dans la liste sélectionnable pour être posée.
         const parcelleVal = (match && match.label && knownParcelle(match.label)) ? match.label : '';
@@ -231,6 +244,12 @@
           article_alias_count: raw.article_alias_count,
           parcelle_lue: raw.parcelle_lue || '',
           parcelle_status: parcelleStatus,
+          // Proposition initiale de PARCELLE : sert à détecter une correction
+          // utilisateur (→ apprentissage d'alias après enregistrement), exactement
+          // comme article_initial.
+          parcelle_initial: parcelleVal,
+          // Nb de fois que l'alias a été confirmé (statut `alias` uniquement).
+          parcelle_alias_count: (match && match.aliasCount) || undefined,
           parcelle_candidats: candidats,
           quantite: raw.quantite != null ? String(raw.quantite) : '',
           unite,
@@ -249,6 +268,7 @@
     const emptyLine = () => ({
       article_lu: '', pile: '', article: '', article_initial: '', article_status: 'unmatched', article_alias_count: undefined,
       parcelle_lue: '', parcelle_status: 'unmatched', parcelle_candidats: [],
+      parcelle_initial: '', parcelle_alias_count: undefined,
       quantite: '', unite: 'kg', parcelle: '', parcelle_ref: '', culture: '', ferme: '', groupe_id: '',
       barre: false, reintegre: false,
     });
@@ -419,6 +439,23 @@
       })();
     }, [queue]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // ---- Alias de parcelle mémorisés ----------------------------------------
+    // Chargés UNE fois à l'ouverture (et si la campagne change), jamais par bon.
+    // ⚠️ Cet effet est volontairement déclaré APRÈS celui de l'analyse : les tests
+    // unitaires adressent les effets par index positionnel.
+    // Best effort : un échec (403, réseau) laisse simplement la map vide et le
+    // rapprochement retombe sur la cascade secteur/culture — jamais de blocage.
+    useEffect(() => {
+      const camp = String(campagne || '');
+      if (!camp) { parcelleAliasesRef.current = {}; return; }
+      let annule = false;
+      fetch('/api/stock?action=list-bc-scan-parcelle-aliases&campagne=' + encodeURIComponent(camp))
+        .then(r => r.json())
+        .then(j => { if (!annule && j && j.success && j.aliases) parcelleAliasesRef.current = j.aliases; })
+        .catch(() => {});
+      return () => { annule = true; };
+    }, [campagne]);
+
     // ---- Édition -------------------------------------------------------------
     const current = queue[currentIdx] || null;
     const readOnly = !!current && current.status === 'saved';
@@ -495,6 +532,23 @@
       }),
     }).catch(() => {});
 
+    /**
+     * Mémorise la parcelle tranchée par le magasinier pour cet en-tête de pile.
+     * La CAMPAGNE part avec : c'est elle qui empêche un alias de survivre au
+     * renouvellement des parcelles (cf. spec §4.1, risque R1). La valeur envoyée
+     * est le LIBELLÉ BEE ONE (`it.parcelle`), jamais le nom Smart Berry affiché.
+     */
+    const saveParcelleAlias = (enteteLu, parcelleLabel) => fetch('/api/stock?action=save-bc-scan-parcelle-alias', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        entete_lu: enteteLu,
+        parcelle: parcelleLabel,
+        campagne: String(campagne || ''),
+        created_by: { profileId: currentProfile, name: (profileData && profileData.name) || currentProfile },
+      }),
+    }).catch(() => {});
+
     const gotoNextUnsaved = (savedId) => {
       const list = queueRef.current;
       const after = list.findIndex((q, i) => i > currentIdx && q.status !== 'saved' && q.id !== savedId);
@@ -542,6 +596,19 @@
         validItems
           .filter(i => (i.article_lu || '').trim() && i.article && i.article !== i.article_initial)
           .forEach(i => { saveAlias(i.article_lu, i.article); });
+        // Idem pour les PARCELLES : on ne mémorise que ce que le magasinier a
+        // réellement tranché (choix ou correction), et seulement si :
+        //  - l'en-tête a été lu (rien à apprendre d'un en-tête illisible, R6) ;
+        //  - la campagne est connue (elle fait partie de la clé, R1) ;
+        //  - la valeur retenue est une PARCELLE sélectionnable — un groupe
+        //    (`groupe_id`) n'est pas un libellé de parcelle : mémorisé, il
+        //    reviendrait comme une valeur absente du select, donc ignorée.
+        if (campagne) {
+          validItems
+            .filter(i => (i.parcelle_lue || '').trim() && !i.groupe_id
+              && knownParcelle(i.parcelle) && i.parcelle !== i.parcelle_initial)
+            .forEach(i => { saveParcelleAlias(i.parcelle_lue, i.parcelle); });
+        }
         const savedId = entry.id;
         setQueue(prev => prev.map(q => (q.id === savedId ? { ...q, status: 'saved', numero: json.numero || '' } : q)));
         const nbSaved = createdCount + 1;
@@ -590,12 +657,15 @@
     // revue des alias. Il s'affiche donc en orange « mémorisé — à vérifier »,
     // jamais en vert « Reconnu ». `aliasCount` (article_alias_count, additif
     // côté backend) est purement informatif : absent → on n'affiche rien.
-    const statusDot = (status, aliasCount) => {
+    // `quoi` : la fin de phrase de l'info-bulle (« l'article est le bon » par
+    // défaut, « la parcelle est la bonne » pour la colonne parcelle) — l'arbitrage
+    // « jamais de vert sur un alias » est rigoureusement le même des deux côtés.
+    const statusDot = (status, aliasCount, quoi) => {
       if (status === 'exact') return <span title="Reconnu au référentiel" style={{ color: '#2e7d32', marginLeft: 4 }}>✅</span>;
       if (status === 'alias') {
         const n = Number(aliasCount);
         const suffixe = n > 0 ? ' (mémorisé ' + n + ' fois)' : '';
-        return <span title={'Correction mémorisée lors d\'un scan précédent — vérifiez que l\'article est le bon' + suffixe}
+        return <span title={'Correction mémorisée lors d\'un scan précédent — vérifiez que ' + (quoi || 'l\'article est le bon') + suffixe}
           style={{ color: '#e65100', marginLeft: 4, fontSize: 10, fontWeight: 700 }}>⚠️ mémorisé — à vérifier</span>;
       }
       if (status === 'probable') return <span title="À vérifier" style={{ color: '#e65100', marginLeft: 4 }}>⚠️</span>;
@@ -836,7 +906,7 @@
                                           )}
                                         </select>
                                         {it.ferme ? <div style={{ fontSize: 9, color: '#888', marginTop: 2 }}>{it.ferme} — {it.culture}</div> : null}
-                                        <div style={{ fontSize: 10 }}>{exclue ? null : statusDot(parcUnknown ? 'unmatched' : it.parcelle_status)}</div>
+                                        <div style={{ fontSize: 10 }}>{exclue ? null : statusDot(parcUnknown ? 'unmatched' : it.parcelle_status, it.parcelle_alias_count, 'la parcelle est la bonne')}</div>
                                       </td>
                                       <td style={{ padding: '4px 6px' }}>
                                         <input type="number" value={it.quantite} disabled={readOnly} onChange={e => patchItem(idx, { quantite: e.target.value })}

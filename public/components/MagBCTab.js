@@ -937,6 +937,11 @@
       STATIONS,
       currentProfile,
       profileData,
+      // La campagne sélectionnée pilote DÉJÀ refForCampagne : elle
+      // sert aussi de clé aux alias de parcelle mémorisés, pour
+      // qu'un alias appris sur une campagne ne soit jamais
+      // appliqué à la suivante (les parcelles changent).
+      campagne: bcCampagne,
       onClose: () => setShowScan(false),
       onCreated: loadBcs
     }), showForm && /*#__PURE__*/React.createElement("div", {

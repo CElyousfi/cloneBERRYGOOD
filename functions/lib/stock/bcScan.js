@@ -88,8 +88,16 @@ const { resolveCulture } = require('../campagneExport/cultureUtils')
  * @typedef {Object} ParcelleMatch
  * @property {string} label Libellé de parcelle retenu ('' si non résolu).
  * @property {number} score Score de confiance 0..1.
- * @property {'exact'|'probable'|'unmatched'} status
+ * @property {'alias'|'exact'|'probable'|'unmatched'} status
  * @property {string[]} candidats Libellés candidats quand on ne tranche pas.
+ * @property {number|null} [aliasCount] Nb de confirmations de l'alias (branche `alias` seulement).
+ */
+
+/**
+ * @typedef {Object} ParcelleAlias
+ * @property {string} [parcelle] Libellé BEE ONE mémorisé.
+ * @property {number} [count] Nombre de confirmations.
+ * @property {string} [campagne] Campagne d'apprentissage.
  */
 
 /** Seuil de similarité (Dice bigrammes) au-dessus duquel on propose `probable`. */
@@ -596,6 +604,97 @@ function extractVariete(s) {
 }
 
 /**
+ * ALIAS DE PARCELLE — une décision humaine déjà prise sur CE même en-tête, lors
+ * d'un scan précédent (collection `bc_scan_parcelle_aliases`). Trois gardes,
+ * toutes indispensables (cf. docs/spec-scan-apprentissage.md §4.1 / R1) :
+ *
+ *  1. en-tête illisible (`normalizeLabel` -> '') : aucune clé, rien à appliquer ;
+ *  2. CAMPAGNE — un alias appris sur une autre campagne n'est JAMAIS appliqué.
+ *     Cas réel : le secteur 9 portait « S9 - REYNA F5 » (3 ha) en 2025-2026 et
+ *     porte « F5- MYA S9 » + « F5 YAZMIN MT » en 2026-2027. La campagne est déjà
+ *     dans la clé du document ET dans le filtre de lecture ; ce contrôle est un
+ *     TROISIÈME filet, dans la fonction pure, donc testable ;
+ *  3. la liste RENDUE a le dernier mot — un alias dont le libellé n'est plus
+ *     proposé (parcelle sortie de la campagne, renommée…) est ignoré EN SILENCE
+ *     et on retombe sur la cascade normale.
+ *
+ * Le statut rendu est `alias`, jamais `exact` : un alias peut venir d'UNE seule
+ * mauvaise sélection du magasinier (le front l'affiche en ⚠️ orange).
+ *
+ * MIROIR de `aliasMatch` (public/lib/bcScanMatch.js) — toute évolution ici doit
+ * être portée là-bas, et les tests [anti-divergence] l'exigent.
+ *
+ * @param {Object<string, ParcelleAlias|string>|null|undefined} aliases
+ * @param {string} entete En-tête manuscrit brut (déjà trimé).
+ * @param {*} campagne Campagne courante ('' / absent -> contrôle 2 inerte).
+ * @param {RefParcelle[]} refs Parcelles RÉELLEMENT proposées.
+ * @returns {ParcelleMatch|null} Le verdict alias, ou null pour passer à la cascade.
+ */
+function aliasMatchParcelle(aliases, entete, campagne, refs) {
+  if (!aliases || typeof aliases !== 'object') return null
+  const key = normalizeLabel(entete)
+  if (!key) return null
+  if (!Object.prototype.hasOwnProperty.call(aliases, key)) return null
+  const raw = aliases[key]
+  if (!raw) return null
+  const isStr = typeof raw === 'string'
+  const label = String(isStr ? raw : (raw.parcelle || '')).trim()
+  if (!label) return null
+  const aliasCampagne = isStr ? '' : String(raw.campagne || '')
+  if (campagne && aliasCampagne && aliasCampagne !== String(campagne)) return null
+  const connue = refs.some((p) => String(p.label || '').trim() === label)
+  if (!connue) return null
+  const count = isStr ? null : (parseInt(String(raw.count), 10) || null)
+  return { label, score: 1, status: /** @type {'alias'} */ ('alias'), candidats: [], aliasCount: count }
+}
+
+/**
+ * Identifiant DÉTERMINISTE d'un alias de parcelle : `<campagne>__<en-tête encodé>`.
+ *
+ * La campagne fait partie de la CLÉ, ce n'est pas un détail de stockage : sans
+ * elle, un alias appris en 2025-2026 s'appliquerait en 2026-2027 et imputerait la
+ * consommation à une parcelle qui n'existe plus (risque R1 du spec, cas réel du
+ * secteur 9). Le format de campagne est donc VALIDÉ ici : une valeur hors
+ * `AAAA-AAAA` rend '' et l'appelant refuse l'écriture plutôt que de fabriquer une
+ * clé dont on ne saura plus à quelle campagne elle appartient.
+ *
+ * L'en-tête normalisé est `encodeURIComponent`é : injectif (deux en-têtes
+ * distincts ne peuvent pas collisionner) et sans « / », interdit dans un id
+ * Firestore — cas réel : « S1/S4 Maravilla ».
+ *
+ * @param {*} campagne Campagne au format 'AAAA-AAAA'.
+ * @param {*} enteteLu En-tête manuscrit brut.
+ * @returns {string} L'id, ou '' si l'un des deux est invalide (rien à mémoriser).
+ */
+function parcelleAliasDocId(campagne, enteteLu) {
+  const camp = String(campagne == null ? '' : campagne).trim()
+  if (!/^\d{4}-\d{4}$/.test(camp)) return ''
+  const key = normalizeLabel(enteteLu)
+  if (!key) return ''
+  return camp + '__' + encodeURIComponent(key)
+}
+
+/**
+ * Compteur de confirmations d'un alias de parcelle après une nouvelle décision.
+ *
+ * La DERNIÈRE décision humaine fait foi : si le magasinier choisit une AUTRE
+ * parcelle pour le même en-tête, l'alias est écrasé et le compteur repart à 1 —
+ * un alias contredit n'a plus la valeur de preuve de ses N confirmations
+ * précédentes, et le laisser à N+1 afficherait « mémorisé 12 fois » sur une
+ * correspondance décidée il y a dix secondes.
+ *
+ * @param {{parcelle?: *, count?: *}|null|undefined} prev Document existant (ou rien).
+ * @param {*} parcelle Parcelle qui vient d'être retenue.
+ * @returns {number} Le nouveau compteur (>= 1).
+ */
+function nextParcelleAliasCount(prev, parcelle) {
+  const p = prev && typeof prev === 'object' ? prev : {}
+  if (String(p.parcelle == null ? '' : p.parcelle) !== String(parcelle == null ? '' : parcelle)) return 1
+  const n = parseInt(String(p.count), 10)
+  return (Number.isFinite(n) && n > 0 ? n : 0) + 1
+}
+
+/**
  * Rapproche l'en-tête manuscrit d'une colonne « Pile » avec une liste de parcelles.
  *
  * ⚠️ N'EST PLUS APPELÉE PAR LA CLOUD FUNCTION `scan-bc` (voir functions/index.js).
@@ -623,15 +722,22 @@ function extractVariete(s) {
  *
  * @param {*} enteteLu En-tête manuscrit (ex. 'marvilla S-3').
  * @param {RefParcelle[]} refParcelles Liste des parcelles RÉELLEMENT proposées à l'utilisateur.
+ * @param {Object<string, ParcelleAlias|string>} [aliases] Alias mémorisés (cf. aliasMatchParcelle).
+ * @param {*} [campagne] Campagne courante — un alias d'une AUTRE campagne est ignoré.
  * @returns {ParcelleMatch}
  */
-function matchParcelle(enteteLu, refParcelles) {
+function matchParcelle(enteteLu, refParcelles, aliases, campagne) {
   const entete = String(enteteLu == null ? '' : enteteLu).trim()
   const refs = (Array.isArray(refParcelles) ? refParcelles : []).filter(
     (p) => p && String(p.label || '').trim()
   )
   const empty = { label: '', score: 0, status: /** @type {'unmatched'} */ ('unmatched'), candidats: [] }
   if (!entete || refs.length === 0) return empty
+
+  // (0) ALIAS MÉMORISÉ — priorité absolue, mais jamais au prix d'une valeur non
+  //     sélectionnable : aliasMatchParcelle rend null et on retombe sur la cascade.
+  const alias = aliasMatchParcelle(aliases, entete, campagne, refs)
+  if (alias) return alias
 
   // Chaque parcelle avec les secteurs que SON libellé couvre, et le texte fouillé
   // pour la variété. `nom` ET `nom_sb` sont lus : le front passe le nom affiché
@@ -852,5 +958,8 @@ module.exports = {
   matchArticle,
   extractSecteurs,
   extractVariete,
+  aliasMatchParcelle,
+  parcelleAliasDocId,
+  nextParcelleAliasCount,
   matchParcelle,
 }

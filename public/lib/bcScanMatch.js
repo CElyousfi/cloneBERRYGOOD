@@ -32,8 +32,9 @@
  *
  * @typedef {{ label: string, nom?: string, culture?: string }} ParcelleOption
  * @typedef {{ label: string, score: number,
- *             status: 'exact'|'probable'|'unmatched',
- *             candidats: string[] }} ParcelleMatch
+ *             status: 'alias'|'exact'|'probable'|'unmatched',
+ *             candidats: string[], aliasCount?: number|null }} ParcelleMatch
+ * @typedef {{ parcelle?: string, count?: number, campagne?: string }} ParcelleAlias
  */
 // @ts-check
 (function () {
@@ -219,6 +220,50 @@
   }
 
   /**
+   * ALIAS DE PARCELLE — une décision humaine déjà prise sur CE même en-tête, lors
+   * d'un scan précédent (collection `bc_scan_parcelle_aliases`). Trois gardes,
+   * toutes indispensables (cf. docs/spec-scan-apprentissage.md §4.1 / R1) :
+   *
+   *  1. en-tête illisible (`normalizeLabel` -> '') : aucune clé, rien à appliquer ;
+   *  2. CAMPAGNE — un alias appris sur une autre campagne n'est JAMAIS appliqué.
+   *     Cas réel : le secteur 9 portait « S9 - REYNA F5 » (3 ha) en 2025-2026 et
+   *     porte « F5- MYA S9 » + « F5 YAZMIN MT » en 2026-2027. La campagne est déjà
+   *     dans la clé du document ET dans le filtre de lecture ; ce contrôle est un
+   *     TROISIÈME filet, dans la fonction pure, donc testable et non contournable
+   *     par un appelant qui passerait la mauvaise map ;
+   *  3. `knownParcelle` A LE DERNIER MOT — un alias dont le libellé n'est plus dans
+   *     les options rendues (parcelle sortie de la campagne, renommée…) est ignoré
+   *     EN SILENCE et on retombe sur la cascade normale. Sans cette garde, un alias
+   *     périmé poserait une valeur non sélectionnable dans le <select>.
+   *
+   * Le statut rendu est `alias`, jamais `exact` : un alias peut venir d'UNE seule
+   * mauvaise sélection du magasinier (le front l'affiche en ⚠️ orange).
+   *
+   * @param {Object<string, ParcelleAlias|string>|null|undefined} aliases
+   * @param {string} entete En-tête manuscrit brut (déjà trimé).
+   * @param {*} campagne Campagne courante ('' / absent -> contrôle 2 inerte).
+   * @param {Array<{label: string}>} opts Options RÉELLEMENT rendues.
+   * @returns {ParcelleMatch|null} Le verdict alias, ou null pour passer à la cascade.
+   */
+  function aliasMatch(aliases, entete, campagne, opts) {
+    if (!aliases || typeof aliases !== 'object') return null;
+    var key = normalizeLabel(entete);
+    if (!key) return null;
+    if (!Object.prototype.hasOwnProperty.call(aliases, key)) return null;
+    var raw = aliases[key];
+    if (!raw) return null;
+    var isStr = typeof raw === 'string';
+    var label = String(isStr ? raw : (raw.parcelle || '')).trim();
+    if (!label) return null;
+    var aliasCampagne = isStr ? '' : String(raw.campagne || '');
+    if (campagne && aliasCampagne && aliasCampagne !== String(campagne)) return null;
+    var connue = opts.some(function (o) { return o.label === label; });
+    if (!connue) return null;
+    var count = isStr ? null : (parseInt(String(raw.count), 10) || null);
+    return { label: label, score: 1, status: 'alias', candidats: [], aliasCount: count };
+  }
+
+  /**
    * Rapproche un en-tête manuscrit avec les options RÉELLEMENT sélectionnables.
    *
    * Signal le plus fort = le SECTEUR, la variété sert de garde et à départager.
@@ -231,13 +276,21 @@
    *
    * @param {*} enteteLu En-tête manuscrit (ex. 'marvilla S-3').
    * @param {Array<ParcelleOption|string>} options Options du select.
+   * @param {Object<string, ParcelleAlias|string>} [aliases] Alias mémorisés,
+   *   clé = en-tête normalisé (cf. aliasMatch). Priorité 1 sur la cascade.
+   * @param {*} [campagne] Campagne courante — un alias d'une AUTRE campagne est ignoré.
    * @returns {ParcelleMatch}
    */
-  function matchParcelle(enteteLu, options) {
+  function matchParcelle(enteteLu, options, aliases, campagne) {
     var empty = { label: '', score: 0, status: 'unmatched', candidats: [] };
     var entete = String(enteteLu == null ? '' : enteteLu).trim();
     var opts = (Array.isArray(options) ? options : []).map(toOption).filter(Boolean);
     if (!entete || !opts.length) return empty;
+
+    // (0) ALIAS MÉMORISÉ — priorité absolue, mais jamais au prix d'une valeur
+    //     non sélectionnable : aliasMatch rend null et on retombe sur la cascade.
+    var alias = aliasMatch(aliases, entete, campagne, opts);
+    if (alias) return alias;
 
     var dedupe = function (arr) { return arr.filter(function (v, i, a) { return a.indexOf(v) === i; }); };
     var labelsOf = function (list) { return dedupe(list.map(function (o) { return o.label; })); };
@@ -402,6 +455,10 @@
     extractSecteurs: extractSecteurs,
     extractVariete: extractVariete,
     extractCulture: extractCulture,
+    // Exportée pour être testable DIRECTEMENT : ses gardes (en-tête vide,
+    // campagne, label hors liste) doivent être vérifiables une par une, et
+    // comparables à celles du miroir backend `aliasMatchParcelle`.
+    aliasMatch: aliasMatch,
     matchParcelle: matchParcelle,
   };
 

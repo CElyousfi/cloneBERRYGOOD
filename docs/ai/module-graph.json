@@ -64,14 +64,14 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:08d0bdaad7ef11c1",
+    "sourceFingerprint": "sha256:d2e517803e2ee572",
     "stats": {
       "backendModules": 94,
       "cloudFunctions": 91,
       "coverageScore": 40,
       "domains": 10,
       "extractedComponents": 26,
-      "firestoreCollections": 59,
+      "firestoreCollections": 60,
       "libHelpers": 42,
       "monolithSymbols": 120,
       "tabFunctions": 120,
@@ -802,6 +802,7 @@
       "coverageScore": 75,
       "firestore": {
         "collections": [
+          "bc_scan_parcelle_aliases",
           "mapping_campagne",
           "netafim_parcelles_bahia",
           "parcelle_ferme_referentiel",
@@ -1003,6 +1004,13 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/campagneAnalytiquePivot.test.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 3,
+          "domain": null,
+          "file": "public/components/ParcellesReferentielTab.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -2662,6 +2670,10 @@
     "bc_scan_aliases": {
       "accessLevel": "CF-only",
       "domain": "achats"
+    },
+    "bc_scan_parcelle_aliases": {
+      "accessLevel": "CF-only",
+      "domain": "referentiel"
     },
     "bons_apport_saisie": {
       "accessLevel": "CF-only",

@@ -72,6 +72,13 @@ function load(stateOverrides, spy, opts) {
       if (/action=scan-bc/.test(url) && o.scanResponse) {
         return Promise.resolve({ json: () => Promise.resolve(o.scanResponse) });
       }
+      if (/save-bc-scan-parcelle-alias/.test(url)) {
+        return Promise.resolve({ json: () => Promise.resolve({ success: true, count: 1 }) });
+      }
+      if (/list-bc-scan-parcelle-aliases/.test(url)) {
+        return Promise.resolve({ json: () => Promise.resolve(o.parcelleAliasesResponse
+          || { success: true, aliases: {} }) });
+      }
       if (/save-bc-scan-alias/.test(url)) {
         return Promise.resolve({ json: () => Promise.resolve({ success: true }) });
       }
@@ -532,18 +539,24 @@ const PROD_PROPS = Object.assign({}, BASE_PROPS, {
  * Le backend renvoie volontairement `parcelle: ''` / `unmatched` : c'est le
  * calcul FRONT qui doit produire la proposition.
  */
-async function analyseOneItem(rawItem, props, extraWindow) {
+async function analyseOneItem(rawItem, props, extraWindow, opts) {
   const spy = { fetches: [], sets: [], effects: [] };
   const pending = entry({ status: 'pending', items: [] });
   const win = Object.assign({
     BcScanMatch: require('../../public/lib/bcScanMatch.js'),
     ImageDownscale: { downscaleToDataUrl: () => Promise.resolve('data:image/jpeg;base64,AA') },
   }, extraWindow || {});
-  const Modal = load([undefined, [pending], 0], spy, {
+  const Modal = load([undefined, [pending], 0], spy, Object.assign({
     window: win,
     scanResponse: { success: true, scan_url: 'https://scan/1.jpg', analysis: { numero_bon: 'BC-9' }, items: [rawItem] },
-  });
+  }, opts || {}));
   Modal(props || PROD_PROPS);
+  // Chargement des alias de parcelle (2e effet) : joué AVANT l'analyse, comme au
+  // montage réel de la modale. L'ordre des effets est verrouillé par ce test.
+  if (spy.effects[1]) {
+    spy.effects[1].fn();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  }
   const analyse = spy.effects[0];
   // L'effet lance une IIFE async et rend la main tout de suite : on laisse la
   // boucle d'analyse se dérouler avant de lire les mises à jour de file.
@@ -637,6 +650,239 @@ test('parcelle — window.BcScanMatch absent : aucune proposition, aucun crash',
   assert.strictEqual(e.items[0].parcelle_status, 'unmatched');
   // (length, pas deepStrictEqual : le tableau vide naît dans le realm du vm.)
   assert.strictEqual(e.items[0].parcelle_candidats.length, 0);
+});
+
+// ------------------------------------ alias de parcelle mémorisés (lot A)
+//
+// « M.T.L S-8 » est l'en-tête réel qui coûte 8 lignes de saisie sur les 7 bons de
+// référence : la liste porte S8-1, S8-2 et S8-3, jamais un « S8 » simple, donc la
+// cascade ne peut structurellement pas trancher. Une fois le magasinier passé, la
+// décision doit être rejouée aux scans suivants.
+
+const CAMPAGNE = '2026-2027';
+const PROD_PROPS_CAMP = Object.assign({}, PROD_PROPS, { campagne: CAMPAGNE });
+const ALIAS_S8 = { 'm.t.l s-8': { parcelle: 'S9 - REYNA F5', count: 3, campagne: CAMPAGNE } };
+
+test('alias parcelle — chargés UNE fois à l\'ouverture, filtrés par campagne', async () => {
+  const spy = { fetches: [], sets: [], effects: [] };
+  const Modal = load([undefined, [], 0], spy, { parcelleAliasesResponse: { success: true, aliases: ALIAS_S8 } });
+  Modal(PROD_PROPS_CAMP);
+  spy.effects[1].fn();
+  await new Promise((r) => setImmediate(r));
+  const call = spy.fetches.find((f) => /list-bc-scan-parcelle-aliases/.test(f.url));
+  assert.ok(call, 'les alias sont chargés');
+  assert.match(call.url, /campagne=2026-2027/);
+  // Une seule requête : jamais un chargement par bon.
+  assert.strictEqual(spy.fetches.filter((f) => /list-bc-scan-parcelle-aliases/.test(f.url)).length, 1);
+});
+
+test('alias parcelle — sans campagne, aucun chargement (la clé serait incomplète)', () => {
+  const spy = { fetches: [], sets: [], effects: [] };
+  load([undefined, [], 0], spy)(PROD_PROPS);
+  spy.effects[1].fn();
+  assert.strictEqual(spy.fetches.some((f) => /list-bc-scan-parcelle-aliases/.test(f.url)), false);
+});
+
+test('alias parcelle — un en-tête déjà tranché est pré-rempli en statut `alias`', async () => {
+  const e = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'M.T.L S-8', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP, null, { parcelleAliasesResponse: { success: true, aliases: ALIAS_S8 } });
+  assert.strictEqual(e.items[0].parcelle, 'S9 - REYNA F5');
+  assert.strictEqual(e.items[0].parcelle_status, 'alias');
+  assert.strictEqual(e.items[0].parcelle_alias_count, 3);
+  // La résolution pose aussi la référence, comme une sélection manuelle.
+  assert.strictEqual(e.items[0].parcelle_ref, 'R-S9 - REYNA F5');
+});
+
+test('alias parcelle — sans alias, le MÊME en-tête reste à saisir', async () => {
+  const e = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'M.T.L S-8', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP);
+  assert.strictEqual(e.items[0].parcelle, '');
+  assert.strictEqual(e.items[0].parcelle_status, 'unmatched');
+});
+
+// R1 — un alias appris sur une autre campagne imputerait la consommation à une
+// parcelle qui n'est plus en culture.
+test('alias parcelle — un alias d\'une AUTRE campagne n\'est jamais appliqué', async () => {
+  const vieux = { 'm.t.l s-8': { parcelle: 'S9 - REYNA F5', count: 9, campagne: '2025-2026' } };
+  const e = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'M.T.L S-8', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP, null, { parcelleAliasesResponse: { success: true, aliases: vieux } });
+  assert.strictEqual(e.items[0].parcelle, '');
+  assert.strictEqual(e.items[0].parcelle_status, 'unmatched');
+});
+
+// Règle produit n°1 : aucune valeur non sélectionnable ne doit pouvoir être posée.
+test('alias parcelle — un alias hors du select est ignoré, sans bloquer la cascade', async () => {
+  const perime = { 'marvilla s-3': { parcelle: 'PARCELLE RETIREE', count: 4, campagne: CAMPAGNE } };
+  const e = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'marvilla S-3', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP, null, { parcelleAliasesResponse: { success: true, aliases: perime } });
+  assert.strictEqual(e.items[0].parcelle, 'S3 - MARAVILLA MOTTE F1');
+  assert.strictEqual(e.items[0].parcelle_status, 'exact');
+});
+
+test('alias parcelle — chargement en échec : aucune proposition inventée, aucun crash', async () => {
+  const e = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'M.T.L S-8', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP, null, { parcelleAliasesResponse: { success: false, error: 'Réservé au profil magasinier' } });
+  assert.strictEqual(e.status, 'done');
+  assert.strictEqual(e.items[0].parcelle, '');
+  assert.strictEqual(e.items[0].parcelle_status, 'unmatched');
+});
+
+// Un alias vient d'UNE seule sélection du magasinier : même arbitrage que pour
+// les articles, ⚠️ orange, jamais ✅ vert.
+test('alias parcelle — affiché en orange « mémorisé — à vérifier », jamais en vert', () => {
+  const e = entry({ items: [line({ parcelle_status: 'alias', parcelle_alias_count: 2, article_status: 'exact' })] });
+  const tree = load([undefined, [e], 0])(BASE_PROPS);
+  assert.match(flatText(tree), /mémorisé — à vérifier/);
+  const dot = findAll(tree, (n) => n.type === 'span' && /mémorisé/.test(textOf(n)))[0];
+  assert.strictEqual(dot.props.style.color, '#e65100');
+  assert.match(dot.props.title, /la parcelle est la bonne/);
+  assert.match(dot.props.title, /mémorisé 2 fois/);
+  // Seul l'article garde sa pastille verte.
+  assert.strictEqual(findAll(tree, (n) => n.props.title === 'Reconnu au référentiel').length, 1);
+});
+
+test('alias parcelle — l\'info-bulle de l\'ARTICLE reste inchangée', () => {
+  const e = entry({ items: [line({ article_status: 'alias', article_alias_count: 5 })] });
+  const dot = findAll(load([undefined, [e], 0])(BASE_PROPS), (n) => n.type === 'span' && /mémorisé/.test(textOf(n)))[0];
+  assert.match(dot.props.title, /l'article est le bon/);
+});
+
+// ---- écriture de l'alias à l'enregistrement du bon ----
+
+/** Enregistre un bon et rend les corps envoyés à save-bc-scan-parcelle-alias. */
+async function aliasesEcrits(items, props) {
+  const spy = { fetches: [], sets: [], effects: [] };
+  const e = entry({ items });
+  const Modal = load([undefined, [e], 0], spy, { createBcResponse: { success: true, numero: 'BC-1' } });
+  const btn = findAll(Modal(props || Object.assign({}, BASE_PROPS, { campagne: CAMPAGNE })),
+    (n) => n.type === 'button' && /Enregistrer ce bon/.test(textOf(n)))[0];
+  await btn.props.onClick();
+  return spy.fetches.filter((f) => /save-bc-scan-parcelle-alias/.test(f.url))
+    .map((f) => JSON.parse(f.init.body));
+}
+
+test('écriture alias — une parcelle CORRIGÉE est mémorisée, avec sa campagne', async () => {
+  const corps = await aliasesEcrits([line({
+    parcelle_lue: 'M.T.L S-8', parcelle: 'F5-P02', parcelle_initial: 'F1-P01', parcelle_ref: 'R2',
+  })]);
+  assert.deepStrictEqual(corps, [{
+    entete_lu: 'M.T.L S-8',
+    parcelle: 'F5-P02',
+    campagne: CAMPAGNE,
+    created_by: { profileId: 'magasinier', name: 'Magasinier Test' },
+  }]);
+});
+
+// Le nom Smart Berry n'est qu'un HABILLAGE d'affichage : la valeur enregistrée
+// dans le bon est le libellé BEE ONE, et c'est lui qui doit être mémorisé —
+// sinon un renommage côté référentiel invaliderait tous les alias appris.
+test('écriture alias — le LIBELLÉ BEE ONE est mémorisé, jamais le nom Smart Berry', async () => {
+  const props = Object.assign({}, BASE_PROPS, {
+    campagne: CAMPAGNE,
+    parcelleNom: (l) => 'Nom SB de ' + l, // ce que voit l'utilisateur dans le select
+  });
+  const corps = await aliasesEcrits(
+    [line({ parcelle_lue: 'M.T.L S-8', parcelle: 'F5-P02', parcelle_initial: '' })], props);
+  assert.strictEqual(corps.length, 1);
+  assert.strictEqual(corps[0].parcelle, 'F5-P02');
+  assert.doesNotMatch(corps[0].parcelle, /Nom SB/);
+});
+
+test('écriture alias — une parcelle CHOISIE sur une proposition absente est mémorisée', async () => {
+  const corps = await aliasesEcrits([line({ parcelle_lue: 'M.T.L S-8', parcelle: 'F1-P01', parcelle_initial: '' })]);
+  assert.strictEqual(corps.length, 1);
+  assert.strictEqual(corps[0].parcelle, 'F1-P01');
+});
+
+test('écriture alias — une proposition ACCEPTÉE telle quelle n\'écrit rien', async () => {
+  const corps = await aliasesEcrits([line({ parcelle_lue: 'marvilla S-3', parcelle: 'F1-P01', parcelle_initial: 'F1-P01' })]);
+  assert.deepStrictEqual(corps, []);
+});
+
+// R6 — rien à apprendre d'un en-tête illisible, et une clé vide polluerait la
+// collection pour toutes les piles sans en-tête.
+test('écriture alias — en-tête vide : JAMAIS mémorisé', async () => {
+  for (const lue of ['', '   ']) {
+    const corps = await aliasesEcrits([line({ parcelle_lue: lue, parcelle: 'F5-P02', parcelle_initial: '' })]);
+    assert.deepStrictEqual(corps, [], JSON.stringify(lue));
+  }
+});
+
+test('écriture alias — sans campagne, aucune écriture (la clé serait incomplète)', async () => {
+  const corps = await aliasesEcrits(
+    [line({ parcelle_lue: 'M.T.L S-8', parcelle: 'F5-P02', parcelle_initial: '' })],
+    BASE_PROPS);
+  assert.deepStrictEqual(corps, []);
+});
+
+// Un groupe n'est pas un libellé de parcelle : mémorisé, il reviendrait comme
+// une valeur absente du select, donc ignorée — autant ne rien écrire.
+// Le libellé du groupe est volontairement CELUI d'une parcelle sélectionnable :
+// sans le contrôle explicite sur `groupe_id`, l'alias serait écrit et rejouerait
+// une parcelle unique là où le magasinier avait choisi un groupe.
+test('écriture alias — un GROUPE de parcelles n\'est jamais mémorisé', async () => {
+  const corps = await aliasesEcrits([line({
+    parcelle_lue: 'M.T.L S-8', parcelle: 'F1-P01', parcelle_initial: '', groupe_id: 'g1',
+  })]);
+  assert.deepStrictEqual(corps, []);
+});
+
+test('écriture alias — une ligne BARRÉE non réintégrée n\'apprend rien', async () => {
+  const corps = await aliasesEcrits([
+    line({ parcelle_initial: 'F1-P01' }),
+    line({ parcelle_lue: 'M.T.L S-8', parcelle: 'F5-P02', parcelle_initial: '', barre: true }),
+  ]);
+  assert.deepStrictEqual(corps, []);
+});
+
+// Cycle COMPLET (analyse -> enregistrement), le seul qui traverse
+// `parcelle_initial` telle qu'elle est réellement posée par le rapprochement :
+// une proposition de la cascade acceptée sans y toucher ne doit RIEN mémoriser,
+// sinon la collection se remplit de « corrections » que personne n'a faites.
+test('écriture alias — cycle complet : une proposition acceptée n\'apprend rien', async () => {
+  const analysee = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'marvilla S-3', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP);
+  assert.strictEqual(analysee.items[0].parcelle, 'S3 - MARAVILLA MOTTE F1');
+  const spy = { fetches: [], sets: [], effects: [] };
+  const pret = Object.assign({}, analysee, { status: 'done' });
+  const btn = findAll(load([undefined, [pret], 0], spy, { createBcResponse: { success: true, numero: 'BC-1' } })(PROD_PROPS_CAMP),
+    (n) => n.type === 'button' && /Enregistrer ce bon/.test(textOf(n)))[0];
+  await btn.props.onClick();
+  assert.strictEqual(spy.fetches.some((f) => /save-bc-scan-parcelle-alias/.test(f.url)), false);
+});
+
+test('écriture alias — cycle complet : une parcelle corrigée après analyse est mémorisée', async () => {
+  const analysee = await analyseOneItem(
+    { article_lu: 'UREE', article: 'UREE 46', parcelle_lue: 'marvilla S-3', parcelle: '', quantite: 5 },
+    PROD_PROPS_CAMP);
+  // Le magasinier corrige : exactement ce que fait changeParcelle.
+  const corrige = Object.assign({}, analysee, {
+    status: 'done',
+    items: analysee.items.map((it) => Object.assign({}, it, { parcelle: 'S9 - REYNA F5', parcelle_ref: 'R-S9 - REYNA F5' })),
+  });
+  const spy = { fetches: [], sets: [], effects: [] };
+  const btn = findAll(load([undefined, [corrige], 0], spy, { createBcResponse: { success: true, numero: 'BC-1' } })(PROD_PROPS_CAMP),
+    (n) => n.type === 'button' && /Enregistrer ce bon/.test(textOf(n)))[0];
+  await btn.props.onClick();
+  const body = JSON.parse(spy.fetches.find((f) => /save-bc-scan-parcelle-alias/.test(f.url)).init.body);
+  assert.strictEqual(body.entete_lu, 'marvilla S-3');
+  assert.strictEqual(body.parcelle, 'S9 - REYNA F5');
+  assert.strictEqual(body.campagne, CAMPAGNE);
+});
+
+test('écriture alias — plusieurs lignes corrigées : un appel par en-tête tranché', async () => {
+  const corps = await aliasesEcrits([
+    line({ parcelle_lue: 'M.T.L S-8', parcelle: 'F5-P02', parcelle_initial: '' }),
+    line({ parcelle_lue: 'M.T.L S-13-14', parcelle: 'F1-P01', parcelle_initial: '' }),
+    line({ parcelle_lue: 'marvilla S-3', parcelle: 'F1-P01', parcelle_initial: 'F1-P01' }),
+  ]);
+  assert.deepStrictEqual(corps.map((c) => c.entete_lu), ['M.T.L S-8', 'M.T.L S-13-14']);
 });
 
 // ------------------------------------------- analyse concurrente (plafond 3)

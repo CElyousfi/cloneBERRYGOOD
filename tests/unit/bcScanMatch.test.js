@@ -279,6 +279,160 @@ test('window.CultureUtils absent → signal culture ignoré, aucun crash', () =>
   }
 });
 
+// ------------------------------------------------- alias de parcelle (lot A)
+//
+// Un alias = une décision humaine déjà prise sur CE même en-tête lors d'un scan
+// précédent (`bc_scan_parcelle_aliases`). Il prime sur la cascade, MAIS il ne
+// peut jamais poser une valeur non sélectionnable, ni traverser une campagne.
+
+const CAMPAGNE = '2026-2027';
+/** Les 3 en-têtes réellement non résolus sur les 7 bons de référence. */
+const ALIASES = {
+  'm.t.l s-8': { parcelle: 'CASCADE MYRTILLE S8-1', count: 2, campagne: CAMPAGNE },
+  'm.t.l s-13-14': { parcelle: 'F5- CASCADE -S13', count: 1, campagne: CAMPAGNE },
+};
+
+test('[alias] un en-tête déjà tranché est pré-rempli, en statut `alias`', () => {
+  const r = M.matchParcelle('M.T.L S-8', OPTIONS, ALIASES, CAMPAGNE);
+  assert.strictEqual(r.label, 'CASCADE MYRTILLE S8-1');
+  assert.strictEqual(r.status, 'alias');
+  assert.strictEqual(r.score, 1);
+  assert.deepStrictEqual(r.candidats, []);
+  assert.strictEqual(r.aliasCount, 2);
+});
+
+test('[alias] sans alias, le même en-tête reste non résolu (le gain vient bien de là)', () => {
+  const r = M.matchParcelle('M.T.L S-8', OPTIONS);
+  assert.strictEqual(r.label, '');
+  assert.strictEqual(r.status, 'unmatched');
+});
+
+test('[alias] l\'alias prime sur la cascade, même quand elle trancherait', () => {
+  // « marvilla S-3 » sort normalement « S3 - MARAVILLA MOTTE F1 » en `exact`.
+  const r = M.matchParcelle('marvilla S-3', OPTIONS,
+    { 'marvilla s-3': { parcelle: 'S7 -MARAVILLA MOTTE F1', count: 4, campagne: CAMPAGNE } }, CAMPAGNE);
+  assert.strictEqual(r.label, 'S7 -MARAVILLA MOTTE F1');
+  assert.strictEqual(r.status, 'alias');
+});
+
+// RISQUE R1 — le cas le plus grave du chantier. Le secteur 9 portait
+// « S9 - REYNA F5 » en 2025-2026 ; l'appliquer en 2026-2027 imputerait la
+// consommation à une parcelle qui n'est plus en culture.
+test('[alias] un alias d\'une AUTRE campagne est ignoré (R1)', () => {
+  const vieux = { 'miya s-9': { parcelle: 'S9 - REYNA F5', count: 9, campagne: '2025-2026' } };
+  const r = M.matchParcelle('miya S-9', OPTIONS, vieux, CAMPAGNE);
+  assert.notStrictEqual(r.status, 'alias');
+  // Et on retombe exactement sur la cascade normale.
+  assert.deepStrictEqual(r, M.matchParcelle('miya S-9', OPTIONS));
+  assert.strictEqual(r.label, 'F5- MYA S9');
+});
+
+test('[alias] le même alias EST appliqué sur sa propre campagne', () => {
+  const vieux = { 'miya s-9': { parcelle: 'S9 - REYNA F5', count: 9, campagne: '2025-2026' } };
+  const r = M.matchParcelle('miya S-9', OPTIONS, vieux, '2025-2026');
+  assert.strictEqual(r.status, 'alias');
+  assert.strictEqual(r.label, 'S9 - REYNA F5');
+});
+
+// `knownParcelle` a le DERNIER MOT : une valeur non sélectionnable ne doit
+// jamais être posée, quelle que soit sa provenance.
+test('[alias] un alias pointant une parcelle absente des options est ignoré', () => {
+  const perime = { 'm.t.l s-8': { parcelle: 'PARCELLE RETIREE DE LA CAMPAGNE', count: 5, campagne: CAMPAGNE } };
+  const r = M.matchParcelle('M.T.L S-8', OPTIONS, perime, CAMPAGNE);
+  assert.strictEqual(r.label, '');
+  assert.strictEqual(r.status, 'unmatched');
+  // Repli intégral sur la cascade, pas une sortie dégradée.
+  assert.deepStrictEqual(r, M.matchParcelle('M.T.L S-8', OPTIONS));
+});
+
+test('[alias] un alias périmé ne masque pas ce que la cascade sait faire', () => {
+  const perime = { 'marvilla s-3': { parcelle: 'PARCELLE INEXISTANTE', count: 3, campagne: CAMPAGNE } };
+  const r = M.matchParcelle('marvilla S-3', OPTIONS, perime, CAMPAGNE);
+  assert.strictEqual(r.label, 'S3 - MARAVILLA MOTTE F1');
+  assert.strictEqual(r.status, 'exact');
+});
+
+test('[alias] la clé est l\'en-tête NORMALISÉ (casse, accents, espaces)', () => {
+  const a = { 'm.t.l s-8': { parcelle: 'CASCADE MYRTILLE S8-1', count: 1, campagne: CAMPAGNE } };
+  for (const e of ['M.T.L S-8', 'm.t.l   s-8', '  M.T.L S-8  ']) {
+    assert.strictEqual(M.matchParcelle(e, OPTIONS, a, CAMPAGNE).label, 'CASCADE MYRTILLE S8-1', e);
+  }
+});
+
+test('[alias] en-tête vide : jamais d\'alias, même si la map porte la clé vide', () => {
+  const pollue = { '': { parcelle: 'S3 - MARAVILLA MOTTE F1', count: 1, campagne: CAMPAGNE } };
+  for (const e of ['', '   ', null, undefined]) {
+    const r = M.matchParcelle(e, OPTIONS, pollue, CAMPAGNE);
+    assert.strictEqual(r.label, '', String(e));
+    assert.strictEqual(r.status, 'unmatched', String(e));
+  }
+});
+
+test('[alias] entrée mal formée (parcelle vide / null / non objet) : ignorée', () => {
+  const cas = [
+    { 'marvilla s-3': { count: 3, campagne: CAMPAGNE } },
+    { 'marvilla s-3': { parcelle: '', count: 3, campagne: CAMPAGNE } },
+    { 'marvilla s-3': null },
+    { 'marvilla s-3': 0 },
+  ];
+  for (const a of cas) {
+    const r = M.matchParcelle('marvilla S-3', OPTIONS, a, CAMPAGNE);
+    assert.strictEqual(r.status, 'exact', JSON.stringify(a));
+    assert.strictEqual(r.label, 'S3 - MARAVILLA MOTTE F1');
+  }
+});
+
+test('[alias] aucune map / map vide / map non objet : comportement inchangé', () => {
+  const attendu = M.matchParcelle('marvilla S-3', OPTIONS);
+  for (const a of [undefined, null, {}, 'nope', 42]) {
+    assert.deepStrictEqual(M.matchParcelle('marvilla S-3', OPTIONS, a, CAMPAGNE), attendu, String(a));
+  }
+});
+
+test('[alias] aucune campagne passée : un alias daté reste appliqué (map déjà filtrée)', () => {
+  // La lecture serveur filtre déjà par campagne ; le contrôle de la fonction pure
+  // est un filet SUPPLÉMENTAIRE, il ne doit pas rendre la feature inopérante
+  // quand l'appelant ne passe pas la campagne.
+  const r = M.matchParcelle('M.T.L S-8', OPTIONS, ALIASES);
+  assert.strictEqual(r.status, 'alias');
+});
+
+test('[alias] un alias n\'est JAMAIS rendu en `exact` (jamais de pastille verte)', () => {
+  for (const e of Object.keys(ALIASES)) {
+    const r = M.matchParcelle(e, OPTIONS, ALIASES, CAMPAGNE);
+    assert.strictEqual(r.status, 'alias', e);
+    assert.notStrictEqual(r.status, 'exact', e);
+  }
+});
+
+// La branche alias testée DIRECTEMENT, garde par garde : passer par
+// matchParcelle ne suffit pas — son propre garde-fou « en-tête vide » masque
+// celui d'aliasMatch, qui resterait donc non couvert.
+test('[alias] aliasMatch — chaque garde vérifiée isolément', () => {
+  const opts = [{ label: 'F5- MYA S9' }, { label: 'S9 - REYNA F5' }];
+  const ok = { 'miya s-9': { parcelle: 'F5- MYA S9', count: 4, campagne: CAMPAGNE } };
+  assert.deepStrictEqual(M.aliasMatch(ok, 'Miya S-9', CAMPAGNE, opts),
+    { label: 'F5- MYA S9', score: 1, status: 'alias', candidats: [], aliasCount: 4 });
+  // en-tête vide : jamais de clé, même si la map en porte une
+  assert.strictEqual(M.aliasMatch({ '': { parcelle: 'F5- MYA S9', count: 1, campagne: CAMPAGNE } }, '', CAMPAGNE, opts), null);
+  // campagne étrangère
+  assert.strictEqual(M.aliasMatch({ 'miya s-9': { parcelle: 'F5- MYA S9', count: 4, campagne: '2025-2026' } }, 'Miya S-9', CAMPAGNE, opts), null);
+  // label hors liste rendue
+  assert.strictEqual(M.aliasMatch({ 'miya s-9': { parcelle: 'AUTRE', count: 4, campagne: CAMPAGNE } }, 'Miya S-9', CAMPAGNE, opts), null);
+  // entrées mal formées
+  assert.strictEqual(M.aliasMatch({ 'miya s-9': { count: 4, campagne: CAMPAGNE } }, 'Miya S-9', CAMPAGNE, opts), null);
+  assert.strictEqual(M.aliasMatch({}, 'Miya S-9', CAMPAGNE, opts), null);
+  assert.strictEqual(M.aliasMatch(null, 'Miya S-9', CAMPAGNE, opts), null);
+});
+
+test('[alias] le label rendu est TOUJOURS une option sélectionnable', () => {
+  const melange = Object.assign({ 'zzz inconnu': { parcelle: 'PAS DANS LA LISTE', count: 1, campagne: CAMPAGNE } }, ALIASES);
+  for (const e of ['M.T.L S-8', 'M.T.L S-13-14', 'zzz inconnu', 'marvilla S-3', 'S-9']) {
+    const r = M.matchParcelle(e, OPTIONS, melange, CAMPAGNE);
+    if (r.label) assert.ok(OPTIONS.includes(r.label), e + ' → ' + r.label);
+  }
+});
+
 // ----------------------------------------------------------- anti-divergence
 
 // La duplication front/back est imposée (le backend n'est pas servi au
@@ -330,6 +484,65 @@ const ENTETES_COMMUNES = [
   'S10 YAZMIN cut back', 'marvilla S-21', 'yasmin S-21', '', 'zzz',
 ];
 
+/**
+ * Alias de parcelle joués DANS les tests de parité : sans eux, la branche alias
+ * du backend pourrait disparaître sans qu'aucune fixture ne la traverse (la
+ * parité serait alors nominale sur cette nouvelle branche — exactement le défaut
+ * qu'on a déjà payé une fois sur la branche Avocatier).
+ * La map couvre les 4 chemins : appliqué / campagne étrangère / label hors liste
+ * / entrée mal formée.
+ */
+const ALIASES_PARITE = {
+  'marvilla s-3': { parcelle: 'S7 -MARAVILLA MOTTE F1', count: 3, campagne: CAMPAGNE },
+  'm.t.l s-8': { parcelle: 'CASCADE MYRTILLE S8-1', count: 1, campagne: CAMPAGNE },
+  'm.t.l s-3': { parcelle: 'F5- CASCADE -S13', count: 2, campagne: CAMPAGNE },
+  'yazmin s-11': { parcelle: 'F5 YAZMIN MT', count: 1, campagne: CAMPAGNE },
+  's-9': { parcelle: 'S9 - REYNA F5', count: 6, campagne: '2025-2026' },
+  'marvilla s-5': { parcelle: 'PARCELLE HORS LISTE', count: 4, campagne: CAMPAGNE },
+  'marvilla s-21': { parcelle: '', count: 1, campagne: CAMPAGNE },
+  'avocat f2': 'F2 - HAAS',
+};
+
+/**
+ * Compare le verdict FRONT et le verdict BACKEND pour un en-tête, D'ABORD sans
+ * alias puis avec la map de parité : le verdict complet (label, statut, score,
+ * candidats, compteur d'alias) doit être identique dans les deux régimes.
+ * @param {string} e
+ */
+function memeVerdict(e) {
+  [[undefined, undefined], [ALIASES_PARITE, CAMPAGNE]].forEach(([al, camp]) => {
+    const suffixe = ' pour « ' + e + ' »' + (al ? ' [avec alias]' : '');
+    const front = M.matchParcelle(e, OPTS_ELARGIS, al, camp);
+    const back = backend.matchParcelle(e, REFS_ELARGIS, al, camp);
+    assert.strictEqual(front.label, back.label, 'label' + suffixe);
+    assert.strictEqual(front.status, back.status, 'status' + suffixe);
+    // Le score fait partie du verdict : un `probable` à 0.8 d'un côté et 0.9 de
+    // l'autre est une divergence, même si le label et le statut concordent.
+    assert.strictEqual(front.score, back.score, 'score' + suffixe);
+    assert.deepStrictEqual(front.candidats, back.candidats, 'candidats' + suffixe);
+    assert.strictEqual(front.aliasCount, back.aliasCount, 'aliasCount' + suffixe);
+  });
+}
+
+/**
+ * Le backend applique-t-il la branche ALIAS et ses trois gardes ?
+ * ⚠️ ASSERTION, pas configuration (cf. le bloc ci-dessus) : le probe n'interroge
+ * PAS le même prédicat que celui qu'il garde — il vérifie un alias appliqué, un
+ * alias d'une autre campagne refusé et un alias hors liste refusé.
+ */
+const BACKEND_ALIAS = (() => {
+  try {
+    const refs = [{ label: 'S3 - MARAVILLA MOTTE F1' }, { label: 'S7 -MARAVILLA MOTTE F1' }];
+    const a = { 'marvilla s-3': { parcelle: 'S7 -MARAVILLA MOTTE F1', count: 3, campagne: CAMPAGNE } };
+    const hors = { 'marvilla s-3': { parcelle: 'PARCELLE HORS LISTE', count: 3, campagne: CAMPAGNE } };
+    return backend.matchParcelle('marvilla S-3', refs, a, CAMPAGNE).status === 'alias'
+      && backend.matchParcelle('marvilla S-3', refs, a, '2025-2026').status === 'exact'
+      && backend.matchParcelle('marvilla S-3', refs, hors, CAMPAGNE).status === 'exact';
+  } catch (e) {
+    return false;
+  }
+})();
+
 test('[fixture élargie] deux mono-parcelles de variétés différentes sur S21', () => {
   assert.strictEqual(M.matchParcelle('marvilla S-21', OPTS_ELARGIS).label, 'S21 - MARAVILLA MOTTE F1');
   assert.strictEqual(M.matchParcelle('yasmin S-21', OPTS_ELARGIS).label, 'S21 - YAZMIN MOW DOWN F1');
@@ -350,14 +563,11 @@ test('[fixture élargie] variété portée seulement par le nom affiché', () =>
 });
 
 test('[anti-divergence] secteur + variété : même verdict que le backend', () => {
-  for (const e of ENTETES_COMMUNES) {
-    const front = M.matchParcelle(e, OPTS_ELARGIS);
-    const back = backend.matchParcelle(e, REFS_ELARGIS);
-    assert.strictEqual(front.label, back.label, 'label pour « ' + e + ' »');
-    assert.strictEqual(front.status, back.status, 'status pour « ' + e + ' »');
-    assert.strictEqual(front.score, back.score, 'score pour « ' + e + ' »');
-    assert.deepStrictEqual(front.candidats, back.candidats, 'candidats pour « ' + e + ' »');
-  }
+  assert.ok(BACKEND_ALIAS,
+    'RÉGRESSION BACKEND : functions/lib/stock/bcScan.js n\'applique plus la branche ALIAS '
+    + 'et/ou ses gardes (campagne étrangère, label hors liste). La mémorisation des '
+    + 'parcelles doit exister DES DEUX CÔTÉS (lot A du spec scan-apprentissage).');
+  ENTETES_COMMUNES.forEach(memeVerdict);
 });
 
 test('[anti-divergence] culture + variété sans secteur : même verdict que le backend', () => {
@@ -365,16 +575,7 @@ test('[anti-divergence] culture + variété sans secteur : même verdict que le 
     'RÉGRESSION BACKEND : functions/lib/stock/bcScan.js n\'expose plus extractCulture. '
     + 'Le signal culture doit exister DES DEUX CÔTÉS (miroir livré en 6840996).');
   const gates = ['M.T.L S-13', 'myrtille S-13', 'M.T.L S-13-14', 'M.T.L S-8', 'yasmin niyas S-9'];
-  for (const e of gates) {
-    const front = M.matchParcelle(e, OPTS_ELARGIS);
-    const back = backend.matchParcelle(e, REFS_ELARGIS);
-    assert.strictEqual(front.label, back.label, 'label pour « ' + e + ' »');
-    assert.strictEqual(front.status, back.status, 'status pour « ' + e + ' »');
-    // Le score fait partie du verdict : un `probable` à 0.8 d'un côté et 0.9 de
-    // l'autre est une divergence, même si le label et le statut concordent.
-    assert.strictEqual(front.score, back.score, 'score pour « ' + e + ' »');
-    assert.deepStrictEqual(front.candidats, back.candidats, 'candidats pour « ' + e + ' »');
-  }
+  gates.forEach(memeVerdict);
 });
 
 test('[anti-divergence] gardes culture contredite / secteur inconnu : même verdict que le backend', () => {
@@ -388,14 +589,45 @@ test('[anti-divergence] gardes culture contredite / secteur inconnu : même verd
   const gates = ['M.T.L S-3', 'M.T.L S-1', 'M.T.L S-4', 'M.T.L S-7', 'myrtille S-3',
     'framboise S-3', 'yazmin S-11', 'yasmin niyas S-20', 'marvilla S-22', 'marvilla motte',
     'avocat F2', 'avocatier S-3', 'avocat S-13'];
-  for (const e of gates) {
-    const front = M.matchParcelle(e, OPTS_ELARGIS);
-    const back = backend.matchParcelle(e, REFS_ELARGIS);
-    assert.strictEqual(front.label, back.label, 'label pour « ' + e + ' »');
-    assert.strictEqual(front.status, back.status, 'status pour « ' + e + ' »');
-    assert.strictEqual(front.score, back.score, 'score pour « ' + e + ' »');
-    assert.deepStrictEqual(front.candidats, back.candidats, 'candidats pour « ' + e + ' »');
-  }
+  gates.forEach(memeVerdict);
+});
+
+// La branche ALIAS traversée en parité sur ses QUATRE chemins, avec le détail de
+// ce qui est attendu — sans quoi « les deux implémentations sont d'accord »
+// pourrait vouloir dire « aucune des deux n'applique l'alias ».
+test('[anti-divergence] branche alias : mêmes verdicts ET verdicts attendus', () => {
+  ['marvilla S-3', 'M.T.L S-8', 'M.T.L S-3', 'yazmin S-11', 'S-9', 'marvilla S-5',
+    'marvilla S-21', 'avocat F2', ''].forEach(memeVerdict);
+  const av = (e) => M.matchParcelle(e, OPTS_ELARGIS, ALIASES_PARITE, CAMPAGNE);
+  // 1. appliqué, et il PRIME sur une cascade qui trancherait autrement.
+  assert.strictEqual(av('marvilla S-3').label, 'S7 -MARAVILLA MOTTE F1');
+  assert.strictEqual(av('marvilla S-3').status, 'alias');
+  assert.strictEqual(M.matchParcelle('marvilla S-3', OPTS_ELARGIS).label, 'S3 - MARAVILLA MOTTE F1');
+  // 2. il résout un en-tête que la cascade laisse ouvert.
+  assert.strictEqual(av('M.T.L S-8').status, 'alias');
+  assert.strictEqual(M.matchParcelle('M.T.L S-8', OPTS_ELARGIS).status, 'unmatched');
+  // 3. campagne étrangère → ignoré, repli sur la cascade.
+  assert.deepStrictEqual(av('S-9'), M.matchParcelle('S-9', OPTS_ELARGIS));
+  // 4. label hors liste / parcelle vide → ignorés, repli sur la cascade.
+  assert.deepStrictEqual(av('marvilla S-5'), M.matchParcelle('marvilla S-5', OPTS_ELARGIS));
+  assert.deepStrictEqual(av('marvilla S-21'), M.matchParcelle('marvilla S-21', OPTS_ELARGIS));
+});
+
+test('[anti-divergence] aliasMatch front et aliasMatchParcelle backend : mêmes gardes', () => {
+  const opts = [{ label: 'F5- MYA S9' }, { label: 'S9 - REYNA F5' }];
+  const cas = [
+    [{ 'miya s-9': { parcelle: 'F5- MYA S9', count: 4, campagne: CAMPAGNE } }, 'Miya S-9', CAMPAGNE],
+    [{ 'miya s-9': { parcelle: 'F5- MYA S9', count: 4, campagne: '2025-2026' } }, 'Miya S-9', CAMPAGNE],
+    [{ 'miya s-9': { parcelle: 'HORS LISTE', count: 4, campagne: CAMPAGNE } }, 'Miya S-9', CAMPAGNE],
+    [{ 'miya s-9': 'S9 - REYNA F5' }, 'Miya S-9', CAMPAGNE],
+    [{ '': { parcelle: 'F5- MYA S9', count: 1, campagne: CAMPAGNE } }, '', CAMPAGNE],
+    [{ 'miya s-9': { parcelle: '', count: 1, campagne: CAMPAGNE } }, 'Miya S-9', CAMPAGNE],
+    [null, 'Miya S-9', CAMPAGNE],
+  ];
+  cas.forEach(([map, entete, camp], i) => {
+    assert.deepStrictEqual(M.aliasMatch(map, entete, camp, opts),
+      backend.aliasMatchParcelle(map, entete, camp, opts), 'cas ' + i);
+  });
 });
 
 test('un seul global exposé, aucun identifiant top-level', () => {
