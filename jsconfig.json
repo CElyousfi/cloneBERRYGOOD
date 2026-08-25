@@ -23,7 +23,8 @@
     "public/lib/**/*.js",
     "functions/lib/**/*.js",
     "tests/unit/**/*.js",
-    "src/**/*.js"
+    "src/**/*.js",
+    "src/**/*.jsx"
   ],
   "exclude": [
     "**/node_modules",

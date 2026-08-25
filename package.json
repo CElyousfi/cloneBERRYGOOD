@@ -16,7 +16,9 @@
     "deploy:functions": "bash scripts/deploy.sh functions",
     "deploy:hosting": "bash scripts/deploy.sh hosting",
     "dev": "vite --config vite.config.js",
-    "build:vite": "vite build --config vite.config.js"
+    "build:vite": "vite build --config vite.config.js",
+    "test:finance": "node --test 'functions/lib/finance/__tests__/*.test.js'",
+    "test:all": "node --test 'tests/unit/**/*.test.js' 'functions/lib/finance/__tests__/*.test.js'"
   },
   "keywords": [],
   "author": "",

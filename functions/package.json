@@ -23,7 +23,10 @@
     "shell": "firebase functions:shell",
     "start": "npm run shell",
     "deploy": "firebase deploy --only functions",
-    "logs": "firebase functions:log"
+    "logs": "firebase functions:log",
+    "test:qualite": "node --test 'lib/qualite/__tests__/*.test.js'",
+    "test:achats": "node --test 'lib/achats/__tests__/*.test.js'",
+    "test:rh": "node --test lib/rh/__tests__/*.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
