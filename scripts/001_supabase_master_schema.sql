@@ -4,8 +4,7 @@
 -- Target Project: eqopexrgcottuzfkywgi.supabase.co
 -- ============================================================
 
--- 1. Helper Functions
-
+-- 1. Helper Function for Auto-Updating updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -14,21 +13,12 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION current_user_profile()
-RETURNS TEXT LANGUAGE sql STABLE AS $$
-  SELECT current_setting('app.user_profile', true);
-$$;
-
-CREATE OR REPLACE FUNCTION current_user_role()
-RETURNS TEXT LANGUAGE sql STABLE AS $$
-  SELECT current_setting('app.user_role', true);
-$$;
-
 
 -- ============================================================
--- 2. FINANCE DOMAIN TABLES
+-- 2. FINANCE & QUALITÉ DOMAIN TABLES & TRIGGERS (Self-Contained)
 -- ============================================================
 
+-- 1. Invoices
 CREATE TABLE IF NOT EXISTS invoices (
     id                        SERIAL PRIMARY KEY,
     firestore_id              TEXT UNIQUE,
@@ -51,7 +41,10 @@ CREATE TABLE IF NOT EXISTS invoices (
     updated_at                TIMESTAMPTZ DEFAULT now(),
     created_by                TEXT
 );
+CREATE OR REPLACE TRIGGER trg_invoices_upd BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 2. Caisse Transactions
 CREATE TABLE IF NOT EXISTS caisse_transactions (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -66,7 +59,10 @@ CREATE TABLE IF NOT EXISTS caisse_transactions (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_caisse_upd BEFORE UPDATE ON caisse_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 3. Virements
 CREATE TABLE IF NOT EXISTS virements (
     id             SERIAL PRIMARY KEY,
     firestore_id   TEXT UNIQUE,
@@ -81,7 +77,10 @@ CREATE TABLE IF NOT EXISTS virements (
     updated_at     TIMESTAMPTZ DEFAULT now(),
     created_by     TEXT
 );
+CREATE OR REPLACE TRIGGER trg_virements_upd BEFORE UPDATE ON virements FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 4. Ojra Payroll
 CREATE TABLE IF NOT EXISTS ojra_payroll (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -100,7 +99,10 @@ CREATE TABLE IF NOT EXISTS ojra_payroll (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_ojra_upd BEFORE UPDATE ON ojra_payroll FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 5. Liquidations
 CREATE TABLE IF NOT EXISTS liquidations (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -117,7 +119,10 @@ CREATE TABLE IF NOT EXISTS liquidations (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_liquidations_upd BEFORE UPDATE ON liquidations FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 6. Encaissements
 CREATE TABLE IF NOT EXISTS encaissements (
     id                SERIAL PRIMARY KEY,
     firestore_id      TEXT UNIQUE,
@@ -131,7 +136,10 @@ CREATE TABLE IF NOT EXISTS encaissements (
     updated_at        TIMESTAMPTZ DEFAULT now(),
     created_by        TEXT
 );
+CREATE OR REPLACE TRIGGER trg_encaissements_upd BEFORE UPDATE ON encaissements FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 7. Comptes Clients
 CREATE TABLE IF NOT EXISTS comptes_clients (
     id             SERIAL PRIMARY KEY,
     firestore_id   TEXT UNIQUE,
@@ -145,7 +153,10 @@ CREATE TABLE IF NOT EXISTS comptes_clients (
     updated_at     TIMESTAMPTZ DEFAULT now(),
     created_by     TEXT
 );
+CREATE OR REPLACE TRIGGER trg_comptes_clients_upd BEFORE UPDATE ON comptes_clients FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 8. Codes Analytiques
 CREATE TABLE IF NOT EXISTS codes_analytiques (
     id         SERIAL PRIMARY KEY,
     code       TEXT UNIQUE,
@@ -157,7 +168,10 @@ CREATE TABLE IF NOT EXISTS codes_analytiques (
     updated_at TIMESTAMPTZ DEFAULT now(),
     created_by TEXT
 );
+CREATE OR REPLACE TRIGGER trg_codes_ana_upd BEFORE UPDATE ON codes_analytiques FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 9. Budget Campagne
 CREATE TABLE IF NOT EXISTS budget_campagne (
     id              SERIAL PRIMARY KEY,
     firestore_id    TEXT UNIQUE,
@@ -172,7 +186,10 @@ CREATE TABLE IF NOT EXISTS budget_campagne (
     updated_at      TIMESTAMPTZ DEFAULT now(),
     created_by      TEXT
 );
+CREATE OR REPLACE TRIGGER trg_budget_upd BEFORE UPDATE ON budget_campagne FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 10. Fuel Transactions
 CREATE TABLE IF NOT EXISTS fuel_transactions (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -188,7 +205,10 @@ CREATE TABLE IF NOT EXISTS fuel_transactions (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_fuel_upd BEFORE UPDATE ON fuel_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 11. Telecom Bills
 CREATE TABLE IF NOT EXISTS telecom_bills (
     id              SERIAL PRIMARY KEY,
     firestore_id    TEXT UNIQUE,
@@ -203,12 +223,10 @@ CREATE TABLE IF NOT EXISTS telecom_bills (
     updated_at      TIMESTAMPTZ DEFAULT now(),
     created_by      TEXT
 );
+CREATE OR REPLACE TRIGGER trg_telecom_upd BEFORE UPDATE ON telecom_bills FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
--- ============================================================
--- 3. QUALITÉ DOMAIN TABLES
--- ============================================================
-
+-- 12. Inspections
 CREATE TABLE IF NOT EXISTS inspections (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -224,7 +242,10 @@ CREATE TABLE IF NOT EXISTS inspections (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_inspections_upd BEFORE UPDATE ON inspections FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 13. Expeditions
 CREATE TABLE IF NOT EXISTS expeditions (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -243,7 +264,10 @@ CREATE TABLE IF NOT EXISTS expeditions (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_expeditions_upd BEFORE UPDATE ON expeditions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 14. Ecarts
 CREATE TABLE IF NOT EXISTS ecarts (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -259,7 +283,10 @@ CREATE TABLE IF NOT EXISTS ecarts (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_ecarts_upd BEFORE UPDATE ON ecarts FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 15. Brix Readings
 CREATE TABLE IF NOT EXISTS brix_readings (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -273,7 +300,10 @@ CREATE TABLE IF NOT EXISTS brix_readings (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_brix_upd BEFORE UPDATE ON brix_readings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 16. Bons d'Apport
 CREATE TABLE IF NOT EXISTS bons_apport (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -290,7 +320,10 @@ CREATE TABLE IF NOT EXISTS bons_apport (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_bons_apport_upd BEFORE UPDATE ON bons_apport FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+
+-- 17. PFQ Records
 CREATE TABLE IF NOT EXISTS pfq_records (
     id               SERIAL PRIMARY KEY,
     firestore_id     TEXT UNIQUE,
@@ -304,10 +337,11 @@ CREATE TABLE IF NOT EXISTS pfq_records (
     updated_at       TIMESTAMPTZ DEFAULT now(),
     created_by       TEXT
 );
+CREATE OR REPLACE TRIGGER trg_pfq_upd BEFORE UPDATE ON pfq_records FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
 -- ============================================================
--- 4. INDEXES
+-- 3. INDEXES
 -- ============================================================
 
 CREATE INDEX IF NOT EXISTS idx_invoices_ferme          ON invoices(ferme);
@@ -319,7 +353,6 @@ CREATE INDEX IF NOT EXISTS idx_virements_ferme         ON virements(ferme);
 CREATE INDEX IF NOT EXISTS idx_ojra_payroll_ferme      ON ojra_payroll(ferme);
 CREATE INDEX IF NOT EXISTS idx_liquidations_ferme      ON liquidations(ferme);
 CREATE INDEX IF NOT EXISTS idx_encaissements_ferme     ON encaissements(ferme);
-
 CREATE INDEX IF NOT EXISTS idx_inspections_ferme       ON inspections(ferme);
 CREATE INDEX IF NOT EXISTS idx_expeditions_ferme       ON expeditions(ferme);
 CREATE INDEX IF NOT EXISTS idx_ecarts_ferme            ON ecarts(ferme);
@@ -327,29 +360,6 @@ CREATE INDEX IF NOT EXISTS idx_brix_ferme              ON brix_readings(ferme);
 CREATE INDEX IF NOT EXISTS idx_bons_apport_ferme       ON bons_apport(ferme);
 CREATE INDEX IF NOT EXISTS idx_pfq_records_ferme       ON pfq_records(ferme);
 
-
 -- ============================================================
--- 5. UPDATED_AT TRIGGERS (Using CREATE OR REPLACE TRIGGER)
--- ============================================================
-
-CREATE OR REPLACE TRIGGER trg_invoices_upd         BEFORE UPDATE ON invoices         FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_caisse_upd           BEFORE UPDATE ON caisse_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_virements_upd        BEFORE UPDATE ON virements        FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_ojra_upd             BEFORE UPDATE ON ojra_payroll     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_liquidations_upd     BEFORE UPDATE ON liquidations     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_encaissements_upd    BEFORE UPDATE ON encaissements    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_comptes_clients_upd  BEFORE UPDATE ON comptes_clients  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_codes_ana_upd        BEFORE UPDATE ON codes_analytiques FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_budget_upd           BEFORE UPDATE ON budget_campagne  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_fuel_upd             BEFORE UPDATE ON fuel_transactions FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_telecom_upd          BEFORE UPDATE ON telecom_bills     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_inspections_upd      BEFORE UPDATE ON inspections      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_expeditions_upd      BEFORE UPDATE ON expeditions      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_ecarts_upd           BEFORE UPDATE ON ecarts           FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_brix_upd             BEFORE UPDATE ON brix_readings     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_bons_apport_upd      BEFORE UPDATE ON bons_apport      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE OR REPLACE TRIGGER trg_pfq_upd              BEFORE UPDATE ON pfq_records      FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-
--- ============================================================
--- Done. All 17 tables created cleanly in Public schema with CREATE OR REPLACE TRIGGER.
+-- Done. Each table and its trigger are defined together in self-contained blocks.
 -- ============================================================
