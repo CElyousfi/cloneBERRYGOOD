@@ -1,7 +1,11 @@
--- 001_schema.sql
-CREATE SCHEMA IF NOT EXISTS finance;
+-- ============================================================
+-- Smart BERRY — Finance Schema
+-- Idempotent: safe to run multiple times.
+-- Apply via: Supabase SQL Editor → paste → Run ►
+-- ============================================================
 
-SET search_path = finance, public;
+-- 1. Create schema
+CREATE SCHEMA IF NOT EXISTS finance;
 
 CREATE OR REPLACE FUNCTION finance.update_updated_at() RETURNS trigger AS $$
 BEGIN
