@@ -4,6 +4,7 @@
  * Renders the new modular React application shell inspired by the Bonsai UI aesthetic.
  */
 import './shared/utils/globalsInit.js';
+import './shared/components/LegacyHelpers.jsx';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from './App.jsx';
