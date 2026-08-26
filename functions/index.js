@@ -17,6 +17,7 @@ const caisseImport = require("./lib/caisseImport");
 const { computeSoldeDelta, isTypeEditable } = require("./lib/caisse/soldeDelta");
 const { periodesAVerifier } = require("./lib/caisse/rapprochementLock");
 const { computeChanges } = require("./lib/caisse/txDiff");
+const caisseAxes = require("./lib/caisse/champsAnalytiques");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
@@ -15322,8 +15323,13 @@ exports.caisseManagement = functions
       if (action === "create-transaction" && req.method === "POST") {
         if (!isSaisie && !isAdmin) return res.status(403).json({ success: false, error: "Seul le service Achats peut saisir des transactions" });
         const { caisse_id, type, montant, reference, description, code_analytique, date, files, submit,
-          matricule, beneficiaire_nom } = req.body;
+          matricule, beneficiaire_nom, ferme, culture, parcelle } = req.body;
         if (!caisse_id || !type || !montant || !date) return res.status(400).json({ success: false, error: "caisse_id, type, montant et date sont requis" });
+        // Axes analytiques (facultatifs) : ferme / campagne / culture / parcelle.
+        // La campagne n'est jamais reçue du client : elle est DÉRIVÉE de la date,
+        // pour qu'un bon dont on corrige la date change de campagne tout seul.
+        const axesErr = caisseAxes.validateAxes({ ferme, culture });
+        if (axesErr) return res.status(400).json({ success: false, error: axesErr });
         if (!["alimentation", "depense", "sortie", "paie", "transport"].includes(type)) return res.status(400).json({ success: false, error: "Type invalide" });
         if (montant <= 0) return res.status(400).json({ success: false, error: "Le montant doit être positif" });
 
@@ -15340,6 +15346,8 @@ exports.caisseManagement = functions
           caisse_id, type, montant: parseFloat(montant), reference: refNum,
           description: description || "", code_analytique: code_analytique || "",
           matricule: matricule || "", beneficiaire_nom: beneficiaire_nom || "",
+          ferme: ferme || "", culture: culture || "", parcelle: parcelle || "",
+          campagne: caisseAxes.campagneOf(date),
           date, status, files: (files || []).slice(0, 3), // Max 3 files
           saisie_by: userInfo, created_at: now, updated_at: now,
           history: [{ action: "creation", by: userInfo, at: Date.now() }],
@@ -15494,8 +15502,10 @@ exports.caisseManagement = functions
       if (action === "update-transaction" && req.method === "POST") {
         if (!isSaisie && !isControle && !isAdmin) return res.status(403).json({ success: false, error: "Accès non autorisé à la modification de transactions" });
         const { id, caisse_id, type, montant, description, code_analytique, date, files,
-          matricule, beneficiaire_nom } = req.body;
+          matricule, beneficiaire_nom, ferme, culture, parcelle } = req.body;
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
+        const axesErr = caisseAxes.validateAxes({ ferme, culture });
+        if (axesErr) return res.status(400).json({ success: false, error: axesErr });
 
         const txRef = db_firestore.collection("caisse_transactions").doc(id);
         const doc = await txRef.get();
@@ -15547,6 +15557,15 @@ exports.caisseManagement = functions
         if (matricule !== undefined) patch.matricule = matricule;
         if (beneficiaire_nom !== undefined) patch.beneficiaire_nom = beneficiaire_nom;
         if (files !== undefined) patch.files = (files || []).slice(0, 3);
+        if (ferme !== undefined) patch.ferme = ferme;
+        if (culture !== undefined) patch.culture = culture;
+        if (parcelle !== undefined) patch.parcelle = parcelle;
+        // Campagne DÉRIVÉE de la date, jamais saisie : corriger la date d'un bon
+        // le fait changer de campagne automatiquement. Recalculée aussi quand la
+        // date ne bouge pas, pour rattraper les bons créés avant ce champ.
+        if (patch.date !== undefined || !current.campagne) {
+          patch.campagne = caisseAxes.campagneOf(patch.date !== undefined ? patch.date : current.date);
+        }
 
         const changes = computeChanges(current, patch);
         if (changes.length === 0) {

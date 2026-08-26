@@ -59344,6 +59344,7 @@ ${rejetHtml}
             date: 'Date', montant: 'Montant', type: 'Type', caisse_id: 'Caisse',
             code_analytique: 'Code analytique', description: 'Description',
             matricule: 'Matricule', beneficiaire_nom: 'Bénéficiaire', files: 'Pièces jointes',
+            ferme: 'Ferme', campagne: 'Campagne', culture: 'Culture', parcelle: 'Parcelle',
         };
 
         function formatMAD(n) { return (n || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' DH'; }
@@ -60291,6 +60292,11 @@ ${rejetHtml}
                     if (key === 'code_analytique') return (tx.code_analytique || '').toLowerCase();
                     if (key === 'montant')         return Number(tx.montant) || 0;
                     if (key === 'status')          return (STATUS_LABELS[tx.status] || {}).label || tx.status || '';
+                    // Axes analytiques (ferme / campagne / culture / parcelle)
+                    if (key === 'ferme')           return (tx.ferme || '').toLowerCase();
+                    if (key === 'campagne')        return tx.campagne || '';
+                    if (key === 'culture')         return (tx.culture || '').toLowerCase();
+                    if (key === 'parcelle')        return (tx.parcelle || '').toLowerCase();
                     return '';
                 };
                 const indexed = controlFiltered.map((tx, i) => ({ tx, i, k: getKey(tx) }));
@@ -60422,6 +60428,7 @@ ${rejetHtml}
                     Date: tx.date, Caisse: caisses.find(c=>c.id===tx.caisse_id)?.nom||tx.caisse_id,
                     Type: TXN_TYPE_LABELS[tx.type]?.label||tx.type, Référence: tx.reference,
                     Description: tx.description, Montant: tx.montant, 'Code Analytique': tx.code_analytique, Statut: STATUS_LABELS[tx.status]?.label||tx.status,
+                    Ferme: tx.ferme||'', Campagne: tx.campagne||'', Culture: tx.culture||'', Parcelle: tx.parcelle||'',
                     'Saisi par': tx.saisie_by?.name||'',
                 })));
                 const wb = XLSX.utils.book_new();
@@ -60594,6 +60601,10 @@ ${rejetHtml}
                     Montant: tx.montant,
                     'Code Analytique': tx.code_analytique,
                     Statut: (STATUS_LABELS[tx.status] || {}).label || tx.status,
+                    Ferme: tx.ferme || '',
+                    Campagne: tx.campagne || '',
+                    Culture: tx.culture || '',
+                    Parcelle: tx.parcelle || '',
                     'Saisi par': (tx.saisie_by && tx.saisie_by.name) || '',
                 })));
                 const wb = XLSX.utils.book_new();
@@ -60799,6 +60810,12 @@ ${rejetHtml}
                                                 { key: 'reference',       label: 'Réf.',        align: 'left'  },
                                                 { key: 'description',     label: 'Description', align: 'left'  },
                                                 { key: 'code_analytique', label: 'Analytique',  align: 'left'  },
+                                                { key: 'ferme',           label: 'Ferme',       align: 'left'  },
+                                                // Campagne volontairement ABSENTE du tableau : déductible de
+                                                // la colonne Date, elle ne payait pas sa largeur. Elle reste
+                                                // dans le détail, l'export et la recherche.
+                                                { key: 'culture',         label: 'Culture',     align: 'left'  },
+                                                { key: 'parcelle',        label: 'Parcelle',    align: 'left'  },
                                                 { key: 'montant',         label: 'Montant',     align: 'right' },
                                                 { key: 'status',          label: 'Statut',      align: 'center'},
                                             ];
@@ -60866,6 +60883,9 @@ ${rejetHtml}
                                                     <td style={{padding:'10px 12px',fontSize:11,fontFamily:'monospace'}}>{tx.reference}</td>
                                                     <td style={{padding:'10px 12px',maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tx.description}</td>
                                                     <td style={{padding:'10px 12px',fontSize:11}}>{tx.code_analytique}</td>
+                                                    <td style={{padding:'10px 12px',fontSize:11,whiteSpace:'nowrap'}}>{tx.ferme||''}</td>
+                                                    <td style={{padding:'10px 12px',fontSize:11,whiteSpace:'nowrap'}}>{tx.culture||''}</td>
+                                                    <td style={{padding:'10px 12px',fontSize:11,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={tx.parcelle||''}>{tx.parcelle||''}</td>
                                                     <td style={{padding:'10px 12px',textAlign:'right',fontWeight:600,color:['depense','sortie','transfer_out'].includes(tx.type)?'var(--red)':'var(--green)'}}>
                                                         {['depense','sortie','transfer_out'].includes(tx.type)?'-':'+'}{formatMAD(tx.montant)}
                                                     </td>
@@ -60880,7 +60900,8 @@ ${rejetHtml}
                                     {/* Sticky footer — totaux suivent les filtres */}
                                     <tfoot>
                                         <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
-                                            <td colSpan={11} style={{padding:'12px 14px',fontSize:12}}>
+                                            {/* 14 = ⚠ + case à cocher + 11 colonnes triables + « Saisi par » */}
+                                            <td colSpan={14} style={{padding:'12px 14px',fontSize:12}}>
                                                 <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
                                                     <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
                                                     <span style={{color:'var(--gray-400)'}}>·</span>
@@ -60920,6 +60941,11 @@ ${rejetHtml}
                                     <div><span style={{color:'var(--gray-400)',fontSize:11}}>Statut</span><div>{(() => { const s = STATUS_LABELS[selectedTx.status]||{}; return <span style={{padding:'3px 10px',borderRadius:12,background:s.bg||'#eee',color:s.color||'#333',fontSize:11,fontWeight:600}}>{s.label||selectedTx.status}</span>; })()}</div></div>
                                     <div style={{gridColumn:'1/-1'}}><span style={{color:'var(--gray-400)',fontSize:11}}>Description</span><div>{selectedTx.description || '—'}</div></div>
                                     {selectedTx.code_analytique && <div style={{gridColumn:'1/-1'}}><span style={{color:'var(--gray-400)',fontSize:11}}>Code Analytique</span><div>{selectedTx.code_analytique}</div></div>}
+                                    {/* Axes analytiques — affichés même vides, pour signaler un bon non affecté */}
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Ferme</span><div>{selectedTx.ferme || '—'}</div></div>
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Campagne</span><div>{selectedTx.campagne || '—'}</div></div>
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Culture</span><div>{selectedTx.culture || '—'}</div></div>
+                                    <div><span style={{color:'var(--gray-400)',fontSize:11}}>Parcelle</span><div>{selectedTx.parcelle || '—'}</div></div>
                                     <div><span style={{color:'var(--gray-400)',fontSize:11}}>Saisi par</span><div>{selectedTx.saisie_by?.name||'—'}</div></div>
                                     {selectedTx.valide_par && <div><span style={{color:'var(--gray-400)',fontSize:11}}>Validé par</span><div>{selectedTx.valide_par?.name||'—'}</div></div>}
                                     {selectedTx.rejete_par && <div style={{gridColumn:'1/-1'}}><span style={{color:'var(--gray-400)',fontSize:11}}>Rejeté par</span><div>{selectedTx.rejete_par?.name||'—'} — <em style={{color:'var(--red)'}}>{selectedTx.motif_rejet}</em></div></div>}

@@ -31,7 +31,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 37,
+        "commits": 38,
         "file": "public/app.jsx"
       },
       {
@@ -43,7 +43,7 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 15,
+        "commits": 17,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:15fcd65cb9c634a3",
+    "sourceFingerprint": "sha256:6140e2d5d14473e0",
     "stats": {
       "backendModules": 95,
       "cloudFunctions": 91,
@@ -2990,7 +2990,7 @@
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63539
+      "line": 63565
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
@@ -3065,7 +3065,7 @@
     "CaisseTab": {
       "domain": "caisse",
       "file": "public/app.jsx",
-      "line": 59879
+      "line": 59880
     },
     "CampagneTab": {
       "domain": "referentiel",
@@ -3120,7 +3120,7 @@
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 62805
+      "line": 62831
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -3130,27 +3130,27 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 63895
+      "line": 63921
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64862
+      "line": 64888
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66100
+      "line": 66126
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65564
+      "line": 65590
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64412
+      "line": 64438
     },
     "DGValidationsTab": {
       "domain": "pointage",
@@ -3180,7 +3180,7 @@
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66241
+      "line": 66267
     },
     "FinBDCTab": {
       "domain": "achats",
@@ -3375,7 +3375,7 @@
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66715
+      "line": 66741
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
@@ -3505,7 +3505,7 @@
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65242
+      "line": 65268
     },
     "SuiviTab": {
       "domain": null,

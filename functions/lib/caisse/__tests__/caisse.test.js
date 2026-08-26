@@ -190,3 +190,64 @@ test('computeChanges — entrées vides ne plantent pas', () => {
   assert.deepStrictEqual(computeChanges(undefined, { montant: 10 }),
     [{ field: 'montant', from: 0, to: 10 }]);
 });
+
+// -------------------------------------------------------- champsAnalytiques
+
+const axes = require('../champsAnalytiques');
+
+test('campagneOf — bascule au 1er juillet', () => {
+  assert.strictEqual(axes.campagneOf('2026-06-30'), '2025-2026');
+  assert.strictEqual(axes.campagneOf('2026-07-01'), '2026-2027');
+  assert.strictEqual(axes.campagneOf('2026-08-26'), '2026-2027');
+  assert.strictEqual(axes.campagneOf('2026-12-31'), '2026-2027');
+  assert.strictEqual(axes.campagneOf('2027-01-01'), '2026-2027');
+});
+
+test('campagneOf — aligné sur public/lib/campagneUtils.js (même règle juillet)', () => {
+  const ref = (d) => { const m = d.match(/^(\d{4})-(\d{2})/); const y = +m[1], mo = +m[2]; const s = mo >= 7 ? y : y - 1; return s + '-' + (s + 1); };
+  for (const d of ['2025-07-01', '2026-01-15', '2026-06-30', '2026-07-01', '2027-03-09']) {
+    assert.strictEqual(axes.campagneOf(d), ref(d), `date ${d}`);
+  }
+});
+
+test('campagneOf — entrées invalides → chaîne vide', () => {
+  for (const bad of ['', 'nawak', '26-07-01', null, undefined, 42, '2026-13-01']) {
+    assert.strictEqual(axes.campagneOf(bad), '', `entrée ${String(bad)}`);
+  }
+});
+
+test('validateAxes — les 4 axes sont facultatifs', () => {
+  assert.strictEqual(axes.validateAxes({}), null);
+  assert.strictEqual(axes.validateAxes({ ferme: '', culture: '', campagne: '' }), null);
+  assert.strictEqual(axes.validateAxes(null), null);
+});
+
+test('validateAxes — fermes acceptées et refusées', () => {
+  for (const f of axes.FERMES) assert.strictEqual(axes.validateAxes({ ferme: f }), null, `ferme ${f}`);
+  assert.match(axes.validateAxes({ ferme: 'F7' }), /Ferme invalide/);
+  assert.match(axes.validateAxes({ ferme: 'f1' }), /Ferme invalide/);
+});
+
+test('validateAxes — cultures acceptées et refusées', () => {
+  for (const v of axes.CULTURES) assert.strictEqual(axes.validateAxes({ culture: v }), null, `culture ${v}`);
+  assert.match(axes.validateAxes({ culture: 'Fraise' }), /Culture invalide/);
+});
+
+test('validateAxes — format de campagne', () => {
+  assert.strictEqual(axes.validateAxes({ campagne: '2026-2027' }), null);
+  assert.match(axes.validateAxes({ campagne: '2026' }), /Campagne invalide/);
+  assert.match(axes.validateAxes({ campagne: '2026-07' }), /Campagne invalide/);
+});
+
+test('validateAxes — la parcelle est libre (libellé BEE ONE ou GENERAL)', () => {
+  assert.strictEqual(axes.validateAxes({ parcelle: 'F5 CORINA myrtille S8-3' }), null);
+  assert.strictEqual(axes.validateAxes({ parcelle: axes.PARCELLE_GENERAL }), null);
+});
+
+test('computeChanges — les 4 axes analytiques sont tracés', () => {
+  const changes = computeChanges(
+    { ferme: '', campagne: '', culture: '', parcelle: '' },
+    { ferme: 'F5', campagne: '2026-2027', culture: 'Myrtille', parcelle: 'GENERAL' }
+  );
+  assert.deepStrictEqual(changes.map((c) => c.field), ['ferme', 'campagne', 'culture', 'parcelle']);
+});

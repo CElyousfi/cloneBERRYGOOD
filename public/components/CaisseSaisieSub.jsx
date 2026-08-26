@@ -40,6 +40,35 @@
     return window.TXN_TYPE_LABELS || CSAI_FALLBACK_TYPES;
   }
 
+  // ---- Axes analytiques : ferme / campagne / culture / parcelle ------------
+  // Les 4 champs sont FACULTATIFS (les bons existants n'en portent aucun).
+  // La campagne n'est jamais saisie : elle est DÉRIVÉE de la date du bon.
+  // La parcelle est filtrée par CULTURE + CAMPAGNE, exactement comme dans les
+  // Bons de Consommation (MagBCTab). La FERME n'alimente PAS cette liste : elle
+  // est déduite de la parcelle choisie.
+  const CSAI_FERMES = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'BAHIA', 'BGF'];
+  const CSAI_CULTURES_FALLBACK = ['Framboise', 'Myrtille', 'Avocatier'];
+  const CSAI_GENERAL = 'GENERAL';
+
+  /** Campagne agricole d'une date (bascule au 1er juillet). */
+  function CSAI_campagneOf(dateStr) {
+    if (window.CampagneUtils && window.CampagneUtils.campagneOf) {
+      return window.CampagneUtils.campagneOf(dateStr) || '';
+    }
+    const m = (dateStr || '').match(/^(\d{4})-(\d{2})/);
+    if (!m) return '';
+    const y = +m[1], mo = +m[2];
+    const start = mo >= 7 ? y : y - 1;
+    return start + '-' + (start + 1);
+  }
+
+  /** Prédicat de filtre culture — lib absente ou filtre vide → on ne filtre pas. */
+  function CSAI_cultureOk(parcelle, filtre, sbMap) {
+    const CU = window.CultureUtils;
+    if (!CU || !filtre) return true;
+    return CU.matchesCulture(parcelle, filtre, sbMap);
+  }
+
   function CaisseSaisieSub({ caisses, onDone, onCancel, defaultType, defaultCaisseId, editTx }) {
     const CSAI_isEdit = !!(editTx && editTx.id);
     const CSAI_wasValide = CSAI_isEdit && editTx.status === 'valide';
@@ -55,21 +84,82 @@
       files: Array.isArray(editTx.files) ? editTx.files.slice(0, 3) : [],
       matricule: editTx.matricule || '',
       beneficiaire_nom: editTx.beneficiaire_nom || '',
+      ferme: editTx.ferme || '',
+      culture: editTx.culture || '',
+      parcelle: editTx.parcelle || '',
     } : {
       caisse_id: defaultCaisseId || (caisses[0] && caisses[0].id) || '',
       type: defaultType || 'depense',
       montant: '', reference: '', description: '', code_analytique: '',
       date: new Date().toISOString().slice(0, 10),
       files: [], matricule: '', beneficiaire_nom: '',
+      ferme: '', culture: '', parcelle: '',
     }));
     const [saving, setSaving] = useState(false);
     const [codesAnalytiques, setCodesAnalytiques] = useState([]);
+    // Parcelles de la campagne courante / précédente (même source que les Bons
+    // de Consommation : action parcelles-campagne-list).
+    const [refParcelles, setRefParcelles] = useState({ courante: [], precedente: [] });
+    // Référentiel Smart Berry (culture_sb fait autorité sur la culture BEE ONE).
+    const [sbRefMap, setSbRefMap] = useState(() => window.SB_PARCELLE_REF || {});
 
     React.useEffect(() => {
       fetch('/api/stock?action=list-codes-analytiques').then(r => r.json()).then(json => {
         if (json.success && json.codes) setCodesAnalytiques(json.codes);
       }).catch(() => {});
     }, []);
+
+    React.useEffect(() => {
+      fetch('/api/pointage-rh?action=parcelles-campagne-list').then(r => r.json()).then(j => {
+        if (j.success) setRefParcelles({ courante: j.campagne_courante || [], precedente: j.campagne_precedente || [] });
+      }).catch(() => {});
+    }, []);
+
+    React.useEffect(() => {
+      fetch('/api/pointage-rh?action=sb-referentiel-list').then(r => r.json()).then(j => {
+        if (!j.success) return;
+        const map = {};
+        (j.parcelles || []).forEach(p => { map[(p.label_bee_one || p.id || '').toUpperCase().trim()] = p; });
+        window.SB_PARCELLE_REF = map;
+        setSbRefMap(map);
+      }).catch(() => {});
+    }, []);
+
+    // --- Dérivations des axes analytiques ---
+    const campagne = CSAI_campagneOf(form.date);
+    const campagneToday = CSAI_campagneOf(new Date().toISOString().slice(0, 10));
+    // Le bon appartient à la campagne de SA date : on propose donc les parcelles
+    // de cette campagne-là, pas celles d'aujourd'hui.
+    const refForCampagne = (campagne && campagne !== campagneToday && refParcelles.precedente.length > 0)
+      ? refParcelles.precedente
+      : refParcelles.courante;
+    const cultures = (window.CultureUtils && window.CultureUtils.CULTURES) || CSAI_CULTURES_FALLBACK;
+    const parcellesDispo = refForCampagne.filter(p => CSAI_cultureOk(p, form.culture, sbRefMap));
+    // Nom affiché = nom_sb du référentiel s'il existe ; la VALEUR stockée reste
+    // toujours le libellé BEE ONE (clé de jointure analytique).
+    const parcelleNom = (label) => {
+      const e = sbRefMap[(label || '').toUpperCase().trim()];
+      return (e && e.nom_sb) ? e.nom_sb : (label || '');
+    };
+    const parcelleReelle = !!form.parcelle && form.parcelle !== CSAI_GENERAL;
+
+    // Choix d'une parcelle → la ferme en est DÉDUITE (elle reste saisissable à
+    // la main sur GENERAL ou sans parcelle).
+    const changeParcelle = (val) => {
+      if (!val || val === CSAI_GENERAL) return setForm(f => ({ ...f, parcelle: val }));
+      const ref = refForCampagne.find(p => p.label === val);
+      setForm(f => ({ ...f, parcelle: val, ferme: (ref && ref.ferme) ? ref.ferme : f.ferme }));
+    };
+
+    // Changement de culture : une parcelle qui sort de la liste filtrée est
+    // désélectionnée (GENERAL survit toujours).
+    const changeCulture = (val) => {
+      setForm(f => {
+        if (!f.parcelle || f.parcelle === CSAI_GENERAL) return { ...f, culture: val };
+        const encoreDispo = refForCampagne.some(p => p.label === f.parcelle && CSAI_cultureOk(p, val, sbRefMap));
+        return encoreDispo ? { ...f, culture: val } : { ...f, culture: val, parcelle: '' };
+      });
+    };
 
     const handleFile = (e) => {
       const file = e.target.files[0];
@@ -130,6 +220,11 @@
           matricule: form.matricule,
           beneficiaire_nom: form.beneficiaire_nom,
           files: form.files,
+          // Axes analytiques. La campagne n'est PAS envoyée : le backend la
+          // dérive de la date, source unique de vérité.
+          ferme: form.ferme,
+          culture: form.culture,
+          parcelle: form.parcelle,
         }),
       }).then(r => r.json()).then(json => {
         if (!json.success) return alert('Erreur: ' + (json.error || 'Inconnue'));
@@ -210,6 +305,57 @@
                 )}
               </select>
             </div>
+            {/* --- Axes analytiques (facultatifs) --- */}
+            <div style={{ gridColumn: '1/-1', marginTop: 4, paddingTop: 12, borderTop: '1px dashed var(--gray-200)', fontSize: 11, fontWeight: 600, color: 'var(--gray-400)' }}>
+              AFFECTATION <span style={{ fontWeight: 400, textTransform: 'none' }}>— facultatif</span>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4, display: 'block' }}>Campagne</label>
+              <input type="text" value={campagne || '—'} readOnly disabled title="Déduite automatiquement de la date du bon"
+                style={{ ...inputStyle, background: 'var(--gray-100)', color: 'var(--gray-600)', cursor: 'not-allowed' }} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4, display: 'block' }}>Culture</label>
+              <select value={form.culture} onChange={e => changeCulture(e.target.value)} style={inputStyle}>
+                <option value="">— Toutes —</option>
+                {cultures.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div style={{ gridColumn: '1/-1' }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4, display: 'block' }}>Parcelle</label>
+              <select value={form.parcelle} onChange={e => changeParcelle(e.target.value)} style={inputStyle}>
+                <option value="">— Aucune —</option>
+                <option value={CSAI_GENERAL}>{CSAI_GENERAL} — dépense non rattachée à une parcelle</option>
+                {parcellesDispo.map(p => <option key={p.label} value={p.label}>{parcelleNom(p.label)}</option>)}
+                {/* Parcelle historique absente de la campagne/culture courante :
+                    on la garde pour ne pas la perdre silencieusement à l'édition. */}
+                {form.parcelle && form.parcelle !== CSAI_GENERAL && !parcellesDispo.some(p => p.label === form.parcelle) && (
+                  <option value={form.parcelle}>{parcelleNom(form.parcelle)} (hors campagne/culture)</option>
+                )}
+              </select>
+              {form.culture && parcellesDispo.length === 0 && (
+                <div style={{ fontSize: 11, color: 'var(--orange)', marginTop: 4 }}>
+                  <i className="fa-solid fa-circle-info" style={{ marginRight: 4 }}></i>
+                  Aucune parcelle {form.culture} pour la campagne {campagne || '—'}.
+                </div>
+              )}
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--gray-600)', marginBottom: 4, display: 'block' }}>
+                Ferme{parcelleReelle && <span style={{ fontWeight: 400, color: 'var(--gray-400)' }}> — déduite de la parcelle</span>}
+              </label>
+              {parcelleReelle ? (
+                <input type="text" value={form.ferme || '—'} readOnly disabled
+                  style={{ ...inputStyle, background: 'var(--gray-100)', color: 'var(--gray-600)', cursor: 'not-allowed' }} />
+              ) : (
+                <select value={form.ferme} onChange={e => setForm({ ...form, ferme: e.target.value })} style={inputStyle}>
+                  <option value="">— Aucune —</option>
+                  {CSAI_FERMES.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              )}
+            </div>
+            <div></div>
+
             {(form.type === 'paie' || form.type === 'transport') && (
               <>
                 <div>

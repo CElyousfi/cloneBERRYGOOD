@@ -2,11 +2,11 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:0654da16632da753",
+    "sourceFingerprint": "sha256:7defa9b548408656",
     "stats": {
-      "targetFiles": 249,
-      "targetFilesWithDirectTests": 144,
-      "targetFilesWithTransitiveTests": 165,
+      "targetFiles": 250,
+      "targetFilesWithDirectTests": 145,
+      "targetFilesWithTransitiveTests": 166,
       "testFilesScanned": 214
     }
   },
@@ -105,6 +105,14 @@
       ],
       "transitiveTests": [
         "tests/unit/validateBugReport.test.js"
+      ]
+    },
+    "functions/lib/caisse/champsAnalytiques.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
       ]
     },
     "functions/lib/caisse/rapprochementLock.js": {

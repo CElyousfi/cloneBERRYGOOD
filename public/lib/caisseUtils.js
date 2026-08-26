@@ -293,6 +293,11 @@ function searchTransactions(transactions, query) {
       tx.code_analytique,
       tx.fournisseur,
       tx.saisie_by && tx.saisie_by.name,
+      // Axes analytiques — cherchables au même titre que le code analytique.
+      tx.ferme,
+      tx.campagne,
+      tx.culture,
+      tx.parcelle,
       ...montantParts,
     ].map(_normalize).join(' | '); // separator unlikely to appear in data
     return tokens.every((tok) => haystack.indexOf(tok) !== -1);

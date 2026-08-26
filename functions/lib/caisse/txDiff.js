@@ -15,6 +15,7 @@
 const CHAMPS_SUIVIS = [
   'date', 'montant', 'type', 'caisse_id',
   'code_analytique', 'description', 'matricule', 'beneficiaire_nom',
+  'ferme', 'campagne', 'culture', 'parcelle',
 ];
 
 /** Champs traités comme des nombres (comparaison numérique, pas textuelle). */

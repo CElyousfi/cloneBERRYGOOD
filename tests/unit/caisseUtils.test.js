@@ -737,3 +737,25 @@ test('detectAnomaliesBatch — perf < 500ms sur 5000 tx', () => {
   console.log(`    [perf] detectAnomaliesBatch on 5000 tx: ${elapsed}ms (Map size=${r.size})`);
   assert.ok(elapsed < 500, `detectAnomaliesBatch took ${elapsed}ms (>500ms budget)`);
 });
+
+// --- Axes analytiques (ferme / campagne / culture / parcelle) ---------------
+
+test('searchTransactions — recherche par ferme, culture et parcelle', () => {
+  const txs = [
+    { reference: 'R1', ferme: 'F5', campagne: '2026-2027', culture: 'Myrtille', parcelle: 'F5 CORINA myrtille S8-3' },
+    { reference: 'R2', ferme: 'F1', campagne: '2026-2027', culture: 'Framboise', parcelle: 'GENERAL' },
+    { reference: 'R3' },
+  ];
+  const refs = (q) => U.searchTransactions(txs, q).map((t) => t.reference);
+  assert.deepStrictEqual(refs('F5'), ['R1']);
+  assert.deepStrictEqual(refs('myrtille'), ['R1']);
+  assert.deepStrictEqual(refs('GENERAL'), ['R2']);
+  assert.deepStrictEqual(refs('2026-2027'), ['R1', 'R2']);
+  assert.deepStrictEqual(refs('corina S8-3'), ['R1']);
+});
+
+test('searchTransactions — un bon sans axes analytiques ne plante pas', () => {
+  const txs = [{ reference: 'R3', description: 'Gasoil' }];
+  assert.deepStrictEqual(U.searchTransactions(txs, 'gasoil').map((t) => t.reference), ['R3']);
+  assert.deepStrictEqual(U.searchTransactions(txs, 'F5'), []);
+});
