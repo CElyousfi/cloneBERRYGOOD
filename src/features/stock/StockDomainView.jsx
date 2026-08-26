@@ -15,11 +15,15 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [stkValue, setStkValue] = useState('');
 
   const [stockItems, setStockItems] = useState([
-    { id: 'STK-01', article: 'Caisses Plastique Récolte 5kg', quantite: '4,500 unités', minSeuil: '1,000', valorisation: '67,500 MAD', status: 'Stock Optimal', variant: 'emerald' },
-    { id: 'STK-02', article: 'Engrais NPK 20-20-20 (Sac 25kg)', quantite: '85 sacs', minSeuil: '100', valorisation: '25,500 MAD', status: 'Réapprovisionner', variant: 'amber' },
-    { id: 'STK-03', article: 'Barquettes Clamshell 250g PET', quantite: '12,000 unités', minSeuil: '2,500', valorisation: '14,400 MAD', status: 'Stock Optimal', variant: 'emerald' },
-    { id: 'STK-04', article: 'Film Plastique Paillage Noir 30µ', quantite: '42 rouleaux', minSeuil: '10', valorisation: '33,600 MAD', status: 'Stock Optimal', variant: 'emerald' },
+    { id: 'STK-01', article: 'Caisses Plastique Récolte 5kg', quantite: '4,500 unités', rawQty: 4500, minSeuil: '1,000', valorisation: '67,500 MAD', rawValue: 67500, status: 'Stock Optimal', variant: 'emerald' },
+    { id: 'STK-02', article: 'Engrais NPK 20-20-20 (Sac 25kg)', quantite: '85 sacs', rawQty: 85, minSeuil: '100', valorisation: '25,500 MAD', rawValue: 25500, status: 'Réapprovisionner', variant: 'amber' },
+    { id: 'STK-03', article: 'Barquettes Clamshell 250g PET', quantite: '12,000 unités', rawQty: 12000, minSeuil: '2,500', valorisation: '14,400 MAD', rawValue: 14400, status: 'Stock Optimal', variant: 'emerald' },
+    { id: 'STK-04', article: 'Film Plastique Paillage Noir 30µ', quantite: '42 rouleaux', rawQty: 42, minSeuil: '10', valorisation: '33,600 MAD', rawValue: 33600, status: 'Stock Optimal', variant: 'emerald' },
   ]);
+
+  // REAL-TIME DYNAMIC STOCK RECALCULATION ENGINE
+  const dynamicTotalValuation = stockItems.reduce((acc, s) => acc + (s.rawValue || 0), 0);
+  const lowStockCount = stockItems.filter(s => s.status === 'Réapprovisionner').length;
 
   const handleAddStock = (e) => {
     e.preventDefault();
@@ -34,8 +38,10 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
       id: `STK-${Date.now().toString().slice(-2)}`,
       article: stkArticle,
       quantite: `${qtyNum.toLocaleString('fr-FR')} unités`,
+      rawQty: qtyNum,
       minSeuil: `${seuilNum}`,
       valorisation: `${valNum.toLocaleString('fr-FR')} MAD`,
+      rawValue: valNum,
       status: isLow ? 'Réapprovisionner' : 'Stock Optimal',
       variant: isLow ? 'amber' : 'emerald'
     };
@@ -58,7 +64,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `stock_magasinier_${activeFarm}.csv`);
+    link.setAttribute('download', `stock_${activeFarm}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -70,31 +76,31 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s ease-in-out' }}>
-      {/* Top Stock KPI Cards */}
+      {/* REAL-TIME DYNAMIC STOCK KPI CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
         <UiStatCard
           label="Valorisation Stock Total"
-          value="141,000 MAD"
-          subtext="4 familles d'articles"
+          value={`${dynamicTotalValuation.toLocaleString('fr-FR')} MAD`}
+          subtext={`${stockItems.length} familles d'articles`}
           trend="+3.2%"
           highlightColor="var(--emerald-600)"
-          infoTooltip="Valeur financière totale des stocks en magasin"
+          infoTooltip="Valeur financière recalculée dynamiquement en temps réel"
         />
         <UiStatCard
           label="Articles sous Seuil Alerte"
-          value={`${stockItems.filter(s => s.status === 'Réapprovisionner').length} article`}
-          subtext="Engrais NPK 20-20-20"
-          trend="Réappro urgent"
-          highlightColor="var(--amber-500)"
-          infoTooltip="Nombre d'articles nécessitant un réapprovisionnement"
+          value={`${lowStockCount} article${lowStockCount > 1 ? 's' : ''}`}
+          subtext={lowStockCount > 0 ? 'Réapprovisionnement requis' : 'Stock suffisant'}
+          trend={lowStockCount > 0 ? 'Alerte Stock' : 'Stock Optimal'}
+          highlightColor={lowStockCount > 0 ? 'var(--amber-500)' : 'var(--emerald-600)'}
+          infoTooltip="Nombre dynamique d'articles sous le seuil d'alerte"
         />
         <UiStatCard
-          label="Bons de Réception (BR)"
-          value="18 BR intégrés"
-          subtext="Mois en cours"
-          trend="100% rapprochés"
+          label="Total Références Enregistrées"
+          value={`${stockItems.length} références`}
+          subtext="Magasin central active"
+          trend="Inventaire conforme"
           highlightColor="var(--indigo-600)"
-          infoTooltip="Nombre de réceptions validées par le magasinier"
+          infoTooltip="Nombre de références gérées en magasin"
         />
         <UiStatCard
           label="Taux Écart Inventaire"
@@ -106,32 +112,12 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         />
       </div>
 
-      {/* Sub-Tab Navigation */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-        <button
-          onClick={() => setActiveTab('soldes')}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 'var(--radius-md)',
-            fontSize: '13px',
-            fontWeight: activeTab === 'soldes' ? '700' : '500',
-            backgroundColor: activeTab === 'soldes' ? 'var(--emerald-600)' : 'var(--bg-card)',
-            color: activeTab === 'soldes' ? '#FFFFFF' : 'var(--text-secondary)',
-            border: activeTab === 'soldes' ? 'none' : '1px solid var(--border-color)',
-            cursor: 'pointer'
-          }}
-        >
-          <i className="fa-solid fa-boxes-stacked" style={{ marginRight: '6px' }}></i>
-          Soldes de Stock Théoriques
-        </button>
-      </div>
-
       {/* Content Table */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
           <div>
             <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Stock Magasinier & Seuil d'Alerte — {activeFarm}</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Contrôle des stocks physiques & valeur d'inventaire</p>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Mise à jour dynamique en direct | Calculateur de valorisation</p>
           </div>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <input
@@ -197,7 +183,7 @@ export function StockDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
             <input type="number" placeholder="Valorisation MAD (ex: 15000)" value={stkValue} onChange={e => setStkValue(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button type="button" onClick={() => setShowAddStockModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
-              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer Entrée</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer & Recalculer</button>
             </div>
           </form>
         </div>
