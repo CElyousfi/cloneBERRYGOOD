@@ -59805,7 +59805,12 @@ ${rejetHtml}
                                                     <tr style={{cursor:'pointer'}} onClick={() => setExpanded(isOpen ? null : r.caisse.id)}>
                                                         <td style={Object.assign({}, td, {fontWeight:600})}>
                                                             <i className={`fa-solid ${isOpen ? 'fa-chevron-down' : 'fa-chevron-right'}`} style={{fontSize:10,marginRight:8,color:'var(--gray-400)'}}></i>
-                                                            {r.caisse.nom || r.caisse.id}
+                                                            {/* Ces comptes n'ont pas de champ `nom` : sans repli,
+                                                                l'écran affiche l'identifiant technique
+                                                                (« compte_client_iraqi_mohamed »). */}
+                                                            {(r.caisse.nom && String(r.caisse.nom).trim())
+                                                                || String(r.caisse.id || '').replace('compte_client_', '').split('_').filter(Boolean).join(' ').toUpperCase()
+                                                                || r.caisse.id}
                                                         </td>
                                                         <td style={tdR}>{formatMAD(r.totals.totalVendu)}</td>
                                                         <td style={Object.assign({}, tdR, {color:'var(--green)'})}>{formatMAD(r.totals.totalEncaisse)}</td>
@@ -59988,7 +59993,12 @@ ${rejetHtml}
         function CaisseDashboardSub({ dashData, caisses, isControle, onNavigate }) {
             const [selectedDate, setSelectedDate] = useState(new Date().toISOString().slice(0,10));
             const [selectedCaisseId, setSelectedCaisseId] = useState('');
+            // Entité affichée sur le dashboard. Mémorisée d'une visite à l'autre.
+            const [entite, setEntite] = useState(() => { try { return localStorage.getItem('caisseEntite') || 'BGF'; } catch(e) { return 'BGF'; } });
+            const changerEntite = (code) => { setEntite(code); try { localStorage.setItem('caisseEntite', code); } catch(e) {} };
             const [allTx, setAllTx] = useState([]);
+            // Caisse dont on affiche le détail (pop-up). null = fermée.
+            const [detailCaisse, setDetailCaisse] = useState(null);
             const [txLoaded, setTxLoaded] = useState(false);
 
             React.useEffect(() => {
@@ -59997,13 +60007,20 @@ ${rejetHtml}
                     .catch(() => {});
             }, []);
 
+            // Un bon SAISI a déjà bougé l'argent du tiroir, même sans validation
+            // DG. Ce bloc affiche donc le SOLDE EN CAISSE, même convention que
+            // les cartes ci-dessous — sinon il reste à zéro tant que la DG n'a
+            // pas fait sa revue, ce qui ne dit rien au caissier.
+            const STATUTS_EN_CAISSE = ['valide', 'soumis', 'a_revoir'];
+            const compteEnCaisse = (t) => STATUTS_EN_CAISSE.indexOf(t.status) !== -1;
+
             const computeBalanceForDate = (caisseId, dateStr) => {
                 const caisse = caisses.find(c => c.id === caisseId);
                 if (!caisse) return 0;
                 let bal = caisse.solde_initial || 0;
                 allTx.forEach(t => {
                     if (t.caisse_id !== caisseId) return;
-                    if (t.status !== 'valide') return;
+                    if (!compteEnCaisse(t)) return;
                     if (t.date > dateStr) return;
                     const m = t.montant || 0;
                     if (t.type === 'alimentation' || t.type === 'transfer_in') bal += m;
@@ -60013,7 +60030,7 @@ ${rejetHtml}
             };
 
             const computeDayMovements = (caisseId, dateStr) => {
-                const txOfDay = allTx.filter(t => t.date === dateStr && t.status === 'valide' && (caisseId ? t.caisse_id === caisseId : true));
+                const txOfDay = allTx.filter(t => t.date === dateStr && compteEnCaisse(t) && (caisseId ? t.caisse_id === caisseId : true));
                 let entrees = 0, sorties = 0;
                 txOfDay.forEach(t => {
                     const m = t.montant || 0;
@@ -60029,19 +60046,60 @@ ${rejetHtml}
                 setSelectedDate(d.toISOString().slice(0,10));
             };
 
-            const soldeJour = selectedCaisseId
-                ? computeBalanceForDate(selectedCaisseId, selectedDate)
-                : caisses.reduce((s, c) => s + computeBalanceForDate(c.id, selectedDate), 0);
-            const dayMov = computeDayMovements(selectedCaisseId, selectedDate);
+            // --- Entité affichée (BERRY GOOD FARMS / BAHIA) ---
+            // Les deux entités ont leurs propres caisses ; les additionner n'a
+            // aucun sens de gestion. On en présente UNE à la fois.
+            const ENTITES_CAISSE = [
+                { code: 'BGF', label: 'BERRY GOOD FARMS' },
+                { code: 'BAHIA', label: 'BAHIA' },
+            ];
+            const mappingEntites = (dashData && dashData.parametres && dashData.parametres.entites) || {};
+            // Rattachement : choix explicite (Paramètres) sinon repli sur le nom,
+            // pour que l'écran soit juste avant toute configuration.
+            const entiteDe = (c) => {
+                const choisi = mappingEntites[c.id];
+                if (choisi && ENTITES_CAISSE.some(e => e.code === choisi)) return choisi;
+                return `${c.id || ''} ${c.nom || ''}`.toLowerCase().indexOf('bahia') !== -1 ? 'BAHIA' : 'BGF';
+            };
 
-            if (!dashData) return null;
             // Les comptes clients du Marché Local vivent dans caisse_definitions
             // (préfixe compte_client_) mais ne sont PAS des caisses : ils n'ont
             // pas de nom et s'affichaient en bulles anonymes à 0,00 DH. Ils ont
             // leur propre onglet « Comptes Clients ».
-            const caissesReelles = caisses.filter(c => !(window.CaisseUtils && window.CaisseUtils.isCompteClientCaisse
+            const estCompteClient = (c) => (window.CaisseUtils && window.CaisseUtils.isCompteClientCaisse
                 ? window.CaisseUtils.isCompteClientCaisse(c)
-                : String(c.id || '').indexOf('compte_client_') === 0));
+                : String(c.id || '').indexOf('compte_client_') === 0);
+            // Les caisses « Marché Local F1 / F5 » ne sont plus présentées comme
+            // des caisses : le suivi se fait PAR CLIENT (bloc dédié plus bas).
+            // Elles restent accessibles depuis Transactions et les rapports.
+            const estCaisseMarcheLocal = (c) => String(c.id || '').indexOf('caisse_marche_local') === 0;
+            // Caisses de gestion de l'entité affichée.
+            const caissesReelles = caisses.filter(c => !estCompteClient(c) && !estCaisseMarcheLocal(c) && entiteDe(c) === entite);
+            // Comptes clients Marché Local — rattachés à Berry Good, présentés
+            // séparément : ce sont des créances clients, pas des caisses.
+            const comptesClients = caisses.filter(c => estCompteClient(c) && entiteDe(c) === entite);
+
+            const soldeJour = selectedCaisseId
+                ? computeBalanceForDate(selectedCaisseId, selectedDate)
+                : caissesReelles.reduce((s, c) => s + computeBalanceForDate(c.id, selectedDate), 0);
+            const dayMov = computeDayMovements(selectedCaisseId, selectedDate);
+
+            // Date du dernier mouvement de la sélection. Sans elle, l'écran
+            // semble figé quand on navigue au-delà du dernier bon : le cumul
+            // est correct mais rien n'explique pourquoi il ne bouge plus.
+            const idsSelection = selectedCaisseId ? [selectedCaisseId] : caissesReelles.map(c => c.id);
+            const derniereDateMvt = allTx.reduce((max, t) => {
+                if (!compteEnCaisse(t) || idsSelection.indexOf(t.caisse_id) === -1) return max;
+                return (!max || t.date > max) ? t.date : max;
+            }, '');
+            const dateApresDernierMvt = !!derniereDateMvt && selectedDate > derniereDateMvt;
+            const formatJour = (iso) => {
+                const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+                return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || '');
+            };
+
+            if (!dashData) return null;
+
             const totalSolde = caissesReelles.reduce((s, c) => s + (c.solde_actuel || 0), 0);
             // Solde en caisse toutes caisses = validé + bons saisis non validés.
             const totalSoldeCaisse = caissesReelles.reduce((s, c) => s + (c.solde_provisoire !== undefined ? c.solde_provisoire : (c.solde_actuel || 0)), 0);
@@ -60049,6 +60107,23 @@ ${rejetHtml}
             const totalEnAttenteCount = caissesReelles.reduce((s, c) => s + (Number(c.en_attente_count) || 0), 0);
             return (
                 <div>
+                    {/* Sélecteur d'entité — chaque entité a ses propres caisses. */}
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16,flexWrap:'wrap'}}>
+                        <span style={{fontSize:11,fontWeight:700,color:'var(--gray-400)',letterSpacing:0.5}}>ENTITÉ</span>
+                        {ENTITES_CAISSE.map(e => {
+                            const actif = entite === e.code;
+                            return (
+                                <button key={e.code} onClick={() => changerEntite(e.code)}
+                                    style={{padding:'8px 18px',borderRadius:20,fontSize:12.5,fontWeight:actif?700:500,cursor:'pointer',
+                                        border: actif ? 'none' : '1px solid var(--gray-200)',
+                                        background: actif ? 'var(--berry)' : 'white',
+                                        color: actif ? 'white' : 'var(--gray-600)'}}>
+                                    {e.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
                     {/* Real-time balance with day navigation */}
                     <div style={{padding:'18px 24px',background:'white',borderRadius:12,marginBottom:20,border:'2px solid var(--berry)',boxShadow:'0 2px 8px rgba(139,34,82,0.08)'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:16}}>
@@ -60069,10 +60144,12 @@ ${rejetHtml}
                             <select value={selectedCaisseId} onChange={e => setSelectedCaisseId(e.target.value)}
                                 style={{padding:'8px 14px',borderRadius:8,border:'1px solid var(--gray-200)',fontSize:12,fontWeight:600}}>
                                 <option value="">Toutes caisses</option>
-                                {caisses.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                                {/* Restreint à l'entité affichée : proposer une caisse
+                                    de l'autre entité n'aurait aucun sens ici. */}
+                                {caissesReelles.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
                             </select>
                             <div style={{textAlign:'right'}}>
-                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--gray-600)'}}>Solde de fin de journée</div>
+                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:1,color:'var(--gray-600)'}} title="Inclut les bons saisis non encore validés">Solde en caisse en fin de journée</div>
                                 <div style={{fontSize:24,fontWeight:700,color: soldeJour >= 0 ? 'var(--berry)' : 'var(--red)'}}>{txLoaded ? formatMAD(soldeJour) : '...'}</div>
                                 <div style={{fontSize:11,color:'var(--gray-600)',marginTop:2}}>
                                     <span style={{color:'var(--green)'}}>+{formatMAD(dayMov.entrees)}</span>
@@ -60081,6 +60158,23 @@ ${rejetHtml}
                                     <span style={{margin:'0 6px',color:'var(--gray-400)'}}>•</span>
                                     <span>{dayMov.count} mvt(s)</span>
                                 </div>
+                                {/* Explique un solde qui « ne bouge pas » : au-delà du
+                                    dernier bon, le cumul est forcément constant. */}
+                                {txLoaded && dateApresDernierMvt && (
+                                    <div style={{fontSize:11,color:'var(--orange)',marginTop:4}}>
+                                        <i className="fa-solid fa-circle-info" style={{marginRight:4}}></i>
+                                        Aucun mouvement depuis le {formatJour(derniereDateMvt)} — le solde est inchangé depuis
+                                        <button onClick={() => setSelectedDate(derniereDateMvt)}
+                                            style={{marginLeft:6,padding:'2px 8px',borderRadius:6,border:'1px solid var(--orange)',background:'white',color:'var(--orange)',cursor:'pointer',fontSize:10.5,fontWeight:600}}>
+                                            Aller au dernier mouvement
+                                        </button>
+                                    </div>
+                                )}
+                                {txLoaded && !derniereDateMvt && (
+                                    <div style={{fontSize:11,color:'var(--gray-400)',marginTop:4}}>
+                                        Aucun mouvement enregistré sur cette sélection.
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -60119,7 +60213,11 @@ ${rejetHtml}
                         {caissesReelles.map(c => {
                             const cc = getCaisseColor(c.id);
                             return (
-                                <div key={c.id} style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',position:'relative',overflow:'hidden'}}>
+                                <div key={c.id} onClick={() => setDetailCaisse(c)}
+                                    title={'Voir le détail de ' + (c.nom || c.id)}
+                                    style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',position:'relative',overflow:'hidden',cursor:'pointer',transition:'box-shadow 0.15s, transform 0.15s'}}
+                                    onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 14px rgba(0,0,0,0.08)';e.currentTarget.style.transform='translateY(-1px)';}}
+                                    onMouseLeave={e=>{e.currentTarget.style.boxShadow='none';e.currentTarget.style.transform='none';}}>
                                     <div style={{position:'absolute',top:0,left:0,width:4,height:'100%',background:cc.color}}></div>
                                     <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,paddingLeft:8}}>
                                         <div style={{width:36,height:36,borderRadius:10,background:cc.bg,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -60164,6 +60262,55 @@ ${rejetHtml}
                             );
                         })}
                     </div>
+
+                    {/* Détail d'une caisse — alimentations / décaissements.
+                        Aucun appel réseau : allTx est déjà chargé. */}
+                    {detailCaisse && window.CaisseDetailPopup && (
+                        <window.CaisseDetailPopup
+                            caisse={detailCaisse}
+                            transactions={allTx}
+                            onClose={() => setDetailCaisse(null)}
+                        />
+                    )}
+
+                    {/* Marché Local — détail par client. Uniquement là où des
+                        comptes clients existent (Berry Good aujourd'hui). Ce sont
+                        des créances : montant restant dû, pas un fonds de caisse. */}
+                    {(comptesClients.length > 0 || entite === 'BGF') && (
+                        <div style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',marginBottom:20}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12,flexWrap:'wrap'}}>
+                                <i className="fa-solid fa-store" style={{color:'var(--berry)'}}></i>
+                                <span style={{fontWeight:600,fontSize:14,color:'var(--gray-800)'}}>Marché Local — par client</span>
+                                <span style={{fontSize:11,color:'var(--gray-400)'}}>{comptesClients.length} client(s) actif(s)</span>
+                                <button onClick={() => onNavigate('caisse_comptes_clients')}
+                                    style={{marginLeft:'auto',padding:'6px 12px',borderRadius:8,border:'1px solid var(--gray-200)',background:'white',cursor:'pointer',fontSize:12,color:'var(--gray-600)'}}>
+                                    Détail<i className="fa-solid fa-arrow-right" style={{marginLeft:6}}></i>
+                                </button>
+                            </div>
+                            {comptesClients.length === 0 && (
+                                <div style={{padding:'14px 16px',borderRadius:10,background:'#FEF3C7',border:'1px solid #FDE68A',fontSize:12,color:'#92400E'}}>
+                                    <i className="fa-solid fa-circle-info" style={{marginRight:6}}></i>
+                                    Aucun client actif pour la campagne. Activez-les dans <strong>Paramètres → Clients Marché Local</strong> pour démarrer le suivi.
+                                </div>
+                            )}
+                            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))',gap:10}}>
+                                {comptesClients.map(c => {
+                                    // Les comptes existants n'ont pas de champ `nom` :
+                                    // on dérive un libellé lisible de leur identifiant.
+                                    const nom = (c.nom && String(c.nom).trim())
+                                        || String(c.id || '').replace('compte_client_', '').split('_').filter(Boolean).join(' ').toUpperCase();
+                                    const solde = Number(c.solde_actuel) || 0;
+                                    return (
+                                        <div key={c.id} style={{padding:'10px 12px',background:'var(--gray-100)',borderRadius:10}}>
+                                            <div style={{fontSize:11,fontWeight:600,color:'var(--gray-800)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}} title={nom}>{nom}</div>
+                                            <div style={{fontSize:15,fontWeight:700,color: solde > 0 ? 'var(--orange)' : 'var(--green)',marginTop:2}}>{formatMAD(solde)}</div>
+                                            <div style={{fontSize:10,color:'var(--gray-400)'}}>{solde > 0 ? 'reste dû' : 'soldé'}</div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Pending validations panel — DG/Finance only */}
                     {isControle && dashData.pendingCount > 0 && (

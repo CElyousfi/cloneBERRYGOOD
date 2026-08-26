@@ -550,3 +550,68 @@ test('computeSoldesProvisoires — entrées absentes', () => {
   assert.strictEqual(out[0].solde_actuel, 0);
   assert.strictEqual(out[0].solde_provisoire, 0);
 });
+
+// ------------------------------------------------------------------ entites
+
+const ent = require('../entites');
+
+test('entiteParDefaut — repli sur le nom/id, Bahia détectée', () => {
+  assert.strictEqual(ent.entiteParDefaut({ id: 'caisse_depenses_bahia', nom: 'Caisse Dépenses Bahia' }), 'BAHIA');
+  assert.strictEqual(ent.entiteParDefaut({ id: 'caisse_paie_bahia', nom: 'Caisse Paie Bahia' }), 'BAHIA');
+  assert.strictEqual(ent.entiteParDefaut({ id: 'caisse_depenses', nom: 'Caisse Dépenses' }), 'BGF');
+  assert.strictEqual(ent.entiteParDefaut({}), 'BGF');
+});
+
+test('entiteDe — le choix explicite prime sur le repli', () => {
+  const c = { id: 'caisse_depenses_bahia', nom: 'Caisse Dépenses Bahia' };
+  assert.strictEqual(ent.entiteDe(c, {}), 'BAHIA');                       // repli
+  assert.strictEqual(ent.entiteDe(c, { caisse_depenses_bahia: 'BGF' }), 'BGF'); // choix
+});
+
+test('entiteDe — un code invalide retombe sur le repli', () => {
+  const c = { id: 'caisse_depenses', nom: 'Caisse Dépenses' };
+  assert.strictEqual(ent.entiteDe(c, { caisse_depenses: 'NIMPORTEQUOI' }), 'BGF');
+  assert.strictEqual(ent.entiteDe(c, { caisse_depenses: '' }), 'BGF');
+});
+
+test('normalizeEntites — écarte les codes invalides', () => {
+  assert.deepStrictEqual(ent.normalizeEntites({ a: 'BGF', b: 'BAHIA', c: 'XX', d: '' }), { a: 'BGF', b: 'BAHIA' });
+  assert.deepStrictEqual(ent.normalizeEntites(null), {});
+  assert.deepStrictEqual(ent.normalizeEntites(['BGF']), {});
+});
+
+test('estCompteClient / nomClientDepuisId', () => {
+  assert.strictEqual(ent.estCompteClient({ id: 'compte_client_iraqi_mohamed' }), true);
+  assert.strictEqual(ent.estCompteClient({ id: 'caisse_depenses' }), false);
+  assert.strictEqual(ent.estCompteClient(null), false);
+  assert.strictEqual(ent.nomClientDepuisId('compte_client_mustapha_chafik_a'), 'MUSTAPHA CHAFIK A');
+  assert.strictEqual(ent.nomClientDepuisId('compte_client_fruit_congel_du_nord'), 'FRUIT CONGEL DU NORD');
+  assert.strictEqual(ent.nomClientDepuisId('caisse_depenses'), '');
+});
+
+test('repartirParEntite — sépare caisses de gestion et comptes clients', () => {
+  const caisses = [
+    { id: 'caisse_depenses', nom: 'Caisse Dépenses' },
+    { id: 'caisse_paie', nom: 'Caisse Paie' },
+    { id: 'caisse_depenses_bahia', nom: 'Caisse Dépenses Bahia' },
+    { id: 'caisse_paie_bahia', nom: 'Caisse Paie Bahia' },
+    { id: 'compte_client_iraqi_mohamed' },
+  ];
+  const bgf = ent.repartirParEntite(caisses, 'BGF', {});
+  assert.deepStrictEqual(bgf.caisses.map(c => c.id), ['caisse_depenses', 'caisse_paie']);
+  assert.deepStrictEqual(bgf.comptesClients.map(c => c.id), ['compte_client_iraqi_mohamed']);
+
+  const bahia = ent.repartirParEntite(caisses, 'BAHIA', {});
+  assert.deepStrictEqual(bahia.caisses.map(c => c.id), ['caisse_depenses_bahia', 'caisse_paie_bahia']);
+  assert.deepStrictEqual(bahia.comptesClients, []);
+});
+
+test('repartirParEntite — entrées invalides', () => {
+  assert.deepStrictEqual(ent.repartirParEntite(null, 'BGF'), { caisses: [], comptesClients: [] });
+  assert.deepStrictEqual(ent.repartirParEntite([null], 'BGF'), { caisses: [], comptesClients: [] });
+});
+
+test('ENTITES — deux entités, BERRY GOOD FARMS en premier', () => {
+  assert.deepStrictEqual(ent.ENTITES.map(e => e.code), ['BGF', 'BAHIA']);
+  assert.strictEqual(ent.ENTITES[0].label, 'BERRY GOOD FARMS');
+});

@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:285610d0370f6246 -->
-# Code Map — Modules lib (202)
+<!-- sourceFingerprint: sha256:d46b0314ed2f8a7f -->
+# Code Map — Modules lib (203)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -20,6 +20,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/bugReports/validateBugReport.js | — | validateBugReport, MAX_DESCRIPTION, MAX_PHOTO_BASE64_CHARS |
 | functions/lib/caisse/batchValidation.js | — | planBatchValidation, applyDelta |
 | functions/lib/caisse/champsAnalytiques.js | — | FERMES, CULTURES, PARCELLE_GENERAL, campagneOf, validateAxes |
+| functions/lib/caisse/entites.js | — | ENTITES, ENTITE_DEFAUT, COMPTE_CLIENT_PREFIX, estEntiteValide, estCompteClient, clientIdDepuisCaisse, nomClientDepuisId, slugifyClient, entiteParDefaut, entiteDe, normalizeEntites, repartirParEntite |
 | functions/lib/caisse/parametres.js | — | DEFAULT_FERMES, DEFAULT_CODES_ANALYTIQUES, DEFAULT_PARCELLES, MAX_LEN, MAX_ITEMS, MAX_PARCELLES, normalizeListe, normalizeParcelles, validateListe, withDefaults, estAutorisee |
 | functions/lib/caisse/rapprochementLock.js | — | periodeFromDate, rapprochementDocId, periodesAVerifier, MOIS_FR |
 | functions/lib/caisse/soldeDelta.js | — | computeSoldeDelta, isTypeEditable, TYPES_ENTREE, TYPES_SORTIE, TYPES_EDITABLES |

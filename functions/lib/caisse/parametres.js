@@ -104,6 +104,8 @@ function validateListe(nom, liste) {
   return null;
 }
 
+const entites = require('./entites');
+
 /**
  * Nettoie la liste de parcelles figée. Chaque entrée est réduite aux 4 champs
  * utiles à la saisie : `label` (valeur stockée sur le bon, clé de jointure
@@ -156,6 +158,8 @@ function withDefaults(doc) {
     // Pas de repli possible : une liste vide signifie « jamais rafraîchie ».
     parcelles: normalizeParcelles(d.parcelles),
     parcelles_maj_at: d.parcelles_maj_at || null,
+    // Rattachement caisse → entité. Vide = repli sur le nom (cf. entites.js).
+    entites: entites.normalizeEntites(d.entites),
   };
 }
 

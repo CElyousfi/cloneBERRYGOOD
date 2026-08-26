@@ -23,6 +23,18 @@
     useState
   } = React;
   const CPAR_MAX_LEN = 60;
+  const CPAR_CLIENT_PREFIX = 'compte_client_';
+  const CPAR_ENTITES = [{
+    code: 'BGF',
+    label: 'BERRY GOOD FARMS'
+  }, {
+    code: 'BAHIA',
+    label: 'BAHIA'
+  }];
+  /** Repli de rattachement tant qu'aucune entité n'est choisie. */
+  function CPAR_entiteDefaut(c) {
+    return `${c && c.id || ''} ${c && c.nom || ''}`.toLowerCase().indexOf('bahia') !== -1 ? 'BAHIA' : 'BGF';
+  }
 
   /** Une liste éditable : ajout, suppression, réordonnancement. */
   function CPAR_ListeEditable({
@@ -214,6 +226,12 @@
     // Parcelles FIGÉES dans les paramètres : c'est ce qui rend la saisie d'un
     // bon instantanée. Rafraîchies à la demande depuis le référentiel de
     // campagne (requête lente, donc jamais au moment de saisir).
+    // Rattachement caisse → entité, et clients du Marché Local suivis.
+    const [caissesRef, setCaissesRef] = useState([]);
+    const [entites, setEntites] = useState({});
+    const [clients, setClients] = useState([]);
+    const [busyClient, setBusyClient] = useState(null);
+    const [clientsErreur, setClientsErreur] = useState(null);
     const [parcelles, setParcelles] = useState([]);
     const [parcellesMajAt, setParcellesMajAt] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
@@ -232,19 +250,82 @@
         setCodes(j.codes_analytiques || []);
         setParcelles(j.parcelles || []);
         setParcellesMajAt(j.parcelles_maj_at || null);
+        setEntites(j.entites || {});
         setSeeded(!!j.seeded);
         setInitial(JSON.stringify({
           f: j.fermes || [],
-          c: j.codes_analytiques || []
+          c: j.codes_analytiques || [],
+          e: j.entites || {}
         }));
       }).catch(err => setErreur('Erreur réseau : ' + err.message)).finally(() => setLoading(false));
     }, []);
     React.useEffect(() => {
       charger();
     }, [charger]);
+
+    // Caisses de gestion (pour le rattachement) et clients du Marché Local.
+    const chargerClients = React.useCallback(() => {
+      setClientsErreur(null);
+      fetch('/api/caisse?action=caisse-clients-list').then(r => r.json()).then(j => {
+        // Ne pas confondre « aucun client » avec « la liste n'a pas pu être
+        // chargée » : le second cas doit être dit, sinon l'ajout échoue
+        // ensuite sans que l'utilisateur comprenne pourquoi.
+        if (!j || !j.success) {
+          setClientsErreur(j && j.error || 'Liste des clients indisponible.');
+          return;
+        }
+        setClients(j.clients || []);
+      }).catch(err => setClientsErreur('Erreur réseau : ' + err.message));
+    }, []);
+    React.useEffect(() => {
+      fetch('/api/caisse?action=dashboard').then(r => r.json()).then(j => {
+        if (!j.success) return;
+        setCaissesRef((j.caisses || []).filter(c => String(c.id || '').indexOf(CPAR_CLIENT_PREFIX) !== 0));
+      }).catch(() => {});
+      chargerClients();
+    }, [chargerClients]);
+    const changerEntite = (caisseId, code) => setEntites(cur => ({
+      ...cur,
+      [caisseId]: code
+    }));
+    const majClient = (client_id, nom, actif) => {
+      setBusyClient(client_id || nom);
+      return fetch('/api/caisse?action=caisse-client-save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          client_id,
+          nom,
+          actif
+        })
+      }).then(r => r.json()).then(j => {
+        if (!j.success) {
+          setToast({
+            msg: 'Erreur : ' + (j.error || 'inconnue'),
+            kind: 'error'
+          });
+          return false;
+        }
+        chargerClients();
+        if (onSaved) onSaved();
+        return true;
+      }).catch(err => {
+        setToast({
+          msg: 'Erreur réseau : ' + err.message,
+          kind: 'error'
+        });
+        return false;
+      }).finally(() => {
+        setBusyClient(null);
+        setTimeout(() => setToast(null), 2600);
+      });
+    };
     const modifie = initial !== null && initial !== JSON.stringify({
       f: fermes,
-      c: codes
+      c: codes,
+      e: entites
     });
     const enregistrer = () => {
       setSaving(true);
@@ -255,7 +336,8 @@
         },
         body: JSON.stringify({
           fermes,
-          codes_analytiques: codes
+          codes_analytiques: codes,
+          entites
         })
       }).then(r => r.json()).then(j => {
         if (!j.success) {
@@ -268,9 +350,11 @@
         setFermes(j.fermes);
         setCodes(j.codes_analytiques);
         setSeeded(true);
+        setEntites(j.entites || {});
         setInitial(JSON.stringify({
           f: j.fermes,
-          c: j.codes_analytiques
+          c: j.codes_analytiques,
+          e: j.entites || {}
         }));
         setToast({
           msg: 'Paramètres enregistrés',
@@ -589,7 +673,218 @@
         fontSize: 11,
         color: 'var(--gray-400)'
       }
-    }, parcellesMajAt ? `Dernière mise à jour : ${new Date(parcellesMajAt).toLocaleString('fr-FR')}` : 'Jamais rafraîchie')))), canEdit && /*#__PURE__*/React.createElement("div", {
+    }, parcellesMajAt ? `Dernière mise à jour : ${new Date(parcellesMajAt).toLocaleString('fr-FR')}` : 'Jamais rafraîchie')))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 16,
+        flexWrap: 'wrap',
+        alignItems: 'flex-start',
+        marginTop: 16
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: 'white',
+        borderRadius: 12,
+        border: '1px solid var(--gray-200)',
+        padding: 20,
+        flex: '1 1 340px',
+        minWidth: 300
+      }
+    }, /*#__PURE__*/React.createElement("h4", {
+      style: {
+        margin: '0 0 4px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 14
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-building",
+      style: {
+        color: 'var(--berry)'
+      }
+    }), "Entit\xE9s", /*#__PURE__*/React.createElement("span", {
+      style: {
+        marginLeft: 'auto',
+        fontSize: 11,
+        fontWeight: 500,
+        color: 'var(--gray-400)'
+      }
+    }, caissesRef.length, " caisse(s)")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11.5,
+        color: 'var(--gray-600)',
+        marginBottom: 12
+      }
+    }, "D\xE9termine dans quel bloc du dashboard chaque caisse appara\xEEt. Une caisse non r\xE9gl\xE9e est rattach\xE9e d'apr\xE8s son nom."), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 5
+      }
+    }, caissesRef.map(c => /*#__PURE__*/React.createElement("div", {
+      key: c.id,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 10px',
+        background: 'var(--gray-100)',
+        borderRadius: 8,
+        fontSize: 12.5
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        flex: 1,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, c.nom || c.id), /*#__PURE__*/React.createElement("select", {
+      value: entites[c.id] || CPAR_entiteDefaut(c),
+      disabled: !canEdit,
+      onChange: e => changerEntite(c.id, e.target.value),
+      "aria-label": `Entité de ${c.nom || c.id}`,
+      style: {
+        padding: '5px 8px',
+        borderRadius: 6,
+        border: '1px solid var(--gray-200)',
+        fontSize: 11.5,
+        background: 'white'
+      }
+    }, CPAR_ENTITES.map(e => /*#__PURE__*/React.createElement("option", {
+      key: e.code,
+      value: e.code
+    }, e.label))))), caissesRef.length === 0 && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: 'var(--gray-400)'
+      }
+    }, "Aucune caisse charg\xE9e."))), /*#__PURE__*/React.createElement("div", {
+      style: {
+        background: 'white',
+        borderRadius: 12,
+        border: '1px solid var(--gray-200)',
+        padding: 20,
+        flex: '1 1 340px',
+        minWidth: 300
+      }
+    }, /*#__PURE__*/React.createElement("h4", {
+      style: {
+        margin: '0 0 4px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 14
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-store",
+      style: {
+        color: 'var(--berry)'
+      }
+    }), "Clients March\xE9 Local", /*#__PURE__*/React.createElement("span", {
+      style: {
+        marginLeft: 'auto',
+        fontSize: 11,
+        fontWeight: 500,
+        color: 'var(--gray-400)'
+      }
+    }, clients.filter(c => c.actif).length, " suivi(s) / ", clients.length)), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11.5,
+        color: 'var(--gray-600)',
+        marginBottom: 12
+      }
+    }, "Les clients viennent des ", /*#__PURE__*/React.createElement("strong", null, "Bons d'Apport"), " (Achats). Ici on choisit lesquels sont ", /*#__PURE__*/React.createElement("strong", null, "suivis en caisse"), " : un client suivi appara\xEEt au dashboard et ses encaissements sont accept\xE9s \xE0 l'import. D\xE9sactiver n'efface rien."), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 5,
+        marginBottom: 12,
+        maxHeight: 240,
+        overflowY: 'auto'
+      }
+    }, clients.map(cl => /*#__PURE__*/React.createElement("div", {
+      key: cl.id,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '6px 10px',
+        borderRadius: 8,
+        fontSize: 12.5,
+        background: cl.actif ? 'var(--gray-100)' : 'transparent',
+        border: cl.actif ? 'none' : '1px dashed var(--gray-200)',
+        opacity: cl.actif ? 1 : 0.65
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        flex: 1,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      },
+      title: cl.nom
+    }, cl.nom), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize: 11,
+        color: 'var(--gray-400)',
+        whiteSpace: 'nowrap'
+      }
+    }, (Number(cl.solde_actuel) || 0).toLocaleString('fr-MA', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }), " DH"), canEdit && /*#__PURE__*/React.createElement("button", {
+      onClick: () => majClient(cl.client_id, cl.nom, !cl.actif),
+      disabled: busyClient === cl.client_id,
+      title: cl.actif ? 'Ne plus suivre en caisse' : 'Suivre en caisse',
+      style: {
+        padding: '3px 10px',
+        borderRadius: 12,
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: 10.5,
+        fontWeight: 700,
+        background: cl.actif ? 'var(--green)' : 'var(--gray-200)',
+        color: cl.actif ? 'white' : 'var(--gray-600)'
+      }
+    }, busyClient === cl.client_id ? '…' : cl.actif ? 'SUIVI' : 'NON SUIVI'))), clientsErreur && /*#__PURE__*/React.createElement("div", {
+      style: {
+        padding: '9px 12px',
+        borderRadius: 8,
+        background: '#FEE2E2',
+        border: '1px solid #FCA5A5',
+        color: '#991B1B',
+        fontSize: 11.5
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-triangle-exclamation",
+      style: {
+        marginRight: 6
+      }
+    }), clientsErreur, /*#__PURE__*/React.createElement("div", {
+      style: {
+        marginTop: 4,
+        color: '#7F1D1D'
+      }
+    }, "La cr\xE9ation de client est indisponible tant que ce point n'est pas r\xE9solu.")), !clientsErreur && clients.length === 0 && /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        color: 'var(--gray-400)'
+      }
+    }, "Aucun client dans le r\xE9f\xE9rentiel des Bons d'Apport.")), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 11,
+        color: 'var(--gray-400)',
+        borderTop: '1px solid var(--gray-100)',
+        paddingTop: 10
+      }
+    }, /*#__PURE__*/React.createElement("i", {
+      className: "fa-solid fa-circle-info",
+      style: {
+        marginRight: 5
+      }
+    }), "Pour ajouter un client, passez par ", /*#__PURE__*/React.createElement("strong", null, "Achats \u2192 Bons d'Apport \u2192 March\xE9 Local \u2192 + Nouveau client"), ". Il appara\xEEtra ici, pr\xEAt \xE0 \xEAtre suivi."))), canEdit && /*#__PURE__*/React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'center',

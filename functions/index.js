@@ -21,6 +21,7 @@ const caisseAxes = require("./lib/caisse/champsAnalytiques");
 const { planBatchValidation, applyDelta } = require("./lib/caisse/batchValidation");
 const caisseParametres = require("./lib/caisse/parametres");
 const caisseSoldeProvisoire = require("./lib/caisse/soldeProvisoire");
+const caisseEntites = require("./lib/caisse/entites");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
@@ -15473,6 +15474,11 @@ exports.caisseManagement = functions
         // Solde en caisse = solde validé + bons engagés. AFFICHAGE uniquement :
         // solde_actuel reste le solde comptable, seul utilisé par le
         // rapprochement mensuel (cf. functions/lib/caisse/soldeProvisoire.js).
+        // Rattachement caisse → entité, pour que le dashboard puisse présenter
+        // une entité à la fois sans deviner à partir des noms.
+        const paramDoc = await db_firestore.collection("caisse_parametres").doc("default").get();
+        const parametresCaisse = caisseParametres.withDefaults(paramDoc.exists ? paramDoc.data() : null);
+
         const soldesProvisoires = caisseSoldeProvisoire.computeSoldesProvisoires(caisses, enAttenteTx);
         const soldesParCaisse = {};
         soldesProvisoires.forEach(s => { soldesParCaisse[s.caisse_id] = s; });
@@ -15522,7 +15528,12 @@ exports.caisseManagement = functions
           console.warn("[dashboard] recent query failed:", e.message);
         }
 
-        return res.json({ success: true, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx, weeklyDegraded });
+        return res.json({
+          success: true, caisses, pendingCount, weekAlimentations, weekDepenses, recentTx, weeklyDegraded,
+          // Seul le rattachement aux entités intéresse le dashboard ; inutile de
+          // lui renvoyer les parcelles figées, qui peuvent être volumineuses.
+          parametres: { entites: parametresCaisse.entites },
+        });
       }
 
       // ========== LIST CAISSES ==========
@@ -16283,6 +16294,11 @@ exports.caisseManagement = functions
         // Parcelles FIGÉES : envoyées uniquement par le bouton « Rafraîchir » de
         // l'écran Paramètres. Absentes du corps = on ne touche pas à l'existant
         // (un simple enregistrement des fermes ne doit pas les effacer).
+        // Rattachement caisse → entité. Absent du corps = inchangé.
+        if (req.body.entites !== undefined) {
+          payload.entites = caisseEntites.normalizeEntites(req.body.entites);
+        }
+
         if (req.body.parcelles !== undefined) {
           const parcelles = caisseParametres.normalizeParcelles(req.body.parcelles);
           if (parcelles.length === 0) return res.status(400).json({ success: false, error: "Aucune parcelle exploitable reçue — rafraîchissement annulé." });
@@ -16293,6 +16309,100 @@ exports.caisseManagement = functions
         await db_firestore.collection("caisse_parametres").doc("default").set(payload, { merge: true });
         const doc = await db_firestore.collection("caisse_parametres").doc("default").get();
         return res.json({ success: true, ...caisseParametres.withDefaults(doc.data()) });
+      }
+
+      // ========== CLIENTS MARCHÉ LOCAL (activation pour la campagne) ==========
+      // Un client est « suivi » quand son document caisse_definitions
+      // compte_client_<id> existe ET porte active === true : c'est déjà le
+      // référentiel que consulte apply-encaissements. On expose ici de quoi le
+      // gérer, au lieu de devoir passer par la console Firestore.
+      if (action === "caisse-clients-list") {
+        // Le RÉFÉRENTIEL des clients est `clients_marche_local`, alimenté depuis
+        // l'écran Bons d'Apport — c'est là que le service Achats crée un client.
+        // La caisse ne fait que décider LESQUELS sont suivis, via l'existence
+        // d'un compte_client_<slug> actif dans caisse_definitions.
+        const [refSnap, caissesSnap] = await Promise.all([
+          db_firestore.collection("clients_marche_local").get(),
+          db_firestore.collection("caisse_definitions").get(),
+        ]);
+
+        // Comptes de suivi existants, indexés par slug.
+        const comptes = {};
+        caissesSnap.docs.forEach(d => {
+          if (d.id.indexOf(caisseEntites.COMPTE_CLIENT_PREFIX) !== 0) return;
+          comptes[caisseEntites.clientIdDepuisCaisse(d.id)] = d.data();
+        });
+
+        // Référentiel : on écarte les archivés, et on déduplique par slug — un
+        // même nom a parfois deux documents (doublon historique).
+        const parSlug = {};
+        refSnap.docs.forEach(d => {
+          const data = d.data() || {};
+          if (data.archived === true) return;
+          const nom = String(data.nom || "").trim();
+          if (!nom) return;
+          const slug = caisseEntites.slugifyClient(nom);
+          if (!slug || parSlug[slug]) return;
+          parSlug[slug] = nom;
+        });
+
+        // Un compte de suivi dont le client a disparu du référentiel reste
+        // listé : sinon on ne pourrait plus le désactiver.
+        Object.keys(comptes).forEach(slug => {
+          if (!parSlug[slug]) parSlug[slug] = (comptes[slug].nom && String(comptes[slug].nom).trim())
+            || caisseEntites.nomClientDepuisId(caisseEntites.COMPTE_CLIENT_PREFIX + slug);
+        });
+
+        const clients = Object.keys(parSlug).map(slug => {
+          const compte = comptes[slug];
+          return {
+            id: caisseEntites.COMPTE_CLIENT_PREFIX + slug,
+            client_id: slug,
+            nom: parSlug[slug],
+            actif: !!compte && compte.active !== false,
+            suivi: !!compte,
+            solde_actuel: compte ? (Number(compte.solde_actuel) || 0) : 0,
+          };
+        }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+
+        return res.json({ success: true, clients });
+      }
+
+      if (action === "caisse-client-save" && req.method === "POST") {
+        if (!isControle && !isAdmin) return res.status(403).json({ success: false, error: "Seul DG/Finance peut gérer les clients du marché local" });
+        const nomBrut = String(req.body.nom || "").trim();
+        let clientId = String(req.body.client_id || "").trim();
+        if (!clientId) {
+          // Dérive l'identifiant du nom, comme le fait le canevas d'encaissements.
+          clientId = nomBrut.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+        }
+        if (!clientId) return res.status(400).json({ success: false, error: "Nom de client requis" });
+        if (nomBrut.length > 80) return res.status(400).json({ success: false, error: "Nom de client trop long (max 80 caractères)" });
+
+        const docId = caisseEntites.COMPTE_CLIENT_PREFIX + clientId;
+        const ref = db_firestore.collection("caisse_definitions").doc(docId);
+        const existing = await ref.get();
+        const now = admin.firestore.FieldValue.serverTimestamp();
+        const actif = req.body.actif !== false;
+
+        if (!existing.exists) {
+          // Création : solde à 0. On NE crée jamais un client désactivé — ça
+          // n'aurait aucun effet utile et polluerait le référentiel.
+          if (!actif) return res.status(400).json({ success: false, error: "Un nouveau client est créé actif" });
+          await ref.set({
+            nom: nomBrut || caisseEntites.nomClientDepuisId(docId),
+            description: "Compte client Marché Local",
+            devise: "MAD", active: true, is_default: false,
+            solde_initial: 0, solde_actuel: 0,
+            kind: "compte_client_marche_local",
+            created_by: userInfo, created_at: now, updated_at: now,
+          });
+        } else {
+          const maj = { active: actif, updated_at: now, updated_by: userInfo };
+          if (nomBrut) maj.nom = nomBrut;
+          await ref.update(maj);
+        }
+        return res.json({ success: true, id: docId, client_id: clientId, actif });
       }
 
       // ========== SEED DEFAULT CAISSES ==========
