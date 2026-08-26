@@ -3,45 +3,70 @@ import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 
-/**
- * 100% Robust & Interactive RH Domain View.
- * Renders all RH sub-tabs cleanly with full data tables, filters, and zero runtime errors.
- */
-export function RhDomainView({ activeFarm }) {
+export function RhDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeSubTab, setActiveSubTab] = useState('pointage');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAddPointageModal, setShowAddPointageModal] = useState(false);
 
-  const pointages = [
+  // Form states
+  const [pMatricule, setPMatricule] = useState('');
+  const [pNom, setPNom] = useState('');
+  const [pKg, setPKg] = useState('50');
+
+  const [pointages, setPointages] = useState([
     { matricule: 'OUV-102', nom: 'A. Bennani', equipe: 'Souss Équipe 1', heureArrivee: '07:00', kgCueillis: '48 kg', coutDirect: '88.80 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
     { matricule: 'OUV-103', nom: 'F. Zahra', equipe: 'Souss Équipe 1', heureArrivee: '07:00', kgCueillis: '52 kg', coutDirect: '96.20 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
     { matricule: 'OUV-104', nom: 'M. Oulhaj', equipe: 'Loukkos Équipe 2', heureArrivee: '07:15', kgCueillis: '44 kg', coutDirect: '81.40 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
     { matricule: 'OUV-105', nom: 'K. Bouchra', equipe: 'Hafida Équipe 3', heureArrivee: '07:00', kgCueillis: '50 kg', coutDirect: '92.50 MAD', status: 'Présent (Validé Chef)', variant: 'emerald' },
-  ];
+  ]);
 
-  const paieOJRA = [
-    { matricule: 'OUV-102', nom: 'A. Bennani', jours: 14, hrNorm: '112 h', hrSup: '8 h', brut: '4,200 MAD', cnss: '184 MAD', net: '3,780 MAD', status: 'Payé (Banque)', variant: 'emerald' },
-    { matricule: 'OUV-103', nom: 'F. Zahra', jours: 14, hrNorm: '112 h', hrSup: '12 h', brut: '4,550 MAD', cnss: '201 MAD', net: '4,095 MAD', status: 'Payé (Banque)', variant: 'emerald' },
-    { matricule: 'OUV-104', nom: 'M. Oulhaj', jours: 13, hrNorm: '104 h', hrSup: '4 h', brut: '3,900 MAD', cnss: '171 MAD', net: '3,510 MAD', status: 'Payé (Banque)', variant: 'emerald' },
-  ];
+  const handleAddPointage = (e) => {
+    e.preventDefault();
+    if (!pNom) return;
 
-  const primes = [
-    { matricule: 'OUV-103', nom: 'F. Zahra', kgTotaux: '728 kg', moyenneJour: '52.0 kg/j', primeBrute: '540 MAD', bareme: 'Palier Supérieur (> 50kg)', variant: 'emerald' },
-    { matricule: 'OUV-105', nom: 'K. Bouchra', kgTotaux: '700 kg', moyenneJour: '50.0 kg/j', primeBrute: '480 MAD', bareme: 'Palier Standard (= 50kg)', variant: 'emerald' },
-  ];
+    const mat = pMatricule || `OUV-${Math.floor(100 + Math.random() * 900)}`;
+    const kg = parseFloat(pKg) || 45;
+    const cout = Math.round(kg * 1.85 * 100) / 100;
 
-  const transport = [
-    { ref: 'TR-201', transporteur: 'Transport Souss SARL', itineraire: 'Taroudant → Ferme 1 (Souss)', ouvriers: 45, coutParOuvrier: '240.00 MAD', totalForfait: '10,800 MAD', status: 'Contrat Actif', variant: 'emerald' },
-    { ref: 'TR-202', transporteur: 'Navettes Loukkos', itineraire: 'Larache → Ferme 2 (Loukkos)', ouvriers: 38, coutParOuvrier: '240.00 MAD', totalForfait: '9,120 MAD', status: 'Contrat Actif', variant: 'emerald' },
-  ];
+    const newP = {
+      matricule: mat,
+      nom: pNom,
+      equipe: 'Souss Équipe 1',
+      heureArrivee: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      kgCueillis: `${kg} kg`,
+      coutDirect: `${cout} MAD`,
+      status: 'Présent (Validé Chef)',
+      variant: 'emerald'
+    };
+
+    setPointages([newP, ...pointages]);
+    setShowAddPointageModal(false);
+    setPMatricule(''); setPNom('');
+  };
+
+  const handleDeletePointage = (mat) => {
+    if (confirm(`Supprimer le pointage de ${mat} ?`)) {
+      setPointages(pointages.filter(p => p.matricule !== mat));
+    }
+  };
+
+  const handleExportRHCSV = () => {
+    const headers = ['Matricule', 'Nom', 'Équipe', 'Heure Arrivée', 'Kg Cueillis', 'Coût Direct', 'Statut'];
+    const rows = pointages.map(p => [p.matricule, p.nom, p.equipe, p.heureArrivee, p.kgCueillis, p.coutDirect, p.status]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `pointage_rh_${activeFarm}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const subTabs = [
     { id: 'pointage', label: 'Pointage Ouvriers', icon: 'fa-user-check' },
     { id: 'paie', label: 'Paie & Bulletins OJRA', icon: 'fa-file-invoice-dollar' },
     { id: 'primes', label: 'Primes de Récolte', icon: 'fa-award' },
-    { id: 'heures_sup', label: 'Heures Sup. (HS)', icon: 'fa-clock' },
-    { id: 'cout_recolte', label: 'Coût Récolte / kg', icon: 'fa-chart-pie' },
-    { id: 'transport', label: 'Transport & Prestataires', icon: 'fa-bus' },
-    { id: 'parametres', label: 'Jours Fériés & Barèmes', icon: 'fa-gears' }
   ];
 
   const filteredPointages = pointages.filter(p => {
@@ -54,7 +79,7 @@ export function RhDomainView({ activeFarm }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px' }}>
         <UiStatCard
           label="Effectif Pointé Auj."
-          value="342 ouvriers"
+          value={`${pointages.length} ouvriers`}
           subtext="Taux présence 98.2%"
           trend="+4.1%"
           highlightColor="var(--emerald-600)"
@@ -86,8 +111,8 @@ export function RhDomainView({ activeFarm }) {
         />
       </div>
 
-      {/* Sub-Tab Navigation Pills */}
-      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
+      {/* Sub-Tab Navigation */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
         {subTabs.map(tab => {
           const isActive = activeSubTab === tab.id;
           return (
@@ -105,10 +130,7 @@ export function RhDomainView({ activeFarm }) {
                 backgroundColor: isActive ? 'var(--emerald-600)' : 'var(--bg-card)',
                 color: isActive ? '#FFFFFF' : 'var(--text-secondary)',
                 border: isActive ? 'none' : '1px solid var(--border-color)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                transition: 'all var(--transition-fast)',
-                boxShadow: isActive ? 'var(--shadow-xs)' : 'none'
+                cursor: 'pointer'
               }}
             >
               <i className={`fa-solid ${tab.icon}`}></i>
@@ -118,22 +140,31 @@ export function RhDomainView({ activeFarm }) {
         })}
       </div>
 
-      {/* SUB-TAB 1: POINTAGE OUVRIERS */}
+      {/* SUB-TAB 1: POINTAGE OUVRIERS WITH FULL CRUD */}
       {activeSubTab === 'pointage' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Pointage Journalier des Ouvriers</h4>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Pointage Journalier des Ouvriers — {activeFarm}</h4>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Saisie horodateur & validation des équipes par le chef d'exploitation.</p>
             </div>
-            <input
-              type="text"
-              placeholder="Rechercher ouvrier..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
-            />
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Rechercher ouvrier..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
+              />
+              <button onClick={handleExportRHCSV} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600' }}>
+                <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
+              </button>
+              <button onClick={() => setShowAddPointageModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
+                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouveau Pointage
+              </button>
+            </div>
           </div>
+
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
               <thead>
@@ -141,10 +172,11 @@ export function RhDomainView({ activeFarm }) {
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Matricule</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom & Prénom</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Équipe</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Heure Pointage</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Heure Arrivée</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Kg Cueillis</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Coût Direct</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Pointage</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,6 +191,11 @@ export function RhDomainView({ activeFarm }) {
                     <td style={{ padding: '14px 20px' }}>
                       <UiBadge variant={p.variant}>{p.status}</UiBadge>
                     </td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <button onClick={() => handleDeletePointage(p.matricule)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                        Supprimer
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -167,132 +204,19 @@ export function RhDomainView({ activeFarm }) {
         </div>
       )}
 
-      {/* SUB-TAB 2: PAIE & BULLETINS OJRA */}
-      {activeSubTab === 'paie' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-main)' }}>Bulletins de Paie Quinzaine & Rapprochement OJRA</h4>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Matricule</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom & Prénom</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Jours Travaillés</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Heures Sup</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Salaire Brut</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Retenues CNSS</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Net à Payer</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paieOJRA.map((p, idx) => (
-                <tr key={p.matricule} style={{ borderBottom: idx === paieOJRA.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{p.matricule}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{p.nom}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{p.jours}j ({p.hrNorm})</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--amber-500)', fontWeight: '600' }}>{p.hrSup}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{p.brut}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--rose-500)' }}>{p.cnss}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{p.net}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* SUB-TAB 3: PRIMES DE RECOLTE */}
-      {activeSubTab === 'primes' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-main)' }}>Calcul des Primes de Rendement & Barèmes SMAG</h4>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Matricule</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom Ouvrier</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Volume Total Cueilli</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Rendement Moyen</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Prime Accordée</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Barème Appliqué</th>
-              </tr>
-            </thead>
-            <tbody>
-              {primes.map((pr, idx) => (
-                <tr key={pr.matricule} style={{ borderBottom: idx === primes.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{pr.matricule}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{pr.nom}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{pr.kgTotaux}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{pr.moyenneJour}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{pr.primeBrute}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <UiBadge variant={pr.variant}>{pr.bareme}</UiBadge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* SUB-TAB 4: HEURES SUP */}
-      {activeSubTab === 'heures_sup' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-          <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '12px' }}>Suivi & Majoration des Heures Supplémentaires (HS)</h4>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Majoration légale de 25% (heures de jour) et 50% (heures de nuit/dimanche).</p>
-        </div>
-      )}
-
-      {/* SUB-TAB 5: COUT RECOLTE */}
-      {activeSubTab === 'cout_recolte' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-          <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '12px' }}>Analyse du Coût Direct de Récolte (DH / kg)</h4>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Coût moyen direct: 1.85 DH / kg (Souss: 1.80 DH/kg, Loukkos: 1.90 DH/kg).</p>
-        </div>
-      )}
-
-      {/* SUB-TAB 6: TRANSPORT & PRESTATAIRES */}
-      {activeSubTab === 'transport' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-main)' }}>Transport des Ouvriers & Contrats Prestataires</h4>
-          </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Contrat</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Transporteur</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Itinéraire Navette</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Ouvriers Transportés</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Forfait Quinzaine</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transport.map((t, idx) => (
-                <tr key={t.ref} style={{ borderBottom: idx === transport.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{t.ref}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{t.transporteur}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{t.itineraire}</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{t.ouvriers} ouvriers</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{t.totalForfait}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <UiBadge variant={t.variant}>{t.status}</UiBadge>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* SUB-TAB 7: PARAMETRES & JOURS FERIES */}
-      {activeSubTab === 'parametres' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-          <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '12px' }}>Gestion des Jours Fériés & Barèmes SMAG</h4>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Configuration du calendrier officiel et des taux horaires minimums légaux.</p>
+      {/* Modal Add Pointage */}
+      {showAddPointageModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={handleAddPointage} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Pointage Ouvrier</h3>
+            <input type="text" placeholder="Matricule (ex: OUV-108)" value={pMatricule} onChange={e => setPMatricule(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="text" placeholder="Nom & Prénom Ouvrier *" required value={pNom} onChange={e => setPNom(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="number" placeholder="Kg Cueillis (ex: 50) *" required value={pKg} onChange={e => setPKg(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowAddPointageModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer Pointage</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

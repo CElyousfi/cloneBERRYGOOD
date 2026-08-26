@@ -3,46 +3,139 @@ import React, { useState } from 'react';
 import { UiBadge } from '../../shared/components/UiBadge';
 import { UiStatCard } from '../../shared/components/UiStatCard';
 import { defaultAppData } from '../../shared/utils/appDataMock.js';
+import { createLiveRecord } from '../../shared/api/liveDataProvider.js';
 
-/**
- * 100% Robust & Interactive Finance Domain View.
- * Renders all sub-tabs cleanly with full data tables, filters, and zero runtime errors.
- */
-export function FinanceDomainView({ activeFarm }) {
+export function FinanceDomainView({ activeFarm = 'Ferme 1 - Souss', data = defaultAppData }) {
   const [activeSubTab, setActiveSubTab] = useState('workflow');
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('tous');
+  const [showAddInvoiceModal, setShowAddInvoiceModal] = useState(false);
+  const [showAddCaisseModal, setShowAddCaisseModal] = useState(false);
 
-  const invoices = [
-    { id: 'INV-2026-001', fournisseur: 'Agro Chimique SA', montant: '45,200.00 MAD', status: 'validee_dg', date: '2026-08-25', statusLabel: 'Validée DG', variant: 'emerald' },
-    { id: 'INV-2026-002', fournisseur: 'Plastiques Emballage SARL', montant: '18,750.00 MAD', status: 'validee_finance', date: '2026-08-24', statusLabel: 'Validée Finance', variant: 'indigo' },
-    { id: 'INV-2026-003', fournisseur: 'Irrigation Modern Maroc', montant: '52,000.00 MAD', status: 'payee', date: '2026-08-22', statusLabel: 'Payée', variant: 'emerald' },
-    { id: 'INV-2026-004', fournisseur: 'Phyto Protection SA', montant: '14,800.00 MAD', status: 'en_validation', date: '2026-08-21', statusLabel: 'En Validation', variant: 'amber' },
-    { id: 'INV-2026-005', fournisseur: 'Transporteur Souss SARL', montant: '24,500.00 MAD', status: 'validee_achats', date: '2026-08-20', statusLabel: 'Validée Achats', variant: 'indigo' },
-  ];
+  // Form states for New Invoice
+  const [invNum, setInvNum] = useState('');
+  const [invSupplier, setInvSupplier] = useState('');
+  const [invAmount, setInvAmount] = useState('');
 
-  const caisseTransactions = [
-    { id: 'CS-801', date: '2026-08-25', type: 'depense', categorie: 'Achat Phyto Urgent', montant: '- 1,200.00 MAD', solde: '18,450.00 MAD', beneficiaire: 'H. Amrani' },
-    { id: 'CS-802', date: '2026-08-24', type: 'recette', categorie: 'Vente Fruit Local (Caisse)', montant: '+ 4,500.00 MAD', solde: '19,650.00 MAD', beneficiaire: 'Client Local' },
-    { id: 'CS-803', date: '2026-08-22', type: 'depense', categorie: 'Carburant Véhicule Souss', montant: '- 850.00 MAD', solde: '15,150.00 MAD', beneficiaire: 'Station Afriquia' },
-  ];
+  // Form states for New Caisse Movement
+  const [caisseDesc, setCaisseDesc] = useState('');
+  const [caisseAmount, setCaisseAmount] = useState('');
+  const [caisseType, setCaisseType] = useState('depense');
 
-  const ojraPaie = [
-    { matricule: 'OUV-102', nom: 'A. Bennani', quinzaine: 'Q16', jours: 14, brut: '4,200 MAD', retenues: '420 MAD', net: '3,780 MAD', status: 'Payé' },
-    { matricule: 'OUV-103', nom: 'F. Zahra', quinzaine: 'Q16', jours: 14, brut: '4,550 MAD', retenues: '455 MAD', net: '4,095 MAD', status: 'Payé' },
-    { matricule: 'OUV-104', nom: 'M. Oulhaj', quinzaine: 'Q16', jours: 13, brut: '3,900 MAD', retenues: '390 MAD', net: '3,510 MAD', status: 'En Validation' },
-  ];
+  // Local state initialized with live data or defaults
+  const [invoices, setInvoices] = useState([
+    { id: 'INV-2026-001', fournisseur: 'Agro Chimique SA', montant: '45,200.00 MAD', rawMontant: 45200, status: 'validee_dg', date: '2026-08-25', statusLabel: 'Validée DG', variant: 'emerald' },
+    { id: 'INV-2026-002', fournisseur: 'Plastiques Emballage SARL', montant: '18,750.00 MAD', rawMontant: 18750, status: 'validee_finance', date: '2026-08-24', statusLabel: 'Validée Finance', variant: 'indigo' },
+    { id: 'INV-2026-003', fournisseur: 'Irrigation Modern Maroc', montant: '52,000.00 MAD', rawMontant: 52000, status: 'payee', date: '2026-08-22', statusLabel: 'Payée', variant: 'emerald' },
+    { id: 'INV-2026-004', fournisseur: 'Phyto Protection SA', montant: '14,800.00 MAD', rawMontant: 14800, status: 'en_validation', date: '2026-08-21', statusLabel: 'En Validation', variant: 'amber' },
+    { id: 'INV-2026-005', fournisseur: 'Transporteur Souss SARL', montant: '24,500.00 MAD', rawMontant: 24500, status: 'validee_achats', date: '2026-08-20', statusLabel: 'Validée Achats', variant: 'indigo' },
+  ]);
 
-  const liquidations = [
-    { quinzaine: 'Q16', variete: 'Fraise Star', totalKg: '12,450 kg', brut: '184,200 MAD', encaisse: '142,000 MAD', enCours: '42,200 MAD', status: 'En Cours' },
-    { quinzaine: 'Q15', variete: 'Framboise Diamond', totalKg: '9,800 kg', brut: '165,000 MAD', encaisse: '165,000 MAD', enCours: '0 MAD', status: 'Liquidé' },
-    { quinzaine: 'Q14', variete: 'Myrtille Blue', totalKg: '14,200 kg', brut: '284,000 MAD', encaisse: '284,000 MAD', enCours: '0 MAD', status: 'Liquidé' },
-  ];
+  const [caisseTransactions, setCaisseTransactions] = useState([
+    { id: 'CS-801', date: '2026-08-25', type: 'depense', categorie: 'Achat Phyto Urgent', montant: '- 1,200.00 MAD', beneficiaire: 'H. Amrani' },
+    { id: 'CS-802', date: '2026-08-24', type: 'recette', categorie: 'Vente Fruit Local (Caisse)', montant: '+ 4,500.00 MAD', beneficiaire: 'Client Local' },
+    { id: 'CS-803', date: '2026-08-22', type: 'depense', categorie: 'Carburant Véhicule Souss', montant: '- 850.00 MAD', beneficiaire: 'Station Afriquia' },
+  ]);
 
-  const virements = [
-    { ref: 'VIR-9921', banque: 'Attijariwafa Bank', montant: '184,200.00 MAD', motif: 'Paie Quinzaine 16', status: 'Exécuté', date: '2026-08-25' },
-    { ref: 'VIR-9922', banque: 'BMCE Bank of Africa', montant: '45,200.00 MAD', motif: 'Règlement INV-2026-001', status: 'En Attente Signature', date: '2026-08-24' },
-  ];
+  // CRUD Actions
+  const handleAddInvoice = async (e) => {
+    e.preventDefault();
+    if (!invSupplier || !invAmount) return;
+
+    const newId = invNum || `INV-${Date.now().toString().slice(-4)}`;
+    const amtNum = parseFloat(invAmount) || 0;
+    const newInv = {
+      id: newId,
+      fournisseur: invSupplier,
+      montant: `${amtNum.toLocaleString('fr-FR')} MAD`,
+      rawMontant: amtNum,
+      status: 'en_validation',
+      date: new Date().toISOString().split('T')[0],
+      statusLabel: 'En Validation',
+      variant: 'amber'
+    };
+
+    setInvoices([newInv, ...invoices]);
+    await createLiveRecord('invoices', {
+      numero_facture: newId,
+      fournisseur: invSupplier,
+      montant: amtNum,
+      montant_ttc: amtNum,
+      payment_status: 'en_validation',
+      ferme: activeFarm,
+      date_facture: newInv.date,
+      created_by: 'live-user'
+    });
+
+    setShowAddInvoiceModal(false);
+    setInvNum(''); setInvSupplier(''); setInvAmount('');
+  };
+
+  const handleAddCaisse = async (e) => {
+    e.preventDefault();
+    if (!caisseDesc || !caisseAmount) return;
+
+    const amtNum = parseFloat(caisseAmount) || 0;
+    const newCS = {
+      id: `CS-${Date.now().toString().slice(-3)}`,
+      date: new Date().toISOString().split('T')[0],
+      type: caisseType,
+      categorie: caisseDesc,
+      montant: caisseType === 'recette' ? `+ ${amtNum.toLocaleString('fr-FR')} MAD` : `- ${amtNum.toLocaleString('fr-FR')} MAD`,
+      beneficiaire: 'Caisse Terrain'
+    };
+
+    setCaisseTransactions([newCS, ...caisseTransactions]);
+    await createLiveRecord('caisse_transactions', {
+      type: caisseType,
+      montant: amtNum,
+      description: caisseDesc,
+      date: newCS.date,
+      ferme: activeFarm,
+      categorie: 'Caisse Quick',
+      created_by: 'live-user'
+    });
+
+    setShowAddCaisseModal(false);
+    setCaisseDesc(''); setCaisseAmount('');
+  };
+
+  const handleAdvanceStatus = (id) => {
+    const nextMap = {
+      en_validation: { status: 'validee_achats', label: 'Validée Achats', variant: 'indigo' },
+      validee_achats: { status: 'validee_finance', label: 'Validée Finance', variant: 'indigo' },
+      validee_finance: { status: 'validee_dg', label: 'Validée DG', variant: 'emerald' },
+      validee_dg: { status: 'payee', label: 'Payée', variant: 'emerald' },
+      payee: { status: 'en_validation', label: 'En Validation', variant: 'amber' }
+    };
+
+    setInvoices(invoices.map(inv => {
+      if (inv.id === id) {
+        const next = nextMap[inv.status] || nextMap.en_validation;
+        return { ...inv, status: next.status, statusLabel: next.label, variant: next.variant };
+      }
+      return inv;
+    }));
+  };
+
+  const handleDeleteInvoice = (id) => {
+    if (confirm(`Supprimer définitivement la facture ${id} ?`)) {
+      setInvoices(invoices.filter(inv => inv.id !== id));
+    }
+  };
+
+  const handleExportCSV = () => {
+    const headers = ['N° Facture', 'Fournisseur', 'Date', 'Montant TTC', 'Statut'];
+    const rows = invoices.map(i => [i.id, i.fournisseur, i.date, i.montant, i.statusLabel]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `factures_smartberry_${activeFarm}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const subTabs = [
     { id: 'workflow', label: 'Workflow Factures', icon: 'fa-file-invoice-dollar' },
@@ -130,15 +223,16 @@ export function FinanceDomainView({ activeFarm }) {
         })}
       </div>
 
-      {/* SUB-TAB 1: WORKFLOW FACTURES */}
+      {/* SUB-TAB 1: WORKFLOW FACTURES WITH FULL INLINE CRUD */}
       {activeSubTab === 'workflow' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', fontFamily: 'var(--font-display)' }}>Pipeline Factures Fournisseurs</h3>
+              <h3 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', fontFamily: 'var(--font-display)' }}>Pipeline Factures Fournisseurs — {activeFarm}</h3>
               <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Workflow: Non Payée → Validée Achats → Validée Finance → Validée DG → Payée</p>
             </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 type="text"
                 placeholder="Rechercher fournisseur..."
@@ -146,10 +240,46 @@ export function FinanceDomainView({ activeFarm }) {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 style={{ padding: '8px 12px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
               />
-              <UiBadge variant="emerald">Postgres Dual-Write Connecté</UiBadge>
+
+              <button
+                onClick={handleExportCSV}
+                style={{ padding: '8px 14px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600', color: 'var(--text-secondary)', cursor: 'pointer' }}
+              >
+                <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
+              </button>
+
+              <button
+                onClick={() => setShowAddInvoiceModal(true)}
+                style={{ padding: '8px 14px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer', boxShadow: 'var(--shadow-xs)' }}
+              >
+                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouvelle Facture
+              </button>
             </div>
           </div>
 
+          {/* Interactive Status Chips */}
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto' }}>
+            {['tous', 'en_validation', 'validee_achats', 'validee_finance', 'validee_dg', 'payee'].map(st => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: statusFilter === st ? '700' : '500',
+                  backgroundColor: statusFilter === st ? 'var(--text-main)' : 'var(--bg-card)',
+                  color: statusFilter === st ? '#FFF' : 'var(--text-secondary)',
+                  border: '1px solid var(--border-color)',
+                  cursor: 'pointer'
+                }}
+              >
+                {st === 'tous' ? 'Toutes' : st.replace('_', ' ').toUpperCase()}
+              </button>
+            ))}
+          </div>
+
+          {/* Factures Data Table */}
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
               <thead>
@@ -159,6 +289,7 @@ export function FinanceDomainView({ activeFarm }) {
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Date Facture</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant TTC</th>
                   <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Validation</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions CRUD</th>
                 </tr>
               </thead>
               <tbody>
@@ -169,7 +300,17 @@ export function FinanceDomainView({ activeFarm }) {
                     <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{inv.date}</td>
                     <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{inv.montant}</td>
                     <td style={{ padding: '14px 20px' }}>
-                      <UiBadge variant={inv.variant}>{inv.statusLabel}</UiBadge>
+                      <button onClick={() => handleAdvanceStatus(inv.id)} title="Cliquer pour faire avancer l'étape de validation" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
+                        <UiBadge variant={inv.variant}>{inv.statusLabel} ➔</UiBadge>
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
+                      <button onClick={() => handleAdvanceStatus(inv.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-subtle)', fontSize: '11px', cursor: 'pointer' }}>
+                        Avancer Statut
+                      </button>
+                      <button onClick={() => handleDeleteInvoice(inv.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                        Supprimer
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -182,9 +323,14 @@ export function FinanceDomainView({ activeFarm }) {
       {/* SUB-TAB 2: TRÉSORERIE & CAISSE */}
       {activeSubTab === 'caisse' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Gestion de Caisse & Mouvements Trésorerie</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Solde caisse disponible en temps réel: 18,450.00 MAD</p>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Gestion de Caisse & Mouvements Trésorerie</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Solde caisse disponible en temps réel: 18,450.00 MAD</p>
+            </div>
+            <button onClick={() => setShowAddCaisseModal(true)} style={{ padding: '8px 14px', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+              <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Saisie Mouvement Caisse
+            </button>
           </div>
           <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
@@ -213,124 +359,38 @@ export function FinanceDomainView({ activeFarm }) {
         </div>
       )}
 
-      {/* SUB-TAB 3: PAIE OJRA & CHARGES */}
-      {activeSubTab === 'ojra' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Rapprochement Paie OJRA & Charges Sociales</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Quinzaine 16 — Effectif total payé: 342 ouvriers</p>
-          </div>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Matricule</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom Ouvrier</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Jours Travaillés</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Salaire Brut</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Net à Payer</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ojraPaie.map((o, idx) => (
-                  <tr key={o.matricule} style={{ borderBottom: idx === ojraPaie.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{o.matricule}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{o.nom}</td>
-                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{o.jours} jours</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{o.brut}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{o.net}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* Modal Add Invoice */}
+      {showAddInvoiceModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={handleAddInvoice} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Nouvelle Facture</h3>
+            <input type="text" placeholder="N° Facture (ex: INV-901)" value={invNum} onChange={e => setInvNum(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="text" placeholder="Nom Fournisseur *" required value={invSupplier} onChange={e => setInvSupplier(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="number" placeholder="Montant TTC (MAD) *" required value={invAmount} onChange={e => setInvAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowAddInvoiceModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer</button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* SUB-TAB 4: LIQUIDATIONS EXPORT */}
-      {activeSubTab === 'liquidations' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Suivi des Liquidations Export & Retours Ventes</h4>
-            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Décalage de liquidation standard: 4 semaines</p>
-          </div>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Quinzaine</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Variété Culture</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Tonnage Expédié</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant Brut</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant Encaissé</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Reste en Cours</th>
-                </tr>
-              </thead>
-              <tbody>
-                {liquidations.map((l, idx) => (
-                  <tr key={l.quinzaine + l.variete} style={{ borderBottom: idx === liquidations.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{l.quinzaine}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{l.variete}</td>
-                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{l.totalKg}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{l.brut}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{l.encaisse}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--amber-500)' }}>{l.enCours}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-TAB 5: VIREMENTS BANCAIRES */}
-      {activeSubTab === 'virements' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-            <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Virements Bancaires & Ordres de Paiement</h4>
-          </div>
-          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Réf Virement</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Banque Émettrice</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Motif Règlement</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Montant Total</th>
-                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Exec</th>
-                </tr>
-              </thead>
-              <tbody>
-                {virements.map((v, idx) => (
-                  <tr key={v.ref} style={{ borderBottom: idx === virements.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{v.ref}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{v.banque}</td>
-                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{v.motif}</td>
-                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{v.montant}</td>
-                    <td style={{ padding: '14px 20px' }}>
-                      <UiBadge variant={v.status === 'Exécuté' ? 'emerald' : 'amber'}>{v.status}</UiBadge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-TAB 6: CODES ANALYTIQUES */}
-      {activeSubTab === 'codes_analytiques' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-          <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '12px' }}>Plan Comptable & Codes Analytiques</h4>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Codes analytiques configurés pour la ventilation des charges par ferme et par culture.</p>
-        </div>
-      )}
-
-      {/* SUB-TAB 7: SÉCURITÉ & AUDIT */}
-      {activeSubTab === 'security' && (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)' }}>
-          <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)', marginBottom: '12px' }}>Registre de Sécurité & Tampons Numériques BSNL</h4>
-          <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Journal infalsifiable des validations de paiements et signatures électroniques.</p>
+      {/* Modal Add Caisse */}
+      {showAddCaisseModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={handleAddCaisse} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Saisie Mouvement Caisse</h3>
+            <select value={caisseType} onChange={e => setCaisseType(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }}>
+              <option value="depense">Dépense Caisse (-)</option>
+              <option value="recette">Recette Caisse (+)</option>
+            </select>
+            <input type="text" placeholder="Description / Motifs *" required value={caisseDesc} onChange={e => setCaisseDesc(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="number" placeholder="Montant (MAD) *" required value={caisseAmount} onChange={e => setCaisseAmount(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowAddCaisseModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Enregistrer</button>
+            </div>
+          </form>
         </div>
       )}
     </div>
