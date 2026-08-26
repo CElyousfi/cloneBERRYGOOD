@@ -31,7 +31,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 40,
+        "commits": 38,
         "file": "public/app.jsx"
       },
       {
@@ -43,7 +43,7 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 17,
+        "commits": 19,
         "file": "functions/index.js"
       },
       {
@@ -64,7 +64,7 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:f453e8b674173f4c",
+    "sourceFingerprint": "sha256:9e8e6885170994c4",
     "stats": {
       "backendModules": 95,
       "cloudFunctions": 91,

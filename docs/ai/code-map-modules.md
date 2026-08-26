@@ -1,5 +1,5 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:288abb7befbe0f0e -->
+<!-- sourceFingerprint: sha256:3e1f61d453d6111f -->
 # Code Map — Modules lib (194)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
@@ -151,7 +151,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockFiles/farmDetection.js | — | detectFarmFromCaption |
 | functions/lib/stockFiles/recordSubmission.js | — | COLLECTION, VALID_FARMS, FARM_LABELS, isValidFarm, todayInCasablanca, addDaysStr, emptyFarmState, emptySubmissionDoc, recordSubmission |
 | functions/lib/stockFiles/reminders.js | — | computeMissingFarms, buildReminderText, buildEscalationText, createStockFileReminders |
-| functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, groupDuplicates, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
+| functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, normalizeCategorie, groupDuplicates, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |

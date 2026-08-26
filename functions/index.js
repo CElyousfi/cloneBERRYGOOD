@@ -8371,14 +8371,26 @@ exports.stockManagement = functions
         let imported = 0, updated = 0;
         let batch = db_firestore.batch(), batchCount = 0;
 
+        // Index de résolution construit UNE SEULE FOIS avant la boucle.
+        // Remplace le get() par ligne qui était fait ici : 1 lecture de collection
+        // au lieu de N lectures unitaires (et c'est ce qui rend la résolution par
+        // nom possible sans dégrader l'import).
+        const sqlCatalogSnap = await db_firestore.collection("articles_catalog").get();
+        const sqlIndex = articleMerge.buildArticleIndex(
+          sqlCatalogSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        );
+
         for (const row of rows) {
           const nom = (row.nom || "").trim();
           if (!nom) continue;
+          // FORMULE D'IDENTIFIANT INCHANGÉE (categorie brute) : la normaliser ici
+          // réétiquetterait toutes les fiches existantes et l'import suivant
+          // recréerait une vague de doublons. On corrige la RÉSOLUTION, pas l'id.
           const docId = Buffer.from(`${nom}|${row.categorie || ""}`).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 50);
-          const existSnap = await db_firestore.collection("articles_catalog").doc(docId).get();
+          const target = articleMerge.resolveArticleTarget(sqlIndex, docId, nom);
           const data = {
             nom,
-            categorie: (row.categorie || "autre").toLowerCase(),
+            categorie: articleMerge.normalizeCategorie(row.categorie),
             sous_categorie: row.sous_categorie || "",
             unite: row.unite || "KG",
             prix_ref: row.prix_ref ? Math.round(row.prix_ref * 100) / 100 : null,
@@ -8387,9 +8399,22 @@ exports.stockManagement = functions
             active: true,
             updated_at: now,
           };
-          const docRef = db_firestore.collection("articles_catalog").doc(docId);
-          if (existSnap.exists) { batch.update(docRef, data); updated++; }
-          else { batch.set(docRef, { ...data, created_at: now }); imported++; }
+          const docRef = db_firestore.collection("articles_catalog").doc(target.id);
+          // Un document EXISTE déjà à cet identifiant sans être résolu ? C'est une
+          // fiche désactivée par `validate-delete-article` : ni active (donc hors
+          // de byId/byName), ni fusionnée (donc pas de redirection merged_into).
+          // Un `set()` la REMPLACERAIT — prix_pmp, nb_achats et created_at perdus,
+          // et la valorisation de l'article tomberait à zéro. On met à jour, comme
+          // le faisait le code d'origine sur `existSnap.exists`.
+          const sqlReactivation = target.isNew && sqlIndex.allIds.has(target.id);
+          if (!target.isNew || sqlReactivation) { batch.update(docRef, data); updated++; }
+          else {
+            batch.set(docRef, { ...data, created_at: now });
+            imported++;
+          }
+          // La fiche écrite entre dans l'index : deux lignes du MÊME import ne
+          // différant que par la casse de la catégorie convergent sur elle.
+          if (target.isNew) articleMerge.rememberArticle(sqlIndex, target.id, nom);
           batchCount++;
           if (batchCount >= 400) { await batch.commit(); batch = db_firestore.batch(); batchCount = 0; }
         }
@@ -8407,19 +8432,26 @@ exports.stockManagement = functions
         const existingSnap = await db_firestore.collection("articles_catalog").get();
         const existingMap = {};
         existingSnap.docs.forEach(d => { existingMap[d.id] = d.data(); });
+        // Même index de résolution que l'import SQL : une fiche active de même
+        // nom normalisé est MISE À JOUR, jamais dupliquée.
+        const xlsIndex = articleMerge.buildArticleIndex(
+          existingSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        );
 
         let batch = db_firestore.batch(), batchCount = 0;
         for (const art of articles) {
           const nom = (art.nom || "").trim();
           if (!nom) { skipped++; continue; }
           const ref = (art.reference || "").trim();
+          // FORMULE D'IDENTIFIANT INCHANGÉE — cf. import-articles-sql.
           const docId = ref
             ? ref.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 50)
             : Buffer.from(`${nom}|${art.categorie || ""}`).toString("base64").replace(/[^a-zA-Z0-9]/g, "").slice(0, 50);
+          const target = articleMerge.resolveArticleTarget(xlsIndex, docId, nom);
           const data = {
             nom, reference: ref,
             reference_technique: (art.reference_technique || "").trim(),
-            categorie: (art.categorie || "autre").trim(),
+            categorie: articleMerge.normalizeCategorie(art.categorie),
             sous_categorie: (art.sous_categorie || "").trim(),
             unite: (art.unite || "U").trim(),
             prix_ht: art.prix_ht || 0, taux_tva: art.taux_tva || 0, prix_ttc: art.prix_ttc || 0,
@@ -8428,17 +8460,31 @@ exports.stockManagement = functions
             invisible: art.invisible || 0, multi_ferme: art.multi_ferme || 0,
             source: "excel_import", active: true, updated_at: now,
           };
-          const docRef = db_firestore.collection("articles_catalog").doc(docId);
-          const existing = existingMap[docId];
-          if (existing) {
-            if (data.prix_ht > 0 || !existing.prix_ref) data.prix_ref = data.prix_ht || existing.prix_ref;
-            data.nb_achats = existing.nb_achats || 0;
+          // ⚠️ NE PAS écrire `reference` sur une fiche résolue par NOM (ou par
+          // redirection) : son docId est celui d'une AUTRE fiche — souvent un
+          // base64 issu de l'import SQL — et y poser la référence de la ligne
+          // Excel fabriquerait un document où `docId !== reference`. Or
+          // `suggest-article-duplicates` renvoie `data.reference || d.id` alors
+          // que `merge-articles` résout par `doc(master_ref)` : la fusion depuis
+          // l'écran Catalogue partirait en 404. C'est exactement l'invariant que
+          // 5 fiches cassent déjà en prod (ex. AZO PRO : ENG0149 / « ENG 0149 »)
+          // et que ce lot ne doit surtout pas propager.
+          if (target.matchedBy === "nom" || target.matchedBy === "merged_into") delete data.reference;
+          const docRef = db_firestore.collection("articles_catalog").doc(target.id);
+          const existing = existingMap[target.id];
+          // Même garde de résurrection que l'import SQL : un `set()` sur une fiche
+          // désactivée la remplacerait (prix_ref, nb_achats, created_at perdus).
+          const xlsReactivation = target.isNew && xlsIndex.allIds.has(target.id);
+          if (!target.isNew || xlsReactivation) {
+            if (data.prix_ht > 0 || !(existing && existing.prix_ref)) data.prix_ref = data.prix_ht || (existing && existing.prix_ref) || null;
+            data.nb_achats = (existing && existing.nb_achats) || 0;
             batch.update(docRef, data);
             updated++;
           } else {
             batch.set(docRef, { ...data, nb_achats: 0, created_at: now });
             imported++;
           }
+          if (target.isNew) articleMerge.rememberArticle(xlsIndex, target.id, nom);
           batchCount++;
           if (batchCount >= 450) { await batch.commit(); batch = db_firestore.batch(); batchCount = 0; }
         }
@@ -8567,6 +8613,14 @@ exports.stockManagement = functions
 
       if (action === "update-article" && req.method === "POST") {
         const { id, updates, updated_by } = req.body;
+        // Rôle résolu SERVEUR (jamais depuis le body) — sans cette garde,
+        // n'importe quel utilisateur authentifié réécrivait n'importe quelle
+        // fiche du catalogue. Périmètre : l'écran Catalogue est réservé au
+        // profil `achats` ; `dg` reste superviseur (comme create-article).
+        const updateArticleRole = await resolveCallerRole(authUser);
+        if (updateArticleRole !== "achats" && updateArticleRole !== "dg") {
+          return res.status(403).json({ success: false, error: "Réservé au responsable achats" });
+        }
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
         const allowed = ["nom", "reference", "reference_technique", "unite", "prix_ht", "taux_tva", "prix_ttc", "categorie", "sous_categorie", "type", "multi_ferme"];
         const clean = {};
@@ -8579,20 +8633,73 @@ exports.stockManagement = functions
 
       if (action === "create-article" && req.method === "POST") {
         const { reference, nom, unite, prix_ht, taux_tva, prix_ttc, categorie, sous_categorie, type, reference_technique, multi_ferme, created_by } = req.body;
-        // Seul le profil achats peut créer des articles
-        if (created_by?.profileId && created_by.profileId !== "achats" && created_by.profileId !== "dg") {
+        // Rôle résolu SERVEUR : il était lu depuis le body de la requête, donc
+        // usurpable (et contournable en omettant simplement le champ).
+        const createArticleRole = await resolveCallerRole(authUser);
+        if (createArticleRole !== "achats" && createArticleRole !== "dg") {
           return res.status(403).json({ success: false, error: "Seul le responsable achats peut créer des articles" });
         }
         if (!nom || !reference) return res.status(400).json({ success: false, error: "Nom et référence requis" });
         const existing = await db_firestore.collection("articles_catalog").doc(reference).get();
         if (existing.exists && existing.data().active !== false) return res.status(400).json({ success: false, error: "Un article avec cette référence existe déjà" });
         const now = Date.now();
-        await db_firestore.collection("articles_catalog").doc(reference).set({
+        const createData = {
           reference, nom, unite: unite || "U", prix_ht: prix_ht || 0, taux_tva: taux_tva || 20,
-          prix_ttc: prix_ttc || 0, categorie: categorie || "", sous_categorie: sous_categorie || "",
+          prix_ttc: prix_ttc || 0, categorie: articleMerge.normalizeCategorie(categorie, ""), sous_categorie: sous_categorie || "",
           type: type || "", reference_technique: reference_technique || "", multi_ferme: multi_ferme || false,
-          active: true, invisible: false, created_at: now, updated_at: now, created_by: created_by || {}
-        });
+          active: true, invisible: false, updated_at: now, created_by: created_by || {}
+        };
+        // Résolution par NOM NORMALISÉ avant création : une fiche active portant
+        // déjà ce nom est MISE À JOUR. Sans cela, créer « Engrais NPK » alors que
+        // « ENGRAIS  NPK » existe déjà pose un second docId — le doublon exact
+        // que ce ticket ferme. La formule d'identifiant, elle, reste intacte.
+        const createCatalogSnap = await db_firestore.collection("articles_catalog").get();
+        const createIndex = articleMerge.buildArticleIndex(
+          createCatalogSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        );
+        const createTarget = articleMerge.resolveArticleTarget(createIndex, reference, nom);
+        // Repli limité au match par NOM. La redirection `merged_into` est
+        // légitime pour un IMPORT (même article, ancien identifiant) mais PAS
+        // pour une saisie libre : une référence tapée qui tombe sur le docId
+        // d'un doublon déjà fusionné enverrait l'update sur le MASTER de la
+        // fusion et écraserait son nom par celui saisi ici.
+        if (createTarget.matchedBy === "nom") {
+          // On met à jour une fiche EXISTANTE : ni `nom` ni `reference` ne sont
+          // touchés. Les écrire renommerait un autre article et casserait
+          // l'invariant docId == reference (cf. import Excel ci-dessus) — le
+          // tout sous l'apparence d'une création réussie.
+          const createPatch = { ...createData };
+          delete createPatch.nom;
+          delete createPatch.reference;
+          await db_firestore.collection("articles_catalog").doc(createTarget.id).update(createPatch);
+          return res.json({
+            success: true,
+            id: createTarget.id,
+            existing_article: true,
+            updated_existing: true,
+            matched_by: "nom",
+            message: "Un article portant ce nom existait déjà : sa fiche a été mise à jour, aucune nouvelle fiche n'a été créée.",
+          });
+        }
+        // La référence saisie est celle d'un doublon ABSORBÉ par une fusion. On
+        // refuse plutôt que d'écrire : un `set()` remplacerait la pierre tombale
+        // (`active:false` + `merged_into`), donc (a) le pointeur qui redirige les
+        // imports futurs vers le master serait perdu, et (b) le doublon
+        // RÉAPPARAÎTRAIT ACTIF au catalogue — une fusion annulée en silence.
+        // NB : le rollback, lui, ne dépend PAS de cette tombe. Il vit dans le
+        // document `article_merges` (master_ref, doublon_refs,
+        // doublon_balances_snapshot, reassigned_*_ids) et survit à l'écrasement.
+        //
+        // La garde s'indexe sur `createIndex.mergedInto`, PAS sur
+        // `createTarget.matchedBy` : `resolveArticleTarget` n'émet
+        // `matchedBy: 'merged_into'` que si le master est ENCORE ACTIF. Si le
+        // master a été désactivé depuis (validate-delete-article), la résolution
+        // retombe en 'none' — ni repli par nom, ni refus — et on écrasait la
+        // tombe. L'index, lui, est indépendant de l'état du master.
+        if (createIndex.mergedInto.has(reference)) {
+          return res.status(400).json({ success: false, error: "Cette référence est celle d'un article fusionné dans un autre. Choisir une autre référence." });
+        }
+        await db_firestore.collection("articles_catalog").doc(reference).set({ ...createData, created_at: now });
         return res.json({ success: true, id: reference });
       }
 
@@ -8609,6 +8716,20 @@ exports.stockManagement = functions
 
       if (action === "validate-delete-article" && req.method === "POST") {
         const { request_id, approved, validated_by } = req.body;
+        // Rôle résolu SERVEUR : cette action écrit `active:false` sur une fiche
+        // catalogue. Sans garde, n'importe quel utilisateur authentifié pouvait
+        // désactiver n'importe quel article.
+        // PÉRIMÈTRE = l'EXPOSITION RÉELLE de l'écran « Suppr. Articles »
+        // (`fin_delete_articles`, NAV_ITEMS_FINANCE) : dg | finance | audit_interne.
+        // La garde passe de « tout utilisateur authentifié » à « les profils qui
+        // ont légitimement l'écran », rien de plus. Restreindre davantage — par
+        // exemple retirer `audit_interne`, profil de lecture — retirerait une
+        // capacité existante : c'est une décision PRODUIT, distincte de la
+        // fermeture de cette faille, et elle ne se prend pas ici.
+        const deleteArticleRole = await resolveCallerRole(authUser);
+        if (deleteArticleRole !== "dg" && deleteArticleRole !== "finance" && deleteArticleRole !== "audit_interne") {
+          return res.status(403).json({ success: false, error: "Réservé au DG, à la Finance ou à l'audit interne" });
+        }
         if (!request_id) return res.status(400).json({ success: false, error: "request_id requis" });
         const docRef = db_firestore.collection("article_delete_requests").doc(request_id);
         const snap = await docRef.get();
