@@ -60035,11 +60035,18 @@ ${rejetHtml}
             const dayMov = computeDayMovements(selectedCaisseId, selectedDate);
 
             if (!dashData) return null;
-            const totalSolde = caisses.reduce((s, c) => s + (c.solde_actuel || 0), 0);
+            // Les comptes clients du Marché Local vivent dans caisse_definitions
+            // (préfixe compte_client_) mais ne sont PAS des caisses : ils n'ont
+            // pas de nom et s'affichaient en bulles anonymes à 0,00 DH. Ils ont
+            // leur propre onglet « Comptes Clients ».
+            const caissesReelles = caisses.filter(c => !(window.CaisseUtils && window.CaisseUtils.isCompteClientCaisse
+                ? window.CaisseUtils.isCompteClientCaisse(c)
+                : String(c.id || '').indexOf('compte_client_') === 0));
+            const totalSolde = caissesReelles.reduce((s, c) => s + (c.solde_actuel || 0), 0);
             // Solde en caisse toutes caisses = validé + bons saisis non validés.
-            const totalSoldeCaisse = caisses.reduce((s, c) => s + (c.solde_provisoire !== undefined ? c.solde_provisoire : (c.solde_actuel || 0)), 0);
-            const totalEnAttente = Math.round(caisses.reduce((s, c) => s + (Number(c.en_attente_montant) || 0), 0) * 100) / 100;
-            const totalEnAttenteCount = caisses.reduce((s, c) => s + (Number(c.en_attente_count) || 0), 0);
+            const totalSoldeCaisse = caissesReelles.reduce((s, c) => s + (c.solde_provisoire !== undefined ? c.solde_provisoire : (c.solde_actuel || 0)), 0);
+            const totalEnAttente = Math.round(caissesReelles.reduce((s, c) => s + (Number(c.en_attente_montant) || 0), 0) * 100) / 100;
+            const totalEnAttenteCount = caissesReelles.reduce((s, c) => s + (Number(c.en_attente_count) || 0), 0);
             return (
                 <div>
                     {/* Real-time balance with day navigation */}
@@ -60109,7 +60116,7 @@ ${rejetHtml}
 
                     {/* KPI cards per caisse */}
                     <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12,marginBottom:20}}>
-                        {caisses.map(c => {
+                        {caissesReelles.map(c => {
                             const cc = getCaisseColor(c.id);
                             return (
                                 <div key={c.id} style={{padding:16,background:'white',borderRadius:12,border:'1px solid var(--gray-200)',position:'relative',overflow:'hidden'}}>
@@ -60166,8 +60173,11 @@ ${rejetHtml}
                                     <i className="fa-solid fa-clock" style={{color:'#E67E22'}}></i>
                                     <span style={{fontWeight:600,fontSize:14,color:'var(--gray-800)'}}>{dashData.pendingCount} transaction(s) en attente de validation</span>
                                 </div>
+                                {/* Ce bouton NE valide rien : il ouvre la revue. Le libellé
+                                    « Valider » + l'icône double-coche le faisaient passer pour
+                                    une validation en masse, qui n'existe pas. */}
                                 <button onClick={() => onNavigate('caisse_validation')} style={{padding:'6px 14px',borderRadius:8,background:'#E67E22',color:'white',border:'none',cursor:'pointer',fontSize:12,fontWeight:600}}>
-                                    <i className="fa-solid fa-check-double" style={{marginRight:4}}></i>Valider
+                                    <i className="fa-solid fa-arrow-right" style={{marginRight:4}}></i>Ouvrir la revue
                                 </button>
                             </div>
                         </div>
@@ -60610,26 +60620,8 @@ ${rejetHtml}
                     setBulkLoading(false);
                 }
             };
-            const bulkValidate = async () => {
-                const ids = Array.from(selectedIds);
-                if (ids.length === 0) return;
-                if (!window.confirm(`Valider ${ids.length} transaction(s) ?`)) return;
-                const json = await _postBulk('validate-transactions-batch', { ids });
-                if (json) {
-                    // Le batch n'accepte QUE les bons au statut « Saisi » (soumis) et
-                    // mouvemente le solde de la caisse. Les bons écartés doivent être
-                    // dits, sinon l'utilisateur croit avoir tout validé.
-                    const n = json.updated !== undefined ? json.updated : (json.count || 0);
-                    const ignores = json.skipped || 0;
-                    showToast(ignores > 0
-                        ? `${n} transaction(s) validée(s) — ${ignores} ignorée(s) (déjà validée ou pas au statut « Saisi »)`
-                        : `${n} transaction(s) validée(s)`,
-                        n === 0 ? 'error' : 'success');
-                    clearSelection();
-                    load();
-                    onRefresh && onRefresh();   // le solde des caisses a bougé
-                }
-            };
+            // bulkValidate SUPPRIMÉ : plus de validation en masse. Un bon qui
+            // engage le solde se valide un par un dans la revue DG.
             const bulkMarkRevoir = async () => {
                 const ids = Array.from(selectedIds);
                 if (ids.length === 0) return;
@@ -60822,10 +60814,10 @@ ${rejetHtml}
                                 <i className="fa-solid fa-square-check" style={{marginRight:6}}></i>
                                 {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
                             </span>
-                            <button onClick={bulkValidate} disabled={bulkLoading}
-                                style={{padding:'6px 12px',borderRadius:6,border:'none',background:'var(--green)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
-                                <i className="fa-solid fa-check" style={{marginRight:4}}></i>Valider
-                            </button>
+                            {/* Validation en masse RETIRÉE (décision Omar, 2026-08-26) : un bon
+                                qui engage le solde se valide un par un, dans la revue DG, en
+                                ayant vu le montant et le justificatif. Les actions groupées
+                                restantes ne touchent pas au solde. */}
                             <button onClick={bulkMarkRevoir} disabled={bulkLoading}
                                 style={{padding:'6px 12px',borderRadius:6,border:'none',background:'#F39C12',color:'white',cursor:'pointer',fontSize:12,fontWeight:600,opacity:bulkLoading?0.6:1}}>
                                 <i className="fa-solid fa-rotate-right" style={{marginRight:4}}></i>Marquer à revoir
@@ -61447,6 +61439,29 @@ ${rejetHtml}
             const [actionLoading, setActionLoading] = useState(null);
             const [rejectModal, setRejectModal] = useState(null);
             const [rejectMotif, setRejectMotif] = useState('');
+            // Mode revue : un bon à la fois, navigation ← →. C'est le mode par
+            // défaut — empiler 40 cartes fait perdre le fil à la DG.
+            const [modeRevue, setModeRevue] = useState(true);
+
+            // Décision unitaire depuis la revue. Réutilise les actions existantes ;
+            // la validation UNITAIRE mouvemente le solde de façon atomique.
+            const decisionRevue = (id, decision, motifRejet) => {
+                const cfg = {
+                    valide:   { action: 'validate-transaction', body: { id } },
+                    rejete:   { action: 'reject-transaction',   body: { id, motif: motifRejet } },
+                    a_revoir: { action: 'mark-revoir-batch',    body: { ids: [id], motif: motifRejet || '' } },
+                }[decision];
+                if (!cfg) return Promise.resolve(false);
+                return fetch('/api/caisse?action=' + cfg.action, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(cfg.body),
+                }).then(r => r.json()).then(json => {
+                    if (!json.success) { alert('Erreur: ' + (json.error || 'Inconnue')); return false; }
+                    setTransactions(prev => prev.filter(t => t.id !== id));
+                    onDone();
+                    return true;
+                }).catch(err => { alert('Erreur: ' + err.message); return false; });
+            };
 
             const load = () => {
                 setLoading(true);
@@ -61488,10 +61503,27 @@ ${rejetHtml}
                 </div>
             );
 
+            if (modeRevue && window.CaisseRevueValidation) return (
+                <window.CaisseRevueValidation
+                    transactions={transactions}
+                    caisses={caisses}
+                    onDecision={decisionRevue}
+                    onQuitter={() => setModeRevue(false)}
+                />
+            );
+
             return (
                 <div>
-                    <div style={{marginBottom:12,fontSize:13,color:'var(--gray-600)'}}>
-                        <strong>{transactions.length}</strong> transaction(s) en attente de validation
+                    <div style={{marginBottom:12,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}}>
+                        <span style={{fontSize:13,color:'var(--gray-600)'}}>
+                            <strong>{transactions.length}</strong> transaction(s) en attente de validation
+                        </span>
+                        {window.CaisseRevueValidation && (
+                            <button onClick={() => setModeRevue(true)}
+                                style={{padding:'7px 14px',borderRadius:8,border:'none',background:'var(--berry)',color:'white',cursor:'pointer',fontSize:12,fontWeight:600}}>
+                                <i className="fa-solid fa-layer-group" style={{marginRight:6}}></i>Revue une par une
+                            </button>
+                        )}
                     </div>
                     <div style={{display:'flex',flexDirection:'column',gap:12}}>
                         {transactions.map(tx => {

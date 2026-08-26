@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "234/376 fichiers classifiés",
+          "detail": "235/377 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "66/165 modules avec ≥1 test",
+          "detail": "66/166 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -31,7 +31,7 @@
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 41,
+        "commits": 43,
         "file": "public/app.jsx"
       },
       {
@@ -43,7 +43,7 @@
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 19,
+        "commits": 20,
         "file": "functions/index.js"
       },
       {
@@ -64,13 +64,13 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:0f394a434053a25d",
+    "sourceFingerprint": "sha256:7359b7bfe549fc2d",
     "stats": {
       "backendModules": 95,
       "cloudFunctions": 91,
       "coverageScore": 40,
       "domains": 10,
-      "extractedComponents": 28,
+      "extractedComponents": 29,
       "firestoreCollections": 60,
       "libHelpers": 42,
       "monolithSymbols": 120,
@@ -629,7 +629,7 @@
         ]
       },
       "confidence": "high",
-      "coverageScore": 15,
+      "coverageScore": 14,
       "firestore": {
         "collections": [
           "pointage_validations_equipe",
@@ -641,6 +641,7 @@
       },
       "frontend": {
         "components": [
+          "public/components/CaisseRevueValidation.jsx",
           "public/components/PointageValidationPanel.jsx",
           "public/components/PointageValidationView.jsx"
         ],
@@ -2409,6 +2410,10 @@
       "confidence": "high",
       "domain": "caisse"
     },
+    "public/components/CaisseRevueValidation.jsx": {
+      "confidence": "high",
+      "domain": "pointage"
+    },
     "public/components/CaisseSaisieSub.jsx": {
       "confidence": "high",
       "domain": "caisse"
@@ -2995,7 +3000,7 @@
     "AdminConsoleTab": {
       "domain": "admin",
       "file": "public/app.jsx",
-      "line": 63713
+      "line": 63745
     },
     "AgroAnalyseFoliairesTab": {
       "domain": "agro",
@@ -3125,7 +3130,7 @@
     "ComingSoonTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 62979
+      "line": 63011
     },
     "CoutRecolteTab": {
       "domain": "recolte",
@@ -3135,27 +3140,27 @@
     "DGAdoptionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64069
+      "line": 64101
     },
     "DGMeetingCRTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65036
+      "line": 65068
     },
     "DGParametresTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66274
+      "line": 66306
     },
     "DGSignatureTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 65738
+      "line": 65770
     },
     "DGTasksTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 64586
+      "line": 64618
     },
     "DGValidationsTab": {
       "domain": "pointage",
@@ -3185,7 +3190,7 @@
     "EvolutionTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66415
+      "line": 66447
     },
     "FinBDCTab": {
       "domain": "achats",
@@ -3380,7 +3385,7 @@
     "ProductivityReportTab": {
       "domain": null,
       "file": "public/app.jsx",
-      "line": 66889
+      "line": 66921
     },
     "QualiteBonsApportTab": {
       "domain": "qualite",
@@ -3510,7 +3515,7 @@
     "SuiviPointageTab": {
       "domain": "pointage",
       "file": "public/app.jsx",
-      "line": 65416
+      "line": 65448
     },
     "SuiviTab": {
       "domain": null,
