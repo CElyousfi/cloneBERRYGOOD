@@ -22,8 +22,10 @@ const {
   fetchReferentielParcelles,
   fetchArticleCategories,
 } = require('./fetchBons');
+const { CONSO_PARCELLE_CACHE_PREFIX } = require('./cacheKeys');
 
 module.exports = {
+  CONSO_PARCELLE_CACHE_PREFIX,
   adaptBonsToConsoRows,
   categorieOf,
   quantiteOf,

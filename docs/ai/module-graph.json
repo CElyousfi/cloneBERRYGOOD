@@ -4,7 +4,7 @@
     "healthScore": {
       "subScores": {
         "classification": {
-          "detail": "236/379 fichiers classifiés",
+          "detail": "237/380 fichiers classifiés",
           "max": 40,
           "score": 25
         },
@@ -14,7 +14,7 @@
           "score": 27
         },
         "testCoverage": {
-          "detail": "67/168 modules avec ≥1 test",
+          "detail": "68/169 modules avec ≥1 test",
           "max": 30,
           "score": 12
         }
@@ -23,15 +23,15 @@
     },
     "heatmap": [
       {
-        "commits": 48,
+        "commits": 49,
         "file": "public/components/CampagneAnalytiqueTab.js"
       },
       {
-        "commits": 47,
+        "commits": 48,
         "file": "public/components/CampagneAnalytiqueTab.jsx"
       },
       {
-        "commits": 43,
+        "commits": 42,
         "file": "public/app.jsx"
       },
       {
@@ -39,11 +39,11 @@
         "file": "tests/unit/campagneAnalytiquePivot.test.js"
       },
       {
-        "commits": 25,
+        "commits": 26,
         "file": "functions/pointageService.js"
       },
       {
-        "commits": 23,
+        "commits": 25,
         "file": "functions/index.js"
       },
       {
@@ -64,9 +64,9 @@
       }
     ],
     "schemaVersion": 1,
-    "sourceFingerprint": "sha256:c243e939ebd38d15",
+    "sourceFingerprint": "sha256:8c9b8ffbe95adee5",
     "stats": {
-      "backendModules": 96,
+      "backendModules": 97,
       "cloudFunctions": 91,
       "coverageScore": 40,
       "domains": 10,
@@ -153,6 +153,13 @@
         {
           "coCommits": 4,
           "domain": null,
+          "file": "functions/index.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
+          "coCommits": 4,
+          "domain": null,
           "file": "public/components/MagBdcReceptionTab.js",
           "note": "probabilistic",
           "windowDays": 90
@@ -168,13 +175,6 @@
           "coCommits": 4,
           "domain": null,
           "file": "tests/unit/stockDestinations.test.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 3,
-          "domain": null,
-          "file": "functions/index.js",
           "note": "probabilistic",
           "windowDays": 90
         }
@@ -861,7 +861,7 @@
       },
       "gitCoupling": [
         {
-          "coCommits": 46,
+          "coCommits": 47,
           "domain": null,
           "file": "public/components/CampagneAnalytiqueTab.js",
           "note": "probabilistic",
@@ -966,6 +966,13 @@
           "windowDays": 90
         },
         {
+          "coCommits": 6,
+          "domain": null,
+          "file": "functions/pointageService.js",
+          "note": "probabilistic",
+          "windowDays": 90
+        },
+        {
           "coCommits": 5,
           "domain": null,
           "file": "functions/lib/campagneBudget/__tests__/validate.test.js",
@@ -976,13 +983,6 @@
           "coCommits": 5,
           "domain": null,
           "file": "functions/lib/campagneBudget/validate.js",
-          "note": "probabilistic",
-          "windowDays": 90
-        },
-        {
-          "coCommits": 5,
-          "domain": null,
-          "file": "functions/pointageService.js",
           "note": "probabilistic",
           "windowDays": 90
         },
@@ -1091,7 +1091,8 @@
           "stock",
           "stockCaneva",
           "stockFiles",
-          "stockMerge"
+          "stockMerge",
+          "stockRoles"
         ],
         "routes": [
           {
@@ -1104,7 +1105,7 @@
         ]
       },
       "confidence": "medium",
-      "coverageScore": 50,
+      "coverageScore": 54,
       "firestore": {
         "collections": [
           "security_mouvements",
@@ -1167,7 +1168,9 @@
           "functions/lib/stockFiles/__tests__/allowedMime.test.js",
           "functions/lib/stockFiles/__tests__/farmDetection.test.js",
           "functions/lib/stockFiles/__tests__/recordSubmission.test.js",
-          "functions/lib/stockFiles/__tests__/reminders.test.js"
+          "functions/lib/stockFiles/__tests__/reminders.test.js",
+          "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+          "functions/lib/stockRoles/__tests__/articlePermissions.test.js"
         ],
         "unit": [
           "tests/unit/inventaireUtils.test.js",
@@ -2308,6 +2311,10 @@
       "domain": "stock"
     },
     "functions/lib/stockMerge": {
+      "confidence": "medium",
+      "domain": "stock"
+    },
+    "functions/lib/stockRoles": {
       "confidence": "medium",
       "domain": "stock"
     },

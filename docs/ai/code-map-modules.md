@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:cdcf1316acabcd67 -->
-# Code Map — Modules lib (203)
+<!-- sourceFingerprint: sha256:fb21ec59718cc385 -->
+# Code Map — Modules lib (207)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -44,9 +44,10 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/campagneRapportHebdo/runJob.js | — | resolveRecipientsByProfile, checkRecipients, dryRun, runRapportHebdo, buildHttpHandler, maskPhone |
 | functions/lib/consoBons/aggregateParcelle.js | — | aggregateConsoParcelle, articlesAClasser |
 | functions/lib/consoBons/bonsToConsoRows.js | — | adaptBonsToConsoRows, categorieOf, quantiteOf, alnumArticleKey, buildArticleCategoryIndex, lookupArticleCategorie |
+| functions/lib/consoBons/cacheKeys.js | — | CONSO_PARCELLE_CACHE_PREFIX |
 | functions/lib/consoBons/fermeConso.js | — | fermeDeParcelle, resolveFermeInconnue |
 | functions/lib/consoBons/fetchBons.js | — | fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
-| functions/lib/consoBons/index.js | — | adaptBonsToConsoRows, categorieOf, quantiteOf, alnumArticleKey, buildArticleCategoryIndex, lookupArticleCategorie, aggregateConsoParcelle, articlesAClasser, fermeDeParcelle, resolveFermeInconnue, fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
+| functions/lib/consoBons/index.js | — | CONSO_PARCELLE_CACHE_PREFIX, adaptBonsToConsoRows, categorieOf, quantiteOf, alnumArticleKey, buildArticleCategoryIndex, lookupArticleCategorie, aggregateConsoParcelle, articlesAClasser, fermeDeParcelle, resolveFermeInconnue, fetchBonsConsommation, fetchReferentielParcelles, fetchArticleCategories |
 | functions/lib/fonctions/fonctionsHistory.js | — | buildFonctionUpdate |
 | functions/lib/fonctions/fonctionsValidate.js | — | normalizeFonctionSlug, normalizeLibelle, normalizeOrdre |
 | functions/lib/forecastConfirmation.js | — | parseForecastConfirmation |
@@ -161,6 +162,9 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/stockFiles/recordSubmission.js | — | COLLECTION, VALID_FARMS, FARM_LABELS, isValidFarm, todayInCasablanca, addDaysStr, emptyFarmState, emptySubmissionDoc, recordSubmission |
 | functions/lib/stockFiles/reminders.js | — | computeMissingFarms, buildReminderText, buildEscalationText, createStockFileReminders |
 | functions/lib/stockMerge/articleMerge.js | — | normalizeArticleName, normalizeCategorie, groupDuplicates, buildArticleIndex, resolveArticleTarget, rememberArticle, isMovementOpen, isBdcOpen, BDC_CLOSED_STATUSES |
+| functions/lib/stockRoles/articleClassement.js | — | fichesAClasserParNom, referencesAClasserParNom |
+| functions/lib/stockRoles/articlePermissions.js | — | peutModifierArticle, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
+| functions/lib/stockRoles/index.js | — | peutModifierArticle, fichesAClasserParNom, referencesAClasserParNom, ROLE_CATALOGUE, ROLE_SUPERVISEUR, REFUS |
 | functions/lib/suppliers/supplierValidation.js | — | validateSupplier, normalizeIf, normalizeIce, normalizePhone, isValidIf, isValidIce, isValidPhone, isNonEmpty |
 | functions/lib/triage/bugTriage.js | — | MODULES, SEVERITIES, TRIAGE_MODEL, SYSTEM_PROMPT, TRIAGE_TOOL, shortId, shouldNotifyResolved, buildResolvedMessage, buildResolvedDGMessage, buildRecentBugsBlock, buildSystemPrompt, buildTextBlock, buildUserContent, isValidTriage, parseTriage, callClaude |
 | functions/lib/validation/validationAccess.js | — | CAPORAL_FERME_BY_PROFILE, genericRoleFor, fermeForCaporalProfile, authorizeValidationAction |

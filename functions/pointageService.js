@@ -4448,6 +4448,15 @@ exports.pointageRH = functions.region("europe-west1").runWith({ timeoutSeconds: 
           // `articles_a_classer`). Sans ce bump, un cache chaud resservirait
           // l'ancienne forme pendant 30 min et le bandeau paraîtrait cassé.
           // (v1 = miroir BEE ONE, v2 = bascule vers les bons Smart Berry.)
+          //
+          // ⚠️ Ces 30 min sont PURGÉES par l'action `classer-article`
+          // (functions/index.js) : la catégorie est résolue à la LECTURE, donc
+          // classer un article change cette réponse. Le préfixe littéral
+          // ci-dessous est dupliqué dans
+          // functions/lib/consoBons/cacheKeys.js (CONSO_PARCELLE_CACHE_PREFIX)
+          // — la divergence est attrapée par
+          // tests/unit/classer-article-cablage.test.js. Bumper la version ici
+          // sans bumper là-bas laisserait la purge taper à côté, en silence.
           pointageCacheKey(`campagne_conso_parcelle_v3_${campagneLabel}`, _fermeFilter, _cultureFilter),
           30 * 60 * 1000,
           async () => {

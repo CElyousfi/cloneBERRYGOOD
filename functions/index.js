@@ -5,7 +5,7 @@ const nodemailer = require("nodemailer");
 const { admin, db: db_firestore, bucket } = require("./config/firebase");
 const sqlConfig = require("./config/sqlConfig");
 const { setCors } = require("./middleware/cors");
-const { withCache } = require("./middleware/cache");
+const { withCache, invalidateCachePrefix: invalidateApiCachePrefix } = require("./middleware/cache");
 const { verifyAuth, requireAuth } = require("./middleware/requireAuth");
 const { dispatchNotification } = require("./notificationDispatcher");
 const { validateBdcCore } = require("./bdcValidationService");
@@ -25,6 +25,8 @@ const caisseEntites = require("./lib/caisse/entites");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
+// Droits d'écriture sur le catalogue d'articles (règle PURE, cf. lib/stockRoles).
+const stockRoles = require("./lib/stockRoles");
 const { resolveCallerRole, resolveCallerProfile } = require("./lib/auth/resolveRole");
 const paieAccess = require("./lib/auth/paieAccess");
 const { validateBugReport } = require("./lib/bugReports/validateBugReport");
@@ -8708,20 +8710,125 @@ exports.stockManagement = functions
         const { id, updates, updated_by } = req.body;
         // Rôle résolu SERVEUR (jamais depuis le body) — sans cette garde,
         // n'importe quel utilisateur authentifié réécrivait n'importe quelle
-        // fiche du catalogue. Périmètre : l'écran Catalogue est réservé au
-        // profil `achats` ; `dg` reste superviseur (comme create-article).
+        // fiche du catalogue.
+        //
+        // Périmètre INCHANGÉ : `achats` ou `dg`, accès complet pour les deux.
+        // La condition n'a fait que sortir du monolithe vers le module pur
+        // `lib/stockRoles` (testable) ; elle n'a été ni élargie ni restreinte.
+        // Le message de refus, lui, est corrigé : il disait « Réservé au
+        // responsable achats » alors que le DG passait.
         const updateArticleRole = await resolveCallerRole(authUser);
-        if (updateArticleRole !== "achats" && updateArticleRole !== "dg") {
-          return res.status(403).json({ success: false, error: "Réservé au responsable achats" });
+        const updateArticlePerm = stockRoles.peutModifierArticle(updateArticleRole);
+        if (!updateArticlePerm.ok) {
+          return res.status(403).json({ success: false, error: updateArticlePerm.raison });
         }
         if (!id) return res.status(400).json({ success: false, error: "ID requis" });
         const allowed = ["nom", "reference", "reference_technique", "unite", "prix_ht", "taux_tva", "prix_ttc", "categorie", "sous_categorie", "type", "multi_ferme"];
         const clean = {};
         for (const k of allowed) { if (updates && updates[k] !== undefined) clean[k] = updates[k]; }
         clean.updated_at = Date.now();
-        clean.updated_by = updated_by || {};
+        // TRAÇABILITÉ : l'identité vient du TOKEN, pas du body. Le client peut
+        // enrichir (nom affiché), mais ni se renommer ni s'effacer : sans ces
+        // trois champs imposés, un `updated_by: {}` rendait la modification
+        // anonyme — y compris un changement de catégorie fait par le DG.
+        clean.updated_by = Object.assign({}, updated_by || {}, {
+          uid: (authUser && authUser.uid) || null,
+          email: (authUser && authUser.email) || null,
+          profileId: updateArticleRole || null,
+        });
         await db_firestore.collection("articles_catalog").doc(id).update(clean);
+        // Une catégorie modifiée change ce que renvoie `campagne-conso-parcelle`
+        // (catégorie résolue à la LECTURE) : son cache 30 min doit tomber.
+        if (clean.categorie !== undefined) {
+          await invalidateApiCachePrefix(consoBons.CONSO_PARCELLE_CACHE_PREFIX);
+        }
         return res.json({ success: true });
+      }
+
+      // ------ CLASSER-ARTICLE : classer un article PAR SON NOM (bandeau Campagne) ------
+      // Le bandeau « articles à classer » de Campagne › Campagne analytique ne
+      // connaît que des NOMS d'articles (ceux lus sur les bons), jamais un
+      // identifiant de fiche. D'où une action dédiée plutôt qu'un
+      // `update-article` tordu : `update-article` écrit UNE fiche désignée par
+      // son id, ce qui ne peut pas marcher ici.
+      //
+      // ⚠️ TOUTES les fiches actives de même nom normalisé sont mises à jour.
+      // Le catalogue porte ~105 paires de doublons ; n'en reclasser qu'une rend
+      // la clé AMBIGUË pour `lookupArticleCategorie` (fail-closed) et l'article
+      // RESTE « à classer » — la correction paraîtrait sans effet.
+      if (action === "classer-article" && req.method === "POST") {
+        const { article, categorie, updated_by } = req.body || {};
+        // MÊME règle de rôle qu'`update-article`, sur le même module pur
+        // (`achats` ou `dg`) : classer un article, c'est écrire au catalogue,
+        // il n'y a aucune raison que ce soit ouvert plus largement.
+        const classerRole = await resolveCallerRole(authUser);
+        const classerPerm = stockRoles.peutModifierArticle(classerRole);
+        if (!classerPerm.ok) {
+          return res.status(403).json({ success: false, error: classerPerm.raison });
+        }
+        const classerNom = article == null ? "" : String(article).trim();
+        if (!classerNom) return res.status(400).json({ success: false, error: "Nom d'article requis" });
+        // Convention d'écriture du catalogue (minuscules) — la même que
+        // create-article, pour ne pas recréer la divergence Engrais/engrais qui
+        // a produit les doublons.
+        const classerCat = articleMerge.normalizeCategorie(categorie, "");
+        // Le classement n'ouvre PAS l'écriture d'une catégorie quelconque : la
+        // porte du DG est « ranger dans l'une des deux familles de l'écran ».
+        if (consoValorisationLib.familleBucket(classerCat) === "autre") {
+          return res.status(400).json({
+            success: false,
+            error: "Catégorie invalide : seuls « engrais » et « pesticide » sont acceptés ici.",
+          });
+        }
+        const classerSnap = await db_firestore.collection("articles_catalog").get();
+        const classerCibles = stockRoles.referencesAClasserParNom(
+          classerSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          classerNom
+        );
+        if (classerCibles.length === 0) {
+          // Aucune création implicite : deux articles des bons (GENAKTIS,
+          // Maspilan) n'ont pas de fiche, et leur orthographe est à vérifier sur
+          // le bon papier avant d'en créer une.
+          return res.status(404).json({
+            success: false,
+            fiches_mises_a_jour: 0,
+            error: "Aucune fiche active « " + classerNom + " » au catalogue. "
+              + "Créez d'abord l'article dans Stock › Articles (vérifiez l'orthographe du bon).",
+          });
+        }
+        const classerNow = Date.now();
+        // Identité imposée par le TOKEN (cf. update-article).
+        const classerBy = Object.assign({}, updated_by || {}, {
+          uid: (authUser && authUser.uid) || null,
+          email: (authUser && authUser.email) || null,
+          profileId: classerRole || null,
+        });
+        // Chunks de 400 (limite Firestore 500/batch, marge de 100).
+        for (let i = 0; i < classerCibles.length; i += 400) {
+          const classerBatch = db_firestore.batch();
+          classerCibles.slice(i, i + 400).forEach((refId) => {
+            classerBatch.update(db_firestore.collection("articles_catalog").doc(refId), {
+              categorie: classerCat,
+              updated_at: classerNow,
+              updated_by: classerBy,
+            });
+          });
+          await classerBatch.commit();
+        }
+        // ⚠️ SANS CETTE PURGE, LA FONCTIONNALITÉ PARAÎT CASSÉE : la réponse de
+        // `campagne-conso-parcelle` est cachée 30 min et la catégorie y est
+        // résolue à la LECTURE. On classe, on recharge, rien ne bouge.
+        // Purge par PRÉFIXE : une entrée existe par périmètre (`_all`, `_f1`,
+        // `_f1_framboise`…), les énumérer serait un fail-open.
+        const classerPurged = await invalidateApiCachePrefix(consoBons.CONSO_PARCELLE_CACHE_PREFIX);
+        return res.json({
+          success: true,
+          article: classerNom,
+          categorie: classerCat,
+          fiches_mises_a_jour: classerCibles.length,
+          references: classerCibles,
+          cache_entrees_purgees: classerPurged,
+        });
       }
 
       if (action === "create-article" && req.method === "POST") {

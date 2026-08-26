@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:de7bf33b68e97cdf",
+    "sourceFingerprint": "sha256:e2f18e6b243e8632",
     "stats": {
-      "targetFiles": 266,
-      "targetFilesWithDirectTests": 153,
-      "targetFilesWithTransitiveTests": 174,
-      "testFilesScanned": 224
+      "targetFiles": 270,
+      "targetFilesWithDirectTests": 157,
+      "targetFilesWithTransitiveTests": 178,
+      "testFilesScanned": 230
     }
   },
   "index": {
@@ -349,6 +349,16 @@
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js"
+      ]
+    },
+    "functions/lib/consoBons/cacheKeys.js": {
+      "directTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ],
+      "transitiveTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ]
     },
     "functions/lib/consoBons/fermeConso.js": {
@@ -1385,15 +1395,45 @@
     },
     "functions/lib/stockMerge/articleMerge.js": {
       "directTests": [
-        "tests/unit/articleMerge.test.js"
+        "tests/unit/articleMerge.test.js",
+        "tests/unit/classer-article-cablage.test.js"
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "tests/unit/articleCatalogWiring.test.js",
         "tests/unit/articleMerge.test.js",
         "tests/unit/bcScan.test.js",
-        "tests/unit/bcScanMatch.test.js"
+        "tests/unit/bcScanMatch.test.js",
+        "tests/unit/classer-article-cablage.test.js"
+      ]
+    },
+    "functions/lib/stockRoles/articleClassement.js": {
+      "directTests": [
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articleClassement.test.js",
+        "tests/unit/articleCatalogWiring.test.js"
+      ]
+    },
+    "functions/lib/stockRoles/articlePermissions.js": {
+      "directTests": [
+        "functions/lib/stockRoles/__tests__/articlePermissions.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/stockRoles/__tests__/articlePermissions.test.js",
+        "tests/unit/articleCatalogWiring.test.js"
+      ]
+    },
+    "functions/lib/stockRoles/index.js": {
+      "directTests": [
+        "tests/unit/articleCatalogWiring.test.js"
+      ],
+      "transitiveTests": [
+        "tests/unit/articleCatalogWiring.test.js"
       ]
     },
     "functions/lib/suppliers/supplierValidation.js": {
@@ -1438,12 +1478,14 @@
     },
     "functions/lib/valorisation/consoValorisation.js": {
       "directTests": [
+        "tests/unit/classer-article-cablage.test.js",
         "tests/unit/consoValorisation.test.js"
       ],
       "transitiveTests": [
         "functions/lib/consoBons/__tests__/aggregateParcelle.test.js",
         "functions/lib/consoBons/__tests__/articleCategories.test.js",
         "functions/lib/consoBons/__tests__/bonsToConsoRows.test.js",
+        "tests/unit/classer-article-cablage.test.js",
         "tests/unit/consoValorisation.test.js"
       ]
     },
@@ -1461,9 +1503,11 @@
     },
     "functions/middleware/cache.js": {
       "directTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
         "tests/unit/campagne-analytique-cache-key.test.js"
       ],
       "transitiveTests": [
+        "functions/middleware/__tests__/cacheInvalidatePrefix.test.js",
         "tests/unit/campagne-analytique-cache-key.test.js"
       ]
     },

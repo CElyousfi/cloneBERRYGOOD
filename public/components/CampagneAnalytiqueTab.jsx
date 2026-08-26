@@ -7,6 +7,7 @@
  * Sources :
  *   GET /api/pointage-rh?action=campagne-analytique-detail  (MO)
  *   GET /api/pointage-rh?action=campagne-conso-parcelle     (Engrais/Pesticides)
+ *   POST /api/stock?action=classer-article                  (bandeau « à classer »)
  *
  * Pattern UMD — expose window.CampagneAnalytiqueTab
  */
@@ -2825,6 +2826,65 @@
     pesticides: { items: 'pesticides', cout: 'totalPesticidesCout' },
   };
 
+  /* ------------------------------------------------------------------ */
+  /* Classement d'un article depuis le bandeau « à classer »             */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Marqueur posé par le backend (`articlesAClasser`) quand l'article n'a
+   * AUCUNE fiche exploitable au catalogue. Ces articles-là ne sont pas
+   * classables : il n'y a rien à mettre à jour. On ne crée rien depuis cet
+   * écran (décision Omar : l'orthographe des deux cas connus — GENAKTIS,
+   * Maspilan — est à vérifier sur le bon papier d'abord).
+   */
+  var CAT_SANS_FICHE = 'absent du catalogue';
+
+  /**
+   * Le profil courant peut-il classer un article ?
+   * Le contrôle n'est affiché QUE dans ce cas : montrer un bouton qui rendra
+   * 403 est pire que ne rien montrer. C'est du confort d'affichage — la
+   * décision qui compte est prise SERVEUR (lib/stockRoles).
+   * @param {*} role profil courant (window.currentProfile, via props.userRole)
+   * @returns {boolean}
+   */
+  function CAT_peutClasser(role) {
+    return role === 'achats' || role === 'dg';
+  }
+
+  /**
+   * Classe un article PAR SON NOM (toutes ses fiches actives homonymes).
+   * Écriture Firestore via Cloud Function uniquement, idToken en Bearer.
+   * @param {string} article nom de l'article tel qu'affiché au bandeau
+   * @param {string} categorie 'engrais' | 'pesticide'
+   * @returns {Promise<{fiches_mises_a_jour: number}>}
+   */
+  function CAT_classerArticle(article, categorie) {
+    if (typeof firebase === 'undefined' || !firebase.auth) {
+      return Promise.reject(new Error('Authentification indisponible'));
+    }
+    var user = firebase.auth().currentUser;
+    if (!user) return Promise.reject(new Error('Non authentifié'));
+    return user.getIdToken().then(function (token) {
+      return fetch('/api/stock?action=classer-article', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token,
+        },
+        body: JSON.stringify({ article: article, categorie: categorie }),
+      });
+    }).then(function (resp) {
+      return resp.json().catch(function () {
+        return { success: false, error: 'Réponse serveur invalide' };
+      });
+    }).then(function (json) {
+      if (!json || !json.success) {
+        throw new Error((json && json.error) || 'Échec du classement');
+      }
+      return json;
+    });
+  }
+
   function ConsoView(props) {
     var consoData = props.consoData;
     var subTab = props.subTab; // 'engrais' | 'pesticides'
@@ -2834,6 +2894,15 @@
 
     var _metric = useState('perha');
     var metric = _metric[0]; var setMetric = _metric[1];
+
+    // Classement en cours : nom de l'article verrouillé (double-clic, et le
+    // reste du bandeau reste utilisable).
+    var _classing = useState('');
+    var classing = _classing[0]; var setClassing = _classing[1];
+
+    // Compte rendu du dernier classement : { article, fiches, erreur }.
+    var _classMsg = useState(null);
+    var classMsg = _classMsg[0]; var setClassMsg = _classMsg[1];
 
     var bucket = CONSO_BUCKETS[subTab] || { items: '', cout: '' };
     /** Articles de la parcelle pour le sous-onglet courant. */
@@ -2851,6 +2920,48 @@
     // qui n'ont pas de fiche). Ils ne sont dans AUCUN des deux onglets : sans
     // ce bandeau, leurs quantités disparaîtraient de l'écran sans un mot.
     var aClasser = (props.consoData && props.consoData.articles_a_classer) || [];
+
+    // Le contrôle de classement n'est proposé qu'aux profils qui peuvent
+    // réellement écrire (cf. CAT_peutClasser). `onClassed` recharge la conso :
+    // le backend a purgé son cache 30 min juste avant de répondre, le rechargement
+    // repart donc d'un vrai recalcul — sans quoi l'article reclassé resterait
+    // affiché « à classer » et la correction paraîtrait sans effet.
+    var peutClasser = CAT_peutClasser(props.userRole);
+    var onClassed = props.onClassed;
+
+    /**
+     * Classe un article, puis recharge les données de conso.
+     * @param {string} article
+     * @param {string} categorie 'engrais' | 'pesticide'
+     */
+    var classer = function (article, categorie) {
+      if (classing) return;
+      setClassing(article);
+      setClassMsg(null);
+      CAT_classerArticle(article, categorie).then(function (json) {
+        setClassMsg({ article: article, fiches: json.fiches_mises_a_jour || 0, erreur: '' });
+        setClassing('');
+        if (typeof onClassed === 'function') onClassed();
+      }).catch(function (e) {
+        setClassMsg({ article: article, fiches: 0, erreur: e.message || 'Échec du classement' });
+        setClassing('');
+      });
+    };
+
+    var classBtnStyle = function (disabled) {
+      return {
+        padding: '3px 10px',
+        border: '1px solid ' + C.border,
+        borderRadius: '12px',
+        background: disabled ? C.surface3 : C.surface,
+        color: disabled ? C.textSec : C.text,
+        fontSize: '11px',
+        fontWeight: 600,
+        cursor: disabled ? 'default' : 'pointer',
+        marginLeft: '6px',
+        whiteSpace: 'nowrap',
+      };
+    };
 
     // Parcelles filtrées
     var parcelles = useMemo(function () {
@@ -2950,19 +3061,65 @@
                                                 : ' article n\'est ni engrais ni pesticide au catalogue')
         ),
         React.createElement('div', { style: { color: C.textSec, marginBottom: '8px' } },
-          'Leurs quantités ne sont comptées dans AUCUN des deux onglets. '
-          + 'Corrigez la catégorie de ces articles dans le catalogue (Stock › Articles) : '
-          + 'la correction vaut pour tout l\'historique, sans ressaisir les bons.'
+          peutClasser
+            ? 'Leurs quantités ne sont comptées dans AUCUN des deux onglets. '
+              + 'Classez-les ici : la correction porte sur la fiche catalogue, donc sur '
+              + 'tout l\'historique, sans ressaisir les bons.'
+            : 'Leurs quantités ne sont comptées dans AUCUN des deux onglets. '
+              + 'Corrigez la catégorie de ces articles dans le catalogue (Stock › Articles) : '
+              + 'la correction vaut pour tout l\'historique, sans ressaisir les bons.'
         ),
+        // Compte rendu du dernier classement. Le nombre de fiches est AFFICHÉ :
+        // un même nom porte souvent deux fiches au catalogue (doublons), et
+        // toutes sont reclassées — le dire évite de croire à une écriture
+        // partielle.
+        classMsg ? React.createElement('div', {
+          style: {
+            marginBottom: '8px',
+            padding: '6px 8px',
+            borderRadius: '4px',
+            background: classMsg.erreur ? '#fdecea' : '#e8f5ef',
+            color: classMsg.erreur ? '#c0392b' : '#12724f',
+          }
+        },
+          classMsg.erreur
+            ? classMsg.article + ' : ' + classMsg.erreur
+            : classMsg.article + ' classé — ' + classMsg.fiches
+              + (classMsg.fiches > 1 ? ' fiches mises à jour' : ' fiche mise à jour')
+        ) : null,
         React.createElement('ul', { style: { margin: 0, paddingLeft: '18px' } },
           aClasser.map(function (a) {
-            return React.createElement('li', { key: a.article, style: { marginBottom: '2px' } },
+            // Article SANS fiche : rien à mettre à jour, donc aucun contrôle —
+            // un bouton rendrait un 404 « aucune fiche active ». On dit quoi
+            // faire à la place.
+            var sansFiche = a.categorie_actuelle === CAT_SANS_FICHE;
+            var enCours = classing === a.article;
+            return React.createElement('li', { key: a.article, style: { marginBottom: '4px' } },
               React.createElement('strong', null, a.article),
               ' — ' + a.lignes + (a.lignes > 1 ? ' lignes' : ' ligne')
               + ', ' + fmtQty(a.quantite) + (a.unite ? ' ' + a.unite : ''),
               React.createElement('span', { style: { color: C.textSec } },
                 ' (catégorie actuelle : ' + a.categorie_actuelle + ')'
-              )
+              ),
+              !peutClasser ? null
+                : sansFiche
+                  ? React.createElement('span', {
+                      style: { color: C.textSec, marginLeft: '6px', fontStyle: 'italic' }
+                    }, '— créez d\'abord sa fiche dans Stock › Articles')
+                  : React.createElement('span', { style: { whiteSpace: 'nowrap' } },
+                      React.createElement('button', {
+                        onClick: function () { classer(a.article, 'engrais'); },
+                        disabled: !!classing,
+                        title: 'Classer « ' + a.article + ' » en engrais',
+                        style: classBtnStyle(!!classing),
+                      }, enCours ? '…' : 'Engrais'),
+                      React.createElement('button', {
+                        onClick: function () { classer(a.article, 'pesticide'); },
+                        disabled: !!classing,
+                        title: 'Classer « ' + a.article + ' » en pesticide',
+                        style: classBtnStyle(!!classing),
+                      }, enCours ? '…' : 'Pesticide')
+                    )
             );
           })
         )
@@ -3291,15 +3448,18 @@
         .finally(function () { setLoading(false); });
     }, []);
 
-    // Chargement conso (paresseux — uniquement à la première transition vers engrais/pesticides)
-    useEffect(function () {
-      // 'budget' n'utilise PAS campagne-conso-parcelle (saisie, pas conso) :
-      // l'exclure évite un fetch inutile à l'ouverture de l'onglet.
-      if (subTab === 'mo' || subTab === 'budget' || consoFetched) return;
-      setConsoFetched(true);
+    /**
+     * Charge (ou recharge) la consommation par parcelle.
+     * Extrait de l'effet ci-dessous pour être RAPPELABLE après un classement
+     * d'article : la catégorie engrais/pesticide est résolue côté serveur à la
+     * lecture, donc une fiche reclassée change cette réponse. Le backend purge
+     * son cache 30 min avant de répondre au classement — ce rechargement repart
+     * donc bien d'un recalcul, pas de l'entrée périmée.
+     */
+    var loadConso = function () {
       setConsoLoading(true);
       setConsoErr(null);
-      fetch('/api/pointage-rh?action=campagne-conso-parcelle')
+      return fetch('/api/pointage-rh?action=campagne-conso-parcelle')
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.success) {
@@ -3310,6 +3470,15 @@
         })
         .catch(function (e) { setConsoErr(e.message || 'Erreur réseau.'); })
         .finally(function () { setConsoLoading(false); });
+    };
+
+    // Chargement conso (paresseux — uniquement à la première transition vers engrais/pesticides)
+    useEffect(function () {
+      // 'budget' n'utilise PAS campagne-conso-parcelle (saisie, pas conso) :
+      // l'exclure évite un fetch inutile à l'ouverture de l'onglet.
+      if (subTab === 'mo' || subTab === 'budget' || consoFetched) return;
+      setConsoFetched(true);
+      loadConso();
     }, [subTab]);
 
     // Styles communs
@@ -3498,6 +3667,10 @@
                   farmFilter: farmFilter,
                   cultureFilter: cultureFilter,
                   sbMap: sbMap,
+                  // Profil courant : décide si le contrôle de classement du
+                  // bandeau est PROPOSÉ. La vraie garde est serveur.
+                  userRole: props.userRole,
+                  onClassed: loadConso,
                 })
           )
     );
@@ -3514,5 +3687,9 @@
   CampagneAnalytiqueTab.byCulture = CAT_byCulture;
   CampagneAnalytiqueTab.PivotView = PivotView;
   CampagneAnalytiqueTab.VarieteView = VarieteView;
+  CampagneAnalytiqueTab.ConsoView = ConsoView;
+  CampagneAnalytiqueTab.peutClasser = CAT_peutClasser;
+  CampagneAnalytiqueTab.classerArticle = CAT_classerArticle;
+  CampagneAnalytiqueTab.CAT_SANS_FICHE = CAT_SANS_FICHE;
 
 })();

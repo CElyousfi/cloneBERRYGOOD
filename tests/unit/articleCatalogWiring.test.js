@@ -247,19 +247,82 @@ test('create-article — une référence de doublon fusionné est REFUSÉE, pas 
 test('update-article — rôle résolu SERVEUR, 403 avec return, avant toute écriture', () => {
   const h = handlerSource('update-article');
   assert.match(h, /const updateArticleRole = await resolveCallerRole\(authUser\);/);
-  // C'est CE rôle qui garde le 403, et le `return` est dans la garde : sans
-  // lui, l'update s'exécuterait quand même après la réponse.
+  // MISE À JOUR CONSCIENTE (ticket sb/classer-depuis-bandeau) : la garde n'est
+  // plus une comparaison de rôle en dur mais la règle PURE
+  // `stockRoles.peutModifierArticle(role)`. Le PÉRIMÈTRE est identique —
+  // `achats` ou `dg`, accès complet pour les deux : la condition a seulement
+  // été sortie du monolithe pour devenir testable. Les deux propriétés qui
+  // comptaient restent tenues ici : (a) c'est bien le rôle résolu SERVEUR qui
+  // décide, (b) le `return` est DANS la garde, sinon l'update s'exécuterait
+  // quand même après la réponse.
   assert.match(
     h,
-    /if \(updateArticleRole !== "achats" && updateArticleRole !== "dg"\) \{\s*\n\s*return res\.status\(403\)/
+    /const updateArticlePerm = stockRoles\.peutModifierArticle\(updateArticleRole\);\s*\n\s*if \(!updateArticlePerm\.ok\) \{\s*\n\s*return res\.status\(403\)/
   );
   // La garde précède l'écriture.
-  const iGarde = h.indexOf('updateArticleRole !== "achats"');
+  const iGarde = h.indexOf('stockRoles.peutModifierArticle');
   const iWrite = h.indexOf('.update(clean)');
   assert.ok(iGarde > -1 && iWrite > -1 && iGarde < iWrite, 'garde avant écriture');
   // Aucun rôle/profil lu depuis le body — c'était la faille de create-article.
+  // (`profileId:` posé dans `clean.updated_by` vient du token, pas du body :
+  // on cible donc bien une LECTURE `.profileId`, pas une écriture.)
   assert.doesNotMatch(h, /req\.body[^\n]*(profileId|role)\b/);
   assert.doesNotMatch(h, /(updated_by|updates)[^\n]*\.profileId/);
+});
+
+test('update-article — un DG envoyant le formulaire COMPLET est accepté', () => {
+  // GARDE ANTI-RÉGRESSION EXPLICITE. Stock › Articles (public/app.jsx,
+  // `handleUpdate`) envoie TOUJOURS l'intégralité du formulaire, jamais un
+  // champ isolé. Toute règle qui trierait les champs pour le `dg` ferait donc
+  // tomber cet écran en 403 pour lui — une capacité qu'il a depuis toujours.
+  // Une version antérieure de ce ticket avait introduit exactement ce bridage.
+  const { peutModifierArticle } = require('../../functions/lib/stockRoles');
+  const h = handlerSource('update-article');
+  // Les champs REELLEMENT acceptés par l'action, lus dans le source : si la
+  // liste évolue, ce test suit sans qu'on ait à la recopier.
+  const m = h.match(/const allowed = \[([^\]]+)\]/);
+  assert.ok(m, 'liste `allowed` introuvable dans update-article');
+  const champs = m[1].split(',').map((s) => s.trim().replace(/^"|"$/g, ''));
+  assert.ok(champs.length >= 10, 'formulaire attendu large, trouvé ' + champs.length + ' champs');
+  assert.ok(champs.includes('prix_ht') && champs.includes('categorie'));
+
+  assert.strictEqual(
+    peutModifierArticle('dg').ok,
+    true,
+    'le DG doit pouvoir éditer une fiche COMPLÈTE (' + champs.length + ' champs) : '
+      + 'c’est le comportement historique de Stock › Articles.'
+  );
+  assert.strictEqual(peutModifierArticle('achats').ok, true);
+  // …et la garde refuse toujours les autres.
+  assert.strictEqual(peutModifierArticle('magasinier').ok, false);
+  assert.strictEqual(peutModifierArticle(null).ok, false);
+});
+
+test('update-article — l’identité de `updated_by` vient du TOKEN, pas du body', () => {
+  const h = handlerSource('update-article');
+  // Sans cette imposition, un `updated_by: {}` envoyé par le client rendait la
+  // modification ANONYME — y compris un changement de catégorie fait par le DG,
+  // qui est précisément la nouvelle capacité ouverte par ce ticket.
+  assert.match(
+    h,
+    /clean\.updated_by = Object\.assign\(\{\}, updated_by \|\| \{\}, \{[\s\S]*?uid: \(authUser && authUser\.uid\)/,
+    'les champs d’identité doivent être écrasés APRÈS le `updated_by` client (Object.assign)'
+  );
+  assert.match(h, /profileId: updateArticleRole \|\| null/);
+});
+
+test('update-article — une catégorie modifiée PURGE le cache de la conso par parcelle', () => {
+  const h = handlerSource('update-article');
+  // `campagne-conso-parcelle` cache sa réponse 30 min et y résout la catégorie
+  // à la LECTURE : sans purge, corriger une fiche ne change rien à l'écran
+  // pendant une demi-heure, sans la moindre erreur visible.
+  assert.match(
+    h,
+    /if \(clean\.categorie !== undefined\) \{\s*\n\s*await invalidateApiCachePrefix\(consoBons\.CONSO_PARCELLE_CACHE_PREFIX\);/
+  );
+  const iWrite = h.indexOf('.update(clean)');
+  const iPurge = h.indexOf('invalidateApiCachePrefix');
+  assert.ok(iWrite > -1 && iPurge > -1 && iWrite < iPurge, 'purge APRÈS l’écriture');
 });
 
 test('create-article — le rôle ne vient plus du body (il était usurpable)', () => {
