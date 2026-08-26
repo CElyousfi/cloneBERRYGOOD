@@ -4,48 +4,10 @@ import { UiBadge } from './UiBadge';
 
 /**
  * Task Checklist component directly inspired by Bonsai's "Upcoming & Overdue Tasks" card.
- * Supports task toggling, adding tasks, filtering, due dates, and author badges.
+ * Starts clean with 0 fake items in production.
  */
 export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) {
-  const [tasks, setTasks] = useState(initialTasks.length > 0 ? initialTasks : [
-    {
-      id: 'task-1',
-      title: 'Validation Facture Engrais NPK #FACT-9482',
-      dueDate: 'Aujourd\'hui',
-      isOverdue: false,
-      completed: false,
-      assignee: 'JD',
-      category: 'Finance'
-    },
-    {
-      id: 'task-2',
-      title: 'Contrôle Taux Brix Variété Star - Bloc B4',
-      dueDate: 'En retard (Hier)',
-      isOverdue: true,
-      completed: false,
-      assignee: 'KR',
-      category: 'Qualité'
-    },
-    {
-      id: 'task-3',
-      title: 'Rapprochement Paie Quinzaine 16 - Ferme Souss',
-      dueDate: 'Aujourd\'hui',
-      isOverdue: false,
-      completed: true,
-      assignee: 'JD',
-      category: 'RH'
-    },
-    {
-      id: 'task-4',
-      title: 'Inspection Station d\'Irrigation #2 & Filtres',
-      dueDate: 'Demain',
-      isOverdue: false,
-      completed: false,
-      assignee: 'MA',
-      category: 'Agronomie'
-    }
-  ]);
-
+  const [tasks, setTasks] = useState(initialTasks);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [filter, setFilter] = useState('all');
@@ -70,7 +32,7 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
       dueDate: 'Aujourd\'hui',
       isOverdue: false,
       completed: false,
-      assignee: 'JD',
+      assignee: 'LA',
       category: 'Général'
     };
     setTasks(prev => [newTask, ...prev]);
@@ -116,7 +78,6 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
           </span>
         </div>
 
-        {/* Add Task Plus Button (Bonsai style soft green round plus) */}
         <button
           onClick={() => setShowAddForm(prev => !prev)}
           title="Ajouter une tâche"
@@ -134,14 +95,11 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
             cursor: 'pointer',
             transition: 'all var(--transition-fast)'
           }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--emerald-100)'}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'var(--emerald-50)'}
         >
           <i className="fa-solid fa-plus"></i>
         </button>
       </div>
 
-      {/* Optional Inline Add Task Input */}
       {showAddForm && (
         <form onSubmit={handleCreateTask} style={{ display: 'flex', gap: '8px', animation: 'fadeIn 0.2s ease-in-out' }}>
           <input
@@ -208,7 +166,9 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         {filteredTasks.length === 0 ? (
           <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-            Aucune tâche dans cette catégorie.
+            <i className="fa-solid fa-list-check" style={{ fontSize: '28px', marginBottom: '8px', opacity: 0.4 }}></i>
+            <p style={{ fontWeight: '600' }}>Aucune tâche enregistrée</p>
+            <p style={{ fontSize: '12px' }}>Cliquez sur le bouton <strong>"+"</strong> ci-dessus pour ajouter une tâche.</p>
           </div>
         ) : (
           filteredTasks.map(task => (
@@ -225,7 +185,6 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
                 transition: 'all var(--transition-fast)'
               }}
             >
-              {/* Left Checkbox & Title */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                 <button
                   onClick={() => toggleTask(task.id)}
@@ -241,8 +200,7 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
                     justifyContent: 'center',
                     cursor: 'pointer',
                     fontSize: '10px',
-                    flexShrink: 0,
-                    transition: 'all var(--transition-fast)'
+                    flexShrink: 0
                   }}
                 >
                   {task.completed && <i className="fa-solid fa-check"></i>}
@@ -260,23 +218,14 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
                     {task.title}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span
-                      style={{
-                        fontSize: '12px',
-                        fontWeight: '500',
-                        color: task.isOverdue ? 'var(--rose-500)' : 'var(--text-muted)'
-                      }}
-                    >
+                    <span style={{ fontSize: '12px', fontWeight: '500', color: 'var(--text-muted)' }}>
                       {task.dueDate}
                     </span>
-                    <UiBadge variant={task.category === 'Finance' ? 'emerald' : task.category === 'Qualité' ? 'amber' : 'neutral'}>
-                      {task.category}
-                    </UiBadge>
+                    <UiBadge variant="neutral">{task.category}</UiBadge>
                   </div>
                 </div>
               </div>
 
-              {/* Right Assignee Avatar & Actions */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <span
                   style={{
@@ -289,25 +238,11 @@ export function UiTaskChecklist({ initialTasks = [], onTaskToggle, onAddTask }) 
                     fontWeight: '700',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    letterSpacing: '0.02em'
+                    justifyContent: 'center'
                   }}
                 >
                   {task.assignee}
                 </span>
-
-                <button
-                  style={{
-                    border: 'none',
-                    backgroundColor: 'transparent',
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    padding: '4px'
-                  }}
-                >
-                  <i className="fa-solid fa-ellipsis"></i>
-                </button>
               </div>
             </div>
           ))
