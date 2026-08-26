@@ -1,6 +1,6 @@
 <!-- GENERATED FILE — ne pas éditer à la main. Régénérer : npm run code-index -->
-<!-- sourceFingerprint: sha256:67ab84d04bca6c1e -->
-# Code Map — Modules lib (195)
+<!-- sourceFingerprint: sha256:05fec1503a0ddcf8 -->
+# Code Map — Modules lib (196)
 
 API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`module.exports`) — pour savoir quel helper existe déjà avant d'en réécrire un.
 
@@ -23,6 +23,7 @@ API publique de chaque module public/lib/ (UMD `window.X`) et functions/lib/ (`m
 | functions/lib/caisse/parametres.js | — | DEFAULT_FERMES, DEFAULT_CODES_ANALYTIQUES, DEFAULT_PARCELLES, MAX_LEN, MAX_ITEMS, MAX_PARCELLES, normalizeListe, normalizeParcelles, validateListe, withDefaults, estAutorisee |
 | functions/lib/caisse/rapprochementLock.js | — | periodeFromDate, rapprochementDocId, periodesAVerifier, MOIS_FR |
 | functions/lib/caisse/soldeDelta.js | — | computeSoldeDelta, isTypeEditable, TYPES_ENTREE, TYPES_SORTIE, TYPES_EDITABLES |
+| functions/lib/caisse/soldeProvisoire.js | — | STATUTS_EN_ATTENTE, cumulEnAttente, computeSoldesProvisoires |
 | functions/lib/caisse/txDiff.js | — | computeChanges, CHAMPS_SUIVIS |
 | functions/lib/caisseImport/detectCols.js | — | detectCols |
 | functions/lib/caisseImport/excelToISO.js | — | excelToISO |

@@ -60036,6 +60036,10 @@ ${rejetHtml}
 
             if (!dashData) return null;
             const totalSolde = caisses.reduce((s, c) => s + (c.solde_actuel || 0), 0);
+            // Solde en caisse toutes caisses = validé + bons saisis non validés.
+            const totalSoldeCaisse = caisses.reduce((s, c) => s + (c.solde_provisoire !== undefined ? c.solde_provisoire : (c.solde_actuel || 0)), 0);
+            const totalEnAttente = Math.round(caisses.reduce((s, c) => s + (Number(c.en_attente_montant) || 0), 0) * 100) / 100;
+            const totalEnAttenteCount = caisses.reduce((s, c) => s + (Number(c.en_attente_count) || 0), 0);
             return (
                 <div>
                     {/* Real-time balance with day navigation */}
@@ -60077,8 +60081,14 @@ ${rejetHtml}
                     <div style={{padding:'18px 24px',background:'linear-gradient(135deg, var(--berry) 0%, var(--berry-light) 100%)',borderRadius:12,marginBottom:20,color:'white'}}>
                         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
                             <div>
-                                <div style={{fontSize:11,textTransform:'uppercase',letterSpacing:1,opacity:0.7,marginBottom:4}}>Solde Total Toutes Caisses</div>
-                                <div style={{fontSize:26,fontWeight:700}}>{formatMAD(totalSolde)}</div>
+                                <div style={{fontSize:11,textTransform:'uppercase',letterSpacing:1,opacity:0.7,marginBottom:4}}>Solde en caisse — toutes caisses</div>
+                                <div style={{fontSize:26,fontWeight:700}}>{formatMAD(totalSoldeCaisse)}</div>
+                                <div style={{fontSize:11,opacity:0.85,marginTop:4}}>
+                                    Solde validé : <strong>{formatMAD(totalSolde)}</strong>
+                                    {totalEnAttenteCount > 0 && (
+                                        <span> · {totalEnAttenteCount} bon(s) en attente&nbsp;: {totalEnAttente >= 0 ? '+' : '−'}{formatMAD(Math.abs(totalEnAttente))}</span>
+                                    )}
+                                </div>
                             </div>
                             <div style={{display:'flex',gap:24,textAlign:'center'}}>
                                 <div>
@@ -60110,7 +60120,39 @@ ${rejetHtml}
                                         </div>
                                         <div style={{fontSize:12,fontWeight:600,color:'var(--gray-800)'}}>{c.nom}</div>
                                     </div>
-                                    <div style={{fontSize:20,fontWeight:700,color:cc.color,paddingLeft:8}}>{formatMAD(c.solde_actuel)}</div>
+                                    {/* Deux soldes distincts et jamais confondus :
+                                        — Solde en caisse : ce que le caissier doit trouver dans
+                                          son tiroir (inclut les bons saisis non encore validés) ;
+                                        — Solde validé : le solde comptable, seul utilisé par le
+                                          rapprochement mensuel.
+                                        Le solde en caisse est mis en avant car c'est celui qui
+                                        sert au quotidien ; le validé reste visible en dessous. */}
+                                    {(() => {
+                                        const enAttente = Number(c.en_attente_montant) || 0;
+                                        const aDesEnAttente = (Number(c.en_attente_count) || 0) > 0;
+                                        const soldeCaisse = c.solde_provisoire !== undefined ? c.solde_provisoire : c.solde_actuel;
+                                        return (
+                                            <div style={{paddingLeft:8}}>
+                                                <div style={{fontSize:10,textTransform:'uppercase',letterSpacing:0.6,color:'var(--gray-400)'}}>
+                                                    Solde en caisse
+                                                </div>
+                                                <div style={{fontSize:20,fontWeight:700,color:cc.color}}>{formatMAD(soldeCaisse)}</div>
+                                                {aDesEnAttente ? (
+                                                    <div style={{marginTop:6,paddingTop:6,borderTop:'1px dashed var(--gray-200)',fontSize:11,color:'var(--gray-600)',lineHeight:1.5}}>
+                                                        <div>Solde validé : <strong>{formatMAD(c.solde_actuel)}</strong></div>
+                                                        <div style={{color:'#E67E22'}}>
+                                                            <i className="fa-solid fa-clock" style={{marginRight:4}}></i>
+                                                            {c.en_attente_count} bon(s) en attente&nbsp;: {enAttente >= 0 ? '+' : '−'}{formatMAD(Math.abs(enAttente))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div style={{marginTop:6,fontSize:11,color:'var(--gray-400)'}}>
+                                                        <i className="fa-solid fa-check" style={{marginRight:4}}></i>Tout est validé
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
                             );
                         })}

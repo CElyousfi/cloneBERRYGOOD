@@ -474,3 +474,79 @@ test('withDefaults — parcelles conservées et normalisées', () => {
   assert.strictEqual(p.parcelles[0].culture, 'Myrtille');
   assert.strictEqual(p.parcelles_maj_at, 1234);
 });
+
+// ------------------------------------------------------------ soldeProvisoire
+
+const sp = require('../soldeProvisoire');
+
+const att = (caisse, status, type, montant) => ({ caisse_id: caisse, status, type, montant });
+
+test('cumulEnAttente — seuls soumis et a_revoir comptent', () => {
+  const c = sp.cumulEnAttente([
+    att('C1', 'soumis', 'depense', 100),
+    att('C1', 'a_revoir', 'depense', 50),
+    att('C1', 'brouillon', 'depense', 999),
+    att('C1', 'valide', 'depense', 999),
+    att('C1', 'rejete', 'depense', 999),
+  ]);
+  assert.deepStrictEqual(c, { C1: { montant: -150, count: 2 } });
+});
+
+test('cumulEnAttente — recettes et dépenses se compensent', () => {
+  const c = sp.cumulEnAttente([
+    att('C1', 'soumis', 'depense', 300),
+    att('C1', 'soumis', 'alimentation', 1000),
+  ]);
+  assert.deepStrictEqual(c, { C1: { montant: 700, count: 2 } });
+});
+
+test('cumulEnAttente — séparé par caisse', () => {
+  const c = sp.cumulEnAttente([att('C1', 'soumis', 'depense', 100), att('C5', 'soumis', 'depense', 40)]);
+  assert.deepStrictEqual(c, { C1: { montant: -100, count: 1 }, C5: { montant: -40, count: 1 } });
+});
+
+test('cumulEnAttente — entrées invalides ignorées', () => {
+  assert.deepStrictEqual(sp.cumulEnAttente(null), {});
+  assert.deepStrictEqual(sp.cumulEnAttente([null, { status: 'soumis' }, {}]), {});
+});
+
+test('cumulEnAttente — arrondi au centime, pas d\'accumulation d\'erreur', () => {
+  const c = sp.cumulEnAttente([
+    att('C1', 'soumis', 'depense', 0.1),
+    att('C1', 'soumis', 'depense', 0.2),
+  ]);
+  assert.strictEqual(c.C1.montant, -0.3);   // et pas -0.30000000000000004
+});
+
+test('computeSoldesProvisoires — solde en caisse = validé + en attente', () => {
+  const out = sp.computeSoldesProvisoires(
+    [{ id: 'C1', solde_actuel: 10000 }, { id: 'C5', solde_actuel: 500 }],
+    [att('C1', 'soumis', 'depense', 82), att('C1', 'soumis', 'depense', 50)]
+  );
+  assert.deepStrictEqual(out[0], { caisse_id: 'C1', solde_actuel: 10000, solde_provisoire: 9868, en_attente_montant: -132, en_attente_count: 2 });
+  // Caisse sans bon en attente : les deux soldes sont égaux.
+  assert.deepStrictEqual(out[1], { caisse_id: 'C5', solde_actuel: 500, solde_provisoire: 500, en_attente_montant: 0, en_attente_count: 0 });
+});
+
+test('computeSoldesProvisoires — le solde comptable n\'est JAMAIS modifié', () => {
+  const caisses = [{ id: 'C1', solde_actuel: 10000 }];
+  const out = sp.computeSoldesProvisoires(caisses, [att('C1', 'soumis', 'depense', 500)]);
+  assert.strictEqual(out[0].solde_actuel, 10000);
+  assert.strictEqual(caisses[0].solde_actuel, 10000);
+});
+
+test('computeSoldesProvisoires — cohérence avec la validation ultérieure', () => {
+  // Après validation, solde_actuel doit valoir exactement le solde en caisse
+  // annoncé avant. C'est la promesse faite au caissier.
+  const enAttente = [att('C1', 'soumis', 'depense', 82), att('C1', 'soumis', 'alimentation', 1000)];
+  const avant = sp.computeSoldesProvisoires([{ id: 'C1', solde_actuel: 10000 }], enAttente)[0];
+  const apresValidation = enAttente.reduce((s, t) => s + computeSoldeDelta(t), 10000);
+  assert.strictEqual(Math.round(apresValidation * 100) / 100, avant.solde_provisoire);
+});
+
+test('computeSoldesProvisoires — entrées absentes', () => {
+  assert.deepStrictEqual(sp.computeSoldesProvisoires(null, []), []);
+  const out = sp.computeSoldesProvisoires([{ id: 'C1' }], null);
+  assert.strictEqual(out[0].solde_actuel, 0);
+  assert.strictEqual(out[0].solde_provisoire, 0);
+});

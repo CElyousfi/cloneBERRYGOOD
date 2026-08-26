@@ -2,12 +2,12 @@
   "_meta": {
     "schemaVersion": 1,
     "generatorVersion": "1.0.0",
-    "sourceFingerprint": "sha256:b2930cf547094e71",
+    "sourceFingerprint": "sha256:c2c15f663d151565",
     "stats": {
-      "targetFiles": 254,
-      "targetFilesWithDirectTests": 147,
-      "targetFilesWithTransitiveTests": 168,
-      "testFilesScanned": 216
+      "targetFiles": 255,
+      "targetFilesWithDirectTests": 148,
+      "targetFilesWithTransitiveTests": 169,
+      "testFilesScanned": 217
     }
   },
   "index": {
@@ -140,6 +140,14 @@
       ]
     },
     "functions/lib/caisse/soldeDelta.js": {
+      "directTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ],
+      "transitiveTests": [
+        "functions/lib/caisse/__tests__/caisse.test.js"
+      ]
+    },
+    "functions/lib/caisse/soldeProvisoire.js": {
       "directTests": [
         "functions/lib/caisse/__tests__/caisse.test.js"
       ],

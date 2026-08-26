@@ -20,6 +20,7 @@ const { computeChanges } = require("./lib/caisse/txDiff");
 const caisseAxes = require("./lib/caisse/champsAnalytiques");
 const { planBatchValidation, applyDelta } = require("./lib/caisse/batchValidation");
 const caisseParametres = require("./lib/caisse/parametres");
+const caisseSoldeProvisoire = require("./lib/caisse/soldeProvisoire");
 const { validateSupplier } = require("./lib/suppliers/supplierValidation");
 const stockCaneva = require("./lib/stockCaneva");
 const articleMerge = require("./lib/stockMerge/articleMerge");
@@ -15341,9 +15342,28 @@ exports.caisseManagement = functions
         const caissesSnap = await db_firestore.collection("caisse_definitions").where("active", "==", true).get();
         const caisses = caissesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-        // Pending validations count
-        const pendingSnap = await db_firestore.collection("caisse_transactions").where("status", "==", "soumis").get();
-        const pendingCount = pendingSnap.size;
+        // Bons engagés mais pas encore validés. Une seule requête sert deux
+        // besoins : le compteur « en attente de validation » (soumis seulement,
+        // c'est la file de la DG) et le SOLDE EN CAISSE, qui doit aussi tenir
+        // compte des bons « à revoir » — l'argent est sorti dans les deux cas.
+        const enAttenteSnap = await db_firestore.collection("caisse_transactions")
+          .where("status", "in", caisseSoldeProvisoire.STATUTS_EN_ATTENTE).get();
+        const enAttenteTx = enAttenteSnap.docs.map(d => d.data());
+        const pendingCount = enAttenteTx.filter(t => t.status === "soumis").length;
+
+        // Solde en caisse = solde validé + bons engagés. AFFICHAGE uniquement :
+        // solde_actuel reste le solde comptable, seul utilisé par le
+        // rapprochement mensuel (cf. functions/lib/caisse/soldeProvisoire.js).
+        const soldesProvisoires = caisseSoldeProvisoire.computeSoldesProvisoires(caisses, enAttenteTx);
+        const soldesParCaisse = {};
+        soldesProvisoires.forEach(s => { soldesParCaisse[s.caisse_id] = s; });
+        caisses.forEach(c => {
+          const s = soldesParCaisse[c.id];
+          if (!s) return;
+          c.solde_provisoire = s.solde_provisoire;
+          c.en_attente_montant = s.en_attente_montant;
+          c.en_attente_count = s.en_attente_count;
+        });
 
         // This week totals (Saturday to Friday)
         const now = new Date();
