@@ -60326,16 +60326,11 @@ ${rejetHtml}
                 if (!tx || !window.CaisseSaisieSub) return false;
                 if (CAISSE_STATUTS_EDITABLES.indexOf(tx.status) === -1) return false;
                 if (CAISSE_TYPES_EDITABLES.indexOf(tx.type) === -1) return false;
-                // DG/Finance : tout bon éditable. Achats : ses propres saisies,
-                // sauf un brouillon d'un autre (déjà exclu par la propriété).
-                if (isControle) return true;
-                if (!isSaisie) return false;
-                // Achats : uniquement ses propres saisies. Si l'uid courant n'est pas
-                // lisible (auth pas encore prête), on propose le bouton — le backend
-                // renverra un 403 explicite plutôt que de masquer l'action à tort.
-                const uid = (firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser.uid : null;
-                if (!uid) return true;
-                return tx.saisie_by?.uid === uid;
+                // Tout profil ayant accès à la caisse voit l'action. La propriété
+                // (« Achats ne modifie que ses propres saisies ») est vérifiée par
+                // le BACKEND, qui renvoie un 403 explicite. La masquer ici rendait
+                // la fonctionnalité invisible sans dire pourquoi.
+                return !!(isSaisie || isControle);
             };
 
             // Rendu lisible d'une valeur d'historique selon le champ.
@@ -60832,6 +60827,7 @@ ${rejetHtml}
                                             ));
                                         })()}
                                         <th style={{padding:'10px 12px',textAlign:'left',fontWeight:600,color:'var(--gray-600)'}}>Saisi par</th>
+                                        <th style={{padding:'10px 6px',textAlign:'center',fontWeight:600,color:'var(--gray-600)',width:44}} title="Modifier le bon">✎</th>
                                     </tr></thead>
                                     <tbody>
                                         {displayedTransactions.map((tx, i) => {
@@ -60893,6 +60889,22 @@ ${rejetHtml}
                                                         <span style={{padding:'3px 8px',borderRadius:12,background:ss.bg||'#eee',color:ss.color||'#333',fontSize:10,fontWeight:600}}>{ss.label||tx.status}</span>
                                                     </td>
                                                     <td style={{padding:'10px 12px',fontSize:11}}>{tx.saisie_by?.name||''}</td>
+                                                    {/* Action Modifier directement dans la ligne — la pop-up de
+                                                        détail garde le même bouton, mais l'action ne doit pas
+                                                        dépendre d'un clic préalable pour être découverte. */}
+                                                    <td style={{padding:'10px 6px',textAlign:'center'}} onClick={(e) => e.stopPropagation()}>
+                                                        {canEditTx(tx) && (
+                                                            <button onClick={()=>setEditTx(tx)}
+                                                                title={tx.status === 'valide'
+                                                                    ? 'Modifier — le bon repassera en « Saisi » et devra être re-validé'
+                                                                    : 'Modifier ce bon'}
+                                                                aria-label={`Modifier ${tx.reference || tx.id}`}
+                                                                style={{background:'none',border:'1px solid var(--gray-200)',borderRadius:8,cursor:'pointer',
+                                                                    padding:'4px 8px',color:'var(--berry)',fontSize:12,lineHeight:1}}>
+                                                                <i className="fa-solid fa-pen-to-square"></i>
+                                                            </button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                             );
                                         })}
@@ -60900,8 +60912,8 @@ ${rejetHtml}
                                     {/* Sticky footer — totaux suivent les filtres */}
                                     <tfoot>
                                         <tr style={{position:'sticky',bottom:0,background:'var(--gray-100)',borderTop:'2px solid var(--berry)',boxShadow:'0 -2px 6px rgba(0,0,0,0.04)'}}>
-                                            {/* 14 = ⚠ + case à cocher + 11 colonnes triables + « Saisi par » */}
-                                            <td colSpan={14} style={{padding:'12px 14px',fontSize:12}}>
+                                            {/* 15 = ⚠ + case à cocher + 11 colonnes triables + « Saisi par » + action ✎ */}
+                                            <td colSpan={15} style={{padding:'12px 14px',fontSize:12}}>
                                                 <div style={{display:'flex',flexWrap:'wrap',gap:'4px 18px',alignItems:'center',fontWeight:500,color:'var(--gray-800)'}}>
                                                     <span><strong style={{color:'var(--berry)'}}>{totals.count}</strong> transactions</span>
                                                     <span style={{color:'var(--gray-400)'}}>·</span>
