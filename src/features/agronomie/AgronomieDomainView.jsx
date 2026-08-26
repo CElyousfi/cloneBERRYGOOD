@@ -6,9 +6,23 @@ import { getLiveFarmWeather, getLiveFarmForecast } from '../../shared/api/weathe
 
 export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
   const [activeTab, setActiveTab] = useState('stations');
+  const [searchQuery, setSearchQuery] = useState('');
   const [weatherData, setWeatherData] = useState(null);
   const [forecastList, setForecastList] = useState([]);
   const [isLoadingWeather, setIsLoadingWeather] = useState(true);
+  const [showAddStationModal, setShowAddStationModal] = useState(false);
+
+  // Form states
+  const [stName, setStName] = useState('');
+  const [stFlow, setStFlow] = useState('40 m³/h');
+  const [stSector, setStSector] = useState('Bloc A1');
+
+  // Live state array for Stations
+  const [stations, setStations] = useState([
+    { id: 'ST-01', nom: `Station D'Irrigation ${activeFarm}`, debit: '42 m³/h', pression: '2.8 Bar', secteur: 'Bloc A1 - A4', status: 'En Irrigation', variant: 'emerald' },
+    { id: 'ST-02', nom: `Station D'Irrigation ${activeFarm} 2`, debit: '38 m³/h', pression: '3.1 Bar', secteur: 'Bloc B1 - B6', status: 'Automatique Standby', variant: 'neutral' },
+    { id: 'ST-03', nom: `Station Fertilisation ${activeFarm}`, debit: '18 m³/h', pression: '2.5 Bar', secteur: 'Bloc C2', status: 'Fertigation Active', variant: 'emerald' },
+  ]);
 
   // Fetch live OpenWeather data when activeFarm changes
   useEffect(() => {
@@ -29,11 +43,61 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
     return () => { isMounted = false; };
   }, [activeFarm]);
 
-  const stations = [
-    { id: 'ST-01', nom: `Station D'Irrigation ${activeFarm}`, debit: '42 m³/h', pression: '2.8 Bar', secteur: 'Bloc A1 - A4', status: 'En Irrigation', variant: 'emerald' },
-    { id: 'ST-02', nom: `Station D'Irrigation ${activeFarm} 2`, debit: '38 m³/h', pression: '3.1 Bar', secteur: 'Bloc B1 - B6', status: 'Automatique Standby', variant: 'neutral' },
-    { id: 'ST-03', nom: `Station Fertilisation ${activeFarm}`, debit: '18 m³/h', pression: '2.5 Bar', secteur: 'Bloc C2', status: 'Fertigation Active', variant: 'emerald' },
-  ];
+  const handleAddStation = (e) => {
+    e.preventDefault();
+    if (!stName) return;
+
+    const newSt = {
+      id: `ST-${Date.now().toString().slice(-2)}`,
+      nom: stName,
+      debit: stFlow,
+      pression: '2.8 Bar',
+      secteur: stSector,
+      status: 'En Irrigation',
+      variant: 'emerald'
+    };
+
+    setStations([newSt, ...stations]);
+    setShowAddStationModal(false);
+    setStName('');
+  };
+
+  const handleToggleStation = (id) => {
+    setStations(stations.map(st => {
+      if (st.id === id) {
+        const isIrrigating = st.status === 'En Irrigation' || st.status === 'Fertigation Active';
+        return {
+          ...st,
+          status: isIrrigating ? 'Automatique Standby' : 'En Irrigation',
+          variant: isIrrigating ? 'neutral' : 'emerald'
+        };
+      }
+      return st;
+    }));
+  };
+
+  const handleDeleteStation = (id) => {
+    if (confirm(`Supprimer la station d'irrigation ${id} ?`)) {
+      setStations(stations.filter(s => s.id !== id));
+    }
+  };
+
+  const handleExportAgronomieCSV = () => {
+    const headers = ['ID Station', 'Nom Station', 'Débit / Pression', 'Secteur Actif', 'Statut'];
+    const rows = stations.map(s => [s.id, s.nom, `${s.debit} (${s.pression})`, s.secteur, s.status]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `irrigation_stations_${activeFarm}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const filteredStations = stations.filter(s => {
+    return s.nom.toLowerCase().includes(searchQuery.toLowerCase()) || s.id.toLowerCase().includes(searchQuery.toLowerCase()) || s.secteur.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px', animation: 'fadeIn 0.2s ease-in-out' }}>
@@ -109,37 +173,68 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
         </button>
       </div>
 
-      {/* Content Table */}
+      {/* Content View */}
       {activeTab === 'stations' ? (
-        <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h4 style={{ fontSize: '15px', fontWeight: '700', color: 'var(--text-main)' }}>Stations D'Irrigation & Pilotage Automatique — {activeFarm}</h4>
-            <UiBadge variant="emerald">Supabase Dual-Write Active</UiBadge>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '20px 24px', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <h4 style={{ fontSize: '16px', fontWeight: '700', color: 'var(--text-main)' }}>Stations D'Irrigation & Pilotage Automatique — {activeFarm}</h4>
+              <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Contrôle des débits, pressions et vannes de fertilisation en direct</p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input
+                type="text"
+                placeholder="Rechercher station/secteur..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '13px', outline: 'none' }}
+              />
+              <button onClick={handleExportAgronomieCSV} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--bg-subtle)', border: '1px solid var(--border-color)', fontSize: '13px', fontWeight: '600' }}>
+                <i className="fa-solid fa-download" style={{ marginRight: '6px' }}></i> Exporter CSV
+              </button>
+              <button onClick={() => setShowAddStationModal(true)} style={{ padding: '8px 14px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none', fontSize: '13px', fontWeight: '600' }}>
+                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Nouvelle Station
+              </button>
+            </div>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>ID Station</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom Station</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Débit / Pression</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Secteur Actif</th>
-                <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Opérationnel</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stations.map((st, idx) => (
-                <tr key={st.id} style={{ borderBottom: idx === stations.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{st.id}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{st.nom}</td>
-                  <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{st.debit} ({st.pression})</td>
-                  <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{st.secteur}</td>
-                  <td style={{ padding: '14px 20px' }}>
-                    <UiBadge variant={st.variant}>{st.status}</UiBadge>
-                  </td>
+
+          <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+              <thead>
+                <tr style={{ backgroundColor: 'var(--bg-subtle)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>ID Station</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Nom Station</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Débit / Pression</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Secteur Actif</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Statut Opérationnel</th>
+                  <th style={{ padding: '12px 20px', fontWeight: '600' }}>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredStations.map((st, idx) => (
+                  <tr key={st.id} style={{ borderBottom: idx === filteredStations.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--text-main)' }}>{st.id}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '600', color: 'var(--text-main)' }}>{st.nom}</td>
+                    <td style={{ padding: '14px 20px', fontWeight: '700', color: 'var(--emerald-600)' }}>{st.debit} ({st.pression})</td>
+                    <td style={{ padding: '14px 20px', color: 'var(--text-secondary)' }}>{st.secteur}</td>
+                    <td style={{ padding: '14px 20px' }}>
+                      <button onClick={() => handleToggleStation(st.id)} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0 }}>
+                        <UiBadge variant={st.variant}>{st.status} ➔</UiBadge>
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 20px', display: 'flex', gap: '8px' }}>
+                      <button onClick={() => handleToggleStation(st.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-subtle)', fontSize: '11px', cursor: 'pointer' }}>
+                        Basculer Statut
+                      </button>
+                      <button onClick={() => handleDeleteStation(st.id)} style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--rose-500)', backgroundColor: 'transparent', color: 'var(--rose-500)', fontSize: '11px', cursor: 'pointer' }}>
+                        Supprimer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div style={{ backgroundColor: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
@@ -173,6 +268,22 @@ export function AgronomieDomainView({ activeFarm = 'Ferme 1 - Souss' }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Modal Add Station */}
+      {showAddStationModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15,23,42,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <form onSubmit={handleAddStation} style={{ backgroundColor: 'var(--bg-card)', padding: '28px', borderRadius: 'var(--radius-xl)', width: '420px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Création Nouvelle Station / Vanne</h3>
+            <input type="text" placeholder="Nom de la Station (ex: Station Irrigation Serre 4) *" required value={stName} onChange={e => setStName(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="text" placeholder="Débit Nominal (ex: 45 m³/h)" value={stFlow} onChange={e => setStFlow(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <input type="text" placeholder="Secteur Actif (ex: Bloc A1-A4)" value={stSector} onChange={e => setStSector(e.target.value)} style={{ padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)' }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button type="button" onClick={() => setShowAddStationModal(false)} style={{ padding: '8px 16px', borderRadius: '6px' }}>Annuler</button>
+              <button type="submit" style={{ padding: '8px 16px', borderRadius: '6px', backgroundColor: 'var(--emerald-600)', color: '#FFF', border: 'none' }}>Créer Station</button>
+            </div>
+          </form>
         </div>
       )}
     </div>

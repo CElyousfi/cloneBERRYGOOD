@@ -3,8 +3,7 @@ import React from 'react';
 
 /**
  * Left Sidebar Navigation directly inspired by Bonsai's minimalist sidebar layout.
- * Displays brand logo (Bonsai / Smart Berry), grouped section labels (Tools, Finances, Operations),
- * domain navigation links with active state indicator, farm switcher, and bottom links.
+ * Fixed 100% viewport height sidebar with independent scrolling for main content.
  */
 export function Sidebar({ activeDomain = 'dashboard', onSelectDomain, activeFarm = 'Ferme 1 - Souss', onSelectFarm }) {
   const domains = [
@@ -33,11 +32,12 @@ export function Sidebar({ activeDomain = 'dashboard', onSelectDomain, activeFarm
         flexDirection: 'column',
         justifyContent: 'space-between',
         padding: '24px 16px',
-        minHeight: '100vh',
+        height: '100vh',
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        flexShrink: 0
+        flexShrink: 0,
+        overflowY: 'auto'
       }}
     >
       {/* Top Section: Brand Logo & Navigation */}
@@ -173,9 +173,8 @@ export function Sidebar({ activeDomain = 'dashboard', onSelectDomain, activeFarm
         </nav>
       </div>
 
-      {/* Bottom Section: Farm Switcher & User Profile (Bonsai style bottom links) */}
+      {/* Bottom Section: Farm Switcher */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
-        {/* Farm Selector Dropdown */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-muted)', paddingLeft: '4px' }}>Exploitation Agricole</label>
           <select
@@ -198,46 +197,6 @@ export function Sidebar({ activeDomain = 'dashboard', onSelectDomain, activeFarm
             <option value="Ferme 2 - Loukkos">Ferme 2 - Loukkos</option>
             <option value="Toutes les Fermes">Toutes les Fermes</option>
           </select>
-        </div>
-
-        {/* Invite / Support Bottom buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '6px 8px',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: 'var(--text-secondary)',
-              backgroundColor: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: 'var(--radius-sm)'
-            }}
-          >
-            <i className="fa-solid fa-user-plus" style={{ color: 'var(--emerald-600)' }}></i>
-            Inviter Collaborateur
-          </button>
-          <button
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              padding: '6px 8px',
-              fontSize: '12px',
-              fontWeight: '600',
-              color: 'var(--text-secondary)',
-              backgroundColor: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              borderRadius: 'var(--radius-sm)'
-            }}
-          >
-            <i className="fa-solid fa-gift" style={{ color: 'var(--emerald-600)' }}></i>
-            Version 2.4 Modulaire
-          </button>
         </div>
       </div>
     </aside>

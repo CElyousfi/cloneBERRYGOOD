@@ -16,6 +16,7 @@ import { RhDomainView } from './features/rh/RhDomainView';
 import { AchatsDomainView } from './features/achats/AchatsDomainView';
 import { StockDomainView } from './features/stock/StockDomainView';
 import { AgronomieDomainView } from './features/agronomie/AgronomieDomainView';
+import { RecolteDomainView } from './features/recolte/RecolteDomainView';
 import { DgDomainView } from './features/dg/DgDomainView';
 
 // CSS Theme System
@@ -56,7 +57,7 @@ export function App() {
     rh: 'Ressources Humaines & Paie',
     achats: 'Achats & Commandes (BDC)',
     stock: 'Stock & Magasinier',
-    agronomie: 'Agronomie & Stationnaire',
+    agronomie: 'Agronomie & Météo',
     recolte: 'Suivi Récolte & Coûts',
     dg: 'Direction Générale & Audits'
   };
@@ -167,8 +168,8 @@ export function App() {
         );
       case 'recolte':
         return (
-          <ErrorBoundary domainName="Récolte & Rendement">
-            <OverviewDomainView activeFarm={activeFarm} data={liveData} onOpenNewModal={() => setShowNewModal(true)} />
+          <ErrorBoundary domainName="Suivi Récolte & Coûts">
+            <RecolteDomainView activeFarm={activeFarm} data={liveData} />
           </ErrorBoundary>
         );
       case 'dg':
@@ -188,7 +189,7 @@ export function App() {
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: 'var(--bg-app)' }}>
-      {/* Left Sidebar Navigation (Bonsai Style) */}
+      {/* Left Sidebar Navigation (Bonsai Style — 100vh Sticky) */}
       <Sidebar
         activeDomain={activeDomain}
         onSelectDomain={setActiveDomain}
